@@ -59,7 +59,7 @@ SSE stream → Web Overlay (browser/OBS)
 
 HudManager ──(2nd frame via collectSurface, if enabled)──→ CompanionWindow
     ↓ (submit quads/strings; own window thread)
-hud_sw_renderer → standalone OS window (2nd monitor)
+hud_gpu/sw_renderer → standalone OS window (2nd monitor)
 ```
 
 **Key Singletons**, *not* the full set: `grep -l getInstance mxbmrp3/core/*.h` is,
@@ -75,7 +75,7 @@ may go incomplete but never wrong.
 - `FontConfig` - User-configurable font categories (`FontCategory`: Title, Normal, Strong, Digits, Marker, Small)
 - `ColorConfig` - User-configurable color palette
 - `HttpServer` - Embedded HTTP server, SSE-streaming to web overlays (OBS)
-- `CompanionWindow` - Standalone OS window rendering the HUD on a second monitor via an in-process software renderer (`hud_sw_renderer`); each HUD can decouple its on/off + position there.
+- `CompanionWindow` - Standalone OS window rendering the HUD on a second monitor in-process (D3D11, else `hud_sw_renderer`); each HUD can decouple its on/off + position there.
 - `SpotterManager` - Spoken race callouts from the loaded cue pack (SAPI, or a pack's own `.wav`s), on its own thread. See ARCHITECTURE.md §16.
 - `DirectorManager` - Auto-director for spectate/replay: cuts the camera to the most interesting subject (drives `DirectorWidget` + the overlay's battle panel). See ARCHITECTURE.md §14.
 - `EventRecorder` - Callback-tape recorder (MX Bikes only, dev tool): taps the raw callbacks in `mxb_api.cpp` and writes a `.tape` for headless replay. Ships dormant; see *Non-obvious placements*.
@@ -270,11 +270,11 @@ Configuration data, not encapsulated state. Both shapes are in the tree (some HU
 HUDs cache formatted render data (`m_quads`, `m_strings`), not raw game state, so PluginData stays authoritative. Exception: `HudManager::updateRiderPositions` pushes raw `Unified::TrackPositionData` into Map/Radar (world coords PluginData drops) + GapBar (convenience). **Enforced**: `check_hud_raw_cache.sh` - a new `Unified::` member in a HUD header needs `// raw-cache:`.
 
 **Settings reset reuses save/load serialization (don't add a third list)**
-"Reset to defaults" replays a startup snapshot through the *same* applier `loadSettings()` uses, never a hand-maintained list of per-setting resets. Two snapshots back this, and they are intentionally separate:
+"Reset to defaults" replays a startup snapshot through the *same* applier `loadSettings()` uses, never a hand-maintained list of per-setting resets, the per-TAB buttons included. Two snapshots back this, deliberately separate:
 - `m_globalDefaultsIni` - global sections (`writeGlobalSettings`/`applyGlobalLine`).
 - `m_hudFactoryDefaults` - pristine per-HUD constructor defaults, captured *before* `loadSettings()` folds user base-section keys into `m_hudDefaults`.
 
-`m_hudDefaults` (sparse-save baseline, with base-section edits folded in) is **not** a clean factory snapshot - don't "simplify" reset by pointing it at `m_hudDefaults` or by merging the two caches; that reintroduces stale-default-on-reset bugs (e.g. an upgraded default not taking effect). A new setting gets reset coverage for free once wired into save/load. **Pinned** by `reset_test.cpp`; see ARCHITECTURE.md.
+`m_hudDefaults` (sparse-save baseline + base-section edits) is **not** a clean factory snapshot - don't point reset at `m_hudDefaults` or merge the two caches; that reintroduces stale-default-on-reset bugs (an upgraded default not taking effect). A new setting is covered for free once wired into save/load. **Pinned** by `reset_test.cpp` + `reset_tab_test.cpp` (a tab's Reset restores all that tab can change).
 
 **Widget vs HUD Distinction**
 Widgets (grep `_widget.h` for the set) are simplified HUD components with:
@@ -297,7 +297,7 @@ Full-screen immersion overlay - neither a widget nor a typical HUD:
 
 **Companion Window (CompanionWindow + hud_sw_renderer)**
 Standalone OS window that renders the HUD on a second monitor - *not* a network mirror and unrelated to the web overlay:
-- Draws the plugin's live render primitives with an **in-process software renderer** (`hud_sw_renderer` - see its header). It reproduces the game's texture stage, so per-quad **opacity** and white-icon **colorization** match; don't "simplify" the blit to a plain copy. **Pinned** by `test_hud_sw_renderer.cpp`.
+- Draws the plugin's live render primitives **in-process**: D3D11 (`[Advanced] hwAccel`), else `hud_sw_renderer` - see their headers. Both reproduce the game's texture stage, so per-quad **opacity** and white-icon **colorization** match; don't "simplify" the blit to a plain copy. **Pinned** by `test_hud_sw_renderer.cpp`.
 - **Own window thread** owns the Win32 loop and renders on its own cadence, so the window stays live **in menus** when the game issues no `Draw` (the same no-callbacks-in-menus constraint the HttpServer notes). The game thread only `submit()`s a POD frame copy under a mutex.
 - **Never takes focus**, and renders into the **full client** with a centered 16:9 *scale* viewport - not a letterbox, so HUD elements outside `[0,1]` use the whole window like in-game. Both, plus the geometry/maximized persistence and the cursor handling, are documented where they happen in `companion_window.{h,cpp}`.
 - Each HUD can **decouple** its on/off + position here (see the Maintenance Invariant); everything else is shared. Runtime `[Display]` target only (In-game / Companion / Both); analytics `feat_companion`. Render cadence is INI-only (`[Display] companionRefreshHz`, default `0` = V-Sync via `DwmFlush`, `N` = fixed Hz cap). See ARCHITECTURE.md §13.

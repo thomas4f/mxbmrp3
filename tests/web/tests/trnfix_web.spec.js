@@ -1,21 +1,21 @@
 // ============================================================================
 // tests/web/tests/trnfix_web.spec.js
-// Drives tools/trnfix/web/index.html — the browser twin of the native
-// trainer triage tool.
+// Drives tools/trnfix/web/index.html — the trainer triage tool.
 //
-// The page and mxbmrp3_trnfix.cpp are separate implementations of the same byte
-// logic, so nothing but a test keeps them in step. A browser tool that flagged
-// different files than the exe would be worse than no tool: players and the
-// maintainer would be reading different truths about the same file.
+// This is the page's ONLY gate. There used to be a native exe beside it and a
+// second gate pinning that; both are gone (tools/trnfix/README.md has why), so
+// nothing else checks that the page still flags and repairs the right bytes. A
+// browser tool that got this wrong would be worse than no tool: it hands a
+// player back a trainer while telling them it is fixed.
 //
 // The page carries one action: the "pad" repair. Pointer counting, --graft,
-// --zero-ptrs and --disable are the exe's, and tools/trnfix/test.sh pins
-// those. Both sides were checked to produce byte-identical "pad" output on the
-// real matched pair.
+// --zero-ptrs and --disable were the exe's and went with it; the last revision
+// carrying them is the parent of the commit that deleted them. Before that, both
+// sides were checked to produce byte-identical "pad" output on the real matched
+// pair, which is where these fixtures' byte values come from.
 //
-// Fixtures are synthesised for the same reason as the native gate — a real .trn
-// is a player's lap data, and only the fixed metadata block matters here. The
-// byte values in them are copied off the real matched good/bad pair.
+// Fixtures are synthesised because a real .trn is a player's lap data, and only
+// the fixed metadata block matters here.
 // ============================================================================
 const { test, expect } = require('@playwright/test');
 const path = require('path');

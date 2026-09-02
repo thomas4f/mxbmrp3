@@ -843,9 +843,9 @@ bool UpdateDownloader::downloadFile(std::vector<char>& outData, std::string& out
 
     closeHttpHandles();
 
-    // A connection lost mid-transfer used to fall through as success with partial
-    // data — the SHA256/size checks still caught it downstream, but the user saw a
-    // misleading "Size mismatch" instead of a network error. Report it as what it is.
+    // A connection lost mid-transfer must not fall through as success with partial
+    // data: the SHA256/size checks would still catch it downstream, but the user would
+    // see a misleading "Size mismatch" instead of a network error. Report it as what it is.
     if (readError || (contentLength > 0 && outData.size() < contentLength)) {
         outError = "Connection lost mid-download (" + std::to_string(outData.size()) +
                    " of " + std::to_string(contentLength) + " bytes)";

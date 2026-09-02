@@ -3,8 +3,8 @@
 // Real-time track position + proximity detection: per-rider track positions,
 // the live-gap "active in last batch" set, wrong-way/crash state, blue-flag
 // caches, hazard detection (stationary/wrong-way riders ahead), pit-exit grace.
-// (Split from plugin_data_standings.cpp; standings/classification stay there,
-//  the real-time gap engine is plugin_data_livegaps.cpp.)
+// (Standings/classification are in plugin_data_standings.cpp; the real-time
+//  gap engine is plugin_data_livegaps.cpp.)
 // ============================================================================
 
 #include "plugin_data.h"
@@ -250,7 +250,7 @@ bool PluginData::isRiderSpectatable(int raceNum) const {
     if (it == m_standings.end()) return false;
     // Stated directly rather than layered on isRiderExcludedFromDetection(). That predicate
     // agrees with this one today, but it answers a different question — who is eligible to
-    // be flagged as a HAZARD — and reusing it made only its pit clause load-bearing here
+    // be flagged as a HAZARD — and reusing it makes only its pit clause load-bearing here
     // (state == NORMAL already subsumes its DNS/Retired/DSQ tests, and additionally rejects
     // Unknown). Left coupled, a change to hazard tuning would silently move which riders are
     // clickable on four HUDs.
@@ -345,9 +345,9 @@ void PluginData::rebuildBlueFlagCaches() const {
     }
 
     // One flat pass: collect every rider that has a track position, tagged with its
-    // lap/pos and the role flags. This replaces the per-inner-iteration hash
-    // lookups (m_activeTrackPosRiders.count + m_trackPositions.find) that made the
-    // pairwise loop below expensive — the loop now reads a contiguous array. The
+    // lap/pos and the role flags, so the pairwise loop below reads a contiguous
+    // array instead of doing two hash lookups (m_activeTrackPosRiders.count +
+    // m_trackPositions.find) per inner iteration. The
     // roles have DIFFERENT eligibility: a BACKMARKER (outer) must not be
     // excluded/finished; a LAPPER (inner) must be active and not finished, but an
     // otherwise-excluded rider (pit lane) with more laps can still trigger a blue
@@ -367,9 +367,9 @@ void PluginData::rebuildBlueFlagCaches() const {
     // The pairwise proximity pass itself is pure logic over the flat array —
     // it lives in core/blue_flag_detect.h so it can be unit-tested with a plain
     // g++ (tests/unit/test_blue_flag_detect.cpp) instead of only through the DLL
-    // under Wine. Iteration order matches the old m_standings-order scan
-    // (the scratch is built in that order), so "first lapper found" /
-    // last-writer-wins results are byte-identical to the inline version.
+    // under Wine. Iteration order is m_standings order (the scratch is built
+    // in that order), which is what decides "first lapper found" /
+    // last-writer-wins results.
     BlueFlag::detect(m_blueFlagScratch, maxLaps, awarenessThreshold,
                      BlueFlag::Player{ playerRaceNum, playerLaps, playerTrackPos,
                                        playerActive, playerFinished },
@@ -453,8 +453,7 @@ void PluginData::rebuildHazardTypeCaches() const {
     // Suppress the grid-launch crowd: from the green flag through the gate hold and the launch,
     // until the display rider clears the first split. Riders shuffling on the grid (stationary /
     // briefly wrong-way) aren't hazards. Sector-based so it covers races AND grid qualifying and
-    // adapts to the (variable) gate hold, replacing the old fixed time window. (Not for pit
-    // starts, which never enter this grace.)
+    // adapts to the (variable) gate hold. (Not for pit starts, which never enter this grace.)
     if (isInGridStartGrace()) {
         return;
     }

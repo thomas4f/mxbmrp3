@@ -51,9 +51,8 @@ bool SettingsHud::handleClickTabRumble(const ClickRegion& region) {
             return true;
 
         case ClickRegion::RUMBLE_EFFECT_PROFILE_TOGGLE: {
-            // Toggle effect profile mode (stored in global config). Uses the
-            // globalConfig reference from the top of this function — the local
-            // re-fetch that used to be here bound the SAME object.
+            // Toggle effect profile mode (stored in global config), through the
+            // globalConfig reference from the top of this function.
             bool wasPerBike = globalConfig.usePerBikeEffects;
             globalConfig.usePerBikeEffects = !globalConfig.usePerBikeEffects;
 

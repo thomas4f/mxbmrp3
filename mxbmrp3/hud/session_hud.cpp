@@ -72,9 +72,8 @@ float SessionHud::calculateContentHeight(const ScaledDimensions& dim) const {
     const PluginData& pluginData = PluginData::getInstance();
     const SessionData& sessionData = pluginData.getSessionData();
 
-    // Server is the headline row (promoted from the bottom in place of the removed
-    // session-type row): large line height, like the type row used to have. The
-    // caption band is the PLAN's, not a content term.
+    // Server is the headline row: heading line height. The caption band is the
+    // PLAN's, not a content term.
     float serverHeight = (m_enabledRows & ROW_SERVER) ? sectionHeadingRowHeight(dim) : 0.0f;
     float formatHeight = (m_enabledRows & ROW_FORMAT) ? dim.lineHeightNormal : 0.0f;
     float trackHeight = (m_enabledRows & ROW_TRACK) ? dim.lineHeightNormal : 0.0f;
@@ -104,8 +103,8 @@ void SessionHud::update() {
     // invalidate this fingerprint - only the 1<->>1 boundary matters, so a bool suffices.
     bool multiRider = pluginData.getRaceEntries().size() > 1;
 
-    // Check if any session data changed (session type/index no longer rendered here
-    // — it moved to the StandingsHud title — so it's not part of the dirty check).
+    // Check if any session data changed (session type/index is rendered in the
+    // StandingsHud title, not here, so it's not part of the dirty check).
     if (sessionState != m_cachedSessionState ||
         sessionLength != m_cachedSessionLength || sessionNumLaps != m_cachedSessionNumLaps ||
         serverType != m_cachedServerType || multiRider != m_cachedMultiRider ||
@@ -258,7 +257,7 @@ void SessionHud::rebuildRenderData() {
     int sessionState = sessionData.sessionState;
     bool isOnline = sessionData.isOnline();
 
-    // Session state string (the session type now lives in the StandingsHud title)
+    // Session state string (the session type lives in the StandingsHud title)
     const char* stateString = PluginUtils::getSessionStateString(sessionState);
 
     float startX = 0.0f;
@@ -275,9 +274,8 @@ void SessionHud::rebuildRenderData() {
     float backgroundHeight = plan.height();
     addPlanBackground(plan, startX, startY);
 
-    // Individual row heights for positioning. The server row is the headline now
-    // (promoted to the top in place of the removed session-type row), so it uses
-    // the large line height / extra-large font the type row used to.
+    // Individual row heights for positioning. The server row is the headline at
+    // the top, so it uses the heading row height.
     float serverHeight = (m_enabledRows & ROW_SERVER) ? sectionHeadingRowHeight(dim) : 0.0f;
     float formatHeight = (m_enabledRows & ROW_FORMAT) ? dim.lineHeightNormal : 0.0f;
     float trackHeight = (m_enabledRows & ROW_TRACK) ? dim.lineHeightNormal : 0.0f;
@@ -322,16 +320,15 @@ void SessionHud::rebuildRenderData() {
         m_quads.push_back(quad);
     };
 
-    // "Session" -- the HUD's OWN name, which is what a title is for. This panel used
-    // to ship with the title off, so the server headline below (extra-large, in the
-    // title font) was what a reader saw at the top and read as the panel's title: a
-    // piece of DATA standing in for the caption, and the one full HUD that did that.
+    // "Session" -- the HUD's OWN name, which is what a title is for. With the title
+    // off, the server headline below is what a reader sees at the top and reads as
+    // the panel's title: a piece of DATA standing in for the caption.
     //
     // UNCONDITIONAL, like every other HUD, rather than inside `if (m_bShowTitle)`.
     // addPlanTitle emits an empty string when the title is hidden -- which keeps
     // string index 0 stable for the layout fast path below -- and, crucially, emits
-    // the BODY CARD either way. Gating the call meant switching the title off also
-    // silently removed the card.
+    // the BODY CARD either way. Gating the call would make switching the title off
+    // also silently remove the card.
     addPlanTitle(plan, "Session", this->getFont(FontCategory::TITLE),
                  this->getColor(ColorSlot::PRIMARY));
 
@@ -341,8 +338,7 @@ void SessionHud::rebuildRenderData() {
     m_firstIconQuad = static_cast<int>(m_quads.size());
 
     // Server row: headline at the top (server name online / "Testing" offline /
-    // "Unknown"). Extra-large font, no icon (flush-left) — replaces the old
-    // session-type row.
+    // "Unknown"). Section-heading size, no icon (flush-left).
     if (m_enabledRows & ROW_SERVER) {
         // Shared label: name / "Testing" (solo) / "Online" / "Unknown" - see
         // PluginUtils::serverLabel. Rider count lets it read GP Bikes / KRP (no
@@ -350,21 +346,19 @@ void SessionHud::rebuildRenderData() {
         const char* serverText = PluginUtils::serverLabel(sessionData.serverType, sessionData.serverName,
             static_cast<int>(pluginData.getRaceEntries().size()));
         // A SECTION HEADING, at the same size as every other panel's -- see
-        // BaseHud::addSectionHeading. It was fontSizeExtraLarge, an h1's size:
-        // together with this panel shipping its real title off, the server name was
-        // what a reader took for the caption. At normal size it reads as what it is,
-        // the heading of the block below it, and the ordinary character budget fits.
+        // BaseHud::addSectionHeading. At an h1's size the server name reads as the
+        // caption; at normal size it reads as what it is, the heading of the block
+        // below it, and the ordinary character budget fits.
         std::string serverFit = PluginUtils::fitText(serverText, MAX_DISPLAY_CHARS);
         addSectionHeading(serverFit.c_str(), contentStartX, currentY, dim);
         currentY += serverHeight;
     }
 
-    // Track name, then format, then weather: DATA rows, in the NORMAL font.
-    //
-    // All three were in the TITLE font, which left them indistinguishable from the
-    // heading above them once that stopped being extra-large -- three italic rows
-    // where every other HUD reads as one heading over plain data. A heading can only
-    // open a block if the block looks different from it.
+    // Track name, then format, then weather: DATA rows, in the NORMAL font, not the
+    // TITLE font -- in the title font they are indistinguishable from the heading
+    // above them, three italic rows where every other HUD reads as one heading over
+    // plain data. A heading can only open a block if the block looks different from
+    // it.
     if (m_enabledRows & ROW_TRACK) {
         addIconQuad(contentStartX, currentY, iconTrack);
         const char* trackName = sessionData.trackName[0] != '\0' ? sessionData.trackName : Placeholders::GENERIC;
@@ -385,7 +379,7 @@ void SessionHud::rebuildRenderData() {
         const char* sessionStr = (isOnline && sessionData.session >= 0)
             ? PluginUtils::getSessionString(sessionData.eventType, sessionData.session) : nullptr;
 
-        // Shared helper: "8:00 + 2L" / "8:00" / "2L" / "" (now "8:00" not "08:00").
+        // Shared helper: "8:00 + 2L" / "8:00" / "2L" / "".
         char formatBuffer[64];
         PluginUtils::formatSessionFormat(sessionData.sessionLength, sessionData.sessionNumLaps, formatBuffer, sizeof(formatBuffer));
 

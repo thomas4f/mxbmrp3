@@ -52,7 +52,7 @@ BaseHud* SettingsHud::renderTabPerformance(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Frames per second", (hud->m_enabledElements & PerformanceHud::ELEM_FPS) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, PerformanceHud::ELEM_FPS, true,
         "performance.fps");
-    ctx.addToggleControl("CPU usage", (hud->m_enabledElements & PerformanceHud::ELEM_CPU) != 0,
+    ctx.addToggleControl("Plugin time", (hud->m_enabledElements & PerformanceHud::ELEM_CPU) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, PerformanceHud::ELEM_CPU, true,
         "performance.cpu");
 

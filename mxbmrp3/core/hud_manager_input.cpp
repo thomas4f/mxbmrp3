@@ -383,6 +383,7 @@ void HudManager::processKeyboardInput() {
         // restart. In-game art is unchanged until the next launch, deliberately and
         // unavoidably; the window thread logs that when it acts on this.
         CompanionWindow::getInstance().requestArtReload();
+        requestGlArtReload();   // the in-context GL backend caches art too
 
         // Every HUD, not just the three below: a layout change moves every panel,
         // and a HUD that skipped its rebuild would render at the old spacing until

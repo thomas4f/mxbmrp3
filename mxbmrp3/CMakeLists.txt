@@ -65,6 +65,7 @@ file(GLOB MXB_MINIZ CONFIGURE_DEPENDS ${MXB_SRC}/vendor/miniz/*.c)
 # now a rule rather than an omission.
 if(NOT MXBMRP3_TEST_BUILD)
     list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks.cpp)
+    list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_gl_render_probe.cpp)
 else()
     # GAME_HAS_DISCORD is 0 under MXBMRP3_TEST_BUILD, so every call compiles out
     # and the TU would only drag the SDK in.
@@ -302,7 +303,14 @@ if(MXBMRP3_TEST_BUILD)
     # every divergence is gated on MXBMRP3_TEST_BUILD / _MSC_VER.
     mxb_add_plugin(mxbmrp3_test GAME_MXBIKES mxb_api.cpp)
     target_compile_definitions(mxbmrp3_test PRIVATE
-        NDEBUG MXBMRP3_TEST_BUILD MXBMRP3_ALLOW_NO_ANALYTICS)
+        NDEBUG MXBMRP3_TEST_BUILD MXBMRP3_ALLOW_NO_ANALYTICS
+        # The repo's own mxbmrp3_data, for test-only code that needs a real
+        # shipped asset. syncUserAssets copies only the USER-OVERRIDABLE types
+        # (themes, icons, packs) into the harness tree, so fonts and textures
+        # are not there -- in the game they come from the installer's own
+        # plugins folder, which no headless run has. Test-build only; nothing
+        # shipping reads it.
+        "MXB_REPO_DATA_DIR=\"Z:${CMAKE_SOURCE_DIR}/mxbmrp3_data\"")
     target_include_directories(mxbmrp3_test PRIVATE
         ${CMAKE_SOURCE_DIR}/tests/integration/shim)
     # The harness .exes are built into tests/integration/build/ and load the DLL

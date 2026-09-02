@@ -8,7 +8,12 @@
 # companion_demo.exe under Wine on a virtual X display and grabs the window.
 #
 # Proves the end-to-end feature off the game: the DLL opens its own Win32 window
-# and renders its live HUD via core/hud_sw_renderer.
+# and renders its live HUD itself. WHICH renderer is [Advanced] hwAccel, and this
+# script seeds none, so it takes the shipped default: D3D11 comes up even under
+# Wine (grep the capture's own log for "D3D11 renderer up"), and
+# core/hud_sw_renderer draws only with EXTRA_INI=$'[Advanced]\nhwAccel=0' or when
+# D3D11 fails to start. The two are not pixel-identical (MSAA + bilinear), so a
+# capture is only comparable with another on the same backend - TESTING.md Layer 6.
 #
 # Requires: mingw-w64 (posix), wine64, Xvfb + ImageMagick (`import`).
 #   tools/hud_window/companion_demo.sh [out.png] [hold_seconds] [mode...]

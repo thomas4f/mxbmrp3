@@ -6,6 +6,8 @@
   .val{fill:#24292f;font-size:12px;font-weight:600}
   .title{fill:#24292f;font-size:14px;font-weight:700}
   .sub{fill:#57606a;font-size:11px}
+  .gap{fill:#57606a;opacity:.09}
+  .gaplbl{fill:#57606a;font-size:10px;opacity:.85}
   @media (prefers-color-scheme: dark){
     .grid{stroke:#30363d}
     .axis{stroke:#8b949e}
@@ -13,5 +15,7 @@
     .val{fill:#e6edf3}
     .title{fill:#e6edf3}
     .sub{fill:#8b949e}
+    .gap{fill:#8b949e;opacity:.13}
+    .gaplbl{fill:#8b949e}
   }
-</style><text x="12" y="20" class="title">Lifetime launches per install</text><text x="12" y="37" class="sub">5,575 installs reporting</text><line x1="46" y1="260" x2="744" y2="260" class="axis"/><line x1="46" y1="152.0" x2="744" y2="152.0" class="grid" stroke-dasharray="3 3"/><text x="40" y="156.0" class="sub" text-anchor="end">1,028.5</text><line x1="46" y1="44.0" x2="744" y2="44.0" class="grid" stroke-dasharray="3 3"/><text x="40" y="48.0" class="sub" text-anchor="end">2,057</text><rect x="65.5" y="207.0" width="100.5" height="53.0" rx="2" fill="#3fb950"/><text x="115.8" y="274" class="sub" text-anchor="middle">1</text><rect x="205.1" y="186.6" width="100.5" height="73.4" rx="2" fill="#3fb950"/><text x="255.4" y="274" class="sub" text-anchor="middle">2–5</text><rect x="344.7" y="108.3" width="100.5" height="151.7" rx="2" fill="#3fb950"/><text x="395.0" y="274" class="sub" text-anchor="middle">6–20</text><rect x="484.3" y="44.0" width="100.5" height="216.0" rx="2" fill="#3fb950"/><text x="534.6" y="274" class="sub" text-anchor="middle">21–100</text><rect x="623.9" y="221.5" width="100.5" height="38.5" rx="2" fill="#3fb950"/><text x="674.2" y="274" class="sub" text-anchor="middle">100+</text></svg>
+</style><text x="12" y="20" class="title">Lifetime launches per install</text><text x="12" y="37" class="sub">10,999 installs reporting</text><line x1="46" y1="260" x2="744" y2="260" class="axis"/><line x1="46" y1="152.0" x2="744" y2="152.0" class="grid" stroke-dasharray="3 3"/><text x="40" y="156.0" class="sub" text-anchor="end">1,763</text><line x1="46" y1="44.0" x2="744" y2="44.0" class="grid" stroke-dasharray="3 3"/><text x="40" y="48.0" class="sub" text-anchor="end">3,526</text><rect x="65.5" y="198.3" width="100.5" height="61.7" rx="2" fill="#3fb950"/><text x="115.8" y="274" class="sub" text-anchor="middle">1</text><rect x="205.1" y="189.7" width="100.5" height="70.3" rx="2" fill="#3fb950"/><text x="255.4" y="274" class="sub" text-anchor="middle">2–5</text><rect x="344.7" y="136.7" width="100.5" height="123.3" rx="2" fill="#3fb950"/><text x="395.0" y="274" class="sub" text-anchor="middle">6–20</text><rect x="484.3" y="44.0" width="100.5" height="216.0" rx="2" fill="#3fb950"/><text x="534.6" y="274" class="sub" text-anchor="middle">21–100</text><rect x="623.9" y="175.1" width="100.5" height="84.9" rx="2" fill="#3fb950"/><text x="674.2" y="274" class="sub" text-anchor="middle">100+</text></svg>

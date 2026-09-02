@@ -56,6 +56,11 @@ class MXB_CAPABILITY("mutex") Mutex {
 public:
     void lock() MXB_ACQUIRE() { m_mutex.lock(); }
     void unlock() MXB_RELEASE() { m_mutex.unlock(); }
+    // Non-blocking acquire, for a producer that must NEVER wait (the game
+    // thread publishing to a render-window thread — skip the publish instead).
+    // A function built on this needs MXB_NO_TSA with a stated reason: TSA
+    // cannot follow a conditionally-held capability through branches.
+    bool try_lock() MXB_TSA(try_acquire_capability(true)) { return m_mutex.try_lock(); }
     // For std::condition_variable via CvLock only — never lock this directly,
     // TSA can't see it.
     std::mutex& native() { return m_mutex; }

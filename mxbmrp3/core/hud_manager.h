@@ -10,12 +10,16 @@
 #include <cassert>
 #include <chrono>
 #include <functional>
+#include <atomic>
 #include "../game/game_config.h"
 #include "../game/unified_types.h"
 #include "../hud/base_hud.h"
+#include "hud_sw_renderer.h"   // hudsw::Frame, returned by buildGlFrame
 
 // Forward declarations to avoid circular dependency with plugin_data.h
 enum class DataChangeType;
+
+namespace hudgl { class Renderer; }
 
 class HudManager {
 public:
@@ -69,7 +73,7 @@ public:
 
     // HUD registration. `harnessId` is REQUIRED and stamps BaseHud::getHarnessId
     // -- the one stable name for this element, read by the benchmark report and
-    // the test harness alike (see setHarnessId for the two ladders it replaced).
+    // the test harness alike (see setHarnessId).
     // Required rather than defaulted precisely because the failure it prevents is
     // an element registered without a name.
     void registerHud(std::unique_ptr<BaseHud> hud, const char* harnessId);
@@ -80,6 +84,52 @@ public:
     // Defined in the .cpp: BenchmarkWidget is only forward-declared here, so the
     // derived-to-base comparison needs the complete type.
     int profilableHudCount() const;
+
+    // EXPERIMENTAL in-context GL renderer ([Advanced] glInGame). Draws the
+    // given game-surface frame inside the game's OWN GL context and returns
+    // true only if it actually drew - the caller then hands the engine nothing.
+    // GAME THREAD ONLY: a GL context is per-thread, and the [Advanced]
+    // pluginThread worker has none.
+    //
+    // Any failure latches the backend off for the session and returns false
+    // forever after, so the engine keeps drawing and the user always has a HUD.
+    // gl_render_test's suppression cases hold this.
+    bool renderInContextGl(const SPluginQuad_t* quads, int quadCount,
+                           const SPluginString_t* strings, int stringCount);
+    // The single description of the in-context GL frame; see its definition.
+    hudsw::Frame buildGlFrame(const SPluginQuad_t* quads, int quadCount,
+                              const SPluginString_t* strings, int stringCount) const;
+    void clearGlFailLatch();
+    // RELOAD_CONFIG: make edited art visible without a restart, same contract
+    // as CompanionWindow::requestArtReload.
+    void requestGlArtReload();
+    bool glDrewLastFrame() const { return m_glDrewLastFrame.load(std::memory_order_relaxed); }
+    // Whether the backend stood down for the session. The settings row needs
+    // this: without it the toggle shows the SETTING and a user whose driver (or
+    // whose injected GL layer) turned the feature off has no way to know except
+    // by opening the log - from the outside, a switch that appears on and does
+    // nothing.
+    bool glLatchedOff() const { return m_glLatchedOff.load(std::memory_order_relaxed); }
+    // The settings row's state, as ONE value. 0=Off 1=Failed 2=On(has drawn)
+    // 3=On(not yet). Collapsed to a code so produceFrame can spot a CHANGE
+    // cheaply and dirty the settings panel - the row is rebuilt only when the
+    // HUD is dirty, so without that the status sits stale until the user happens
+    // to move the mouse. Uses "has EVER drawn", not "drew last frame": the
+    // latter flickers on any frame with nothing to draw, which would both churn
+    // the rebuild and make the colour blink.
+    int glStatusCode() const;   // defined in hud_manager_gl.cpp (needs UiConfig)
+
+#if defined(MXBMRP3_TEST_BUILD)
+    // What renderInContextGl ACTUALLY hands the backend. Routed through the one
+    // builder rather than reading the members, so re-pointing the frame at the
+    // path tables is caught here instead of by a missing glyph in a screenshot.
+    const std::vector<std::string>& testGlFrameFontNames() const {
+        return *buildGlFrame(nullptr, 0, nullptr, 0).fontNames;
+    }
+    const std::vector<std::string>& testGlFrameSpriteNames() const {
+        return *buildGlFrame(nullptr, 0, nullptr, 0).spriteNames;
+    }
+#endif
 
     // The sprite table as DrawInit registered it, for the benchmark report's render
     // probe block. 1-BASED to match SPluginQuad_t::m_iSprite (0 there means "no
@@ -108,9 +158,9 @@ public:
     // Bind a typed HUD cache pointer (m_pStandings, ...) to the slot-clearing
     // list: clear() nulls every bound pointer before destroying the HUD
     // objects. Binding happens at registration, so a cached pointer that could
-    // dangle after clear() cannot exist by construction — the hand-maintained
-    // null list this replaces was a known dangling-pointer trap (same
-    // declaration-is-registration idea as PerRider<>).
+    // dangle after clear() cannot exist by construction — a hand-maintained
+    // null list is a dangling-pointer trap (same declaration-is-registration
+    // idea as PerRider<>).
     template <typename T>
     void bindHudSlot(T*& cachePtr) {
         m_hudSlotClearers.push_back([&cachePtr] { cachePtr = nullptr; });
@@ -130,8 +180,8 @@ public:
     // AssetManager::getSpriteIndex(m_textureBaseName, variant). Setting the stem
     // out here would land after that, and a HUD whose artwork is mandatory
     // (m_textureRequired -- Radar, Speedo, Tacho, Pitboard, Gamepad) would resolve
-    // its dial against an empty name. Restating it here was a duplicate declaration
-    // with nothing checking the two agreed, and one already had not.
+    // its dial against an empty name. Restating it here would be a duplicate
+    // declaration with nothing checking the two agreed.
     template <typename T>
     T* createHud(T*& cachePtr, const char* name) {
         auto hud = std::make_unique<T>();
@@ -152,8 +202,7 @@ public:
     // handler, most of all. validatePosition() calls update() on a dirty HUD, so
     // validating from inside a handler re-enters the very update that dispatched it:
     // the click edge is still true for the rest of the frame, so it dispatches again,
-    // and again. That recursion shipped and cost two stack-overflow crashes
-    // (0xC00000FD, ~1400 frames deep); see teardown of the theme-cycle handler.
+    // and again -- a stack overflow (0xC00000FD, ~1400 frames deep).
     void requestPositionValidation() { m_validationPending = true; }
 
     // Mark all HUDs as needing rebuild (e.g., after color config change)
@@ -203,6 +252,7 @@ public:
     class SpeedWidget& getSpeedWidget() const { assert(m_pSpeed && "HudManager not initialized"); return *m_pSpeed; }
     class GearWidget& getGearWidget() const { assert(m_pGear && "HudManager not initialized"); return *m_pGear; }
     class CrashWidget& getCrashWidget() const { assert(m_pCrash && "HudManager not initialized"); return *m_pCrash; }
+    class GlConfirmHud& getGlConfirmHud() const { assert(m_pGlConfirm && "HudManager not initialized"); return *m_pGlConfirm; }
     class SpeedoWidget& getSpeedoWidget() const { assert(m_pSpeedo && "HudManager not initialized"); return *m_pSpeedo; }
     class TachoWidget& getTachoWidget() const { assert(m_pTacho && "HudManager not initialized"); return *m_pTacho; }
     class TimingHud& getTimingHud() const { assert(m_pTiming && "HudManager not initialized"); return *m_pTiming; }
@@ -367,6 +417,10 @@ private:
     class SpeedWidget* m_pSpeed;
     class GearWidget* m_pGear;
     class CrashWidget* m_pCrash;
+    // The Direct GL dead-man's switch. An ORDINARY HUD, collected and drawn like
+    // any other - which means Direct GL draws it. That is the point; see the
+    // class header.
+    class GlConfirmHud* m_pGlConfirm = nullptr;
     class SpeedoWidget* m_pSpeedo;
     class TachoWidget* m_pTacho;
     class TimingHud* m_pTiming;
@@ -416,8 +470,42 @@ private:
     std::vector<SPluginString_t> m_companionStrings;
 
     // Resource management - dynamically sized based on discovered assets
+    // In-context GL renderer state. Not a unique_ptr because hudgl::Renderer is
+    // forward-declared here; owned by renderInContextGl, which frees it on a
+    // failed init so the retry gesture can actually retry.
+    //
+    // ATOMIC, and the previous "mt-plain: game thread only" here was simply
+    // FALSE. renderInContextGl does run on the game thread, but these members
+    // have other callers: requestGlArtReload() reaches m_glRenderer from
+    // processKeyboardInput(), which produceFrame() runs on the WORKER thread in
+    // [Advanced] pluginThread mode, and clearGlFailLatch() reaches
+    // m_glLatchedOff from settings application. Both raced the game thread's
+    // writes here.
+    //
+    // Worth stating why this is atomics rather than a corrected comment:
+    // check_mt_flags.sh can catch a MISSING annotation, but nothing can catch a
+    // WRONG one - the annotation is what let this through the lint in the first
+    // place. A type that cannot lie beats a comment that can.
+    std::atomic<hudgl::Renderer*> m_glRenderer{ nullptr };
+    std::atomic<bool> m_glLatchedOff{ false };
+    std::atomic<bool> m_glDrewLastFrame{ false };
+    // Sticky: has the backend EVER drawn this session. Written on the Draw
+    // thread, read on whichever thread builds the frame, hence atomic.
+    std::atomic<bool> m_glEverDrew{ false };
+    // Last status baked into the settings row, so produceFrame can tell when it
+    // needs rebuilding. Build-thread only - never touched from Draw.
+    int m_glStatusLastShown = -1;
+    // Game thread only (renderInContextGl is its sole toucher) - log-once latch.
+    bool m_glProbeConflictLogged = false;
+    // Full paths with extensions - the shape the game's DrawInit wants.
     std::vector<std::string> m_spriteNames;
     std::vector<std::string> m_fontNames;
+    // The same tables as hudsw::Frame render names (basenames, or a relative
+    // path for nested assets). Derived wholesale in setupDefaultResources(),
+    // beside the paths, so the two cannot drift; see the comment there for why
+    // a plain cache is safe and what would break it.
+    std::vector<std::string> m_spriteBases;
+    std::vector<std::string> m_fontBases;
     // Written once by setupDefaultResources() on the game thread; see the getter.
     int m_spriteOrderMismatches = 0;
 

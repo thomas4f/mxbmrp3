@@ -1,6 +1,6 @@
 // ============================================================================
 // MXBMRP3 Web Overlay — Demo mode (?demo) & app initialization
-// Part 11/11 of the overlay client (split from the former monolithic app.js).
+// Part 11/11 of the overlay client.
 // Ordered classic script: files share one global scope and MUST load in the
 // order listed in index.html. Customize freely — served from disk by the plugin.
 // ============================================================================
@@ -251,7 +251,7 @@ function startDemo() {
                 // progress, derived from how far through the current lap this rider is.
                 // Without it the demo never reproduces the 3L+k shape that `s` really has,
                 // and a client that inferred the sector stride from s.length/t.length would
-                // look correct here while being wrong in game (it was).
+                // look correct here while being wrong in game.
                 var frac = r.dist - Math.floor(r.dist);
                 var live = Math.min(DEMO_SECTORS - 1, Math.floor(frac * DEMO_SECTORS));
                 for (var q = 0; q < live; q++) sectors.push(Math.round(r.lastLapMs / DEMO_SECTORS) || 30000);

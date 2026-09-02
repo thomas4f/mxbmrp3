@@ -122,9 +122,17 @@ TEST_CASE("right-only [content]/[title] margins: content keeps its own box") {
         // centre-stack width and anchor had drifted (see center_stack_theme_test).
         {PluginHost::HUD_VERSION, "version"},
         {PluginHost::HUD_BARS, "bars"},
+        {PluginHost::HUD_GL_CONFIRM, "glconfirm"},
         {PluginHost::HUD_COMPASS, "compass"},
         {PluginHost::HUD_LEAN, "lean"},
     };
+
+    // The Direct GL prompt builds nothing unless it is armed, and `present`
+    // silently skips a HUD with no plan - so without this its row here would pass
+    // by never being looked at, which is exactly the shape of green this suite
+    // has been fooled by before.
+    host.glConfirmArm(true);
+    host.draw();
 
     std::vector<Snapshot> before(std::size(targets));
     std::vector<bool> present(std::size(targets), false);
@@ -194,6 +202,14 @@ TEST_CASE("right-only [content]/[title] margins: content keeps its own box") {
     }
     // The sweep is only a sweep if it actually visited the registry.
     CHECK_MESSAGE(swept >= 10, "only " << swept << " HUDs produced a plan to sweep");
+    // Named explicitly, because it is the one target here that has to be armed to
+    // exist at all: a silent skip would take it out of the sweep without taking
+    // its row out of the list.
+    for (size_t i = 0; i < std::size(targets); ++i)
+        if (targets[i].id == PluginHost::HUD_GL_CONFIRM)
+            CHECK_MESSAGE(present[i], "the Direct GL prompt produced no plan - it was "
+                                      "listed as swept but never actually looked at");
+    host.glConfirmArm(false);
 
     // Second perturbation, on its own so the two margins cannot cancel through
     // the band chrome: a right-only [title] margin moves the TITLE BAND's own
@@ -273,6 +289,7 @@ TEST_CASE("unthemed: every panel keeps the same side air around its card") {
         {PluginHost::HUD_SPEED, "speed", false},
         {PluginHost::HUD_GEAR, "gear", false},
         {PluginHost::HUD_CRASH, "crash", false},
+        {PluginHost::HUD_GL_CONFIRM, "glconfirm", false},
     };
 
     // Standings is the reference: the panel the report compared against. Card

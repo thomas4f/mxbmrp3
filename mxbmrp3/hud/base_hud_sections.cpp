@@ -4,8 +4,7 @@
 // section begin/end bookkeeping, the themed card emitters, the themed button
 // background, row highlights, the button opacity-flattening rule, and the
 // fill/glyph/ink legibility helpers (one TU because they share the file-local
-// buttonIsInvisible predicate). Split from base_hud_render.cpp; every method
-// body is unchanged.
+// buttonIsInvisible predicate).
 // ============================================================================
 #include "base_hud.h"
 #include "../core/plugin_constants.h"
@@ -24,9 +23,9 @@ bool BaseHud::hasThemedContentCard() const {
 }
 
 // The card behind the HUD's content block. Same X span as the title band, so the
-// two line up by construction rather than by two call sites agreeing; top FLUSH
-// under the band, bottom at the panel's own frame clearance. (There was a
-// [content] gap-y between the two; scrapping the key made the seam flush.)
+// two line up by construction rather than by two call sites agreeing; top one
+// seam under the band (see bandSeam below), bottom at the panel's own frame
+// clearance.
 //
 // bandBottom is 0 when no band was drawn (theme without one, or the title switched
 // off), in which case the card starts at the frame clearance and the HUD is one
@@ -43,20 +42,19 @@ void BaseHud::emitContentCard(float bandBottom) {
     const float mx = frameBorderX();
     const float my = frameBorderY();
     // THE SEAM UNDER A BAND IS THE BAND'S BOTTOM MARGIN PLUS THE JUNCTION GAP, the
-    // same sum the settings panel spends between its band and its first card. It was
-    // the gap alone here, so [title] margin-bottom padded the body card's INTERIOR
-    // (the rows anchor to the card, which had not moved) instead of widening the
-    // band-to-card seam it names -- the two panels disagreeing about one term again,
-    // which is what titleRowHeight's matching reservation exists to pay for.
+    // same sum the settings panel spends between its band and its first card. The
+    // gap alone would let [title] margin-bottom pad the body card's INTERIOR (the
+    // rows anchor to the card) instead of widening the band-to-card seam it names
+    // -- the two panels disagreeing about one term, which is what titleRowHeight's
+    // matching reservation exists to pay for.
     //
-    // THE PREDICATE IS "IS A BAND DRAWN", NOT "IS THE ANCHOR NONZERO", and the
-    // difference is a whole bug: with a caption the theme draws no band for,
-    // The retired legacy caption handed in a SYNTHETIC anchor (the reserved row's bottom), and
-    // that already contains this margin because titleRowHeight put it there. Gated
-    // on `bandBottom > 0` the term was spent twice on exactly that path -- measured
-    // at 0.0880 of card movement against 0.0587 of reservation, a ~32px overshoot at
-    // 1080p -- while the banded path, where the anchor is the band's own bottom edge
-    // and carries no margin, was right. hasThemedTitleBand() separates them.
+    // THE PREDICATE IS "IS A BAND DRAWN", NOT "IS THE ANCHOR NONZERO": a caption
+    // the theme draws no band for can hand in a SYNTHETIC anchor (the reserved
+    // row's bottom) that already contains this margin, because titleRowHeight put
+    // it there. Gated on `bandBottom > 0` the term is spent twice on exactly that
+    // path (a ~32px overshoot at 1080p), while the banded path, where the anchor is
+    // the band's own bottom edge and carries no margin, is right.
+    // hasThemedTitleBand() separates them.
     //
     // With the caption off there is no anchor at all (0), and contentCardTop ignores
     // its gap argument in that case: no band, no seam, the card takes the frame
@@ -77,10 +75,8 @@ void BaseHud::emitContentCard(float bandBottom) {
     // The bounds are RECORDED first, because the section cards need them: the
     // outermost edges of a sectioned body must land exactly where this single card
     // would have, or a HUD's top and bottom gaps change with how many sections it
-    // happens to have. That was visible -- Performance and Session Charts sat 12px
-    // further from the title band and 19px further from the panel's bottom edge than
-    // Standings, purely because their cards were derived from their CONTENT while
-    // every other card is derived from the PANEL.
+    // happens to have -- a card derived from its CONTENT sits visibly further from
+    // the title band and the panel's bottom edge than one derived from the PANEL.
     //
     // Stored PRE-offset: m_bgRect* is post-offset (the band emitter fed
     // emitThemedSlices directly), but the section helpers take pre-offset coords like
@@ -111,10 +107,10 @@ void BaseHud::beginContentSection(float x, float y, float width) {
     m_sectionW = width;
     // THE FIRST section's top is the body's top -- exactly where a single whole-body
     // card would have started, flush under the title band. Every later
-    // section hangs off its own heading instead. Without this the first card was
-    // placed from the CONTENT, which sits at the panel's padding rather than at the
-    // band's bottom, so a sectioned HUD's gap under its title was a different size
-    // from every other HUD's.
+    // section hangs off its own heading instead. Placing the first card from the
+    // CONTENT, which sits at the panel's padding rather than at the band's bottom,
+    // would give a sectioned HUD a different gap under its title from every other
+    // HUD's.
     m_sectionTop = (m_bodyCardValid && m_sectionCount == 0)
         ? m_bodyCardTop + sectionCardPaddingY()
         : y;
@@ -146,13 +142,11 @@ float BaseHud::panelGapCells() const {
 
 float BaseHud::contentGapCells() const {
     // The built-in is the CONTENT MARGIN's own seam -- the sum of the two facing
-    // sides -- not a second number kept equal to it by hand. There used to be a
-    // standalone LayoutMetrics::sectionGap holding 1.0 beside a boxContentMargin
-    // of 0.5 per side, which is the same distance written twice; retuning the
-    // margin and not it silently doubled every settings card seam. The THEME side
-    // never had the duplicate: ThemeAsset::sectionGapOverride is already derived
-    // from the theme's own [content] margin at parse time, and this reads through
-    // the same accessor.
+    // sides -- not a second number kept equal to it by hand: that is the same
+    // distance written twice, and retuning the margin without the copy silently
+    // doubles every settings card seam. The THEME side has no duplicate either:
+    // ThemeAsset::sectionGapOverride is derived from the theme's own [content]
+    // margin at parse time, and this reads through the same accessor.
     const PanelBox::Sides& cm = layout().boxContentMargin;
     return activeTheme()->sectionGap(static_cast<float>(cm.t + cm.b)) + panelGapCells();
 }
@@ -161,10 +155,10 @@ float BaseHud::contentGapCells() const {
 // what the rows already keep from the whole-body card's border.
 // SQUARE ON SCREEN (cellW * aspect), not cellH: the box-model rule is that one
 // stated cell is square, and the engine spends every vertical term that way
-// (Spec::unit). This read multiplied by cellH — the half-row lattice, ~20%
-// taller — so a gap of 1 drew taller in the settings seams than the same gap
-// drew wide in the trough or tall in any plan panel. One conversion now, so a
-// term means one distance everywhere.
+// (Spec::unit). Multiplying by cellH — the half-row lattice, ~20% taller — would
+// draw a gap of 1 taller in the settings seams than the same gap draws wide in
+// the trough or tall in any plan panel. One conversion, so a term means one
+// distance everywhere.
 float BaseHud::contentGapY() const {
     return contentGapCells() * layout().cellW * PluginConstants::UI_ASPECT_RATIO * m_fScale;
 }
@@ -181,16 +175,15 @@ float BaseHud::sectionCardPaddingY() const {
 //
 // THE PANEL HEIGHT IS WHAT THIS IS ACTUALLY FOR. Users tile HUDs side by side, and
 // two HUDs tile only if their heights differ by whole rows -- which needs identical
-// padding above and below. This briefly shrank the PANEL instead (a bottom pad of
-// sectionCardPaddingY + frameMargin, ~19px less than paddingV), which fixed the gap but
-// left Performance and Session Charts 1.5 cells shorter than a Standings or Stats
-// with the same content: heights that could never line up, and a bottom pad no
-// other HUD used.
+// padding above and below. Shrinking the PANEL to the last section instead (a
+// bottom pad of sectionCardPaddingY + frameMargin, ~19px less than paddingV) would
+// leave a sectioned HUD 1.5 cells shorter than a single-card one with the same
+// content: heights that can never line up, and a bottom pad no other HUD uses.
 //
-// The empty-tail worry that motivated the shrink was measured, and it is 19px: the
-// last card sits that much deeper below its content than the sections above it.
-// That is the same slack a single-card HUD's rows have under them, so it reads as
-// the body ending rather than as one section being wrong.
+// The cost is an empty tail of ~19px: the last card sits that much deeper below
+// its content than the sections above it. That is the same slack a single-card
+// HUD's rows have under them, so it reads as the body ending rather than as one
+// section being wrong.
 void BaseHud::finishContentSections(float bottomY) {
     endContentSection(bottomY);
     if (!m_bodyCardValid || m_lastSectionIndex < 0) return;
@@ -238,11 +231,9 @@ void BaseHud::endContentSection(float bottomY) {
 //
 // The content-card switch has to be honoured HERE too, or that opt-out silently
 // costs the panel its [card] <family>-content key: hasThemedContentCard() fails on
-// m_bContentCard before ever reaching contentCardKind(), so the switch governed
-// nothing for this panel. Measured by perturbing every theme key and diffing the
-// render -- settings-content moved zero pixels even after the panel was given its
-// own PanelKind. Gating the clearance with the cards (this is read for the panel's
-// borders as well) matches what contentPaddingX() already does for a HUD.
+// m_bContentCard before ever reaching contentCardKind(), so the switch would govern
+// nothing for this panel. Gating the clearance with the cards (this is read for the
+// panel's borders as well) matches what contentPaddingX() already does for a HUD.
 bool BaseHud::hasThemedCard() const {
     const ThemeAsset* theme = activeTheme();
     return theme && theme->hasCard()
@@ -251,17 +242,15 @@ bool BaseHud::hasThemedCard() const {
 
 // Coordinates are PRE-offset, like addString/addBackgroundQuad and every other
 // add* helper -- callers lay out in un-dragged space and the offset is applied
-// here. Taking post-offset coords instead is what made the settings panel's
-// section cards stay behind when the panel was dragged: the panel fully rebuilds
-// on a layout change, so the cards were rebuilt correctly at the WRONG origin.
+// here. Taking post-offset coords instead makes a panel's section cards stay
+// behind when it is dragged: the panel fully rebuilds on a layout change, so the
+// cards are rebuilt correctly at the WRONG origin.
 //
 // Every card drawn here is ALSO recorded as a fill cover: a card the sweep does
 // not know about sits on the frame's centre fill and composites twice, which at
-// any opacity below 100% reads a shade darker than the panel around it. That was
-// visible on every settings card -- the tab-group and section cards went through
-// these helpers while the sweep only knew the covers the BaseHud section helpers
-// recorded by hand. Recording HERE, at the one place every card is emitted, is
-// what makes a new card-drawing caller correct by construction.
+// any opacity below 100% reads a shade darker than the panel around it. Recording
+// HERE, at the one place every card is emitted, is what makes a new card-drawing
+// caller correct by construction.
 void BaseHud::recordCardCover(int firstQuad, float x, float y, float width, float height) {
     for (SectionCardSpan& sp : m_sectionCards) {
         if (sp.firstQuad == firstQuad) {
@@ -372,10 +361,10 @@ void BaseHud::repositionRowHighlight(int firstIndex, float x, float y,
     // alone. A fully transparent colour takes the unthemed path there (deliberately:
     // addThemedButton draws nothing for it, which would leave the caller's cached index
     // pointing at whatever came next), so it pushes ONE quad even under a theme with
-    // button slices. Deciding here on `theme->hasButton()` alone therefore rewrote nine
-    // quads over a one-quad band and blanked the eight that followed it. Reachable only
-    // if a palette slot resolves to alpha 0, which is why it never fired -- but the two
-    // decisions have to be the same decision, not two that happen to agree.
+    // button slices. Deciding here on `theme->hasButton()` alone would rewrite nine
+    // quads over a one-quad band and blank the eight that follow it. Reachable only
+    // if a palette slot resolves to alpha 0 -- but the two decisions have to be the
+    // same decision, not two that happen to agree.
     if (theme && theme->hasButton() && !buttonIsInvisible(bandColor) &&
         static_cast<size_t>(firstIndex) + NineSlice::SLICE_COUNT <= m_quads.size()) {
         emitThemedSliceSet(*theme, x, y, width, height, firstIndex,
@@ -405,7 +394,7 @@ unsigned long BaseHud::buttonFillColor(unsigned long stateColor) const {
         PluginUtils::applyOpacity(this->getColor(ColorSlot::PRIMARY), BUTTON_SURFACE_LIFT),
         this->getColor(ColorSlot::BACKGROUND));
     // The caller's alpha still encodes state (disabled 64 / idle 128 / hovered 255);
-    // it now scales the TINT rather than the whole fill, so the ordering survives.
+    // it scales the TINT rather than the whole fill, so the ordering survives.
     const float alpha = static_cast<float>((stateColor >> 24) & 0xFFu) / 255.0f;
     return PluginUtils::flattenOnto(
         PluginUtils::applyOpacity(stateColor, alpha * BUTTON_STATE_TINT), surface);
@@ -414,14 +403,13 @@ unsigned long BaseHud::buttonFillColor(unsigned long stateColor) const {
 // See the declaration. The legible ink for `ink` drawn on `fill`, keeping the hue
 // wherever it can and only abandoning it as a floor.
 //
-// EXTRACTED FROM buttonGlyphColor, which is where this reasoning was worked out and
-// where it stayed. Notices and the Gap Bar draw a caption on a fill of ITS OWN slot
-// colour -- NEGATIVE text on a NEGATIVE slab, POSITIVE on POSITIVE -- which is the
-// "accent on accent" pair chipGlyphColor's comment already records as invisible on a
-// light theme. It survived there because the slab is drawn at the HUD's background
-// opacity: at the shipped 60% the slab is a wash and full-strength ink reads over it,
-// so the bug only appears when a user raises opacity or picks an opaque theme.
-// Reported from the game on a light theme at full opacity: "WRONG WAY" in red on red.
+// SHARED WITH buttonGlyphColor, because buttons are not the only case. Notices and
+// the Gap Bar draw a caption on a fill of ITS OWN slot colour -- NEGATIVE text on a
+// NEGATIVE slab, POSITIVE on POSITIVE -- which is the "accent on accent" pair
+// chipGlyphColor's comment records as invisible on a light theme. The slab is drawn
+// at the HUD's background opacity, so at the shipped 60% it is a wash and
+// full-strength ink reads over it; the failure only appears when a user raises
+// opacity or picks an opaque theme: "WRONG WAY" in red on red.
 unsigned long BaseHud::legibleOnFill(unsigned long ink, unsigned long fill) const {
     auto lumaGap = [](unsigned long a, unsigned long b) {
         const unsigned int la = PluginUtils::luma601(a), lb = PluginUtils::luma601(b);
@@ -509,7 +497,7 @@ void BaseHud::addButtonQuad(float x, float y, float width, float height, unsigne
     if (buttonIsInvisible(color)) return;
     // opaque=false is for a caller that borrows the BUTTON SLICES without being a
     // control. NoticesHud is the one: its slabs ship at 10% background opacity, so
-    // flattening turned a faint tint over the track into a solid box. A button is a
+    // flattening would turn a faint tint over the track into a solid box. A button is a
     // thing you click and must stay legible; a notice slab is deliberately a whisper.
     if (opaque) {
         color = (fill == ButtonFill::Surface) ? buttonFillColor(color)

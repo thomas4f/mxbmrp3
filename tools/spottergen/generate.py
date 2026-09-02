@@ -384,10 +384,10 @@ def build_pack(kokoro, voice, out_root, speed, num_scheme="full"):
             print(f"    {voice}: num chunks {n}/{top}")
 
     # spotter.ini, not "<voice>.ini": a generated pack must land in the shape the
-    # plugin now ships and the docs describe, or "copy a pack and rename the
+    # plugin ships and the docs describe, or "copy a pack and rename the
     # folder" -- the whole point of the fixed name -- silently does not hold for
     # the packs this tool produces. (The legacy name is still READ, so an already
-    # generated pack keeps working; this is about what we emit from now on.)
+    # generated pack keeps working.)
     with open(os.path.join(pack_dir, "spotter.ini"), "w",
               encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
@@ -427,19 +427,16 @@ def selftest():
     # ...and that every key baked here is a key the plugin still emits.
     #
     # These tables are a THIRD list of cue keys, after the registry and the
-    # shipped ini, and the only one nothing checked. It drifted: session_ended
-    # was still session_complete, rider_behind_clear was still clear, and
-    # position_report and the whole gap_ahead family had been deleted from the
-    # plugin months before. A pack baked from them carried rows the plugin logs
-    # as "will never be spoken", so Clear, the session end and the lap report
-    # had no audio at all - silently, because the census test reads the shipped
-    # ini and the shipped ini was correct.
+    # shipped ini, and nothing else checks them. A pack baked from a stale key
+    # carries rows the plugin logs as "will never be spoken", so that cue has no
+    # audio at all - silently, because the census test reads the shipped ini,
+    # which is correct.
     header = os.path.join(here, "..", "..", "mxbmrp3", "core",
                           "spotter_cue_pack.h")
     with open(header, encoding="utf-8") as f:
-        # A registry row is `{ "key", "what", SpotterPhrase::Category::X }`.
-        # It used to carry a bool between the key and the description; the
-        # count guard below is what caught this scan when that was removed.
+        # A registry row is `{ "key", "what", SpotterPhrase::Category::X }`;
+        # the count guard below is what catches this scan when the row shape
+        # changes.
         known = set(re.findall(r'\{\s*"([a-z_0-9]+)",\s*"',
                                f.read()))
     if len(known) < 20:

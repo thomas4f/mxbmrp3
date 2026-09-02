@@ -45,10 +45,35 @@ INCS="-I${HERE}/shim -I${SRC}"
 # held to the full bar.
 FLAGS="-std=c++17 -m64 -O1 -Wall -Wextra -Werror -Wshadow=local -Wno-unknown-pragmas -fsyntax-only ${BASE_DEFS} ${INCS}"
 
-# The shared sources every game compiles (matches the cross-build's glob). Exclude
-# discord_manager (GAME_HAS_DISCORD=0 in the test build — the cross-build drops it too).
-# The per-game API export TU is added per-config below (gpb_api / krp_api).
-mapfile -t SHARED < <(cd "${SRC}" && find core handlers hud diagnostics -name '*.cpp' | grep -vE 'discord_manager' | sort)
+# The shared sources every game compiles (matches the cross-build's glob). Two
+# kinds of exclusion, and only one of them is spelled out here:
+#   - discord_manager, because GAME_HAS_DISCORD=0 in the test build and the
+#     cross-build drops it too;
+#   - the test-only TUs, READ OUT OF mxbmrp3/CMakeLists.txt rather than named
+#     here. That file's `if(NOT MXBMRP3_TEST_BUILD)` branch is already the single
+#     definition of what a SHIPPING target must not compile, and this gate exists
+#     to prove the shipping configs build — so naming them again here would be a
+#     second description of the same list. Which is how
+#     core/test_gl_render_probe.cpp came to fail this gate for GPBIKES and KRP,
+#     on a define it only ever gets under MXBMRP3_TEST_BUILD.
+#     ONLY that branch: the `else()` beside it removes discord_manager for a
+#     different reason (the TEST build drops it), and a blanket parse of every
+#     REMOVE_ITEM would silently mean something else the day those branches move.
+mapfile -t TEST_ONLY < <(
+    awk '/^if\(NOT MXBMRP3_TEST_BUILD\)/ {inb=1; next}
+         /^else\(\)|^endif\(\)/       {inb=0}
+         inb && match($0, /\$\{MXB_SRC\}\/[^)]+/) {
+             print substr($0, RSTART + 11, RLENGTH - 11) }' "${SRC}/CMakeLists.txt")
+# An empty read would quietly restore the bug, so it is an error, not a default.
+if [ "${#TEST_ONLY[@]}" -eq 0 ]; then
+    echo "ERROR: no test-only TUs found in mxbmrp3/CMakeLists.txt's" >&2
+    echo "       if(NOT MXBMRP3_TEST_BUILD) branch - this parse has drifted." >&2
+    exit 1
+fi
+echo "  excluding ${#TEST_ONLY[*]} test-only TU(s) named by mxbmrp3/CMakeLists.txt: ${TEST_ONLY[*]}"
+EXCLUDE='discord_manager'
+for t in "${TEST_ONLY[@]}"; do EXCLUDE="${EXCLUDE}|^${t}\$"; done
+mapfile -t SHARED < <(cd "${SRC}" && find core handlers hud diagnostics -name '*.cpp' | grep -vE "${EXCLUDE}" | sort)
 
 # game define : matching API export TU
 CONFIGS=(

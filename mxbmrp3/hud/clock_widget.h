@@ -51,9 +51,9 @@ protected:
 private:
     void rebuildRenderData() override;
 
-    // Cached minute to avoid unnecessary rebuilds (only update once per minute)
-    // The epoch minute the display was last built for. See update(): comparing
-    // this is what replaced a localtime_s()/gmtime_s() pair per frame.
+    // The epoch minute the display was last built for. update() compares it so
+    // the display rebuilds once per minute instead of running a
+    // localtime_s()/gmtime_s() pair per frame.
     long long m_cachedEpochMinute = -1;
 
     // Configuration

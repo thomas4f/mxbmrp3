@@ -61,24 +61,33 @@ report() {   # report <rule> <file> [detail]
     fail=1
 }
 
-for f in "${FILES[@]}"; do
-    [ -s "$f" ] || continue          # empty files (.gitkeep and friends) are fine
+# ONE PROCESS PER RULE, not four per file. The obvious per-file loop forked
+# ~3,000 greps over 742 files: 6 s idle, but starved under `ctest -j` alongside
+# the Wine gates and blew the 120 s gate timeout. `grep -c` over the whole list
+# prints `file:count` per file, so each rule is a single scan of the tree.
+# Empty files (.gitkeep and friends) are excluded up front rather than skipped
+# in a loop, and the final-newline rule reads one byte per file in one perl.
+mapfile -t FILES < <(for f in "${FILES[@]}"; do [ -s "$f" ] && echo "$f"; done)
 
-    if n=$(grep -cP '\t' "$f") && [ "$n" -gt 0 ]; then
-        report "tab character" "$f" "$n line(s)"
-    fi
-    if n=$(grep -cP '\r$' "$f") && [ "$n" -gt 0 ]; then
-        report "CRLF line ending" "$f" "$n line(s)"
-    fi
-    # Hard line breaks in Markdown are a trailing double-space, so the rule
-    # genuinely does not apply there.
-    if [[ "$f" != *.md ]] && n=$(grep -cP '[ \t]+$' "$f") && [ "$n" -gt 0 ]; then
-        report "trailing whitespace" "$f" "$n line(s)"
-    fi
-    if [ -n "$(tail -c1 "$f")" ]; then
-        report "missing final newline" "$f"
-    fi
-done
+scan() {   # scan <rule> <pcre> <files...>: report every file with >0 matches
+    local rule=$1 pat=$2; shift 2
+    [ $# -gt 0 ] || return 0
+    while IFS=: read -r f n; do
+        if [ "$n" -gt 0 ]; then report "$rule" "$f" "$n line(s)"; fi
+    done < <(grep -cP "$pat" "$@" || true)
+    return 0    # under set -e a trailing false test would abort the script
+}
+
+scan "tab character" '\t' "${FILES[@]}"
+scan "CRLF line ending" '\r$' "${FILES[@]}"
+# Hard line breaks in Markdown are a trailing double-space, so the rule
+# genuinely does not apply there.
+mapfile -t NON_MD < <(printf '%s\n' "${FILES[@]}" | grep -v '\.md$' || true)
+scan "trailing whitespace" '[ \t]+$' "${NON_MD[@]}"
+while IFS= read -r f; do
+    report "missing final newline" "$f"
+done < <(perl -e 'for (@ARGV) { open(my $h, "<", $_) or next; seek($h, -1, 2);
+                   read($h, my $c, 1); print "$_\n" if $c ne "\n"; }' "${FILES[@]}")
 
 if [ "$fail" -ne 0 ]; then
     cat <<'EOF'

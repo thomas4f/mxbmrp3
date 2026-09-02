@@ -4,13 +4,11 @@
 // (someone a lap up is catching you) and hazards (a stationary or wrong-way
 // rider ahead).
 //
-// WHY THIS EXISTS. These seven values used to be seven members plus fourteen
-// one-line clamp accessors on PluginData, which is already a 248-method class.
-// None of them is state the rest of PluginData reasons about — they are
-// configuration, read by the detectors and written once at settings load. As a
-// struct they cost PluginData two accessors instead of fourteen, and the clamp
-// RANGE lives next to the field it clamps rather than in a setter body several
-// hundred lines away.
+// WHY THIS EXISTS. None of these values is state the rest of PluginData reasons
+// about — they are configuration, read by the detectors and written once at
+// settings load. As a struct they cost PluginData two accessors instead of one
+// pair per field, and the clamp RANGE lives next to the field it clamps rather
+// than in a setter body far away.
 //
 // The clamps are the contract, not decoration: the INI is hand-editable (an
 // explicitly supported workflow), so every value here is attacker-adjacent in
@@ -46,7 +44,7 @@ struct ProximityTuning {
     int   hazardCooldownMs = 1000;            // hysteresis before clearing a hazard
     int   hazardGracePeriodMs = 10000;        // per-rider pit-exit grace
 
-    // Clamped setters. Ranges are unchanged from the accessors these replaced.
+    // Clamped setters.
     void setBlueFlagAwarenessDistance(float m) { blueFlagAwarenessDistance = std::clamp(m, 10.0f, 500.0f); }
     void setHazardStationaryTolerance(float m) { hazardStationaryTolerance = std::clamp(m, 1.0f, 50.0f); }
     void setHazardStationaryDurationMs(int ms) { hazardStationaryDurationMs = std::clamp(ms, 1000, 30000); }

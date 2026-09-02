@@ -230,8 +230,8 @@ void FuelWidget::rebuildRenderData() {
         this->getColor(ColorSlot::PRIMARY));
 
     float contentStartX = p.contentX();
-    // The content box's own right edge. This mirrored the LEFT inset, which is the
-    // same place only on a symmetric border -- see PanelPlan::contentRight.
+    // The content box's own right edge, not a mirror of the LEFT inset -- that is
+    // the same place only on a symmetric border. See PanelPlan::contentRight.
     float rightX = p.contentRight();
     float currentY = p.contentY();
 

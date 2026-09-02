@@ -6,6 +6,7 @@
 #include "ui_viewport.h"
 
 #include "hud_sw_renderer.h"
+#include "hud_gpu_renderer.h"
 #include "../diagnostics/logger.h"
 
 #include <algorithm>
@@ -169,6 +170,7 @@ void CompanionWindow::submit(const std::vector<SPluginQuad_t>& quads,
 #if defined(_WIN32)
 #include <windows.h>
 #include <dwmapi.h>   // DwmFlush (V-Sync pacing)
+#include "render_pace.h"
 
 #if defined(_MSC_VER)
 #pragma comment(lib, "gdi32.lib")   // StretchDIBits / CreateSolidBrush / FillRect
@@ -264,8 +266,8 @@ void CompanionWindow::threadMain() {
     wc.hInstance = hInst;
     // IDC_ARROW is an integer ordinal (32512) smuggled through a pointer type, not
     // a string. Without UNICODE defined it expands via MAKEINTRESOURCEA to LPSTR,
-    // so reaching the W API used to need a char*->wchar_t* reinterpret_cast — which
-    // reads as a real encoding bug to a static analyser (CodeQL
+    // so reaching the W API through it needs a char*->wchar_t* reinterpret_cast —
+    // which reads as a real encoding bug to a static analyser (CodeQL
     // cpp/incorrect-string-type-conversion) even though LoadCursorW checks
     // IS_INTRESOURCE and never dereferences it. MAKEINTRESOURCEW builds the same
     // ordinal from the integer, so no cast is needed.
@@ -294,7 +296,7 @@ void CompanionWindow::threadMain() {
     // the window's whole life — it is deliberately NOT cleared: input is routed by the
     // window under the cursor (InputManager::surfaceWindowUnderCursor), so the
     // companion never needs to be activated to drag/click HUDs in it, and clearing the
-    // style was what let opening it steal focus from the game on launch. WS_EX_APPWINDOW
+    // style lets opening it steal focus from the game on launch. WS_EX_APPWINDOW
     // keeps a taskbar button despite NOACTIVATE. Title is plain ASCII (a non-ASCII dash
     // in an L"" literal is mis-decoded by MSVC on a UTF-8 source without /utf-8).
     HWND hwnd = CreateWindowExW(WS_EX_NOACTIVATE | WS_EX_APPWINDOW, kClassName, L"MXBMRP3",
@@ -310,6 +312,11 @@ void CompanionWindow::threadMain() {
 
     hudsw::Renderer renderer;
     hudsw::Image img;
+    // GPU backend: tried once per window life (a changed [Advanced] hwAccel takes
+    // effect on the next open), abandoned for the software path above on ANY
+    // failure — so the worst case is exactly the software-rendered companion.
+    hudgpu::Renderer gpu;
+    bool gpuTried = false, gpuOn = false;
 
     // Snapshot scratch, hoisted out of the loop: vector/string ASSIGNMENT reuses
     // existing capacity, so the per-frame copy under m_mutex is a memcpy-grade fill
@@ -337,6 +344,7 @@ void CompanionWindow::threadMain() {
         // exchange() so a request is consumed exactly once.
         if (m_artReload.exchange(false, std::memory_order_relaxed)) {
             renderer.dropTextureCache();
+            gpu.dropTextureCache();
             // The frame's IDENTITY is unchanged -- same quads, same strings, same client
             // size -- so without this the unchanged-frame check below skips the very
             // repaint the reload exists to produce, and the window keeps showing the old
@@ -357,11 +365,11 @@ void CompanionWindow::threadMain() {
         }
 
         // SKIP AN UNCHANGED FRAME. This thread runs on its own cadence -- V-Sync, or a
-        // fixed Hz -- and re-rendered every tick whether or not the HUD had moved. The
-        // software rasteriser is fill-rate bound, measured linear in pixel count (0.80 /
-        // 3.17 / 6.33 ms at 540p / 1080p / 1440p for a heavy themed frame), and a THEME
-        // multiplies the fill: a flat panel is one quad, a themed one is 27. So the cost
-        // is real and it was being paid continuously for an identical picture.
+        // fixed Hz -- so without this it re-renders every tick whether or not the HUD
+        // has moved. The software rasteriser is fill-rate bound, linear in pixel count
+        // (0.80 / 3.17 / 6.33 ms at 540p / 1080p / 1440p for a heavy themed frame), and
+        // a THEME multiplies the fill: a flat panel is one quad, a themed one is 27. So
+        // the cost is real, and it would be paid continuously for an identical picture.
         //
         // Worst in MENUS, where it is pure waste: the plugin receives no callbacks there,
         // so the last frame is re-rasterised forever at full price.
@@ -369,17 +377,9 @@ void CompanionWindow::threadMain() {
         // Hashing the frame is ~21KB of streaming reads against milliseconds of fill, and
         // the strings/sprite tables go in too -- a lap time changing without any quad
         // moving still has to redraw.
-        uint64_t h = 1469598103934665603ULL;
-        auto mix = [&h](const void* p, size_t n) {
-            const unsigned char* b = static_cast<const unsigned char*>(p);
-            for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ULL; }
-        };
-        if (have) {
-            mix(quads.data(), quads.size() * sizeof(SPluginQuad_t));
-            mix(strings.data(), strings.size() * sizeof(SPluginString_t));
-            for (const std::string& fb : fontBases) mix(fb.data(), fb.size());
-            for (const std::string& sb : spriteBases) mix(sb.data(), sb.size());
-        }
+        const uint64_t h = have
+            ? hudsw::frameContentHash(quads, strings, fontBases, spriteBases)
+            : hudsw::kFrameHashSeed;
 
         RECT rc; GetClientRect(hwnd, &rc);
         // Named apart from the creation-time cw/ch above (the initial window
@@ -406,13 +406,40 @@ void CompanionWindow::threadMain() {
             // Same pacing as a painted frame -- the loop still ticks at V-Sync or the Hz
             // cap, it just does not rasterise. (hz is read again below for the normal
             // path; reading it here keeps the skip self-contained.)
-            const int skipHz = m_refreshHz.load(std::memory_order_relaxed);
-            if (skipHz > 0) Sleep(1000 / skipHz);
-            else if (FAILED(DwmFlush())) Sleep(16);
+            renderpace::pace(m_refreshHz.load(std::memory_order_relaxed));
             continue;                      // nothing changed; do not rasterise or blit
         }
         lastFrameId = frameId;
         paintedOnce = true;
+
+        if (!gpuTried && m_hwAccel.load(std::memory_order_relaxed)) {
+            gpuTried = true;
+            gpuOn = gpu.init(hwnd);
+            if (!gpuOn) DEBUG_INFO("CompanionWindow: GPU unavailable - software rendering");
+        }
+        if (gpuOn) {
+            hudsw::Frame f;   // stays empty (backdrop only) before the first submit
+            if (have) {
+                f.quads = quads.data(); f.quadCount = (int)quads.size();
+                f.strings = strings.data(); f.stringCount = (int)strings.size();
+                f.fontNames = &fontBases; f.spriteNames = &spriteBases;
+                f.firstIcon = firstIcon; f.assetRoot = root;
+            }
+            const int hzNow = m_refreshHz.load(std::memory_order_relaxed);
+            if (gpu.renderSwapchain(f, clientW, clientH,
+                                    (float)vp.x, (float)vp.y, (float)vp.w, (float)vp.h,
+                                    12, 15, 20, /*vsync=*/hzNow == 0)) {
+                // Present(1) paced this thread at V-Sync; a fixed cap still sleeps.
+                if (hzNow > 0) Sleep(1000 / hzNow);
+                continue;
+            }
+            // Any GPU failure: fall back to the software path for this window's
+            // whole life, and repaint this same frame there.
+            gpuOn = false;
+            DEBUG_WARN("CompanionWindow: GPU render failed - software fallback");
+            m_forceRepaint.store(true, std::memory_order_relaxed);
+            continue;
+        }
 
         if (have) {
             hudsw::Frame f;
@@ -442,15 +469,14 @@ void CompanionWindow::threadMain() {
         // straight to the window DC.
         //
         // Every piece of this is the MEASURED winner, per-stage-timed inside this loop
-        // running under Wine (CW-PAINT experiments, n=45 per arm):
+        // running under Wine (n=45 per arm):
         //   - swizzle + BI_RGB beats handing GDI the RGBA buffer as BI_BITFIELDS
         //     (4.0 ms vs 5.2 ms): GDI's internal conversion costs more than our own
-        //     word-wise pass, so "zero-copy" was the slower path -- it had been verified
-        //     pixel-identical, never faster.
-        //   - blitting straight to the window beats the memDC + BitBlt back buffer by
-        //     another ~1.2 ms/paint. The back buffer guarded against fill-then-image
-        //     flicker, and since the present became a single full-client blit there is
-        //     no second step to flicker against; WM_ERASEBKGND already returns 1.
+        //     word-wise pass, so "zero-copy" is the slower path.
+        //   - blitting straight to the window beats a memDC + BitBlt back buffer by
+        //     another ~1.2 ms/paint. A back buffer guards against fill-then-image
+        //     flicker, but the present is a single full-client blit, so there is no
+        //     second step to flicker against; WM_ERASEBKGND already returns 1.
         //   - the swizzle itself is one 32-bit load/store per pixel, not four byte moves
         //     (2.31 vs 3.42 ms at 1080p, measured in isolation).
         bgra.resize(img.px.size());
@@ -476,13 +502,9 @@ void CompanionWindow::threadMain() {
                       bgra.data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
         ReleaseDC(hwnd, dc);
 
-        // Pace the thread: V-Sync (DwmFlush blocks until the compositor's next present —
-        // tear-free and matched to the monitor) or a fixed Hz cap. DwmFlush fails if the
-        // DWM is off (rare on modern Windows; also under a bare Wine prefix), so fall
-        // back to ~60 Hz so the loop still paces instead of spinning.
-        int hz = m_refreshHz.load(std::memory_order_relaxed);
-        if (hz > 0) Sleep(1000 / hz);
-        else if (FAILED(DwmFlush())) Sleep(16);
+        // Pace the thread: V-Sync or a fixed Hz cap (the rule and its DWM-off
+        // fallback live in render_pace.h).
+        renderpace::pace(m_refreshHz.load(std::memory_order_relaxed));
     }
 
     DestroyWindow(hwnd);

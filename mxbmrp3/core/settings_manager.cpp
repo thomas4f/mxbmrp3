@@ -18,9 +18,12 @@
 // settings_hud.h is core (every game has the settings menu, and getSettingsHud() is
 // used unconditionally below), and it pulls records_hud.h itself; both .cpp files are
 // compiled on every game, so neither include may be gated on GAME_HAS_RECORDS_PROVIDER
-// — gating it broke the GPB/KRP builds (SettingsHud left incomplete -> C2027). The
+// — gating it leaves SettingsHud incomplete on the GPB/KRP builds (C2027). The
 // *provider* feature stays runtime/registration-gated; only these includes are always on.
 #include "../hud/settings_hud.h"
+#include "../hud/friends_hud.h"
+#include "../hud/timing_hud.h"
+#include "../hud/notices_hud.h"
 #include "../hud/version_widget.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/radar_hud.h"
@@ -82,25 +85,22 @@ namespace {
     // 6: the gamepad AND the pit board are chosen by PACK NAME (gamepads/<name>/,
     //    pitboards/<name>/) rather than by texture variant index. Files at 5 or below
     //    store the old index; the migration in loadSettings() maps the shipped
-    //    variants onto their pack names. Both moved in the same version deliberately:
-    //    6 is unreleased, and a file already written at 6 maps to the default board
-    //    anyway, so a second version step would buy nothing.
+    //    variants onto their pack names.
     // 7: Notices and Timing offsetX means the panel's CENTRE, like the Gap Bar and
-    //    Version already did, instead of a delta from a centre computed at render
-    //    time. The migration in loadSettings() adds the anchor in.
+    //    Version, instead of a delta from a centre computed at render time. The
+    //    migration in loadSettings() adds the anchor in.
     // 8: the Radar joins them. Its offsetX meant a LEFT EDGE, so unlike 7 the shift
     //    is half the panel's width and depends on the stored scale -- hence its own
-    //    version rather than folding into the unreleased 7: a file already stamped 7
-    //    would skip the shift, and every dev install is stamped 7 by now.
+    //    version: a file already stamped 7 would skip the shift.
     constexpr int SETTINGS_VERSION = 9;
 
     // The on-disk shape has been stable since v4 (base [HudName] sections + sparse
     // [HudName:Profile] overrides). The load dispatch keys off THIS floor, not off
     // == SETTINGS_VERSION, so a file written by any version >= this one still loads
     // its HUD sections after SETTINGS_VERSION is later bumped. Gating on
-    // == SETTINGS_VERSION silently wiped every user's HUD settings the moment the
-    // version was bumped (their v4 file then matched neither the v4+ nor the v3
-    // branch and every [HudName] section was skipped). Only bump this floor when
+    // == SETTINGS_VERSION would silently wipe every user's HUD settings the moment
+    // the version is bumped (a v4 file then matches neither the v4+ nor the v3
+    // branch and every [HudName] section is skipped). Only bump this floor when
     // the base/profile section layout itself changes incompatibly.
     constexpr int FIRST_BASE_SECTION_VERSION = 4;
 }
@@ -185,10 +185,9 @@ std::string SettingsManager::serializeSettings(const HudManager& hudManager, con
     // file. The per-HUD serializer registry (settings_hud_registry) is the SINGLE
     // source of truth for the section list: captureToCache, applyProfile, and this
     // serializer all iterate it, so a HUD is registered for capture, apply, and
-    // on-disk serialization in exactly one place. This replaced the old parallel
-    // "hudOrder" array whose omission silently dropped a HUD's settings on restart
-    // (the FriendsHud bug). settings_sections_test.cpp still asserts capture ⊆
-    // serialized as a belt-and-suspenders guard.
+    // on-disk serialization in exactly one place -- a HUD missing from a parallel
+    // list would silently drop its settings on restart. settings_sections_test.cpp
+    // asserts capture ⊆ serialized as a belt-and-suspenders guard.
     // Note: HelmetOverlayHud is global (own [HelmetOverlay] section), not per-profile.
     // Game-gated HUDs are #if'd out of the registry on builds without them, and
     // buildHudSection() returns "" for any section absent from m_hudDefaults.
@@ -321,22 +320,20 @@ void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* saveP
     // ABSENCE IS AUTHORITATIVE for [Colors] and [Fonts], which means releasing every
     // pin BEFORE the parse and letting the file re-pin only what it actually states.
     //
-    // Those two sections became SPARSE on write -- only slots the user pinned are
-    // emitted, and an absent key means "follow the theme". The read side was never
-    // made to match: applyGlobalLine() only ever calls setColor/setFont for keys it
-    // SEES, and the only clearOverride() calls in the whole load path were inside the
-    // v4 -> v5 migration, which a current file skips. So absence could not release
-    // anything, and the two supported ways to un-pin a slot both failed silently:
+    // Those two sections are SPARSE on write -- only slots the user pinned are
+    // emitted, and an absent key means "follow the theme" -- and applyGlobalLine()
+    // only ever calls setColor/setFont for keys it SEES. Without this release,
+    // absence cannot un-pin anything, and the two supported ways to un-pin a slot
+    // both fail silently:
     //
     //   Reload Config after changing a colour with auto-save off -- the discarded
-    //   value stayed pinned and was written straight back out on the next save.
+    //   value stays pinned and is written straight back out on the next save.
     //
-    //   Deleting `accent=...` from [Colors] by hand -- the line reappeared, because
-    //   the slot was still pinned in memory when the file was rewritten.
+    //   Deleting `accent=...` from [Colors] by hand -- the line reappears, because
+    //   the slot is still pinned in memory when the file is rewritten.
     //
-    // replayGlobalDefaults() already does exactly this before replaying the defaults
-    // snapshot (settings_hud_profiles.cpp) and is the shape copied here; the reset path
-    // was fixed for this and the load path was not.
+    // replayGlobalDefaults() does exactly this before replaying the defaults
+    // snapshot (settings_hud_profiles.cpp); this is the same shape.
     //
     // AFTER the is_open() check, deliberately: a missing file returns above, and
     // releasing pins for a file that could not be read would silently discard the
@@ -501,9 +498,9 @@ void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* saveP
     // SPARSE COLOURS/FONTS MIGRATION (files written at version <= 4).
     //
     // Those files list every colour and every font, and applyGlobalLine pins each key it
-    // reads -- so an upgrading user has all sixteen slots marked "mine" and a theme's
-    // palette and font set can never show through. That is the branch's headline feature
-    // silently dead for every existing install, recoverable only via Appearance > Reset.
+    // reads -- so without this an upgrading user has all sixteen slots marked "mine" and
+    // a theme's palette and font set can never show through, recoverable only via
+    // Appearance > Reset.
     //
     // The migration is deliberately CONSERVATIVE: unpin only the slots whose stored value
     // equals the built-in default, which is exactly the set that carries no user intent --
@@ -533,8 +530,8 @@ void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* saveP
             const char* def = FontConfig::getDefaultFontName(cat);
             const char* cur = FontConfig::getInstance().getFontName(cat);
             // strcmp, not ==: both sides are const char*, so == compares POINTERS and
-            // would have been false for every slot -- a migration that silently did
-            // nothing for fonts while looking correct.
+            // is false for every slot -- a migration that silently does nothing for
+            // fonts while looking correct.
             if (FontConfig::getInstance().isOverridden(cat) && def && cur &&
                 std::strcmp(cur, def) == 0) {
                 FontConfig::getInstance().clearOverride(cat);
@@ -697,8 +694,7 @@ void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* saveP
 
     // ROW-PITCH DEFAULT MIGRATION (files written at version <= 8).
     //
-    // The default uiLineHeight moved from 1.17335 -- the pre-knob shipped pitch,
-    // kept while the ratio was newly settable -- to 1.1, a tenth of a row of air
+    // The default uiLineHeight moved from 1.17335 to 1.1, a tenth of a row of air
     // between text rows instead of a sixth. See LayoutMetrics::lineHeightRatio.
     //
     // A migration is needed at all because the writer emits this key into EVERY
@@ -924,9 +920,9 @@ void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* saveP
 // See the declaration. A THIN WRAPPER, and that is the whole point: loadSettingsImpl
 // returns early when there is no settings file, which is the FRESH INSTALL -- the
 // one case Setup's opt-out marker exists for. Hanging applyInstallPrefs() off the
-// tail of the implementation meant it ran on every launch that did not need it and
-// was skipped on the launch that did, silently, with the second launch behaving
-// correctly so the feature looked fine to anyone who checked twice.
+// tail of the implementation would run it on every launch that does not need it
+// and skip it on the launch that does, silently, with the second launch behaving
+// correctly so the feature looks fine to anyone who checks twice.
 //
 // One exit and one call, so a future early return cannot reintroduce that. It runs
 // LAST either way: installPrefsSeen and the stored Analytics value are both applied

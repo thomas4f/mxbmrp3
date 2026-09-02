@@ -4,17 +4,13 @@
 // panel's tooltip/description box. Pure: strings in, strings out.
 //
 // WHAT THIS IS. The settings tooltip box is two lines of a monospace font, so
-// wrapping is character-counted rather than measured. This was a lambda inside
-// SettingsHud::rebuildRenderData() that wrapped and emitted in the same loop,
-// which made it unreachable from any test that does not build the DLL.
-//
-// WHY EXTRACTING IT WAS WORTH IT (the real payoff is a better test, not a
-// shorter function): tests/unit/test_tooltip_length.cpp exists to stop a shipped
-// tooltip from rendering cut off, and it could only approximate that with a
-// hardcoded ~120-character ceiling, because the actual wrap rules lived here.
-// It now runs every shipped tooltip through THIS function and asserts nothing
-// truncates — an exact check against the real algorithm instead of a magic
-// number that drifts whenever the panel width or font changes.
+// wrapping is character-counted rather than measured. It is a pure function
+// outside SettingsHud::rebuildRenderData() so that it is reachable from a test
+// that does not build the DLL: tests/unit/test_tooltip_length.cpp exists to stop
+// a shipped tooltip from rendering cut off, and it runs every shipped tooltip
+// through THIS function and asserts nothing truncates — an exact check against
+// the real algorithm instead of a hardcoded character ceiling that drifts
+// whenever the panel width or font changes.
 //
 // TRUNCATION IS NOT THE SAME AS AN ELLIPSIS. When text overflows the last line
 // the tail is replaced with "..." — but only if that line has more than 3

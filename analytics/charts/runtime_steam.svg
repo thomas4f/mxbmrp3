@@ -6,6 +6,8 @@
   .val{fill:#24292f;font-size:12px;font-weight:600}
   .title{fill:#24292f;font-size:14px;font-weight:700}
   .sub{fill:#57606a;font-size:11px}
+  .gap{fill:#57606a;opacity:.09}
+  .gaplbl{fill:#57606a;font-size:10px;opacity:.85}
   @media (prefers-color-scheme: dark){
     .grid{stroke:#30363d}
     .axis{stroke:#8b949e}
@@ -13,5 +15,7 @@
     .val{fill:#e6edf3}
     .title{fill:#e6edf3}
     .sub{fill:#8b949e}
+    .gap{fill:#8b949e;opacity:.13}
+    .gaplbl{fill:#8b949e}
   }
-</style><text x="12" y="20" class="title">Steam vs. standalone</text><text x="12" y="37" class="sub">5,575 installs reporting</text><rect x="12.0" y="44" width="725.7" height="30" fill="#3fb950"/><text x="374.9" y="64" class="val" text-anchor="middle" style="fill:#0d1117">99%</text><rect x="12" y="88" width="11" height="11" rx="2" fill="#3fb950"/><text x="28" y="98" class="lbl">Steam (5,497)</text><rect x="737.7" y="44" width="10.3" height="30" fill="#d29922"/><rect x="135.60000000000002" y="88" width="11" height="11" rx="2" fill="#d29922"/><text x="151.60000000000002" y="98" class="lbl">Standalone (78)</text></svg>
+</style><text x="12" y="20" class="title">Steam vs. standalone</text><text x="12" y="37" class="sub">10,999 installs reporting</text><rect x="12.0" y="44" width="728.4" height="30" fill="#3fb950"/><text x="376.2" y="64" class="val" text-anchor="middle" style="fill:#0d1117">99%</text><rect x="12" y="88" width="11" height="11" rx="2" fill="#3fb950"/><text x="28" y="98" class="lbl">Steam (10,885)</text><rect x="740.4" y="44" width="7.6" height="30" fill="#d29922"/><rect x="142.8" y="88" width="11" height="11" rx="2" fill="#d29922"/><text x="158.8" y="98" class="lbl">Standalone (114)</text></svg>

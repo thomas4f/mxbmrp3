@@ -818,8 +818,8 @@ void PluginData::clear() {
     // Benchmark metrics are deliberately NOT touched here. They are not session data:
     // the registry (per-HUD and per-callback names + slot indices) is process-lifetime
     // profiler wiring, and HUDs are registered exactly ONCE, in HudManager::initialize().
-    // Wiping it here left hudCount at 0 for the rest of the run, so every
-    // recordHudRebuild() failed its `index >= hudCount` bounds check and the report read
+    // Wiping it here leaves hudCount at 0 for the rest of the run, so every
+    // recordHudRebuild() fails its `index >= hudCount` bounds check and the report reads
     // "HUDs profiled: 0" with an empty table after the first session exit. Callbacks
     // re-register lazily, which looks like recovery but is worse: a stale index that
     // happens to land below the new callbackCount writes into whichever callback
@@ -866,11 +866,11 @@ void PluginData::addEventLogEntry(EventLogType type, const char* message, const 
     // sensibly), else the player. One atomic load when the spotter is off.
     // getDisplayRaceNum(), not the raw spectate target: that member is written
     // only while spectating and cleared only at event exit, so watching #42 in
-    // practice and then RIDING qualifying left focused=42 for the rest of the
-    // event — your own penalties and your own flag went quiet (a rival's are
-    // default-quiet) while #42's were announced as "you". The accessor asks
+    // practice and then RIDING qualifying leaves it at 42 for the rest of the
+    // event — your own penalties and your own flag would go quiet (a rival's are
+    // default-quiet) while #42's are announced as "you". The accessor asks
     // the question this needs, which is whether the camera is on someone else
-    // right now. The sibling tap in plugin_data_trackpos.cpp already did.
+    // right now (the sibling tap in plugin_data_trackpos.cpp asks the same).
     const int focused = getDisplayRaceNum();
     // Elapsed, not the raw clock: cue-log timestamps must ascend (subtitle
     // ordering, transcripts) and the raw clock counts down in timed sessions.
@@ -961,4 +961,9 @@ bool PluginData::isQualifySession() const {
     return canonical == Unified::Session::PreQualify ||
            canonical == Unified::Session::QualifyPractice ||
            canonical == Unified::Session::Qualify;
+}
+
+bool PluginData::isWaitingSession() const {
+    return Game::Adapter::toCanonicalSession(
+        m_sessionData.session, m_sessionData.eventType) == Unified::Session::Waiting;
 }

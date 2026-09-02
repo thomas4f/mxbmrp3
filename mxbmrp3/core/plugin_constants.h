@@ -167,9 +167,9 @@ namespace PluginConstants {
 
     // Looking for a font size, a line height, the snap grid or panel padding? They
     // are DATA, not constants -- core/layout_metrics.h, whose header says why. There
-    // is deliberately no fallback copy here: while both existed a theme could move
-    // font.size and this file could not follow, so panels snapped to a lattice their
-    // own insides no longer used.
+    // is deliberately no fallback copy here: with two copies a theme can move
+    // font.size and this file cannot follow, so panels snap to a lattice their own
+    // insides no longer use.
 
     // Brand Colors
     namespace BrandColors {
@@ -292,7 +292,7 @@ namespace PluginConstants {
     }
 
     // View state values (from MX Bikes API Draw callback)
-    // Renamed from DrawState to ViewState to avoid Windows API conflict with DrawState/DrawStateW
+    // ViewState, not DrawState: that name conflicts with the Windows API's DrawState/DrawStateW
     namespace ViewState {
         constexpr int ON_TRACK = 0;   // Player is on track
         constexpr int SPECTATE = 1;   // Player is spectating
@@ -325,12 +325,11 @@ namespace PluginConstants {
         constexpr int STRAIGHT_RHYTHM = 4;
     }
 
-    // Session values (from MXBikes API)
-    // Note: per-game session ID constants (PRE_QUALIFY=2 etc.) used to live here,
-    // but they leaked MX Bikes' raw numbering into core code and produced wrong
-    // labels / wrong isRaceSession() results on other games. The canonical
-    // session set now lives in Unified::Session (game/unified_types.h);
-    // each adapter exposes Adapter::toCanonicalSession() to convert raw -> canonical.
+    // Session values: deliberately no per-game session ID constants here. Raw
+    // numbering leaks MX Bikes' IDs into core code and produces wrong labels /
+    // wrong isRaceSession() results on other games. The canonical session set is
+    // Unified::Session (game/unified_types.h); each adapter exposes
+    // Adapter::toCanonicalSession() to convert raw -> canonical.
 
     // Weather conditions (from MXBikes API)
     namespace Conditions {
@@ -360,16 +359,16 @@ namespace PluginConstants {
         // not just the most recent laps. ~100 laps x 50 riders x ~28 B is trivial.
         constexpr int MAX_LAP_LOG_STORAGE = 100;
         constexpr int MAX_EVENT_LOG_CAPACITY = 100; // Maximum events stored in event log ring buffer
-        // Note: HUD-specific limits (MAX_STANDINGS_ENTRIES, FRAME_HISTORY_SIZE, GRAPH_HISTORY_SIZE)
-        // have been relocated to their respective HUD/handler files for better code locality
+        // HUD-specific limits (MAX_STANDINGS_ENTRIES, FRAME_HISTORY_SIZE, GRAPH_HISTORY_SIZE)
+        // live in their respective HUD/handler files
     }
 
     // Standard HUD dimensions (in character counts)
     namespace HudDimensions {
         // Standard HUD widths
         constexpr int STANDARD_HUD_WIDTH = 40;      // Full width for HUDs with stats/values
-        // Note: GRAPH_ONLY_WIDTH relocated to performance_hud.h (HUD-specific)
-        // Note: All SETTINGS_* constants relocated to settings_hud.h (settings-specific)
+        // GRAPH_ONLY_WIDTH lives in performance_hud.h (HUD-specific)
+        // The SETTINGS_* constants live in settings_hud.h (settings-specific)
     }
 
     // Settings Validation Ranges
@@ -382,7 +381,7 @@ namespace PluginConstants {
         // Background opacity limits (0.0 = fully transparent, 1.0 = fully opaque)
         constexpr float MIN_OPACITY = 0.0f;
         constexpr float MAX_OPACITY = 1.0f;
-        constexpr float DEFAULT_OPACITY = 0.8f;  // Used by most HUDs (was 0.85f, corrected to match actual usage)
+        constexpr float DEFAULT_OPACITY = 0.8f;  // Used by most HUDs
 
         // Position offset limits (normalized coordinates)
         constexpr float MIN_OFFSET = -2.0f;  // Allow off-screen for ultrawide/multi-monitor
@@ -395,12 +394,10 @@ namespace PluginConstants {
         constexpr int MIN_DISPLAY_LAPS = 1;
         constexpr int MAX_DISPLAY_LAPS = 30;
 
-        // Note: Map-specific limits (MIN/MAX/DEFAULT_TRACK_LINE_WIDTH) relocated to map_hud.h
-        // Migration: PluginConstants::SettingsLimits::*_TRACK_LINE_WIDTH → MapHud::*_TRACK_LINE_WIDTH
+        // Map-specific limits (MIN/MAX/DEFAULT_TRACK_LINE_WIDTH) live in map_hud.h
     }
 
-    // Note: GAP_UPDATE_THRESHOLD_MS relocated to PluginData class (private static constexpr)
-    // Migration: PluginConstants::PerformanceThresholds::GAP_UPDATE_THRESHOLD_MS → PluginData::GAP_UPDATE_THRESHOLD_MS
+    // GAP_UPDATE_THRESHOLD_MS lives in PluginData (private static constexpr)
 
     // Display strings for UI - all user-visible text strings centralized here
     namespace DisplayStrings {
@@ -515,7 +512,7 @@ namespace PluginConstants {
     // ========================================================================
     // Sprite Index Constants
     // ========================================================================
-    // IMPORTANT: Sprite indices are now dynamically assigned by AssetManager.
+    // IMPORTANT: Sprite indices are dynamically assigned by AssetManager.
     // Textures and icons are discovered from mxbmrp3_data/ subdirectories:
     //   - fonts/    -> Font files (.fnt)
     //   - textures/ -> HUD/widget textures with variants (e.g., standings_hud_1.tga)
@@ -533,7 +530,7 @@ namespace PluginConstants {
         constexpr int SOLID_COLOR = 0;
 
         // Rider icon count - icons are discovered dynamically from icons/ directory
-        // This is used for UI cycling through available shapes (updated to match actual count)
+        // This is used for UI cycling through available shapes (must match the actual count)
         constexpr int RIDER_ICON_COUNT = 51;
 
         // Helper to get first icon sprite index at runtime

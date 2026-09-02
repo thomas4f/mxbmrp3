@@ -31,10 +31,6 @@
 // MixSpec the TTS fallback text — spoken if any chunk fails to load — with the
 // recipe itself in `mixDir` + `mixChunks`. The recipe exists so the 480fps
 // game thread never touches files; all loading happens on the audio worker.
-//
-// The three parts used to be newline-joined into `payload` and re-split there,
-// which cost an encode, a decode and a "did we get at least three lines" guard
-// for a struct that is copied into a queue either way.
 struct SpotterCue {
     enum class Kind : uint8_t {
         Speech,   // synthesize via TTS

@@ -1,6 +1,6 @@
 // ============================================================================
 // MXBMRP3 Web Overlay — Server-Sent Events connection & reconnect
-// Part 03/11 of the overlay client (split from the former monolithic app.js).
+// Part 03/11 of the overlay client.
 // Ordered classic script: files share one global scope and MUST load in the
 // order listed in index.html. Customize freely — served from disk by the plugin.
 // ============================================================================

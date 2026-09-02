@@ -41,10 +41,9 @@ VersionWidget::VersionWidget() {
     m_panelKind = PanelKind::Widget;
     // Body card: this widget's content is a block the theme can frame -- exactly what
     // a themed body card is for, and what every other panel already opts into. Opt-in;
-    // see BaseHud::m_bContentCard. It was the one panel that drew a themed FRAME (via
-    // addBackgroundQuad) and then set its text straight on it, so under a theme with a
-    // card set the version line and the update prompt sat on bare frame while every
-    // widget beside them sat on a card.
+    // see BaseHud::m_bContentCard. Without it, under a theme with a card set the
+    // version line and the update prompt sit on bare frame while every widget beside
+    // them sits on a card.
     m_bContentCard = true;
     // One-time setup
     DEBUG_INFO("VersionWidget created");
@@ -271,10 +270,9 @@ void VersionWidget::showDonationNudge() {
 
 void VersionWidget::rebuildLayout() {
     if (m_gameActive) return;   // game handles its own layout
-    // BOX-MODEL: one source of geometry. This used to duplicate every mode's
-    // sizing arithmetic to reposition in place, and the two copies were kept in
-    // step by comment ("must match rebuildRenderData"). The widget is a handful
-    // of strings; rebuilding is cheaper than the drift.
+    // BOX-MODEL: one source of geometry. The widget is a handful of strings;
+    // rebuilding is cheaper than a second copy of every mode's sizing arithmetic
+    // kept in step by comment.
     rebuildRenderData();
 }
 
@@ -287,14 +285,14 @@ BaseHud::PanelPlan VersionWidget::notifyPlan(const ScaledDimensions& dim,
     if (stackMember) {
         // THE PLAIN VERSION ROW is a centre-stack panel and takes the stack's
         // width rule whole: the shared minimum owns the width and the string
-        // does not compete for it. It used to pass its own text width HERE too,
-        // which is invisible at shipped padding (the string is 19 normal chars
-        // against 14 large ones of interior, so the minimum wins) and 78px of
-        // divergence once [Advanced] padding grew, because a stated content
-        // width carries the padding past the minimum while its neighbours,
-        // which state none, sit on it. See BaseHud::wantCenterStackWidth.
+        // does not compete for it. Passing its own text width HERE too would be
+        // invisible at shipped padding (the string is 19 normal chars against 14
+        // large ones of interior, so the minimum wins) and 78px of divergence
+        // once [Advanced] padding grows, because a stated content width carries
+        // the padding past the minimum while its neighbours, which state none,
+        // sit on it. See BaseHud::wantCenterStackWidth.
         //
-        // The string fitting that interior is therefore a CONSTRAINT now, not a
+        // The string fitting that interior is therefore a CONSTRAINT, not a
         // coincidence -- version_fit_test pins it, so a longer version number
         // fails a test instead of quietly clipping.
         wantCenterStackWidth(want, dim);
@@ -337,9 +335,7 @@ void VersionWidget::rebuildRenderData() {
         // Button dimensions
         const float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
         // The [button] terms, all four sides: box = insets around the label
-        // row, gap = the SUM of facing margins (1 char at shipped defaults,
-        // exactly the old hard-coded gap). The box was a bare text row, so
-        // the vertical terms acted on nothing.
+        // row, gap = the SUM of facing margins (1 char at shipped defaults).
         const PlanButtonTerms bt = planButtonTerms(dim);
         const float buttonGap = bt.gap;
         const float viewButtonWidth = charWidth * VIEW_BUTTON_CHARS + bt.insetL + bt.insetR;
@@ -352,9 +348,9 @@ void VersionWidget::rebuildRenderData() {
         // BOX-MODEL: the plan owns padding, chrome and the content origin. The
         // centre-stack width is a MINIMUM on the panel (widthSetBy 'min'), not
         // a padding sum folded into the content.
-        // THE JUNCTION PLUS the box's own margin and insets. marginT alone was not
+        // THE JUNCTION PLUS the box's own margin and insets. marginT alone is not
         // enough: it is the button BOX's margin and defaults to zero, so the row
-        // still sat flush against the message. The seam above a button row is the
+        // would still sit flush against the message. The seam above a button row is the
         // [panel] junction gap -- what panel_box.h spends as `y += gapY` for a
         // PLANNED row, and what the settings tabs spend as addSpacing() for a
         // hand-laid one. This row is hand-laid, so it owes the same gap.
@@ -522,13 +518,13 @@ void VersionWidget::rebuildRenderData() {
         addPlanTitle(placed, "Version", this->getFont(FontCategory::TITLE),
                      this->getColor(ColorSlot::PRIMARY));
         // Add main text
-        // INK-centred in the section's DRAWN BOX, like Timing's time. It used to centre
-        // in the content ROW, which is the same place while the card border is
-        // symmetric and a cell high when it is not (see PanelPlan::sectionBoxY). Before
-        // that it passed the bare row top, leaving addString to centre the glyph CELL
-        // -- fine for a row in a TABLE, where every row carries the same
-        // 0.11-of-a-cell bias and it cancels, but this row IS the whole body of a
-        // one-row panel, so the bias read as the text sitting high in its own box.
+        // INK-centred in the section's DRAWN BOX, like Timing's time. Centring in the
+        // content ROW is the same place while the card border is symmetric and a cell
+        // high when it is not (see PanelPlan::sectionBoxY); passing the bare row top
+        // leaves addString to centre the glyph CELL -- fine for a row in a TABLE,
+        // where every row carries the same 0.11-of-a-cell bias and it cancels, but
+        // this row IS the whole body of a one-row panel, so the bias reads as the
+        // text sitting high in its own box.
         // CENTRED, like the notification message this panel turns into: the
         // string is the entire body of a one-row panel, and the panel is sized
         // to it, so left-justifying it only showed when a theme's padding made

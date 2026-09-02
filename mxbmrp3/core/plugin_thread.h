@@ -14,8 +14,8 @@
 //
 // The mode is OPT-IN and OFF BY DEFAULT ([Advanced] pluginThread=1). When off,
 // enabled() returns false and every routing helper is a no-op — the plugin runs
-// exactly as before (synchronous, on the game thread), so the shipping behavior
-// and the whole test suite are unchanged.
+// synchronously on the game thread, so the shipping behavior and the whole test
+// suite are unaffected.
 //
 // Thread-safety model when ON:
 //   * Game thread   : enqueue() (push a closure), requestFrame()/takeFrame()
@@ -77,7 +77,7 @@ public:
     // ---- Callback routing ---------------------------------------------------
     // Each returns true if it TOOK OVER (queued the work) — the caller must then
     // return immediately. Returns false when disabled or already on the worker, in
-    // which case the caller runs the work synchronously as before.
+    // which case the caller runs the work synchronously.
 
     // Zero-arg member callback: (self->*fn)()
     template <class T>

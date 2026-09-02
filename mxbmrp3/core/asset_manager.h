@@ -52,10 +52,10 @@ struct FontAsset {
 // of some other face. Pure so the rule is unit-testable -- discoverFonts() needs
 // a directory, this needs a string.
 //
-// MEDIUM AND SEMIBOLD ONLY, deliberately NOT BOLD. RobotoMono-Bold has shipped
-// as a user-selectable face since before this existed; folding it in would take
-// it out of the cycler and silently strand anyone who had picked it. The faces
-// this rule is for are the ones added to BE emphasis companions.
+// MEDIUM AND SEMIBOLD ONLY, deliberately NOT BOLD. RobotoMono-Bold ships as a
+// user-selectable face; folding it in would take it out of the cycler and
+// silently strand anyone who has picked it. The faces this rule is for are the
+// ones that exist to BE emphasis companions.
 inline std::string emphasisBaseOf(const std::string& stem) {
     for (const char* suffix : { "-Medium", "-SemiBold" }) {
         const size_t n = std::string(suffix).size();
@@ -109,11 +109,11 @@ struct ThemeAsset {
     // It matters more here than anywhere else, and not for the reason it does on
     // a pad. Theme art is cut from a master by tools/themeslice, so sharing
     // SLICES is the small win. The big one is that a theme's ini carries the
-    // whole palette, the fonts and the box terms -- and until this existed a
-    // theme was only accepted with its full slice set present, so "Carbon Dark
-    // but my team's colours" cost 27 .tga copies to change three lines. With a
-    // base it is an ini and nothing else: `spriteFiles` stays EMPTY and every
-    // sprite index is the base's, already registered.
+    // whole palette, the fonts and the box terms, and a standalone theme is only
+    // accepted with its full slice set present -- so "Carbon Dark but my team's
+    // colours" would cost 27 .tga copies to change three lines. With a base it
+    // is an ini and nothing else: `spriteFiles` stays EMPTY and every sprite
+    // index is the base's, already registered.
     std::string baseName;
 
     // THE FRAME SET -- the 9-slice around a whole panel, and the only mandatory one.
@@ -129,7 +129,7 @@ struct ThemeAsset {
     // Each file is drawn AS AUTHORED (see NineSlice::build), so frame_corner_tr.tga is
     // a picture of a top-right corner and frame_edge_left.tga of a left edge. There is
     // deliberately no one-file-serves-four shorthand: it would need the renderer to
-    // rotate, which is what made every corner file look like a top-left corner in an
+    // rotate, and every corner file would then look like a top-left corner in an
     // image editor.
     int centerSprite = 0;
     int cornerSprites[4] = {0, 0, 0, 0};   // NineSlice::Corner order: TL,TR,BL,BR
@@ -157,11 +157,11 @@ struct ThemeAsset {
     // square on screen (equal x/y deltas are NOT equal pixels in 16:9 normalized
     // space); NineSlice::cellsToBorderX / cellsToBorderY are the only converters.
     //
-    // Whole cells, and that is the whole point of the unit. This was a normalized-Y
-    // fraction that the layout ceiled onto the grid, which made the knob lie: every
-    // value from 0.020 to 0.029 produced the same 3-cell margin while continuing to
-    // resize the drawn art. In cells the number IS the margin, the art follows it,
-    // and the frame lands on the lattice by construction.
+    // Whole cells, and that is the whole point of the unit. A normalized fraction
+    // ceiled onto the grid makes the knob lie: a whole range of values produces the
+    // same cell margin while continuing to resize the drawn art. In cells the
+    // number IS the margin, the art follows it, and the frame lands on the lattice
+    // by construction.
     float frameBorder = 3.0f;
 
     // Whether the HUD's background COLOUR is applied to the sprites.
@@ -184,8 +184,7 @@ struct ThemeAsset {
     // It exists because reusing the frame slices for these does not work. A panel's
     // corner treatment is distinctive by design; repeat it a few pixels inside
     // itself and it stops reading as a motif and starts reading as noise. The more
-    // character a theme has, the worse that gets -- measured on a theme whose corner
-    // motif nested inside itself in the title band, which is what motivated this set.
+    // character a theme has, the worse that gets.
     //
     // card_center.tga enables the set; the per-position card_corner_*.tga /
     // card_edge_*.tga are optional and fall back to card_center rather than dropping
@@ -221,16 +220,14 @@ struct ThemeAsset {
     //
     // A KNOB THAT CAN GO DEAD, and that is inherent rather than an oversight: content
     // must clear the frame's border, so contentPadding{X,Y}() takes the WIDER of this
-    // and (frame + inner). Set it below that and it has no effect -- which is exactly
-    // the "knob that lies" failure LayoutMetrics::inset records for the old normalized
-    // corner size, so the mock flags when the border is what is setting the padding.
+    // and (frame + inner). Set it below that and it has no effect -- a knob that
+    // lies -- so the mock flags when the border is what is setting the padding.
     float panelPaddingXOverride = -1.0f;
     float panelPaddingYOverride = -1.0f;
 
     // `[content] gap` -- THE VISIBLE GAP between two carded boxes, in CELLS. -1 = follow
     // the built-in (LayoutMetrics::sectionGap). See that field for the three boundaries
-    // this is spent at and why they used to disagree; read it through
-    // BaseHud::contentGapY(), never directly.
+    // this is spent at; read it through BaseHud::contentGapY(), never directly.
     float sectionGapOverride = -1.0f;
     float sectionGap(float builtIn) const {
         return (sectionGapOverride >= 0.0f) ? sectionGapOverride : builtIn;
@@ -264,7 +261,7 @@ struct ThemeAsset {
     BoxTerm boxPanelGap;
 
     // DOES THIS THEME DRAW ANYTHING. False only for the null theme below, which is what
-    // "no panel theme" resolves to now -- see nullTheme(). The frame set is mandatory
+    // "no panel theme" resolves to -- see nullTheme(). The frame set is mandatory
     // for a real theme (a directory missing any of its nine files is skipped rather
     // than half-registered), so its centre sprite is the whole test.
     bool hasArt() const { return centerSprite > 0; }
@@ -432,11 +429,10 @@ namespace GamepadSprite {
 // PIT BOARD PACKS -- pitboards/<name>/pitboard.ini plus its art.
 //
 // Same shape and same reasoning as a gamepad pack, one sprite instead of
-// seventeen. What it buys is different, though: the board's art was already
-// user-replaceable through the flat textures/ folder, but the numbers that place
-// text on it lived in [PitboardHud_Layout_N] blocks inside the USER'S OWN
-// settings file. So a custom board could not be handed to anyone -- the picture
-// travelled and its layout did not. A pack keeps them together.
+// seventeen. What it buys is different, though: the numbers that place text on
+// the board travel WITH the picture, so a custom board can be handed to anyone.
+// Art in a flat textures/ folder with its layout in the user's own settings file
+// cannot -- the picture travels and its layout does not.
 namespace PitboardSprite {
     enum Part {
         BACKGROUND = 0,   // the board artwork
@@ -446,8 +442,8 @@ namespace PitboardSprite {
     // THE REGISTRY, exactly as GamepadSprite::kStems is: discovery walks it to
     // hand out sprite indices and HudManager walks the same table to register the
     // files. One order, so the two cannot diverge. One entry today; the mechanism
-    // is the point, since a second sprite would otherwise reintroduce the
-    // hand-matched-list failure the gamepad packs designed out.
+    // is the point, since a second sprite would otherwise need a hand-matched
+    // list, which is the failure this shape exists to rule out.
     inline constexpr const char* kStems[] = {
         "background",
     };
@@ -484,10 +480,10 @@ struct PitboardAsset {
 
 // GAUGES PACKS -- gauges/<name>/gauge.ini plus its two dial faces.
 //
-// The third pack type, and the one whose old arrangement was not merely limiting
-// but WRONG: the ticks and figures are painted into the .tga while the needle was
-// placed from TachoWidget::MAX_RPM and MIN/MAX_ANGLE_DEG, compiled in. See
-// hud/gauge_geometry.h for why that mis-draws any face but the shipped one.
+// The third pack type. The ticks and figures are painted into the .tga, so the
+// needle's range and sweep must travel with the face rather than be compiled in;
+// see hud/gauge_geometry.h for why a compiled-in placement mis-draws any face but
+// the shipped one.
 //
 // BOTH FACES IN ONE PACK, not gauges split across a tacho/ and a speedo/ root.
 // They are drawn as a set, so splitting them would mean picking the same name
@@ -711,8 +707,8 @@ public:
     // reload, or the selected theme name. BaseHud memoises its resolved ThemeAsset*
     // against this: getThemeByName() is a linear string scan, and one HUD rebuild
     // asks for it dozens of times (every themed* helper resolves it, and each calls
-    // layout(), which resolves it again). StandingsHud's per-frame slide loop was
-    // running ~250 scans a frame against a 2.08ms budget.
+    // layout(), which resolves it again) -- unmemoised, a per-frame slide loop runs
+    // hundreds of scans a frame against a 2.08ms budget.
     unsigned int themeGeneration() const { return mxbThemeGeneration(); }
     void bumpThemeGeneration() { mxbBumpThemeGeneration(); }
 
@@ -737,9 +733,7 @@ public:
     // ThemeAsset's insets and flags. discoverThemes() is what needs a directory of
     // .tga files; the geometry does not. So a headless test builds the asset
     // directly and exercises the real emit path, instead of the integration suite
-    // needing the shipped themes staged next to it (which the companion_demo script
-    // does, and whose own header records how staging them into the build dir
-    // corrupted an unrelated golden).
+    // needing the shipped themes staged next to it.
     //
     // Callers set the sprite indices themselves (see MXBMRP3_Test_InstallTheme,
     // which sets them nonzero so hasCard() is true); no test asserts WHICH texture
@@ -747,11 +741,10 @@ public:
     // shipping target with the rest of the test surface (see mxbmrp3/CMakeLists.txt).
     void installSyntheticTheme(const ThemeAsset& theme) {
         // REPLACE BY NAME, don't append. getThemeByName() takes the FIRST match, so
-        // re-installing a name appended a second entry that could never be selected
-        // and silently kept the first one's geometry -- a case that swept a theme
-        // parameter under one name then read the value it started with, and passed.
-        // Cost two vacuous test runs before it was spotted; a `break` in a loop is
-        // cheaper than the comment warning about it in every caller.
+        // appending a re-installed name adds a second entry that can never be
+        // selected while the first one's geometry keeps answering -- a case that
+        // sweeps a theme parameter under one name then reads the value it started
+        // with, and passes.
         for (size_t i = 0; i < m_themes.size(); ++i) {
             if (m_themes[i].name == theme.name) {
                 m_themes[i] = theme;          // a fresh install is FRESH, overrides included
@@ -766,7 +759,7 @@ public:
     }
     // Index of the theme installSyntheticTheme last touched. Not m_themes.back():
     // a re-installed name is replaced IN PLACE, so "the one just installed" and
-    // "the last one in the vector" stopped being the same entry.
+    // "the last one in the vector" are not the same entry.
     size_t m_lastSyntheticTheme = 0;
     // TEST ONLY: add a pack without files, for the same reason installSyntheticTheme
     // exists -- discoverGamepads() wants a directory of 17 .tga, while the behaviour
@@ -774,12 +767,8 @@ public:
     // See MXBMRP3_Test_InstallGamepad.
     void installSyntheticGamepad(const GamepadAsset& pad) {
         // REPLACE BY NAME, for the reason installSyntheticTheme does: the
-        // by-name getters take the FIRST match, so a re-installed name appended
-        // an entry that could never be selected while the old one kept
-        // answering -- a test that swept a parameter under one name then read
-        // the value it started with, and passed. Dormant here (no case reuses a
-        // pad name yet) and fixed anyway, because the version of this that bit
-        // cost two green runs before anyone looked.
+        // by-name getters take the FIRST match, so an appended re-install could
+        // never be selected while the old one kept answering.
         for (GamepadAsset& existing : m_gamepads) {
             if (existing.name == pad.name) { existing = pad; return; }
         }
@@ -999,11 +988,11 @@ public:
     // them -- copied out of the user's Documents folder at startup, and copied
     // again on RELOAD_CONFIG so an author's edit-reload loop works.
     //
-    // WHY A TABLE AND NOT FOUR PAIRS OF CALLS. It was four pairs, and the pairs
-    // drifted: spotter voices shipped wired into NEITHER copy, which made them the
-    // one pack type a user could not author in their own Documents folder at all --
-    // they had to be dropped into the game's plugins tree, where an uninstall
-    // removes them. Both copy sites walk THIS list, so a row is the whole job.
+    // WHY A TABLE AND NOT FOUR PAIRS OF CALLS. Separate pairs drift, and a pack
+    // type wired into neither copy is one a user cannot author in their own
+    // Documents folder at all -- it has to be dropped into the game's plugins
+    // tree, where an uninstall removes it. Both copy sites walk THIS list, so a
+    // row is the whole job.
     //
     // `media` is the type's non-ini payload, stated per type rather than a blanket
     // "*.*": the copy is a trust boundary (see syncDirectory's reparse-point
@@ -1068,8 +1057,7 @@ private:
     // textures directory entirely (BaseHud::setTextureVariant returns early for a
     // pack HUD), so a user who had drawn their own tacho_widget_1.tga would have
     // watched it be replaced by the shipped face on upgrade, with no warning and
-    // no way back -- which is precisely the break the pit board and the pad
-    // caused, reported from the seat as grey boxes.
+    // no way back.
     //
     // So the plugin migrates rather than the user: their file becomes a real pack
     // folder in their own Documents tree, which they can then rename, reskin or
@@ -1090,8 +1078,8 @@ private:
 
     // Reset every pack of one type to its built-in geometry and re-read its ini.
     // Backs reloadThemeLayouts(); see there for why it is one generic helper rather
-    // than a loop per type (the board's loop was written out by hand and simply
-    // missing, so the hotkey reloaded pads and silently ignored boards).
+    // than a loop per type (a hand-written loop per type can simply be missing, so
+    // the hotkey reloads pads and silently ignores boards).
     //
     // Defined in the .cpp, where the per-type ini readers live -- both instantiations
     // are in that same TU. `subdir` is the pack root under DISCOVERY_DIR.
@@ -1108,9 +1096,9 @@ private:
     // A pit board's art proportions default to the ARTWORK's own, read from the .tga,
     // so a pack stating no [art] block still draws undistorted (the classic board's pitboard.ini documents
     // exactly that). Shared by discoverPitboards() and the reload, because a default
-    // applied at discovery and not at reload is a default RELOAD_CONFIG deletes --
-    // which is what it did: the reset restored the compiled 1920x1080 and only the ini
-    // was replayed, so a 1024x1024 board came back 16:9-stretched until a restart.
+    // applied at discovery and not at reload is a default RELOAD_CONFIG deletes: the
+    // reset restores the compiled 1920x1080 and only the ini is replayed, so a
+    // 1024x1024 board comes back 16:9-stretched until a restart.
     // `dir` must end with a separator.
     static void seedPitboardArt(const std::string& dir, PitboardAsset& board);
 public:
@@ -1126,16 +1114,13 @@ public:
     // Where any pack's ini lives: <dir>\<stem>.ini, falling back to the pre-rename
     // <dir>\<packName>.ini and warning when a stale copy of the latter is being
     // shadowed. See core/pack_ini_path.h for the rule and why the fallback stays.
-    //
-    // The per-theme name it replaced was chosen so a skinner with several inis open
-    // could tell the editor tabs apart. That cost is real and was paid anyway: it
-    // also meant copying a pack to start a new one produced a folder the plugin
-    // silently ignored, which is the worse of the two. Editors show the parent
-    // folder; nothing else read the name.
+    // One fixed stem per type, not a per-pack name: copying a pack to start a new
+    // one must not produce a folder the plugin silently ignores (editors show the
+    // parent folder, so the name is not needed to tell tabs apart).
     // `dir` must end with a separator; `stem` is a PackIni::k* constant.
     //
-    // NOT static any more: the shadow warning is only for a pack the USER owns
-    // (see PackIni::resolve), and answering that needs m_userBaseDir.
+    // NOT static: the shadow warning is only for a pack the USER owns (see
+    // PackIni::resolve), and answering that needs m_userBaseDir.
     std::string packIniPath(const std::string& dir, const std::string& packName,
                             const char* stem) const;
 

@@ -32,7 +32,7 @@ set -euo pipefail
 DEP_GROUPS=(
     "build|cmake build-essential||cmake g++"
     "python|python3 python3-pip||python3"
-    "mingw|gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 ccache||x86_64-w64-mingw32-g++"
+    "mingw|gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 ccache||x86_64-w64-mingw32-g++ x86_64-w64-mingw32-objdump"
     # `wine` provides the /usr/bin/wine launcher; `wine64` alone (Ubuntu's 9.0
     # repack) ships only libwine, and the Wine job silently reported "wine not
     # found" for exactly that reason.
@@ -48,6 +48,11 @@ DEP_GROUPS=(
     "wine|wine wine64||wine"
     "nsis|nsis||makensis"
     "cppcheck|cppcheck||cppcheck"
+    # kramdown is what GitHub Pages runs the README through (Jekyll), which is
+    # NOT what github.com renders with - check_pages_render.sh models the site.
+    # The GFM parser is a separate package and both are needed; the gate SKIPs
+    # rather than failing when either is missing.
+    "pages|ruby ruby-kramdown ruby-kramdown-parser-gfm||ruby"
     "clang|clang||clang++"
     "node|nodejs npm||node"
     # Headless screenshots of the REAL companion window

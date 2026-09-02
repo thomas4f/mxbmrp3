@@ -111,6 +111,12 @@ public:
     // Force window information refresh (useful for detecting resizes at run start/stop)
     void forceWindowRefresh();
 
+    // The cached game window handle (opaque void* so callers stay windows.h-free);
+    // null until window discovery has run. Its consumer was the in-game overlay
+    // window, which parented itself to this; that renderer is gone and the only
+    // caller left is gl_probe, which uses it to find the game's device context.
+    void* getGameWindowHandle() const { return m_gameWindow; }
+
 private:
     // Order matches the member declaration order below (see BaseHud's note).
     InputManager() :

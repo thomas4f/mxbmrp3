@@ -144,6 +144,9 @@ private:
     // Synchronous one-shot POST used by the custom-event worker. Short timeout
     // so a slow send can't stall shutdown for long; not cancellable.
     void postSync(const std::wstring& host, const std::string& body, unsigned long timeoutMs);
+    // The single sanctioned way to write a request body to the log — it redacts
+    // the install id first. See its definition in analytics_manager_transport.cpp.
+    void logOutgoing(const std::wstring& host, const char* path, const std::string& body) const;
 
     // GoatCounter headcount hit (one authenticated POST to /api/v0/count — the
     // public pixel bot-filters non-browser senders) — runs on the same

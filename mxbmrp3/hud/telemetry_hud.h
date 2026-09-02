@@ -84,9 +84,8 @@ private:
     static constexpr int GRAPH_WIDTH_CHARS = 33;    // Width for graph display (left side)
     static constexpr int LEGEND_WIDTH_CHARS = 9;    // Width for legend/values (right side) - fits "RPM 12345"
     // Graph HEIGHT, in text rows -- a user setting, not a constant. This is the knob
-    // that makes the panel shrink and grow the way Standings' "Rows to show" does;
-    // it was a fixed 6 lines, so the only way to change this HUD's height was the
-    // scale slider, which changes everything else with it.
+    // that makes the panel shrink and grow the way Standings' "Rows to show" does,
+    // without the scale slider, which changes everything else with it.
     //
     // Rows rather than pixels so it lands on the same lattice every other panel uses:
     // one row is lineHeightNormal, so any value here keeps the panel a whole number of

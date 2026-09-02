@@ -28,8 +28,7 @@ static void debugLogStandingsAt(const PluginData& pd, const char* where);
 
 // Everything one session must not carry into the next. Called from the
 // SessionStarted branch of onRaceEvent — and, separately, from that function's
-// spotter-is-off early return, which is why this is a function at all rather
-// than the block it used to be inline.
+// spotter-is-off early return.
 void SpotterManager::resetSessionState() {
     m_pendingSessionEnd = PendingSessionEnd{};
     m_sessionEndSpoken = false;
@@ -107,11 +106,10 @@ void SpotterManager::onRaceEvent(EventLogType type, int raceNum,
     // branch below — the ONLY place per-session state is wiped (milestones,
     // the pace tracker, the cached gaps either side, the last split, the
     // pending lap and fastest-lap holds, the fuel latches, the last reported
-    // position). SessionStarted is a General cue, so muting General used to
-    // carry every one of those across a session boundary and reintroduce the
-    // bugs that block's own comments enumerate: race 2's first crossing
-    // reporting race 1's trend, a sector subtracted across a restart, a stale
-    // lap flushing into the next session.
+    // position). SessionStarted is a General cue, so an early return here
+    // would let muting General carry every one of those across a session
+    // boundary: race 2's first crossing reporting race 1's trend, a sector
+    // subtracted across a restart, a stale lap flushing into the next session.
     //
     // The work between here and there is per-EVENT, not per-frame, so nothing
     // is bought by skipping it.
@@ -189,14 +187,14 @@ void SpotterManager::onRaceEvent(EventLogType type, int raceNum,
     // the shipped pack like every other cue's.
     if (type == EventLogType::SessionStarted) {
         resetSessionState();
-        // session_started now means "this session is active", for every
+        // session_started means "this session is active", for every
         // session kind — the generic key says which via {session_name}, so a
         // pack writes ONE line. The
         // per-kind keys stay as optional refinements (they fall back to
         // session_started), for a recorded voice that cannot stitch a session
         // name, or wording you want different per kind.
         //
-        // It no longer means "green flag": a standing start holds on the grid
+        // It does NOT mean "green flag": a standing start holds on the grid
         // after this fires, and the gate falling is gate_drop.
         switch (Game::Adapter::toCanonicalSession(
             PluginData::getInstance().getSessionData().session,
@@ -394,10 +392,9 @@ void SpotterManager::onRaceLapCompleted(int raceNum, int completedLaps,
     // so it is one set of variables handed to the cues that mark it, rather
     // than a separate cue per number.
     //
-    // The gap to the rider ahead used to be its own cue (gap_ahead, plus a
-    // gaining and a losing variant). It fired at exactly this instant and
-    // marked no moment of its own, so it was three keys for what is a value:
-    // it is now {gap_to_ahead} / {trend_ahead} / {gained_on_ahead} on the cues
+    // The gap to the rider ahead is NOT its own cue: it resolves at exactly
+    // this instant and marks no moment of its own, so it is a value —
+    // {gap_to_ahead} / {trend_ahead} / {gained_on_ahead} on the cues
     // below. The BEHIND gap is not like that and stays a cue — it resolves
     // when that rider reaches a point you already crossed, which is a moment
     // nothing else marks.
@@ -411,11 +408,11 @@ void SpotterManager::onRaceLapCompleted(int raceNum, int completedLaps,
     // laps shown — one history, not two that could drift apart. Same thresholds
     // as its colours, so the voice and the amber/red agree.
     //
-    // ABOVE the Timing gate on purpose: fuel is a General cue, and it sat below
-    // the lap report until that report moved to a deferred flush and took
-    // this block out with it. Both keys stayed registered, documented and
-    // shipped, firing never. `every key in the registry is emitted by something`
-    // (test_spotter_pack_census.cpp) is what notices next time.
+    // ABOVE the Timing gate on purpose: fuel is a General cue, and below the
+    // gate it would go with the lap report's deferred flush and never fire —
+    // both keys registered, documented and shipped, silent. `every key in the
+    // registry is emitted by something` (test_spotter_pack_census.cpp) is what
+    // notices.
     {
         // Same reach as the track record above: a HUD accessor on the game
         // thread, which is where every caller of this function already is.
@@ -426,7 +423,7 @@ void SpotterManager::onRaceLapCompleted(int raceNum, int completedLaps,
             const bool low = laps < FuelEstimate::kWarnLaps;
             // `fuel_critical` ships commented out, so on the stock pack it has
             // no phrase and emitting it says nothing -- while still latching
-            // BOTH flags, which used to swallow the `fuel_low` that would have
+            // BOTH flags, swallowing the `fuel_low` that would have
             // spoken. Pick the key that actually exists, so a pack decides what
             // it hears rather than what it is silenced by.
             const bool haveCritical = m_pack.phrases.count("fuel_critical") ||
@@ -441,8 +438,8 @@ void SpotterManager::onRaceLapCompleted(int raceNum, int completedLaps,
                 m_fuelLowSaid = true;
                 SpotterVars::Vars fv;
                 // lapsWords, not numberWords: it carries the noun and agrees
-                // with it. The template used to spell " laps" itself, so a
-                // one-lap warning said "Fuel getting low, one laps."
+                // with it, so a one-lap warning cannot say "Fuel getting low,
+                // one laps."
                 fv.fuelLaps = SpotterPhrase::lapsWords(static_cast<int>(laps));
                 emitCue(sayCritical ? "fuel_critical" : "fuel_low", SpotterPhrase::Category::General, std::move(fv), nowMs);
             }
@@ -473,10 +470,8 @@ void SpotterManager::onRaceLapCompleted(int raceNum, int completedLaps,
     // gives the standings from before the crossing. That is a whole lap stale,
     // and it sounds plausible: "P four" when you just took third.
     //
-    // The plugin already knew. The "finished P#" event log entry was moved out
-    // of this same handler into batchUpdateStandings for exactly this reason,
-    // with a comment saying so — the spotter was doing what that comment warns
-    // against.
+    // The "finished P#" event log entry lives in batchUpdateStandings rather
+    // than this handler for exactly this reason.
     //
     // What IS measured here is the ahead gap, above: that comes from the
     // spotter's own timing points, not from standings, and it is a stopwatch
@@ -575,8 +570,7 @@ void SpotterManager::onRaceSplit(int raceNum, int lapNum, int splitIndex,
     // out-laps and cool-downs, where "behind by four seconds" means nothing.
     // The SECTOR cue below is the opposite: practice and qualifying are
     // exactly where you want your sector times read back, so gating the whole
-    // callback on isRaceSession() (which this used to do) silenced it in the
-    // sessions it is for.
+    // callback on isRaceSession() would silence it in the sessions it is for.
     if (pd.isRaceSession()) {
         if (isCategoryEnabled(SpotterPhrase::Category::Timing) &&
             raceNum == m_pace.pendingBehind()) {
@@ -938,8 +932,8 @@ void SpotterManager::flushDeferredCues() {
     // moved on in between, and a report about a rider you are no longer
     // watching is not yours to hear.
     if (raceNum != pd.getDisplayRaceNum()) return;
-    // The cool-down lap crosses the line too, and this used to report a
-    // position and a gap for it — a race you had already finished.
+    // The cool-down lap crosses the line too; without this gate it reports a
+    // position and a gap for a race you have already finished.
     if (subjectRaceOver()) return;
     const int position = pd.getPositionForRaceNum(raceNum);
     if (position <= 0) return;
@@ -982,25 +976,22 @@ void SpotterManager::flushDeferredCues() {
         emitCue("lap_invalidated", SpotterPhrase::Category::Timing, std::move(v), nowMs);
     }
 
-    // ONE cue for the crossing, not two. This used to be `position_report`
-    // (your position, on by default) plus `lap_completed` (your lap time, off
-    // by default because the other one already spoke at the same instant) —
-    // two keys for one moment, where the only real difference was WHAT each
-    // template happened to say. Since every variable works in every cue, that
-    // difference belongs to the template, not to the key: a pack that wants
+    // ONE cue for the crossing, not two: your position and your lap time are
+    // one moment, and since every variable works in every cue the difference
+    // between them belongs to the template, not to the key: a pack that wants
     // the time says {last_lap_time}, one that wants the position says
     // {position}, and one that wants both says both.
     //
-    // `lap_completed` is the name that survived because it names the MOMENT.
-    // "position_report" named a particular report — a content choice — which
-    // is exactly the thing being made configurable, and the pack format's own
-    // rule is that a cue is a moment and everything else is a variable.
+    // `lap_completed` because it names the MOMENT. A key naming a particular
+    // report — a content choice — is exactly the thing being made
+    // configurable, and the pack format's own rule is that a cue is a moment
+    // and everything else is a variable.
     SpotterVars::Vars lapVarsOut = m_pendingLap.vars;
     lapVarsOut.eventTime = SpotterPhrase::lapTimeWordsMs(m_pendingLap.lapTimeMs);
     // THE THIRD TELLING. A lap that was a personal or session best has already
     // had its time spoken by that cue; a lap_completed variant naming
-    // {last_lap_time} then said the same number again, immediately after. With
-    // the fastest-lap duplicate above that made three in one crossing.
+    // {last_lap_time} would then say the same number again, immediately after
+    // — with the fastest-lap duplicate above, three in one crossing.
     //
     // Suppressed rather than given its own cue key: every variant that names
     // the time keeps it in an [optional group] precisely so it can drop, so
@@ -1145,12 +1136,11 @@ void SpotterManager::emitGapCue(const SpotterPace::Gap& gap, int sessionTimeMs) 
     const std::string words = SpotterPhrase::gapWordsMs(gap.gapMs);
     SpotterVars::Vars vars;
     vars.gapToBehind = words;
-    // The NAME travels with the number. {rider_behind} used to come from the
-    // live order at emit time, while the stopwatch was taken against whoever
-    // was behind when the report armed -- a rider passed between the arm and
-    // the resolve spoke as "Behind you, rider twelve, two point one" with 2.1
-    // measured against rider forty-seven. Gap::raceNum is who the stopwatch
-    // actually timed, so that is who the sentence names.
+    // The NAME travels with the number: Gap::raceNum is who the stopwatch
+    // actually timed, so that is who the sentence names. Taken from the live
+    // order at emit time instead, a rider passed between the arm and the
+    // resolve would speak as "Behind you, rider twelve, two point one" with
+    // 2.1 measured against rider forty-seven.
     vars.riderBehind = SpotterPhrase::riderRef(gap.raceNum, -1);
     vars.lastLapBehind = lastLapWordsFor(gap.raceNum);
     if (gap.hasTrend) {
@@ -1217,10 +1207,8 @@ bool SpotterManager::bestLapIsFirstLap() const {
 
 // True once the rider the cues are ABOUT has stopped racing — took the flag,
 // retired, was disqualified or never started. Everything a spotter says about
-// your race is a lie after that point, and the tapes are full of it: the demo
-// weekend spoke "P two, twenty point zero to rider ninety nine, losing" and
-// "Behind, five point five, dropping back" AFTER the checkered flag, on the
-// cool-down lap; Farm 14 kept calling gaps after the player had retired.
+// your race is a lie after that point: a position and gaps called on the
+// cool-down lap after the checkered flag, or after you have retired.
 //
 // The mirror image of the pre-start grid grace in onTrackPositions, and quiet
 // for the same reason — not racing, so the numbers describe nothing.

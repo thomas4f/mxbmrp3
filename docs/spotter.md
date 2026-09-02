@@ -2,7 +2,7 @@
 
 A spotter in your ear while you ride. The first half of this page is what it does and how to set it up; [Writing a voice pack](#writing-a-voice-pack) is how to reword it or give it your own voice. [`spotter-reference.md`](spotter-reference.md) is the lookup table - every callout with when it fires and which switch mutes it, generated from the plugin itself so it can't fall behind.
 
-Turn on **Spoken audio** in Settings > Spotter, or click the checkbox beside the tab. It's off until you do.
+Turn on **Spoken audio** (Settings > Spotter, or the checkbox beside the tab).
 
 ## What it calls
 
@@ -19,7 +19,7 @@ Out of the box the callouts are read by Windows text-to-speech, using whichever 
 
 **Speed** changes the pace of the voice without changing its pitch.
 
-Voice packs with *recorded* audio are a separate download - they're tens of megabytes for a feature that's off until you turn it on. Once extracted into `spotters\` under your [Documents plugin folder](../README.md#modding) they appear under **Voice pack**.
+Voice packs with *recorded* audio are a separate download - tens of megabytes that most installs never need. Once extracted into `spotters\` under your [Documents plugin folder](../README.md#modding) they appear under **Voice pack**.
 
 Cycling either one plays a sample line, so you pick by ear rather than by name. It's the same line every time, on purpose - it's a comparison - and it's built to expose what actually differs between voices: a rider number and a lap time, both stitched together from that voice's number clips, which is where packs sound most unlike each other.
 
@@ -37,7 +37,7 @@ The Spotter tab carries the distances that decide when a proximity call fires, i
 
 ## Changing the words
 
-The wording is a file you can edit. `mxbmrp3_data\spotters\default\default.ini` holds every line the spotter says - and it *is* the wording, not an override on something built in, so commenting a row out silences that callout outright. Copy the folder into your [Documents plugin folder](../README.md#modding) and your version survives updates.
+The wording is a file you can edit. `mxbmrp3_data\spotters\default\spotter.ini` holds every line the spotter says - and it *is* the wording, not an override on something built in, so commenting a row out silences that callout outright. Copy the folder into your [Documents plugin folder](../README.md#modding) and your version survives updates.
 
 The full authoring guide, including recording your own voice, is below.
 
@@ -49,7 +49,7 @@ A spotter voice is a **pack**: a folder holding a `spotter.ini` that names every
 
 **Text only.** This is what ships - `spotters\default\spotter.ini`, every line the spotter says, read by Windows text-to-speech. Rewording a callout, muting one (`key =` with nothing after it), or adding alternates needs no audio tools at all. Copy the folder into `spotters\` under your [Documents plugin folder](../README.md#modding), rename the folder, edit, and pick it in Settings > Spotter. The ini is called `spotter.ini` in every pack, so the folder name is the only thing to change. It's grouped under the same five headings as the Callouts switches there - **General**, **Timing**, **Opponents**, **Proximity**, **Hazards** - so silencing a whole group is a switch, not an edit; editing is for the finer cut.
 
-**Recorded.** Packs with real audio are a separate download rather than part of the installer - they're tens of megabytes for a feature that's off until you turn it on. They add `_wav` and `_mix` rows pointing at their clips:
+**Recorded.** Packs with real audio are a separate download rather than part of the installer - tens of megabytes that most installs never need. They add `_wav` and `_mix` rows pointing at their clips:
 
 ```
 spotters\
@@ -100,4 +100,4 @@ Some keys are refinements of a more general one and **fall back to it** - `secto
 
 `[Mix] gap_ms` tunes how those stitched pieces meet, and it's the knob to reach for if a number sounds like two words rather than one. Positive is silence between clips (60 ms if the key is absent), `0` butt-joins them, and a **negative** value overlaps them with a crossfade. A pack carrying only `num_0..99` says every three-digit rider number as a join, so `965` is "nine" + "sixty five" and `-40` is the difference between hearing a number and hearing two. The value is in your voice's own timing, so the Speed setting scales it.
 
-Bind **Spotter Cue** under Settings > Hotkeys and it speaks your `hotkey_triggered` line on demand - the fastest way to hear a line you're writing without waiting for the race to produce the event it belongs to. To record your own, start from a downloaded pack's folder, rename the folder, and replace the clips: **16-bit mono PCM WAV**, which the reader requires and will otherwise skip the clip for. The sample RATE is yours to choose - the shipped voices use 12 kHz - but keep one rate across the pack, since stitching a number from clips of mixed rates produces nothing at all. Your voice appears in Settings > Spotter > Voice pack and the choice is stored **by name**, so adding or removing other packs never reassigns it. The **Reload Config** hotkey re-copies your folder from Documents and re-reads it without restarting - including changed audio, which themes and pit boards can't do - so rewording a line is edit, press, listen.
+Bind **Spotter Cue** (Settings > Hotkeys) and it speaks your `hotkey_triggered` line on demand - the fastest way to hear a line you're writing without waiting for the race to produce the event it belongs to. To record your own, start from a downloaded pack's folder, rename the folder, and replace the clips: **16-bit mono PCM WAV**, which the reader requires and will otherwise skip the clip for. The sample RATE is yours to choose - the published voices use 12 kHz - but keep one rate across the pack, since stitching a number from clips of mixed rates produces nothing at all. Your voice appears under **Voice pack** (Settings > Spotter) and the choice is stored **by name**, so adding or removing other packs never reassigns it. The **Reload Config** hotkey re-copies your folder from Documents and re-reads it without restarting - including changed audio, which themes and pit boards can't do - so rewording a line is edit, press, listen.

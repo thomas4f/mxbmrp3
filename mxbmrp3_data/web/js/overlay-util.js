@@ -195,14 +195,34 @@ function applyPalette(palette) {
 // --- Font sync ---
 // CSS @font-face family names match the in-game .fnt filenames exactly,
 // so we can use them directly as CSS font-family values.
-// This set tracks which fonts have web versions bundled.
+//
+// EVERY SHIPPED FONT BELONGS HERE. The plugin sends the chosen font NAME for
+// each category, and any discovered font can fill any category (emphasis cuts
+// like RobotoMono-Bold included — they are hidden from the picker's cycler, not
+// from the setting), so a shipped face missing from this set silently drops
+// that choice back to the CSS default: the overlay quietly stops matching the
+// game, with nothing logged. That is how the three IBM Plex faces sat unsynced
+// through the whole life of the Carbon themes, which name them for all six
+// categories.
+//
+// A font the USER dropped into their own fonts/ folder is legitimately absent —
+// unbundleable by definition, and degrading to the default is exactly what this
+// set is for. Pinned by tests/web/tests/assets.spec.js.
 var availableFonts = {
     "Audiowide-Regular": true,
     "EnterSansman-Italic": true,
     "RobotoMono-Regular": true,
     "RobotoMono-Bold": true,
     "FuzzyBubbles-Regular": true,
-    "Tiny5-Regular": true
+    "Tiny5-Regular": true,
+    "PermanentMarker-Regular": true,
+    "RockSalt-Regular": true,
+    "CaveatBrush-Regular": true,
+    "ReenieBeanie-Regular": true,
+    "GloriaHallelujah-Regular": true,
+    "IBMPlexSans-Regular": true,
+    "IBMPlexSans-SemiBold": true,
+    "IBMPlexMono-Regular": true
 };
 
 function applyFonts(fonts) {

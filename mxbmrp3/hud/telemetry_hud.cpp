@@ -49,7 +49,7 @@ void TelemetryHud::update() {
     // Rebuild only when new telemetry arrived (data dirty fires per
     // InputTelemetry change, ~100Hz) or layout changed. The graph output is
     // identical between telemetry ticks, so rebuilding every render frame
-    // (e.g. 480fps) wasted >50% of the ~1600 line-segment builds.
+    // (e.g. 480fps) would waste most of the ~1600 line-segment builds.
     if (isDataDirty() || isLayoutDirty()) {
         rebuildAndRecord();
     }
@@ -63,13 +63,14 @@ bool TelemetryHud::handlesDataType(DataChangeType dataType) const {
 
 // Clear the history buffers when this HUD first becomes visible on ANY surface.
 //
-// Was keyed off setVisible() -- the GAME toggle -- so enabling the HUD only on the
-// companion window drew whatever stale samples were left over rather than starting
-// fresh. setCompanionVisible() is not virtual and never reached the override.
+// Any surface, not setVisible() -- the GAME toggle: enabling the HUD only on the
+// companion window must start fresh rather than draw whatever stale samples are
+// left over, and setCompanionVisible() is not virtual, so an override there would
+// never be reached.
 //
 // Note this is the CONSUMER side of the same HUD whose PRODUCER side is pinned by
-// telemetry_companion_test.cpp: accumulation already asks isVisibleAnySurface()
-// (isTelemetryHistoryNeeded), so the reset had to ask the same question or the
+// telemetry_companion_test.cpp: accumulation asks isVisibleAnySurface()
+// (isTelemetryHistoryNeeded), so the reset has to ask the same question or the
 // first companion-only screenful mixes fresh samples into an old buffer.
 //
 // Per frame rather than in the setters: any-surface visibility also flips when the
@@ -314,13 +315,9 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
     float pointSpacing = width / (HistoryBuffers::MAX_TELEMETRY_HISTORY - 1);
     float lineThickness = stripChartLineThickness();  // Line thickness for graph rendering
 
-    // PERFORMANCE OPTIMIZATION: Merge 4 separate loops into single pass
-    // Previous: 4 × O(199) = 796 iterations per frame
-    // New: 1 × O(199) = 199 iterations per frame (75% reduction)
-    // At 144 fps: reduces 114,624 iterations/sec to 28,656 iterations/sec
-    //
-    // Render inputs in order within each iteration: brake, clutch, RPM, then throttle
-    // This maintains the visual appearance (throttle appears on top) while reducing iterations
+    // ONE PASS over the history for every input (one O(199) loop rather than one
+    // per input). Inputs render in order within each iteration: brake, clutch, RPM,
+    // then throttle, so throttle appears on top.
     for (size_t i = 0; i < HistoryBuffers::MAX_TELEMETRY_HISTORY - 1; ++i) {
         // Front brake graph (always available - available for player and spectated riders)
         if (m_enabledElements & ELEM_FRONT_BRAKE) {

@@ -214,8 +214,8 @@ void LapLogHud::rebuildRenderData() {
 #endif
     float timeRightX = m_columns.time + colRightOffset;
 
-    // Get best sector times from cached ideal lap data (performance optimization)
-    // Previously recalculated from all laps on every rebuild - now use cached values
+    // Best sector times from cached ideal lap data, not recalculated from all laps
+    // on every rebuild.
     const IdealLapData* idealLapData = data.getIdealLapData();
     int bestSector1 = idealLapData ? idealLapData->bestSector1 : -1;
     int bestSector2 = idealLapData ? idealLapData->bestSector2 : -1;

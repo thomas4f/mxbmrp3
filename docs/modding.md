@@ -25,17 +25,17 @@ mxbmrp3/
 
 A pack's payload is its own `.tga` art, or `.wav` audio for a voice, alongside its `<type>.ini`. Every type's ini opens with the same `[pack]` section, and it takes an **optional `name`** giving the pack a human title in the picker. Leave it out and the folder name is used. It is a label only: a pack is stored and selected by its **folder** name, so retitling one never reassigns anybody's choice. User files override bundled assets of the same name.
 
-**What needs a restart and what does not.** ADDING or REMOVING a `.tga` needs one: sprites are handed to the game once at startup and everything holds them by number afterwards. Everything else the RELOAD_CONFIG hotkey picks up - a changed `.ini` (theme, gamepad, pit board, gauges), and a voice pack's `.wav` outright, since audio is opened by path as it plays. Redrawn `.tga` art is the case in between: the companion window re-reads it on the hotkey, while the game keeps the old art until you relaunch.
+**What needs a restart and what does not.** ADDING or REMOVING a `.tga` needs one: sprites are handed to the game once at startup and everything holds them by number afterwards. Everything else the **Reload Config** hotkey picks up - a changed `.ini` (theme, gamepad, pit board, gauges), and a voice pack's `.wav` outright, since audio is opened by path as it plays. Redrawn `.tga` art is the case in between: the companion window re-reads it on the hotkey, while the game keeps the old art until you relaunch.
 
 ## Panel themes
 
-A theme draws a frame, a header band and a body card around every HUD and the settings menu. Pick one under Settings > Appearance, or run with none.
+A theme draws a frame, a header band and a body card around every HUD and the settings menu. Pick one with **Panel Theme** (Settings > Appearance), or run with none.
 
 A light theme is worth a note: its text is near-black, so a HUD you run with its background switched off will draw dark text straight onto the track. Turn those backgrounds on, or keep a dark theme for on-track HUDs.
 
-Writing your own: a theme is a folder of 27 `.tga` slices plus a `theme.ini` of its colors, fonts and box terms. `tools/themeslice` cuts the slices out of one master image (it never draws - the art is yours), and `assets/themes/` in the repo holds the masters for the shipped themes plus a **debug** master whose every slice is a different flat colour, which is the fastest way to see where each of the 27 pieces actually lands.
+Writing your own: a theme is a folder of 27 `.tga` slices plus a `theme.ini` of its colors, fonts and box terms. `tools/themeslice` cuts the slices out of one master image (it never draws - the art is yours), and `assets/themes/` in the repo holds the masters for the shipped themes plus a **debug** master whose every slice is a different flat color, which is the fastest way to see where each of the 27 pieces actually lands.
 
-**Recolouring one is a single file.** `base = <theme>` layers your ini over a theme that already exists, so a folder containing nothing but a `theme.ini` is a complete theme:
+**Recoloring one is a single file.** `base = <theme>` layers your ini over a theme that already exists, so a folder containing nothing but a `theme.ini` is a complete theme:
 
 ```ini
 [pack]
@@ -67,12 +67,12 @@ gamepads\
   ds4\    gamepad.ini  ...
 ```
 
-Xbox and DualShock 4 ship built in, each with nine **brand-colour skins** (Orange, Crimson, Navy, Royal, Lime, Cyan, Yellow, Graphite, Silver) taken from the plugin's own BrandColors table, so a pad and a pit board of the same name match. To add your own, start from what you are actually changing:
+Xbox and DualShock 4 ship built in, each with nine **brand-color skins** (Orange, Crimson, Navy, Royal, Lime, Cyan, Yellow, Graphite, Silver) taken from the plugin's own BrandColors table, so a pad and a pit board of the same name match. To add your own, start from what you are actually changing:
 
 - **A reskin** - same controller, new look - is two files. Copy any shipped skin folder (say `xbox-crimson`), rename the folder, replace `background.tga`. The ini is called `gamepad.ini` in every pack, so there is nothing else to rename. Its `base = xbox` line is what makes that enough: whatever your folder and ini state wins, and everything they leave out - the sixteen button sprites, the geometry - is answered from the base pack, the same layering rule spotter voice packs use. Add one of the other `.tga` (names in the base's folder) only if you redraw it, and a geometry key only if your art moves things. A base must be a pack without a `base` of its own.
 - **A new controller** needs the full set: copy the `xbox` folder instead, replace all 17 `.tga` and adjust the `[size]` / `[offset]` / `[spacing]` values until the buttons line up - the shipped `xbox\gamepad.ini` documents every key.
 
-Either way the folder goes under `gamepads\` in your Documents plugin folder, and your pack appears in the Texture column of Settings > Widgets. The RELOAD_CONFIG hotkey re-reads the `.ini` without restarting, which makes nudging offsets quick. Source design files (PSD) are in [`assets/`](../assets/).
+Either way the folder goes under `gamepads\` in your Documents plugin folder, and your pack appears in the Texture column in Settings > Widgets. The **Reload Config** hotkey re-reads the `.ini` without restarting, which makes nudging offsets quick. Source design files (PSD) are in [`assets/`](../assets/).
 
 **Pitboard** - The pit board is a **pack** too, for a sharper reason than the gamepad: the board picture was always replaceable, but the offsets positioning each row on it lived in *your own settings file*, so a board you drew could not be given to anyone else. A pack keeps the two together:
 
@@ -81,7 +81,7 @@ pitboards\
   classic\   pitboard.ini  background.tga
 ```
 
-Nine skins of it ship - the same board with a recoloured frame, in the same nine brand colours as the gamepad skins - and any of them is the two-file template to copy for your own board: rename the folder, drop in your artwork, done - its `base = classic` line answers every row offset from the classic board, so you only add `[offset]` keys for rows your art puts somewhere else (`classic\pitboard.ini` names them all). They keep classic's white writing surface, so they need no `[text] color` - row text defaults to the marker black that surface is drawn for. A board with a DARK surface does need it; `classic\pitboard.ini` documents the key. Your board's **aspect ratio comes from its own art**, so it is no longer forced to the shipped 16:9. Pick it in Settings > Pitboard; RELOAD_CONFIG re-reads the `.ini` without a restart.
+Nine skins of it ship - the same board with a recolored frame, in the same nine brand colors as the gamepad skins - and any of them is the two-file template to copy for your own board: rename the folder, drop in your artwork, done - its `base = classic` line answers every row offset from the classic board, so you only add `[offset]` keys for rows your art puts somewhere else (`classic\pitboard.ini` names them all). They keep classic's white writing surface, so they need no `[text] color` - row text defaults to the marker black that surface is drawn for. A board with a DARK surface does need it; `classic\pitboard.ini` documents the key. Your board's **aspect ratio comes from its own art**, so it is no longer forced to the shipped 16:9. Pick it in Settings > Pitboard; the **Reload Config** hotkey re-reads the `.ini` without a restart.
 
 **Gauges** - The tacho and speedo are one **pack**, for the sharpest reason of the three: the ticks and figures are painted into the dial art while the needle used to be placed from numbers compiled into the plugin, so a face drawn to any other ceiling read wrong at every point but zero - and nothing anywhere said so. A pack keeps the picture and its scale together:
 
@@ -92,7 +92,7 @@ gauges\
 
 Both faces live in one pack because they are drawn as a set. To mix, you do not need two packs: each gauge stores its own choice, so you can run your tacho with the shipped speedo by picking them separately - and a pack with `base = classic` that contains only `tacho.tga` is a two-file set that does the same thing.
 
-The faces are square and drawn as a circle, so unlike a pit board there is no aspect to state - only what your art READS. `[tacho] max` and `[speedo] max` are the numbers worth checking first, along with `min-angle` / `max-angle` for how far your dial sweeps (0 is straight up; the shipped faces run -158 to 142). `speedo.max` is in km/h whatever unit your face is printed in, so a 0-140 mph dial writes `max-mph = 140` and the plugin converts. `needle-color`, `needle-length` and `needle-width` belong to the pack too, because a needle has to suit the face it sits on - your own `[TachoWidget] needleColor` in the settings file still wins if you set one. `classic\gauge.ini` documents every key. Pick a set in the Texture column of Settings > Widgets; RELOAD_CONFIG re-reads the `.ini` without a restart, which is what makes lining a needle up bearable.
+The faces are square and drawn as a circle, so unlike a pit board there is no aspect to state - only what your art READS. `[tacho] max` and `[speedo] max` are the numbers worth checking first, along with `min-angle` / `max-angle` for how far your dial sweeps (0 is straight up; the shipped faces run -158 to 142). `speedo.max` is in km/h whatever unit your face is printed in, so a 0-140 mph dial writes `max-mph = 140` and the plugin converts. `needle-color`, `needle-length` and `needle-width` belong to the pack too, because a needle has to suit the face it sits on - your own `[TachoWidget] needleColor` in the settings file still wins if you set one. `classic\gauge.ini` documents every key. Pick a set in the Texture column in Settings > Widgets; the **Reload Config** hotkey re-reads the `.ini` without a restart, which is what makes lining a needle up bearable.
 
 If you had drawn your own `tacho_widget_1.tga` before this, the plugin copies it into `gauges\legacy\` for you the first time it runs and selects it, so nothing is lost. That only works for art in your Documents plugin folder - a file dropped straight into the game's own `plugins\` folder cannot be told apart from the one older versions shipped there, so that one is left alone and the log says what to do with it.
 

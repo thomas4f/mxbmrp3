@@ -6,6 +6,8 @@
   .val{fill:#24292f;font-size:12px;font-weight:600}
   .title{fill:#24292f;font-size:14px;font-weight:700}
   .sub{fill:#57606a;font-size:11px}
+  .gap{fill:#57606a;opacity:.09}
+  .gaplbl{fill:#57606a;font-size:10px;opacity:.85}
   @media (prefers-color-scheme: dark){
     .grid{stroke:#30363d}
     .axis{stroke:#8b949e}
@@ -13,5 +15,7 @@
     .val{fill:#e6edf3}
     .title{fill:#e6edf3}
     .sub{fill:#8b949e}
+    .gap{fill:#8b949e;opacity:.13}
+    .gaplbl{fill:#8b949e}
   }
-</style><text x="12" y="20" class="title">Session length</text><text x="12" y="37" class="sub">59,108 reported sessions; median 16 min</text><line x1="46" y1="260" x2="744" y2="260" class="axis"/><line x1="46" y1="152.0" x2="744" y2="152.0" class="grid" stroke-dasharray="3 3"/><text x="40" y="156.0" class="sub" text-anchor="end">8,844.5</text><line x1="46" y1="44.0" x2="744" y2="44.0" class="grid" stroke-dasharray="3 3"/><text x="40" y="48.0" class="sub" text-anchor="end">17,689</text><rect x="62.3" y="44.0" width="83.8" height="216.0" rx="2" fill="#3fb950"/><text x="104.2" y="274" class="sub" text-anchor="middle">&lt;5 min</text><rect x="178.6" y="121.1" width="83.8" height="138.9" rx="2" fill="#3fb950"/><text x="220.5" y="274" class="sub" text-anchor="middle">5-15</text><rect x="295.0" y="126.2" width="83.8" height="133.8" rx="2" fill="#3fb950"/><text x="336.8" y="274" class="sub" text-anchor="middle">15-30</text><rect x="411.3" y="134.4" width="83.8" height="125.6" rx="2" fill="#3fb950"/><text x="453.2" y="274" class="sub" text-anchor="middle">30-60</text><rect x="527.6" y="187.9" width="83.8" height="72.1" rx="2" fill="#3fb950"/><text x="569.5" y="274" class="sub" text-anchor="middle">1-2 h</text><rect x="644.0" y="224.5" width="83.8" height="35.5" rx="2" fill="#3fb950"/><text x="685.8" y="274" class="sub" text-anchor="middle">2 h+</text></svg>
+</style><text x="12" y="20" class="title">Session length</text><text x="12" y="37" class="sub">192,117 reported sessions; median 16 min</text><line x1="46" y1="260" x2="744" y2="260" class="axis"/><line x1="46" y1="152.0" x2="744" y2="152.0" class="grid" stroke-dasharray="3 3"/><text x="40" y="156.0" class="sub" text-anchor="end">28,424.5</text><line x1="46" y1="44.0" x2="744" y2="44.0" class="grid" stroke-dasharray="3 3"/><text x="40" y="48.0" class="sub" text-anchor="end">56,849</text><rect x="62.3" y="44.0" width="83.8" height="216.0" rx="2" fill="#3fb950"/><text x="104.2" y="274" class="sub" text-anchor="middle">&lt;5 min</text><rect x="178.6" y="120.0" width="83.8" height="140.0" rx="2" fill="#3fb950"/><text x="220.5" y="274" class="sub" text-anchor="middle">5-15</text><rect x="295.0" y="121.8" width="83.8" height="138.2" rx="2" fill="#3fb950"/><text x="336.8" y="274" class="sub" text-anchor="middle">15-30</text><rect x="411.3" y="133.1" width="83.8" height="126.9" rx="2" fill="#3fb950"/><text x="453.2" y="274" class="sub" text-anchor="middle">30-60</text><rect x="527.6" y="187.9" width="83.8" height="72.1" rx="2" fill="#3fb950"/><text x="569.5" y="274" class="sub" text-anchor="middle">1-2 h</text><rect x="644.0" y="223.2" width="83.8" height="36.8" rx="2" fill="#3fb950"/><text x="685.8" y="274" class="sub" text-anchor="middle">2 h+</text></svg>

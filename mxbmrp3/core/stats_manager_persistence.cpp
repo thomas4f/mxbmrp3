@@ -2,10 +2,8 @@
 // core/stats_manager_persistence.cpp
 // StatsManager JSON persistence — file-path resolution, load, save, and the
 // one-time migration of the old split personal-bests / odometer files into the
-// unified stats file. Extracted verbatim from stats_manager.cpp when it grew
-// past ~1.2k lines; the StatsManager class, members, and public API are
-// unchanged. The file-path/migration constants and finiteOrZero helper — used
-// only by this half — moved here with it.
+// unified stats file. The file-path/migration constants and the finiteOrZero
+// helper live here because only this half uses them.
 // ============================================================================
 #include "stats_manager.h"
 #include "atomic_file_writer.h"

@@ -33,6 +33,8 @@ set(MXB_UNIT_SOURCES
     test_notice_priority.cpp
     test_analytics_remote_config.cpp
     test_analytics_endpoint.cpp
+    test_analytics_redact.cpp
+    test_render_asset_decode_mips.cpp
     test_analytics_theme.cpp
     test_analytics_spotter.cpp
     test_director_airtime.cpp
@@ -100,8 +102,13 @@ set(MXB_UNIT_SOURCES
     history_ring_test.cpp
     viewport_test.cpp
     test_thread_detach_grace.cpp
+    test_gl_state_fingerprint.cpp
+    test_render_batch.cpp
     shim/logger_stub.cpp
     ${MXB_ROOT}/mxbmrp3/core/hud_sw_renderer.cpp
+    ${MXB_ROOT}/mxbmrp3/core/render_asset_decode.cpp
+    ${MXB_ROOT}/mxbmrp3/core/gl_state_fingerprint.cpp
+    ${MXB_ROOT}/mxbmrp3/core/render_batch.cpp
     # test_asset_packs.cpp reads the shipped pack inis through the REAL walk rather
     # than a second parser of its own; it is <fstream> only, so it links here fine.
     ${MXB_ROOT}/mxbmrp3/core/layout_config.cpp

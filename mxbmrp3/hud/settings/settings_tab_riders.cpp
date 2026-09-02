@@ -4,6 +4,7 @@
 // ============================================================================
 #include "settings_layout.h"
 #include "../settings_hud.h"
+#include "../standings_hud.h"
 #include "../../core/plugin_utils.h"
 #include "../../core/plugin_constants.h"
 #include "../../core/tracked_riders_manager.h"

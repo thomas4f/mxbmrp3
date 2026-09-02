@@ -9,10 +9,10 @@ copied and edited.
 ## Recorded voices are a separate download
 
 Voices with recorded audio are **not bundled**. They are tens of megabytes of
-wav for a feature that is off until you turn it on, so they are published
-separately; the plugin works without them. Install one by extracting its folder
-here (or, better, into your own `Documents\PiBoSo\<Game>\mxbmrp3\spotters\`,
-which survives plugin updates) and picking it in Settings > Spotter.
+wav that most installs never need, so they are published separately; the plugin
+works without them. Install one by extracting its folder here (or, better, into
+your own `Documents\PiBoSo\<Game>\mxbmrp3\spotters\`, which survives plugin
+updates) and picking it in Settings > Spotter.
 
 ## Rolling your own
 

@@ -141,16 +141,16 @@ void SpeedoWidget::rebuildRenderData() {
     addBackgroundQuad(startX, startY, dialWidth, dialHeight);
     // No caption at all here -- not a title toggle switched off, NO title -- so
     // nothing reaches the caption path, and that is what emits the body card
-    // the constructor asked for with m_bContentCard. Without this the flag drew
+    // the constructor asked for with m_bContentCard. Without this the flag draws
     // nothing while still reserving the card's clearance (contentPaddingX reads the
-    // same flag), so a themed panel was a frame around bare content with an
+    // same flag), so a themed panel is a frame around bare content with an
     // unexplained cell of padding inside it. Same call the captioned widgets make
     // from their `else` branch.
     //
     // A sprite background opts a panel out of theming entirely, upstream of this
     // (resolveActiveTheme), so on the widgets that ship with one this is inert until
     // the sprite is switched off -- at which point they get the same treatment as
-    // every other widget instead of the one they had.
+    // every other widget.
     // check_hud_helpers.sh rule 10 fails the build if a new one forgets the call.
     emitContentCard(0.0f);
 
@@ -171,8 +171,7 @@ void SpeedoWidget::rebuildRenderData() {
     // smoothed = smoothed + (target - smoothed) * factor
     m_smoothedSpeed += (targetSpeed - m_smoothedSpeed) * NEEDLE_SMOOTH_FACTOR;
 
-    // The pack's own sweep -- Dial::angleFor is the expression that used to be
-    // written out here against compiled constants.
+    // The pack's own sweep -- see Dial::angleFor.
     float angleRad = dial.angleFor(m_smoothedSpeed) * DEG_TO_RAD;
 
     // Needle dimensions, as fractions of the dial this pack drew.
@@ -298,13 +297,11 @@ void SpeedoWidget::resetToDefaults() {
     m_bVisible = false;
     m_bShowTitle = false;
     // The dial face IS this widget, exactly as the pad's and the board's art is
-    // theirs -- so this says so, the same way they do. It used to be implied by
-    // setTextureVariant(1), which was the ONLY thing here setting the flag;
-    // dropping that call when the speedometer became a pack HUD left the flag at
-    // BaseHud's `false`, so a fresh install drew a needle on an empty box and
-    // then persisted showBackgroundTexture=0. Through the setter, not the
-    // member: it owns the theme-memo invalidation, and check_hud_helpers.sh
-    // fails a HUD that touches the member directly.
+    // theirs -- so this says so, the same way they do. Left at BaseHud's `false`,
+    // a fresh install draws a needle on an empty box and then persists
+    // showBackgroundTexture=0. Through the setter, not the member: it owns the
+    // theme-memo invalidation, and check_hud_helpers.sh fails a HUD that touches
+    // the member directly.
     setShowBackgroundTexture(true);
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
     m_fScale = 1.5f;  // 150% default scale

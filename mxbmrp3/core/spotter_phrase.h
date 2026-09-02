@@ -4,11 +4,10 @@
 // Header-only and Windows-free so the unit suite exercises it directly
 // (test_spotter_phrase.cpp); SpotterManager is the only production caller.
 //
-// SENTENCES ARE NOT HERE, and used to be. compose() turned an event into a
-// finished phrase, which meant the plugin carried a second copy of wording
-// that mxbmrp3_data/spotters/default/spotter.ini already held — see
-// SpotterManager::reloadCuePack for what that cost and why it is gone. What
-// remains is the part a pack CANNOT express: how to say a number out loud.
+// SENTENCES ARE NOT HERE. The wording lives in the cue pack
+// (mxbmrp3_data/spotters/default/spotter.ini), and composing phrases in the
+// plugin would be a second copy of it — see SpotterManager::reloadCuePack.
+// What is here is the part a pack CANNOT express: how to say a number out loud.
 //
 // Design notes, in decreasing order of likelihood someone "fixes" them:
 //  - Rider numbers are read RACING style ("four seventy six", "two oh six"),
@@ -156,8 +155,8 @@ struct LapTimeParts {
 };
 
 // The one place a lap time is broken into what a voice says. It takes
-// MILLISECONDS, because that is what the game gives every producer of one; it
-// used to take the event log's formatted text and parse it back, which made a
+// MILLISECONDS, because that is what the game gives every producer of one —
+// never the event log's formatted text parsed back, which would make a
 // display format load-bearing for audio and put a second copy of this reading
 // beside lapTimeWordsMs.
 inline LapTimeParts lapTimePartsMs(int ms) {
@@ -247,12 +246,11 @@ inline std::string secondsWords(int secs) {
 // truth and what the race feed shows. This is the spoken reading of it.
 // "two laps" / "one lap"; "" when laps < 0.
 //
-// NOT "two laps to go", which is what this used to say, and not the bonus
-// count plus one either — both were tried and both are wrong for the same
-// reason. A countdown from the moment overtime starts depends on where the
-// leader IS: the clock expires mid-lap, so with them 100m from the line "two
-// laps to go" undercounts and "three" overcounts, and no single number is
-// true for a race that is 1 minute plus 2 laps.
+// NOT "two laps to go", and not the bonus count plus one either — both are
+// wrong for the same reason. A countdown from the moment overtime starts
+// depends on where the leader IS: the clock expires mid-lap, so with them 100m
+// from the line "two laps to go" undercounts and "three" overcounts, and no
+// single number is true for a race that is 1 minute plus 2 laps.
 //
 // What IS exactly true, wherever the leader happens to be, is the STRUCTURE:
 // this lap, then the bonus laps. So the number stays the well-defined one —

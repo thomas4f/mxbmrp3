@@ -4,17 +4,13 @@
 // RiderTrackState, telemetry/input/history buffers, ideal-lap and lap-log
 // records, the benchmark counters, and the DataChangeType notification enum.
 //
-// WHY THESE ARE NOT IN plugin_data.h. They used to be, and they were the bulk of
-// it: 815 of that header's 1,605 lines were type definitions sitting in front of
-// the 789-line PluginData class, so "plugin_data.h is enormous" was really two
-// separate facts wearing one hat. They are also needed by far more code than the
+// WHY THESE ARE NOT IN plugin_data.h. They are needed by far more code than the
 // singleton is — handlers, adapters, every HUD that formats a row, and the JSON
 // snapshot builder all traffic in these structs, and a good number of them never
 // touch PluginData's API at all.
 //
 // So: include THIS header when you need the data, and plugin_data.h only when you
-// need the store. plugin_data.h includes this one, so nothing that already worked
-// stops working.
+// need the store (plugin_data.h includes this one).
 //
 // These are plain aggregates on purpose. They are copied, cached and compared all
 // over the plugin (change detection is largely memcmp-shaped POD comparison), and
@@ -264,9 +260,8 @@ enum class HazardType {
 // TrackPositionData` is a DIFFERENT struct with almost disjoint contents
 // (raceNum + posX/posY/posZ + yaw + trackPos): handleRaceTrackPosition() forwards
 // five scalars into this one and drops the world coordinates entirely, so the two
-// are not two copies of one thing. They shared the name until that cost two wrong
-// readings of which HUDs duplicate PluginData state; see
-// tests/integration/check_hud_raw_cache.sh, which leans on the distinction.
+// are not two copies of one thing. tests/integration/check_hud_raw_cache.sh leans
+// on the distinction when deciding which HUDs duplicate PluginData state.
 struct RiderTrackState {
     float trackPos;       // 0.0 to 1.0 along centerline
     int numLaps;          // Current lap count for handling wraparound
@@ -302,7 +297,7 @@ struct RiderTrackState {
     }
 };
 
-// (LeaderTimingPoint moved into the pure LiveGap::Engine — see live_gap_engine.h.)
+// (LeaderTimingPoint lives in the pure LiveGap::Engine — see live_gap_engine.h.)
 
 // Debug metrics for performance monitoring.
 //
@@ -367,9 +362,8 @@ struct HudTimingEntry {
     int quadCount;              // Quads this HUD emitted into the game frame (0 if hidden)
     int stringCount;            // Strings this HUD emitted (base, pre-shadow; shadow ~doubles globally)
     // THE WHOLE update() CALL, every frame, rebuild included -- so `update - rebuild`
-    // is what a HUD costs on the frames it is NOT dirty. That difference summed over
-    // the HUDs was 58.6us/frame in a 95us updateHuds, larger than every rebuild put
-    // together, and the aggregate could not say WHICH HUD it was.
+    // is what a HUD costs on the frames it is NOT dirty. That cost is comparable to
+    // the rebuilds put together, and the aggregate alone cannot say WHICH HUD it is.
     long long stintUpdateTimeUs;
     int       stintUpdateCount;
 
@@ -385,14 +379,12 @@ struct HudTimingEntry {
 // Collected by DrawHandler, consumed by BenchmarkWidget
 struct BenchmarkMetrics {
     static constexpr int MAX_CALLBACKS = 32;
-    // ONE SLOT PER PANEL, WITH ROOM. This was 32 against 42 registrable panels, so
-    // registerHud() returned -1 for the last ten and they vanished from every report
-    // -- silently, because a -1 index is exactly how a HUD legitimately opts out of
-    // profiling. The tell was subtle and wrong-looking rather than absent: the report
-    // prints "HUDs profiled: 32", which reads as a count of what was enabled and is
-    // really the cap, and the per-HUD table simply stopped at director_widget (the
-    // 32nd registered). Nothing was measurably broken, so nobody looked -- 41us of a
-    // 125us updateHuds sat outside the table with no row to name it.
+    // ONE SLOT PER PANEL, WITH ROOM. Past this cap registerHud() returns -1 and the
+    // panel vanishes from every report -- silently, because a -1 index is exactly
+    // how a HUD legitimately opts out of profiling. The tell is subtle rather than
+    // absent: the report's "HUDs profiled: N" reads as a count of what was enabled
+    // when it is really the cap, and the per-HUD table simply stops, leaving a
+    // chunk of updateHuds with no row to name it.
     //
     // Sized well clear of the tree rather than exactly to it: the loss is invisible
     // in the report, so a cap that a new HUD can reach is a trap that re-arms itself.
@@ -411,11 +403,6 @@ struct BenchmarkMetrics {
     // Aggregate metrics. The three timers below ACCOUNT FOR Draw: the callback's
     // own time is updateHuds + collectRender + framePoll plus the little left over,
     // so a Draw regression can be attributed from one report instead of bisected.
-    //
-    // Draw used to be timed as one lump with only the collect broken out, and the
-    // collect is the small half -- 5us against a 180us Draw. That left the other
-    // ~114us unattributed, and a reported 3x regression could not be narrowed
-    // without rebuilding the plugin at a dozen commits.
     long long collectRenderTimeUs = 0;  // Time spent in collectRenderData()
     long long updateHudsTimeUs = 0;     // Time spent in updateHuds() -- every HUD's
                                         // update(), rebuilds included
@@ -423,31 +410,23 @@ struct BenchmarkMetrics {
                                         // button/keyboard handling around them
     // The two ends of produceFrame() that none of the three above cover: the head
     // (draw-state, the entered-the-track reveal check) and the tail (render probe,
-    // display-target routing, feeding the companion window). Added because the
-    // other three left 28.6us/frame of a 119.6us Draw unattributed -- a quarter of
-    // it -- and "unattributed" is exactly the state this whole split exists to end.
+    // display-target routing, feeding the companion window), so no part of Draw is
+    // left unattributed -- which is the state this whole split exists to end.
     long long frameHeadTimeUs = 0;
     long long frameTailTimeUs = 0;
-    // STINT TOTALS, and the frame count to divide them by. These were per-frame
-    // ASSIGNMENTS reported straight -- one frame's sample against Draw's stint
-    // average -- so the parts and the whole were measured over different windows.
-    // The tell was a NEGATIVE remainder: update+collect+poll came to 177us against
-    // a 117.9us Draw, which no real accounting can do. Averaged over the same
-    // frames as Draw, they are comparable and the arithmetic closes.
+    // STINT TOTALS, and the frame count to divide them by. The parts must be
+    // averaged over the same frames as Draw's stint average, or the two are
+    // measured over different windows and the accounting does not close (the tell
+    // is a NEGATIVE remainder, which no real accounting can produce).
     long long frameTimerSamples = 0;
     // handleMouseInput() across the HUDs, plus the drag-target search around it.
-    // It shares updateHuds()' loop with update() but only update() was timed, so
-    // this sat inside updateHuds' total with nothing naming it -- 25.6us/frame of a
-    // 119.4us Draw, the last block the split could not account for.
+    // It shares updateHuds()' loop with update(), so without its own timer it sits
+    // inside updateHuds' total with nothing naming it.
     long long frameHudInputTimeUs = 0;
     // THE PLAN CHAIN's share of the rebuilds it sits inside: planPanel (spec
-    // resolution + layoutPanel), addPlanBackground and addPlanTitle. #319 replaced
-    // each HUD's own width/height arithmetic with these, and it is the one thing
-    // every plan panel gained at once -- which is why fmx_hud tripled without a
-    // line of its own changing, and why director_widget, still on the legacy
-    // chain, costs 0.1us while speed_widget costs 8.3 for the same four
-    // primitives. Timed here rather than by restoring one widget's old body, so
-    // the answer covers every HUD and leaves nothing to revert.
+    // resolution + layoutPanel), addPlanBackground and addPlanTitle. It is the one
+    // cost every plan panel shares (a legacy-chain widget does not pay it), so it
+    // is timed here rather than inside any one HUD and the answer covers them all.
     long long planChainTimeUs = 0;
     long long planChainCalls = 0;
     // planPanel ALONE, split out of the chain above, because the fix differs by
@@ -769,12 +748,9 @@ struct IdealLapData {
 struct LapLogEntry {
     // ZERO-based: race_lap_handler builds this from completedLapNumZeroIndexed,
     // and LapLogHud prints `entry.lapNum + 1` to get the "L3" a rider expects.
-    // The comment used to say 1-based, which is a lie that reads as an
-    // invariant: the spotter tested `lapNum == 1` for "is this the opening
-    // lap", got a silent false on every first lap, and only the transcript
-    // showed it. It now reads the classification's own bestLapNum, which IS
-    // 1-based (unified_types.h) — so if you are comparing lap numbers across
-    // those two sources, they do not agree and this is why.
+    // The classification's own bestLapNum IS 1-based (unified_types.h), so lap
+    // numbers from those two sources do not agree: `lapNum == 1` here is the
+    // SECOND lap, not the opening one (the spotter reads bestLapNum for that).
     int lapNum;       // 0-based index of the lap this entry describes
     int sector1;      // milliseconds - sector 1 time
     int sector2;      // milliseconds - sector 2 time
@@ -792,7 +768,7 @@ struct LapLogEntry {
           lapTime(total), isValid(valid), isComplete(complete) {}
 };
 
-// (LapTimer moved to its own header — see core/lap_timer.h.)
+// (LapTimer lives in its own header — see core/lap_timer.h.)
 
 // Data change notification types
 enum class DataChangeType {

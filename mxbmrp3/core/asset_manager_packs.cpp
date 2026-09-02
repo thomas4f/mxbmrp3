@@ -2,8 +2,7 @@
 // core/asset_manager_packs.cpp
 // AssetManager's art-pack handling: the gamepad/pitboard/gauge ini readers,
 // pack discovery (gamepads, pitboards, gauges) with base-pack sprite
-// resolution, the pack/theme layout reloads, and the per-type getters. Split
-// from asset_manager.cpp; every method body is unchanged.
+// resolution, the pack/theme layout reloads, and the per-type getters.
 // ============================================================================
 #include "asset_manager.h"
 #include "asset_manager_internal.h"
@@ -211,8 +210,7 @@ static void readGamepadIni(const std::string& iniPath, GamepadAsset& pad) {
 
 // See the declaration. One body for both pack types, because they differ only in
 // which ini reader they hand the file to -- the reset, the display name and the
-// path are identical, and writing them out twice is what let the board's copy go
-// missing entirely.
+// path are identical, and a second hand-written copy is how one goes missing.
 //
 // The geometry is reset to its own default first, so a key DELETED from a pack's
 // ini goes back to the built-in value instead of keeping its last override -- the
@@ -236,9 +234,9 @@ void AssetManager::reloadPackLayouts(std::vector<Pack>& packs, const char* subdi
     for (Pack& pack : packs) {
         // RESET, SEED, READ -- the same three steps discovery takes, in the same
         // order, because a step discovery takes and the reload does not is a setting
-        // the RELOAD_CONFIG hotkey silently deletes. The seed is where that bit:
-        // resetting to the struct's defaults threw away the pit board's TGA-derived
-        // art size, which only discovery knew how to recover.
+        // the RELOAD_CONFIG hotkey silently deletes. The seed is the one to miss:
+        // resetting to the struct's defaults throws away the pit board's TGA-derived
+        // art size, which only discovery knows how to recover.
         //
         // A SKIN resets to its BASE's geometry, not the built-ins -- and the base
         // is guaranteed already re-read by this loop, because discovery appends
@@ -265,16 +263,14 @@ void AssetManager::reloadPackLayouts(std::vector<Pack>& packs, const char* subdi
 void AssetManager::reloadThemeLayouts() {
     bumpThemeGeneration();   // every cached ThemeAsset* may now point at stale metrics
     // Re-copy the user's packs FIRST. A pack is authored in the user's own Documents
-    // folder (savePath\mxbmrp3\<type>\<name>\), and that copy only reached the plugin
-    // folder at startup -- so before this, editing the file you are meant to edit and
-    // pressing RELOAD_CONFIG did nothing at all, silently, because the hotkey re-read
-    // the stale copy under plugins\.
+    // folder (savePath\mxbmrp3\<type>\<name>\), and that copy otherwise reaches the
+    // plugin folder only at startup -- so without this pass, editing the file you are
+    // meant to edit and pressing RELOAD_CONFIG does nothing at all, silently, because
+    // the hotkey re-reads the stale copy under plugins\.
     //
-    // .tga TOO, now that one surface can act on it. Sprite indices still reach the
-    // GAME only once at init, so changed art cannot appear there without a restart --
-    // this used to be the reason for skipping .tga entirely, since copying a file that
-    // changes nothing on screen is worse than not copying it. What changed is the
-    // COMPANION window: its software renderer opens each .tga itself, so
+    // .tga TOO. Sprite indices reach the GAME only once at init, so changed art cannot
+    // appear there without a restart; the surface that can act on it is the COMPANION
+    // window, whose software renderer opens each .tga itself, so
     // CompanionWindow::requestArtReload() makes the new bytes visible on the next
     // frame. Copying them across is the half of that the game thread owns.
     //
@@ -342,8 +338,8 @@ void AssetManager::reloadThemeLayouts() {
         // ...and the palette and font set, for the same reason and with a sharper
         // edge: readThemeIni only ever sets colorSet[i] = TRUE, so without this a
         // deleted [colors] line keeps applying its last value forever. These are the
-        // two sections a skinner iterates on hardest, so they were the two where
-        // "delete a line and the built-in comes back" mattered most and worked least.
+        // two sections a skinner iterates on hardest, so they are the two where
+        // "delete a line and the built-in comes back" matters most.
         theme.colors   = fresh.colors;
         theme.colorSet = fresh.colorSet;
         theme.fonts    = fresh.fonts;
@@ -364,13 +360,9 @@ void AssetManager::reloadThemeLayouts() {
     // what makes authoring one bearable. Sprite indices are untouched here too; only
     // the numbers are re-read.
     //
-    // ONE CALL PER PACK TYPE, through one helper, because the two loops were written
-    // out by hand and only one of them existed: the board's was simply missing, so
-    // RELOAD_CONFIG re-read a pad's ini and silently ignored a board's -- while the
-    // sync above copied the board files across and README promised the hotkey worked.
-    // The count line below is what should have caught it (it passed m_pitboards.size()
-    // to a format string with two conversions, so the extra argument went nowhere).
-    // Written as one generic helper so a third pack type is a call, not a copy.
+    // ONE CALL PER PACK TYPE, through one helper, so no pack type's loop can be
+    // missing while the sync above copies its files across and README promises the
+    // hotkey works. A new pack type is a call, not a copy.
     reloadPackLayouts(m_gamepads, GAMEPADS_SUBDIR, PackIni::kGamepad, &readGamepadIni);
     reloadPackLayouts(m_pitboards, PITBOARDS_SUBDIR, PackIni::kPitboard, &readPitboardIni,
                       &seedPitboardArt);
@@ -439,10 +431,10 @@ void AssetManager::discoverGamepads() {
     // declares a base, resolved against the standalone set. Skins therefore
     // sort after their bases in the cycle order, which also reads sensibly.
     //
-    // Phase 1 -- standalone packs, the all-or-nothing rule unchanged: every
-    // stem must resolve to a readable .tga before any index is handed out, so
-    // a rejected pack cannot shift the indices of the packs after it (the
-    // rewind-on-rejection bug discoverThemes() documents, avoided by not
+    // Phase 1 -- standalone packs, under the all-or-nothing rule: every stem
+    // must resolve to a readable .tga before any index is handed out, so a
+    // rejected pack cannot shift the indices of the packs after it (the
+    // rewind-on-rejection trap discoverThemes() documents, avoided by not
     // allocating in the first place).
     for (const std::string& dir : dirs) {
         const std::string base = root + "\\" + dir + "\\";
@@ -477,7 +469,7 @@ void AssetManager::discoverGamepads() {
 
     // Phase 2 -- skins. Each stem resolves to the skin's own file when present,
     // else the base's (complete by phase 1), so the resolved set is always
-    // whole and the no-half-registered-pack rule survives the feature.
+    // whole and the no-half-registered-pack rule holds for skins too.
     for (const std::string& dir : dirs) {
         const std::string skinDir = root + "\\" + dir + "\\";
         const std::string ini = packIniPath(skinDir, dir, PackIni::kGamepad);
@@ -589,9 +581,9 @@ void AssetManager::discoverPitboards() {
         // pack that states no [art] block still draws its own art undistorted --
         // the ini only has to say so when the author wants something else.
         //
-        // Through the shared seed, not inline: this was written out here only, so the
-        // reload path reset the geometry and had no way to recover it (see
-        // seedPitboardArt). One implementation, reached from both.
+        // Through the shared seed, not inline: the reload path resets the geometry and
+        // needs the same recovery (see seedPitboardArt). One implementation, reached
+        // from both.
         seedPitboardArt(base, board);
         readPitboardIni(ini, board);
 
@@ -768,8 +760,7 @@ void AssetManager::discoverGauges() {
     warnAboutStrandedGaugeTextures();
 }
 
-// Gauge art sitting in the PLUGIN's own textures directory, which nothing reads
-// any more.
+// Gauge art sitting in the PLUGIN's own textures directory, which nothing reads.
 //
 // This is the half of the upgrade migrateLegacyGaugeArt() cannot fix. It works
 // from the user's Documents tree, because a file there was put there by a person;

@@ -10,10 +10,13 @@
 // the HUD anchors reverted to their captured defaults while the global anchors
 // kept the perturbed value. Self-contained doctest; see run_tests.sh.
 //
-// NOTE (documented gap): only Reset ALL is asserted here. Per-profile / per-HUD
-// resets clear the *profile diff*, not the shared base section — so perturbing a
-// base-section value doesn't exercise them (the "m_hudDefaults is not a clean
-// factory snapshot" property in CLAUDE.md). See tests/integration/API_COVERAGE.md.
+// SCOPE: only Reset ALL is asserted here. Per-profile / per-HUD resets clear the
+// *profile diff*, not the shared base section — so perturbing a base-section value
+// doesn't exercise them (the "m_hudDefaults is not a clean factory snapshot"
+// property in CLAUDE.md); reset_profile_test covers those. The per-TAB "Reset
+// <tab>" buttons were a documented gap here for their whole life, and every
+// hand-written one had fallen behind its tab by the time anything pressed one:
+// reset_tab_test.cpp now drives all of them.
 // ============================================================================
 #define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"

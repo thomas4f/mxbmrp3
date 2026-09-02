@@ -32,7 +32,7 @@ TimeWidget::TimeWidget()
 
 bool TimeWidget::handlesDataType(DataChangeType dataType) const {
     // Only SessionData (session length/type/format). The per-second clock tick is
-    // driven by update() polling getSessionTime(), and the widget no longer reads
+    // driven by update() polling getSessionTime(), and the widget does not read
     // leader laps-to-go, so it doesn't need the high-frequency Standings notifies.
     return dataType == DataChangeType::SessionData;
 }
@@ -70,8 +70,8 @@ void TimeWidget::update() {
 }
 
 void TimeWidget::rebuildLayout() {
-    // BOX-MODEL: one source of geometry — the fast path duplicated the sizing
-    // arithmetic, and a handful of strings is cheaper to rebuild than the drift.
+    // BOX-MODEL: one source of geometry — a fast path that duplicates the sizing
+    // arithmetic drifts, and a handful of strings is cheaper to rebuild than that.
     rebuildRenderData();
 }
 

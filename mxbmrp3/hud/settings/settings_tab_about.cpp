@@ -30,13 +30,25 @@
 // ============================================================================
 #include "settings_layout.h"
 #include "../settings_hud.h"
+#include "../version_widget.h"
 #include "../../core/color_config.h"
+#include "../../core/plugin_constants.h"
+
+#include <cstdio>
 
 BaseHud* SettingsHud::renderTabAbout(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("about");
     ColorConfig& colors = ColorConfig::getInstance();
 
-    ctx.addSectionHeading("About MXBMRP3");
+    // The version rides the heading's HINT slot rather than a row of its own:
+    // this page is the tallest tab and sets the panel height everywhere (see the
+    // budget above), and the hint draws on the heading's OWN line, so it costs
+    // nothing vertically. An About page is where people look for a version -- the
+    // settings footer next to it is only a button, and the number is otherwise
+    // on the Updates tab or the VersionWidget.
+    char versionHint[32];
+    snprintf(versionHint, sizeof(versionHint), "(v%s)", PluginConstants::PLUGIN_VERSION);
+    ctx.addSectionHeading("About MXBMRP3", versionHint);
     ctx.addTextRow("MXBMRP3 is a free, open-source community project", colors.getSecondary());
     ctx.addTextRow("developed by one person in their spare time.", colors.getSecondary());
     ctx.addSpacing();

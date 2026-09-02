@@ -55,6 +55,46 @@
     src: url('fonts/Tiny5-Regular.ttf') format('truetype');
     font-display: swap;
 }
+@font-face {
+    font-family: 'PermanentMarker-Regular';
+    src: url('fonts/PermanentMarker-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'RockSalt-Regular';
+    src: url('fonts/RockSalt-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'CaveatBrush-Regular';
+    src: url('fonts/CaveatBrush-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'ReenieBeanie-Regular';
+    src: url('fonts/ReenieBeanie-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'GloriaHallelujah-Regular';
+    src: url('fonts/GloriaHallelujah-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'IBMPlexSans-Regular';
+    src: url('fonts/IBMPlexSans-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'IBMPlexSans-SemiBold';
+    src: url('fonts/IBMPlexSans-SemiBold.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'IBMPlexMono-Regular';
+    src: url('fonts/IBMPlexMono-Regular.ttf') format('truetype');
+    font-display: swap;
+}
 
 html {
     font-size: 28px;  /* Fallback — overridden by CONFIG.fontSize in app.js */

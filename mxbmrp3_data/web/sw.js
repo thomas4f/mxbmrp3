@@ -36,10 +36,18 @@ var PRECACHE_URLS = [
     "icons/stopwatch.svg",
     "icons/wrench.svg",
     "fonts/Audiowide-Regular.ttf",
+    "fonts/CaveatBrush-Regular.ttf",
     "fonts/EnterSansman-Italic.ttf",
     "fonts/FuzzyBubbles-Regular.ttf",
+    "fonts/GloriaHallelujah-Regular.ttf",
+    "fonts/IBMPlexMono-Regular.ttf",
+    "fonts/IBMPlexSans-Regular.ttf",
+    "fonts/IBMPlexSans-SemiBold.ttf",
+    "fonts/PermanentMarker-Regular.ttf",
+    "fonts/ReenieBeanie-Regular.ttf",
     "fonts/RobotoMono-Bold.ttf",
     "fonts/RobotoMono-Regular.ttf",
+    "fonts/RockSalt-Regular.ttf",
     "fonts/Tiny5-Regular.ttf"
 ];
 

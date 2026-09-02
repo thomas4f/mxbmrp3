@@ -5,11 +5,9 @@
 //
 // WHAT THIS IS. The three HUDs that draw per-rider marker icons (map, radar,
 // gap bar) label them identically: a mode (position / race number / both), a
-// "P%d [#%d]" text format, and podium colors for P1/P2/P3. Before this header
-// each HUD carried its own copy of the LabelMode enum, the format switch and
-// the podium-color pick, and they had already drifted apart in shape (one
-// early-returned, two wrote an empty string) while agreeing in behavior only
-// by review.
+// "P%d [#%d]" text format, and podium colors for P1/P2/P3. One copy of the
+// LabelMode enum, the format switch and the podium-color pick keeps the three
+// agreeing by construction rather than by review.
 //
 // WHY IT LIVES HERE AND NOT IN BaseHud. Everything here is a pure function of
 // a few numbers, so it compiles with a plain g++ and no game and is exercised by
@@ -17,17 +15,13 @@
 // Wine. BaseHud would drag the whole render stack in for arithmetic that needs
 // none of it.
 //
-// GEOMETRY LIVES HERE TOO, and this paragraph used to say the opposite: "nothing
-// about label GEOMETRY (where the text sits relative to the icon, outlines,
-// opacity) is shared — that stays per-HUD". That was a fair reading of three
-// HUDs that genuinely did it three ways, but the three ways were not three
-// designs; they were one design plus drift. The outlines are gone (all three now
-// take the shared drop shadow, which modulates by the string's own alpha, so the
-// radar's fade survives without one), the gap formula is one formula, and what
-// was left differed only in two PARAMETERS -- which anchor, and whether the local
-// player's boost applies. Those are arguments, so place() takes them.
+// GEOMETRY LIVES HERE TOO. All three HUDs take the shared drop shadow (which
+// modulates by the string's own alpha, so the radar's fade survives without an
+// outline), the gap is one formula, and the HUDs differ only in two PARAMETERS
+// -- which anchor, and whether the local player's boost applies. Those are
+// arguments, so place() takes them.
 //
-// What is still per-HUD is genuinely per-HUD: where the icon IS (a track
+// What is per-HUD is genuinely per-HUD: where the icon IS (a track
 // position, a radar bearing, a gap along a bar) and what colour it fades to.
 // Nothing about that decides where the text sits relative to the icon.
 //
@@ -94,8 +88,8 @@ namespace MarkerLabel {
     }
 
     // WHERE THE ICON IS relative to its label. Numeric values are the on-disk INI
-    // representation (MapHud has shipped this setting for a while, as a NAME rather
-    // than a number, but keep them stable anyway) -- don't renumber.
+    // representation (MapHud persists this setting as a NAME rather than a number,
+    // but keep them stable anyway) -- don't renumber.
     enum class Anchor {
         BELOW = 0,   // Centred under the icon (default)
         ABOVE = 1,   // Centred over the icon
@@ -117,7 +111,7 @@ namespace MarkerLabel {
     // The gap between the icon's edge and the label, as a fraction of the icon's
     // half-size. Of the ICON, not of the font: the label hangs off the icon, so that
     // is what it should track -- and an icon-relative gap picks up marker scale and
-    // HUD scale for free, both of which a font-relative one used to miss.
+    // HUD scale for free, both of which a font-relative one would miss.
     constexpr float GAP_RATIO = 0.2f;
 
     // A side anchor centres the label vertically on the icon. The string's y is the

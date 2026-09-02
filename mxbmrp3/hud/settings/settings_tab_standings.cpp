@@ -337,8 +337,8 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
             case StandingsHud::GapMode::COUNT:    gapModeValue = "All"; break;
         }
         ctx.addCycleControl("Gap column", gapModeValue, 10,
-            // Modulus from the enum, not a literal: a new mode used to need this
-            // number bumped by hand, with nothing to catch a miss.
+            // Modulus from the enum, not a literal, so a new mode cannot leave a
+            // stale count behind with nothing to catch it.
             SettingsHud::CycleControl::enumMember(hud, &StandingsHud::m_gapMode,
                 static_cast<int>(StandingsHud::GapMode::COUNT), hud),
             hud, true, isOff, "standings.gap_mode");

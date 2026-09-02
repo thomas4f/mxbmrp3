@@ -3,10 +3,9 @@
 // How much fuel a lap costs, and how many laps are left in the tank. Pure, so
 // the unit suite drives it directly (test_fuel_estimate.cpp).
 //
-// WHY IT IS HERE RATHER THAN IN FuelWidget, where it grew: the spotter wants
-// the same number, and a HUD is the wrong place for a core singleton to read
-// from. Extracting it also made the first-lap rule below testable, which it
-// was not while it lived inside a render path.
+// WHY IT IS HERE RATHER THAN IN FuelWidget: the spotter wants the same number,
+// and a HUD is the wrong place for a core singleton to read from. Kept pure, the
+// first-lap rule below is testable, which it is not inside a render path.
 //
 // THE FIRST LAP IS SKIPPED, and that is the whole subtlety. Lap 1 includes
 // sitting on the grid with the engine running, so its consumption is inflated
@@ -36,15 +35,14 @@ inline float averagePerLap(const std::vector<float>& perLap,
                            size_t totalLapsRecorded) {
     if (perLap.empty()) return 0.0f;
     const bool firstLapInBuffer = (totalLapsRecorded == perLap.size());
-    // Lap 1 alone is not an estimate. The old code skipped it only once a
-    // second lap existed, so with exactly one sample the least trustworthy
-    // number in the whole history was used by itself -- and it is not merely
-    // inflated by grid idling. A real session: the bike sat at 7.20L on the
-    // pre-start screen and went green with far less, so lap 1 "consumed" 4.48L
-    // against a true 0.21L. That is a tank change, not consumption, and it put
-    // the estimate at 0.6 laps with a dozen in the tank; the low-fuel warning
-    // fired on it. Returning 0 here means lapsRemaining() answers "cannot be
-    // known", which is the truth until a second lap confirms a rate.
+    // Lap 1 alone is not an estimate: it is the least trustworthy number in the
+    // whole history, and not merely inflated by grid idling. A real session: the
+    // bike sits at 7.20L on the pre-start screen and goes green with far less,
+    // so lap 1 "consumes" 4.48L against a true 0.21L. That is a tank change, not
+    // consumption; used alone it puts the estimate at 0.6 laps with a dozen in
+    // the tank, and the low-fuel warning fires on it. Returning 0 here means
+    // lapsRemaining() answers "cannot be known", which is the truth until a
+    // second lap confirms a rate.
     if (firstLapInBuffer && perLap.size() == 1) return 0.0f;
     const size_t startIdx = firstLapInBuffer ? 1 : 0;
     float total = 0.0f;

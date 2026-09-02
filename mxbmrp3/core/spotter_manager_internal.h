@@ -1,9 +1,7 @@
 // ============================================================================
 // core/spotter_manager_internal.h
 // Shared internal helpers for the SpotterManager translation units
-// (spotter_manager*.cpp). Extracted verbatim from spotter_manager.cpp when it
-// was split into focused TUs; the values and logic are unchanged. The
-// functions are header-inline (were file-local in the single TU) so every
+// (spotter_manager*.cpp). The functions are header-inline so every
 // SpotterManager TU sees one definition without ODR conflicts. The probe
 // switch lives here for the same reason: every TU's probe sites must compile
 // out together when it is flipped.
@@ -25,23 +23,20 @@
 // It writes the paired logs the spotter is read from: "what did the spotter
 // say" beside "what did the standings table hold at that instant".
 //
-// It used to be gated - off unless a build set MXBMRP3_SPOTTER_PROBE - on the
-// grounds that a debug probe must not ship. That was right while the spotter
-// was being written and wrong for its first release: the thing we most need
-// after it reaches players is their opinion of the DEFAULT wording and pacing,
-// and every one of those reports arrives as a log. A log without the transcript
-// cannot answer "what did it actually say, and when", which is the whole
-// question. So the gate is gone rather than documented, and this is a decision
-// with an expiry: once the defaults settle, the probe goes entirely.
+// Not gated off in shipping builds, although a debug probe normally would be:
+// the thing most needed once the spotter reaches players is their opinion of
+// the DEFAULT wording and pacing, and every one of those reports arrives as a
+// log. A log without the transcript cannot answer "what did it actually say,
+// and when", which is the whole question. This is a decision with an expiry:
+// once the defaults settle, the probe goes entirely.
 //
-// A SWITCH RATHER THAN SIX SITES, because the site list was the actual hazard:
-// it has been miscounted three times, always low ("both", "four", "five"
-// against a real six), and the miss that never announced itself was the
-// forward declaration — delete the definition without it and a static is
-// declared and never defined, an error on the cross build. Set this to 0 and
-// every site compiles out together; there is nothing left to enumerate and
-// nothing to forget. That is also how it gets removed later: flip it, confirm
-// the build, then delete what the compiler stops reaching.
+// A SWITCH RATHER THAN PER-SITE GUARDS, because a site list is the hazard: it
+// is easy to miscount, and the miss that never announces itself is the forward
+// declaration — delete the definition without it and a static is declared and
+// never defined, an error on the cross build. Set this to 0 and every site
+// compiles out together; there is nothing to enumerate and nothing to forget.
+// That is also how it gets removed later: flip it, confirm the build, then
+// delete what the compiler stops reaching.
 //
 // The tape tooling depends on it too: tests/integration/spotter_transcript_driver
 // .cpp replays a recorded weekend and greps SPOTTER SAY to produce a readable

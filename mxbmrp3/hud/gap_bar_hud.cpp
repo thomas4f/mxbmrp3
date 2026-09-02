@@ -47,18 +47,11 @@ GapBarHud::GapBarHud()
     , m_barWidthPercent(DEFAULT_WIDTH_PERCENT)
     , m_fMarkerScale(DEFAULT_MARKER_SCALE)
 {
-    // TITLE RESTORED, TEMPORARILY. This panel was one of the three the caption was taken
-    // from (see BaseHud::m_titleSupported for the twelve that keep it off). It is back so
-    // the reason the caption was unwanted can be shown rather than described -- nothing
-    // else about this HUD reverted with it: the panel, its body card, the coloured
-    // block's outset and the stack spacing are all as the last few commits left them.
     // One-time setup
     DEBUG_INFO("GapBarHud created");
-    // A themed body card behind the bar, like every other table HUD -- this never opted
-    // in, and the bar sat straight on the frame while Standings and the rest gave their
-    // content a well to sit in. Safe now that the default offset is derived from this
-    // HUD's OWN padding (CenterStack::gapBarOffsetY), so the card's border no longer
-    // pushes the box off the top of the screen.
+    // A themed body card behind the bar, like every other table HUD: without it the
+    // bar sits straight on the frame while Standings and the rest give their content
+    // a well to sit in.
     m_bContentCard = true;
     setDraggable(true);
     m_quads.reserve(4);    // Background, progress bar, best lap marker
@@ -542,28 +535,19 @@ void GapBarHud::rebuildRenderData() {
     // whatever interior the plan hands back. Notices, Timing and Version each pass
     // CenterStack::boxWidth as their minPanelW; passing the same number here at the 50%
     // default makes all four panels identical -- including whatever the plan rounds to,
-    // which arithmetic on the bar could not guarantee.
-    //
-    // It used to size the BAR to their box instead, which left this panel one padding
-    // wider per side because the bar is content and their box is a panel. Measured at the
-    // shipped defaults before this change: gap bar panel 159500 against 137500 for the
-    // other two unthemed, 181500 against 148500 themed -- 2 * dim.paddingH in each case.
-    // That was known and deliberately left ("a gap bar wider than the panels below it is
-    // this HUD's documented exception"), on the grounds that narrowing the bar would move
-    // every marker on it. The markers move; they are drawn from barWidth and re-derive.
-    // A panel that does not line up with the stack it sits in is the worse of the two.
-    // (Previously 43 chars at the normal font to match the Performance/Telemetry HUD; that
-    // alignment is traded for matching the center-top stack.)
+    // which arithmetic on the bar could not guarantee. Sizing the BAR to their box
+    // instead leaves this panel one padding wider per side, because the bar is content
+    // and their box is a panel -- 2 * dim.paddingH, themed or not. The markers are drawn
+    // from barWidth and re-derive, so a narrower bar moves them correctly; a panel that
+    // does not line up with the stack it sits in is the worse of the two.
     float centerStackWidth = CenterStack::boxWidth(dim.fontSizeLarge, centerStackPaddingX());
     float basePanelWidth = 2.0f * centerStackWidth;
     float panelWidth = basePanelWidth * (static_cast<float>(m_barWidthPercent) / 100.0f);
-    // Height = lineHeightLarge (large-font title band = 2x lineHeightNormal = 4 snap-grid
-    // cells) so the bar lines up on the shared grid with the Notices/Timing rows. Inner
-    // content (gap fill, markers, gap text) is positioned relative to barHeight below, so it
-    // re-centers automatically. (Was paddingV + fontSizeLarge, ~4.56 cells - off-grid.)
-    // One normal row, like the Version widget's content -- the bar was a lineHeightLarge
-    // band, which is two. Its own gap text stays cell-centred: a normal font in a normal
-    // row is exactly the case addString's rowCenterOffset is built for.
+    // One normal row, like the Version widget's content, so the bar lines up on the
+    // shared grid with the Notices/Timing rows. Inner content (gap fill, markers, gap
+    // text) is positioned relative to barHeight below, so it re-centers automatically.
+    // Its own gap text stays cell-centred: a normal font in a normal row is exactly the
+    // case addString's rowCenterOffset is built for.
     float barHeight = bigValueRowHeight(dim);
 
     // The bar's OWN inner insets -- how far the coloured fill sits inside the box.
@@ -575,47 +559,41 @@ void GapBarHud::rebuildRenderData() {
     // planPanel below rather than here.
     float startX = 0.0f;
     // THE PANEL ANCHORS AT THE OFFSET, like every other HUD: the box top is 0 and the
-    // bar sits one padding inside it. It used to be the other way round -- the BAR was
-    // at 0 and the box derived as (0 - paddingV) -- which made the panel's top edge a
-    // function of the padding, and dim.paddingV IS contentPaddingY(). So a theme
-    // that switches its body card off ([card] hud-content = 0) changed the padding and
-    // slid this panel down while Timing and Notices, which anchor their tops, stayed
-    // put. Reported from two screenshots of the same scene. Pinned by
-    // tests/integration/tests/center_stack_theme_test.cpp.
-    //
-    // It also made the DEFAULT position padding-dependent (resetToDefaults added the
-    // live paddingV back), so resetting under a theme and resetting without one wrote
-    // different numbers, and a theme switched on afterwards put the box top at y = 0 --
-    // flush against the screen edge with its top frame slice clipped, measured.
+    // bar sits one padding inside it. Anchoring the BAR at 0 and deriving the box as
+    // (0 - paddingV) would make the panel's top edge a function of the padding, and
+    // dim.paddingV IS contentPaddingY() -- so a theme that switches its body card off
+    // ([card] hud-content = 0) would change the padding and slide this panel down while
+    // Timing and Notices, which anchor their tops, stay put. It would also make the
+    // DEFAULT position padding-dependent, so resetting under a theme and resetting
+    // without one would write different numbers, and a theme switched on afterwards
+    // would put the box top at y = 0 -- flush against the screen edge with its top
+    // frame slice clipped. Pinned by tests/integration/tests/center_stack_theme_test.cpp.
     const float boxTop = 0.0f;
     float startY = 0.0f;   // set from the plan below, once the panel is placed
 
     // ==== BACKGROUND QUAD ====
-    // addBackgroundQuad, not a hand-rolled quad: this used to reimplement it exactly
-    // -- offset, texture branch, opacity and all -- which meant it silently missed
-    // the one thing the helper gained later, the themed nine-slice. A HUD that draws
-    // its own panel background gets no theme, and that is the whole reason this HUD
-    // and Notices rendered flat while every other panel was framed.
-    // Panel padding wraps the bar, like every other HUD's box wraps its content. The
-    // box used to BE the bar exactly, so panelPaddingXCells/panelPaddingYCells did nothing here at all.
+    // addBackgroundQuad, not a hand-rolled quad: the themed nine-slice lives in the
+    // helper, so a HUD that draws its own panel background gets no theme and renders
+    // flat while every other panel is framed.
+    // Panel padding wraps the bar, like every other HUD's box wraps its content, so
+    // panelPaddingXCells/panelPaddingYCells apply here.
     // Optional caption. Default OFF, like the two panels below it in the stack --
     // this one is a bar, and a header over it is usually noise -- but available.
     // The box grows DOWNWARD (title above content, as everywhere else), which moves
     // the bar down; see resetToDefaults for what that costs the centre stack.
     // BOX-MODEL: the bar is the section's content; the card is its border box.
     // The panel wraps both through the plan, so the bar's interior, the card the
-    // user sees and the panel height are one computation instead of the
-    // card-interior re-anchor the old chain needed (contentCardSpanY).
+    // user sees and the panel height are one computation.
     BaseHud::PanelWant want;
     // The PANEL is the ask; the bar is read back from the plan below. contentW stays
-    // 0 deliberately -- setting both would make the wider of the two win and put the
-    // old off-by-two-paddings behaviour back.
+    // 0 deliberately -- setting both would make the wider of the two win and leave
+    // the panel two paddings too wide.
     wantCenterStackWidth(want, panelWidth);
     want.sectionH = { barHeight };
     // LARGE, like every other full HUD. The tier is opt-in and defaults to
     // Normal, which is right for a gauge and wrong for a panel with a table in
-    // it -- this HUD, Timing and Notices had all simply never said so, and wore
-    // the widget caption size next to siblings that did.
+    // it -- left unsaid, this panel wears the widget caption size next to
+    // siblings that do not.
     want.captionW = planTitleWidth(dim, "Gap Bar", TitleTier::Large);
     want.tier = TitleTier::Large;
     // The bar IS this panel: unthemed, its coloured fill takes the cell of panel
@@ -635,18 +613,17 @@ void GapBarHud::rebuildRenderData() {
     const float boxWidth = plan.width();
     const float boxHeight = plan.height();
 
-    // CENTRE-ANCHORED, as all four centred elements now are: offsetX is this
-    // panel's CENTRE, so the layout is just half its own width to the left of it and
-    // a width change grows the bar symmetrically instead of walking an edge.
+    // CENTRE-ANCHORED, as all four centred elements are: offsetX is this panel's
+    // CENTRE, so the layout is just half its own width to the left of it and a width
+    // change grows the bar symmetrically instead of walking an edge.
     //
-    // A LAYOUT MUST NOT READ m_fOffsetX. It used to snap against the LIVE offset
-    // (`snapEdgeX(m_fOffsetX + startX) - ...`), which made m_fBoundsLeft a function of
-    // the offset -- and the drag path snaps `m_fBoundsLeft + newOffsetX` itself
-    // (base_hud.cpp). Two snaps, each reading the other's output a frame late: the bar
-    // jittered left and right under the cursor for as long as you held it. Reported as
-    // "extremely erratic when I try to place it". Every other HUD's bounds are a pure
-    // function of its layout, and that is what makes the one snap in the drag path the
-    // only one there is.
+    // A LAYOUT MUST NOT READ m_fOffsetX: snapping against the LIVE offset here would
+    // make m_fBoundsLeft a function of the offset -- and the drag path snaps
+    // `m_fBoundsLeft + newOffsetX` itself (base_hud.cpp). Two snaps, each reading the
+    // other's output a frame late, jitter the bar left and right under the cursor for
+    // as long as it is held. Every other HUD's bounds are a pure function of its
+    // layout, and that is what makes the one snap in the drag path the only one there
+    // is.
     const float boxLeft = centerAnchoredPanelLeft(boxWidth);
     startX = boxLeft + insetL;
     addPlanBackground(plan, boxLeft, boxTop);
@@ -655,8 +632,8 @@ void GapBarHud::rebuildRenderData() {
     // THE CARD'S DRAWN BOX, not the content band inside it: the bar IS the card here,
     // so its fill, its markers and its gap text all belong to the box the player sees.
     // The band is the same thing while [content] border is symmetric and sits high in
-    // the card when it is not (PanelPlan::sectionBoxY) -- which is what put the gap
-    // text above centre and left the fill short of the content it is drawn behind.
+    // the card when it is not (PanelPlan::sectionBoxY) -- which would put the gap
+    // text above centre and leave the fill short of the content it is drawn behind.
     startY = plan.sectionBoxY();
 
     // Common inner dimensions
@@ -666,10 +643,9 @@ void GapBarHud::rebuildRenderData() {
     // THE SLAB THE GAP TEXT LANDS ON, or 0 for none. The text is CENTER-justified on
     // exactly the point the fill grows from (both take plan.sectionBoxCenterX()), so
     // whenever a fill is drawn, half the digits sit on it -- and the text's own colour
-    // is a NEGATIVE/POSITIVE slot too, which is red-on-red the moment the two agree.
-    // The Notices slabs beside this one have been correcting for that since
-    // captionOnSlabColor landed; this panel was the half of that comment that was
-    // aspirational. Reported from the game as unreadable at high background opacity.
+    // is a NEGATIVE/POSITIVE slot too, which is red-on-red the moment the two agree --
+    // unreadable at high background opacity. The Notices slabs beside this one make
+    // the same correction (captionOnSlabColor).
     //
     // Recorded rather than re-derived, because the fill and the text do NOT always
     // read the same number: the fill is always the LIVE gap (see the header just
@@ -696,16 +672,16 @@ void GapBarHud::rebuildRenderData() {
         // THE FILL'S TRAVEL SPANS THE CARD'S DRAWN BOX, the horizontal half of the
         // same change the outset below makes vertically -- stated in the card's own
         // terms (PanelPlan::sectionBoxW), not as barWidth plus the LEFT inset mirrored,
-        // which reached the card's edges only while the [content] terms were
-        // left/right symmetric. Its extremes were once the INNER rect -- inset by
-        // innerInsetH, which exists for the rider markers -- so a maxed-out gap
-        // stopped short of the box on both axes at once.
+        // which reaches the card's edges only while the [content] terms are
+        // left/right symmetric -- and not the INNER rect, inset by innerInsetH, which
+        // exists for the rider markers and would stop a maxed-out gap short of the
+        // box.
         //
         // THE CONSEQUENCE, stated because it is a real trade: the fill and the rider
         // markers do not share one scale. The markers stay on the inner rect, so a
         // full-scale fill reaches slightly past where a marker can sit. They measure
         // different things -- the fill is your gap, the markers are riders -- and the
-        // alternative was a fill that cannot touch the box it lives in.
+        // alternative is a fill that cannot touch the box it lives in.
         float halfWidth = plan.sectionBoxW() / 2.0f;
         float centerX = plan.sectionBoxCenterX();
 
@@ -729,10 +705,9 @@ void GapBarHud::rebuildRenderData() {
 
             // FULL HEIGHT OF THE CONTENT BOX, not the marker inset. The fill is the one
             // thing here whose SIZE is the reading -- how far off the reference you are
-            // -- and it was drawn a quarter row short at each end, floating inside the
-            // card with a dark margin above and below. innerInsetV exists to keep the
-            // rider MARKERS clear of the box edges (icons, not a bar), and the fill was
-            // borrowing it for no reason of its own.
+            // -- and drawn a quarter row short at each end it floats inside the card
+            // with a dark margin above and below. innerInsetV exists to keep the rider
+            // MARKERS clear of the box edges (icons, not a bar), not the fill.
             //
             // Only the vertical is freed. The fill's WIDTH stays on the inner rect,
             // because that is the coordinate system the markers are placed in: a fill
@@ -740,19 +715,17 @@ void GapBarHud::rebuildRenderData() {
             // full-scale fill edge somewhere no marker can ever reach.
             // THROUGH THE THEME'S BUTTON SLICES, like the Notices slab beside it: both
             // are a coloured block whose colour is the reading, and a theme that gives
-            // its buttons a shape should give these the same one. Hand-rolled here as a
-            // SOLID_COLOR quad until now, which is the duplication addButtonQuad exists
-            // to end -- and it meant a themed gap bar drew a flat rectangle inside a
-            // bevelled card.
+            // its buttons a shape should give these the same one. A hand-rolled
+            // SOLID_COLOR quad is the duplication addButtonQuad exists to end -- and
+            // draws a flat rectangle inside a bevelled card on a themed gap bar.
             //
             // NOT opaque: like the notice slabs, this is a translucent reading over the
             // track rather than a control, and the button rule (a thing you click stays
             // legible) would flatten it to a solid box.
-            // ...and it spans the card exactly, because startY/barHeight ARE the card
-            // now. This used to add an outset back on: `startY - sections[0].top` at
-            // BOTH ends, which is the top inset twice and therefore short at the bottom
-            // by however much the two differ -- invisible on a symmetric border and
-            // the reason the fill did not reach its own content on an asymmetric one.
+            // ...and it spans the card exactly, because startY/barHeight ARE the card.
+            // Adding an outset back on at BOTH ends (the top inset twice) would be
+            // short at the bottom by however much the two insets differ -- invisible
+            // on a symmetric border, short of its own content on an asymmetric one.
             addButtonQuad(quadX, startY, quadWidth, barHeight, fillColor, /*opaque=*/false);
         }
     }
@@ -775,23 +748,19 @@ void GapBarHud::rebuildRenderData() {
     // only while the [content] terms are symmetric), Y: INK-centred in the bar,
     // the same solve TimingHud's big time and the Notices message use.
     float gapTextX = plan.sectionBoxCenterX();
-    // This was `startY + (barHeight - fontSize) / 2 - rowCenterOffset(fontSize)`, which
-    // reads like a centring but is not one: barHeight IS lineHeightNormal here, so
-    // (barHeight - fontSize)/2 is rowCenterOffset exactly, the two cancel, and the whole
-    // expression came to plain `startY` -- a hand-rolled reimplementation of what
-    // addString already does. What it centred was the glyph CELL, and a digit's ink sits
-    // 0.11 of its cell above the cell's middle, so the gap text floated that much high
-    // inside a bar it is drawn on top of (~3px at 1080p, measured against the bar edges).
+    // INK-centred, not cell-centred: a digit's ink sits 0.11 of its cell above the
+    // cell's middle, so text centred by its glyph CELL floats that much high inside a
+    // bar it is drawn on top of (~3px at 1080p).
     // inkCenteredY over barHeight, not bigValueTextY: that helper centres in a
     // bigValueRowHeight box, and barHeight is the CARD's interior when there is a card.
-    // Passing the row would leave the text where it used to be while the bar moved.
+    // Passing the row would leave the text off the bar's centre whenever the two
+    // differ.
     //
     // THE LARGE SIZE, matching the Timing panel's big time below it: the two are the
-    // same kind of reading in the same stack, and the gap was set a third smaller for
-    // no reason the code states. It costs no height -- the row is bigValueRowHeight
-    // (one NORMAL row) whatever the glyph is, and inkCenteredY solves the placement
-    // for the size it is handed, which is the case that helper exists for and the one
-    // Timing has always used.
+    // same kind of reading in the same stack. It costs no height -- the row is
+    // bigValueRowHeight (one NORMAL row) whatever the glyph is, and inkCenteredY
+    // solves the placement for the size it is handed, which is the case that helper
+    // exists for and the one Timing uses.
     float gapTextY = inkCenteredY(startY, barHeight, dim.fontSizeLarge);
 
     char gapBuffer[32];
@@ -823,8 +792,8 @@ void GapBarHud::rebuildRenderData() {
         strcpy_s(gapBuffer, sizeof(gapBuffer), Placeholders::GENERIC);
         // MUTED, like the Timing panel's big time with no lap to show. A placeholder
         // in the primary colour reads as a value -- the one thing it is not -- and at
-        // the large size it now draws at, a bright "-" is the loudest thing in the
-        // stack while saying the least.
+        // the large size it draws at, a bright "-" is the loudest thing in the stack
+        // while saying the least.
         gapColor = this->getColor(ColorSlot::MUTED);
     }
 
@@ -848,10 +817,9 @@ void GapBarHud::rebuildRenderData() {
 
 // No setScale override: this panel is CENTRE-ANCHORED (offsetX is its centre),
 // so the layout recentres on every width change and scaling needs no offset
-// compensation. The old override called setScaleKeepingCenter ON TOP of that
-// recentring, which double-compensated: each scale step walked the stored
-// centre sideways by half the width change. Pinned by center_stack_theme_test's
-// scale case.
+// compensation. A setScaleKeepingCenter override ON TOP of that recentring
+// double-compensates: each scale step walks the stored centre sideways by half
+// the width change. Pinned by center_stack_theme_test's scale case.
 
 void GapBarHud::setBarWidth(int percent) {
     // Clamp to valid range
@@ -876,14 +844,14 @@ void GapBarHud::resetToDefaults() {
     // First box of the center-top stack; see hud/center_stack.h for the whole
     // specification. One cell down from the screen edge, aligning with the
     // settings/camera buttons' row.
-    // The BOX TOP, plainly, because that is now what the offset means here (see
-    // rebuildRenderData). This used to add the live paddingV back, which made the
-    // default depend on the theme in force when it was written.
+    // The BOX TOP, plainly, because that is what the offset means here (see
+    // rebuildRenderData); adding the live paddingV back would make the default
+    // depend on the theme in force when it is written.
     setPosition(CENTER_ANCHOR_X, CenterStack::stackBoxTop());
 
     // Settings
     m_freezeDurationMs = DEFAULT_FREEZE_MS;
-    m_markerMode = MarkerMode::GHOST;  // Default to ghost-only (original behavior)
+    m_markerMode = MarkerMode::GHOST;  // Default to ghost-only
     m_labelMode = LabelMode::NONE;     // No labels by default (like MapHud default)
     m_labelAnchor = LabelAnchor::BELOW;  // ...and under the marker, like the other two
     m_riderColorMode = RiderColorMode::RELATIVE_POS;  // Default to position-based coloring
@@ -1206,13 +1174,11 @@ void GapBarHud::renderMarkerLabel(float centerX, float centerY, float iconHalfSi
     // behind it from [Display] dropShadowOffsetX/Y, honouring the global toggle and
     // any per-HUD dropShadow override.
     //
-    // This used to hand-roll a black outline -- the same string four times at
-    // +-5% of the font -- and its comment said "like MapHud", which was true when it
-    // was written. Map moved to the standard shadow and this did not, so the two
-    // labels drifted apart: four quads instead of one, a shadow the [Display]
-    // offsets could not move, and an outline that stayed on with drop shadows
-    // switched OFF. (Rider ICONS are sprite quads with their own baked outlines and
-    // take no shadow either way -- this is only the text.)
+    // Not a hand-rolled black outline (the same string four times at +-5% of the
+    // font): that is four quads instead of one, a shadow the [Display] offsets
+    // cannot move, and an outline that stays on with drop shadows switched OFF.
+    // (Rider ICONS are sprite quads with their own baked outlines and take no shadow
+    // either way -- this is only the text.)
     addString(labelStr, lp.x, lp.y, lp.justify,
               this->getFont(FontCategory::SMALL), labelColor, labelFontSize, false);
 }

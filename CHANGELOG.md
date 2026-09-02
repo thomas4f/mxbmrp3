@@ -20,6 +20,52 @@ Changelog's categories.
 
 ## [Unreleased]
 
+## [1.29.5] - 2026-09-02
+
+The HUD can draw itself now, instead of asking the game to, which hands back
+frames the old way was costing.
+
+### Added
+- Direct GL Rendering (Settings > General): the plugin draws the in-game HUD
+  itself, inside the game's own OpenGL context, rather than handing every piece
+  of it to the game to draw, which can give you a healthy FPS gain - how much
+  depends on your hardware, how many HUDs you run, and what else is on screen.
+  Off by default, and it falls back to the old way by itself if it cannot run
+- Turning Direct GL Rendering on now asks you to confirm it, with a countdown:
+  if the HUD does not come out readable on your machine, wait it out or press the
+  red button and it puts itself back. The countdown only runs while the HUD is
+  actually on screen, so it will not time out on you in a menu
+- Sharper text and icons in the companion window and under Direct GL: both are
+  now drawn from properly downscaled copies of their source art instead of being
+  sampled at full size, which was making small text look thin and broken up
+- Five handwritten fonts, pickable in any font category and a natural fit for
+  Marker: Permanent Marker, Rock Salt, Caveat Brush, Reenie Beanie and Gloria
+  Hallelujah. They are bundled for the web overlay too, so an in-game font
+  choice still follows through to OBS
+
+### Changed
+- The companion window is drawn by your GPU: smooth to drag things around with a
+  theme on, and edges are no longer jagged
+- The Direct GL confirmation prompt is marked with a question mark rather than a
+  speedometer, so it reads as the question it is
+- Updated vendored cpp-httplib to 0.54.1
+
+### Fixed
+- "Reset General" now really does reset the General tab: Grid Snap, Screen Clamp
+  and Direct GL Rendering were left as they were. Your analytics choice is still
+  left alone deliberately - a reset should not opt you back in
+- "Reset Widgets" now also resets the Crashes widget and the pointer's menu-only
+  setting, and "Reset Spotter" the spotter button's opacity and scale
+- The web overlay now follows every font the game offers. The three IBM Plex
+  faces were never bundled for it, so picking one in-game - or just running a
+  Carbon theme, which uses them for every category - left the overlay on its own
+  default font instead of matching the HUD
+- The Standings session row now shows the clock in Testing and open practice,
+  counting up from zero. A session with no time limit and no laps to run has
+  nothing to count down, so the row showed the session name and nothing else -
+  while the Time widget, the Timing panel and the web overlay were all showing
+  that same clock ticking up
+
 ## [1.29.3] - 2026-08-29
 
 Instrument faces become packs, themes recolour in one file, every pack type
@@ -375,7 +421,7 @@ Pre-release. Its contents shipped in 1.26.0.0, minus the analytics addition.
 - Rumble: new Rev and Pit Limiter effects that buzz when active
 - Standings HUD can now display a positions gained/lost column
 - G-Force widget ring now indicates G-load severity by color
-- Settings button (the [=] toggle in the corner) can now be configured in the Widgets tab
+- Settings button (the `[=]` toggle in the corner) can now be configured in the Widgets tab
 - Web overlay: new panels (fastest lap, battles, down the order, ...)
 - Web overlay: broadcasters can force a specific panel to appear with a hotkey
 
@@ -816,7 +862,8 @@ Pre-release. Its contents shipped in 1.26.0.0, minus the analytics addition.
 
 Initial public release.
 
-[Unreleased]: https://github.com/thomas4f/mxbmrp3/compare/v1.29.3...HEAD
+[Unreleased]: https://github.com/thomas4f/mxbmrp3/compare/v1.29.5...HEAD
+[1.29.5]: https://github.com/thomas4f/mxbmrp3/compare/v1.29.3...v1.29.5
 [1.29.3]: https://github.com/thomas4f/mxbmrp3/compare/v1.29.1...v1.29.3
 [1.29.1]: https://github.com/thomas4f/mxbmrp3/compare/v1.28.0...v1.29.1
 [1.28.0]: https://github.com/thomas4f/mxbmrp3/compare/v1.27.7...v1.28.0

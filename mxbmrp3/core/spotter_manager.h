@@ -104,8 +104,8 @@ public:
     // resolves it so this stays decoupled from PluginData.
     // `nums` carries whatever the event's own handler knew as a NUMBER (see
     // EventNumbers). No display string reaches here: the event log's message
-    // and detail columns are for the race feed, and this used to parse three
-    // of them back into the numbers they were formatted from.
+    // and detail columns are for the race feed, never parsed back into the
+    // numbers they were formatted from.
     void onRaceEvent(EventLogType type, int raceNum, int focusedRaceNum,
                      int sessionTimeMs, const EventNumbers& nums = {});
 
@@ -534,20 +534,21 @@ private:
     // speaks — and ONE slot, not one per rider, which is the whole point.
     //
     // Joining a lobby mid-session replays every rider's whole lap history in a
-    // single instant, and each lap that improved the overall best fired a cue:
-    // a real join announced rider ten three times ("one twenty two point
-    // five", "one thirteen point eight", "one oh three point six"), then two
-    // more riders twice each — seven callouts in one millisecond, all of them
-    // about laps set before the player was watching. Consecutive lap numbers,
-    // same rider, same timestamp: a state sync, not seven moments.
+    // single instant, and each lap that improves the overall best raises the
+    // event: a cue per event announces one rider several times over ("one
+    // twenty two point five", "one thirteen point eight", "one oh three point
+    // six"), then the next rider — a handful of callouts in one millisecond,
+    // all of them about laps set before the player was watching. Consecutive
+    // lap numbers, same rider, same timestamp: a state sync, not separate
+    // moments.
     //
     // The replay arrives inside ONE callback batch, so "held since the last
     // classification" identifies it, with no notion of joining to detect and
-    // no clock arithmetic. Comparing session clocks was the first version and
-    // it WEDGES: getSessionElapsedTime returns a timed session's full length
-    // until the first classification sets the clock, so a cue armed before
-    // that waits forever for a bigger number. Ordering on a value that
-    // legitimately jumps backwards was the wrong shape.
+    // no clock arithmetic. NOT a session-clock comparison, which WEDGES:
+    // getSessionElapsedTime returns a timed session's full length until the
+    // first classification sets the clock, so a cue armed before that waits
+    // forever for a bigger number. Ordering on a value that legitimately jumps
+    // backwards is the wrong shape.
     //
     // That the game never delivers a classification INSIDE the replay is an
     // assumption about its delivery, not something the plugin controls, and it
@@ -659,11 +660,10 @@ private:
     // and copied under the lock at each utterance.
     std::string m_ttsVoice;
     // The chosen voice's DISPLAY NAME (empty = system default), which the
-    // worker matches against a live SAPI enumeration before SetVoice. It was a
-    // resolved registry key until an engine that produces its tokens through
-    // an enumerator turned out to have no key at all — see the note on
-    // setTtsVoice for why handing over a name is safe here and was not in the
-    // markup version that first tried it.
+    // worker matches against a live SAPI enumeration before SetVoice. Not a
+    // resolved registry key: an engine that produces its tokens through an
+    // enumerator has no key at all — see the note on setTtsVoice for why
+    // handing over a name is safe here (and not via voice markup).
     std::string m_ttsVoicePublished MXB_GUARDED_BY(m_mutex);
 
     // Cue history ring for the subtitle widget and headless assertions.

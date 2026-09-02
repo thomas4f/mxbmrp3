@@ -11,7 +11,11 @@ describing the same suite in BOTH directions):
 
   1. DANGLING PATH - a doc names a file that was renamed, split or deleted.
      Every path-shaped token in every tracked .md must resolve to something on
-     disk (globs and `{h,cpp}` / `.h/.cpp` shorthands are expanded).
+     disk (globs and `{h,cpp}` / `.h/.cpp` shorthands are expanded). The same
+     holds for a repo-rooted path named in a first-party source COMMENT, which
+     is the costlier half: this project asks readers to start at the header
+     comment, so a header pointing at a deleted file misdirects every one of
+     them. See check_comment_paths for why the comment rule is stricter.
 
   2. UNBACKED ENFORCEMENT CLAIM - CLAUDE.md's Maintenance Invariants label each
      rule **Enforced** / **Pinned** / **Convention**. An "Enforced" bullet whose
@@ -65,18 +69,12 @@ DOC_BUDGETS = {
     "ARCHITECTURE.md": 103_000,
 }
 
-# The top-level docs, plus every sub-README. The sub-READMEs were originally
-# left out, and all of them drifted: tests/integration/README.md still described
-# a Makefile build engine two weeks after the CMake migration deleted it, and
-# tests/unit/README.md still told readers the plugin "cannot be built on
-# Linux/CI" while citing a CLAUDE.md that says the opposite. Nothing caught
-# either, because path checking stopped at the root. It no longer does.
-# EVERY tracked .md is checked, minus the exclusions below. This used to be a
-# hand-kept opt-IN list and it rotted the way such lists do: twelve of the
-# thirty-four tracked docs were outside it, including four of the seven tool
-# READMEs and the pack-authoring guide, with no reason for the split beyond who
-# remembered to add a line. Opt-OUT means a new doc is covered on the day it
-# lands, and a doc that should NOT be covered has to say why here.
+# EVERY tracked .md is checked -- the top-level docs and every sub-README -- minus
+# the exclusions below. Opt-OUT rather than a hand-kept opt-in list: a new doc is
+# covered on the day it lands, and a doc that should NOT be covered has to say why
+# here. A sub-README outside the check drifts like any other doc (a build engine
+# the migration deleted, a "cannot be built on Linux" that CLAUDE.md contradicts)
+# and nothing catches it.
 DOCS_EXCLUDED = {
     # Historical by definition: old entries name files that were later renamed
     # or deleted, and rewriting history to satisfy a path check would be a lie.
@@ -121,6 +119,12 @@ NOT_PATHS = {
     # formatters out of plugin_utils.cpp). Deliberately do-not-exist-yet: the
     # day they land, drop them from here and the check starts guarding them.
     "format_utils.cpp", "format_utils.h", "test_format_utils.cpp",
+    # Deleted ON PURPOSE and named as HISTORY, not as a pointer: the post-mortem
+    # for a bespoke tool that a standard one replaced is worth more with the
+    # casualty's name in it (CLAUDE.md's "say what you evaluated and why it fell
+    # short" cuts both ways). Only the ones a comment cites this way belong here
+    # -- a reference that still reads as "go look at this" is stale, not history.
+    "tools/coverage_report.py",
 }
 
 # A token must look like a path AND not like code to be checked. Deliberately
@@ -222,6 +226,112 @@ def check_paths(failures, list_only=False):
                     "(renamed, split or deleted — update the doc or drop the reference)")
 
 
+# Source files whose comments are scanned by check_comment_paths. Shell/Python
+# use `#`; everything else uses C-style `//` and `/* */`.
+COMMENT_SOURCES = ("*.cpp", "*.h", "*.sh", "*.py", "*.js")
+COMMENT_EXCLUDED = ("mxbmrp3/vendor/", "tests/integration/harness/doctest.h")
+
+# A comment reference is only checked when it is ROOTED at a top-level directory
+# and names a source-controlled file type. Both halves are load-bearing:
+#
+#   Rooted, because that is the form a reader can follow. A bare `map_hud.h` in
+#   prose is a name, not a pointer. Note this check uses plain existence, NOT
+#   check_paths' suffix resolution: that resolution is right for docs, which name
+#   files partially on purpose, but it would accept a rooted `tests/<name>.cpp`
+#   as the real tests/integration/tests/<name>.cpp -- silently passing the exact
+#   wrong-path case this check was written to catch.
+#
+#   Source types only, because data/asset paths in comments are overwhelmingly
+#   patterns and runtime files -- `mxbmrp3_data/textures/standings_hud_1.tga` is
+#   an "e.g." for a naming rule, `<savePath>/mxbmrp3/mxbmrp3_analytics.json` is
+#   written on a player's machine. Including them was measured: it turned a check
+#   with no false positives into one that was mostly false positives, which is
+#   the failure mode that teaches people to ignore a gate.
+COMMENT_ROOTS = r"(?:mxbmrp3|mxbmrp3_data|tools|tests|packaging|cmake|analytics|docs|\.github)"
+# CODE_EXTS minus its `\*` alternative: a glob is a family, not a file to check.
+COMMENT_EXTS = "|".join(e for e in CODE_EXTS.split("|") if e != r"\*")
+COMMENT_PATH = re.compile(
+    rf"\b{COMMENT_ROOTS}/[A-Za-z0-9_./-]*\.(?:{COMMENT_EXTS})\b")
+
+
+def comment_lines(path):
+    """(lineno, text) for every line that is inside a comment."""
+    hashy = path.endswith((".sh", ".py"))
+    out, in_block = [], False
+    with open(os.path.join(REPO, path), encoding="utf-8", errors="replace") as fh:
+        for n, raw in enumerate(fh, 1):
+            line = raw.strip()
+            if hashy:
+                if line.startswith("#"):
+                    out.append((n, line))
+                continue
+            if in_block:
+                out.append((n, line))
+                if "*/" in line:
+                    in_block = False
+            elif line.startswith("//"):
+                out.append((n, line))
+            elif line.startswith("/*"):
+                out.append((n, line))
+                in_block = "*/" not in line
+    return out
+
+
+def check_comment_paths(failures, list_only=False):
+    """A repo-rooted path named in a source COMMENT still exists.
+
+    Same failure as a dangling path in a doc, and the more expensive one: the
+    reading order this project asks for starts at the header comment, so a
+    header pointing at a deleted file sends every new reader somewhere that is
+    not there. Found four real ones the day it was written, among them four test
+    headers still citing tests/unit/run_tests.sh -- the hand-written unit runner
+    the CTest migration deleted.
+
+    WHY BESPOKE (CLAUDE.md: prefer the off-the-shelf tool). Validating references
+    inside comments is thoroughly conventional -- rustdoc's broken_intra_doc_links,
+    javadoc -Xdoclint:reference, Sphinx's nitpicky mode, Doxygen's unresolved-ref
+    warnings -- but every one of them validates references written in ITS OWN
+    markup, pointing at entities IT documents. Doxygen is the near-miss: adopting
+    it means a Doxyfile, \file blocks across ~340 sources and comments rewritten
+    into API-doc form, and it still would not read "See tests/unit/run_tests.sh"
+    in a paragraph of prose. Link checkers (lychee, markdown-link-check) extract
+    URLs and Markdown link syntax, so a bare relative path in a .cpp is invisible
+    to them; Vale lints prose style; semgrep can match a comment but has no
+    "exists on disk" predicate; clang-tidy, cppcheck and cpplint have no
+    comment-reference checks at all.
+
+    So the honest framing is not "write a tool" but "widen one we already run":
+    check_paths above does exactly this for tracked .md and owns the resolver,
+    the NOT_PATHS allowlist and the gate registration. This adds the source-file
+    input and the stricter rooted-path rule. A standalone script would have been
+    the violation.
+    """
+    tracked = subprocess.run(["git", "ls-files", *COMMENT_SOURCES],
+                             cwd=REPO, capture_output=True, text=True).stdout.split()
+    scanned = 0
+    for src in tracked:
+        if src.startswith(COMMENT_EXCLUDED):
+            continue
+        scanned += 1
+        for lineno, text in comment_lines(src):
+            for tok in COMMENT_PATH.findall(text):
+                if tok in NOT_PATHS:
+                    continue
+                if list_only:
+                    print(f"{src}:{lineno}: {tok}")
+                elif not os.path.exists(os.path.join(REPO, tok)):
+                    failures.append(
+                        f"{src}:{lineno}: comment names `{tok}`, which does not exist "
+                        "(renamed, split or deleted - fix the reference, or add it to "
+                        "NOT_PATHS if the comment cites it as history)")
+    # A scan that matched nothing passes vacuously - the failure mode of every
+    # source-scanning gate here (see check_file_budgets.sh's MIN_SCANNED).
+    if scanned < 300:
+        failures.append(
+            f"check_comment_paths scanned only {scanned} sources; the tree has ~670. "
+            "The git ls-files patterns are looking at the wrong place.")
+
+
 def check_invariant_labels(failures):
     """Every Maintenance Invariant bullet is labelled, and a claimed check exists."""
     text = open(os.path.join(REPO, "CLAUDE.md"), encoding="utf-8").read()
@@ -264,10 +374,8 @@ def check_test_catalogue(failures):
     unlisted test trips this one.
     """
     doc = open(os.path.join(REPO, "TESTING.md"), encoding="utf-8").read()
-    # BOTH unit spellings. The glob used to be `test_*.cpp` only, and the eleven
-    # unit tests named `*_test.cpp` were silently outside the census the docstring
-    # above claims -- a blind spot created by a naming split, not by anyone
-    # forgetting a row.
+    # BOTH unit spellings: a glob for `test_*.cpp` alone leaves every `*_test.cpp`
+    # silently outside the census the docstring above claims.
     for pattern in ("tests/integration/tests/*.cpp",
                     "tests/unit/test_*.cpp", "tests/unit/*_test.cpp"):
         for path in sorted(glob.glob(os.path.join(REPO, pattern))):
@@ -383,10 +491,8 @@ def check_symbol_homes(failures):
     # Two phrasings, both a checkable claim:
     #   `sym()` ... in `file.cpp`      -- a function, named as a call
     #   `sym` (file.cpp)               -- a type, table or constant
-    # The second was added after `s_tabRegistry` (settings_hud.cpp) survived
-    # in two CLAUDE.md steps and a header comment: the registry had moved to
-    # settings_hud_render.cpp, and a symbol written without parens was
-    # invisible to the first pattern.
+    # The second exists because a symbol written without parens is invisible
+    # to the first pattern.
     patterns = (
         re.compile(
             r"`((?:[A-Za-z_][A-Za-z0-9_]*::)*[A-Za-z_][A-Za-z0-9_]*)\(\)`"
@@ -448,9 +554,9 @@ def check_build_sharing_gates_are_locked(failures):
         locked = set(m.group(1).split())
 
     # Chunk on the call rather than regexing the whole invocation: a gate body is
-    # shell, and codeql's contains a ")" inside its own SKIP message -- which is
-    # exactly how the first version of this check silently matched no codeql gate
-    # and reported all-clear while the bug it exists for was present.
+    # shell, and codeql's contains a ")" inside its own SKIP message, at which a
+    # whole-invocation regex stops -- matching no codeql gate and reporting
+    # all-clear while the bug this exists for is present.
     chunks = cml.split("mxb_gate(")[1:]
     for chunk in chunks:
         body = chunk.split("\nmxb_gate(")[0].split("\nset_tests_properties")[0]
@@ -525,9 +631,8 @@ def check_gate_tools_installable(failures):
 
     required = set()
     # ^\s* — NOT ^. Three gates (unit / unit-coverage / unit-asan) are indented
-    # inside an if(), so a column-0 anchor skipped them silently: gcovr, which
-    # only unit-coverage requires, was never checked as installable at all. Same
-    # failure mode as the tool this check exists to catch, inside the check.
+    # inside an if(), so a column-0 anchor skips them silently and gcovr, which
+    # only unit-coverage requires, is never checked as installable at all.
     for m in re.finditer(r'^\s*mxb_gate\([^\s]+\s+\w+\s+\d+\s+"([^"]*)"', cml, re.M):
         if m.group(1) != "-":
             required.update(m.group(1).split())
@@ -876,6 +981,36 @@ def check_no_em_dashes(failures):
                     f"{line.strip()[:70]}")
 
 
+def check_tables_end_at_a_blank_line(failures):
+    """A markdown table must be followed by a blank line, not by more text.
+
+    GitHub renders a table that runs straight into an HTML comment; the
+    GitHub PAGES site does not, and that is where the public README is read.
+    Jekyll parses with kramdown, whose table needs the whole block to be rows -
+    the comment is part of that block with no blank line before it, so the
+    block is not a table, and it comes out as one paragraph of pipes with the
+    separator row's dashes typographed into em dashes. The settings-tab table
+    shipped that way in the public README (v1.29.3), correct on github.com and
+    broken on the docs site, which is why nobody caught it here.
+
+    A blank line is the whole fix, and it costs nothing on any renderer. This
+    is a text rule rather than a render check on purpose: kramdown is a Ruby
+    gem, and a gate nobody can run locally is a gate that gets bypassed.
+    """
+    for doc in tracked_docs_all():
+        lines = open(os.path.join(REPO, doc), encoding="utf-8").read().split("\n")
+        for i in range(len(lines) - 1):
+            row, after = lines[i], lines[i + 1]
+            if not row.startswith("|"):
+                continue
+            if after.strip() and not after.startswith("|"):
+                failures.append(
+                    f"{doc}:{i + 2} follows a table row with a non-row line, so "
+                    f"kramdown (GitHub Pages) renders the whole table as a "
+                    f"paragraph. Put a blank line after the last row: "
+                    f"{after.strip()[:60]}")
+
+
 def check_ci_runs_every_gate(failures):
     """Every gate script registered with CTest must also be invoked by CI.
 
@@ -892,9 +1027,9 @@ def check_ci_runs_every_gate(failures):
     cml = open(os.path.join(REPO, "CMakeLists.txt"), encoding="utf-8").read()
     ci_raw = open(os.path.join(REPO, ".github", "workflows", "tests.yml"),
                   encoding="utf-8").read()
-    # COMMENT LINES DON'T COUNT. The first cut of this check matched anywhere in
-    # the file, so a comment merely *naming* tests/web/run.sh satisfied it — the
-    # check passed while CI still never ran that gate. Only executable YAML.
+    # COMMENT LINES DON'T COUNT. Matching anywhere in the file lets a comment
+    # merely *naming* a script satisfy the check while CI still never runs that
+    # gate. Only executable YAML.
     ci = "\n".join(ln for ln in ci_raw.splitlines()
                    if not ln.lstrip().startswith("#"))
 
@@ -902,7 +1037,7 @@ def check_ci_runs_every_gate(failures):
     lines = cml.splitlines()
     for i, line in enumerate(lines):
         # lstrip for the same reason as the regex above: the indented unit gates
-        # were never checked as CI-invoked.
+        # would otherwise never be checked as CI-invoked.
         if not line.lstrip().startswith("mxb_gate("):
             continue
         # The annotation may sit on the gate line or anywhere in the comment
@@ -1002,7 +1137,7 @@ def check_shipped_theme_keys(failures):
     # the way this check exists to prevent, one level up: rename card.content to
     # card.body there and bracket.ini's live `content = 1` would still be accepted
     # here while the body card silently stopped working.
-    # readThemeIni lives in the themes TU since asset_manager.cpp was split.
+    # readThemeIni lives in the themes TU.
     assets = os.path.join(REPO, "mxbmrp3", "core", "asset_manager_themes.cpp")
     with open(assets, encoding="utf-8") as f:
         src = f.read()
@@ -1035,8 +1170,7 @@ def check_shipped_theme_keys(failures):
             if name.endswith(".ini"):
                 ini_paths.append(os.path.join(d, name))
     # assets/themes too. That is where debug's ini lives (its slices are not built,
-    # so it has no folder under mxbmrp3_data), and the walk covers it:
-    # a theme ini beside its master is exactly where a typo'd key slipped past once.
+    # so it has no folder under mxbmrp3_data), and the walk covers it.
     masters = os.path.join(REPO, "assets", "themes")
     for name in sorted(os.listdir(masters)):
         if name.endswith(".ini"):
@@ -1051,13 +1185,13 @@ def check_shipped_theme_keys(failures):
                     s = s[1:].strip()
                     # A commented SECTION HEADER still changes scope: the whole
                     # [colors]/[fonts] block ships commented out, and reading its
-                    # keys under whatever real section came last is how this check
-                    # first reported ten colour slots as bad `settings.` keys.
+                    # keys under whatever real section came last reports ten
+                    # colour slots as bad `settings.` keys.
                     # The WHOLE line must be the header. Prose routinely starts
                     # with a bracketed reference ("; [content]; off by default")
-                    # and treating that as a scope change silently rescoped every
-                    # key after it -- which is how this check first blamed
-                    # bracket.ini's `[card] content` on a `[content]` section.
+                    # and treating that as a scope change silently rescopes every
+                    # key after it (bracket.ini's `[card] content` blamed on a
+                    # `[content]` section).
                     if not re.fullmatch(r"\[[a-z-]+\]", s):
                         if "=" not in s or " " in s.split("=", 1)[0].strip():
                             continue
@@ -1229,6 +1363,7 @@ def main():
 
     failures = []
     check_paths(failures)
+    check_comment_paths(failures)
     check_invariant_labels(failures)
     check_test_catalogue(failures)
     check_gate_catalogue(failures)
@@ -1247,6 +1382,7 @@ def main():
     check_anchor_links(failures)
     check_readme_menu_tables(failures)
     check_no_em_dashes(failures)
+    check_tables_end_at_a_blank_line(failures)
     check_ci_runs_every_gate(failures)
     check_every_ci_script_is_a_gate(failures)
 
@@ -1260,7 +1396,8 @@ def main():
     sizes = ", ".join(
         f"{doc} {os.path.getsize(os.path.join(REPO, doc)):,}/{budget:,}"
         for doc, budget in DOC_BUDGETS.items())
-    print(f"Docs clean: paths resolve, invariants labelled, named singletons exist, "
+    print(f"Docs clean: paths resolve (docs and source comments), invariants labelled, "
+          f"named singletons exist, "
           f"symbols where docs say, build-sharing gates locked, gate tools installable, "
           f"shipped themes share one geometry, CI and the gate list agree both "
           f"ways, {sizes} bytes.")

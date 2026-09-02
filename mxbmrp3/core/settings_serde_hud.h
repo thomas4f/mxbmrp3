@@ -33,8 +33,8 @@
 #include "../hud/lap_log_hud.h"
 // settings_hud.h is core (every game has the settings menu), and it pulls
 // records_hud.h itself; both .cpp files are compiled on every game, so neither
-// include may be gated on GAME_HAS_RECORDS_PROVIDER — gating it broke the
-// GPB/KRP builds (SettingsHud left incomplete -> C2027). The *provider* feature
+// include may be gated on GAME_HAS_RECORDS_PROVIDER — gated, SettingsHud is
+// left incomplete on the GPB/KRP builds (C2027). The *provider* feature
 // stays runtime/registration-gated; only these includes are always on.
 #include "../hud/records_hud.h"
 #include "../hud/settings_hud.h"
@@ -164,8 +164,8 @@ namespace Settings {
     }
 
     // MarkerLabel::Mode — MapHud/RadarHud/GapBarHud share this type (marker_label.h),
-    // so one converter pair serves all three (Map/Radar save it as text; GapBar
-    // predates that and stays int-serialized).
+    // so one converter pair serves all three (all save it as text; the bare-number
+    // read below is for existing INIs).
     inline const char* labelModeToString(MapHud::LabelMode mode) {
         switch (mode) {
             case MapHud::LabelMode::NONE: return "NONE";
@@ -176,16 +176,16 @@ namespace Settings {
         }
     }
 
-    // ACCEPTS A BARE NUMBER TOO, and that is not a courtesy to hand-editors: the gap
-    // bar wrote `labelMode=2` for its entire shipped life while Map and Radar -- the
-    // same enum, the same key, the same setting -- wrote `labelMode=RACE_NUM`. Reading
-    // only names would have degraded every existing gap-bar INI to the default on
-    // upgrade, silently, since an unparseable value is indistinguishable from an absent
-    // one at this layer. So the legacy spelling stays READABLE while nothing writes it
-    // any more, and the next save rewrites it as a name.
+    // ACCEPTS A BARE NUMBER TOO, and that is not a courtesy to hand-editors: existing
+    // gap-bar INIs carry `labelMode=2` where Map and Radar -- the same enum, the same
+    // key, the same setting -- carry `labelMode=RACE_NUM`. Reading only names would
+    // degrade every such INI to the default on upgrade, silently, since an unparseable
+    // value is indistinguishable from an absent one at this layer. So the legacy
+    // spelling stays READABLE while nothing writes it, and the next save rewrites it
+    // as a name.
     //
     // Kept in the shared converter rather than in the gap bar's apply, so all three read
-    // both spellings and no future move between them can reintroduce the same break.
+    // both spellings and no move between them can reintroduce the break.
     inline MapHud::LabelMode stringToLabelMode(const std::string& str, MapHud::LabelMode defaultVal = MapHud::LabelMode::NONE) {
         if (str == "NONE") return MapHud::LabelMode::NONE;
         if (str == "POSITION") return MapHud::LabelMode::POSITION;
@@ -506,7 +506,7 @@ namespace Settings {
         using namespace Keys::StandingsCols;
         saveBitAsKey(settings, TRACKED, cols, StandingsHud::COL_TRACKED);
         saveBitAsKey(settings, POS, cols, StandingsHud::COL_POS);
-        // COL_POSGAIN visibility is driven entirely by posGainMode now; the bit is never
+        // COL_POSGAIN visibility is driven entirely by posGainMode; the bit is never
         // user-toggled, so we don't write col_posgain (avoids an inconsistent INI). It's
         // still read in loadStandingsColumns purely to migrate pre-mode configs.
         saveBitAsKey(settings, RACENUM, cols, StandingsHud::COL_RACENUM);
@@ -643,12 +643,10 @@ namespace Settings {
         saveBitAsKey(settings, WEATHER, rows, SessionHud::ROW_WEATHER);
     }
 
-    // SessionHud: load rows from named keys
-    // Note: an older "row_players" key (player count row) was dropped in v1.23
-    // along with the memory-reading subsystem. Old INIs containing it are
-    // silently ignored - we never look it up. ROW_WEATHER's bit shifted from
-    // 1<<5 to 1<<4 when ROW_PLAYERS was removed, but persistence is by name
-    // (row_weather) not by mask, so existing profiles are unaffected.
+    // SessionHud: load rows from named keys. Persistence is by NAME (row_weather),
+    // not by mask value, so a row's bit may move without touching existing
+    // profiles; a key an older INI carries that no row claims (row_players) is
+    // never looked up and is silently ignored.
     inline void loadSessionRows(const SettingsManager::HudSettings& settings, uint32_t& rows) {
         using namespace Keys::SessionRows;
         loadBitFromKey(settings, TRACK, rows, SessionHud::ROW_TRACK);

@@ -125,6 +125,45 @@ TEST_CASE("hud_sw_renderer: per-quad alpha blends ~50/50 over the background") {
     CHECK(near8(p.b, 170));
 }
 
+TEST_CASE("hud_sw_renderer: transparent backdrop yields premultiplied RGBA (the overlay contract)") {
+    // The in-game overlay window hands the rendered buffer to UpdateLayeredWindow,
+    // whose AC_SRC_ALPHA blend expects PREMULTIPLIED color and real per-pixel
+    // coverage in the alpha channel. Rendering over fill(0,0,0,0) must therefore
+    // produce: rgb = color*alpha, a = accumulated src-over coverage — and an
+    // untouched pixel must stay fully transparent, so the game shows through.
+    hudsw::Image im; im.resize(320, 180);
+    TestFrame tf;
+    // Half-alpha quad, then a second half-alpha quad overlapping its right half.
+    tf.quads.push_back(quad(0.25f, 0.25f, 0.75f, 0.75f, abgr(200, 40, 240, 128)));
+    tf.quads.push_back(quad(0.50f, 0.25f, 0.75f, 0.75f, abgr(200, 40, 240, 128)));
+    hudsw::Renderer r;
+    r.render(im, tf.build(), 0, 0, 0, 0);
+
+    // Single-layer region (x 80..160): premultiplied color, alpha = 128.
+    Px one = at(im, 120, 90);
+    CHECK(near8(one.a, 128));
+    CHECK(near8(one.r, 200 * 128 / 255));
+    CHECK(near8(one.g, 40 * 128 / 255));
+    CHECK(near8(one.b, 240 * 128 / 255));
+
+    // Double-layer region (x 160..240): coverage accumulates src-over,
+    // a = 1-(1-0.502)^2 ≈ 0.752 — NOT 2*128 clamped, and not 128 again.
+    Px two = at(im, 200, 90);
+    CHECK(near8(two.a, 192, 3));
+    CHECK(near8(two.r, 200 * 192 / 255, 3));
+
+    // Untouched pixel: fully transparent black, so the game is visible there.
+    Px bg = at(im, 5, 5);
+    CHECK(bg.a == 0); CHECK(bg.r == 0); CHECK(bg.g == 0); CHECK(bg.b == 0);
+
+    // An OPAQUE backdrop (the companion window) still comes out alpha-255
+    // everywhere, semi-transparent quads included — StretchDIBits ignores the
+    // channel, but a stray non-255 would betray the accumulation rule.
+    r.render(im, tf.build(), 10, 20, 30);
+    CHECK(at(im, 120, 90).a == 255);
+    CHECK(at(im, 5, 5).a == 255);
+}
+
 TEST_CASE("hud_sw_renderer: white icon is COLORIZED by the quad color and honors quad alpha") {
     const std::string iconPath = assetRoot() + "/icons/circle.tga";
     REQUIRE_MESSAGE(std::ifstream(iconPath).good(), "shipped icon missing: ", iconPath);
@@ -240,4 +279,52 @@ TEST_CASE("hud_sw_renderer: setViewport maps [0,1] into the sub-rect; outside-[0
     // The x<0 quad rendered into the surrounding window area.
     CHECK(at(im, 24, 140).b == 250);
     CHECK(at(im, 24, 100).b == 10);    // above it: background
+}
+
+TEST_CASE("hud_sw_renderer: minified text keeps its antialiased edges") {
+    // THE FIELD BUG. The shipped .fnt cell is 135px, deliberately, so a scaled-up
+    // widget stays crisp; ordinary HUD text is ~20px. So every normal string
+    // MINIFIES the atlas about 7x, and a single bilinear tap reads 4 texels of a
+    // ~49-texel footprint. What it drops is precisely the partial-coverage texels
+    // along a stroke's edge, so strokes thin out and go ragged - reported from the
+    // field as text that "is not smooth any more" beside the game's own renderer,
+    // which mips the same atlas.
+    //
+    // The instrument is the SHAPE of the coverage histogram, not a pixel count:
+    // undersampling does not merely change pixels, it collapses them toward
+    // all-or-nothing. Measured on the shipped RobotoMono at 20px -
+    //   without mips: 394 lit pixels, mean coverage 201  (a hard stencil)
+    //   with mips:    805 lit pixels, mean coverage  93  (real antialiasing)
+    // - so the thresholds below sit in the wide gap between those, and removing
+    // the mip path from drawStringFnt fails this case rather than nudging it.
+    hudsw::Image im; im.resize(1920, 1080);
+    TestFrame tf;
+    tf.fonts = { "RobotoMono-Regular" };
+    SPluginString_t s{};
+    std::strcpy(s.m_szString, "Standings");
+    s.m_afPos[0] = 0.05f; s.m_afPos[1] = 0.30f;
+    s.m_iFont = 1;
+    s.m_fSize = 0.0185f;                 // ~20px of a 135px cell: ~7x minification
+    s.m_iJustify = 0;
+    s.m_ulColor = abgr(255, 255, 255);
+    tf.strings.push_back(s);
+    hudsw::Renderer r;
+    r.render(im, tf.build(), 0, 0, 0);
+
+    long lit = 0, partial = 0, sum = 0;
+    for (int y = 0; y < im.h; ++y)
+        for (int x = 0; x < im.w; ++x) {
+            const Px p = at(im, x, y);
+            if (!p.r) continue;
+            ++lit; sum += p.r;
+            if (p.r > 40 && p.r < 215) ++partial;   // neither ink nor paper
+        }
+    REQUIRE(lit > 0);
+    const double mean = double(sum) / lit;
+    CHECK_MESSAGE(lit > 600, "only " << lit << " lit pixels - the glyphs are being "
+                             "sampled as a hard stencil, not resolved");
+    CHECK_MESSAGE(mean < 140.0, "mean coverage " << mean << " is stencil-shaped; "
+                                "antialiased text is dominated by partial pixels");
+    CHECK_MESSAGE(partial * 2 > lit, "only " << partial << " of " << lit
+                  << " lit pixels carry partial coverage");
 }

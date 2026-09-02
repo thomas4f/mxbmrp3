@@ -23,8 +23,8 @@ bool AtomicFileWriter::writeFileAtomic(const std::string& path, const std::strin
             return false;
         }
     }
-    // Atomic replace; MOVEFILE_WRITE_THROUGH flushes to disk. This consolidates the
-    // identical pattern previously copied in settings/stats/tracked-riders/rumble.
+    // Atomic replace; MOVEFILE_WRITE_THROUGH flushes to disk. The one copy of this
+    // pattern for settings/stats/tracked-riders/rumble.
     if (!MoveFileExA(temp.c_str(), path.c_str(),
                      MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
         DEBUG_WARN_F("[AtomicFileWriter] atomic replace failed (err %lu): %s",

@@ -98,10 +98,10 @@ void Handlers::handleRaceCommunication(Unified::RaceCommunicationData* psRaceCom
         DEBUG_INFO_F("Penalty given to rider #%d for %s (%dms)",
             psRaceCommunication->raceNum, offenceStr, penaltyMs);
 
-        // Regression detector: time penalties used to ship with penaltyTime==0
-        // (the API bug we worked around). If a TimePenalty event arrives with
-        // a zero amount on a current build, that's a signal the API may have
-        // regressed. Warn once per process to flag it without spamming.
+        // Regression detector: a TimePenalty event with a zero amount is the
+        // signature of a known game-API bug (penaltyTime shipped as 0), so it
+        // is a signal the API may have regressed. Warn once per process to
+        // flag it without spamming.
         if (psRaceCommunication->penaltyType == Unified::PenaltyType::TimePenalty &&
             penaltyMs == 0) {
             static bool s_zeroPenaltyWarned = false;
@@ -115,10 +115,9 @@ void Handlers::handleRaceCommunication(Unified::RaceCommunicationData* psRaceCom
 
         // Event log: "#4 penalty (Cutting)" with the amount in the DETAIL
         // column ("5s"), matching the fastest-lap message+detail shape. The
-        // format is the LOG's own business now: the spotter used to parse this
-        // column back into a number to speak it, which made a display string
-        // load-bearing for audio, and takes the amount through EventNumbers
-        // instead.
+        // format is the LOG's own business: the spotter takes the amount through
+        // EventNumbers, never by parsing this column back into a number, so a
+        // display string is not load-bearing for audio.
         const RaceEntryData* entry = pluginData.getRaceEntry(psRaceCommunication->raceNum);
         const char* riderLabel = entry ? entry->formattedRaceNum : "???";
         char eventMsg[64];

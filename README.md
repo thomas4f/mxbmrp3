@@ -105,7 +105,7 @@ Launch the game and load into a track. A few elements are enabled by default, so
 - **Move Mouse** - Show mouse pointer and settings button (auto-hides after inactivity)
 - **Left Click** - Interact with settings menu and HUD elements
 - **Right Click & Drag** - Reposition elements
-- **Left Click a rider** - On the Map or Standings HUD, switch the spectate camera to that rider
+- **Left Click a rider** - On the Map, Standings, Event Log or Charts HUD, switch the spectate camera to that rider
 
 ### Keyboard Shortcuts
 
@@ -119,7 +119,7 @@ The plugin is active in-game only - it does nothing in the main menus, so all co
 
 Hover over any setting in the menu to see its description - every control has an in-game tooltip explaining what it does.
 
-**Auto-Save** (on by default) writes your changes when you leave the track. To save sooner, use the **Save** button at the bottom of the menu - it lights up whenever you have unsaved changes.
+**Auto-Save** (Settings > General) writes your changes when you leave the track. To save sooner, use the **Save** button at the bottom of the menu - it lights up whenever you have unsaved changes.
 
 The settings menu provides global settings that apply to all profiles, followed by per-element tabs for the individual HUDs and widgets:
 
@@ -134,6 +134,7 @@ The settings menu provides global settings that apply to all profiles, followed 
 | <img src="assets/icons/hud-video.svg" width="20" height="20" alt=""> | **Director** | Auto-director for spectating and replays - automatically follows the most interesting rider |
 | <img src="assets/icons/hud-spotter.svg" width="20" height="20" alt=""> | **Spotter** | Spoken race callouts and their subtitles - voice, categories, and proximity distances |
 | <img src="assets/icons/hud-updates.svg" width="20" height="20" alt=""> | **Updates** | Check for new versions and install updates in-game |
+
 <!-- Deliberately NO row for the About screen: it is not a tab (it opens from
      the About button, bottom right) and does not belong in the tab list.
      check_docs.py fails if a row for it reappears here. -->
@@ -148,11 +149,11 @@ Four separate profiles store complete HUD layout configurations:
 - **Race** - Race 1, Race 2, Straight Rhythm sessions
 - **Spectate** - Spectating or viewing replays
 
-Auto-switch (disabled by default) automatically changes profiles based on session type.
+**Auto-Switch** (Settings > General) changes profiles for you as the session type changes.
 
 ## HUDs & Widgets
 
-**HUDs** are the larger data displays - each gets its own settings tab with options like column/row toggles, gap modes, and textures. **Widgets** are simpler, single-purpose readouts (one number, gauge, or dial); rather than a tab each, they're all configured together under the shared **Widgets** tab, a row apiece for visibility, title, texture, opacity and scale. A few carry further options in the [INI](#advanced-settings) (the Lean widget's arc and markers, for one).
+**HUDs** are the larger data displays - each gets its own settings tab with options like column/row toggles, gap modes, and textures. **Widgets** are simpler, single-purpose readouts (one number, gauge, or dial); rather than a tab each, they're configured together under the shared **Widgets** tab, a row apiece for visibility, title, texture, opacity and scale (the two that belong to a feature - the Director's status button and the Spotter's subtitles - sit on that feature's own tab instead). A few carry further options in the [INI](#advanced-settings) (the Lean widget's arc and markers, for one).
 
 ### HUDs
 
@@ -175,7 +176,7 @@ Auto-switch (disabled by default) automatically changes profiles based on sessio
 | <img src="assets/icons/hud-friends.svg" width="20" height="20" alt=""> | **Friends** | Steam friends in-game: their server/track and who's joined your session |
 | <img src="assets/icons/hud-fmx.svg" width="20" height="20" alt=""> | **FMX** | Freestyle trick detection with scoring and chain combos (MX Bikes and GP Bikes only) |
 | <img src="assets/icons/hud-stats.svg" width="20" height="20" alt=""> | **Stats** | Riding stats with columns for last lap, session, and all-time totals |
-| <img src="assets/icons/hud-performance.svg" width="20" height="20" alt=""> | **Performance** | FPS and plugin CPU usage |
+| <img src="assets/icons/hud-performance.svg" width="20" height="20" alt=""> | **Performance** | FPS and the plugin's own per-frame time |
 
 ### Widgets
 
@@ -204,25 +205,25 @@ Auto-switch (disabled by default) automatically changes profiles based on sessio
 
 ## More Features
 
-Beyond the HUDs and widgets above. Each is off until you turn it on, except Steam Friends, which ships on.
+A few larger features live beyond the HUDs and widgets above, each behind its own switch in the settings menu.
 
 ### Web Overlay
-Enable **Web Server** in Settings > General and the plugin serves a live browser overlay: a standings tower, event log, rider focus card, and periodic broadcast panels (fastest-lap boards, a "down the order" rundown, and on-track battles). Point an OBS **Browser Source** at `http://localhost:8080` (the port is shown beside the setting), or just open it in a browser. Colours and fonts follow your in-game settings, and a gear icon on the overlay sets tower size, filters and the rest per browser. Full guide: [Web overlay](docs/web-overlay.md).
+Turn on **Web Server** (Settings > General) and the plugin serves a live browser overlay: a standings tower, event log, rider focus card, and periodic broadcast panels (fastest-lap boards, a "down the order" rundown, and on-track battles). Point an OBS **Browser Source** at `http://localhost:8080` (the port is shown beside the setting), or just open it in a browser. Colors and fonts follow your in-game settings, and a gear icon on the overlay sets tower size, filters and the rest per browser. Full guide: [Web overlay](docs/web-overlay.md).
 
 ### Spotter (voice callouts)
-Turn on **Spoken audio** in Settings > Spotter (or click the checkbox beside the tab) and the plugin talks to you while you ride: riders behind or alongside you, blue flags, a rider down, and - each time you cross the line - your position and the gaps ahead and behind. Windows text-to-speech reads it out of the box, with **TTS voice**, **Speed** and **Volume** to choose how; recorded voice packs are a separate download. Five **Callouts** switches decide what gets announced, and **Subtitles** puts every call on screen so you can run it silent. It follows whoever you're watching, so it works while spectating and in replays. Full guide: [Spotter voice](docs/spotter.md).
+Turn on **Spoken audio** (Settings > Spotter, or the checkbox beside the tab) and the plugin talks to you while you ride: riders behind or alongside you, blue flags, a rider down, and - each time you cross the line - your position and the gaps ahead and behind. Windows text-to-speech reads it out of the box, with **TTS voice**, **Speed** and **Volume** to choose how; recorded voice packs are a separate download. Five **Callouts** switches decide what gets announced, and **Subtitles** puts every call on screen so you can run it silent. It follows whoever you're watching, so it works while spectating and in replays. Full guide: [Spotter voice](docs/spotter.md).
 
 ### Auto-director (spectating & replays)
-Enable the **Director** (Settings > Director, or click its camera-icon status button) and it automatically cuts the spectate camera to the most interesting rider or battle, broadcast-style, so you don't have to switch riders by hand. It works while spectating live and in replays - a great way to re-watch or record a session and let it direct the action for you. It's off by default (so it never overrides your manual camera unasked), and it also drives the [Web Overlay](#web-overlay)'s battle panel.
+Turn on the **Director** (Settings > Director, or its camera-icon status button) and it automatically cuts the spectate camera to the most interesting rider or battle, broadcast-style, so you don't have to switch riders by hand. It works while spectating live and in replays - a great way to re-watch or record a session and let it direct the action for you. It also drives the [Web Overlay](#web-overlay)'s battle panel.
 
 ### Second-monitor HUD (Companion window)
-Set **Settings > Appearance > HUD Display** to **Companion** (or **Both**) to open a standalone window you can drag and maximize on a second monitor. Each HUD keeps its own on/off state and position there (drag or toggle it while your mouse is over that window), so you can run a minimal in-game layout and a full dashboard on the second screen at once.
+Set **HUD Display** (Settings > Appearance) to **Companion** or **Both** to open a standalone window you can drag and maximize on a second monitor. Each HUD keeps its own on/off state and position there (drag or toggle it while your mouse is over that window), so you can run a minimal in-game layout and a full dashboard on the second screen at once.
 
 ### Track records
-The Records HUD fetches online lap records from CBR or MXB-Ranked. Enable "Auto-fetch" in Settings > Records to automatically load records when you enter a track. Records also work while spectating.
+The Records HUD fetches online lap records from CBR or MXB-Ranked. Turn on **Auto-fetch** (Settings > Records) to load them when you enter a track. Records also work while spectating.
 
 ### Custom segment timing (training tool)
-Bind the **Segment Add** and **Segment Remove** hotkeys (Settings > Hotkeys, unbound by default) to drop timing points on the track as you ride. Drop two and the Timing HUD times the section between them - live, with a delta to your best for it - so you can drill a single corner or rhythm section without completing a full lap. Remove the points to return to normal split/lap timing.
+Bind the **Segment Add** and **Segment Remove** hotkeys (Settings > Hotkeys) to drop timing points on the track as you ride. Drop two and the Timing HUD times the section between them - live, with a delta to your best for it - so you can drill a single corner or rhythm section without completing a full lap. Remove the points to return to normal split/lap timing.
 
 ### See where friends are racing
 **Steam Friends** (Settings > General) is on by default on the Steam build. It broadcasts your session to friends and populates the Friends HUD: which of your Steam friends are in-game, the server and track they're on, and who's joined your session.
@@ -230,7 +231,7 @@ Bind the **Segment Add** and **Segment Remove** hotkeys (Settings > Hotkeys, unb
 ## Tips & Tricks
 
 ### Streaming setup
-Enable the Session HUD (Settings > Session) to show the server name, track, and session format on screen for your viewers. The Pitboard and Gamepad widgets also work well on stream - both have [fully customizable textures](docs/modding.md#custom-textures), and the Gamepad widget shows your live controller inputs. Pair with Discord Rich Presence (Settings > General) to show your current session and track in your Discord profile. For a broadcast-style overlay, see [Web Overlay](#web-overlay).
+Turn on the **Session** HUD (Settings > Session) to show the server name, track, and session format on screen for your viewers. The Pitboard and Gamepad widgets also work well on stream - both have [fully customizable textures](docs/modding.md#custom-textures), and the Gamepad widget shows your live controller inputs. Pair with **Discord Rich Presence** (Settings > General) to show your current session and track in your Discord profile. For a broadcast-style overlay, see [Web Overlay](#web-overlay).
 
 ### Power-user INI tweaks
 Many additional options are available by editing the [INI file](#advanced-settings) directly. The file is well-commented and organized by HUD section. Each HUD section also supports per-element color and font overrides. Colors use ABGR hex values; fonts use the font filename (without `.fnt`) of any file in the `fonts/` folder. For example:
@@ -247,15 +248,16 @@ Use the [Color Override Picker](https://thomas4f.github.io/mxbmrp3/tools/color_o
 ### Getting the most FPS
 Biggest wins first:
 
-1. Set **Panel Theme** to **None** (Settings > Appearance)
-2. Keep **Drop Shadow** off (same tab) - it ships off, because every shadowed string is drawn twice
-3. Turn down the map's **Detail**, and slim or disable its **Track outline**
-4. Hide HUDs you don't use
+1. Turn on **Direct GL Rendering** (Settings > General) - the plugin draws the HUD itself instead of handing every piece of it to the game
+2. Set **Panel Theme** to **None** (Settings > Appearance) - a theme puts artwork behind every panel
+3. Turn off **Drop Shadow** (Settings > Appearance) - every shadowed string is drawn twice
+4. Turn down **Detail**, and slim or turn off **Track outline** (Settings > Map) - the track ribbon is the plugin's largest single piece of drawing
+5. Turn off what you don't use (the checkbox beside each tab, or the Visible column in Settings > Widgets) - a hidden element builds and draws nothing
 
 Beyond the plugin: every other plugin in your `plugins` folder works every frame whether you use it or not, so removing ones you don't need is often the biggest win of all.
 
 ### Experimental: run the plugin on its own thread
-By default the plugin does its work during the game's frame. Set `pluginThread=1` in the `[Advanced]` section of the [INI file](#advanced-settings) to move the plugin's HUD building and event handling onto a separate thread, so a heavy HUD rebuild can't cost you frames. It's **off by default and experimental** - try it if you're chasing the smoothest possible frame times. Toggle it live with the **Reload Config** hotkey.
+By default the plugin does its work during the game's frame. Set `pluginThread=1` in the `[Advanced]` section of the [INI file](#advanced-settings) to move the plugin's HUD building and event handling onto a separate thread, so a heavy HUD rebuild can't cost you frames. It's **experimental** - try it if you're chasing the smoothest possible frame times. Toggle it live with the **Reload Config** hotkey.
 
 ### Game settings that pair with the plugin
 
@@ -265,10 +267,10 @@ These three are the *game's* own settings, not the plugin's.
 Create an empty file called `pitboard.cfg` in `[Game]\misc\hud\` (create the directories if needed). This removes the default 2D pitboard while keeping the small 3D pitboard in the game world. Delete the file to restore it.
 
 #### Show/hide the rider stand icon
-Enable it under Simulation > "Show Rider Stand". To customize the icon or its position, extract `rider.cfg` and `riderstand.tga` from `misc.pkz\misc\helpers\` to `[Game]\misc\helpers\` and edit them there.
+Turn on **Show Rider Stand** (Simulation). To customize the icon or its position, extract `rider.cfg` and `riderstand.tga` from `misc.pkz\misc\helpers\` to `[Game]\misc\helpers\` and edit them there.
 
 #### Show/hide the game's native gear indicator
-Toggle it under Simulation > "Show HUD". Disable it if you'd rather use the plugin's GearWidget instead. To customize the graphics or position, extract `gear.tga`, `hud.cfg`, `LCD.fnt`, and `switch.tga` from `misc.pkz\misc\hud\` to `[Game]\misc\hud\` and edit them there.
+Turn off **Show HUD** (Simulation) if you'd rather use the plugin's **Gear** widget instead. To customize the graphics or position, extract `gear.tga`, `hud.cfg`, `LCD.fnt`, and `switch.tga` from `misc.pkz\misc\hud\` to `[Game]\misc\hud\` and edit them there.
 
 ## Advanced Settings
 
@@ -291,7 +293,7 @@ All plugin settings are stored in `mxbmrp3_settings.ini` in your [user data fold
 3. Launch the game to apply changes
 
 *Hot reload* (for rapid iteration):
-1. Disable **Auto-Save** in Settings > General
+1. Turn off **Auto-Save** (Settings > General)
 2. Edit the INI file while the game is running
 3. Use the **Reload Config** hotkey to apply changes (bind it in Settings > Hotkeys)
 
@@ -335,7 +337,7 @@ The long-term fix is a code-signing certificate (a paid yearly cost, and one of 
 - Many issues are already fixed in a newer release, so update before troubleshooting further
 - Check your version in Settings > Updates (or the Version widget). The plugin notifies you on startup when a new stable release is available
 - To update in-game, go to Settings > Updates and install directly - no manual download or reinstall needed
-- If the in-game updater is set to "Off" or unavailable, download the latest release manually from [GitHub Releases](https://github.com/thomas4f/mxbmrp3/releases) and reinstall
+- If the in-game updater is set to **Off** or unavailable, download the latest release manually from [GitHub Releases](https://github.com/thomas4f/mxbmrp3/releases) and reinstall
 
 ### HUD Not Appearing
 - Check the [Installation requirements](#installation) for your game's minimum version
@@ -351,23 +353,23 @@ The long-term fix is a code-signing certificate (a paid yearly cost, and one of 
 - If you moved or renamed this folder, restore it from the release archive
 
 ### Gamepad Widget Appears Cut Off
-- Go to Settings > Widgets tab and click "Reset Widgets" to correct the button positions.
+- Click **Reset Widgets** (Settings > Widgets) to correct the button positions
 
 ### Elements Appearing Twice (Ghost/Duplicate)
 - Check for duplicate MXBMRP3 DLO files - only one of `mxbmrp3.dlo` (MX Bikes), `mxbmrp3_gpb.dlo` (GP Bikes), or `mxbmrp3_krp.dlo` (Kart Racing Pro) should exist in your plugins folder. Other plugins' DLO files are fine.
 
 ### Elements Overlapping
 - Drag elements to reposition them
-- Use settings menu to adjust scale
+- Use the settings menu to adjust scale
 
 ### Controller or Rumble Not Working
-- Verify the correct controller is selected in Settings > General
+- Verify the correct **Controller** is selected (Settings > General)
 - If you accidentally deleted `xinput64.dli` from the plugins folder, controller input may stop working
 - To restore: verify game files integrity (Steam) or reinstall the game
 
 ### Web Overlay Not Working
-- If **Web Server** reads **Error** in Settings > General, the plugin couldn't open the port - usually because another application already has it
-- Change the port in Settings > General > Web Server Port (e.g., to 8081). When it's serving, the row below turns into a clickable `http://localhost:<port>` link
+- If **Web Server** reads **Error** (Settings > General), the plugin couldn't open the port - usually because another application already has it
+- Change **Web Server Port** (Settings > General) to a free one (e.g., 8081). When it's serving, the row below turns into a clickable `http://localhost:<port>` link
 - Remember to update your OBS Browser Source URL to match the new port
 
 ### Game Fails to Launch, Crashes, or Shows Black Screen
@@ -376,7 +378,7 @@ The long-term fix is a code-signing certificate (a paid yearly cost, and one of 
 
 ## Privacy
 
-The plugin sends a small anonymous ping per game launch, so the developer can see how many people use it, which features are worth keeping, and what needs fixing. It is on by default. The installer asks before anything is sent: untick **Participate in the anonymous usage survey** on its Privacy page and the plugin starts with it off. You can change it at any time in **Settings > General > Integrations** (the "Usage survey" toggle). Turning it off sends one final anonymous opt-out ping, then nothing more.
+The plugin sends a small anonymous ping per game launch, so the developer can see how many people use it, which features are worth keeping, and what needs fixing. It is on by default. The installer asks before anything is sent: untick **Participate in the anonymous usage survey** on its Privacy page and the plugin starts with it off. You can change it at any time with the **Usage survey** toggle (Settings > General). Turning it off sends one final anonymous opt-out ping, then nothing more.
 
 Turning it off doesn't disable anything else; the plugin works exactly the same. The one difference: the plugin catches crashes in the game itself, which is what the [known-crash list](crash_analysis/KNOWN_GAME_CRASHES.md) is built from, and with analytics off yours stop being reported automatically. The crash files are still written to `Documents\PiBoSo\[Game]\mxbmrp3\crashes\`, so you can still attach them to a bug report.
 
@@ -389,7 +391,7 @@ What it sends:
 | Enabled features | HUDs, widgets, web overlay, Discord, Steam, rumble, update channel, and so on, as anonymous on/off flags |
 | Panel theme | Which of the plugin's own themes you use, or that you run with none. A theme you installed or made yourself counts only as "custom" - its name never leaves your machine |
 | Spotter voice | Which of the plugin's own voice packs you use, that you use Windows text-to-speech instead, or that the spotter is off. A pack you installed or made yourself counts only as "custom" - its name never leaves your machine |
-| Environment | Operating system and version/build (e.g. Windows 11 22631, or Wine/Proton on Linux), language, and whether it's the Steam or standalone build |
+| Environment | Operating system and version/build (e.g., Windows 11 22631, or Wine/Proton on Linux), language, and whether it's the Steam or standalone build |
 | Usage counters | How many times this install has launched, and how many days since it was first installed |
 | Session length | How long a play session lasted (start to clean exit), so the developer can gauge typical usage |
 | Crashes | If the game crashed last session: which module faulted and where, the error code and access type (read/write/execute), the plugin and game versions at the time, and a short backtrace of the faulting call stack (the top several module-and-offset frames, so a plugin fault can be told apart from a bystander to a game or driver crash) - enough to group similar crashes, but never the memory dump or its contents. Reported on the next launch |

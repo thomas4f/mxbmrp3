@@ -177,6 +177,17 @@ jobs:
       - name: Docs are honest (paths resolve, invariants labelled, budget kept)
         run: python3 tools/check_docs.py
 
+      # The same docs through the renderer the PUBLIC SITE uses. GitHub Pages is
+      # Jekyll, so it is kramdown rather than GitHub's own cmark-gfm, and where
+      # the two disagree the page silently comes out wrong - a table as a
+      # paragraph of pipes, a row swallowed by an unclosed <tag>. Shipped once
+      # (v1.29.3's settings-tab table), invisible from every check we had.
+      - name: Docs render on the Pages site too (kramdown)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ruby ruby-kramdown ruby-kramdown-parser-gfm
+          ./tests/integration/check_pages_render.sh
+
       # The Python helper tools (SBOM, minidump triage, the check_*.py gates,
       # fixture generators) had no linter at all. Config + rationale for the rule
       # set — and for why the FORMATTER is deliberately off — is in ruff.toml.
@@ -405,6 +416,15 @@ jobs:
       # `mt-plain: <which thread>` reason. See the script header.
       - name: Cross-thread flag lint (thread-owning classes)
         run: ./tests/integration/check_mt_flags.sh
+
+      # Import-table lint. opengl32/d3d11/d3dcompiler/dcomp are resolved at
+      # RUNTIME so a machine without them falls back instead of failing to load
+      # the plugin; an accidental import (usually: include the header, call a
+      # function directly) defeats that silently, and opengl32 in particular
+      # exists everywhere, so it would never fail loudly. Inspects the linked
+      # artifact, which no source lint can do. See the script header.
+      - name: Lazy module import lint (linked artifact)
+        run: ./tests/integration/check_lazy_module_imports.sh
 
       # Argument-evaluation-order lint. gcc (every gate here) and MSVC (the only
       # build that ships) disagree about the order call arguments are evaluated

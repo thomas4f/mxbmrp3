@@ -37,7 +37,11 @@ fi
 TARGET="--target=${MXB_TSA_TARGET:-x86_64-w64-mingw32}"
 WARN="-Wno-everything -Wthread-safety -Werror=thread-safety"
 INCS="-I${HERE}/shim -I${SRC}"
-BASE="-std=c++17 -fsyntax-only ${TARGET} ${WARN} -DNOMINMAX -DNDEBUG -DGAME_MXBIKES -DMXBMRP3_ALLOW_NO_ANALYTICS ${INCS}"
+# MXB_REPO_DATA_DIR mirrors mxbmrp3/CMakeLists.txt: the test-build sources this
+# gate parses under -DMXBMRP3_TEST_BUILD reference it, so without it the gate
+# fails to COMPILE rather than reporting a thread-safety verdict - which is a
+# red gate that says nothing about what it exists to check.
+BASE="-std=c++17 -fsyntax-only ${TARGET} ${WARN} -DNOMINMAX -DNDEBUG -DGAME_MXBIKES -DMXBMRP3_ALLOW_NO_ANALYTICS -DMXB_REPO_DATA_DIR=\"\\\"${SRC}/../mxbmrp3_data\\\"\" ${INCS}"
 
 # PREFLIGHT: clang alone isn't enough — it cross-parses with the mingw TARGET,
 # whose C++ headers come from the mingw-w64 sysroot. Without that sysroot every

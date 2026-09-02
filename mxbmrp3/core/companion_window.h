@@ -73,6 +73,14 @@ public:
     void setRefreshHz(int hz) { m_refreshHz.store(hz < 0 ? 0 : (hz > MAX_REFRESH_HZ ? MAX_REFRESH_HZ : hz)); }
     int  getRefreshHz() const { return m_refreshHz.load(); }
 
+    // GPU (D3D11) rendering, [Advanced] hwAccel, INI-only, default on. The window
+    // thread tries the GPU backend once per window life and falls back to the
+    // software rasterizer on ANY failure (init or runtime), so worst case equals
+    // the pre-GPU behavior; a changed setting takes effect when the window next
+    // opens. See core/hud_gpu_renderer.h.
+    void setHwAccel(bool on) { m_hwAccel.store(on, std::memory_order_relaxed); }
+    bool getHwAccel() const { return m_hwAccel.load(std::memory_order_relaxed); }
+
     // Request the window to close from WITHIN the window thread (the WM_CLOSE
     // handler): just signals the loop to exit — it must NOT join itself. The thread
     // tears down its own window and finishes; a later stop()/setEnabled() reaps it.
@@ -109,6 +117,7 @@ private:
         m_geomW MXB_GUARDED_BY(m_geomMutex) { 0 }, m_geomH MXB_GUARDED_BY(m_geomMutex) { 0 };
     std::atomic<bool> m_geomMax{ false };
     std::atomic<int> m_refreshHz{ 0 };   // 0 = V-Sync; N = fixed N Hz cap
+    std::atomic<bool> m_hwAccel{ true }; // GPU backend wanted (falls back live)
     // joined-by: stop() (HudManager shutdown path); the destructor's
     // spinThenDetach is only the no-Shutdown() unload backstop.
     std::thread m_thread;

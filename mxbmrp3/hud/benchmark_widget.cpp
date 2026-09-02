@@ -31,9 +31,9 @@ using namespace PluginConstants;
 BenchmarkWidget::BenchmarkWidget() {
     m_panelKind = PanelKind::Widget;
     // Body card: a title over a table of rows is exactly the shape the card exists
-    // for, and this was the last titled panel in the tree without one -- so under a
-    // theme it was the one table sitting straight on the frame's fill while every
-    // other one sat in a well. The box-model plan (addPlanBackground) emits the card.
+    // for; without one, under a theme this table sits straight on the frame's fill
+    // while every other one sits in a well. The box-model plan (addPlanBackground)
+    // emits the card.
     m_bContentCard = true;
     DEBUG_INFO("BenchmarkWidget created");
     setDraggable(true);
@@ -57,21 +57,19 @@ bool BenchmarkWidget::handlesDataType(DataChangeType dataType) const {
 // `bm.active` is a PRODUCER gate — it switches on the instrumentation that fills
 // the tables this widget displays — so it has to ask the same question as the
 // consumer gate (isVisibleAnySurface()), exactly like isTelemetryHistoryNeeded()
-// does for the telemetry history buffers. It used to be latched from
-// setVisible(), i.e. from the GAME toggle only, which meant a widget enabled on
-// the companion window collected nothing and rendered empty tables forever; the
-// only way to get data was to enable it in-game as well.
+// does for the telemetry history buffers. Latched from the GAME toggle only, a
+// widget enabled on the companion window collects nothing and renders empty
+// tables forever.
 //
 // Driven per frame rather than from the setters on purpose: any-surface visibility
 // also changes when the COMPANION WINDOW itself opens or closes, and no setter runs
 // then.
 //
-// It does NOT see every transition, which an earlier version of this comment
-// claimed. It sees every transition A FRAME LATER, and a caller that toggles and
-// then tears down without drawing gets none of them -- bench_driver does exactly
-// that (Benchmark(0) then Shutdown()), which silently stopped its report being
-// written until MXBMRP3_Test_BenchmarkWidget was made to call this directly. Any
-// caller needing the edge applied synchronously must do the same.
+// It does NOT see every transition: it sees every transition A FRAME LATER, and a
+// caller that toggles and then tears down without drawing gets none of them --
+// bench_driver does exactly that (Benchmark(0) then Shutdown()), so
+// MXBMRP3_Test_BenchmarkWidget calls this directly. Any caller needing the edge
+// applied synchronously must do the same.
 void BenchmarkWidget::syncCollectionState() {
     const bool visibleNow = isVisibleAnySurface();
     auto& bm = PluginData::getInstance().getBenchmarkMetrics();
@@ -195,7 +193,7 @@ void BenchmarkWidget::takeSnapshot() {
 
     // Snapshot callback timing (accumulated across entire interval)
     // CLAMPED, not just the copy loops below. Storing a count larger than the array
-    // is what sent every reader off the end -- see MAX_HUD_SNAPSHOTS.
+    // sends every reader off the end -- see MAX_HUD_SNAPSHOTS.
     m_snapshotCount = (bm.callbackCount < MAX_CALLBACKS) ? bm.callbackCount : MAX_CALLBACKS;
     for (int i = 0; i < m_snapshotCount && i < MAX_CALLBACKS; ++i) {
         strncpy_s(m_callbackSnapshots[i].name, sizeof(m_callbackSnapshots[i].name),
@@ -236,7 +234,7 @@ void BenchmarkWidget::takeSnapshot() {
         }
     }
     // PER FRAME, over the same window Draw's average is taken across -- see
-    // BenchmarkMetrics::frameTimerSamples for why these are no longer one sample.
+    // BenchmarkMetrics::frameTimerSamples for why these are averaged, not one sample.
     {
         const double n = bm.frameTimerSamples > 0
                        ? static_cast<double>(bm.frameTimerSamples) : 1.0;
@@ -287,10 +285,7 @@ void BenchmarkWidget::rebuildRenderData() {
     auto dim = getScaledDimensions();
 
     // Count rows: slack + header + callbacks + separator + HUD header + HUDs with rebuilds + footer
-    int rowCount = 1;  // Bottom slack row, kept for geometry parity: the pre-plan sizing
-                       // counted a "Title" row here ON TOP of reserving the title height
-                       // separately (the plan's band owns the title now), so the panel has
-                       // always ended one blank row below the footer.
+    int rowCount = 1;  // Bottom slack row: the panel ends one blank row below the footer.
     rowCount += 1;     // Callback section header
     int activeCallbacks = 0;
     for (int i = 0; i < m_snapshotCount; ++i) {
@@ -305,11 +300,10 @@ void BenchmarkWidget::rebuildRenderData() {
     for (int i = 0; i < m_hudSnapshotCount; ++i) {
         // Anything that rebuilt at all this stint stays listed — a HUD that rebuilds once
         // a lap must not vanish from the table between laps.
-        // ...AND anything that costs time without rebuilding. This listed only
-        // rebuilders, so a HUD burning microseconds per frame to decide NOT to draw
-        // was absent rather than mis-ranked: position_widget (2.22us/frame) and
-        // clock_widget (1.19), both at zero rebuilds, were invisible here while the
-        // exported report named them.
+        // ...AND anything that costs time without rebuilding: listing only
+        // rebuilders leaves a HUD burning microseconds per frame to decide NOT to
+        // draw (a widget at zero rebuilds and ~2us/frame) absent rather than
+        // mis-ranked, while the exported report names it.
         if (hudIsActive(m_hudSnapshots[i])) {
             activeHuds++;
         }
@@ -421,12 +415,11 @@ void BenchmarkWidget::rebuildRenderData() {
         int hudOrder[MAX_HUD_SNAPSHOTS]; int nHudOrder = 0;
         for (int i = 0; i < m_hudSnapshotCount && nHudOrder < MAX_HUD_SNAPSHOTS; ++i)
             if (hudIsActive(m_hudSnapshots[i])) hudOrder[nHudOrder++] = i;
-        // Heaviest total first: the whole point of the stint view is that it reorders the
-        // list by what is actually costing CPU, which the per-interval view cannot show.
-        // Heaviest PER FRAME first. Sorting by stint total ranked by how long the
-        // widget had been open rather than by what each HUD costs a frame, and it
-        // cannot rank a non-rebuilder at all -- its total is zero however much time
-        // it burns.
+        // Heaviest PER FRAME first: the whole point of the stint view is that it
+        // reorders the list by what is actually costing CPU, which the per-interval
+        // view cannot show. Sorting by stint total would rank by how long the widget
+        // has been open rather than by what each HUD costs a frame, and cannot rank
+        // a non-rebuilder at all -- its total is zero however much time it burns.
         std::sort(hudOrder, hudOrder + nHudOrder, [&](int a2, int b2) {
             return hudPerFrameUs(m_hudSnapshots[a2]) > hudPerFrameUs(m_hudSnapshots[b2]);
         });
@@ -479,11 +472,10 @@ void BenchmarkWidget::rebuildRenderData() {
     // === FOOTER - Aggregate stats ===
     char footer[64];
 
-    // DRAW, ATTRIBUTED -- the same split the exported report leads with. This line
-    // used to read "Collect render: N us" alone, which is the SMALLEST of Draw's
-    // three parts (about a tenth of it) while updateHuds (half) and the frame poll
-    // (a third) had no line at all. A profiler whose live view names its smallest
-    // component and hides its largest sends you looking in the wrong place.
+    // DRAW, ATTRIBUTED -- the same split the exported report leads with. Collect
+    // render is the SMALLEST of Draw's three parts (about a tenth of it), updateHuds
+    // about half and the frame poll a third; a profiler whose live view names its
+    // smallest component and hides its largest sends you looking in the wrong place.
     snprintf(footer, sizeof(footer), "Draw %.0f = upd %.0f + col %.0f + poll %.0f",
              m_drawAvgUs, m_updateHudsTimeUs, m_collectRenderTimeUs, m_framePollTimeUs);
     addString(footer, contentStartX, currentY, Justify::LEFT,
@@ -513,7 +505,7 @@ void BenchmarkWidget::rebuildRenderData() {
 
     // The plan chain, when it is costing anything worth naming. It is the one
     // shared cost that every ported panel pays at once, so a regression there shows
-    // up as every row rising together -- which is exactly how it was missed before.
+    // up as every row rising together rather than as one row standing out.
     if (m_planChainTimeUs >= 1.0f) {
         snprintf(footer, sizeof(footer), "Plan chain: %.0f us/f", m_planChainTimeUs);
         addString(footer, contentStartX, currentY, Justify::LEFT,
@@ -526,8 +518,8 @@ bool BenchmarkWidget::exportReport(const char* savePath) const {
 
     // savePath/mxbmrp3/benchmarks/ -- reports get their own subfolder so they don't
     // clutter the plugin config root (which holds settings/stats/log). Built by
-    // SettingsManager, which owns the save path; the render-probe sweep writes here too
-    // and got the folder wrong the one time it spelled the path itself.
+    // SettingsManager, which owns the save path; the render-probe sweep writes here too,
+    // through the same accessor rather than spelling the path itself.
     const std::string dir = SettingsManager::getInstance().getBenchmarksDir();
     if (dir.empty()) return false;
 
@@ -545,7 +537,7 @@ bool BenchmarkWidget::exportReport(const char* savePath) const {
 
     // Build the whole report into a string, then hand it to the shared atomic writer (temp
     // file + MoveFileExA replace) — the same path every persisted file uses. snprintf per line
-    // preserves the exact column formatting the old fprintf calls produced.
+    // keeps the exact column formatting the analyzer parses.
     std::string out;
     char line[256];
 
@@ -556,11 +548,10 @@ bool BenchmarkWidget::exportReport(const char* savePath) const {
 
     // 480fps frame budget. Cost is expressed as a share of this so the report is
     // self-describing — an analyzer doesn't have to know the target out of band.
-    // The shared target -- see PluginConstants::FRAME_BUDGET_US. These were a local
-    // 2083.0 and a local 480 that happened to agree with the graph, run_perf.sh and
-    // the docs; now they cannot disagree. NOT re-declared under the same names: this
-    // file has `using namespace PluginConstants`, so a local TARGET_FPS shadows the
-    // global one and MSVC's C4459 is an error here (/WX).
+    // The shared target -- see PluginConstants::FRAME_BUDGET_US -- so this report, the
+    // graph, run_perf.sh and the docs cannot disagree. NOT re-declared under the same
+    // names: this file has `using namespace PluginConstants`, so a local TARGET_FPS
+    // shadows the global one and MSVC's C4459 is an error here (/WX).
 
     // --- CONTEXT: makes two reports comparable and attributable to a scenario ----
     const auto& sd = PluginData::getInstance().getSessionData();
@@ -577,8 +568,8 @@ bool BenchmarkWidget::exportReport(const char* savePath) const {
 
     // --- RENDER PROBE, only when it is on. A probe run's numbers are meaningless
     // without its configuration, and the configuration lives in the INI, not in the
-    // report -- so a sweep produced a stack of files that could not be told apart
-    // afterwards. Since the whole point of the probe is to compare runs, the run has
+    // report -- so without it a sweep produces a stack of files that cannot be told
+    // apart afterwards. Since the whole point of the probe is to compare runs, the run has
     // to carry its own settings. Off by default, so this block is absent from every
     // ordinary report.
     {
@@ -649,7 +640,7 @@ bool BenchmarkWidget::exportReport(const char* savePath) const {
     // Two DIFFERENT counts, deliberately both reported: m_frameSampleCount is every
     // frame of the session, but every figure below derives from the ring window
     // (last <= MAX_FRAME_SAMPLES frames). Labelling the session total as "sampled"
-    // read as if a 10-minute capture's 288k frames backed the p99.
+    // would read as if a 10-minute capture's 288k frames backed the p99.
     snprintf(line, sizeof(line), "Duration: %.2f s (%lld frames total; %d in the sampled window)\n",
              durationSec, m_frameSampleCount, nSamples); out += line;
     if (m_frameSampleCount > 0) {
@@ -699,7 +690,7 @@ bool BenchmarkWidget::exportReport(const char* savePath) const {
     // which HUD hands the engine the most to draw). Sorted by strings desc, since text
     // is the priciest primitive, so the top row is the heaviest render-handoff HUD.
     // Primitive counts only. These ARE a snapshot by nature (what each HUD last handed
-    // the engine); the timing that used to share this table is the stint table's job.
+    // the engine); timing is the stint table's job.
     out += "=== HUD RENDER FOOTPRINT (primitives emitted) ===\n";
     snprintf(line, sizeof(line), "%-24s %8s %8s\n", "Name", "Quads", "Strings"); out += line;
     snprintf(line, sizeof(line), "%-24s %8s %8s\n", "------------------------", "--------", "--------"); out += line;
@@ -733,8 +724,8 @@ bool BenchmarkWidget::exportReport(const char* savePath) const {
         const auto& bm = PluginData::getInstance().getBenchmarkMetrics();
         // IDLE us/frame is the column that matters for a Draw regression: a HUD's
         // update() minus its rebuilds, over every frame -- what it costs on the
-        // frames it is NOT dirty. Summed, that was 58.6us/frame against 36.4us of
-        // rebuilds, and no per-HUD figure existed to say where it went.
+        // frames it is NOT dirty. Summed it can exceed the rebuilds themselves, and
+        // only a per-HUD figure says where it goes.
         out += "=== HUD REBUILDS (STINT TOTALS) ===\n";
         snprintf(line, sizeof(line), "%-24s %12s %9s %10s %10s %10s %7s\n",
                  "Name", "Total us", "Avg us", "Peak us", "Rebuilds", "Idle us/f", "% upd"); out += line;
@@ -742,8 +733,7 @@ bool BenchmarkWidget::exportReport(const char* savePath) const {
                  "------------------------", "------------", "---------", "----------", "----------", "----------", "-------"); out += line;
         int ord[MAX_HUD_SNAPSHOTS]; int nOrd = 0;
         // Every HUD with EITHER a rebuild or a timed update: a HUD that never
-        // rebuilds and still costs time per frame is exactly what this is hunting,
-        // and the old filter hid it.
+        // rebuilds and still costs time per frame is exactly what this is hunting.
         for (int i = 0; i < bm.hudCount && nOrd < MAX_HUD_SNAPSHOTS; ++i)
             if (bm.huds[i].stintRebuildCount > 0 || bm.huds[i].stintUpdateTimeUs > 0) ord[nOrd++] = i;
         // Heaviest total first — that is the "what should I look at" ordering, and it is
@@ -802,8 +792,7 @@ bool BenchmarkWidget::exportReport(const char* savePath) const {
     // DRAW, ATTRIBUTED. These three are per-frame and together account for the Draw
     // callback: the HUDs' own update() (rebuilds included), the collect that bundles
     // their primitives for the engine, and the input/hotkey/director polls around
-    // them. Draw was one lump with only the collect broken out, and the collect is
-    // the small half -- so a Draw regression had to be bisected instead of read.
+    // them. Without the split a Draw regression has to be bisected instead of read.
     snprintf(line, sizeof(line), "Update HUDs time:    %.0f us/frame (%.1f%% of the 480fps budget, %.1f%% of Draw)\n",
              m_updateHudsTimeUs, updatePct, pctDraw(m_updateHudsTimeUs)); out += line;
     snprintf(line, sizeof(line), "  of which HUD input: %.0f us/frame (handleMouseInput + the drag-target search)\n",
@@ -837,25 +826,32 @@ bool BenchmarkWidget::exportReport(const char* savePath) const {
     // Machine-readable one-liner for tools/benchmark_report.py (stable key=value;
     // parse this rather than the human tables).
     //
-    // EMITTED IN SEGMENTS, and that is the fix for a real defect rather than a style
-    // choice. This was ONE snprintf into a char[512], and the line had outgrown it:
-    // every exported report came out truncated at exactly 512 bytes, silently losing
-    // cb_total_us and -- the moment they were added -- all four probe_* keys. So five
-    // probe sweeps in a row could not be told apart by the file that was supposed to
-    // describe them, and nothing failed: snprintf truncates and returns, the report
-    // still parses, and every key that survived is correct. A bigger buffer would only
+    // EMITTED IN SEGMENTS, not one snprintf into a fixed buffer, and that is
+    // correctness rather than style: the line is longer than a comfortable buffer,
+    // and an overrun fails silently -- snprintf truncates and returns, the report
+    // still parses, and every key that survives is correct, so the trailing keys
+    // (cb_total_us, the four probe_* keys) simply vanish. A bigger buffer would only
     // move the cliff; segments remove it, because `out` is a std::string and each
     // piece below is bounded by its own format.
     //
     // The last segment is therefore load-bearing as a completeness check: if a report
     // ends mid-line, the line was cut, and benchmark_report.py requires the terminal
     // keys for exactly that reason.
+    //
+    // gl_ingame / gl_drew: a report must say WHICH RENDERER IT MEASURED. Two
+    // reports taken minutes apart are otherwise indistinguishable, so the whole
+    // comparison rests on someone remembering which file was which - and a
+    // mislabelled pair does not look wrong, it looks like a result. gl_drew is
+    // the honest half: the setting can be on while the backend declined (a
+    // failed init, or glProbe winning), and what was measured is what DREW.
     {
         char seg[256];
         snprintf(seg, sizeof(seg),
             "BENCH game=\"%s\" track=\"%s\" riders=%d huds=%d threaded=%d "
-            "target_fps=%d budget_us=%.0f ",
+            "gl_ingame=%d gl_drew=%d target_fps=%d budget_us=%.0f ",
             GAME_NAME, trackName, riders, m_hudSnapshotCount, threaded ? 1 : 0,
+            UiConfig::getInstance().getGlInGame() ? 1 : 0,
+            HudManager::getInstance().glDrewLastFrame() ? 1 : 0,
             PluginConstants::TARGET_FPS, PluginConstants::FRAME_BUDGET_US);
         out += seg;
         snprintf(seg, sizeof(seg),

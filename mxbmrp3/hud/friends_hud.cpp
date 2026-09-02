@@ -174,7 +174,7 @@ void FriendsHud::rebuildRenderData() {
     const int rowsToShow = empty ? emptyLines : std::min(static_cast<int>(view.size()), m_maxDisplayRows);
 
     // BOX-MODEL: the caption's ask covers the title's width (widest-ask rule),
-    // so the empty box no longer hand-maxes it in; the standard-width floor
+    // so the empty box need not hand-max it in; the standard-width floor
     // rides as the panel minimum.
     const float headerHeight = (m_bShowHeaders && !empty) ? dim.lineHeightNormal : 0.0f;
     BaseHud::PanelWant want;

@@ -54,6 +54,13 @@ CXXFLAGS=(-std=c++17 -O1)
 # the spotter's words live — so a test asserting what it says has to read it.
 # Z: is Wine's mapping of /, and forward slashes are fine for the CRT.
 CXXFLAGS+=(-DMXB_SHIPPED_PACK_INI="\"Z:${ROOT}/mxbmrp3_data/spotters/default/spotter.ini\"")
+# The repo's shipped data tree. A test that needs discovery to actually FIND
+# something must stage it through the plugin's own user-override sync (copy into
+# savePath\mxbmrp3\<type>\ before Startup, which syncUserAssets then mirrors
+# into the discovery tree) rather than by copying files into plugins/ by hand -
+# a hand-rolled copy skips the sync and produces discovery-without-registration,
+# which looks exactly like a renderer bug.
+CXXFLAGS+=(-DMXB_REPO_DATA_DIR="\"Z:${ROOT}/mxbmrp3_data\"")
 # Static link: the tests use std::string/std::thread, whose mingw runtime DLLs
 # aren't on Wine's search path. -lws2_32 for the HTTP GET.
 LDFLAGS=(-static -static-libgcc -static-libstdc++)

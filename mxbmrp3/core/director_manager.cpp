@@ -395,9 +395,9 @@ void DirectorManager::emitCutEvent(int subject, int partner) {
         // leader crosses, the lock moves down the order to whoever is still racing to
         // the line, and every one of those cuts is tagged "finish" too. Only the rider
         // who actually took the win gets the winner line -- there is one winner, and
-        // labelling P4's run to the flag "Race winner" made the log nonsense.
-        // Mirrors the overlay caption, which already reads FINISHED vs FINISHING
-        // (overlay-focus.js); the log had no such split.
+        // labelling P4's run to the flag "Race winner" makes the log nonsense.
+        // Mirrors the overlay caption, which reads FINISHED vs FINISHING
+        // (overlay-focus.js).
         case SHOT_FINISH:
             if (subject == m_finishedWinnerNum) snprintf(msg, sizeof(msg), "Race winner %s", subjLab);
             else                                snprintf(msg, sizeof(msg), "Finishing %s", subjLab);

@@ -82,9 +82,8 @@
 //   ten_minutes_remaining, five_minutes_remaining, halfway_point (session milestones; Timing category)
 //   lap_completed                  (your own lap crossing - the ONE cue for
 //     that moment. What it says is the template's business: {position},
-//     {last_lap_time}, {gap_to_ahead}, any of them. It was two keys once,
-//     position_report and lap_completed, which differed only in what each
-//     happened to say - a content choice, which is what a variable is for.)
+//     {last_lap_time}, {gap_to_ahead}, any of them - a content choice, which
+//     is what a variable is for, not a second key.)
 //   gap_behind, gap_behind_closing, gap_behind_dropping - the one PACE cue,
 //     and the only one that is genuinely its own moment: it fires when the
 //     rider behind reaches a timing point YOU already crossed, so the number
@@ -236,16 +235,16 @@ inline std::string stripVariantSuffix(const std::string& key) {
 // spoken and not overridable (Director cuts - broadcaster tooling).
 // ---------------------------------------------------------------------------
 // EVERY cue key, in one place. This is the published list a pack author works
-// from, and it is here rather than in prose because prose drifts: the shipped
-// pack's milestone rows were dead for exactly one commit after those keys were
-// renamed, and nothing failed. test_spotter_pack_census.cpp now walks this
-// table against the shipped ini in BOTH directions - a key the plugin emits
-// but the ini never mentions is undocumented, and a row in the ini that names
-// no real key is a line that will never be spoken.
+// from, and it is here rather than in prose because prose drifts (a renamed
+// key leaves the shipped pack's rows dead, and nothing fails).
+// test_spotter_pack_census.cpp walks this table against the shipped ini in
+// BOTH directions - a key the plugin emits but the ini never mentions is
+// undocumented, and a row in the ini that names no real key is a line that
+// will never be spoken.
 //
 // Adding a cue means adding its row here. There is no on/off column: whether a
 // cue ships silent is whether the shipped pack's row is commented out, which is
-// the only place that can now answer it.
+// the only place that can answer it.
 struct CueKeyInfo {
     const char* key;
     const char* what;    // one line, for the generated reference
@@ -301,7 +300,7 @@ inline const std::vector<CueKeyInfo>& allCueKeys() {
         { "sector_completed_faster", "ahead of your best lap at this split" , SpotterPhrase::Category::Timing },
         { "sector_completed_slower", "behind your best lap at this split" , SpotterPhrase::Category::Timing },
         { "sector_best", "that sector ON ITS OWN beat your best of it this session - so it still fires for a great sector inside a scrappy lap, which the rows above cannot say" , SpotterPhrase::Category::Timing },
-        { "on_pace_session_best", "at the last split before the line, up on your best lap of the session by at least [Spotter] on_pace_margin_ms" , SpotterPhrase::Category::Timing },
+        { "on_pace_session_best", "at the last split before the line, up on your best lap of the session by at least `[Spotter] on_pace_margin_ms`" , SpotterPhrase::Category::Timing },
         { "on_pace_personal_best", "...up on your best lap ever here (outranks the session one)" , SpotterPhrase::Category::Timing },
         { "on_pace_record", "...up on the track record (outranks both)" , SpotterPhrase::Category::Timing },
         // -- milestones ------------------------------------------------------
@@ -342,13 +341,11 @@ inline const std::vector<CueKeyInfo>& allCueKeys() {
 }
 
 // A few cues are REFINEMENTS of a more general one, and a pack that defines
-// only the general key should cover them. Without this, defining
-// `gap_ahead` alone left the gaining/losing cases falling through to the
-// the general key's wording - the pack looked complete and two thirds of the
-// time it was not, silently. Now the trend keys exist for packs that want DIFFERENT
-// words or a different clip per trend (a recorded voice cannot say "gaining"
-// out of a template), and everyone else writes one line with {trend_ahead}
-// in it.
+// only the general key should cover them: without the fallback, a pack that
+// defines only the general key looks complete and is silent, whenever a
+// refinement fires. The trend keys exist for packs that want DIFFERENT words
+// or a different clip per trend (a recorded voice cannot say "gaining" out of
+// a template); everyone else writes one line with {trend_ahead} in it.
 //
 // One level only: a fallback's fallback is not consulted, so this cannot
 // loop and the chain a pack author has to hold in their head stays short.
@@ -420,11 +417,11 @@ inline const char* cueKeyFor(EventLogType type, bool focused) {
         case EventLogType::PenaltyChange:
             // Split like the other two penalty types, for the same reason: the
             // handler logs this against the OFFENDING rider, so without a
-            // _you/_other pair a rival's revision spoke the unattributed
-            // "Penalty changed." AND was filed under Opponents while the
-            // registry, the shipped pack and the reference all called
-            // penalty_change a General cue - the switch the docs named was
-            // not the switch that silenced it.
+            // _you/_other pair a rival's revision would speak the unattributed
+            // "Penalty changed." AND be filed under Opponents while the
+            // registry, the shipped pack and the reference all call
+            // penalty_change a General cue - the switch the docs name would
+            // not be the switch that silences it.
             return focused ? "penalty_change" : "penalty_change_other";
         case EventLogType::RiderRetired:
             return focused ? "retired_you" : "retired_other";
@@ -440,13 +437,10 @@ inline const char* cueKeyFor(EventLogType type, bool focused) {
         // actually concerns you - and fires with your raceNum, so it resolves
         // "you" and lands on "final_lap_you".
         //
-        // This used to collapse to one key, and compose() already had the
-        // focused wording; the split was reverted after the demo tape showed
-        // packs playing silence, because the ONLY emitter passed no raceNum
-        // and a mix's {event_rider} had nothing to resolve. The emitter is
-        // what was missing, and it is there now - the leader's fires without a
-        // number, yours fires with one, and a rider who is neither fires
-        // nothing at all.
+        // The split leans on the EMITTER: the leader's fires without a number,
+        // yours fires with one, and a rider who is neither fires nothing at
+        // all. An emitter that passes no raceNum leaves a mix's {event_rider}
+        // nothing to resolve, and packs play silence.
         case EventLogType::FinalLap:
             return focused ? "final_lap_you" : "final_lap";
         case EventLogType::RiderFinished:
@@ -679,7 +673,7 @@ inline std::map<std::string, std::string> mergePhrases(const Pack& base,
 // OPTIONAL GROUPS, `[...]`, are what make free variable combination actually
 // work. The punctuation tidy-up below can drop an orphaned comma, but it
 // cannot know that the word "to" in `{gap_to_ahead} to {rider_ahead}` belongs to
-// the pair - leading the race, that template read "P one, to." A group is
+// the pair - leading the race, that template reads "P one, to." A group is
 // dropped WHOLE when any variable inside it is empty:
 //
 //   lap_completed = P {position}[, {gap_to_ahead} to {rider_ahead}].
@@ -773,7 +767,7 @@ inline std::string expand(const std::string& tmpl,
     // OPEN WITH A CAPITAL, whatever the line turned out to start with. The
     // rider words are built for mid-sentence ("rider four seventy six" -
     // SpotterPhrase::riderRef), so a template leading with {event_rider}, or
-    // one whose only capitalised words sat in a group that dropped, rendered
+    // one whose only capitalised words sat in a group that dropped, renders
     // lowercase. Speech does not care; the SUBTITLE shows the line as written,
     // where it reads as a bug.
     //

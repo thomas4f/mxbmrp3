@@ -10,6 +10,7 @@
 #include "analytics_manager.h"
 #include "analytics_remote_config.h"
 #include "analytics_endpoint.h"
+#include "analytics_redact.h"
 #include "atomic_file_writer.h"
 #include "plugin_constants.h"
 #include "settings_manager.h"
@@ -69,6 +70,27 @@ void AnalyticsManager::postBeacon(std::wstring host, std::string body) {
     }
 }
 
+// THE ONLY PLACE A REQUEST BODY MAY BE LOGGED, and the reason it is a function
+// rather than a DEBUG_INFO_F at each site.
+//
+// The body is worth logging: an ingest rejection is diagnosed from it, and there
+// is no other copy once the POST is gone. But it carries the install id, and the
+// player's log is a file they hand to someone else when reporting a bug — see
+// core/analytics_redact.h for why "it's anonymous" does not settle that.
+//
+// So the redaction lives at the log site, not at the call sites: anyone who later
+// wants to log the GoatCounter or custom-event body reaches for this and gets it
+// for free, instead of writing a fresh DEBUG_INFO_F that leaks. Route new body
+// logging through here rather than adding a second one.
+void AnalyticsManager::logOutgoing(const std::wstring& host, const char* path,
+                                   const std::string& body) const {
+    std::string hostA;
+    for (wchar_t c : host) hostA += static_cast<char>(c);   // host is ASCII
+    DEBUG_INFO_F("AnalyticsManager: POST https://%s%s (%zu bytes): %s",
+                 hostA.c_str(), path, body.size(),
+                 AnalyticsRedact::redactInstallId(body, m_installId).c_str());
+}
+
 void AnalyticsManager::postAptabase(const std::wstring& host, const std::string& body) {
 #if defined(MXBMRP3_TEST_BUILD)
     if (s_testCaptureMode) return;   // dry-run: a test build never sends
@@ -107,14 +129,7 @@ void AnalyticsManager::postAptabase(const std::wstring& host, const std::string&
 
         std::wstring headers = L"Content-Type: application/json\r\nApp-Key: " + m_wAppKey;
 
-        // Log the outgoing request for diagnostics. The payload is anonymous and
-        // this is the player's own local log, so logging the full body is safe.
-        {
-            std::string hostA;
-            for (wchar_t c : host) hostA += static_cast<char>(c);  // host is ASCII
-            DEBUG_INFO_F("AnalyticsManager: POST https://%s/api/v0/events (%zu bytes): %s",
-                         hostA.c_str(), body.size(), body.c_str());
-        }
+        logOutgoing(host, "/api/v0/events", body);
 
         BOOL ok = WinHttpSendRequest(hRequest, headers.c_str(), (DWORD)-1L,
                                      (LPVOID)body.data(), (DWORD)body.size(),

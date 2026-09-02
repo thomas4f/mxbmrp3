@@ -132,11 +132,13 @@ on violations - run them before pushing anything they cover:
 ./tests/integration/check_section_spacing.sh  # addSpacing() before a settings addSectionHeading()
 ./tests/integration/check_file_budgets.sh     # file-size ratchet: >1,000 lines needs a stated `// file-budget:`
 ./tests/integration/check_style.sh            # tabs/trailing-WS/CRLF/final newline
+./tests/integration/check_pages_render.sh     # the docs through kramdown, the renderer the Pages site uses
+./tests/integration/check_lazy_module_imports.sh # no import-table entry for opengl32/d3d11/dcomp (links first, so minutes not seconds)
 ./tests/run_cppcheck.sh                       # cppcheck static analysis (zero-finding baseline)
 ./tests/integration/check_session_hook.sh     # the SessionStart hook still provisions + reports
 ./tests/web/lint.sh                           # eslint over every .js (overlay + the web suite)
 python3 tools/check_vendored_manifest.py      # vendored.json matches vendored sources
-python3 tools/check_docs.py                   # doc paths/labels, and CI vs the gate list both ways
+python3 tools/check_docs.py                   # doc + source-comment paths, labels, CI vs the gate list both ways
 ```
 
 Separate from those, `./tests/integration/run_codeql.sh` runs **GitHub's CodeQL

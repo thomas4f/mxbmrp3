@@ -333,8 +333,7 @@ void EventLogHud::rebuildRenderData() {
             if (static_cast<int>(m_riderClickRegions.size()) == m_hoveredRegionIndex) {
                 // Inset the DRAWN highlight, not the click region: the region stays
                 // full-width so clicking anywhere on the row still works.
-                // The content column, not the row's full width -- see the note where
-                // contentRowInsetX() used to live in base_hud.h.
+                // The content column, not the row's full width.
                 m_hoverQuadIndex = addRowHighlight(
                     plan.contentX(), bandY, plan.contentW(), region.height,
                     PluginUtils::applyOpacity(getColor(ColorSlot::MUTED), ROW_HOVER_ALPHA));
@@ -495,17 +494,17 @@ void EventLogHud::rebuildLayout() {
     //
     // THE INDEX. The caption ALWAYS pushes a string (an empty one when the title is
     // hidden), so m_strings is always 1 + 3 * rows. Consuming index 0 only when the
-    // title is shown put every row's timestamp in the message column, every message in
-    // the detail column, and left the last row's detail unmoved -- scrambled until the
-    // next data-driven rebuild. Reachable unthemed: title off, then drag or rescale.
-    // Every other HUD that walks strings sequentially positions its title
-    // unconditionally; this was the last one gated.
+    // title is shown puts every row's timestamp in the message column, every message
+    // in the detail column, and leaves the last row's detail unmoved -- scrambled
+    // until the next data-driven rebuild. Reachable unthemed: title off, then drag or
+    // rescale. Every HUD that walks strings sequentially positions its title
+    // unconditionally.
     //
-    // THE ADVANCE. reservedTitleHeight(), not the bare row it used to spend -- it
-    // returns 0 when the title is hidden, which is what makes the unconditional form
-    // correct, and it agrees with the full rebuild under a band-without-card theme
-    // where the bare row is a cell short. A fast path that advances differently from
-    // the rebuild it mirrors is the Standings desync again, one HUD over.
+    // THE ADVANCE. reservedTitleHeight(), not a bare row -- it returns 0 when the
+    // title is hidden, which is what makes the unconditional form correct, and it
+    // agrees with the full rebuild under a band-without-card theme where the bare
+    // row is a cell short. A fast path that advances differently from the rebuild it
+    // mirrors desyncs the two.
     if (stringIndex < m_strings.size()) {
         positionString(stringIndex++, plan.X(plan.g.captionX), planTitleY(plan));
     }

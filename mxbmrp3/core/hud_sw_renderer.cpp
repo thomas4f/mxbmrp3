@@ -8,30 +8,18 @@
 #include <cstring>
 #include <fstream>
 
-#include "../vendor/miniz/miniz.h"
-
 namespace hudsw {
-namespace {
 
-// PiBoSo .fnt binary layout (reverse-engineered, confirmed with PiBoSo's fontgen 1.02):
-//   [0]   "FNT\0" magic
-//   [4]   font name, null-terminated (buffer runs to 264)
-//   [264] int32 cell/line height in px
-//   [268] 256 glyph records x 40 bytes, indexed absolutely by codepoint 0..255
-//         each: int32[10] = { valid, xoffset, width, rightBearing,
-//                             atlasX0, atlasX1, atlasY0, atlasY1, 0, 0 }
-//         advance = xoffset + width + rightBearing
-//   [10508] int32 0
-//   [10512] int32 bitmap width
-//   [10516] int32 bitmap height
-//   [10520] int32 payload byte count
-//   [10524] int32 compression type (2 = raw DEFLATE)
-//   [10528] int32 0
-//   [10532] raw DEFLATE stream -> width*height 8-bit grayscale atlas
-constexpr int FNT_HEIGHT_OFF = 264;
-constexpr int FNT_TABLE_OFF = 268;
-constexpr int FNT_REC_STRIDE = 40;
-constexpr int FNT_BITMAP_HDR = FNT_TABLE_OFF + 256 * FNT_REC_STRIDE;  // 10508
+// Both renderers' asset readers feed the hudassets decoders
+// (render_asset_decode.h — the formats live there); this keeps the I/O.
+std::vector<uint8_t> readFile(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return {};
+    return std::vector<uint8_t>((std::istreambuf_iterator<char>(in)),
+                                std::istreambuf_iterator<char>());
+}
+
+namespace {
 
 struct Color { uint8_t r, g, b, a; };
 inline Color abgr(unsigned long c) {
@@ -39,6 +27,13 @@ inline Color abgr(unsigned long c) {
     return { uint8_t(v & 255), uint8_t((v >> 8) & 255), uint8_t((v >> 16) & 255), uint8_t((v >> 24) & 255) };
 }
 
+// Src-over compositing. The RGB rule (c*a + dst*(1-a)) doubles as PREMULTIPLIED
+// src-over when the backdrop starts transparent black: each contribution enters
+// as color*alpha, which is exactly the premultiplied encoding — so a frame
+// rendered over fill(0,0,0,0) is directly consumable by UpdateLayeredWindow
+// (AC_SRC_ALPHA expects premultiplied). The alpha rule is standard coverage
+// accumulation (aOut = aS + aD*(1-aS)); over an opaque backdrop it stays 255,
+// so the companion's StretchDIBits path (which ignores alpha) is unaffected.
 inline void blend(Image& im, int x, int y, Color c, float cov) {
     if (x < 0 || y < 0 || x >= im.w || y >= im.h) return;
     float a = (c.a / 255.0f) * cov;
@@ -47,7 +42,7 @@ inline void blend(Image& im, int x, int y, Color c, float cov) {
     p[0] = uint8_t(c.r * a + p[0] * (1 - a));
     p[1] = uint8_t(c.g * a + p[1] * (1 - a));
     p[2] = uint8_t(c.b * a + p[2] * (1 - a));
-    p[3] = uint8_t(std::min(255.0f, c.a * a + p[3] * (1 - a)));
+    p[3] = uint8_t(255.0f * a + p[3] * (1 - a));
 }
 
 // Single-pass scanline fill of a convex quad — one pass so semi-transparent quads
@@ -84,102 +79,20 @@ void Image::fill(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
     std::fill(p, p + px.size() / 4, v);
 }
 
-Renderer::FntFont* Renderer::fnt(const std::string& base, const std::string& root) {
+hudassets::FntFont* Renderer::fnt(const std::string& base, const std::string& root) {
     auto it = m_fnts.find(base);
     if (it != m_fnts.end()) return it->second.ok ? &it->second : nullptr;
-    FntFont fo;
-    std::ifstream in(root + "/fonts/" + base + ".fnt", std::ios::binary);
-    if (in) {
-        std::vector<uint8_t> d((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        auto i32 = [&](size_t o) -> int {
-            int32_t v; std::memcpy(&v, &d[o], 4); return v;
-        };
-        if (d.size() > size_t(FNT_BITMAP_HDR) + 24 && std::memcmp(d.data(), "FNT\0", 4) == 0) {
-            fo.cellH = i32(FNT_HEIGHT_OFF);
-            for (int cp = 0; cp < 256; ++cp) {
-                size_t o = FNT_TABLE_OFF + size_t(cp) * FNT_REC_STRIDE;
-                FntGlyph& g = fo.glyphs[cp];
-                g.valid = i32(o) != 0;
-                g.xoff = i32(o + 4);
-                int width = i32(o + 8), rb = i32(o + 12);
-                g.adv = g.xoff + width + rb;
-                g.x0 = i32(o + 16); g.x1 = i32(o + 20);
-                g.y0 = i32(o + 24); g.y1 = i32(o + 28);
-            }
-            fo.aw = i32(FNT_BITMAP_HDR + 4);
-            fo.ah = i32(FNT_BITMAP_HDR + 8);
-            int ctype = i32(FNT_BITMAP_HDR + 16);
-            size_t need = size_t(fo.aw) * fo.ah;
-            // Cap the file-declared atlas dimensions: fonts live in user-overridable
-            // asset dirs, and a corrupt header declaring e.g. 100000x100000 would
-            // throw bad_alloc out of the render loop. Legit atlases top out at 2048².
-            constexpr int kMaxAtlasDim = 8192;
-            if (fo.aw > 0 && fo.ah > 0 && fo.aw <= kMaxAtlasDim && fo.ah <= kMaxAtlasDim &&
-                ctype == 2 && fo.cellH > 0) {
-                fo.atlas.assign(need, 0);
-                const uint8_t* src = &d[FNT_BITMAP_HDR + 24];
-                size_t srcLen = d.size() - (FNT_BITMAP_HDR + 24);
-                // Raw DEFLATE (no zlib header) -> flags 0.
-                size_t got = tinfl_decompress_mem_to_mem(fo.atlas.data(), need, src, srcLen, 0);
-                if (got == need) fo.ok = true;
-            }
-        }
-    }
+    hudassets::FntFont fo = hudassets::decodeFnt(readFile(hudassets::fntPath(root, base)));
     auto& ref = m_fnts.emplace(base, std::move(fo)).first->second;
     return ref.ok ? &ref : nullptr;
 }
 
-Renderer::Tex* Renderer::tex(const std::string& base, bool icon, const std::string& root) {
+hudassets::Texture* Renderer::tex(const std::string& base, bool icon, const std::string& root) {
     auto it = m_texs.find(base);
     if (it != m_texs.end()) return it->second.ok ? &it->second : nullptr;
-    Tex t;
-    // `base` arrives from AssetPath::renderName (see core/asset_path.h), which is
-    // the single definition of this naming and already normalised the separators
-    // and dropped the "mxbmrp3_data" segment. This is that mapping's INVERSE, and
-    // it reads only what renderName's two outcomes leave behind:
-    //
-    //   a bare basename ("hud-laplog")   -> the icon flag picks the flat folder
-    //   a relative path ("themes/x/corner") -> resolved against the asset root
-    //
-    // Theme sprites take the second branch because they live in a per-theme
-    // subdirectory the icon/texture split cannot express. Re-normalising here was
-    // dead code that quietly claimed a second opinion about the format; if this
-    // ever stops matching, asset_path.h is the side to change (and its unit test
-    // pins what renderName may emit).
-    const std::string rel = (base.find('/') != std::string::npos)
-        ? "/" + base + ".tga"
-        : (icon ? "/icons/" : "/textures/") + base + ".tga";
-    std::ifstream f(root + rel, std::ios::binary);
-    if (f) {
-        std::vector<uint8_t> d((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-        if (d.size() >= 18) {
-            int idLen = d[0], imgType = d[2], bpp = d[16], desc = d[17];
-            t.w = d[12] | (d[13] << 8); t.h = d[14] | (d[15] << 8);
-            int bpx = bpp / 8;
-            // Same rationale as the font-atlas cap: TGA dimensions are file-declared
-            // (user-overridable assets), so bound them before allocating w*h*4.
-            constexpr int kMaxTexDim = 8192;
-            if ((imgType == 2 || imgType == 10) && (bpp == 24 || bpp == 32) &&
-                t.w > 0 && t.h > 0 && t.w <= kMaxTexDim && t.h <= kMaxTexDim) {
-                size_t o = 18 + idLen, px = size_t(t.w) * t.h;
-                t.rgba.assign(px * 4, 0);
-                auto put = [&](size_t i, const uint8_t* s) { t.rgba[i] = s[2]; t.rgba[i + 1] = s[1]; t.rgba[i + 2] = s[0]; t.rgba[i + 3] = bpx == 4 ? s[3] : 255; };
-                if (imgType == 2) { for (size_t p = 0; p < px && o + bpx <= d.size(); ++p, o += bpx) put(p * 4, &d[o]); }
-                else {
-                    size_t p = 0;
-                    while (p < px && o < d.size()) {
-                        int hdr = d[o++]; int cnt = (hdr & 0x7f) + 1;
-                        if (hdr & 0x80) { if (o + bpx > d.size()) break; for (int k = 0; k < cnt && p < px; ++k, ++p) put(p * 4, &d[o]); o += bpx; }
-                        else { for (int k = 0; k < cnt && p < px && o + bpx <= d.size(); ++k, ++p, o += bpx) put(p * 4, &d[o]); }
-                    }
-                }
-                if (!(desc & 0x20))  // bottom-origin -> flip
-                    for (int y = 0; y < t.h / 2; ++y)
-                        std::swap_ranges(&t.rgba[size_t(y) * t.w * 4], &t.rgba[size_t(y) * t.w * 4 + t.w * 4], &t.rgba[size_t(t.h - 1 - y) * t.w * 4]);
-                t.ok = true;
-            }
-        }
-    }
+    // Path resolution (renderName's inverse) lives with the shared decoders —
+    // see hudassets::spritePath for the mapping and its ownership note.
+    hudassets::Texture t = hudassets::decodeTga(readFile(hudassets::spritePath(root, base, icon)));
     auto& ref = m_texs.emplace(base, std::move(t)).first->second;
     return ref.ok ? &ref : nullptr;
 }
@@ -195,7 +108,7 @@ void Renderer::drawQuad(Image& im, const SPluginQuad_t& q, const Frame& fr) {
     int idx = q.m_iSprite - 1;
     if (idx < 0 || idx >= (int)names.size()) return;
     bool icon = q.m_iSprite >= fr.firstIcon;
-    Tex* t = tex(names[idx], icon, fr.assetRoot);
+    hudassets::Texture* t = tex(names[idx], icon, fr.assetRoot);
     if (!t) return;
     Color tint = abgr(q.m_ulColor);
     // Affine sprite blit: map each destination pixel back into texture UV space via
@@ -250,38 +163,78 @@ static inline float sampleAtlas(const uint8_t* a, int aw, int ah, float fx, floa
     return (top * (1 - ty) + bot * ty) / 255.0f;
 }
 
-// Draw from the game's own bitmap font. The atlas cell height maps 1:1 to the
-// string's normalized size, so scale = size*imgH / cellH gives the exact on-screen
-// metrics the game uses (advance ratio already matches MONOSPACE_CHAR_WIDTH_RATIO).
-void Renderer::drawStringFnt(Image& im, const SPluginString_t& s, FntFont& f) {
+// Pick the mip level for a minification factor, and how far we are between it
+// and the next - the CPU's version of what a GPU's LOD selection does.
+//
+// `texelsPerPixel` is 1/scale: how many level-0 texels one output pixel covers.
+// A level halves the atlas, so log2 of that is the level whose texels are about
+// pixel-sized, which is exactly the level that is not undersampled.
+static inline void pickMip(const hudassets::FntFont& f, float texelsPerPixel,
+                           int& lo, int& hi, float& t) {
+    lo = hi = 0; t = 0.0f;
+    const int last = int(f.mips.size()) - 1;
+    if (last <= 0 || !(texelsPerPixel > 1.0f)) return;   // magnifying: level 0
+    const float lod = std::log2(texelsPerPixel);
+    const int base = int(std::floor(lod));
+    lo = base < 0 ? 0 : (base > last ? last : base);
+    hi = lo + 1 > last ? last : lo + 1;
+    t = lod - float(base);
+    if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
+}
+
+// Draw from the game's own bitmap font. Metrics (scale rule, advance, justify)
+// come from the SHARED layout in render_asset_decode.h so the D3D11 backend
+// places every glyph identically; only the rasterization (the per-pixel
+// bilinear atlas sampling) lives here.
+//
+// TRILINEAR, not bilinear-on-one-level. Blending the two neighbouring levels
+// costs a second tap and removes the visible seam where a level changes - which
+// on a HUD is not hypothetical, because scale tracks the user's size slider and
+// the viewport, so a resize or a drag would otherwise step the text's weight.
+void Renderer::drawStringFnt(Image& im, const SPluginString_t& s, hudassets::FntFont& f) {
     const char* text = s.m_szString;
     float scale = s.m_fSize * im.vpH() / float(f.cellH);
 
-    float total = 0;
-    for (const char* c = text; *c; ++c) total += f.glyphs[(unsigned char)*c].adv * scale;
     float penX = im.mapX(s.m_afPos[0]);
+    float total = hudassets::measureFnt(f, text, scale);
     if (s.m_iJustify == 1) penX -= total / 2; else if (s.m_iJustify == 2) penX -= total;
     float top = im.mapY(s.m_afPos[1]);
     Color col = abgr(s.m_ulColor);
 
-    for (const char* c = text; *c; ++c) {
-        const FntGlyph& g = f.glyphs[(unsigned char)*c];
-        int gw = g.x1 - g.x0, gh = g.y1 - g.y0;
-        if (g.valid && gw > 0 && gh > 0) {
-            float dx0 = penX + g.xoff * scale;
-            int X0 = (int)std::floor(dx0), X1 = (int)std::ceil(dx0 + gw * scale);
-            int Y0 = (int)std::floor(top), Y1 = (int)std::ceil(top + gh * scale);
-            for (int y = Y0; y < Y1; ++y) {
-                float sy = g.y0 + (y + 0.5f - top) / scale;
-                for (int x = X0; x < X1; ++x) {
-                    float sx = g.x0 + (x + 0.5f - dx0) / scale;
-                    float cov = sampleAtlas(f.atlas.data(), f.aw, f.ah, sx, sy);
-                    if (cov > 0.0f) blend(im, x, y, col, cov);
+    // One output pixel covers 1/scale level-0 texels. The shipped 135px cell
+    // against ~20px HUD text puts this near 7, i.e. mip level ~2-3.
+    int mipLo = 0, mipHi = 0; float mipT = 0.0f;
+    pickMip(f, scale > 0.0f ? 1.0f / scale : 1.0f, mipLo, mipHi, mipT);
+    const hudassets::MipLevel* mLo = f.mips.empty() ? nullptr : &f.mips[mipLo];
+    const hudassets::MipLevel* mHi = f.mips.empty() ? nullptr : &f.mips[mipHi];
+
+    hudassets::layoutFnt(f, text, penX, top, scale, [&](const hudassets::GlyphQuad& gq) {
+        int X0 = (int)std::floor(gq.dx0), X1 = (int)std::ceil(gq.dx1);
+        int Y0 = (int)std::floor(gq.dy0), Y1 = (int)std::ceil(gq.dy1);
+        for (int y = Y0; y < Y1; ++y) {
+            float sy = gq.ay0 + (y + 0.5f - gq.dy0) / scale;
+            for (int x = X0; x < X1; ++x) {
+                float sx = gq.ax0 + (x + 0.5f - gq.dx0) / scale;
+                float cov;
+                if (!mLo) {
+                    cov = sampleAtlas(f.atlas.data(), f.aw, f.ah, sx, sy);
+                } else {
+                    // Atlas coords are in LEVEL 0 texels; a level n texel is 2^n
+                    // of them, so the same point is sx * (levelW / aw). Using the
+                    // level's own ratio rather than 1/2^n keeps it exact where a
+                    // dimension rounded up on an odd halve.
+                    const float rxL = float(mLo->w) / float(f.aw), ryL = float(mLo->h) / float(f.ah);
+                    cov = sampleAtlas(mLo->px.data(), mLo->w, mLo->h, sx * rxL, sy * ryL);
+                    if (mipHi != mipLo && mipT > 0.0f) {
+                        const float rxH = float(mHi->w) / float(f.aw), ryH = float(mHi->h) / float(f.ah);
+                        const float hi = sampleAtlas(mHi->px.data(), mHi->w, mHi->h, sx * rxH, sy * ryH);
+                        cov = cov * (1.0f - mipT) + hi * mipT;
+                    }
                 }
+                if (cov > 0.0f) blend(im, x, y, col, cov);
             }
         }
-        penX += g.adv * scale;
-    }
+    });
 }
 
 void Renderer::drawString(Image& im, const SPluginString_t& s, const Frame& fr) {
@@ -290,11 +243,12 @@ void Renderer::drawString(Image& im, const SPluginString_t& s, const Frame& fr) 
     if (idx < 0 || idx >= (int)fr.fontNames->size()) return;
     // Every font the game registers is a .fnt bitmap font (pixel-exact,
     // allocation-free). A missing/corrupt .fnt simply renders no text.
-    if (FntFont* bf = fnt((*fr.fontNames)[idx], fr.assetRoot)) drawStringFnt(im, s, *bf);
+    if (hudassets::FntFont* bf = fnt((*fr.fontNames)[idx], fr.assetRoot)) drawStringFnt(im, s, *bf);
 }
 
-void Renderer::render(Image& out, const Frame& fr, uint8_t bgR, uint8_t bgG, uint8_t bgB) {
-    out.fill(bgR, bgG, bgB, 255);
+void Renderer::render(Image& out, const Frame& fr, uint8_t bgR, uint8_t bgG, uint8_t bgB,
+                      uint8_t bgA) {
+    out.fill(bgR, bgG, bgB, bgA);
     if (!fr.fontNames || !fr.spriteNames) return;
     for (int i = 0; i < fr.quadCount; ++i) drawQuad(out, fr.quads[i], fr);
     for (int i = 0; i < fr.stringCount; ++i) drawString(out, fr.strings[i], fr);

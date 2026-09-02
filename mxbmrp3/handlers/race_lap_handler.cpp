@@ -107,18 +107,18 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
         // every other rider's last lap is noise on a full grid, the same
         // reason finished_other is default-quiet.
         if (isLastLap) {
-            // YOURS wins when you are also the leader. These were the other
-            // way round — `position == 1` first, `else if` you — so a player
-            // leading the race only ever got the session-level cue, and a pack
-            // that muted final_lap left the leader silent on their own last
-            // lap. The two facts coincide there; the one about you is the one
+            // YOURS wins when you are also the leader. Tested the other way
+            // round — `position == 1` first, `else if` you — a player leading
+            // the race only ever gets the session-level cue, and a pack that
+            // mutes final_lap leaves the leader silent on their own last lap.
+            // The two facts coincide there; the one about you is the one
             // worth having, and firing both would just say it twice.
             //
             // The two rows say DIFFERENT things, because on this branch a
             // mid-pack display rider gets both — the leader's when they take
             // the white flag, and their own a lap or more later. Identical
-            // text there read as the log repeating itself, and "Final lap"
-            // stopped describing the second one.
+            // text there reads as the log repeating itself, and "Final lap"
+            // stops describing the second one.
             if (psRaceLap->raceNum == data.getDisplayRaceNum()) {
                 data.addEventLogEntry(EventLogType::FinalLap, "Your final lap",
                                       nullptr, -1, psRaceLap->raceNum);
@@ -260,8 +260,8 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
             // PBScope::CATEGORY that is the fastest lap across every bike in the class.
             // Use beatsScopedBest, never stored: a first lap on a new bike in a class you
             // already have a faster time in is stored (that bike had no PB) yet is not an
-            // all-time PB, and firing on it both showed green against a red Alltime row
-            // and suppressed the genuine fastest-lap notice below.
+            // all-time PB, and firing on it both shows green against a red Alltime row
+            // and suppresses the genuine fastest-lap notice below.
             const PersonalBestUpdate pbUpdate = StatsManager::getInstance().updatePersonalBest(
                 sessionData.trackId, sessionData.bikeName, pbEntry);
             isAllTimePB = pbUpdate.beatsScopedBest;
@@ -289,9 +289,8 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
                 data.notifyFastestLap();
             } else {
                 data.notifySessionPB();
-                // Third tier of the same ladder, and the one the spotter used
-                // to drop: in practice this is the most common good-news
-                // moment there is.
+                // Third tier of the same ladder, and not one to skip: in
+                // practice this is the most common good-news moment there is.
                 SpotterManager::getInstance().onSessionBest(
                     data.getSessionElapsedTime(), lapTime);
             }
@@ -319,15 +318,15 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
     }
 
     // Spotter: the lap report (lap_completed — your position, your lap time),
-    // places made up, and the gap reports either side. WHERE this sits is load-bearing three times over,
-    // and it took a broken test each time to find out:
+    // places made up, and the gap reports either side. WHERE this sits is
+    // load-bearing three times over:
     //
     //  - FUNCTION SCOPE, not inside `if (bestFlag > 0)`. Nested there, the
-    //    lap report only spoke on a personal-best lap.
-    //  - OUTSIDE the `sessionNumLaps > 0` block it originally lived in. That
-    //    block is about race distance, so a session with no lap count — every
-    //    practice and qualifying session, and a purely timed race — never
-    //    reached the call at all, whatever the manager would have decided.
+    //    lap report only speaks on a personal-best lap.
+    //  - OUTSIDE the `sessionNumLaps > 0` block. That block is about race
+    //    distance, so a session with no lap count — every practice and
+    //    qualifying session, and a purely timed race — never reaches a call
+    //    inside it, whatever the manager would decide.
     //  - AFTER the lap log, ideal lap and best-lap entry are committed, so
     //    {last_lap_time}, {gap_to_last_lap} and the reference-lap variables
     //    describe the lap that just ended rather than the one before it. The

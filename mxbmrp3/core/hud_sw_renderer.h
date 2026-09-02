@@ -22,8 +22,36 @@
 #include <vector>
 
 #include "../game/game_config.h"   // SPluginQuad_t / SPluginString_t (per game)
+#include "render_asset_decode.h"   // shared .tga/.fnt decode + .fnt text layout
 
 namespace hudsw {
+
+// One file's bytes, or empty on any failure. The one I/O helper both renderers
+// share (the decoders in render_asset_decode.h are deliberately I/O-free —
+// callers own I/O and caching, so the file read lives here, once).
+std::vector<uint8_t> readFile(const std::string& path);
+
+// FNV-1a over a frame's content: quads, strings, and the font/sprite
+// registration names (a lap time changing without any quad moving still has to
+// redraw). This is the identity behind the unchanged-frame skip in BOTH window
+// threads (companion + overlay) — one definition so the two cannot drift on
+// what "changed" means. Callers mix their own extras in (client size, `have`).
+constexpr uint64_t kFrameHashSeed = 1469598103934665603ULL;  // FNV-1a offset basis
+inline uint64_t frameContentHash(const std::vector<SPluginQuad_t>& quads,
+                                 const std::vector<SPluginString_t>& strings,
+                                 const std::vector<std::string>& fontNames,
+                                 const std::vector<std::string>& spriteNames) {
+    uint64_t h = kFrameHashSeed;
+    auto mix = [&h](const void* p, size_t n) {
+        const unsigned char* b = static_cast<const unsigned char*>(p);
+        for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ULL; }
+    };
+    mix(quads.data(), quads.size() * sizeof(SPluginQuad_t));
+    mix(strings.data(), strings.size() * sizeof(SPluginString_t));
+    for (const std::string& fn : fontNames) mix(fn.data(), fn.size());
+    for (const std::string& sn : spriteNames) mix(sn.data(), sn.size());
+    return h;
+}
 
 // An RGBA8 image the renderer draws into (row-major, 4 bytes/pixel).
 struct Image {
@@ -63,7 +91,18 @@ struct Frame {
 class Renderer {
 public:
     // Draw `frame` into `out` (must be pre-sized). Fills the backdrop first.
-    void render(Image& out, const Frame& frame, uint8_t bgR, uint8_t bgG, uint8_t bgB);
+    // bgA=255 (the companion window): opaque backdrop, output alpha stays 255.
+    // bgA=0 with black: the buffer comes out as PREMULTIPLIED RGBA with real
+    // coverage in the alpha channel, ready for UpdateLayeredWindow.
+    //
+    // NOTHING IN THE PLUGIN ASKS FOR THAT SECOND FORM ANY MORE - it existed for
+    // the in-game overlay window, which is deleted. It is kept rather than
+    // removed because it costs a defaulted parameter and no branch: blend() does
+    // not test it, so the two forms differ only in what fill() writes first. A
+    // unit test still covers it, which is the only thing holding it up; delete
+    // both together if a future reader wants the parameter gone.
+    void render(Image& out, const Frame& frame, uint8_t bgR, uint8_t bgG, uint8_t bgB,
+                uint8_t bgA = 255);
 
     // Drop every decoded .tga so the next frame re-reads them from disk. This is
     // what makes a theme's ART live-reloadable HERE and nowhere else: the GAME is
@@ -73,26 +112,18 @@ public:
     void dropTextureCache() { m_texs.clear(); }
 
 private:
-    struct Tex { int w = 0, h = 0; std::vector<uint8_t> rgba; bool ok = false; };
-
-    // PiBoSo bitmap font (.fnt): one decompressed grayscale atlas + a per-codepoint
-    // glyph table. This is the game's own text asset, so drawing from it is exact.
-    struct FntGlyph { bool valid = false; int x0 = 0, y0 = 0, x1 = 0, y1 = 0; int xoff = 0, adv = 0; };
-    struct FntFont {
-        bool ok = false;
-        int cellH = 0, aw = 0, ah = 0;
-        std::vector<uint8_t> atlas;   // aw*ah 8-bit coverage
-        FntGlyph glyphs[256];
-    };
-
-    FntFont* fnt(const std::string& base, const std::string& root);
-    Tex* tex(const std::string& base, bool icon, const std::string& root);
+    // Decode (the .fnt/.tga formats + the text-layout math) lives in
+    // render_asset_decode.h, SHARED with the D3D11 backend so the two renderers
+    // cannot drift; this class keeps only the path resolution, the caches, and
+    // the actual rasterization.
+    hudassets::FntFont* fnt(const std::string& base, const std::string& root);
+    hudassets::Texture* tex(const std::string& base, bool icon, const std::string& root);
     void drawQuad(Image&, const SPluginQuad_t&, const Frame&);
     void drawString(Image&, const SPluginString_t&, const Frame&);
-    void drawStringFnt(Image&, const SPluginString_t&, FntFont&);
+    void drawStringFnt(Image&, const SPluginString_t&, hudassets::FntFont&);
 
-    std::map<std::string, FntFont> m_fnts;
-    std::map<std::string, Tex> m_texs;
+    std::map<std::string, hudassets::FntFont> m_fnts;
+    std::map<std::string, hudassets::Texture> m_texs;
 };
 
 }  // namespace hudsw

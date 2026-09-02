@@ -1,7 +1,7 @@
 // ============================================================================
 // tests/unit/test_director_airtime.cpp
 // Unit tests for the auto-director's two header-only airtime helpers, no game
-// engine. See tests/unit/run_tests.sh.
+// engine. See tests/unit/README.md.
 //
 //   pickNextAirtimeNum   — the lull round-robin that dips the camera to the
 //       "next" rider so a quiet race spreads airtime across the field instead of

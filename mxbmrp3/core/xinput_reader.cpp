@@ -127,7 +127,7 @@ void XInputReader::fillFromState(const XINPUT_STATE& state, XInputData& out) con
 }
 
 void XInputReader::update() {
-    // Cheap now: the I/O thread does the actual XInputGetState off-thread and
+    // Cheap: the I/O thread does the actual XInputGetState off-thread and
     // publishes the latest snapshot; here we just copy it into m_data (which getData()
     // returns). No XInput call, so a degraded controller driver can't stall the caller.
     MutexLock lk(m_ioMutex);
@@ -146,7 +146,7 @@ void XInputReader::setControllerIndex(int index) {
     // Tell the I/O thread to poll the freshly-selected slot immediately (skip the
     // disconnected backoff). The I/O thread also detects the index change itself and
     // stops rumble on the old slot (and on ALL slots when switching to disabled), so
-    // no XInputSetState runs on the caller thread here anymore.
+    // no XInputSetState runs on the caller thread here.
     m_pollImmediately.store(true, std::memory_order_relaxed);
 
     if (newIndex < 0) {
@@ -226,8 +226,7 @@ void XInputReader::ioThreadMain() {
         int idx = m_controllerIndex.load(std::memory_order_relaxed);
 
         // Selected slot changed (or disabled): stop rumble on the old slot (all slots
-        // when disabling), and drop any pending command aimed at the old slot. This
-        // replaces the XInputSetState that setControllerIndex used to do inline.
+        // when disabling), and drop any pending command aimed at the old slot.
         if (idx != lastIdx) {
             { MutexLock lk(m_ioMutex); m_pendingRumble = false; }
             XINPUT_VIBRATION off = {};
@@ -259,8 +258,8 @@ void XInputReader::ioThreadMain() {
             osSetState(cmdIdx, &vibration);
         }
 
-        // Poll the selected slot into a local, then publish. Mirrors the old update()
-        // logic: disabled -> default; disconnected -> back off (poll at most every
+        // Poll the selected slot into a local, then publish. Disabled -> default;
+        // disconnected -> back off (poll at most every
         // DISCONNECTED_POLL_INTERVAL_MS) to avoid hammering the slow empty-slot path.
         XInputData local;   // default = disconnected
         if (idx >= 0) {
@@ -488,8 +487,8 @@ void XInputReader::setVibration(float leftMotor, float rightMotor) {
     m_lastVibrationSend = now;
 
     // The policy above (idle-silence, send cap, keepalive, transition-to-zero bypass)
-    // is UNCHANGED and still runs on the caller thread at telemetry rate — only the
-    // actual XInputSetState is deferred to the I/O thread. Post the latest 8-bit motor
+    // runs on the caller thread at telemetry rate — only the actual XInputSetState
+    // is deferred to the I/O thread. Post the latest 8-bit motor
     // pair; the I/O thread sends it (and coalesces if it hasn't drained the previous
     // one yet — a skipped keepalive is harmless, the next one lands within a cap window).
     {
@@ -558,8 +557,8 @@ void XInputReader::updateRumbleFromTelemetry(float suspVelFront, float suspVelRe
 
     // Get input values (used for both normalized calculation and motor-specific)
     // Bumps/Lockup carry separate front/rear inputs. When their effect isn't split
-    // we collapse to the max (matching the legacy single-input behavior); when split
-    // each wheel drives its own effect, so keep the per-wheel inputs too.
+    // we collapse to the max; when split each wheel drives its own effect, so keep
+    // the per-wheel inputs too.
     float suspFrontInput = std::abs(suspVelFront);
     float suspRearInput = std::abs(suspVelRear);
     float suspInput = std::abs(std::max(suspVelFront, suspVelRear));

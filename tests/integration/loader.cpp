@@ -5,7 +5,8 @@
 // Draw -> Shutdown), then exits 0. No assertions — it just has to run without
 // crashing. Reused by the survival runners (run_fuzz.sh, run_persist_test.sh),
 // which invoke it repeatedly over fuzzed configs / perturbed settings and check
-// only that it survives. The *asserted* lifecycle check is tests/smoke_test.cpp.
+// only that it survives. The *asserted* lifecycle check is
+// tests/integration/tests/smoke_test.cpp.
 //
 //   x86_64-w64-mingw32-g++ loader.cpp -o loader.exe
 //   wine loader.exe mxbmrp3_test.dlo

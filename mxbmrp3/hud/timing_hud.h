@@ -277,12 +277,11 @@ public:
     // (height == (showTime ? lineHeightLarge : 0) + rows*lineHeightNormal) — see
     // rebuildRenderData() and tests/integration/tests/timing_reference_test.cpp.
     // contentTop/contentBot are the drawn section stack's extent measured from the
-    // PANEL TOP, recorded by rebuildRenderData from the box plan. They replaced a
-    // `paddingV` read off ScaledDimensions, which is the LEGACY panelPaddingYCells
-    // and stopped describing this panel the day it moved onto the box model — the
-    // test's `height == 2 * paddingV + lineNormal` then compared a box-model height
-    // against a legacy padding and failed for a reason that had nothing to do with
-    // the row height it exists to pin.
+    // PANEL TOP, recorded by rebuildRenderData from the box plan — not a `paddingV`
+    // read off ScaledDimensions, which is the LEGACY panelPaddingYCells and does not
+    // describe a box-model panel: a `height == 2 * paddingV + lineNormal` check
+    // compares a box-model height against a legacy padding and fails for a reason
+    // that has nothing to do with the row height it exists to pin.
     struct TestGeometry {
         float height, contentTop, contentBot, fontLarge, fontNormal, lineLarge, lineNormal;
     };
@@ -345,7 +344,7 @@ private:
     // Configuration
     int m_displayDurationMs;         // How long to freeze on official times (in milliseconds)
     // The box plan's section stack, panel-top-relative, recorded each rebuild for
-    // testGeometry(). See its comment for what they replaced and why.
+    // testGeometry(). See its comment.
     float m_fTestContentTop = 0.0f;
     float m_fTestContentBot = 0.0f;
     bool m_showTime;                 // Show the big centered time row at the top

@@ -125,7 +125,30 @@ public:
     // Hotkeys -> [Hotkeys]). Shares the same replay path as resetGlobalsToFactoryDefaults(),
     // so a per-tab reset can't drift from save/load either. Section names match the INI
     // headers. Does NOT persist; the caller saves if needed.
-    void resetGlobalSectionsToFactoryDefaults(HudManager& hudManager, const std::vector<std::string>& sections);
+    // One key of a global section, for the reset paths that work at KEY granularity.
+    // Points at string literals (the INI header and key spellings in
+    // settings_manager_global.cpp); nothing stores it beyond the call.
+    struct GlobalKeyRef { const char* section; const char* key; };
+
+    // excludeKeys: keys inside those sections that the caller does NOT own and must not
+    // touch. [Display] is shared — the General tab shows Grid Snap and Screen Clamp while
+    // the rest of the section belongs to Appearance — and the rule is that a tab's Reset
+    // restores what that tab can change and nothing else. Exclusion (rather than an
+    // allow-list of the keys Appearance owns) keeps a newly added [Display] key covered by
+    // Appearance's Reset for free, which is the direction that fails safe.
+    void resetGlobalSectionsToFactoryDefaults(HudManager& hudManager, const std::vector<std::string>& sections,
+                                              const std::vector<GlobalKeyRef>& excludeKeys = {});
+
+    // Reset an explicit LIST OF KEYS to their factory values, for a tab whose settings are
+    // scattered across sections it does not own outright (the General tab: most of
+    // [General], two [Display] toggles, a couple of [Advanced] keys). Replays the same
+    // snapshot through the same applier as every other reset path, so a per-tab reset
+    // states WHICH settings it owns and never restates what their defaults are — the bug
+    // this replaced was a hand-written list of setters, each carrying a second copy of a
+    // default that could (and did) drift from the constructor's.
+    // Colours and fonts are sparse in the snapshot and need the override-clearing that
+    // only the section path does, so they are not reachable from here by design.
+    void resetGlobalKeysToFactoryDefaults(HudManager& hudManager, const std::vector<GlobalKeyRef>& keys);
 
     // Copy current profile's settings to a specific target profile
     void copyToProfile(HudManager& hudManager, ProfileType targetProfile);
@@ -239,7 +262,11 @@ private:
     // sectionFilter is null, every section is applied; otherwise only sections whose name
     // appears in the filter. Shared by resetGlobalsToFactoryDefaults() (full) and
     // resetGlobalSectionsToFactoryDefaults() (per-tab). Developer mode is preserved.
-    void replayGlobalDefaults(HudManager& hudManager, const std::vector<std::string>* sectionFilter);
+    // keyFilter (optional) narrows further: with keysAreExclusions the listed keys are the
+    // only ones skipped, otherwise they are the only ones applied.
+    void replayGlobalDefaults(HudManager& hudManager, const std::vector<std::string>* sectionFilter,
+                              const std::vector<GlobalKeyRef>* keyFilter = nullptr,
+                              bool keysAreExclusions = false);
 
     // --- Cached state ---
     std::array<ProfileCache, static_cast<size_t>(ProfileType::COUNT)> m_profileCache;

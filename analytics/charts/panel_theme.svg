@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="146" viewBox="0 0 760 146" role="img"><style>
+  text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+  .grid{stroke:#d0d7de;stroke-width:1}
+  .axis{stroke:#57606a;stroke-width:1}
+  .lbl{fill:#57606a;font-size:12px}
+  .val{fill:#24292f;font-size:12px;font-weight:600}
+  .title{fill:#24292f;font-size:14px;font-weight:700}
+  .sub{fill:#57606a;font-size:11px}
+  .gap{fill:#57606a;opacity:.09}
+  .gaplbl{fill:#57606a;font-size:10px;opacity:.85}
+  @media (prefers-color-scheme: dark){
+    .grid{stroke:#30363d}
+    .axis{stroke:#8b949e}
+    .lbl{fill:#8b949e}
+    .val{fill:#e6edf3}
+    .title{fill:#e6edf3}
+    .sub{fill:#8b949e}
+    .gap{fill:#8b949e;opacity:.13}
+    .gaplbl{fill:#8b949e}
+  }
+</style><text x="12" y="20" class="title">Panel theme</text><text x="12" y="37" class="sub">2,267 of 10,866 MX Bikes installs report a theme (older builds do not)</text><text x="200" y="60" class="lbl" text-anchor="end">none</text><rect x="210" y="44" width="454" height="22" rx="3" fill="#3fb950"/><text x="670" y="60" class="val">2,109 (93%)</text><text x="200" y="90" class="lbl" text-anchor="end">carbon-dark</text><rect x="210" y="74" width="33" height="22" rx="3" fill="#58a6ff"/><text x="249" y="90" class="val">155 (7%)</text><text x="200" y="120" class="lbl" text-anchor="end">carbon-light</text><rect x="210" y="104" width="1" height="22" rx="3" fill="#d29922"/><text x="217" y="120" class="val">3 (&lt;1%)</text></svg>

@@ -81,6 +81,46 @@ test('the split overlay scripts are all wired into index.html and sw.js, in the 
   expect(swJs).toEqual(htmlJs);
 });
 
+// A font a player picks in-game reaches the overlay as a NAME in the snapshot's
+// `fonts` object, and the overlay uses it only if all three of these line up:
+// an @font-face in style.css, the .ttf on disk, and an availableFonts entry.
+// Miss one and the choice silently falls back to the CSS default -- no 404, no
+// console error, nothing to notice except the overlay not matching the game.
+// The three IBM Plex faces were missing this way for the whole life of the
+// Carbon themes, which name them for every one of the six categories.
+//
+// The shipped .fnt set is the authority: that is exactly what the in-game picker
+// offers. A font a USER added under their own fonts/ folder cannot be bundled
+// and is meant to degrade -- which is why this compares against the shipped
+// folder, not against whatever the plugin happens to send.
+test('every shipped in-game font is bundled for the overlay', async () => {
+  const DATA = path.resolve(__dirname, '../../../mxbmrp3_data');
+  const stems = (dir, ext) => fs.readdirSync(path.join(DATA, dir))
+    .filter((f) => f.endsWith(ext)).map((f) => f.slice(0, -ext.length)).sort();
+
+  const shipped = stems('fonts', '.fnt');
+  expect(shipped.length, 'shipped .fnt fonts found').toBeGreaterThan(5);
+
+  // The .ttf sources the overlay serves.
+  expect(stems('web/fonts', '.ttf')).toEqual(shipped);
+
+  // @font-face families declared in style.css.
+  const faces = [...read('style.css').matchAll(/@font-face\s*\{[^}]*?font-family:\s*'([^']+)'/g)]
+    .map((m) => m[1]).sort();
+  expect(faces).toEqual(shipped);
+
+  // The availableFonts lookup the overlay gates on.
+  const setBody = read('js/overlay-util.js').match(/availableFonts\s*=\s*\{([\s\S]*?)\}/);
+  expect(setBody, 'availableFonts object present').toBeTruthy();
+  const available = [...setBody[1].matchAll(/"([^"]+)"\s*:/g)].map((m) => m[1]).sort();
+  expect(available).toEqual(shipped);
+
+  // And the service worker precaches each one, so an offline/OBS load keeps them.
+  const fontUrls = precacheUrls().filter((u) => u.startsWith('fonts/'))
+    .map((u) => u.slice('fonts/'.length, -'.ttf'.length)).sort();
+  expect(fontUrls).toEqual(shipped);
+});
+
 // The installer copies the web root per FOLDER, with a wildcard inside each
 // (`web\js\*.*`), so a new FILE in an existing folder ships automatically — but a
 // new SUBFOLDER needs its own SetOutPath + File block, in all three game sections.

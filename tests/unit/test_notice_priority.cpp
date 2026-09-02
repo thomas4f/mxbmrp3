@@ -4,7 +4,7 @@
 // consumable NoticesHud notices. This is the core of the "consumed while masked"
 // fix: a PB (or setup/segment) notice masked behind a higher-priority status
 // banner must be HELD, not counted down and cleared unseen. Header-only, no game
-// engine — compiles with plain g++. See tests/unit/run_tests.sh.
+// engine — compiles with plain g++. See tests/unit/README.md.
 // ============================================================================
 // The doctest implementation + main() live in test_plugin_utils.cpp
 // (DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN); this TU only registers more tests.

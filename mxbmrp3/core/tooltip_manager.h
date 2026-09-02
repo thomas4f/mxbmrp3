@@ -175,7 +175,7 @@ private:
 
             {"performance.display", "Display mode. Graphs shows visual meters, Numbers shows text values, Both shows both."},
             {"performance.fps", "Show frames per second."},
-            {"performance.cpu", "Show plugin execution time in milliseconds."},
+            {"performance.cpu", "Time the plugin itself spends per frame, in ms. Not system CPU."},
             {"performance.benchmark", "Profiler overlay with per-callback and per-HUD timing. Exports a report when toggled off."},
 
             {"pitboard.show_mode", "When to show. Always: constantly; At Pit: near pit area; At Splits: after timing points."},
@@ -257,6 +257,7 @@ private:
             {"appearance.temp_unit", "Unit for temperature display. Celsius or Fahrenheit."},
             {"appearance.clock_format", "Clock time format. 24h uses 00:00-23:59, 12h uses 1:00-12:59 AM/PM."},
             {"general.grid_snap", "When enabled, HUDs snap to a grid when dragging."},
+            {"general.direct_gl", "Draw the HUD in the game's OpenGL context, not the engine. Off/on retries a Failed."},
             {"general.screen_clamp", "When enabled, HUDs are clamped to stay within screen bounds when dragging."},
             {"general.auto_save", "Auto-saves on leaving the track (never while riding); use Save anytime. Disable to edit INI."},
             {"general.steam_friends", "Broadcast your status and see friends running the plugin. Needs the Steam build; on by default."},

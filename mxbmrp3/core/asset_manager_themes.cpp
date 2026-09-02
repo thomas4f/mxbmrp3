@@ -1,8 +1,7 @@
 // ============================================================================
 // core/asset_manager_themes.cpp
 // AssetManager's theme discovery: scanning themes/<name>/ (standalone themes
-// and skins), the theme ini reader, and the theme geometry mapping. Split
-// from asset_manager.cpp; every method body is unchanged.
+// and skins), the theme ini reader, and the theme geometry mapping.
 // ============================================================================
 #include "asset_manager.h"
 #include "asset_manager_internal.h"
@@ -114,8 +113,8 @@ void AssetManager::discoverThemes() {
         }
 
         // CARD slice set, optional. Per-position like the frame set, and registered
-        // AFTER it so a theme without card slices keeps exactly the sprite indices
-        // it had before this existed.
+        // AFTER it so a theme without card slices is unaffected by the optional sets
+        // that follow.
         if (exists("card_center")) {
             theme.cardCenterSprite = add("card_center");
             for (int i = 0; i < 4; ++i) {
@@ -148,8 +147,8 @@ void AssetManager::discoverThemes() {
         }
 
         // ICON OVERRIDES: themes/<name>/icons/<icon>.tga, one sprite each, registered
-        // after the slice sets so a theme without them keeps the indices it had before
-        // this existed. Ordered by the BASE set so registration order is a property of
+        // after the slice sets so a theme without them is unaffected. Ordered by the
+        // BASE set so registration order is a property of
         // the install rather than of directory enumeration -- the same discipline the
         // slice order needs (see ThemeAsset::spriteFiles).
         //
@@ -318,10 +317,8 @@ void AssetManager::discoverThemes() {
 
 // The optional per-theme ini (see packIniPath). It carries the WHOLE per-theme
 // surface -- the three slice sizes, the tint and card switches with their per-family
-// overrides, [colors] and [fonts] -- and nothing else. It could once additionally set
-// any non-root layout key, forty of them; that vocabulary is gone (see
-// core/layout_metrics.h for the measurement that removed it), which is why the
-// unknown-key message below can name the entire surface in one line.
+// overrides, [colors] and [fonts] -- and nothing else: no layout vocabulary, which
+// is why the unknown-key message below can name the entire surface in one line.
 //
 // Shares layoutForEachIniPairRaw() rather than running its own loop: the two parses
 // have to agree on comments, whitespace and number handling, and a second copy is
@@ -340,11 +337,10 @@ static void readThemeIniPairs(const std::string& iniPath, ThemeAsset& theme) {
 
         // [theme] name - OPTIONAL, exactly like a pad's [pad] name and a board's
         // [board] name. Absent (or empty), the picker keeps showing the
-        // folder-derived title, so every theme that shipped before this reads
-        // unchanged; present, it is the only way to spell something the folder
-        // name cannot -- an acronym, or a title the directory has no room for.
-        // Answered here with the other non-numeric keys, before the numeric path
-        // below and before the unknown-key warning.
+        // folder-derived title; present, it is the only way to spell something
+        // the folder name cannot -- an acronym, or a title the directory has no
+        // room for. Answered here with the other non-numeric keys, before the
+        // numeric path below and before the unknown-key warning.
         if (std::strcmp(key, "pack.name") == 0) {
             if (rawValue && *rawValue) t.displayName = rawValue;
             return true;
@@ -428,9 +424,7 @@ static void readThemeIniPairs(const std::string& iniPath, ThemeAsset& theme) {
             };
             static const BoxKey kBoxKeys[] = {
                 // panel.gap is one number, not shorthand: junction-only air
-                // between stacked children has no sides. (Unrelated to the
-                // removed pre-box-model `[content] gap` spelling, which was a
-                // section-seam scalar the content margins replaced.)
+                // between stacked children has no sides.
                 { "panel.gap",       &ThemeAsset::boxPanelGap,       false, false, true, false },
                 { "panel.border",    &ThemeAsset::boxPanelBorder,    true,  false, false, false },
                 { "panel.padding",   &ThemeAsset::boxPanelPadding,   false, false, false, false },
@@ -501,11 +495,11 @@ static void readThemeIniPairs(const std::string& iniPath, ThemeAsset& theme) {
         }
 
         // (The box keys above are the WHOLE per-side layout surface. The
-        // pre-box-model spellings -- [frame] border, [card] border,
-        // [content] gap, [panel] padding-x/-y -- are gone rather than aliased:
-        // nothing shipped with them, and an unknown-key warning is the honest
-        // answer. The scalar fields they fed remain, fed by the box keys'
-        // legacy bridge above until the last own-geometry panel migrates.)
+        // scalar spellings -- [frame] border, [card] border, [content] gap,
+        // [panel] padding-x/-y -- are deliberately NOT accepted as aliases: an
+        // unknown-key warning is the honest answer. The scalar fields remain,
+        // fed by the box keys' legacy bridge above until the last own-geometry
+        // panel migrates.)
         if (std::strcmp(key, "frame.tint") == 0)  { t.tintable = (parsed != 0.0f); return true; }
         if (std::strcmp(key, "card.title-band") == 0) { t.titleBand = (parsed != 0.0f); t.cardKeysSet = true; return true; }
         // PER-FAMILY overrides, one pair per PanelKind. The plain key above is the
@@ -532,9 +526,7 @@ static void readThemeIniPairs(const std::string& iniPath, ThemeAsset& theme) {
         // of a reloadable file is a fast edit-look loop -- one that a misspelling
         // turns into staring at an unchanged screen.
         //
-        // The list in the message is the WHOLE per-theme surface. It used to fall
-        // through to the layout vocabulary here, forty more keys that no shipped theme
-        // ever set a line of.
+        // The list in the message is the WHOLE per-theme surface.
         DEBUG_WARN_F("Theme '%s': unknown key '%s' - ignored (a theme sets the box keys "
                      "[panel] border/padding and [title]/[content]/[button] "
                      "margin/border/padding in CSS shorthand, plus [frame] tint, "
@@ -546,15 +538,14 @@ static void readThemeIniPairs(const std::string& iniPath, ThemeAsset& theme) {
 }
 
 void AssetManager::readThemeIni(const std::string& iniPath, ThemeAsset& theme) {
-    // The declaration promises this never throws, and until this guard existed that
-    // was an OBSERVATION about the parser rather than a guarantee: the walk uses
-    // strtof and never std::stof, so no conversion throws today -- but a theme file
-    // is user-editable, this runs inside asset discovery, and one exception here
-    // aborts discovery for EVERY asset type, leaving the plugin with no fonts. That
-    // is the same failure the base-section parseColorHex bug caused for the settings
-    // load, which is why CLAUDE.md makes exception-guarding an INI parse site a rule
-    // rather than a judgement call. The catch keeps whatever the file applied before
-    // the throw; a half-read theme is a cosmetic problem, no assets is not.
+    // The declaration promises this never throws, and this guard is what makes that
+    // a guarantee rather than an OBSERVATION about the parser: the walk uses strtof
+    // and never std::stof, so no conversion throws today -- but a theme file is
+    // user-editable, this runs inside asset discovery, and one exception here
+    // aborts discovery for EVERY asset type, leaving the plugin with no fonts.
+    // CLAUDE.md makes exception-guarding an INI parse site a rule rather than a
+    // judgement call. The catch keeps whatever the file applied before the throw;
+    // a half-read theme is a cosmetic problem, no assets is not.
     try {
         readThemeIniPairs(iniPath, theme);
     } catch (const std::exception& e) {

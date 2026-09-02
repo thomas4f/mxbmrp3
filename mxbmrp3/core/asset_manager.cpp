@@ -415,8 +415,8 @@ void AssetManager::migrateLegacyGaugeArt(const std::string& userBaseDir) {
     if (GetFileAttributesA(marker.c_str()) != INVALID_FILE_ATTRIBUTES) return;
 
     // The legacy stems, paired with what they become in a pack. Lowest variant
-    // wins: the cycle is gone, so there is one face per gauge now, and variant 1
-    // is the one every install drew by default.
+    // wins: a pack holds one face per gauge, and variant 1 is the default face
+    // of every install.
     struct LegacyFace { const char* legacyStem; const char* packStem; };
     static constexpr LegacyFace kFaces[] = {
         { "tacho_widget",  "tacho"  },
@@ -451,8 +451,7 @@ void AssetManager::migrateLegacyGaugeArt(const std::string& userBaseDir) {
         const std::string dest = packDir + "\\" + kFaces[i].packStem + ".tga";
         // TRUE is bFailIfExists -- so this does NOT overwrite. A pack folder that
         // already holds a face is one the user built; the migration must not
-        // stamp on it. (The comment here used to name the opposite literal, which
-        // is the kind of thing somebody later "reconciles" the wrong way.)
+        // stamp on it.
         if (CopyFileA(found[i].c_str(), dest.c_str(), TRUE)) ++copied;
     }
 
@@ -772,8 +771,8 @@ int AssetManager::shapeIndexForSprite(int spriteIndex) const {
 int AssetManager::iconSpriteForShape(int shapeIndex) const {
     // Shape index is a position in the BASE vocabulary (that is what persistence and
     // the pickers agree on); the theme only gets to change which sprite that position
-    // draws as. Doing both steps here is what keeps the two from drifting apart at
-    // the ten call sites that used to open-code the arithmetic.
+    // draws as. Doing both steps here is what keeps the two from drifting apart
+    // across the call sites.
     const int count = static_cast<int>(m_icons.size());
     const std::string name = (shapeIndex > 0 && shapeIndex <= count)
         ? m_icons[static_cast<size_t>(shapeIndex - 1)].filename : std::string();

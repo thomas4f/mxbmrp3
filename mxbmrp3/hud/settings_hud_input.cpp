@@ -1,15 +1,18 @@
 // ============================================================================
 // hud/settings_hud_input.cpp
 // SettingsHud user-interaction handling: click hit-testing and dispatch
-// (findClickRegionAt / handleClick / dispatchRegion / handleRightClick), the
+// (findClickRegionAt / handleClick / dispatchRegion / handleRightClick) and the
 // individual control handlers (checkbox / toggle / opacity / scale / display-
-// mode / tab / close), and the reset operations (resetToDefaults /
-// resetCurrentTab / resetCurrentProfile). Split out of settings_hud.cpp, which
-// keeps menu construction (rebuildRenderData) and lifecycle. Per-tab layout
-// lives in hud/settings/settings_tab_*.cpp.
+// mode / tab / close). Split out of settings_hud.cpp, which keeps menu
+// construction (rebuildRenderData) and lifecycle; the reset operations are in
+// settings_hud_reset.cpp. Per-tab layout lives in hud/settings/settings_tab_*.cpp.
 // ============================================================================
-// file-budget: 1350 click dispatch for every settings tab; shrinks as tabs move to SteppedControl
+// file-budget: 1100 click dispatch for every settings tab; shrinks as tabs move to SteppedControl
 #include "settings_hud.h"
+#include "clock_widget.h"
+#include "version_widget.h"
+#include "pitboard_hud.h"
+#include "gamepad_widget.h"
 #include "settings/whats_new.h"
 #include "settings/settings_layout.h"
 #include "telemetry_hud.h"
@@ -511,272 +514,6 @@ void SettingsHud::handleRightClick(float mouseX, float mouseY) {
     }
 }
 
-void SettingsHud::resetToDefaults() {
-    // Everything that lives OUTSIDE the per-profile HUD snapshot — colors, fonts, hotkeys,
-    // rumble, helmet overlay, display units, the controller index, and every
-    // [General]/[Advanced] tunable and toggle (hazard params, update checker, web server,
-    // Discord, records provider, drop shadow, etc.) — is restored in one shot from the
-    // factory-default snapshot captured at startup. This replaces a long hand-maintained
-    // list of per-setting resets that used to drift whenever a new global setting was added:
-    // the snapshot reuses the exact same serialization as save/load, so it can't fall out of
-    // sync. (Developer mode is an INI-only power-user flag and is intentionally preserved.)
-    SettingsManager::getInstance().resetGlobalsToFactoryDefaults(HudManager::getInstance());
-
-    // autoSwitch lives in [Profiles] (session/navigation state, outside the global snapshot),
-    // so reset it explicitly. The active profile itself is intentionally left unchanged.
-    ProfileManager::getInstance().setAutoSwitchEnabled(false);
-
-    // The widgets master toggle and all per-profile HUD/widget state are restored below by
-    // resetAllToFactoryDefaults() (widgetsEnabled lives in the per-profile "Global" snapshot).
-
-    // Reset every profile to the pristine factory snapshot and save. This forces even
-    // INI-only overrides that a HUD's resetToDefaults() doesn't touch back to defaults, and
-    // (unlike a plain reload) re-seeds the save baseline so user-edited base-section keys are
-    // replaced with this build's defaults — a full factory reset intentionally discards them.
-    SettingsManager::getInstance().resetAllToFactoryDefaults(HudManager::getInstance());
-
-    // Rebuild AFTER all state is reset — globals AND the per-profile HUD/widget visibility
-    // above — so the tab toggle icons reflect the reverted enabled/disabled state
-    // immediately instead of only after the next mouse-move (hover) rebuild.
-    rebuildRenderData();
-}
-
-void SettingsHud::resetCurrentTab() {
-    // Reset the HUD(s) on the current tab to the captured factory-default snapshot.
-    // Routing through SettingsManager (rather than each HUD's resetToDefaults())
-    // guarantees every INI-controllable setting — including INI-only members and
-    // per-HUD color/font overrides — returns to default, and by default it preserves
-    // each HUD's current visibility so a per-tab reset doesn't hide an element the
-    // user is positioning. (The Widgets tab opts out — see resetTabWidgets() — and
-    // the full "Reset all settings" path resets visibility instead.)
-    //
-    // Routed via the descriptor registry: resetHud is the standard keep-visibility
-    // HUD reset; resetExtra covers anything outside the per-HUD snapshot (see the
-    // resetTab* bodies below).
-    const TabDescriptor* tabDesc = findTabDescriptor(m_activeTab);
-    if (tabDesc && (tabDesc->resetHud || tabDesc->resetExtra)) {
-        if (tabDesc->resetHud) {
-            SettingsManager::getInstance().resetHudsToFactoryDefaults(
-                HudManager::getInstance(), {tabDesc->resetHud}, /*keepVisibility=*/true);
-        }
-        if (tabDesc->resetExtra) (this->*(tabDesc->resetExtra))();
-    } else {
-        DEBUG_WARN_F("Unknown tab index for reset: %d", m_activeTab);
-    }
-
-    // Update settings display
-    rebuildRenderData();
-
-    // Deferred: persisted on leave-track (auto-save) or via the Save button.
-    SettingsManager::getInstance().markDirty();
-}
-
-// ----------------------------------------------------------------------------
-// Per-tab custom reset bodies (TabDescriptor::resetExtra). Each covers the
-// settings its tab shows that live OUTSIDE the per-HUD factory snapshot
-// (global sections, manager state), so the registry's resetHud pass can't
-// restore them. Simple tabs have no body here - resetHud alone is enough.
-// ----------------------------------------------------------------------------
-
-void SettingsHud::resetTabGeneral() {
-    // General tab - reset all settings displayed on the General tab.
-    // (Display section — units/clock format, grid snap, screen clamp — moved to
-    // the Appearance tab; reset there via the [Display] factory snapshot.)
-    // Preferences section
-    UiConfig::getInstance().setPBScope(PBScope::CATEGORY);
-    XInputReader::getInstance().getRumbleConfig().controllerIndex = 0;
-    XInputReader::getInstance().setControllerIndex(0);
-    UiConfig::getInstance().setAutoSave(true);
-#if GAME_HAS_STEAM_FRIENDS
-    SteamFriendsManager::getInstance().setEnabled(true);  // default on, unlike Discord/HTTP
-#endif
-#if GAME_HAS_DISCORD
-    DiscordManager::getInstance().setEnabled(false);
-#endif
-#if GAME_HAS_HTTP_SERVER
-    HttpServer::getInstance().setEnabled(false);
-    HttpServer::getInstance().resetPortToDefault();
-#endif
-    // Profiles section
-    ProfileManager::getInstance().setAutoSwitchEnabled(false);
-    // Mark all HUDs dirty for drop shadow / unit changes
-    HudManager::getInstance().markAllHudsDirty();
-}
-
-void SettingsHud::resetTabAppearance() {
-    // Appearance tab - reset display (units/clock format), fonts, and colors. These
-    // map 1:1 to the [Display]/[Fonts]/[Colors] INI sections (no other tab touches
-    // them), so restore them straight from the factory-default snapshot — the same
-    // path the full reset uses — instead of by hand. Adding a new [Display] key no
-    // longer requires updating this tab's reset.
-    SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-        HudManager::getInstance(), {"Display", "Fonts", "Colors"});
-    // Mark all HUDs dirty so they pick up new colors
-    if (m_idealLap) m_idealLap->setDataDirty();
-    if (m_lapLog) m_lapLog->setDataDirty();
-    if (m_standings) m_standings->setDataDirty();
-    if (m_performance) m_performance->setDataDirty();
-    if (m_telemetry) m_telemetry->setDataDirty();
-    if (m_mapHud) m_mapHud->setDataDirty();
-    if (m_radarHud) m_radarHud->setDataDirty();
-    if (m_pitboard) m_pitboard->setDataDirty();
-    if (m_records) m_records->setDataDirty();
-    if (m_timing) m_timing->setDataDirty();
-    if (m_gapBar) m_gapBar->setDataDirty();
-    if (m_lap) m_lap->setDataDirty();
-    if (m_position) m_position->setDataDirty();
-    if (m_time) m_time->setDataDirty();
-    if (m_session) m_session->setDataDirty();
-    if (m_speed) m_speed->setDataDirty();
-    if (m_speedo) m_speedo->setDataDirty();
-    if (m_tacho) m_tacho->setDataDirty();
-    if (m_notices) m_notices->setDataDirty();
-    if (m_bars) m_bars->setDataDirty();
-    if (m_version) m_version->setDataDirty();
-    if (m_fuel) m_fuel->setDataDirty();
-    if (m_sessionCharts) m_sessionCharts->setDataDirty();
-    if (m_gear) m_gear->setDataDirty();
-    if (m_lean) m_lean->setDataDirty();
-    if (m_clock) m_clock->setDataDirty();
-    if (m_gamepad) m_gamepad->setDataDirty();
-    if (m_fmxHud) m_fmxHud->setDataDirty();
-    if (m_statsHud) m_statsHud->setDataDirty();
-    if (m_eventLog) m_eventLog->setDataDirty();
-}
-
-void SettingsHud::resetTabStandingsExtra() {
-    // DNS filter lives in PluginData (the global [General] section), not the
-    // per-HUD snapshot, so the resetHud pass can't restore it. Reset it explicitly.
-    // (Live gaps is now a StandingsHud member, restored by the resetHud pass.)
-    PluginData::getInstance().setFilterDnsRiders(false);
-}
-
-void SettingsHud::resetTabRecordsExtra() {
-    // Provider and auto-fetch are saved in the global [General] section, not
-    // the per-HUD snapshot, so the resetHud pass can't restore them. Reset them
-    // explicitly to their factory defaults (CBR provider, auto-fetch off).
-    if (m_records) {
-        m_records->m_provider = RecordsHud::DataProvider::CBR;
-        m_records->m_bAutoFetch = false;
-        m_records->setDataDirty();
-    }
-}
-
-void SettingsHud::resetTabWidgets() {
-    // Reset all widgets in a single pass
-    std::vector<std::string> widgets = {
-        "LapWidget", "PositionWidget", "TimeWidget", "SpeedWidget", "GearWidget",
-        "SpeedoWidget", "TachoWidget", "BarsWidget", "VersionWidget", "FuelWidget",
-        "GamepadWidget", "LeanWidget", "GForceWidget", "CompassWidget", "ClockWidget",
-        "PointerWidget", "SettingsButtonWidget"
-    };
-#if GAME_HAS_TYRE_TEMP
-    widgets.push_back("TyreTempWidget");
-#endif
-#if GAME_HAS_ECU
-    widgets.push_back("EcuWidget");
-#endif
-    // keepVisibility=false: the Widgets tab exposes a per-widget "Visible"
-    // toggle for every row, so Reset restores those toggles to factory
-    // defaults too (not just position/scale/opacity).
-    SettingsManager::getInstance().resetHudsToFactoryDefaults(
-        HudManager::getInstance(), widgets, /*keepVisibility=*/false);
-}
-
-void SettingsHud::resetTabRumble() {
-    // Reset rumble configuration from the [Rumble] snapshot (same path as the full
-    // reset) plus the RumbleHud. Preserve the master "enabled" toggle, like every
-    // other per-tab reset leaves its master alone. controllerIndex is configured on
-    // the General tab and isn't part of [Rumble], so the replay never touches it.
-    RumbleConfig& rumbleCfg = XInputReader::getInstance().getGlobalRumbleConfig();
-    bool wasEnabled = rumbleCfg.enabled;
-    SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-        HudManager::getInstance(), {"Rumble"});
-    rumbleCfg.enabled = wasEnabled;
-    SettingsManager::getInstance().resetHudsToFactoryDefaults(
-        HudManager::getInstance(), {"RumbleHud"}, /*keepVisibility=*/true);
-}
-
-void SettingsHud::resetTabHelmet() {
-    // HelmetOverlay maps 1:1 to the [HelmetOverlay] snapshot section. Replay it (same
-    // path as the full reset) while preserving visibility, so a per-tab reset doesn't
-    // hide the overlay the user is positioning.
-    if (m_helmetOverlay) {
-        bool wasVisible = m_helmetOverlay->isVisible();
-        SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-            HudManager::getInstance(), {"HelmetOverlay"});
-        m_helmetOverlay->setVisible(wasVisible);
-        m_helmetOverlay->setDataDirty();
-    }
-}
-
-void SettingsHud::resetTabHotkeys() {
-    // Hotkey bindings map 1:1 to the [Hotkeys] snapshot section.
-    SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-        HudManager::getInstance(), {"Hotkeys"});
-}
-
-void SettingsHud::resetTabUpdates() {
-    // Update settings map 1:1 to the [Updates] snapshot section. Replay it (same
-    // path as the full reset), but leave the "Check for Updates" mode (the master
-    // on/off toggle) alone — like a HUD's visibility in the resetHud path, the
-    // master state is preserved here; full "Reset all settings" disables it instead.
-    UpdateChecker::UpdateMode mode = UpdateChecker::getInstance().getMode();
-    SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-        HudManager::getInstance(), {"Updates"});
-    UpdateChecker::getInstance().setMode(mode);
-}
-
-void SettingsHud::resetTabRiders() {
-    // Clear all tracked riders
-    TrackedRidersManager::getInstance().clearAll();
-}
-
-void SettingsHud::resetTabDirector() {
-    // Director maps 1:1 to the [Director] snapshot section. Replay it but leave
-    // the master enable alone (like Updates' check toggle); a full "Reset all
-    // settings" disables it instead.
-    bool wasEnabled = DirectorManager::getInstance().isEnabled();
-    SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-        HudManager::getInstance(), {"Director"});
-    DirectorManager::getInstance().setEnabled(wasEnabled);
-}
-
-void SettingsHud::resetTabSpotter() {
-    // Spotter maps 1:1 to the [Spotter] snapshot section. Replay it but keep
-    // the two MASTER switches, mirroring the Director tab's reset: a user
-    // resetting tuning shouldn't have their spotter silently switched off (or
-    // on). BOTH of them -- subtitles-only is a real mode (spotter_manager.h),
-    // so preserving `enabled` alone silenced a subtitles-only user completely
-    // while faithfully preserving the `enabled=false` they were already in.
-    const bool wasEnabled = SpotterManager::getInstance().isEnabled();
-    const bool wasSubtitles = SpotterManager::getInstance().isSubtitlesEnabled();
-    SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-        HudManager::getInstance(), {"Spotter"});
-    SpotterManager::getInstance().setEnabled(wasEnabled);
-    SpotterManager::getInstance().setSubtitlesEnabled(wasSubtitles);
-}
-
-void SettingsHud::resetCurrentProfile() {
-    // Reset only Elements (HUDs and Widgets) for the current profile by re-applying
-    // the factory snapshot to the active profile. Like the per-tab and full-reset
-    // paths, this also clears INI-only members and per-HUD color/font overrides.
-    // HelmetOverlay (global, not in the snapshot) is left untouched here — it's only
-    // reset via the Helmet tab or the full "Reset all settings".
-    SettingsManager::getInstance().resetActiveProfileToFactoryDefaults(HudManager::getInstance());
-
-    // DNS filter lives in the global [General] section, not the snapshot, so reset it
-    // explicitly (matches prior behavior). Other global settings (ColorConfig,
-    // RumbleConfig, UpdateChecker, hazard params) are NOT reset. (Live gaps is now a
-    // StandingsHud member, restored by resetActiveProfileToFactoryDefaults above.)
-    PluginData::getInstance().setFilterDnsRiders(false);
-
-    // Update settings display
-    rebuildRenderData();
-
-    // Deferred: persisted on leave-track (auto-save) or via the Save button.
-    SettingsManager::getInstance().markDirty();
-}
 
 // Shared handler for STEPPED_UP/STEPPED_DOWN: apply the registered descriptor's
 // step (with the usual hold-to-repeat acceleration) and mark the target HUD +
@@ -1209,6 +946,93 @@ void SettingsHud::testRegionSignature(char* out, int cap) const {
         memcpy(out + used, tail, static_cast<size_t>(n));
         out[used + n] = '\0';
     }
+}
+
+// Regions the perturbation sweep must NOT click. Everything else is a setting, so a
+// control type added later is clicked by default: if that turns out to be unsafe the
+// sweep breaks loudly, which is what keeps this list honest. The reverse default -
+// an allow-list - would have every new control silently uncovered, which is exactly
+// the failure this test exists to catch.
+static bool isPerturbSafe(SettingsHud::ClickRegion::Type t) {
+    using CR = SettingsHud::ClickRegion;
+    switch (t) {
+        // The controls under test, and the ones that reset far more than a tab.
+        case CR::RESET_TAB_BUTTON:
+        case CR::RESET_BUTTON:
+        case CR::RESET_PROFILE_CHECKBOX:
+        case CR::RESET_ALL_CHECKBOX:
+        // Navigation and file I/O: they change no setting, and leaving the tab would
+        // perturb one page while resetting another.
+        case CR::TAB:
+        case CR::CLOSE_BUTTON:
+        case CR::SAVE_BUTTON:
+        case CR::TOOLTIP_ROW:
+        case CR::VERSION_CLICK:
+        case CR::PROFILE_CYCLE_UP:
+        case CR::PROFILE_CYCLE_DOWN:
+        // Writes to ANOTHER profile, which no per-tab reset claims to undo.
+        case CR::COPY_TARGET_UP:
+        case CR::COPY_TARGET_DOWN:
+        case CR::COPY_BUTTON:
+        // Leaves the menu waiting for a keypress that never comes.
+        case CR::HOTKEY_KEYBOARD_BIND:
+        case CR::HOTKEY_CONTROLLER_BIND:
+        // Reach outside the process: a browser, the update server, a minute-long
+        // sweep that deliberately tanks the frame rate.
+        case CR::OPEN_LINK_DOCS:
+        case CR::OPEN_LINK_COMMUNITY:
+        case CR::OPEN_LINK_KOFI:
+        case CR::OPEN_LINK_OVERLAY:
+        case CR::UPDATE_CHECK_NOW:
+        case CR::UPDATE_INSTALL:
+        case CR::PROBE_SWEEP:
+            return false;
+        default:
+            return true;
+    }
+}
+
+int SettingsHud::testPerturbActiveTab() {
+    int clicked = 0;
+    // ONE CLICK PER CONTROL, not per region. Every row helper emits its control
+    // TWICE - the "<" and ">" arrows are separate regions - and for the two-state
+    // rows both carry the same type, so clicking every region flipped each setting
+    // there and back and perturbed nothing at all. The pair is always adjacent
+    // within a row, so skipping the region after each click is enough, and it still
+    // reaches each control of a multi-control row (a widget row's Visible, Opacity
+    // and Scale are three pairs in a row).
+    bool skipNext = false;
+    // From the content pass only: the sidebar's per-tab checkboxes are click regions
+    // on every tab, and they are not this tab's to reset.
+    // By INDEX, re-reading the vector each time: a click can rebuild the layout (a
+    // toggle that reveals a row), which invalidates any iterator or reference held
+    // across it. Regions inserted below the cursor are still reached; one inserted
+    // above is not, and that is an acceptable miss for a sweep whose job is breadth.
+    for (size_t i = static_cast<size_t>(m_testContentRegionBegin); i < m_clickRegions.size(); ++i) {
+        const ClickRegion& r = m_clickRegions[i];
+        // A row-wide tooltip region marks a row boundary (it is emitted first by
+        // every row helper), so a pending skip cannot leak into the next row.
+        if (r.type == ClickRegion::TOOLTIP_ROW) { skipNext = false; continue; }
+        if (!isPerturbSafe(r.type)) continue;
+        if (skipNext) { skipNext = false; continue; }
+        skipNext = true;
+        const float cx = r.x + r.width * 0.5f;
+        const float cy = r.y + r.height * 0.5f;
+        handleClick(cx, cy);
+        ++clicked;
+    }
+    return clicked;
+}
+
+bool SettingsHud::testClickResetTab() {
+    for (const auto& r : m_clickRegions) {
+        if (r.type != ClickRegion::RESET_TAB_BUTTON) continue;
+        const float cx = r.x + r.width * 0.5f;
+        const float cy = r.y + r.height * 0.5f;
+        handleClick(cx, cy);
+        return true;
+    }
+    return false;
 }
 
 bool SettingsHud::testClickDirectorHudVisible() {

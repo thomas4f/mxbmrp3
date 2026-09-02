@@ -27,13 +27,10 @@ static constexpr const char* DEFAULT_PROXIMITY_ARROW_ICON = "angle-up";
 // override sprite is registered PAST the base icon block, so the subtraction returns
 // a number off the end of the vocabulary. renderRiderSprite() then range-rejects it
 // and silently falls back to the ordinary rider marker -- while the colour override
-// still applies. Under a theme shipping icons/flag.tga, a blue-flagged rider went blue
-// and kept a circle instead of the flag.
-//
-// The arithmetic was correct until getIconSpriteIndex() gained theme overrides on this
-// branch (the base-only lookup is getBaseIconSpriteIndex() now). asset_manager.h
-// documents it as "THE TRAP THIS EXISTS FOR"; MapHud was already doing it right, and
-// radar was the last site still open-coding it.
+// still applies. Under a theme shipping icons/flag.tga, a blue-flagged rider would go
+// blue and keep a circle instead of the flag. (The base-only lookup is
+// getBaseIconSpriteIndex().) asset_manager.h documents it as "THE TRAP THIS EXISTS
+// FOR"; MapHud makes the same call.
 void RadarHud::CachedIcons::ensureInitialized() {
     if (initialized) return;
     const AssetManager& assets = AssetManager::getInstance();
@@ -268,17 +265,10 @@ void RadarHud::renderRiderLabel(float radarX, float radarY, int raceNum, int pos
         // lays the shadow in behind it from [Display] dropShadowOffsetX/Y, honouring
         // the global toggle and any per-HUD override.
         //
-        // This used to hand-roll an outline -- the string four more times in black at
-        // +-5% of the font -- gated on the same toggle so it at least switched with it,
-        // but drawing a four-way surround where the other two draw a bottom-right
-        // shadow, at five strings per label against their two.
-        //
-        // THE FADE IS WHY IT COULD NOT MOVE BEFORE: this label dims as its rider leaves
-        // proximity range, the outline was faded to match by hand, and the shared
-        // shadow used to write the configured colour verbatim -- a solid shadow behind
-        // half-visible text. It modulates by the string's own alpha now
-        // (PluginUtils::modulateAlpha), so the shadow fades with the label and the
-        // outline has nothing left to do. (Rider ICONS are separate sprite quads with
+        // THE FADE: this label dims as its rider leaves proximity range, and the shared
+        // shadow modulates by the string's own alpha (PluginUtils::modulateAlpha), so
+        // it fades with the label rather than sitting solid behind half-visible text;
+        // no hand-rolled outline is needed. (Rider ICONS are separate sprite quads with
         // their own baked outlines and never take the shadow -- this is only the text.)
         addString(labelStr, lp.x, lp.y, lp.justify,
                  this->getFont(FontCategory::SMALL), labelColor, labelFontSize, false);
@@ -362,9 +352,8 @@ void RadarHud::rebuildRenderData() {
     if (m_radarMode == RadarMode::OFF) {
         // This path never reaches addBackgroundQuad, which is what ARMS the panel rect
         // and the fill strips. Without clearing them, finalizeThemedFill re-cuts using
-        // last rebuild's indices -- which now hold proximity arrows -- and stretches one
-        // across the old panel. NoticesHud's comment called itself "the one such caller";
-        // this is the second.
+        // last rebuild's indices -- which then hold proximity arrows -- and stretches one
+        // across the old panel. NoticesHud is the other such caller.
         invalidatePanelRect();
         renderProximityArrows(localPlayer, playerX, playerZ, cosYaw, sinYaw, gradient);
         return;
@@ -387,11 +376,10 @@ void RadarHud::rebuildRenderData() {
     addBackgroundQuad(x, y, width, height);
     m_fBackgroundOpacity = savedOpacity;
 
-    // THE BODY CARD, asked for directly. This called addTitleString("RADAR", ...) to
-    // get it, which was the legacy chain's only remaining purpose here: the radar
-    // disableTitle()s in its constructor, so that call could only ever take the
-    // title-hidden early-out -- emit the card, emit an empty string, return. The
-    // empty string was the caller's to want and this HUD never did.
+    // THE BODY CARD, asked for directly rather than through addTitleString(): the
+    // radar disableTitle()s in its constructor, so that call could only ever take
+    // the title-hidden early-out -- emit the card, emit an empty string, return --
+    // and this HUD never wants the empty string.
     //
     // The card still matters even though the radar's default is theme-less: the
     // opt-out is a per-HUD SETTING (setThemeOverride(THEME_NONE) at defaults), so a
@@ -752,22 +740,21 @@ float RadarHud::unthemedContentWidth(float scale) {
 
 // No setScale override: this panel is CENTRE-ANCHORED (offsetX is its centre), so the
 // layout recentres on every width change and a scale change needs no offset
-// compensation. It used to call setScaleKeepingCenter, which kept the dial centred by
-// REWRITING the stored offset on each scale step -- a persisted setting edited as a
-// side effect of another one, computed from bounds left over from the previous render,
-// so it was only right once the panel had drawn at least once.
+// compensation. setScaleKeepingCenter would keep the dial centred by REWRITING the
+// stored offset on each scale step -- a persisted setting edited as a side effect of
+// another one, computed from bounds left over from the previous render, so right
+// only once the panel has drawn at least once.
 
 void RadarHud::resetToDefaults() {
     // NEVER THEMED, by default. This panel is a TEXTURE with markers on it -- the dial
     // is the art and the transparency around it is the point -- so a frame, a title band
     // and a content card have nothing to frame and only eat the space the dial needs.
-    // Reported from the game after the theme treatment landed: there is no version of
-    // this panel that a nine-slice improves.
+    // There is no version of this panel that a nine-slice improves.
     //
     // THEME_NONE rather than deleting the code paths: a sprite background already
-    // bypasses theming upstream (resolveActiveTheme), so the texture-on default was
+    // bypasses theming upstream (resolveActiveTheme), so the texture-on default is
     // unthemed anyway -- this covers the case where the user switches the texture OFF,
-    // which is what still let a theme in. It stays a per-HUD SETTING, so anyone who
+    // which would otherwise let a theme in. It stays a per-HUD SETTING, so anyone who
     // wants the frame can name a theme for this HUD and get it back.
     setThemeOverride(THEME_NONE);
     m_bVisible = false;
@@ -788,10 +775,9 @@ void RadarHud::resetToDefaults() {
     m_proximityArrowColorMode = ProximityArrowColorMode::DISTANCE;
     m_fMarkerScale = DEFAULT_MARKER_SCALE;
     // CENTRE-ANCHORED: offsetX is the dial's centre, so this is centred at EVERY
-    // scale. It was 0.43275f, "horizontally centered at scale 1.0" -- and that frozen
-    // decimal was 0.5 minus half the CONTENT width, so it did not even centre the
-    // drawn box, which fitPanelToGrid rounds up to whole cells. About 3px out at
-    // 1080p, and further at every scale but one.
+    // scale. A frozen decimal (0.5 minus half the CONTENT width at scale 1) would not
+    // even centre the drawn box, which fitPanelToGrid rounds up to whole cells --
+    // about 3px out at 1080p, and further at every scale but one.
     setPosition(CENTER_ANCHOR_X, cellsY(1));
     setDataDirty();
 }

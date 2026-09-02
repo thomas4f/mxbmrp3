@@ -62,7 +62,7 @@ void GearWidget::rebuildRenderData() {
     auto dim = getScaledDimensions();
     float gearRowHeight = dim.lineHeightLarge + dim.lineHeightNormal;  // Match SpeedWidget content height (value + units)
     // From the FONT, capped by the BOX -- see gear_geometry.h for why the row
-    // height alone was wrong.
+    // height alone is wrong.
     float gearFontSize = GearGeometry::fontSize(dim.fontSize, gearRowHeight);
 
     const PluginData& pluginData = PluginData::getInstance();
@@ -90,10 +90,9 @@ void GearWidget::rebuildRenderData() {
     float currentY = p.contentY();
     // THE ROW THE PLAN LAID OUT, not the one asked for: the last section's box absorbs
     // the panel's ceil remainder (panel_box.h), so at some uiLineHeight values it is
-    // taller than gearRowHeight by up to a cell. Centring in the ask instead put the
+    // taller than gearRowHeight by up to a cell. Centring in the ask instead puts the
     // digit high by half that slack -- ~5px at 1080p with uiLineHeight 1.8, and nothing
-    // at the shipped default, which is why it read as "only broken at some line
-    // heights". Same read-back the gap bar makes for its bar.
+    // at the shipped default. Same read-back the gap bar makes for its bar.
     const float gearRowDrawnH = p.H(p.g.sections[0].h);
     // The gear digit is centered on the CARD (PanelPlan::sectionBoxCenterX --
     // the panel's centre is the same place only while the [content] terms are
@@ -130,8 +129,8 @@ void GearWidget::rebuildRenderData() {
         // Centred in the gear ROW, with none of the text's y solve. inkCenteredY is
         // the TEXT's: it undoes addString's row centring and shifts the glyph cell so
         // the digit's INK lands mid-row. A quad has neither problem, so borrowing that
-        // y moved the circle off the digit it is drawn around, by a third of the gear
-        // font. The ink IS centred in the row, so centring the circle in the row is
+        // y would move the circle off the digit it is drawn around, by a third of the
+        // gear font. The ink IS centred in the row, so centring the circle in the row is
         // what makes the two concentric.
         float circleTopY = currentY + (gearRowDrawnH - circleHeight) / 2.0f;
 
@@ -153,11 +152,11 @@ void GearWidget::rebuildRenderData() {
     // INK-CENTRED IN THE ROW -- the same solve TimingHud's big time, the gap bar's
     // gap text and every bigValueTextY caller use.
     //
-    // It used to be a hand-tuned nudge, a fixed fraction OF THE GEAR FONT. That
-    // centred the digit only because the font was itself a multiple of the row: both
-    // scaled with uiLineHeight together, so the ratio held by coincidence. Sizing the
-    // font from the base font instead (gear_geometry.h) broke the coincidence and the
-    // digit sat high in a raised row. inkCenteredY has no such dependency -- it solves
+    // A hand-tuned nudge, a fixed fraction OF THE GEAR FONT, centres the digit only
+    // while the font is itself a multiple of the row (both scaling with uiLineHeight
+    // together, so the ratio holds by coincidence). The font is sized from the base
+    // font instead (gear_geometry.h), so such a nudge leaves the digit sitting high
+    // in a raised row. inkCenteredY has no such dependency -- it solves
     // for the ink's position in an arbitrary box at an arbitrary font size, which is
     // exactly this case, and it also undoes addString's own row centring, which grows
     // with uiLineHeight and would otherwise drift on its own.

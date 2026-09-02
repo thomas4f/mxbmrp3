@@ -2,20 +2,31 @@
 // hud/settings_hud_render.cpp
 // SettingsHud::rebuildRenderData() — the settings menu's full render build: it
 // lays out every tab's controls, labels, click regions and tooltips into the
-// HUD's quad/string vectors. Extracted verbatim from settings_hud.cpp (it was
-// ~890 lines, the bulk of that file) when the file grew past ~1.8k lines; the
-// SettingsHud class, members, and public API are unchanged — only where this
-// one method body lives moves. Companion to settings_hud_input.cpp.
+// HUD's quad/string vectors. Companion to settings_hud_input.cpp.
 //
-// The tab bar and its two icon helpers are member functions below, not lambdas.
-// They were lambdas until the "8+ parameters" claim behind that choice was
-// actually measured (it is 2, and 5 for the bar); the per-tab CONTROL lambdas
-// this file used to hold are gone entirely, replaced by SettingsLayoutContext.
+// The tab bar and its two icon helpers are member functions below, not lambdas
+// (each needs 2 parameters beyond its original arguments, 5 for the bar); the
+// per-tab CONTROL code lives in SettingsLayoutContext.
 // ============================================================================
 // file-budget: 1450 the tab registry and shared render scaffolding; per-tab code is already split
 #include <cmath>
 
 #include "settings_hud.h"
+#include "ideal_lap_hud.h"
+#include "lap_log_hud.h"
+#include "friends_hud.h"
+#include "session_charts_hud.h"
+#include "standings_hud.h"
+#include "performance_hud.h"
+#include "pitboard_hud.h"
+#include "session_hud.h"
+#include "timing_hud.h"
+#include "gap_bar_hud.h"
+#include "notices_hud.h"
+#include "records_hud.h"
+#include "event_log_hud.h"
+#include "map_hud.h"
+#include "radar_hud.h"
 #include "settings/settings_layout.h"
 #include "settings/text_wrap.h"
 #include "telemetry_hud.h"
@@ -131,12 +142,11 @@ const SettingsHud::TabDescriptor* SettingsHud::findTabDescriptor(int tabId) {
 // ==========================================================================
 // Tab-bar drawing helpers, split out of rebuildRenderData().
 //
-// These were lambdas, held that way by a rule (CLAUDE.md "Design Decisions", plus
-// a NOTE in this file) claiming a conversion would need "8+ parameters". Measured
-// rather than assumed, each needs TWO beyond its original arguments: the scaled
-// dimensions and the checkbox cell width. Everything else they touch -- addIcon,
-// addString, m_clickRegions, m_hoveredRegionIndex -- is a member, which a member
-// function gets for free and a lambda had to capture by reference.
+// Members, not lambdas: each needs TWO parameters beyond its original arguments
+// (the scaled dimensions and the checkbox cell width). Everything else they touch
+// -- addIcon, addString, m_clickRegions, m_hoveredRegionIndex -- is a member,
+// which a member function gets for free and a lambda would have to capture by
+// reference.
 // ==========================================================================
 
 // Shared dim level for "inactive" tab icons (disabled toggles + non-toggle section
@@ -184,7 +194,7 @@ void SettingsHud::drawTabToggle(float x, float y, const char* iconName, bool ena
         // THE SELECTED ROW. Its background is the accent band, and the two things
         // that make an icon readable on the panel work against it there: a disabled
         // icon is dimmed to half, and the whole palette is warm, so a dimmed red on
-        // amber disappeared -- reported as the selected tab having no icon at all.
+        // amber disappears and the selected tab reads as having no icon at all.
         //
         // Full opacity plus a lift, never the dimmed variant. The HUE still carries
         // the state (green on, red off), which is why this is not simply switched to
@@ -204,10 +214,10 @@ void SettingsHud::drawTabToggle(float x, float y, const char* iconName, bool ena
 }
 
 // ==========================================================================
-// The vertical tab bar. Split out for the same reason as the helpers above, and
-// measured the same way: the loop reads exactly FIVE values from the enclosing
-// scope -- the two tab-bar origins, the tab and checkbox widths, and the scaled
-// dimensions. tabStartY is advanced locally and deliberately NOT returned: the
+// The vertical tab bar. Split out for the same reason as the helpers above: the
+// loop reads exactly FIVE values from the enclosing scope -- the two tab-bar
+// origins, the tab and checkbox widths, and the scaled dimensions. tabStartY is
+// advanced locally and deliberately NOT returned: the
 // content column starts at the panel cursor, not below the tabs, so the final
 // value has no reader.
 //
@@ -219,9 +229,9 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
     // ONE SECTION PER GROUP, at the engine's own origin for it. Every group marker
     // below jumps the cursor to the next section's top instead of advancing by a
     // seam it computes -- the seam between two groups is the same one between any
-    // two sibling cards, and it is the engine's to spend. The cards themselves were
-    // drawn by addPlanBackground before any of this ran, so the open/close pair
-    // this function used to carry is gone with them.
+    // two sibling cards, and it is the engine's to spend. The cards themselves are
+    // drawn by addPlanBackground before any of this runs, so nothing here opens or
+    // closes one.
     size_t group = 0;
     float tabStartY = plan.colContentY(col, 0);
     // Visual tab order comes straight from the descriptor registry (rows are in
@@ -246,16 +256,11 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
         // matching the content column's section cards exactly.
 
         if (i == TAB_SECTION_GLOBAL) {
-            // "Global" is captioned again, and the row it costs was paid for by
-            // MERGING "Elements" into "Profile" -- exactly one caption row each way,
-            // so the sidebar is no taller than when this group was anonymous. (It had
-            // lost its label when the Spotter tab landed, because the sidebar is the
-            // panel's binding height under theme_geometry_test's fits-the-screen
-            // contract and this was the cheapest row to give up.)
-            //
-            // The merge is also the truer grouping: the element tabs ARE per-profile,
-            // so listing them under the profile cycler says what they are. Two groups
-            // now, not three -- which costs one card and one seam less as well.
+            // TWO GROUPS, Global and Profile: the element tabs ARE per-profile, so
+            // listing them under the profile cycler says what they are, and a third
+            // group would cost a card and a seam. Every caption row counts: the
+            // sidebar is the panel's binding height under theme_geometry_test's
+            // fits-the-screen contract.
             tabStartY = plan.colContentY(col, group++);
             addString("Global", tabStartX, tabStartY, Justify::LEFT,
                 Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
@@ -343,18 +348,17 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
 
         float currentTabX = tabStartX;
 
-        // THE ROW'S BAND, EMITTED FIRST. Quads draw in push order, and this used to be
-        // pushed after the row's identity icon -- so the selected tab's band painted
-        // over its own icon and the row looked like it had none. (The label survived
-        // only because it is pushed later still.) Reported from the game as the
-        // selected tab having no icon; it reads as a colour clash, but nothing about
-        // the colours was wrong.
+        // THE ROW'S BAND, EMITTED FIRST. Quads draw in push order, so a band pushed
+        // after the row's identity icon paints over it and the selected tab looks
+        // like it has none (the label survives only because it is pushed later
+        // still). That reads as a colour clash, but nothing about the colours is
+        // wrong.
         //
         // The hover test needs the index the TAB region will get, which is one past
         // the checkbox region the branches below may push -- hence the prediction
-        // rather than a captured index. Click order is unchanged: regions are still
-        // pushed checkbox-then-tab, which is what makes a click on the box toggle
-        // rather than select (pinned by settings_layout_test's region golden).
+        // rather than a captured index. Click order: regions are pushed
+        // checkbox-then-tab, which is what makes a click on the box toggle rather
+        // than select (pinned by settings_layout_test's region golden).
         const bool rowHasCheckbox = (tabHud != nullptr) || i == TAB_WIDGETS || i == TAB_RUMBLE
                                  || i == TAB_HELMET || i == TAB_UPDATES || i == TAB_DIRECTOR
                                  || i == TAB_SPOTTER;
@@ -362,19 +366,17 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
         {
             // The highlight spans the tab COLUMN, not the label: full row width,
             // identity icon included, the same for every tab whatever its label length.
-            //
-            // Two bugs in one line here before. It used to start a char right of the
-            // icon (leaving the icon outside the highlight meant to select its row),
-            // and it used to END at the label, so its inset from the group card's right
-            // edge varied with the label while the left inset stayed fixed -- the uneven
-            // left/right margins in the tab menu. Both go away by using the column.
+            // Starting right of the icon would leave the icon outside the highlight
+            // meant to select its row; ending at the label would make the inset from
+            // the group card's right edge vary with the label while the left inset
+            // stays fixed -- uneven left/right margins in the tab menu.
             if (isActive) {
                 // Themed button shape when the theme provides one; the plain solid
                 // quad otherwise. The COLOUR is passed through either way -- it
                 // carries state (unsaved / disabled / hovered), not decoration.
                 // ButtonFill::State: this is the SELECTED ROW of the tab list, not a
                 // control, so it keeps the accent fill rather than taking the neutral
-                // surface an unthemed button now gets. A selection has to read at a
+                // surface an unthemed button gets. A selection has to read at a
                 // glance; a button has a label to carry its meaning.
                 addButtonQuad(tabStartX, tabStartY, tabWidth, dim.lineHeightNormal,
                               PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(),
@@ -384,7 +386,7 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
                        static_cast<size_t>(m_hoveredRegionIndex) == tabRegionIndex) {
                 // The same band every row highlight spans (plan.rowBandX/W), taken
                 // from THIS column's box -- the sidebar and the content column
-                // opposite it now answer the same way.
+                // opposite it answer the same way.
                 addRowHighlight(plan.rowBandX(col), tabStartY, plan.rowBandW(col),
                                 dim.lineHeightNormal,
                                 PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(),
@@ -483,10 +485,10 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
             // Non-toggleable section tabs: the identity icon takes the SAME colour rule
             // as the label beside it -- PRIMARY on the active row, ACCENT elsewhere.
             //
-            // It was pinned to ACCENT, and the active row's band is accent: the selected
-            // tab's icon was accent on accent and simply disappeared, while its label
-            // (which already switched) stayed readable. One rule for the pair, so the
-            // band's colour cannot swallow half of it again.
+            // The active row's band is accent, so an icon pinned to ACCENT is accent on
+            // accent on the selected row and simply disappears while its label stays
+            // readable. One rule for the pair, so the band's colour cannot swallow
+            // half of it.
             drawTabIcon(currentTabX, tabStartY, tabRow.sectionIcon ? tabRow.sectionIcon : "",
                 tabColor, dim, checkboxWidth);
             currentTabX += checkboxWidth;
@@ -497,9 +499,8 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
         // (tabRegionIndex was predicted above, before the band was emitted.)
         assert(tabRegionIndex == m_clickRegions.size());
 
-        // Tab ID for description lookup (lowercase). (Table-driven; the old
-        // hand-maintained chain had drifted - it was missing Notices, so that
-        // tab's hover showed the General description.)
+        // Tab ID for description lookup (lowercase). Table-driven, so a tab cannot
+        // be missing from a hand-maintained chain and show another's description.
         const char* tabId = tabRow.tooltipId ? tabRow.tooltipId : "general";
 
         ClickRegion tabRegion;
@@ -544,9 +545,9 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
         //
         // TWO COLOURS, because the two tags say opposite things. "Beta" is a caveat --
         // WARNING, the slot the tab's own body text uses for the same caveat. "New" is
-        // an invitation to go and look -- POSITIVE. They were both WARNING, which made
-        // a finished feature announce itself in the colour this plugin uses everywhere
-        // else for "careful", and left the actual caveat with nothing to distinguish
+        // an invitation to go and look -- POSITIVE. One colour for both would make a
+        // finished feature announce itself in the colour this plugin uses everywhere
+        // else for "careful", and leave the actual caveat with nothing to distinguish
         // it. The row bands below take the same POSITIVE for the same reason.
         //
         // Not folded into the label string, for two reasons. getTabName() is the
@@ -554,15 +555,14 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
         // what the "Reset <tab>" button reads), so badging it would strand anyone who
         // had the tab open. And the sidebar has no room: 16 characters less the
         // 4-character icon column leaves 12 for the label, which "Spotter (Beta)" (14)
-        // overran into the content column -- seen in a screenshot as the badge sitting
-        // on the first word of the description beside it. At the small size the tag
-        // costs about three characters instead of seven, and fits.
+        // would overrun into the content column. At the small size the tag costs
+        // about three characters instead of seven, and fits.
         //
         // RIGHT-ALIGNED ON THE SIDEBAR'S CONTENT EDGE, not measured off the label.
-        // Measured placement put each tag at a different x, so a column of tabs showed
+        // Measured placement puts each tag at a different x, so a column of tabs shows
         // its tags on a ragged diagonal following the name lengths -- correct per row
-        // and wrong as a group, which is how it was reported. One edge for all of them
-        // reads as a column, and it is the same edge the content column starts after.
+        // and wrong as a group. One edge for all of them reads as a column, and it is
+        // the same edge the content column starts after.
         //
         // "Update" is the longest badge (6 chars = 4.5 cells at fontSizeS) but sits on
         // "Updates" (7), for 11.5 of the 13 -- roomier than the pair below.
@@ -571,8 +571,8 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
         // settingsSidebarWidth minus the 4-character icon column, so 13 cells at the
         // shipped 17; "Appearance" is 10 and a Small "New" costs 3 x fontSizeS =
         // 2.25, leaving 0.75 of a cell between them -- exactly one small-font space.
-        // The 17 EXISTS FOR THIS PAIR: at 16 there were 12 cells against 12.25 asked,
-        // the tag started where the label's last glyph ended, and the row read
+        // The 17 EXISTS FOR THIS PAIR: at 16 it is 12 cells against 12.25 asked, the
+        // tag starts where the label's last glyph ends, and the row reads
         // "AppearanceNew". See the comment on settingsSidebarWidth, which owns the
         // sum. Adding a badge to a tab with a longer name means redoing it, which
         // nothing automates -- a collision here is a rendering artefact, not an
@@ -599,10 +599,10 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
 // Panel top edge -> where tab content begins: the title band and the air around it.
 //
 // ONE function because the panel HEIGHT reserves this and the LAYOUT spends it.
-// Those were two unrelated expressions that agreed only by 3.7px of accidental
-// slack, which is why the gaps around the band were un-auditable -- nothing in the
-// height said what the layout would do with the space it reserved. Moving the band
-// by 8px turned that slack into an overflow, so they are now the same arithmetic.
+// Two separate expressions agree only by accidental slack, which makes the gaps
+// around the band un-auditable -- nothing in the height says what the layout will
+// do with the space it reserved -- and a moved band turns that slack into an
+// overflow. So they are the same arithmetic.
 //
 // The themed case is written as the stack it is, top to bottom, so it can be read
 // against a screenshot: frame clearance, band, seam, card pad. The seam is the
@@ -635,21 +635,16 @@ inline double resolveSide(const ThemeAsset::BoxTerm& themed, const PanelBox::Sid
 float SettingsHud::cardPadTopY() const {
     const ThemeAsset* th = activeTheme();
     const LayoutMetrics& L = layout();
-    // UNGATED. This was hasThemedContentCard(), then hasThemedCard() — a gate
-    // that always failed, then one that fails whenever no theme is selected,
-    // which is the default. Both make [content] padding dead here while margin
-    // and border work, and the second is the same mistake PanelBox::layoutPanel
-    // made with the whole box: only a BORDER needs art to draw it with. Padding
-    // is spacing and owes a theme nothing.
+    // UNGATED. A gate on hasThemedCard() fails whenever no theme is selected,
+    // which is the default, and makes [content] padding dead here while margin
+    // and border work. Only a BORDER needs art to draw it with; padding is
+    // spacing and owes a theme nothing.
     const float pad = static_cast<float>(th->boxContentPadding.set
                                              ? th->boxContentPadding.v.t
                                              : L.boxContentPadding.t);
-    // THE BOX TERM ALONE. There used to be a `settingsSectionPadding` base of
-    // one cell under it, on this panel's own cellH lattice, with the box term
-    // composed on top -- one distance in two spellings again, and the legacy
-    // half was unreachable from any ini. A card's interior pad is
-    // [content] padding, here as everywhere else.
-    //
+    // THE BOX TERM ALONE: a card's interior pad is [content] padding, here as
+    // everywhere else. No private base composed under it -- that is one distance
+    // in two spellings, with the private half unreachable from any ini.
     return cardBorderY() + pad * L.cellW * PluginConstants::UI_ASPECT_RATIO * m_fScale;
 }
 
@@ -664,9 +659,9 @@ float SettingsHud::cardPadBotY() const {
 
 
 // THE BOX TERM ALONE, both sides — the horizontal twin of cardPadTopY/BotY, and
-// the same story: a private half-character lead-in used to be added to it, so the
-// clearance a themed card kept from its rows was a constant and [content] padding
-// could only ever widen it.
+// the same rule: no private lead-in composed under it, or the clearance a themed
+// card keeps from its rows becomes a constant that [content] padding can only
+// ever widen.
 float SettingsHud::cardPadLeftCells() const {
     const ThemeAsset* th = activeTheme();
     return static_cast<float>(th->boxContentPadding.set ? th->boxContentPadding.v.l
@@ -781,13 +776,12 @@ SettingsHud::TabMeasure SettingsHud::measureTab(int tabId, const ScaledDimension
 // order the registry lists them. The engine lays the column out from these exactly
 // as it lays the content column out from a tab's; the air BETWEEN groups is the
 // same seam it puts between any two sibling cards, which is why none of it appears
-// here (this used to add `contentGapY + cardPadTopY + cardPadBotY` per boundary,
-// in two places that had to agree -- the height loop and the draw).
+// here.
 //
 // The registry is walked the same way buildTabBar walks it, so a new group or a
 // game-gated tab moves both without either being told: a marker closes the running
-// group and opens the next, a tab row is one line, and the two markers that carry a
-// caption pay for it (Global draws none -- see buildTabBar).
+// group and opens the next, a tab row is one line, and each marker's caption pays
+// for itself (see buildTabBar).
 std::vector<float> SettingsHud::measureTabGroups(const ScaledDimensions& dim) const {
     std::vector<float> out;
     float rows = 0.0f;
@@ -880,18 +874,16 @@ void SettingsHud::rebuildRenderData() {
     constexpr float sectionSpacing = 0.0150f;
 
     // ======================================================================
-    // DECLARE, THEN DRAW -- the two steps every HUD and widget takes, and the
-    // reason this function is now a tenth of its old length.
+    // DECLARE, THEN DRAW -- the two steps every HUD and widget takes.
     //
-    // What used to be here was this panel's own X and Y chains: an overhang
-    // stack, a caption block, per-card pads, a tallest-tab row count and a
-    // hand-built button row, each of them a second spelling of something
-    // PanelBox already computes for every other panel in the tree. Every
-    // geometry fault reported against this menu was a divergence between one of
-    // those spellings and the engine's -- [content] margin acting on one axis,
+    // This panel keeps no X and Y chains of its own -- no overhang stack, caption
+    // block, per-card pads, tallest-tab row count or hand-built button row. Each
+    // would be a second spelling of something PanelBox already computes for every
+    // other panel in the tree, and every divergence between such a spelling and
+    // the engine's is a geometry fault: [content] margin acting on one axis,
     // [content] border acting on none, a caption block twice the height of a
-    // HUD's, a band that reserved a border it did not draw. None of them is
-    // expressible now: there is one owner, and this panel asks it.
+    // HUD's, a band that reserves a border it does not draw. None of them is
+    // expressible here: there is one owner, and this panel asks it.
     //
     // THE ONLY THINGS STATED HERE ARE ASKS -- how wide each column's content is
     // in characters, how tall each section is in rows, how many buttons. Air,
@@ -915,7 +907,7 @@ void SettingsHud::rebuildRenderData() {
     // MEASURED AT THE ORIGIN, with the same RELATIVE columns the draw will use.
     // A section's height depends on its rows and on how far prose wraps, and
     // wrapping is a character count -- never on where the column sits. Measuring
-    // at 0 says so, and removes the provisional-origin pass this used to need.
+    // at 0 says so, and needs no provisional-origin pass.
     const float labelToControl = PluginUtils::calculateMonospaceTextWidth(24, dim.fontSize);
     const float labelToRight = PluginUtils::calculateMonospaceTextWidth(
         layout().settingsControlColumn - layout().settingsLabelColumn, dim.fontSize);
@@ -941,8 +933,8 @@ void SettingsHud::rebuildRenderData() {
     // A HEIGHT, in the engine's own arithmetic, not a row count: the body a column
     // produces is sum(sections) plus per-section card chrome plus a seam between each
     // pair, and only the first of those three scales with a cursor. Measuring the
-    // flow instead let a tab with more sections outgrow the floor, which is why the
-    // panel used to change height between General and Appearance.
+    // flow instead lets a tab with more sections outgrow the floor, and the panel
+    // then changes height between tabs.
     want.minBodyH = measureTallestBodyH(
         dim, /*labelX=*/0.0f, labelToControl, labelToRight,
         /*contentAreaStartX=*/0.0f, contentAsk, contentAsk,
@@ -961,9 +953,8 @@ void SettingsHud::rebuildRenderData() {
     // cannot be dragged, so it places itself -- and what it centres is the
     // character lattice (sidebar + content asks), NOT the panel box. Centring
     // the box splits every theme-dependent term in half and pushes that half
-    // into the content, which is what walked the row controls sideways as
-    // themes were cycled (theme_geometry_test contract 1; the pre-port chain
-    // said the same at its contentAnchorX). The theme's air and borders hang
+    // into the content, which walks the row controls sideways as themes are
+    // cycled (theme_geometry_test contract 1). The theme's air and borders hang
     // off the anchored content, so only the panel's outer edges may move.
     // startX is then derived: where the panel's left edge must be for the
     // content column's rows to land on the anchor. It stays on the lattice
@@ -989,17 +980,14 @@ void SettingsHud::rebuildRenderData() {
     const float rightColumnX = contentAreaStartX + labelToRight;
     const float controlX = leftColumnX + labelToControl;
     const float contentAreaWidth = plan.colContentW(mainCol);
-    // A row ends where its own column ends. It used to stop short of the panel's
-    // surface line by a hand-kept correction, because the CARD was inset from the
-    // column by the label indent and the row had to give that back; the card is
-    // the column's own box now, so there is nothing to give back.
+    // A row ends where its own column ends: the card is the column's own box, so
+    // there is no inset for the row to give back.
     const float panelContentRightX = contentAreaStartX + contentAreaWidth;
     float currentY = plan.colContentY(mainCol, 0);
     float checkboxWidth = PluginUtils::calculateMonospaceTextWidth(4, dim.fontSize);  // "[X] " or "    "
 
     // The sidebar draws into its OWN column's sections -- one per tab-list group,
-    // at the origins the engine placed them. It used to carry a cursor and add the
-    // seam between groups itself, in an expression the height loop had to match.
+    // at the origins the engine placed them.
     buildTabBar(dim, plan, sideCol, tabStartX, tabWidth, checkboxWidth);
 
     SettingsLayoutContext layoutCtx(this, dim, leftColumnX, controlX, rightColumnX,
@@ -1037,6 +1025,14 @@ void SettingsHud::rebuildRenderData() {
 #endif
 
     if (const TabDescriptor* tabDesc = findTabDescriptor(m_activeTab); tabDesc && tabDesc->render) {
+#if defined(MXBMRP3_TEST_BUILD)
+        // Where the TAB'S OWN controls start. Everything emitted before this point is
+        // the sidebar - the tab list carries a checkbox per row, so the master toggle
+        // of every other tab is a click region on this one, and a sweep that treated
+        // them as this tab's controls would demand its Reset restore them.
+        // See SettingsHud::testPerturbActiveTab.
+        m_testContentRegionBegin = static_cast<int>(m_clickRegions.size());
+#endif
         // Route to the extracted per-tab renderer (settings_tab_*.cpp) via the registry.
         layoutCtx.currentY = currentY;   // Sync context cursor
         tabDesc->render(layoutCtx);
@@ -1055,22 +1051,20 @@ void SettingsHud::rebuildRenderData() {
         // label it is pointing at.
         //
         // The POSITIVE colour, matching the "New" tag on the tab that led the player
-        // here -- one colour for the whole trail, tag to row. It was WARNING, which
-        // this plugin spends everywhere else on "careful": a band in it read as a
-        // problem with the row rather than as the thing worth looking at, and it was
+        // here -- one colour for the whole trail, tag to row. Not WARNING, which this
+        // plugin spends everywhere else on "careful": a band in it reads as a problem
+        // with the row rather than as the thing worth looking at, and is
         // indistinguishable from the Beta caveat two tabs down.
         //
         // At the same alpha the hover band uses, so it reads as "look here" rather
         // than as a selection -- and so it disappears under the hover band the moment
         // the pointer arrives, which is also when it is dismissed.
         // SPANNED FROM THE PLAN (rowBandX/W), not from the region's own rect. A
-        // highlight is a property of the COLUMN, not of the control in it -- the
-        // hover band below carries the full story of why, and this pass repeated
-        // exactly the mistake it records as fixed: a row that builds its tooltip
-        // region by hand (the Web Server row, and five tab files with their own copy
-        // of the width expression) gets a different rect from one that went through
-        // the layout helpers, so the green band's width changed by tab and did not
-        // line up with the accent band that replaces it on hover.
+        // highlight is a property of the COLUMN, not of the control in it: a row that
+        // builds its tooltip region by hand gets a different rect from one that went
+        // through the layout helpers, so a band spanned from the region changes
+        // width by tab and does not line up with the accent band that replaces it on
+        // hover.
         for (const ClickRegion& r : m_clickRegions) {
             if (r.tooltipId.empty()) continue;
             if (!WhatsNew::liveForRow(m_activeTab, r.tooltipId.c_str())) continue;
@@ -1092,9 +1086,7 @@ void SettingsHud::rebuildRenderData() {
         // the panel's own height, say. The warning is for a player's log, the number
         // for CI (settings_fit_test reads it for every tab).
         // WHERE THE COLUMN'S LAST SECTION ENDS, straight off the engine -- what the
-        // tab was given. It used to be the panel's bottom minus a hand-composed
-        // footer block, three terms that had to match what the button row actually
-        // spent.
+        // tab was given.
         const float contentLimit = mainCol.sections.empty()
             ? plan.Y(plan.g.btnTop)
             : plan.Y(mainCol.sections.back().bot);
@@ -1119,21 +1111,15 @@ void SettingsHud::rebuildRenderData() {
         const ClickRegion& hoveredRegion = m_clickRegions[m_hoveredRegionIndex];
         if (hoveredRegion.type == ClickRegion::TOOLTIP_ROW) {
             // THE CONTENT COLUMN, from the plan (rowBandX/W) -- the same band the
-            // sidebar, StandingsHud and RecordsHud span. This column was the odd one
-            // out: it took the card's INTERIOR, so its band absorbed [content]
-            // padding while the other three were inset by it.
+            // sidebar, StandingsHud and RecordsHud span, inset by [content] padding
+            // like theirs rather than taking the card's interior.
             //
-            // It used to take the region's own x and width, plus a one-character
-            // fudge on the left "because the right edge already reaches the content
-            // edge". That tied the decoration to a hit-test rectangle: every row that
-            // built its region by hand -- the Web Server row, and five whole tab files
-            // carrying their own copy of the width expression -- highlighted to a
-            // different width from the rows that went through the layout helpers.
-            // A highlight is a property of the column, not of the control in it. Then
-            // it became the column plus a lead-in, with a SECOND expression for the
-            // themed case (planCardRightX - cardBorderX()) because the card had gained
-            // a clamp against the frame that the first knew nothing about. The plan
-            // answers both, and the clamp with them.
+            // Not the region's own x and width: that ties the decoration to a
+            // hit-test rectangle, so every row that builds its region by hand
+            // highlights to a different width from the rows that went through the
+            // layout helpers. A highlight is a property of the column, not of the
+            // control in it. The plan also answers the themed card's clamp against
+            // the frame, so the themed case needs no second expression.
             addRowHighlight(plan.rowBandX(mainCol), hoveredRegion.y,
                             plan.rowBandW(mainCol),
                             hoveredRegion.height,
@@ -1145,7 +1131,7 @@ void SettingsHud::rebuildRenderData() {
     // Render description or tooltip at the reserved position (replaces each other).
     // The box spans from the label column to the content edge — a whole number of
     // character cells, so take it from SettingsMetrics rather than dividing the
-    // emitted float span by one character's width. That round-trip returned one
+    // emitted float span by one character's width. That round-trip returns one
     // char FEWER at HUD scale 0.70 (float rounding), silently narrowing the box at
     // one scale only; the integer form is exact at every scale, and is the same
     // value tests/unit/test_tooltip_length.cpp measures shipped tooltips against.
@@ -1198,9 +1184,8 @@ void SettingsHud::rebuildRenderData() {
     // regardless of the Auto-Save setting (which only controls the automatic leave-track flush).
     // THE ENGINE'S BUTTON ROW. Its y, its height and each button's box come from
     // the plan, which placed them under the body with the same margins and gap any
-    // other child gets. This used to walk back from the panel's bottom edge through
-    // a footer pad, a margin and a box height composed here -- the reserve-and-spend
-    // pair that has to agree, and the one this panel got wrong twice.
+    // other child gets -- no reserve-and-spend pair composed here that has to agree
+    // with the plan.
     const PlanButtonTerms bt = planButtonTerms(dim);
     const float buttonBoxH = plan.H(plan.g.btnH);
     const float buttonRowY = plan.Y(plan.g.btnTop);
@@ -1211,10 +1196,9 @@ void SettingsHud::rebuildRenderData() {
     // 5 chars), plus the [button] border+padding each side — the box-model
     // terms, resolved with the same fallbacks the plan applies. The gap
     // between the two is the SUM of the facing [button] margins. At the
-    // shipped defaults the gap reproduces the old 1-char seam; the WIDTHS
-    // follow the terms and deliberately do not reproduce the old fixed 7
-    // chars — 6 unthemed (padding 0.5/side), 8 themed (border 1 + padding
-    // 0.5/side) — and [Advanced] buttonPadding retunes them.
+    // shipped defaults the gap is one character; the WIDTHS follow the terms
+    // — 6 unthemed (padding 0.5/side), 8 themed (border 1 + padding 0.5/side)
+    // — and [Advanced] buttonPadding retunes them.
     float saveButtonWidth = PluginUtils::calculateMonospaceTextWidth(5, dim.fontSize)
         + bt.insetL + bt.insetR;
     float closeButtonWidth = saveButtonWidth;
@@ -1260,8 +1244,8 @@ void SettingsHud::rebuildRenderData() {
     //
     // ONLY WHERE THERE IS SOMETHING TO RESET. A tab's reset is its registry row's
     // resetHud / resetExtra, and a row with neither has nothing the button could do
-    // -- About is prose and links, so "Reset About" was a live-looking control that
-    // did nothing at all when clicked. Read off the registry rather than a list of
+    // -- About is prose and links, so "Reset About" would be a live-looking control
+    // that does nothing at all when clicked. Read off the registry rather than a list of
     // exceptions, so a future page of pure text gets the same treatment for free.
     const TabDescriptor* activeDesc = findTabDescriptor(m_activeTab);
     const bool tabHasReset = activeDesc && (activeDesc->resetHud || activeDesc->resetExtra);
@@ -1270,11 +1254,11 @@ void SettingsHud::rebuildRenderData() {
     char resetTabButtonText[32];
     snprintf(resetTabButtonText, sizeof(resetTabButtonText), "Reset %s", getTabName(m_activeTab));
     int resetTabButtonChars = static_cast<int>(strlen(resetTabButtonText));
-    // The [button] insets pad the label — the old "+2 chars" hand padding.
+    // The [button] insets pad the label.
     float resetTabButtonWidth = PluginUtils::calculateMonospaceTextWidth(resetTabButtonChars, dim.fontSize)
         + bt.insetL + bt.insetR;
     // LEFT-ALIGNED ON THE SIDEBAR'S CARD, which is the panel's leftmost surface --
-    // the same line every other left edge in this panel now comes from.
+    // the same line every other left edge in this panel comes from.
     const float resetTabButtonX = plan.X(sideCol.cardLeft);
 
     // Add click region first for hover check
@@ -1296,26 +1280,20 @@ void SettingsHud::rebuildRenderData() {
 
     // [About] button - bottom right corner.
     //
-    // THIS USED TO BE THE VERSION STRING, and carried the update notice with it: it
-    // grew into a green "vX.Y.Z available!" chip whose click jumped to the Updates
-    // tab, with an easter-egg counter underneath for the ordinary case. Two
-    // unrelated jobs on one label, and the version -- the part that never changes --
-    // was the only thing a player could actually read at a glance.
+    // Neither the version nor the update notice lives on this button; each is where
+    // its owner is: the update notice is a tag on the Updates row in the sidebar
+    // (see updateTagLive, which is dismissible and re-arms for a newer version),
+    // and the version is the first line of the About page this opens.
     //
-    // It is an About button now, and the two jobs went to the places that own them:
-    // the update notice is a tag on the Updates row in the sidebar (see
-    // updateTagLive, which is dismissible and re-arms for a newer version), and the
-    // version is the first line of the About page this opens.
+    // A REAL BUTTON rather than muted text, because it is the ONLY way to reach
+    // About -- the page is not in the tab list (TabDescriptor::hidden), so an
+    // affordance that does not look clickable would make it unreachable in
+    // practice. Secondary rather than Close's accent: it is a quieter action than
+    // the one that shuts the panel.
     //
-    // A REAL BUTTON rather than the muted text it replaced, because it is now the
-    // ONLY way to reach About -- the page is not in the tab list (TabDescriptor::
-    // hidden), so an affordance that does not look clickable would make it
-    // unreachable in practice. Secondary rather than Close's accent: it is a quieter
-    // action than the one that shuts the panel.
-    //
-    // The five-click easter egg still works from here, and still works after the
-    // first click has navigated: the footer is drawn on every tab, so clicks two
-    // through five land while About is already open.
+    // The five-click easter egg works from here, and still works after the first
+    // click has navigated: the footer is drawn on every tab, so clicks two through
+    // five land while About is already open.
     {
         // The content column's right edge -- the same line a row ends on, so the
         // button sits flush with the settings above it.
@@ -1344,11 +1322,10 @@ void SettingsHud::rebuildRenderData() {
 
     // This panel rebuilds DIRECTLY from its ~30 interaction sites rather than
     // through processDirtyFlags, which is where every other HUD's fill gets cut
-    // -- so without this the sweep never ran here at all, the centre slice kept
-    // covering the whole interior, and every card (and the title band) sat on it
-    // at double opacity: the settings-cards-read-darker bug, surviving the sweep
-    // fix that cured the other panels. Consumes m_fillFirst, so the dirty-flag
-    // path finalizing again is a no-op, not a double cut.
+    // -- so without this the sweep never runs here, the centre slice keeps covering
+    // the whole interior, and every card (and the title band) sits on it at double
+    // opacity, reading darker than the panel. Consumes m_fillFirst, so the
+    // dirty-flag path finalizing again is a no-op, not a double cut.
     finalizeThemedFill();
 }
 

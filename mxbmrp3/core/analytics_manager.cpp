@@ -15,6 +15,7 @@
 #include "update_checker.h"
 #include "profile_manager.h"
 #include "ui_config.h"
+#include "companion_window.h"
 #include "asset_manager.h"
 #include "analytics_spotter.h"
 #include "analytics_theme.h"
@@ -101,9 +102,21 @@ constexpr const char* ANALYTICS_FILENAME = "mxbmrp3_analytics.json";
 //          "missing" for a stored name with no folder. Deliberately says
 //          nothing about TTS vs recordings: the pack is the choice, the
 //          backend is what that choice happens to use (see analytics_spotter.h).
-//          A never-reachable "tts" value was dropped before it ever shipped;
-//          the vocabulary is unchanged for anything a client could have sent.
-constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.16.0";
+// 2.17.0 = added feat_hwaccel (GPU rendering for the companion/overlay windows,
+//          [Advanced] hwAccel) to app_started. The SETTING, not the realized
+//          backend: app_started is built during plugin init, before either
+//          window exists, and the GPU path falls back to the software
+//          rasterizer at window-open time. So 0 means "asked for software"
+//          (someone who hit a problem and turned it off, which is the signal
+//          worth having); 1 means "asked for GPU", not "got it".
+// 2.18.0 = added feat_glingame (the in-context GL HUD renderer). Like
+//          feat_hwaccel this is the SETTING, not the realized backend:
+//          app_started is built during init, before any Draw has happened, so
+//          the backend has not yet had a chance to come up or latch off. 1 means
+//          "asked for GL". Whether it actually DREW is the more interesting
+//          number and is not knowable here -- the benchmark report's gl_drew
+//          carries that, and a field report carries the "unavailable" log line.
+constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.18.0";
 
 // Build a UUID-v4 string from 16 cryptographically-random bytes. This is the
 // ONLY identifier we ever send — it is random (not derived from hardware or
@@ -317,7 +330,7 @@ std::string AnalyticsManager::buildGoatCounterBody() const {
     using nlohmann::json;
     // GoatCounter breaks down by path, so encode launch + game + version there.
     // Keep the hit object to documented fields only — the API rejects unknown
-    // ones (e.g. "bot", a pixel-only query param, which 404'd earlier).
+    // ones (e.g. "bot", which is a pixel-only query param).
     json hit;
     hit["path"] = std::string("/launch/") + GAME_SHORT_NAME + "/" + PluginConstants::PLUGIN_VERSION;
     hit["title"] = std::string("Launch (") + GAME_NAME + " " + PluginConstants::PLUGIN_VERSION + ")";
@@ -497,6 +510,9 @@ std::string AnalyticsManager::buildEventBody() const {
     props["feat_steam"] = SteamFriendsManager::getInstance().isEnabled() ? 1 : 0;
 #endif
 #if GAME_HAS_HTTP_SERVER
+    // The WEB overlay (embedded HTTP server -> browser/OBS). The key name is
+    // fixed: renaming an analytics key breaks its own time series, so read it as
+    // "web overlay" wherever it appears in a dashboard.
     props["feat_overlay"] = HttpServer::getInstance().isEnabled() ? 1 : 0;
 #endif
     props["feat_rumble"] = XInputReader::getInstance().getRumbleConfig().enabled ? 1 : 0;
@@ -512,6 +528,15 @@ std::string AnalyticsManager::buildEventBody() const {
     props["feat_companion"] = (UiConfig::getInstance().getDisplayTarget() != DisplayTarget::IN_GAME) ? 1 : 0;
     // Experimental plugin worker thread (INI-only [Advanced] pluginThread): adoption rate.
     props["feat_thread"] = UiConfig::getInstance().getPluginThread() ? 1 : 0;
+    // GPU rendering for the companion window (INI-only [Advanced] hwAccel,
+    // default on). Reports the SETTING -- see the 2.17.0 note: nothing has
+    // opened a window yet, so a live fallback to the software rasterizer is not
+    // visible from here.
+    props["feat_hwaccel"] = CompanionWindow::getInstance().getHwAccel() ? 1 : 0;
+    // In-context GL HUD renderer ([Advanced] glInGame). The adoption number the
+    // alpha exists to produce; see the 2.18.0 note for why this is the setting
+    // rather than whether it worked.
+    props["feat_glingame"] = UiConfig::getInstance().getGlInGame() ? 1 : 0;
     // Developer mode (INI-only power-user flag): mainly to filter the dev's and
     // testers' own Release-build sessions out of real-user stats.
     props["feat_devmode"] = SettingsManager::getInstance().isDeveloperMode() ? 1 : 0;

@@ -7,13 +7,13 @@
 // competing for them: recent laps, an optional live "current lap" row, the best
 // lap when it has scrolled out of the recent window, and placeholders padding
 // the rest. Deciding the row list is pure integer arithmetic over the history
-// size, the best lap's number and four settings — but it was inline in
-// rebuildRenderData(), so the only way to exercise it was to build the DLL and
-// drive real callbacks under Wine.
+// size, the best lap's number and four settings, so it lives here where a unit
+// test can exercise it without building the DLL and driving real callbacks
+// under Wine.
 //
 // THE PART THAT IS EASY TO GET WRONG, and the reason this is worth a unit test:
 // the two reserved slots are taken from the recent-lap budget in a specific
-// ORDER, and the second reservation depends on a scan that used the budget the
+// ORDER, and the second reservation depends on a scan that uses the budget the
 // first one already reduced. The best lap counts as "in the recent window" only
 // if it falls inside the budget left AFTER the current-lap row was reserved —
 // so enabling live timing can push the best lap out of the window and force a
@@ -22,9 +22,9 @@
 //
 // A DELIBERATELY PRESERVED EDGE. With maxDisplayLaps == 1, a live current-lap
 // row and a separately-shown best lap, both reserved rows are emitted and the
-// plan returns 2 rows — one MORE than the configured maximum. That is the
-// behaviour this code has always had (the budget goes negative and the recent-lap
-// loops simply don't run); it is pinned as-is by the unit test rather than
+// plan returns 2 rows — one MORE than the configured maximum. The budget goes
+// negative and the recent-lap loops simply don't run; it is pinned as-is by the
+// unit test rather than
 // silently "fixed", because the alternative — dropping one of the two — is a
 // product decision, not a refactor. See the maxDisplayLaps==1 cases in
 // tests/unit/test_lap_log_plan.cpp.
@@ -38,9 +38,8 @@
 namespace LapLogPlan {
 
 // A row is either an index into the lap history (0 = most recent lap, counting
-// backwards) or one of these synthetic rows. The values are the ones this HUD
-// has always used; they are named here so the render loop stops comparing
-// against bare negative literals.
+// backwards) or one of these synthetic rows. They are named here so the render
+// loop does not compare against bare negative literals.
 constexpr int kPlaceholder = -2;  // empty padding row
 constexpr int kBestLap     = -3;  // the best lap, shown out of sequence
 constexpr int kCurrentLap  = -4;  // live in-progress lap

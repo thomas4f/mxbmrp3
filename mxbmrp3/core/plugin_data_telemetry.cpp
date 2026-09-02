@@ -1,7 +1,6 @@
 // ============================================================================
 // core/plugin_data_telemetry.cpp
 // Vehicle / speedometer / ECU / suspension / input telemetry
-// (extracted verbatim from plugin_data.cpp; no behavior change)
 // ============================================================================
 
 #include "plugin_data.h"

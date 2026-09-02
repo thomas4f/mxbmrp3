@@ -5,7 +5,7 @@
 // silently, so pin the region parse: US/EU map to their hosts, and anything else
 // (self-hosted "SH", empty, malformed, or a region substring in the wrong place)
 // returns "" so the manager sends nothing rather than guessing. Header-only, no game
-// engine, no network. See tests/unit/run_tests.sh.
+// engine, no network. See tests/unit/README.md.
 // ============================================================================
 // The doctest implementation + main() live in test_plugin_utils.cpp
 // (DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN); this TU only registers more tests.

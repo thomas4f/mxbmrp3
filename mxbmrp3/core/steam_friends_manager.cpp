@@ -304,7 +304,7 @@ void SteamFriendsManager::onConnected() {
 
     // Push initial presence on the game thread, then hand the periodic scan to
     // the worker. Its first pass runs immediately, so the roster is populated
-    // just as promptly as the old inline scan — just not inside a frame.
+    // promptly — just not inside a frame.
     updateLocalPresence();
     startWorker();
 }
@@ -688,10 +688,10 @@ void SteamFriendsManager::scanFriends() {
     // folds in the real persona name / track / server. Sharing one buffer with
     // the log lines above makes the identifying data reachable from the logging
     // path as far as any dataflow analysis is concerned - CodeQL treats a char
-    // array as a single entity, so a name written here would taint every later
-    // use of it, and cpp/cleartext-storage-file fired on the REDACTED lines for
-    // exactly that reason. Keeping the two apart is what makes "no third-party
-    // identity reaches mxbmrp3.log" checkable rather than merely true.
+    // array as a single entity, so a name written here taints every later use
+    // of it and cpp/cleartext-storage-file fires on the REDACTED lines. Keeping
+    // the two apart is what makes "no third-party identity reaches mxbmrp3.log"
+    // checkable rather than merely true.
     char sigbuf[640];
     int reported = 0;
     int playingTotal = 0;

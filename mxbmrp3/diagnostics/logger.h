@@ -72,10 +72,9 @@ private:
     // at the top of log() (called from the game thread and background threads).
     std::atomic<bool> m_initialized;
     // The members the mutex actually exists for — concurrent writes to an
-    // ofstream's streambuf are the race it serializes. These used to carry
-    // prose ("guarded by m_mutex after init") instead of the annotation,
-    // because initialize() opened the file outside the lock; it no longer does,
-    // so the analysis checks them like everything else.
+    // ofstream's streambuf are the race it serializes. Annotated rather than
+    // described in prose: initialize() opens the file under the lock, so the
+    // analysis checks them like everything else.
     std::ofstream m_logFile MXB_GUARDED_BY(m_mutex);
     std::string m_logFilePath MXB_GUARDED_BY(m_mutex);
 

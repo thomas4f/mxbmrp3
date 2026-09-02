@@ -65,9 +65,7 @@ struct HudStringConfig {
 //
 // A family, not a per-HUD identity: the three differ in what they are FOR -- a table
 // or graph, a gauge, and the menu -- which is the grain a skinner actually wants.
-// Per-component control is the obvious next step and deliberately not this one; the
-// forty-key layout surface that got deleted is what per-component looks like when it
-// is offered before anyone has asked for it.
+// Per-component control is deliberately not offered.
 enum class PanelKind { Hud, Widget, Settings };
 
 class BaseHud {
@@ -77,8 +75,8 @@ public:
 
     // Order here MUST match the member declaration order below — C++ initializes
     // in declaration order whatever this list says, so a mismatch is misleading
-    // rather than wrong, and it produced all 18 of the build's warnings. Enforced
-    // by -Werror on the tests/unit targets, which compile this header.
+    // rather than wrong. Enforced by -Werror on the tests/unit targets, which
+    // compile this header.
     BaseHud() :
         m_fScale(1.0f), m_bVisible(true), m_bShowTitle(true), m_fBackgroundOpacity(0.85f),
         m_bShowBackgroundTexture(false), m_iBackgroundTextureIndex(0),
@@ -109,12 +107,11 @@ public:
 
     // Called immediately after ANY change that may flip isVisibleAnySurface(), from
     // BOTH surface setters. A HUD whose show/hide edge has a SIDE EFFECT overrides
-    // this; doing that work only on the next frame instead is a real bug, twice
-    // measured: TelemetryHud clears its history on becoming visible and callers feed
-    // samples between the toggle and the next draw (stripchart_parity_test does
-    // exactly that, and a deferred clear wiped the samples it had just fed), while
-    // BenchmarkWidget exports its report on hide and bench_driver tears down with no
-    // draw at all.
+    // this; deferring that work to the next frame is a real bug: TelemetryHud clears
+    // its history on becoming visible and callers feed samples between the toggle and
+    // the next draw (stripchart_parity_test does exactly that, so a deferred clear
+    // wipes the samples just fed), while BenchmarkWidget exports its report on hide
+    // and bench_driver tears down with no draw at all.
     //
     // Overriders MUST be idempotent: the per-frame sync in update() calls the same
     // code to catch the one transition no setter can see -- the companion window
@@ -132,9 +129,8 @@ public:
     // per-surface model does not describe it, and drawing it on a second monitor
     // covers the very HUDs the companion exists to show. HelmetOverlayHud is the
     // case: a full-screen immersion overlay driven by lean angle and suspension
-    // travel. Excluding it here also makes the settings UI honest -- the tab bar
-    // already treats the helmet as a shared global toggle rather than a per-surface
-    // one, which was only half-true while the renderer still drew it per-surface.
+    // travel. Excluding it here also keeps the settings UI honest -- the tab bar
+    // treats the helmet as a shared global toggle rather than a per-surface one.
     virtual bool rendersOnCompanion() const { return true; }
     bool isVisible() const { return m_bVisible; }
 
@@ -193,7 +189,7 @@ public:
     // MEASURED, not assumed: the render probe put a fully transparent quad at 0.969us
     // against an opaque one's 0.973 -- 100%. The engine charges for submission, not
     // for pixels, so an alpha-0 quad costs exactly as much as one you can see. A
-    // themed panel at zero opacity was therefore paying for ~27 invisible quads every
+    // themed panel at zero opacity would otherwise pay for ~27 invisible quads every
     // frame, which at the measured switching rate is ~45us per panel.
     //
     // Gates the FRAME background only, not the title band or the content cards --
@@ -207,17 +203,13 @@ public:
     // THE ARTWORK IS THE WIDGET, so it cannot be switched off.
     //
     // Set by the HUDs whose texture is not decoration but the thing itself -- the
-    // gamepad's controller, the pit board, the radar's dial. Turning it off did not
-    // give a cleaner panel, it gave the CONTENTS floating on an empty one: a
-    // gamepad's buttons, sticks and triggers arranged in mid-air with no controller
-    // under them. Rendered and looked at before removing it, which is the only way
-    // that call could be made honestly.
+    // gamepad's controller, the pit board, the radar's dial. Without it the CONTENTS
+    // float on an empty panel: a gamepad's buttons, sticks and triggers arranged in
+    // mid-air with no controller under them.
     //
-    // "Off" was also doing a second job by accident. A background texture SUPPRESSES
-    // the theme (see resolveActiveTheme), so Off was the only route to a themed
-    // panel on these three -- which is why it looked defensible in the code and
-    // indefensible on screen. If a themed gamepad is ever wanted, it needs the pad
-    // drawn ON the theme, not the pad deleted.
+    // A background texture SUPPRESSES the theme (see resolveActiveTheme), so on these
+    // HUDs there is no route to a themed panel. If a themed gamepad is ever wanted, it
+    // needs the pad drawn ON the theme, not the pad deleted.
     //
     // Enforced in the SETTERS rather than only in the settings UI, so a stale
     // `showBackgroundTexture=0` or `textureVariant=0` already in someone's INI
@@ -229,9 +221,9 @@ public:
     // Off draws the cursor as accent-coloured shapes instead of the .tga. Both spell a
     // cursor, so that Off is a style choice and has to stay. The test for membership is
     // therefore not "does it ship a texture" but "is there anything left when the
-    // texture goes" -- and the answer is only visible by rendering it. The five here
-    // were each looked at: a gamepad's buttons in mid-air, a board's rows on a blank
-    // panel, and a gauge reduced to a red needle with no face, ticks or numbers.
+    // texture goes" -- and the answer is only visible by rendering it: a gamepad's
+    // buttons in mid-air, a board's rows on a blank panel, a gauge reduced to a red
+    // needle with no face, ticks or numbers.
     //
     // (Not to be confused with `[Display] menuOnlyCursor`, which decides WHEN the
     // cursor shows at all. Different setting, different question.)
@@ -240,12 +232,12 @@ public:
     // WHICH ASSET-PACK CYCLE this HUD's Texture row drives, if any.
     //
     // A pack HUD has no texture BASE NAME (its art comes from the selected pack, not
-    // from the textures/ folder), so getAvailableTextureVariants() is empty and the
-    // settings row fell through to the per-HUD THEME control instead. That control is
-    // dead on exactly these HUDs: m_textureRequired forces the artwork on, and artwork
-    // makes resolveActiveTheme() return nullptr -- so the theme it offers can never
-    // take effect. Radar, which does have a base name, shows a Texture cycle and is
-    // the shape the other two should match.
+    // from the textures/ folder), so getAvailableTextureVariants() is empty and
+    // without this the settings row would offer the per-HUD THEME control instead.
+    // That control is dead on exactly these HUDs: m_textureRequired forces the artwork
+    // on, and artwork makes resolveActiveTheme() return nullptr -- so the theme it
+    // offers can never take effect. Radar, which has a base name, shows a Texture
+    // cycle; this gives the pack HUDs the same shape.
     enum class PackKind { None, Gamepad, Pitboard, Gauges };
     PackKind m_packKind = PackKind::None;
 
@@ -255,11 +247,10 @@ public:
     // the UI says is off. Same shape as m_textureRequired above, for the same reason:
     // enforced in the SETTER, so there is no way back into the mixed state.
     //
-    // WHO IS FALSE, and it is one question with one answer per HUD rather than a bool
-    // passed at each settings call site. It used to be exactly that -- an `enableTitle`
-    // argument on addStandardHudControls AND another on addWidgetRow -- so the panel
-    // and its settings row could disagree, and greying the row left the HUD's own
-    // m_bShowTitle untouched underneath.
+    // WHO IS FALSE is one question with one answer per HUD, held here rather than as a
+    // bool passed at each settings call site -- so the panel and its settings row
+    // cannot disagree, and greying the row cannot leave the HUD's own m_bShowTitle
+    // set underneath.
     //
     // The three CENTRE-STACK panels (Timing, Gap Bar, Notices) are false because they
     // are one-line readouts stacked against the top edge: a caption over each turns
@@ -267,10 +258,10 @@ public:
     // The rest are panels whose content IS the panel -- a pit board, a radar sweep, a
     // gauge face, the pad artwork, the cursor, the settings button.
     //
-    // THE RENDER PATH IS UNAFFECTED and nothing was deleted from it: the caption path
-    // handles the hidden case itself (it emits the body card and an empty string, which
-    // is what keeps every layout fast path's string indices stable), so each HUD still
-    // calls it and simply always takes the untitled arm.
+    // THE RENDER PATH IS UNAFFECTED: the caption path handles the hidden case itself
+    // (it emits the body card and an empty string, which is what keeps every layout
+    // fast path's string indices stable), so each HUD still calls it and simply always
+    // takes the untitled arm.
     //
     // SET IT THROUGH disableTitle(), never by hand: the flag and m_bShowTitle are two
     // halves of one statement, and BaseHud's constructor starts m_bShowTitle TRUE. Most
@@ -287,25 +278,22 @@ public:
         // ...but only while there is artwork to show. THE SAME GUARD setTextureVariant
         // puts on its variant-0 snap, and the two have to ask one question: that one
         // leaves the flag FALSE when the lookup fails, so a mandatory-artwork HUD whose
-        // .tga is missing ended up with a factory default of 0 and a forced live value
-        // of 1. Nothing renders differently either way -- there is no texture -- but the
-        // sparse save then wrote showBackgroundTexture=1 on every save AFTER a load and
-        // not on the first one, so the settings file stopped round-tripping. Found by
-        // settings_idempotency_test, which is exactly the shape it exists to catch, on
-        // a harness that stages no textures/ at all.
+        // .tga is missing must not be forced to 1 here. Otherwise its factory default
+        // is 0 and its live value 1; nothing renders differently -- there is no texture
+        // -- but the sparse save writes showBackgroundTexture=1 on every save AFTER a
+        // load and not on the first, so the settings file stops round-tripping. Pinned
+        // by settings_idempotency_test, on a harness that stages no textures/ at all.
         //
-        // hasBackgroundArtwork(), NOT getAvailableTextureVariants(): the first version of
-        // this guard asked the variant list, which is EMPTY for the two HUDs the rule is
-        // actually about. The gamepad and the pit board carry no texture base name at all
-        // -- their art comes from PACKS -- so the guard switched the enforcement off for
-        // exactly them, and asset_pack_test failed 36 ways on the invariant it exists to
-        // hold. Two art sources, one question.
+        // hasBackgroundArtwork(), NOT getAvailableTextureVariants(): the variant list is
+        // EMPTY for the two HUDs the rule is actually about. The gamepad and the pit
+        // board carry no texture base name at all -- their art comes from PACKS -- so a
+        // guard on the variant list switches the enforcement off for exactly them
+        // (asset_pack_test pins the invariant). Two art sources, one question.
         //
-        // So this and setTextureVariant's snap no longer call the SAME function, and that
-        // is the point rather than drift: the snap picks a variant NUMBER, which only a
-        // texture HUD has, so the variant list is the whole answer there. Both still ask
-        // "is there art to show" -- this one has to ask it of both sources because a pack
-        // HUD can reach it.
+        // So this and setTextureVariant's snap deliberately do not call the SAME
+        // function: the snap picks a variant NUMBER, which only a texture HUD has, so
+        // the variant list is the whole answer there. Both still ask "is there art to
+        // show" -- this one has to ask it of both sources because a pack HUD can reach it.
         if (m_textureRequired && hasBackgroundArtwork()) show = true;
         invalidateThemeCache();   // a background texture SUPERSEDES the theme
         if (m_bShowBackgroundTexture != show) {
@@ -343,17 +331,12 @@ public:
     // set at registration and never after -- see HudManager::registerHud, which
     // REQUIRES it, so an element cannot enter the list unnamed.
     //
-    // It replaced two hand-maintained naming ladders that had already drifted
-    // apart: the benchmark report picked the texture base name, else one of
-    // eight `hud.get() == m_pX` special cases, else the literal "unknown" (three
-    // rows shared that label until the special cases were added); the test
-    // harness picked the ICON name, else the texture base name, else "#<index>",
-    // so the same panel answered to `hud-timing` in one test and `crash_widget`
-    // in another, and an element with neither was unaddressable. Both now read
-    // this. A name here is load-bearing off the game thread too:
-    // tools/benchmark_report.py keys its HUD-footprint table on it, so these
-    // strings are the report's vocabulary -- rename one and the historical rows
-    // stop lining up.
+    // The benchmark report and the test harness both address a panel by this and
+    // nothing else -- not the texture base name, not the icon name, not an index --
+    // so the same panel answers to one name everywhere. A name here is load-bearing
+    // off the game thread too: tools/benchmark_report.py keys its HUD-footprint
+    // table on it, so these strings are the report's vocabulary -- rename one and
+    // the historical rows stop lining up.
     //
     // Never null once registered; the accessor is used in string contexts.
     void setHarnessId(const char* id) { if (id) m_szHarnessId = id; }
@@ -367,11 +350,9 @@ public:
     // mandatory (m_textureRequired) has no dial without it. HudManager deliberately
     // does not restate it at registration -- see createHud.
     //
-    // No getter: it is nobody's name for this HUD. Three test hooks used to look
-    // panels up by it, which made it a fourth naming scheme competing with the icon
-    // name, the registration name and the benchmark report's; they all read
-    // getHarnessId() now. This is an ASSET PATH, and the only code that should care
-    // is the code that loads the asset.
+    // No getter: it is nobody's name for this HUD -- test hooks and reports address
+    // a panel by getHarnessId(). This is an ASSET PATH, and the only code that should
+    // care is the code that loads the asset.
     void setTextureBaseName(const std::string& baseName);
 
     // Texture variant: 0 = Off (solid color), 1+ = variant number
@@ -386,12 +367,8 @@ public:
     // what getScaledDimensions() puts in ScaledDimensions::paddingH / paddingV, and
     // check_hud_helpers.sh rule 11 exists to ban synonyms of the vertical one.
     //
-    // TOTALS, not the shortfall on top of the base. There used to be a second pair --
-    // themedContentPadX/Y -- returning only the amount by which the theme exceeded the
-    // base, so a caller wanting the padding had to add the two, and the word "padding"
-    // named both the part and the whole. Y had this wrapper and X did not, so the X
-    // total was spelled inline in getScaledDimensions, outside the reach of the very
-    // lint that exists to keep it to one spelling.
+    // TOTALS, not the shortfall on top of the base: a caller wanting the padding reads
+    // one number, and "padding" names the whole, never a part.
     float contentPaddingX() const;
     float contentPaddingY() const;
 
@@ -407,10 +384,9 @@ public:
     // active theme's `[content] gap`. The ONE reader of ThemeAsset::sectionGap.
     //
     // Spent at all three boundaries where two carded boxes meet -- the title band to the
-    // body card (contentCardTop), one HUD section to the next (sectionGapY), one settings
-    // card to the next (SettingsLayoutContext::addSectionHeading) -- because until this
-    // existed each of the three answered differently and only the settings panel had a
-    // visible term at all. See LayoutMetrics::sectionGap.
+    // body card (contentCardTop), one HUD section to the next (PanelBox::layoutPanel),
+    // one settings card to the next (SettingsLayoutContext::addSectionHeading) -- so
+    // the three answer identically. See LayoutMetrics::sectionGap.
     float contentGapY() const;
     float contentGapCells() const;   // the same seam, unscaled cells (height budgets)
     float panelGapCells() const;     // the junction gap term alone, resolved (theme → built-in)
@@ -422,8 +398,8 @@ public:
     // draw one from. A pack HUD (gamepad, pit board) has no texture base name and
     // reads its art from mxbmrp3_data/gamepads|pitboards; every other HUD reads a
     // numbered variant out of textures/. The mandatory-artwork enforcement is the
-    // caller that needs them answered together, and asking only the second is what
-    // silently exempted the pack HUDs from it.
+    // caller that needs them answered together; asking only the second silently
+    // exempts the pack HUDs from it.
     bool hasBackgroundArtwork() const;
 
     // Drag and drop functionality
@@ -543,24 +519,22 @@ public:
     void setLayoutDirty() {
         m_bLayoutDirty = true;
         // The layout fast path repositions the background span, the title icon and
-        // the strings -- everything it knew about before themes existed. It does NOT
-        // know about the themed INNER cards (the title band, and the settings
-        // panel's section cards), whose geometry is derived from content laid out
-        // during a full rebuild. Left on the fast path they stay where they were
-        // while the rest of the HUD moves, which is exactly what dragging a themed
-        // HUD looked like.
+        // the strings. It does NOT know about the themed INNER cards (the title band,
+        // and the settings panel's section cards), whose geometry is derived from
+        // content laid out during a full rebuild. Left on the fast path they stay
+        // where they were while the rest of the HUD moves.
         //
         // So a HUD carrying cards escalates a layout change to a FULL rebuild.
         // That is the honest fix rather than teaching the fast path to move a
         // variable number of cards it never sized: a rebuild is what a data change
         // already does many times a second, and dragging is a brief interaction.
-        // BAND TOO, not just the card. The comment above names the title band as one
-        // of the things the fast path cannot move, but the test only asked about the
-        // card -- and titleBand defaults ON while contentCard defaults OFF, which is
-        // precisely the combination a theme asks for with `widget-content = 0`. Under
-        // it a drag took the fast path, so the band's nine quads stayed behind while the
-        // panel moved, AND finalizeThemedFill cut a hole in the fill where the band was
-        // supposed to be.
+        //
+        // BAND TOO, not just the card: titleBand defaults ON while contentCard
+        // defaults OFF, which is precisely the combination a theme asks for with
+        // `widget-content = 0`. Gating on the card alone lets a drag take the fast
+        // path there, so the band's nine quads stay behind while the panel moves,
+        // AND finalizeThemedFill cuts a hole in the fill where the band is supposed
+        // to be.
         if (hasThemedCard() || hasThemedTitleBand()) m_bDataDirty = true;
     }
 
@@ -570,10 +544,10 @@ public:
     //
     // The distinction is a hot path, not a nicety. StandingsHud calls this every
     // frame for the length of a position-slide animation (500ms by default, and
-    // frequent on a full grid). Routed through setLayoutDirty(), a theme with an
-    // card slice set turned that into a full 22-row rebuild per frame on the most
-    // expensive HUD in the plugin, against a 2.08ms budget -- and run_perf.sh could
-    // not see it, because it runs unthemed.
+    // frequent on a full grid). Routed through setLayoutDirty(), a theme with a
+    // card slice set turns that into a full 22-row rebuild per frame on the most
+    // expensive HUD in the plugin, against a 2.08ms budget -- and run_perf.sh cannot
+    // see it, because it runs unthemed.
     void setContentLayoutDirty() { m_bLayoutDirty = true; }
 
     // Process dirty flags immediately (without full update logic)
@@ -633,11 +607,11 @@ protected:
     // rebuilds unconditionally every frame (PerformanceHud, SpeedWidget, GearWidget --
     // live values, always stale) calls it directly instead of rebuildRenderData().
     //
-    // WHY IT IS SHARED rather than left to each caller: those three bypassed the
-    // recorded path, so the benchmark reported them as ZERO rebuilds while they
-    // rebuilt every frame, and their cost -- 16.2, 7.7 and 5.8 us/frame, 87% of all
-    // non-rebuild time in Draw -- was filed under the HUD table's idle column with no
-    // way to tell it from a dirty-flag check.
+    // WHY IT IS SHARED rather than left to each caller: a HUD that calls
+    // rebuildRenderData() directly bypasses the recorded path, so the benchmark
+    // reports it as ZERO rebuilds while it rebuilds every frame, and its cost (16.2,
+    // 7.7 and 5.8 us/frame for those three) is filed under the HUD table's idle
+    // column with no way to tell it from a dirty-flag check.
     void rebuildAndRecord();
 
     void processDirtyFlags();
@@ -670,14 +644,13 @@ protected:
     // EVERYTHING DERIVED FROM THE PANEL RECT, in one place, because there are two
     // entry points and they have to agree: addBackgroundQuad() arms this state for a
     // new rebuild, and invalidatePanelRect() drops it for a rebuild that draws no
-    // panel at all. They were written out separately and diverged -- the section
-    // fields below were reset only by the first -- and the divergence is not
-    // cosmetic. finalizeThemedFill() and finishContentSections() both WRITE quads by
-    // a remembered index, so a stale one points into whatever occupies that index now
-    // and rewrites it. That is what happened to m_fillFirst on NoticesHud (the one HUD
-    // that calls addBackgroundQuad conditionally): it erased the slab and took the
-    // whole panel with it. m_lastSectionIndex is the same trap, still unsprung only
-    // because no sectioned HUD skips its background yet.
+    // panel at all. A field reset by only one of them is not cosmetic:
+    // finalizeThemedFill() and finishContentSections() both WRITE quads by a
+    // remembered index, so a stale one points into whatever occupies that index now
+    // and rewrites it -- a stale m_fillFirst on NoticesHud (the one HUD that calls
+    // addBackgroundQuad conditionally) erases the slab and takes the whole panel with
+    // it, and m_lastSectionIndex is the same trap for any sectioned HUD that skips
+    // its background.
     void resetPanelDerivedState() {
         m_contentCardEmitted = false;   // arm the body card for this rebuild
         m_bandValid = false;
@@ -694,10 +667,10 @@ protected:
     //
     // WHY: a render string's y is the glyph box's TOP (the engine and hud_sw_renderer
     // both draw downward from it), while addIcon's y is its CENTRE -- and eleven call
-    // sites place row icons at `rowY + lineHeightNormal * 0.5f`. So text sat at the top
-    // of its row while everything beside it sat in the middle, and all the leading fell
-    // below the glyph. Invisible at the shipped ~1.9px, obvious once uiLineHeight is
-    // raised, which is how it was spotted.
+    // sites place row icons at `rowY + lineHeightNormal * 0.5f`. Without this, text
+    // sits at the top of its row while everything beside it sits in the middle, and
+    // all the leading falls below the glyph -- invisible at the shipped ~1.9px,
+    // obvious once uiLineHeight is raised.
     //
     // ONE RULE, NO TIER LOOKUP: four of the five tiers pair EQUAL fontSize and row
     // multiples (normal 1.0/1.0, XL 2.0/2.0, XS and S likewise), so their row is exactly
@@ -709,8 +682,7 @@ protected:
     // APPLIED IN EXACTLY TWO PLACES -- addString() and positionString(). Those are the
     // only two ways a string's y is ever set, and check_hud_helpers.sh rule 8 keeps it
     // that way: a HUD that writes m_afPos[1] itself skips this and its text jumps by the
-    // offset the moment the panel is dragged. That is not hypothetical, it is what the
-    // first attempt at this shipped (standings_layout_test caught it).
+    // offset the moment the panel is dragged (standings_layout_test pins it).
     float rowCenterOffset(float fontSize) const {
         return fontSize * (layout().lineHeightRatio - 1.0f) * 0.5f;
     }
@@ -740,79 +712,43 @@ protected:
 public:
     // Horizontal distance the identity icon takes to the LEFT of the title glyph:
     // the icon's own width (square in PIXELS, hence the aspect divide) plus the gap
-    // to the caption. The gap is [title] icon-gap in CELLS -- it used to be
-    // 0.35 * iconSize, which made resizing the icon silently move the text too.
+    // to the caption. The gap is [title] icon-gap in CELLS, not a fraction of the
+    // icon size, so resizing the icon does not move the text.
     //
-    // Not static, unlike its previous life: a grid distance needs the metrics.
+    // Not static: a grid distance needs the metrics.
     float titleIconAdvance(float iconSize) const {
         return iconSize / PluginConstants::UI_ASPECT_RATIO
              + layout().titleIconGap * layout().cellW;
     }
 
-    // Height a caption ROW must reserve. Normally just `rowHeight`, but a themed
-    // band is fontSize + 2 * [title] padding-y cells, and at the small tiers that
-    // comes out TALLER than the 1.17-em row the caption sits in. The overhang lands
-    // on the first thing the HUD draws (the compass's "N" sat inside its own title
-    // band). Growing the row to hold the band is the fix; the panel grows with it.
-    // The row a themed title BAND needs, ROUNDED UP TO THE GRID.
-    //
-    // The ceil is the whole point, not tidiness. Every other vertical term a panel is
-    // built from is a whole number of cells -- panelPaddingY is 2, contentPaddingY
-    // is itself a ceilY, lineHeightNormal is 2, lineHeightLarge is 3 -- so the raw
-    // band was the ONLY thing that could take a panel off the lattice, and it always
-    // did: it is the caption's font size plus twice [title] padding-y, 34.27px
-    // against a 12.672px cell, or 2.70 cells.
-    //
-    // What that cost is not visible in one panel, which is why it survived: a widget
-    // is internally consistent either way, and so is every other widget, because they
-    // are all off by the same 0.30 of a cell. It shows the moment a widget has to line
-    // up with something built the OTHER way -- a table HUD reserves lineHeightLarge
-    // for its title, which is a whole 4 cells -- so butting Standings under a column
-    // of widgets left a gap no amount of dragging could close.
-    //
-    // Ceiling puts this on the lattice too (3 cells). The two title rows are still
-    // different HEIGHTS, and that is fine and intended -- what has to match is that
-    // both are whole cells, so the panels around them tile. The BAND itself is still
-    // drawn at its own height by the plan's band; this only reserves the row.
+    // Height a caption ROW must reserve: the caption's box (a themed band's border
+    // box, else the bare row plus [title] padding), its [title] margins, and the gap
+    // the body card leaves below it. A themed band can be TALLER than the row the
+    // caption sits in, and the overhang lands on the first thing the HUD draws (the
+    // compass's "N" inside its own title band) -- so the row grows to hold the band,
+    // and the panel grows with it.
     float titleRowHeight(float fontSize, float rowHeight) const {
         if (!m_bShowTitle) return rowHeight;
-        // WITH A BODY CARD the title row is exactly the caption's own row plus the gap
-        // the card leaves below it -- no clearance term, because panelContentY() now
-        // starts content at the card's interior and the card's top is
-        // frameMarginY + this row. The two are one equation read from opposite ends,
-        // which is the whole point of anchoring content to the card: there is nothing
-        // left for a second chain to disagree with.
-        // The band's own height is titleBandBoxHeight()'s, not a second spelling of it.
-        // ONE LINE, CARD OR NO CARD. The no-card path used to add a clearance term and
-        // ceil the result, and both are gone for reasons rather than for tidiness:
-        //
-        // The clearance was `frameMarginY + band - paddingV`, which can never exceed the
-        // band now that paddingV >= frameMarginY is guaranteed (theme_panel_padding_test) --
-        // so max(band, need) was always band and the term was unreachable.
-        //
-        // The ceil is what made hiding the body card save almost nothing while hiding the
-        // BAND visibly shrank the panel: the row rounded back up and swallowed most of
-        // what the card's border gave back. panelHeight() ceils the whole panel anyway,
-        // which is what keeps panels tiling, so rounding this one term as well bought
-        // nothing but the asymmetry.
+        // ONE LINE, CARD OR NO CARD. The band's own height is titleBandBoxHeight()'s,
+        // not a second spelling of it. No clearance term: paddingV >= frameMarginY is
+        // guaranteed (theme_panel_padding_test), so a `frameMarginY + band - paddingV`
+        // clearance can never exceed the band. No ceil of this term either:
+        // panelHeight() ceils the whole panel, which is what keeps panels tiling, and
+        // rounding here as well would make hiding the body card save almost nothing
+        // while hiding the BAND visibly shrinks the panel.
         //
         // PLUS THE GAP THE CARD LEAVES BELOW IT, when there is a card to leave one. This
         // has to be reserved here as well as spent in contentCardTop(): placing the card a
         // gap lower without lengthening the row puts the panel a gap short and the last
-        // row over its own bottom border -- the same "reserve it in the height AND add it
-        // to the running y; one without the other just moves the bug" that sectionGapY()
-        // documents. No card means no second box and no gap, which is also what
-        // contentCardTop() decides.
-        // THE CAPTION'S BOX EXISTS WHETHER OR NOT A BAND IS DRAWN OVER IT — the same
-        // rule panel_box.h states for every box, and the rule this had backwards on
-        // both terms. [title] margin was in NEITHER end (titleBandTop clamped the
-        // band flush to the frame and this reserved nothing), and [title] padding
-        // was reserved only through titleBandBoxHeight, i.e. only when there was a
-        // band. With a theme whose band is off, both were dead.
+        // row over its own bottom border -- reserve it in the height AND add it to the
+        // running y; one without the other just moves the bug. No card means no second
+        // box and no gap, which is also what contentCardTop() decides.
         //
-        // Banded, the padding is INSIDE titleBandBoxHeight (a border box); bandless
-        // there is no box to be inside of, so it is spent here. The margin is air
-        // OUTSIDE the border either way and is never in that height.
+        // THE CAPTION'S BOX EXISTS WHETHER OR NOT A BAND IS DRAWN OVER IT — the same
+        // rule panel_box.h states for every box. Banded, the padding is INSIDE
+        // titleBandBoxHeight (a border box); bandless there is no box to be inside of,
+        // so it is spent here. The margin is air OUTSIDE the border either way and is
+        // never in that height.
         const float gap = hasThemedContentCard() ? contentGapY() : 0.0f;
         const float box = hasThemedTitleBand()
                         ? titleBandBoxHeight(fontSize)
@@ -823,24 +759,21 @@ public:
     // THE BAND'S BOX, and the only place its height is spelled.
     //
     // A BORDER BOX, like the body card: its own edge slice, then title.padding-y, then
-    // the glyph, then the same back. Without the border term the box was shorter than
+    // the glyph, then the same back. Without the border term the box is shorter than
     // two of its own corners past a [card] size of ~1.6, so NineSlice::clampedBorder
-    // scaled them down -- the header's border stopped thickening while the body card's
-    // kept going, and the caption drifted off centre as the clamp ate the border under
+    // scales them down -- the header's border stops thickening while the body card's
+    // keeps going, and the caption drifts off centre as the clamp eats the border under
     // it.
     //
-    // ONE OWNER because there were three spellings of this and one of them was already
-    // wrong. The plan DRAWS the band, titleRowHeight above RESERVES the row a HUD
-    // puts it in, and SettingsHud::titleAdvance reserves it for the settings panel --
-    // and when the border term was added, the third was missed.
-    //
-    // It survived because the settings panel LAYS OUT from the drawn band's bottom edge
-    // and only SIZES itself from titleAdvance, so nothing was misplaced -- the panel was
-    // 2 * border too short, and its last row simply ran out through the bottom. That is
-    // silent until the border is thick enough to matter: 0.0196 of overflow at [card]
-    // size 1, 0.0587 at size 3, against a bottom padding of 0.0234.
+    // ONE OWNER because three readers need the same number: the plan DRAWS the band,
+    // titleRowHeight above RESERVES the row a HUD puts it in, and SettingsHud::
+    // titleAdvance reserves it for the settings panel. A spelling that misses a term
+    // is silent there: the settings panel LAYS OUT from the drawn band's bottom edge
+    // and only SIZES itself from titleAdvance, so nothing is misplaced -- the panel is
+    // simply too short and its last row runs out through the bottom.
     //
     // A caller reserving room for a band must call THIS, not restate it.
+    //
     // The caption box is the normal tier's GLYPH CELL whatever the caller's tier —
     // one band height across the surface, so a legacy-chain HUD's band measures
     // the same as a plan panel's. It MIRRORS resolvePanelSpec's `captionH`, and
@@ -848,19 +781,15 @@ public:
     // lineHeight row. Line height is the pitch between stacked rows and half of
     // it is leading meant for the next row; a caption has no next row, so
     // spending it here buys air at the panel's own top edge — the gap a user
-    // sees after zeroing every box term. This said lineHeightNormal while the
-    // plan said fontSize, and the two drew bands ~0.17 em apart on the same
-    // screen, with this comment already claiming they agreed.
-    // ...AND THE CAPTION BLOCK'S QUANTIZATION REMAINDER, which is the half of the
-    // plan's band this used to leave out. PanelBox::layoutPanel ceils the caption
-    // block's ADVANCE (margin + box + margin + gap) to a whole cell and stretches the
-    // DRAWN band bottom by the remainder -- see titleSlack there for why the block is
-    // quantized at all. This chain drew the box alone, so a legacy-chain HUD's and the
-    // settings panel's band came out titleSlack SHORTER than a plan panel's on the same
-    // screen with the same theme: 0.009335 of screen height, ~10px at 1080p, while the
-    // paragraph above already claimed the two agreed. Reported as "the height of the
-    // settings title does not line up with the height of the hud title to the left of
-    // it". Pinned by settings_surface_test.
+    // sees after zeroing every box term.
+    //
+    // ...AND THE CAPTION BLOCK'S QUANTIZATION REMAINDER. PanelBox::layoutPanel ceils
+    // the caption block's ADVANCE (margin + box + margin + gap) to a whole cell and
+    // stretches the DRAWN band bottom by the remainder -- see titleSlack there for
+    // why the block is quantized at all. Without the same remainder here, a
+    // legacy-chain HUD's and the settings panel's band come out titleSlack SHORTER
+    // than a plan panel's on the same screen with the same theme (~10px at 1080p).
+    // Pinned by settings_surface_test.
     float titleBandBoxHeight(float /*fontSize*/) const {
         const float core = titleBandCoreH();
         return core + titleBandSlackY(core);
@@ -910,70 +839,38 @@ public:
     // [title] PADDING per side, resolved theme -> [Advanced] built-in and
     // converted square on screen, exactly as resolvePanelSpec resolves the same
     // key for a plan panel.
-    //
-    // There was a LayoutMetrics::titlePaddingY of half a cell doing this, on the
-    // row lattice and reachable from no ini -- so a themed band's height, the
-    // band emit and the settings caption were all built from the legacy spelling
-    // while [Advanced] titlePadding fed the box term, and moving the key changed
-    // what a panel RESERVED without moving the band or the glyph. Reported as
-    // "titlePadding grows the space at the bottom rather than around the title".
     float titlePadY(bool bottom) const;
 
     // [title] MARGIN per side, the same resolution. The band's air OUTSIDE its
-    // own border, which the legacy chain spent nowhere: titleRowHeight did not
-    // reserve it and titleBandTop clamped the band flush to the frame, so
-    // raising [title] margin on a themed HUD grew nothing and moved nothing
-    // while the plan panels beside it honoured it. Both now ask this.
+    // own border, reserved by titleRowHeight so a legacy-chain HUD honours the
+    // key exactly as the plan panels beside it do.
     float titleMarginY(bool bottom) const;
 
     // How far a LEFT-justified caption sits right of the content column so it clears
     // the title band's own left edge slice. Zero for a HUD with a body card, which
     // already pushes its content that far; non-zero only for a panel whose band is
-    // its only inner geometry. (There was a titleStringX() beside it, the same sum
-    // for a layout fast path to use -- unreferenced since the plan took over the
-    // caption's x, so it went with the rest of the pre-plan geometry.)
+    // its only inner geometry.
     float titleGlyphInsetX(float contentX) const;
 
 
     bool hasThemedContentCard() const;
     void emitContentCard(float bandBottom);
 
-    // contentRowInsetX() IS GONE. It answered "how far in does a row sit" as the
-    // frame's border plus the card's -- true when it was written, and false once
-    // [panel] padding started acting on a plan panel's card: the card moved in by the
-    // padding and this did not, so every full-row BAND derived from it (a hover
-    // highlight, the player-row highlight, a slide trail) drew OUTSIDE the card it
-    // was supposed to sit in. Reported as "the highlight grows way beyond where the
-    // text is".
-    //
-    // A band's span is the CONTENT COLUMN, and PanelPlan already owns that:
-    // p.contentX() / p.contentW(). Eight call sites spelled this one inset by hand,
-    // which is eight chances to spell it as it used to be; asking the plan is one.
-
     // WHO GETS ONE: any panel that opts in -- the table and graph HUDs (Standings,
     // Event Log, Lap Log, Telemetry, Performance) and most widgets.
     //
-    // A WIDGET USED TO BE BANNED from opting in, by a lint. The ban was written when a
-    // widget's card was a shrink-wrap mode that hugged the quads a gauge drew, so the
-    // card round a compass wrapped the dial rather than the panel's bounding box: the
-    // widget then carried two cards of DIFFERENT widths -- a panel-flush header over a
-    // content-hugging body -- where a HUD carries two flush ones. That mode is gone.
-    // emitContentCard() draws at the panel's frame margin, the same X span as the title
-    // band, so a widget now gets exactly the HUD treatment and the lint rule was lifted
-    // (check_hud_helpers.sh still documents it, at the rule-4 slot, with the render that
-    // justified lifting it).
-    //
-    // What replaced the ban is a CHOICE: a theme sets [card] widget-content = 0 when its
-    // inner slices are too much furniture around a single gauge. That was the ban's real
-    // second objection, and it belongs to the theme rather than to the code.
+    // A widget's card is drawn by emitContentCard() at the panel's frame margin, the
+    // same X span as the title band, so a widget gets exactly the HUD treatment: two
+    // flush cards, never a panel-flush header over a content-hugging body. A theme
+    // whose inner slices are too much furniture around a single gauge sets
+    // [card] widget-content = 0; that choice belongs to the theme, not the code.
     //
     // OPT-IN even among the HUDs that could take one, and not because the feature is
     // unfinished: emitting the card inserts 9 quads immediately after the title, and
     // a HUD that indexes m_quads by a HARDCODED position rather than one recorded at
-    // build time reads the wrong quad afterwards. GearWidget indexed `m_quads[1]` for
-    // its gear circle and was already wrong under any theme (a themed background is 9
-    // quads, not 1); it records the index now (m_circleQuadIndex), and SessionHud's
-    // row-icon walk was a second instance found the same way.
+    // build time reads the wrong quad afterwards (a themed background is 9 quads, not
+    // 1 -- GearWidget records its gear circle's index as m_circleQuadIndex for this
+    // reason).
     // Set in the constructor by every widget and by SettingsHud; the default is the
     // table/graph HUDs, which are the majority.
     PanelKind m_panelKind = PanelKind::Hud;
@@ -997,7 +894,7 @@ public:
     // (quads draw in emission order), end() sizes them.
     //
     // The same protocol the settings panel's section cards use, and for the same
-    // reason -- there was no way to size a card round content that has not been laid
+    // reason -- there is no way to size a card round content that has not been laid
     // out yet, and drawing it afterwards puts it on top of the rows it should sit
     // behind.
     //
@@ -1017,11 +914,11 @@ public:
     // never notices (the heading hugs the top either way); one whose section IS a
     // single centred value does.
     float sectionCardTop() const;
-    // THE ADVANCE BETWEEN TWO SECTIONS was sectionGapY() here, ceiled to whole
-    // cells so a boundary could not drag the panel off the lattice. Gone with the
-    // rest of the pre-plan chain: PanelBox::layoutPanel spends the seam (the
-    // facing margins plus the junction gap) and ceils the PANEL once instead of
-    // every boundary, so there is nothing left for a caller to reserve by hand.
+    // THE ADVANCE BETWEEN TWO SECTIONS is the plan's to spend: PanelBox::layoutPanel
+    // spends the seam (the facing margins plus the junction gap) and ceils the PANEL
+    // once instead of every boundary, so there is nothing for a caller to reserve by
+    // hand.
+    //
     // A panel whose size is DERIVED -- from art, a dial diameter, an aspect correction
     // -- rather than composed from rows and columns lands between grid cells, and then
     // it cannot tile with what is around it. The error is invisible ON that panel; it
@@ -1035,7 +932,7 @@ public:
     // anchor by {padX,padY}.
     //
     // Pinned by THE GRID SWEEP in theme_geometry_test, which measures every registered
-    // panel -- the check that found the six panels this exists for.
+    // panel.
     struct GridFit { float w = 0.0f, h = 0.0f, padX = 0.0f, padY = 0.0f; };
     GridFit fitPanelToGrid(float width, float height) const {
         const LayoutMetrics& L = layout();
@@ -1065,12 +962,12 @@ public:
     void finalizeThemedFill();
     // The band's rect, recorded by the band emitter for the sweep above. Post-offset.
     //
-    // ALL FOUR EDGES, including the horizontal pair, which readers used to substitute
-    // the frame's centre slice for. That was true while every band sat on the frame's
-    // inner boundary and stopped being true when panelSurfaceInsetX() gained an
-    // override: the fill cut then covered a strip the band does not actually reach,
-    // so the panel's own fill was removed from beside its header. Two readers
-    // (finalizeThemedFill and MXBMRP3_Test_HudFillCut); both take these now.
+    // ALL FOUR EDGES, including the horizontal pair: a band does not necessarily sit
+    // on the frame's inner boundary (panelSurfaceInsetX() can be overridden), and a
+    // reader that substitutes the frame's centre slice for the band's edges cuts the
+    // fill under a strip the band does not actually reach, removing the panel's own
+    // fill from beside its header. Two readers (finalizeThemedFill and
+    // MXBMRP3_Test_HudFillCut); both take these.
     float m_bandLeft = 0.0f, m_bandRight = 0.0f;
     float m_bandTop = 0.0f, m_bandBottom = 0.0f;
     bool m_bandValid = false;
@@ -1083,8 +980,8 @@ public:
     // slice covers it with nothing reserved. Only a SECTIONED panel has more gaps -- one
     // per seam between its cards -- and only that shape pays for extra quads.
     //
-    // Reserving six for everything cost 5 zero-area quads on every themed HUD to solve a
-    // case only three HUDs have. If the rects ever outrun the pool (or the covers outrun
+    // Reserving six for everything would cost 5 zero-area quads on every themed HUD to
+    // solve a case only three HUDs have. If the rects ever outrun the pool (or the covers outrun
     // cutFill's cap) the WHOLE centre comes back as one strip: stacking under every card,
     // a uniform tone error, where running out mid-sweep would leave a HOLE straight
     // through to the game.
@@ -1099,7 +996,7 @@ public:
     // Every inner card this rebuild emitted, as its full rect pre-offset, keyed by its
     // first quad so a reserve-then-rewrite card updates its record in place. These are
     // the covers finalizeThemedFill cuts the fill against -- a card NOT recorded here
-    // sits on the fill and composites twice (the settings-cards-read-darker bug) --
+    // sits on the fill and composites twice (settings cards read darker) --
     // and what the no-overlap test hook reads. Cleared per rebuild.
     struct SectionCardSpan {
         float top = 0.0f, bottom = 0.0f;
@@ -1115,7 +1012,7 @@ public:
     // Exists because a HUD that DRAWS rather than lays out rows -- the map's track, the
     // radar's sweep -- has to clip itself, and clipping to the panel is wrong the moment
     // a theme adds a frame and a card: the panel's edge is the outside of the frame, so
-    // a rotating map drew over its own border and out into the frame margin. Post-offset
+    // a rotating map draws over its own border and out into the frame margin. Post-offset
     // (absolute screen space), matching what those clippers work in.
     bool contentClipRect(float& left, float& top, float& right, float& bottom) const;
 
@@ -1129,9 +1026,9 @@ public:
     // PANEL instead -- the band's bottom down to panelBottom - frameMarginY --
     // and the two do not meet. Measured on a captioned Gap Bar under a 2-cell frame /
     // 1-cell card: the row is 6.000..8.000 cells while the card's interior is
-    // 6.204..8.500, so the fill overhung the card's top border and stopped half a cell
-    // short of its bottom, and the markers -- centred on the row -- sat 0.35 cells above
-    // the centre of the box they appear to be in.
+    // 6.204..8.500, so a fill sized to the row overhangs the card's top border and
+    // stops half a cell short of its bottom, and markers centred on the row sit 0.35
+    // cells above the centre of the box they appear to be in.
     //
     // The two cannot be reconciled by making them equal: paddingV would have to be
     // exactly frameBorderY + cardBorderY (2.5 cells there), and contentPaddingY() ceils
@@ -1200,9 +1097,8 @@ public:
     // equivalent is SettingsLayoutContext::addButtonBackground, which additionally
     // insets the button inside its row; a HUD sizes its own buttons, so this does not.
     //
-    // Exists so a HUD button cannot be left unthemed by omission -- every one that
-    // hand-rolled its quad (the version popup's four, the notices slabs) simply
-    // missed the theme when it arrived, silently.
+    // Exists so a HUD button cannot be left unthemed by omission: a hand-rolled quad
+    // silently misses the theme.
     // A button's colour, made fully opaque without losing the state its alpha encodes.
     // See the definition -- applied inside addButtonQuad/addThemedButton, so callers keep
     // expressing disabled / idle / hovered as alphas and get an opaque control anyway.
@@ -1220,7 +1116,7 @@ public:
         // kind of object. Hover raises the tint but never past the surface, so the
         // label stays legible -- the property this exists to protect.
         Surface,
-        // The state colour itself, flattened onto the panel (the older treatment).
+        // The state colour itself, flattened onto the panel.
         // For a SELECTION band rather than a control: the settings panel's active tab
         // is a row that happens to be drawn with the button slices, and it has to read
         // as strongly as a selection, not as politely as a button.
@@ -1236,11 +1132,8 @@ public:
     // fill is a neutral surface and the state rides the glyph instead.
     unsigned long buttonGlyphColor(unsigned long stateColor) const;
 
-    // A BUTTON'S STATE, in the one place that turns it into an alpha. Ten sites
-    // spelled this ternary out by hand and picked three different idle alphas
-    // (128/255 in the settings footer and its Copy/Reset, 0.5f in VersionWidget's
-    // four, 0.3f on Check Now's disabled), so the same control was a different
-    // shade depending on which file drew it.
+    // A BUTTON'S STATE, in the one place that turns it into an alpha, so the same
+    // control is the same shade whichever file draws it.
     enum class ButtonState { Idle, Hovered, Disabled };
     unsigned long buttonStateColor(unsigned long stateColor, ButtonState state) const;
 
@@ -1261,8 +1154,8 @@ public:
     // Smallest BT.601 luma gap a coloured label may have against its own fill.
     // 45 keeps disabled (muted, ~48) on its own colour and pushes red (~25) onto the
     // panel's text colour. Public so a test can assert the property against the LIVE
-    // threshold instead of freezing 45 into an expectation -- the mistake that made a
-    // batch of layout tests go red the moment a metric root was retuned.
+    // threshold instead of freezing 45 into an expectation that goes red on the next
+    // retune.
     static constexpr unsigned int MIN_GLYPH_LUMA_GAP = 45u;
 
     // Legible ink for `ink` drawn on `fill`: keeps the hue while it clears
@@ -1283,21 +1176,18 @@ public:
     unsigned long inkOnSlabColor(unsigned long ink, unsigned long slot,
                                  float fillOpacity) const;
 
-    // A ROW BAND: the strip behind a selected or hovered row. Six HUDs drew one by
-    // hand -- standings (player row and spectator hover), records, event log, and the
-    // settings panel's tab list and control rows -- each with its own alpha and its
-    // own idea of which palette slot to use. Three spellings of 60/255, two of 80/255,
-    // and no rule about ACCENT versus MUTED.
+    // A ROW BAND: the strip behind a selected or hovered row, for every HUD that
+    // draws one -- standings (player row and spectator hover), records, event log,
+    // and the settings panel's tab list and control rows -- so they share one alpha
+    // rule and one idea of which palette slot to use.
     //
-    // TAKES THE THEME'S BUTTON SLICES, the same shape the settings panel's selected
-    // tab has always had (it goes through addButtonQuad). A band and a selected tab
-    // are the same kind of object -- "this row is the one" -- so a theme that rounds
-    // one and leaves the other a hard rectangle looks like a miss, which is what it
-    // was: this used to be deliberately flat, on the grounds that a band is
-    // repositioned by cached index during the standings row-slide animation and a
-    // nine-slice is not one quad. That is now handled by repositionRowHighlight()
-    // rewriting the whole span, which is the same reserve-then-rewrite the section
-    // cards already use.
+    // TAKES THE THEME'S BUTTON SLICES, the same shape as the settings panel's selected
+    // tab (which goes through addButtonQuad). A band and a selected tab are the same
+    // kind of object -- "this row is the one" -- so a theme that rounds one and leaves
+    // the other a hard rectangle looks like a miss. A nine-slice is not one quad, and
+    // a band is repositioned by cached index during the standings row-slide
+    // animation: repositionRowHighlight() handles that by rewriting the whole span,
+    // the same reserve-then-rewrite the section cards use.
     //
     // TRANSLUCENT, unlike a button: the alpha is NOT flattened onto the background
     // (addThemedButton's opaque=false). A control must stay legible and so is made
@@ -1369,8 +1259,7 @@ public:
     //
     // SettingsHud overrides both. It is already additive on both axes (its content
     // starts at frame border + [panel] padding), so its surfaces can sit where a
-    // plan panel's do -- which is what "the settings panel should respect [panel]
-    // padding like the HUDs do" asks for.
+    // plan panel's do and respect [panel] padding like the HUDs.
     virtual float panelSurfaceInsetX() const { return frameBorderX(); }
     virtual float panelSurfaceInsetY() const { return frameBorderY(); }
     // The SIDE margin as a vertical distance covering the same pixels -- what auto
@@ -1389,12 +1278,12 @@ public:
     // three, which are all one fixed character count wide and exist to line up with
     // each other. Timing and GapBar have a body card and Notices does not (its
     // coloured slab IS its content), so with a theme on, the same character count
-    // came out a cell narrower per side on Notices while the unthemed stack was
-    // flush -- reported as "notices is one cell narrower once I pick a theme".
+    // would come out a cell narrower per side on Notices while the unthemed stack
+    // is flush.
     //
     // So the stack pays the WIDEST member's clearance, whether the panel asking
     // carries a card or not. Unthemed both terms are zero and this is the plain
-    // panel padding, so the shipped stack is unchanged.
+    // panel padding.
     // Used via CenterStack::boxWidth(); pinned by theme_geometry_test.
     float centerStackPaddingX() const;
 
@@ -1404,10 +1293,9 @@ public:
     //
     // Static and public because the callers are not all inside a HUD's own drag
     // path: a centred panel snaps its anchor during rebuild, and the settings
-    // panel snaps an origin it recomputes from scratch every frame. Those had
-    // grown three near-identical private copies of this gate, which is how the
-    // Notices and Timing panels came to agree with each other but not with the
-    // GapBar above them. One helper, one lattice.
+    // panel snaps an origin it recomputes from scratch every frame. One helper,
+    // one lattice, so the Notices, Timing and GapBar panels all land on the same
+    // one.
     static float snapEdgeX(float edge);
     static float snapEdgeY(float edge);
 
@@ -1423,22 +1311,19 @@ public:
     //
     // DELIBERATELY UNSNAPPED, and that is the whole point: snapping the left edge
     // and holding the centre are different quantizations, and a panel cannot do
-    // both -- with the snap in here the centre walked by up to a cell every time
-    // the width changed, which is exactly the drift this anchor exists to stop.
+    // both -- with a snap in here the centre walks by up to a cell every time the
+    // width changes, which is exactly the drift this anchor exists to stop.
     // Snapping belongs to the DRAG path, which snaps the resulting absolute left
     // edge (see base_hud.cpp) and so still lands a dragged panel on the lattice.
     //
-    // A centre-anchored element also needs NO scale compensation:
-    // setScaleKeepingCenter on top of this recentring double-compensates and
-    // walks the centre by half the growth per step (the Gap Bar shipped that).
+    // A centre-anchored element also needs NO scale compensation: a
+    // centre-preserving setScale on top of this recentring double-compensates and
+    // walks the centre by half the growth per step.
     static float centerAnchoredPanelLeft(float panelW);
 
-    // The default offsetX for such an element: the middle of the screen. The four
-    // wrote it four ways (two local `constexpr float CENTER_X = 0.5f` in anonymous
-    // namespaces, two bare 0.5f literals), which is how Notices and Timing came to
-    // store a DELTA while GapBar and Version stored a CENTRE without anything
-    // saying so. One constant, next to the function that consumes it: a defaults
-    // site that writes THIS is declaring which convention it means.
+    // The default offsetX for such an element: the middle of the screen. One
+    // constant, next to the function that consumes it: a defaults site that writes
+    // THIS is declaring which convention it means.
     static constexpr float CENTER_ANCHOR_X = 0.5f;
 protected:
     // A ring or ring-slice as a fan of quads. Shared by every HUD that draws one;
@@ -1493,15 +1378,6 @@ protected:
                               float cosYaw, float sinYaw, int spriteIndex,
                               unsigned long color);
 
-    // NO setScaleKeepingCenter. It was the center-preserving variant of setScale,
-    // used by the Radar and the Gap Bar: it grew the bounds proportionally and
-    // SHIFTED THE STORED OFFSET so the visual centre stayed put. Both are now
-    // centre-anchored instead (see centerAnchoredPanelLeft), which gets the same
-    // result from the layout, without editing a persisted setting as a side effect
-    // of a scale change and without depending on bounds left over from the previous
-    // render. On the Gap Bar the two mechanisms were stacked and double-compensated,
-    // walking the centre by half the width change per scale step.
-
     // Temperature color gradient: blue (cold) -> green (optimal) -> yellow -> red (hot).
     // Shared by BarsWidget and TyreTempWidget. optTemp is the optimal/midpoint temperature.
     static unsigned long calculateTemperatureColor(float temp, float optTemp,
@@ -1547,8 +1423,7 @@ public:
         // The snap grid at THIS HUD's scale. Every distance a layout file states is
         // in cells, so this is what spends them -- one named conversion instead of
         // each call site remembering whether its value was in lines, cells or
-        // characters (which is what the old *Lines / *Chars / *Cells name soup was
-        // trying and failing to encode).
+        // characters.
         float cellW;
         float cellH;
         float scale;
@@ -1556,11 +1431,6 @@ public:
         // Grid-aligned spacing, in cells. cellW/cellH are already scaled, so these
         // are just named multiplication -- kept because the call sites read better
         // as "one cell across" than as a bare product.
-        //
-        // These held their OWN copies of the grid (0.0111 and 0.0055) until the
-        // lattice became live. The horizontal one happened to match; the vertical
-        // one was 5.4% short of the real cell, so anything spaced with gridV() sat
-        // slightly off the lattice every other part of the UI snapped to.
         float gridV(float units) const { return cellH * units; }
         float gridH(float units) const { return cellW * units; }
     };
@@ -1568,14 +1438,12 @@ public:
     // Declared AFTER ScaledDimensions, which these take by reference: a member
     // function's parameter TYPES must be complete at its declaration (only the
     // body is compiled as if the class were), so up with the other layout helpers
-    // this failed to parse on MSVC and gcc alike.
-    // A BIG VALUE'S ROW -- what Position / Lap / Time / Clock give their one XL number.
-    //
-    // It was lineHeightLarge, a row sized for the glyph CELL. The normalized .fnt
-    // digits ink ~63% of their cell, so an XL value's visible height is about 0.025
-    // where the row reserved 0.047: the widgets stood two rows tall to show one row of
-    // ink, which is why they read as tall next to the Version widget's single row.
-    // The row is now a normal one, and the value is placed by centring its INK in it
+    // these do not parse on MSVC or gcc.
+    // A BIG VALUE'S ROW -- what Position / Lap / Time / Clock give their one XL number
+    // -- is a NORMAL row, not one sized for the glyph CELL: the normalized .fnt digits
+    // ink ~63% of their cell, so an XL value's visible height is about 0.025 where a
+    // cell-sized row would reserve 0.047, and the widget would stand two rows tall to
+    // show one row of ink. The value is placed by centring its INK in the row
     // (bigValueTextY) rather than its cell -- the same distinction the gear digit needs.
     // Which type tier a panel captions at. A panel titles at ONE of two sizes -- the
     // full HUDs at Large, the widgets at Normal -- and the tier picks BOTH the font and
@@ -1583,32 +1451,27 @@ public:
     enum class TitleTier { Normal, Large };
 
     // The reserved title row, or nothing when the caption is off -- the form every
-    // panel actually wants, and which was written out longhand at a dozen call sites.
+    // panel actually wants.
     //
     // ONE HELPER, TIER AS A PARAMETER, because two helpers is two spellings and two
-    // spellings is what drifted. This used to serve the Normal tier only, and its own
-    // comment claimed the Large-tier panels "keep calling titleRowHeight directly".
-    // They did not: thirteen of them wrote `m_bShowTitle ? dim.lineHeightLarge : 0.0f`,
-    // reserving the bare ROW and never reaching titleRowHeight at all.
-    //
-    // THAT WAS NOT COSMETIC, and the exemption in check_hud_helpers.sh rule 7 said why
-    // it looked safe: "lineHeightLarge already exceeds the band, so those panels
-    // over-reserve rather than clip". Measured, that holds only while a BODY CARD is
-    // drawn. Without one the Large tier needs 5 cells and the bare row is 4 -- a 12.67px
-    // shortfall at 1080p, so the first content row starts inside the bottom of its own
-    // title band.
+    // spellings drift. A Large-tier panel comes through here too rather than reserving
+    // the bare ROW (`m_bShowTitle ? dim.lineHeightLarge : 0.0f`): that looks safe --
+    // "lineHeightLarge already exceeds the band, so the panel over-reserves rather
+    // than clips" -- only while a BODY CARD is drawn. Without one the Large tier needs
+    // 5 cells and the bare row is 4 -- a 12.67px shortfall at 1080p, so the first
+    // content row starts inside the bottom of its own title band.
     //
     // And the config that produces it is a theme's DEFAULT, not an exotic one:
     // ThemeAsset::titleBand defaults true while contentCard defaults FALSE, so any theme
     // that ships card slices and does not explicitly write `[card] hud-content = 1` gets
     // a band with no card -- exactly the case that clips. All three SHIPPED themes do
-    // write it, which is why nothing looked wrong and why the grid sweep passed.
+    // write it, so nothing looks wrong on them and the grid sweep cannot see it.
     //
     // titleRowHeight() reserves a plain `rowHeight` for a caption the theme draws no
     // band for -- the same row an untitled site would have used -- so routing a site
-    // through here is pixel-identical unthemed and on every shipped theme. (It USED to
-    // early-out for that case; the early-out is gone, because skipping the arithmetic
-    // also skipped the frame's clearance and the caption then ignored the frame.)
+    // through here is pixel-identical unthemed and on every shipped theme. No early-out
+    // for that case: skipping the arithmetic also skips the frame's clearance, and the
+    // caption then ignores the frame.
     float reservedTitleHeight(const ScaledDimensions& dim,
                               TitleTier tier = TitleTier::Normal) const {
         if (!m_bShowTitle) { m_reservedTitleRow = 0.0f; return 0.0f; }
@@ -1628,69 +1491,52 @@ public:
     // THE PANEL BOX: a content block plus the padding spent at BOTH ends, which is
     // every panel's total height. Its partner panelContentY() answers where that
     // content starts, from the same term -- so a panel's bottom edge and its first
-    // row cannot be derived from two different numbers, which is exactly how the
-    // title row came apart (StandingsHud reserved five cells and advanced four).
+    // row cannot be derived from two different numbers.
     //
     // WHY A HELPER FOR ONE ADDITION. Not to shorten it -- to name WHICH padding.
     // dim.paddingV is theme-aware (contentPaddingY(), a max of base and borders), and
     // that second term is what pushes content clear of the frame's edge slices. Any
-    // other spelling silently opts out of it, which is not hypothetical: PitboardHud
-    // spent dim.lineHeightNormal instead. The two are EQUAL unthemed -- a row is two
-    // cells and so is the padding -- so it read as a harmless synonym for years, and
-    // diverges by 12.67px per side under the shipped themes and 50.69px under Debug,
-    // putting its rows inside the frame. check_hud_helpers.sh rule 11 is what stops
-    // the next synonym.
+    // other spelling silently opts out of it: dim.lineHeightNormal is EQUAL unthemed
+    // -- a row is two cells and so is the padding -- so it reads as a harmless
+    // synonym, and diverges by 12.67px per side under the shipped themes and 50.69px
+    // under Debug, putting rows inside the frame. check_hud_helpers.sh rule 11 is
+    // what stops that synonym.
     //
     // Panels whose height is NOT composed this way keep computing their own and are
     // annotated: a panel sized from ART (GamepadWidget, from the pad photograph's
     // aspect), from a CONTROL (SettingsButtonWidget), or with its own vertical
     // structure (SettingsHud, whose top is a title band and whose body is section
     // cards -- see titleAdvance()).
-    // CEILED TO A CELL, so panels still tile with each other. The terms inside are no
-    // longer all integral -- panelContentY() below anchors content to the body card,
-    // whose interior sits at a fractional row -- and the remainder is spent at the
-    // BOTTOM, inside the card's own border where nothing reads it.
+    //
+    // CEILED TO A CELL, so panels still tile with each other whatever fractional
+    // term the content carries; the remainder is spent at the BOTTOM, inside the
+    // card's own border where nothing reads it.
     float panelHeight(const ScaledDimensions& dim, float contentHeight) const {
         return layout().ceilY(dim.paddingV + contentHeight + dim.paddingV);
     }
-    // WHERE CONTENT BEGINS, and when a body card is drawn that is the CARD'S INTERIOR
-    // rather than the panel's padding.
+    // WHERE CONTENT BEGINS: ONE INSET, BOTH ENDS -- dim.paddingV, carded or not, and
+    // that is what makes content vertically CENTRED in its box instead of merely
+    // inside it.
     //
-    // The two used to be separate chains that met nowhere: the row was
-    // (paddingV + titleRowHeight) from the panel's top while the card was derived from
-    // the panel, and measured across four panels and three frame sizes the gap between
-    // them ran from -0.08 to +1.17 cells -- twice NEGATIVE, meaning content drawn on the
-    // card's own top border. contentCardSpanY() exists because of that mismatch and
-    // three HUDs re-anchored to the card by hand to work around it.
-    //
-    // One rule instead: a card is a border box, and content starts inside its border.
-    // Toggling `[card] hud-content` now moves content by exactly the card's border, on
-    // both axes, which is what the horizontal rule already did.
-    // ONE INSET, BOTH ENDS -- dim.paddingV, carded or not, and that is what makes content
-    // vertically CENTRED in its box instead of merely inside it.
-    //
-    // THE BUG THIS FIXES, and it was visible rather than theoretical: the top spent
-    // frameBorderY + cardBorderY (the card's interior, a raw sum) while panelHeight() spent
-    // paddingV at BOTH ends -- and paddingV is that same sum with its shortfall CEILED to a
-    // whole cell. So the bottom inset exceeded the top by the ceil remainder and content sat
-    // high in its card. At [frame] 2 the gap runs 6.3px at [card] 1, 8.4 at 2, 10.6 at 3 --
-    // and then 0.0 at 4, because a card border is 0.833 of a row-cell per unit while the
-    // ceil only ever adds whole ones, so they realign every third step. A sawtooth, which is
-    // why the amount looked arbitrary and why nobody found the rule by staring at one panel.
+    // NOT THE CARD'S INTERIOR (frameBorderY + cardBorderY, a raw sum) at the top: with
+    // panelHeight() spending paddingV at the bottom -- that same sum with its shortfall
+    // CEILED to a whole cell -- the bottom inset exceeds the top by the ceil remainder
+    // and content sits high in its card. At [frame] 2 the gap runs 6.3px at [card] 1,
+    // 8.4 at 2, 10.6 at 3 -- and then 0.0 at 4, because a card border is 0.833 of a
+    // row-cell per unit while the ceil only ever adds whole ones, so they realign every
+    // third step: a sawtooth, invisible from any one panel.
     //
     // SAFE BECAUSE paddingV >= frameBorderY + cardBorderY ALWAYS, and it is always a whole
     // number of cells -- both verified across every frame x card combination in 0..6, not
     // argued. So content still starts at or below the card's interior and can never be drawn
-    // on the card's own top border, which is the property the carded branch existed for.
-    // With both ends equal and on the lattice, panelHeight()'s outer ceil finds nothing left
-    // to round for a panel whose content is whole rows.
+    // on the card's own top border. With both ends equal and on the lattice, panelHeight()'s
+    // outer ceil finds nothing left to round for a panel whose content is whole rows.
     //
     // WHAT IT COSTS, because it is a real trade and not a free win: toggling
-    // `[card] hud-content` no longer moves content by EXACTLY the card's border. paddingV
-    // only changes when the sum crosses a cell boundary, so the flip now moves content by a
-    // whole cell or by nothing. That exactness was deliberate -- see the git history of this
-    // function -- but it was bought with an asymmetry a user can see, and centred content is
-    // worth more than a tidy flip. The additive box model (BOX-MODEL-PORT) gets both.
+    // `[card] hud-content` does not move content by EXACTLY the card's border. paddingV
+    // only changes when the sum crosses a cell boundary, so the flip moves content by a
+    // whole cell or by nothing. Centred content is worth more than a tidy flip; the
+    // additive box model (BOX-MODEL-PORT) gets both.
     float panelContentY(const ScaledDimensions& dim, float panelTop) const {
         return panelTop + dim.paddingV;
     }
@@ -1763,7 +1609,7 @@ public:
     struct PanelWant {
         float contentW = 0.0f;             // widest section row, normalized units
         // INLINE up to 8 sections (see small_vec.h): this struct is built and
-        // destroyed once per HUD per rebuild, and a std::vector here cost one
+        // destroyed once per HUD per rebuild, and a std::vector here costs one
         // heap round-trip -- 1.57us in the game process -- per rebuild.
         SmallVec<float, 8> sectionH;       // per-section content height, normalized
         float captionW = 0.0f;             // caption text width (0 = never wins the ask)
@@ -1775,9 +1621,9 @@ public:
         // THE CONTENT IS A SLAB, NOT ROWS -- so the panel's own padding becomes part
         // of it instead of a margin around it: full-bleed to the sides and the
         // bottom, and to the top too when no title is shown. A shown title keeps
-        // the top padding as its own air (the caption is rows, not slab -- flush
-        // against the panel's top edge it read as a defect, and was reported as
-        // one). UNTHEMED ONLY: with a theme the frame art needs that ring, and
+        // the top padding as its own air (the caption is rows, not slab, and flush
+        // against the panel's top edge it reads as a defect). UNTHEMED ONLY: with a
+        // theme the frame art needs that ring, and
         // the padding is the theme's to spend.
         //
         // The panel does NOT change size. The engine moves the padding into the
@@ -1795,9 +1641,8 @@ public:
         bool contentFillsPanel = false;
         // THE BODY AS COLUMNS, for a panel whose body is a horizontal split. Same
         // shape as PanelBox::BandAsk, in NORMALIZED units like every field above --
-        // the engine has carried columns since the box model landed (panel_box.h
-        // names the settings panel's sidebar as the reason), and this is the plan
-        // layer catching up so a caller can reach them.
+        // the engine carries columns (panel_box.h names the settings panel's sidebar
+        // as the reason), and this is how a caller reaches them.
         //
         // Set `bands` OR contentW/sectionH, never both: bands wins, exactly as
         // PanelBox::Spec resolves the same pair.
@@ -1830,13 +1675,12 @@ public:
             return Y(g.sections[section < g.sections.size() ? section : 0].rowsTop);
         }
         float contentW() const { return W(g.cols); }
-        // The content box's RIGHT edge -- where a right-aligned value ends. Three
-        // panels derived this by mirroring the LEFT inset onto the right edge
-        // (`panelLeft + width - (contentX - panelLeft)`), which is the same number
-        // only while [content] border and padding are horizontally symmetric. Write
-        // `border = 2 0 4 6` and the mirror pulls right-aligned values a whole left
-        // border inward, into the labels beside them -- the Fuel widget's value over
-        // its own label, reported from exactly that theme.
+        // The content box's RIGHT edge -- where a right-aligned value ends. NOT the
+        // LEFT inset mirrored onto the right edge (`panelLeft + width - (contentX -
+        // panelLeft)`), which is the same number only while [content] border and
+        // padding are horizontally symmetric. Write `border = 2 0 4 6` and the mirror
+        // pulls right-aligned values a whole left border inward, into the labels
+        // beside them.
         float contentRight() const { return contentX() + contentW(); }
         // A section's DRAWN BOX -- the card as the player sees it, border included,
         // which is NOT the content band above when [content] border is asymmetric:
@@ -1846,9 +1690,7 @@ public:
         // Centre a single big value in THIS, not in the content band. Every shipped
         // theme has a symmetric card border, so the two agree and this changes
         // nothing; write `border = 2 0 4 6` and the value drawn from the band sits a
-        // cell above the middle of the card it is drawn on. Timing centred in the box
-        // and looked right; the Version widget, the Gap Bar, Notices and the Bars
-        // widget centred in the band and did not.
+        // cell above the middle of the card it is drawn on.
         //
         // Rows still start at contentY(): a LIST belongs inside the border, and only
         // a lone value centred in its card has a reason to ask where the card is.
@@ -1864,9 +1706,9 @@ public:
         // (g.cardLeft/cardW -- one column, shared by every section). CENTRED
         // content anchors HERE, never at the panel's centre: the two are the same
         // number only while the [content] terms are left/right symmetric, and a
-        // skinner's `margin = 4 6 8 0` moved the panel's centre outside the card
-        // -- every big value, gauge and chip that centred on `startX +
-        // backgroundWidth / 2` slid off its own card while the card stayed put.
+        // skinner's `margin = 4 6 8 0` moves the panel's centre outside the card
+        // -- a big value, gauge or chip centred on `startX + backgroundWidth / 2`
+        // slides off its own card while the card stays put.
         // ALIGNED content keeps contentX()/contentRight(): a column respects the
         // card's border and padding; only centring answers to the drawn box.
         float sectionBoxX() const { return X(g.cardLeft); }
@@ -1896,18 +1738,14 @@ public:
         // padding, the padding is air around the rows and the highlight is one of
         // the things it is air around.
         //
-        // NOT THE CARD'S INTERIOR, which was tried and reverted: it makes the band
-        // absorb [content] padding, i.e. "the highlight grows outside the content of
-        // the card way beyond where the text is" -- the reported bug that
-        // standings_row_band_test exists to pin. That test asserts the card-to-band
-        // clearance GROWS with the padding, which only the rows box does.
+        // NOT THE CARD'S INTERIOR: that makes the band absorb [content] padding, i.e.
+        // the highlight grows outside the content of the card, way beyond where the
+        // text is. standings_row_band_test pins it: the card-to-band clearance GROWS
+        // with the padding, which only the rows box does.
         //
-        // Four emitters spanned three different boxes before this owner existed:
-        // StandingsHud, RecordsHud and the settings SIDEBAR took the rows box, while
-        // the settings panel's content rows took the card interior (a hand-rolled
-        // planCardRightX - cardBorderX(), with a second spelling for the unthemed
-        // case) -- so one panel highlighted two ways at once, a column apart. The
-        // rows box is what the other three already agreed on.
+        // ONE OWNER for every emitter -- StandingsHud, RecordsHud, the settings
+        // SIDEBAR and the settings panel's content rows -- so one panel cannot
+        // highlight two ways at once, a column apart.
         float rowBandX(const PanelBox::ColumnGeom& c) const { return X(c.rowsLeft); }
         float rowBandW(const PanelBox::ColumnGeom& c) const { return W(c.rowsW); }
         // The one-column form, for a panel with no split body.
@@ -1919,9 +1757,9 @@ public:
     // MEMOISED against the last call's inputs. A plan is a pure function of the
     // ask, the scaled metrics and the theme, and for most panels none of those
     // move between frames -- SpeedWidget asks for the same box every frame and
-    // only the NUMBER inside it changes. Measured in-game it was 5.8us per
-    // invocation and 53% of all rebuild time, on panels emitting as little as one
-    // quad and three strings.
+    // only the NUMBER inside it changes. Measured in-game, computing a plan costs
+    // 5.8us per invocation -- 53% of all rebuild time unmemoised, on panels emitting
+    // as little as one quad and three strings.
     //
     // The key is the whole input set (want + dim + theme generation) rather than a
     // hand-picked subset: dim carries scale AND the layout metrics, so an
@@ -1931,11 +1769,11 @@ public:
     //
     // A member states the stack width as its panel MINIMUM and states NO content
     // width of its own: the minimum then owns the width, so every member lands on
-    // it whatever it happens to draw. State BOTH and the wider wins -- which is
-    // how VersionWidget came to outgrow its neighbours by 78px the moment
-    // [Advanced] padding grew, while the three that leave contentW at 0 sat on
-    // the shared minimum. The same trap gap_bar_hud.cpp documents at its own
-    // minPanelW ("setting both would make the wider of the two win").
+    // it whatever it happens to draw. State BOTH and the wider wins -- the member
+    // then outgrows its neighbours the moment [Advanced] padding grows, while the
+    // members that leave contentW at 0 sit on the shared minimum. The same trap
+    // gap_bar_hud.cpp documents at its own minPanelW ("setting both would make the
+    // wider of the two win").
     //
     // A panel that must fit content the stack width cannot hold is not a stack
     // member: VersionWidget's update popup sizes to its message and button row
@@ -1973,16 +1811,6 @@ public:
     // row-centring compensation, or the bare row top. Exposed for layout fast
     // paths that repositionString the caption without re-emitting it.
     float planTitleY(const PanelPlan& p) const;
-    // (planStandardPanel lived here: a four-field shorthand for "chars across, one
-    // section down, caption on top". It was written to replicate what
-    // calculateBackgroundWidth/Height composed on the LEGACY chain, and it outlived
-    // that chain's retirement by about an hour. Seven panels used it and twenty-seven
-    // did not -- sixteen of those for real reasons (a gauge's width is geometric, not
-    // a character count; several stack sections or carry button rows), so the
-    // shorthand served a minority shape while making "which entry point?" a question
-    // at every new HUD. Its callers now state the four fields, which is what the
-    // other twenty-seven already did and reads better besides: named fields instead
-    // of four positional arguments. One way to plan a panel.)
     // The resolved [button] box terms at this HUD's scale, for a panel laying
     // out its own NON-UNIFORM button row (the settings footer: differing
     // labels, so PanelWant's uniform buttons don't fit). insetL/R are the
@@ -1990,9 +1818,9 @@ public:
     // sibling buttons keep — the SUM of the facing margins, the model's rule.
     // The [button] box terms resolved to pixels for a HUD laying its own button
     // row: insets are border+padding per side (the box around the label), gap is
-    // the SUM of facing margins, marginT/B the row's own vertical margins. The
-    // vertical half was missing — buttons drew as one bare text row however the
-    // terms were set, and no panel grew with them.
+    // the SUM of facing margins, marginT/B the row's own vertical margins. Both
+    // halves: without the vertical terms buttons draw as one bare text row however
+    // the terms are set, and no panel grows with them.
     // The [panel] junction gap, resolved to pixels and drawn square on screen --
     // the seam the box model spends between a panel's stacked children (band->card,
     // card->card, card->buttons; layout_metrics.h names all three).
@@ -2005,9 +1833,7 @@ public:
     // above it while a PLANNED row (PanelWant::buttons, where panel_box.h spends
     // `y += gapY` itself) keeps its air.
     //
-    // Exists because the conversion was spelled out by hand in the one place that
-    // needed it (titleBandSlackY, just below), so the second caller would have been
-    // a second spelling of the same three terms.
+    // One spelling of the conversion, shared with titleBandSlackY.
     float panelGapY(const ScaledDimensions& dim) const {
         return panelGapCells() * dim.cellW * PluginConstants::UI_ASPECT_RATIO;
     }
@@ -2019,17 +1845,16 @@ public:
     // committing to it, and without the caller re-deriving the stacking.
     //
     // Exists for the settings panel, which must size itself to its TALLEST tab and
-    // therefore has to price a layout it is not going to draw. The alternative -- and
-    // what was there before -- was to compare content FLOW (a cursor's end position),
-    // which is a different quantity: a column's body is sum(section heights) plus,
-    // per section, the card's margin/border/padding, plus a seam between each pair.
-    // Two of those three scale with the SECTION COUNT and not with the cursor, so the
-    // floor was systematically short for tabs with many sections and the panel
-    // changed height as you switched tabs.
+    // therefore has to price a layout it is not going to draw. Comparing content FLOW
+    // (a cursor's end position) is a different quantity: a column's body is
+    // sum(section heights) plus, per section, the card's margin/border/padding, plus
+    // a seam between each pair. Two of those three scale with the SECTION COUNT and
+    // not with the cursor, so a flow-based floor is systematically short for tabs
+    // with many sections and the panel changes height as you switch tabs.
     //
     // Deliberately NOT by exposing resolvePanelSpec: that is documented as the only
-    // reader of the theme's box terms, and a caller summing those terms itself is the
-    // second-spelling failure this panel's history is made of.
+    // reader of the theme's box terms, and a caller summing those terms itself is a
+    // second spelling of them.
     float planBodyHeight(const ScaledDimensions& dim, const PanelWant& want) const;
 private:
     // The eleven theme terms + switches for THIS panel, resolved: a set box key
@@ -2044,16 +1869,13 @@ protected:
 
     // A DEFAULT POSITION, stated in grid cells.
     //
-    // Every shipped default was a decimal -- setPosition(0.0055f, 0.30507f) -- and
-    // every one of them was a whole number of cells wearing a decimal costume: 0.0055
-    // is one cellW, 0.30507 is twenty-six cellH, 0.73150 is a hundred and thirty-three
-    // cellW. 33 of the 35 shipped defaults were exact.
-    //
-    // That is the grid written down twice, and the second copy cannot follow the
-    // first: uiFontSize moves the lattice, and a frozen decimal stays where it was, so
-    // a user who resizes the UI gets defaults that no longer land on the grid every
-    // panel snaps to. Stating them in cells makes them follow, and makes the number
-    // readable -- "one cell in, twenty-six down" instead of 0.30507f.
+    // A decimal default -- setPosition(0.0055f, 0.30507f) -- is a whole number of
+    // cells wearing a decimal costume (one cellW, twenty-six cellH), and it is the
+    // grid written down twice: uiFontSize moves the lattice, and a frozen decimal
+    // stays where it was, so a user who resizes the UI gets defaults that no longer
+    // land on the grid every panel snaps to. Stating them in cells makes them follow,
+    // and makes the number readable -- "one cell in, twenty-six down" instead of
+    // 0.30507f.
     //
     // layoutDefaults(), not layout(): a default position is not a themed quantity, and
     // these are called from resetToDefaults() where there is no theme context anyway.
@@ -2079,24 +1901,20 @@ protected:
     // each chart's name on Session Charts, the server line on Session.
     //
     // THE SAME CONCEPT the settings panel calls a section heading, and deliberately
-    // the same NAME (SettingsLayoutContext::addSectionHeading). They were briefly
-    // split -- "heading" in the settings panel, "subtitle" in a HUD -- and the split
-    // did not survive being measured: same size, same colour, same one-row advance,
-    // same job of opening a card and sitting inside it. The only difference is the
-    // FACE, and that is a property of the surface rather than of the idea: the
-    // settings panel's body is monospace so its heading is the STRONG (bold mono)
-    // face, a HUD's identity is the TITLE face so its heading is that. Two renderings
-    // of one thing do not need two words.
+    // the same NAME (SettingsLayoutContext::addSectionHeading): same size, same
+    // colour, same one-row advance, same job of opening a card and sitting inside
+    // it. The only difference is the FACE, and that is a property of the surface
+    // rather than of the idea: the settings panel's body is monospace so its heading
+    // is the STRONG (bold mono) face, a HUD's identity is the TITLE face so its
+    // heading is that. Two renderings of one thing do not need two words.
     //
     // The vocabulary, borrowed from CSS along with the ini's shape: the panel's title
     // band is the h1, a section heading is the h2, addLabel() is the small text that
     // captions a column or an axis. "Subtitle" would have meant a second title under
     // the first, which is not what any of these are.
     //
-    // ONE STYLE, defined here rather than at five call sites. Four HUDs each spelled
-    // it out and three agreed; SessionHud drew its server line at fontSizeExtraLarge
-    // -- an h1's size -- and since that HUD also shipped with its real title off, the
-    // data WAS the title.
+    // ONE STYLE, defined here rather than at each call site, so a heading cannot be
+    // drawn at an h1's size and read as the title.
     //
     // A heading belongs INSIDE the card it opens. See beginContentSection().
     void addSectionHeading(const char* text, float x, float y, const ScaledDimensions& dim,
@@ -2136,9 +1954,9 @@ protected:
     // idle channel costs nothing. maxHistory fixes the point spacing so the graph
     // width is constant regardless of how full the deque is.
     // One strip-chart polyline. Templated on the container so telemetry's and
-    // rumble's histories (different capacities, same shape) share one emitter --
-    // it took a std::deque<float>&, which is the storage that made those two the
-    // most expensive panels in the plugin. See core/history_ring.h.
+    // rumble's histories (different capacities, same shape) share one emitter
+    // without going through a std::deque<float>&, whose storage would make those
+    // two the most expensive panels in the plugin. See core/history_ring.h.
     template <typename Hist>
     void addStripChartHistoryLine(const Hist& history, unsigned long color,
                                   float x, float y, float width, float height,
@@ -2199,12 +2017,10 @@ protected:
     // dark theme it is PRIMARY and BACKGROUND is near-black; on a light one those
     // are the other way round, so any hardcoded slot is wrong for half the themes.
     //
-    // Replaces "accent on accent", which the two chip widgets both used. That only
-    // ever worked because every theme was dark AND the chip is half-alpha: a
-    // full-strength accent glyph read against its own dimmed wash. On the light
-    // a light theme the same pair is navy on navy over a dark track, which is
-    // invisible -- and on the dark themes this is an improvement anyway, since
-    // white on purple beats purple on purple.
+    // NOT "accent on accent": that only works while the theme is dark AND the chip
+    // is half-alpha, a full-strength accent glyph read against its own dimmed wash.
+    // On a light theme the same pair is navy on navy over a dark track, which is
+    // invisible; on a dark one white on purple beats purple on purple anyway.
     unsigned long chipGlyphColor(unsigned long chip) const {
         const unsigned long bg = getColor(ColorSlot::BACKGROUND);
         const unsigned long fg = getColor(ColorSlot::PRIMARY);
@@ -2284,7 +2100,7 @@ public:
     int m_titleIconQuadIndex = -1;     // index into m_quads of the title icon
     // Span of m_quads written by the last addBackgroundQuad: 1 quad normally, 9
     // when a panel theme is active. updateBackgroundQuadPosition rewrites exactly
-    // this span (it previously hardcoded m_quads[0], which a themed panel breaks).
+    // this span (not m_quads[0], which a themed panel breaks).
     int m_bgQuadFirst = -1;
     int m_bgQuadCount = 0;
     // The panel rect that span covers, offset already applied. Recorded so the

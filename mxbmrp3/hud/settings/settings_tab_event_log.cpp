@@ -4,6 +4,7 @@
 // ============================================================================
 #include "settings_layout.h"
 #include "../settings_hud.h"
+#include "../radar_hud.h"
 #include "../event_log_hud.h"
 
 // Static member function of SettingsHud - handles click events for Event Log tab
@@ -53,8 +54,8 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     case EventLogHud::DisplayMode::ON:        modeStr = "Always"; break;
     case EventLogHud::DisplayMode::AUTO_HIDE: modeStr = "Auto-hide"; break;
     }
-    // tooltipOnArrows=false on all three cycles below: these arrows historically
-    // had no per-type tooltip fallback (no TAB_EVENT_LOG section in
+    // tooltipOnArrows=false on all three cycles below: these arrows have no
+    // per-type tooltip fallback (no TAB_EVENT_LOG section in
     // getTooltipIdForRegion), so keep the tooltip on the row region only.
     ctx.addCycleControl("Show mode", modeStr, 10,
         SettingsHud::CycleControl::enumMember(hud, &EventLogHud::m_displayMode, 3, hud),
@@ -64,9 +65,9 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     bool autoHideEnabled = (hud->m_displayMode == EventLogHud::DisplayMode::AUTO_HIDE);
     char durationValue[16];
     snprintf(durationValue, sizeof(durationValue), "%ds", hud->m_autoHideDurationMs / 1000);
-    // tooltipOnArrows=false: these arrows historically had no per-type tooltip
-    // fallback (no TAB_EVENT_LOG section in getTooltipIdForRegion), so keep the
-    // tooltip on the row region only.
+    // tooltipOnArrows=false: these arrows have no per-type tooltip fallback (no
+    // TAB_EVENT_LOG section in getTooltipIdForRegion), so keep the tooltip on
+    // the row region only.
     ctx.addSteppedControl("Duration", durationValue, 10,
         SettingsHud::SteppedControl::wrapInt(&hud->m_autoHideDurationMs,
             EventLogHud::AUTO_HIDE_STEP_MS, EventLogHud::MIN_AUTO_HIDE_MS,

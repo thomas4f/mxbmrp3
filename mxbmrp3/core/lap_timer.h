@@ -10,13 +10,12 @@
 // TimingHud, LapLogHud and IdealLapHud through PluginData's thin wrappers
 // (plugin_data_lap_timer.cpp), which own the display-rider gating and logging.
 //
-// WHY IT LIVES HERE AND NOT IN plugin_data_types.h / PluginData. The struct
-// held the state but the transitions lived in PluginData methods, so the state
-// machine could only be exercised through the DLL under Wine. The transitions
-// read nothing of PluginData beyond the timer itself — moving them here makes
-// the machine a unit: tests/unit/test_lap_timer.cpp drives the transitions
-// with a plain g++. (Elapsed-time reads still use the real steady_clock; the
-// tests assert transition STATE, not wall-clock durations.)
+// WHY IT LIVES HERE AND NOT IN plugin_data_types.h / PluginData. The
+// transitions read nothing of PluginData beyond the timer itself, so keeping
+// them with the state makes the machine a unit: tests/unit/test_lap_timer.cpp
+// drives the transitions with a plain g++ rather than through the DLL under
+// Wine. (Elapsed-time reads use the real steady_clock; the tests assert
+// transition STATE, not wall-clock durations.)
 //
 // THE GRID-START GRACE (anchoredFromRaceStart — don't "simplify" it away): on
 // a standing start the green flag is the race's t=0, so the timer anchors at
@@ -101,7 +100,7 @@ struct LapTimer {
     }
 
     // ------------------------------------------------------------------------
-    // Transitions (the state machine; previously inline in PluginData)
+    // Transitions (the state machine)
     // ------------------------------------------------------------------------
 
     // Feed a track-position sample. Detects an S/F crossing via wraparound

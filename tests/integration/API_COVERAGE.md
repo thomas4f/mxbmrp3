@@ -104,6 +104,7 @@ manual in-game.
 | Settings save is **deferred** (off-track only) | user / derived | B | ✅ | settings_defer_test (a HUD drag/toggle only `markDirty`s - no write; the write happens once on the leave-track flush / manual Save; never mid-ride). The "no save while on track" contract |
 | Settings menu remembers its **open tab** | user | B | ✅ | settings_tab_test (last-focused tab round-trips through save/load by name; an unknown/unavailable tab name is ignored - no empty tab) |
 | Reset all / active-profile / one HUD | user | B | ✅ | Reset All (reset_test); active-profile + per-HUD scope (reset_profile_test) |
+| Reset ONE TAB ("Reset `<tab>`") | user | B | ✅ | reset_tab_test (every tab: perturb every control it emits, press its Reset, require the file back at factory - enumerated from the panel itself, so a new control is covered without touching the test) |
 | Copy profile to all | user | B | ✅ | reset_profile_test (active diff propagates to all profiles) |
 | Switch profile (manual + auto-by-session) | user / derived | B / A | ✅ | reset_profile_test (manual switch persists + preserves diffs); autoswitch_test (session type → active profile follows: Practice/Qualify/Race; disabling stops it overriding a manual pick) |
 | Auto-director: **battle detection** (`battles[]`) | derived | **A** | ✅ | director_test (two engineered groups + gap break; negative-control verified) |

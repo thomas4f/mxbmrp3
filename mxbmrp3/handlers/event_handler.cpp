@@ -82,4 +82,7 @@ void Handlers::handleEventDeinit() {
     // Update Discord presence to show "In Menus" (track is now empty)
     DiscordManager::getInstance().onEventEnd();
 #endif
+
+    // Event over: same as handleRunDeinit — the overlay's HUD comes off screen
+    // now, which covers leaving the event/server without a run deinit first.
 }

@@ -3,8 +3,8 @@
 // Global (non-per-profile) settings serialization for SettingsManager:
 // writeGlobalSettings() / applyGlobalLine() and their helpers. These handle the
 // [General], [Rumble], [HelmetOverlay], [Display], [WebServer], colors, fonts,
-// hotkeys, and per-feature analytics-flag sections. Split out of
-// settings_manager.cpp (which owns per-HUD capture/apply/serialize and load).
+// hotkeys, and per-feature analytics-flag sections. settings_manager.cpp owns
+// per-HUD capture/apply/serialize and load.
 // ============================================================================
 // file-budget: 1500 one applyGlobalLine/writeGlobalSettings pair per global section
 #include "settings_manager.h"
@@ -46,7 +46,7 @@
 // settings_hud.h is core (every game has the settings menu, and getSettingsHud() is
 // used unconditionally below), and it pulls records_hud.h itself; both .cpp files are
 // compiled on every game, so neither include may be gated on GAME_HAS_RECORDS_PROVIDER
-// — gating it broke the GPB/KRP builds (SettingsHud left incomplete -> C2027). The
+// — gated, the GPB/KRP builds fail (SettingsHud left incomplete -> C2027). The
 // *provider* feature stays runtime/registration-gated; only these includes are always on.
 #include "../hud/records_hud.h"
 #include "../hud/settings_hud.h"
@@ -193,10 +193,9 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
 #endif
     out << "\n";
 
-    // Write Updates section (auto-update settings, owned solely by the Updates tab).
-    // Consolidated here from [General] (updateMode/dismissedVersion) and [Advanced]
-    // (updateChannel/updateDebugMode) so the tab maps 1:1 to one INI section and resets
-    // via section replay. updateChannel is written before dismissedVersion because
+    // Write Updates section (auto-update settings, owned solely by the Updates tab, so
+    // the tab maps 1:1 to one INI section and resets via section replay).
+    // updateChannel is written before dismissedVersion because
     // setChannel() clears the dismissed version when the channel changes — applying it
     // first keeps a same-channel dismissal intact on load.
     {
@@ -240,13 +239,6 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
     out << IniOnly::Advanced::BOX_BUTTON_MARGIN.key << "=" << PanelBox::formatSides(layoutDefaults().boxButtonMargin) << " ; " << IniOnly::Advanced::BOX_BUTTON_MARGIN.description << "\n";
     out << IniOnly::Advanced::BOX_BUTTON_PADDING.key << "=" << PanelBox::formatSides(layoutDefaults().boxButtonPadding) << " ; " << IniOnly::Advanced::BOX_BUTTON_PADDING.description << "\n";
     out << IniOnly::Advanced::BOX_PANEL_GAP.key << "=" << PanelBox::formatSides({layoutDefaults().boxPanelGap, layoutDefaults().boxPanelGap, layoutDefaults().boxPanelGap, layoutDefaults().boxPanelGap}) << " ; " << IniOnly::Advanced::BOX_PANEL_GAP.description << "\n";
-    // Note: updateChannel/updateMode/updateDebugMode/dismissedVersion moved to [Updates]
-    // Note: mapPixelSpacing moved to [MapHud]
-    // Note: speedoNeedleColor, speedoShowOdometer, speedoShowTripmeter moved to [SpeedoWidget]
-    // Note: tachoNeedleColor moved to [TachoWidget]
-    // Note: leanArcFillColor moved to [LeanWidget]
-    // Note: recordsShowFooter moved to [RecordsHud]
-    // Note: standingsTopPositions, standingsUseAccentHighlight moved to [StandingsHud]
     out << IniOnly::Advanced::DROP_SHADOW_OFFSET_X.key << "=" << UiConfig::getInstance().getDropShadowOffsetX() << " ; " << IniOnly::Advanced::DROP_SHADOW_OFFSET_X.description << "\n";
     out << IniOnly::Advanced::DROP_SHADOW_OFFSET_Y.key << "=" << UiConfig::getInstance().getDropShadowOffsetY() << " ; " << IniOnly::Advanced::DROP_SHADOW_OFFSET_Y.description << "\n";
     out << IniOnly::Advanced::DROP_SHADOW_COLOR.key << "=" << PluginUtils::formatColorHex(UiConfig::getInstance().getDropShadowColor()) << " ; " << IniOnly::Advanced::DROP_SHADOW_COLOR.description << "\n";
@@ -275,6 +267,16 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
     out << IniOnly::Advanced::BLUE_FLAG_AWARENESS_DISTANCE.key << "=" << prox.blueFlagAwarenessDistance << " ; " << IniOnly::Advanced::BLUE_FLAG_AWARENESS_DISTANCE.description << "\n";
     out << IniOnly::Advanced::GAP_NOTIFY_INTERVAL_MS.key << "=" << PluginData::getInstance().getGapNotifyIntervalMs() << " ; " << IniOnly::Advanced::GAP_NOTIFY_INTERVAL_MS.description << "\n";
     out << IniOnly::Advanced::PLUGIN_THREAD.key << "=" << (UiConfig::getInstance().getPluginThread() ? 1 : 0) << " ; " << IniOnly::Advanced::PLUGIN_THREAD.description << "\n";
+    // overlayInGame and overlayRefreshHz are retired keys: ACCEPTED and ignored on
+    // load (see applyGlobalLine) so an existing INI does not error, and never
+    // written back.
+    out << IniOnly::Advanced::HW_ACCEL.key << "=" << (CompanionWindow::getInstance().getHwAccel() ? 1 : 0) << " ; " << IniOnly::Advanced::HW_ACCEL.description << "\n";
+    out << IniOnly::Advanced::GL_IN_GAME.key << "=" << (UiConfig::getInstance().getGlInGame() ? 1 : 0) << " ; " << IniOnly::Advanced::GL_IN_GAME.description << "\n";
+    out << IniOnly::Advanced::GL_PROBE.key << "=" << UiConfig::getInstance().getGlProbe() << " ; " << IniOnly::Advanced::GL_PROBE.description << "\n";
+    out << IniOnly::Advanced::GL_PROBE_X.key << "=" << UiConfig::getInstance().getGlProbeX() << " ; " << IniOnly::Advanced::GL_PROBE_X.description << "\n";
+    out << IniOnly::Advanced::GL_PROBE_Y.key << "=" << UiConfig::getInstance().getGlProbeY() << " ; " << IniOnly::Advanced::GL_PROBE_Y.description << "\n";
+    out << IniOnly::Advanced::GL_PROBE_QUADS.key << "=" << UiConfig::getInstance().getGlProbeQuads() << " ; " << IniOnly::Advanced::GL_PROBE_QUADS.description << "\n";
+    out << IniOnly::Advanced::GL_PROBE_BATCH.key << "=" << UiConfig::getInstance().getGlProbeBatch() << " ; " << IniOnly::Advanced::GL_PROBE_BATCH.description << "\n";
     out << IniOnly::Advanced::RENDER_PROBE_QUADS.key << "=" << UiConfig::getInstance().getRenderProbeQuads() << " ; " << IniOnly::Advanced::RENDER_PROBE_QUADS.description << "\n";
     out << IniOnly::Advanced::RENDER_PROBE_FULLSCREEN.key << "=" << (UiConfig::getInstance().getRenderProbeFullscreen() ? 1 : 0) << " ; " << IniOnly::Advanced::RENDER_PROBE_FULLSCREEN.description << "\n";
     out << IniOnly::Advanced::RENDER_PROBE_TYPE.key << "=" << UiConfig::getInstance().getRenderProbeType() << " ; " << IniOnly::Advanced::RENDER_PROBE_TYPE.description << "\n";
@@ -473,11 +475,10 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
         // Pack folder name under mxbmrp3_data/spotters. NO INLINE COMMENT, and it
         // must stay that way: `pack` is one of the keys the loader does not strip
         // a `;` from (Settings::isFolderNameValue -- a semicolon is legal in a
-        // folder name and truncating it destroyed the stored choice), so a comment
+        // folder name and truncating it destroys the stored choice), so a comment
         // added here would be read as part of the name. tts_voice below keeps its
         // comment and keeps stripping, which is why it is not on that list.
-        // (The "empty = built-in phrases" note here was also stale: the built-ins
-        // are gone, and reloadCuePack reads an empty name as the shipped pack.)
+        // reloadCuePack reads an empty name as the shipped pack.
         out << Settings::Keys::Global::SPOTTER_PACK << "="
             << spotter.getPackName() << "\n";
         out << "tts_voice=" << spotter.getTtsVoice() << " ; Windows voice for TTS cues (blank = system default)\n";
@@ -595,10 +596,11 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
             if (key == "autoSave") {
                 UiConfig::getInstance().setAutoSave(std::stoi(value) != 0);
             }
-            // Legacy read-only fallbacks: update settings relocated to [Updates]. Old INIs
-            // still carry them under [General], so read them here to preserve values on
-            // upgrade. Saving writes them only under [Updates], so they migrate on the next
-            // save and these branches stop matching. (checkForUpdates is an even older alias.)
+            // Legacy read-only fallbacks for the update settings that live in [Updates]:
+            // an old INI carries them under [General], so read them here to preserve
+            // values on upgrade. Saving writes them only under [Updates], so they migrate
+            // on the next save and these branches stop matching. (checkForUpdates is an
+            // older alias.)
             else if (key == "updateMode") {
                 // Supported modes: off, notify (auto is treated as notify for backward compatibility)
                 if (value == "off") {
@@ -656,10 +658,10 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 HttpServer::getInstance().setEnabled(std::stoi(value) != 0);
             }
 #endif
-            // Legacy read-only fallbacks: these eight relocated to [Display]. Old INIs
-            // still carry them under [General], so read them here to preserve values
-            // on upgrade. Saving writes them only under [Display], so they migrate on
-            // the next save and these branches stop matching.
+            // Legacy read-only fallbacks for these eight [Display] keys: an old INI
+            // carries them under [General], so read them here to preserve values on
+            // upgrade. Saving writes them only under [Display], so they migrate on the
+            // next save and these branches stop matching.
             else if (key == "speedUnit") {
                 hudManager.getSpeedWidget().m_speedUnit = stringToSpeedUnit(value);
             } else if (key == "fuelUnit") {
@@ -683,8 +685,8 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
         return true;
     }
 
-    // Handle Display section (speed/fuel/temp units + clock format; moved here
-    // from [General] — shown first on the Appearance tab)
+    // Handle Display section (speed/fuel/temp units + clock format; shown first on
+    // the Appearance tab)
     if (section == "Display") {
         try {
             if (key == "speedUnit") {
@@ -741,7 +743,7 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
         return true;
     }
 
-    // Handle Updates section (auto-update settings; consolidated from [General]/[Advanced])
+    // Handle Updates section (auto-update settings)
     if (section == "Updates") {
         try {
             if (key == "updateChannel") {
@@ -786,9 +788,8 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
             // itself rewrites, so there is no author to warn and no previous value worth
             // keeping -- landing on the nearest sane number is the useful behaviour.
             // Both call derive(), so the whole vocabulary follows immediately. Nothing
-            // downstream needs re-seeding: a theme has no layout of its own any more, so
-            // the ordering hazard this would otherwise have (settings load runs AFTER
-            // theme discovery) went away with per-theme layout.
+            // downstream needs re-seeding: a theme has no layout of its own, so it does
+            // not matter that settings load runs AFTER theme discovery.
             // parseFiniteFloat, not bare std::stof: "nan" parses cleanly and then poisons
             // every derived metric (see layoutSetFontSize). The setters guard too -- this
             // is the load half of the both-ends rule, and it keeps the fallback here
@@ -828,9 +829,9 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 layoutSetBoxScalar(LayoutConfig::getInstance().mutableDefaults().boxPanelGap,
                                    value, LayoutMetrics{}.boxPanelGap);
             }
-            // Legacy read-only fallbacks: updateChannel/updateDebugMode relocated to [Updates].
-            // Old INIs carry them under [Advanced]; read them so values survive the upgrade,
-            // then they migrate to [Updates] on the next save.
+            // Legacy read-only fallbacks for updateChannel/updateDebugMode, which live in
+            // [Updates]: an old INI carries them under [Advanced]; read them so values
+            // survive the upgrade, then they migrate to [Updates] on the next save.
             else if (key == "updateChannel") {
                 if (value == "prerelease") {
                     UpdateChecker::getInstance().setChannel(UpdateChecker::UpdateChannel::PRERELEASE);
@@ -841,7 +842,6 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 bool debugMode = (std::stoi(value) != 0);
                 UpdateChecker::getInstance().setDebugMode(debugMode);
                 UpdateDownloader::getInstance().setDebugMode(debugMode);
-            // Note: mapPixelSpacing moved to [MapHud]
             } else if (key == "speedoNeedleColor") {
                 hudManager.getSpeedoWidget().setNeedleColor(PluginUtils::parseColorHex(value, hudManager.getSpeedoWidget().getNeedleColor()));
             } else if (key == "speedoShowOdometer") {
@@ -905,6 +905,41 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 PluginData::getInstance().setGapNotifyIntervalMs(std::stoi(value));
             } else if (key == "pluginThread") {
                 UiConfig::getInstance().setPluginThread(std::stoi(value) != 0);
+            } else if (key == "overlayInGame") {
+                // RETIRED KEY (the overlay window it enabled does not exist; Direct
+                // GL Rendering is the replacement). This branch only stops an
+                // existing INI from looking corrupt, and says so once if the key is
+                // on.
+                //
+                // An explicit branch rather than a silent fall-through, which would
+                // leave a user wondering why their setting does nothing. An
+                // accepted-and-explained key is cheaper than a support question.
+                if (std::stoi(value) != 0) {
+                    DEBUG_WARN("[Advanced] overlayInGame is retired and ignored - the "
+                               "overlay renderer has been replaced by Direct GL "
+                               "Rendering (General tab). Remove the key to silence this.");
+                }
+            } else if (key == "overlayRefreshHz") {
+                // Retired key, accepted and ignored like overlayInGame above:
+                // parsing it rather than letting it fall through keeps an old
+                // INI from looking corrupt.
+            } else if (key == "hwAccel") {
+                CompanionWindow::getInstance().setHwAccel(std::stoi(value) != 0);
+            } else if (key == "glInGame") {
+                UiConfig::getInstance().setGlInGame(std::stoi(value) != 0);
+                // Re-applying the key is the retry gesture after a latched
+                // failure.
+                HudManager::getInstance().clearGlFailLatch();
+            } else if (key == "glProbe") {
+                UiConfig::getInstance().setGlProbe(std::stoi(value));
+            } else if (key == "glProbeX") {
+                UiConfig::getInstance().setGlProbeX(parseFiniteFloat(value));
+            } else if (key == "glProbeY") {
+                UiConfig::getInstance().setGlProbeY(parseFiniteFloat(value));
+            } else if (key == "glProbeQuads") {
+                UiConfig::getInstance().setGlProbeQuads(std::stoi(value));
+            } else if (key == "glProbeBatch") {
+                UiConfig::getInstance().setGlProbeBatch(std::stoi(value));
             } else if (key == "renderProbeQuads") {
                 UiConfig::getInstance().setRenderProbeQuads(std::stoi(value));
             } else if (key == "renderProbeFullscreen") {
@@ -1004,7 +1039,7 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
                 // Backward compatibility: invert the old setting
                 config.rumbleWhenCrashed = std::stoi(value) == 0;
             }
-            // Suspension effect - new format
+            // Suspension effect
             else if (key == "susp_min_input") {
                 config.suspensionEffect.minInput = parseFiniteFloat(value);
             } else if (key == "susp_max_input") {
@@ -1208,9 +1243,8 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
             } else if (key == "cat_proximity") {
                 spotter.setCategoryEnabled(SpotterPhrase::Category::Proximity, std::stoi(value) != 0);
             } else if (key == "cat_opponents") {
-                // Proximity was carved OUT of Opponents, so a file written
-                // before the split has no cat_proximity line and its
-                // cat_opponents answers for both. Mirror it, and let the
+                // A file written before cat_proximity existed has no such line
+                // and its cat_opponents answers for both. Mirror it, and let the
                 // cat_proximity line — which writeGlobalSettings emits
                 // immediately after this one — overwrite that guess whenever
                 // the file is new enough to carry one. Without this, somebody

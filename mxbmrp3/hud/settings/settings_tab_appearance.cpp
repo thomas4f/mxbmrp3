@@ -5,6 +5,10 @@
 #include <cstring>
 #include "settings_layout.h"
 #include "../settings_hud.h"
+#include "../session_hud.h"
+#include "../speed_widget.h"
+#include "../fuel_widget.h"
+#include "../clock_widget.h"
 #include "../../core/plugin_utils.h"
 #include "../../core/plugin_constants.h"
 #include "../../core/font_config.h"
@@ -117,20 +121,20 @@ bool SettingsHud::handleClickTabAppearance(const ClickRegion& region) {
                 // there -- validateAllHudPositions() otherwise only runs on a cursor
                 // or window transition, and switching theme happens with the cursor
                 // already up, so nothing fires until the menu is closed and reopened.
-                // Found playing theme designer; the settings button widget is the one
-                // that stings, since it is how you get back to this tab.
+                // The settings button widget is the one that stings, since it is how
+                // you get back to this tab.
                 // REQUEST, never call directly: we are inside a click handler, and
                 // validateAllHudPositions() calls update() on every dirty HUD --
                 // including this one, whose update() re-reads the same still-true
-                // click edge and dispatches this handler again. That recursed into a
-                // stack overflow. HudManager flushes the request once the frame's
+                // click edge and dispatches this handler again, which recurses into
+                // a stack overflow. HudManager flushes the request once the frame's
                 // update pass is over.
                 HudManager::getInstance().requestPositionValidation();
                 rebuildRenderData();
             }
             return true;
 
-        // Display section unit toggles (moved here from the General tab).
+        // Display section unit toggles.
         // CLOCK_FORMAT_TOGGLE is handled by the common handlers (works from any tab).
         case ClickRegion::SPEED_UNIT_TOGGLE:
             if (m_speed) {
@@ -273,7 +277,6 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
                             "appearance.display_target");
     }
 
-
     // (Grid Snap / Screen Clamp placement toggles live on the General tab's
     // Behavior section; still persisted under [Display].)
 
@@ -296,17 +299,16 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
             std::strcmp(fontConfig.getFontName(category),
                         FontConfig::getThemeOrDefaultFontName(category)) == 0;
         // The value is TRUNCATED to the field by the shared helper, like every other
-        // row. This used to draw the raw name after the field shrank from 22
-        // characters to STANDARD_VALUE_WIDTH, and the shipped names are 13-21
-        // characters ("RobotoMono-Regular" renders as "Roboto Mono Regular"), so the
-        // name ran straight through the ">" arrow beside it.
+        // row: the shipped names are 13-21 characters ("RobotoMono-Regular" renders
+        // as "Roboto Mono Regular"), so drawn raw the name runs straight through the
+        // ">" arrow beside it.
         //
         // NOTHING AFTER THE CONTROL. "Default" is simply one of the values the cycler
-        // steps through, and the row reads as every other row on the tab. It used to
-        // trail the resolved name in muted parentheses -- "Default  (Roboto Mono
-        // Regular)" -- which answered a question ("which font IS the default") that the
-        // row was not asking, put a second column of text on six rows that no other
-        // control has, and needed its own truncation maths to stay inside the panel.
+        // steps through, and the row reads as every other row on the tab. Trailing
+        // the resolved name in muted parentheses -- "Default  (Roboto Mono Regular)"
+        // -- would answer a question ("which font IS the default") that the row is
+        // not asking, put a second column of text on six rows that no other control
+        // has, and need its own truncation maths to stay inside the panel.
         ctx.addCycleControl(categoryName, isDefaultFont ? "Default" : fontDisplayName,
                             STANDARD_VALUE_WIDTH,
                             SettingsHud::ClickRegion::FONT_CATEGORY_PREV,

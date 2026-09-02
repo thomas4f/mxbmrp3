@@ -148,8 +148,7 @@ void BarsWidget::rebuildRenderData() {
         ? (enabledBarCount * barWidth) + ((enabledBarCount - 1) * barSpacing)
         : 0.0f;
     // BOX-MODEL: the plan owns padding, chrome, the title band and the body card
-    // (it pads BOTH ends and ceils the height itself, so the hand-rolled height
-    // this replaced -- and the top-only-padding bug it carried -- is gone).
+    // (it pads BOTH ends and ceils the height itself).
     // The label row is part of sectionHeight, so the box measures it like any
     // other content -- no drawing outside what the plan was told about.
     BaseHud::PanelWant want;
@@ -170,7 +169,7 @@ void BarsWidget::rebuildRenderData() {
     // CENTRED ON THE CARD, like the Lean and G-force gauges beside it
     // (PanelPlan::sectionBoxCenterX). The panel's centre is the same place only
     // while the [content] terms are left/right symmetric -- `margin = 4 6 8 0`
-    // moved it outside the card and the bars followed it off.
+    // moves it outside the card and the bars follow it off.
     //
     // barsWidth, not contentW(): they are the same number (the bars ARE this panel's
     // content ask) but the block being centred is the bars, and saying so is what keeps

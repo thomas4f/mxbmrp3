@@ -5,7 +5,7 @@
 // (to full) on anything unexpected and can only ever REDUCE what's sent, so these
 // pin exactly that: garbage/missing/out-of-range input resolves to 1.0 (full),
 // and the 0.0/1.0 endpoints are deterministic (no RNG) so the binary switch is
-// exact. Header-only, no game engine, no network. See tests/unit/run_tests.sh.
+// exact. Header-only, no game engine, no network. See tests/unit/README.md.
 // ============================================================================
 // The doctest implementation + main() live in test_plugin_utils.cpp
 // (DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN); this TU only registers more tests.

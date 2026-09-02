@@ -1,7 +1,6 @@
 // ============================================================================
 // mxbmrp3/hud/standings_hud_render.cpp
 // Column/row rendering + layout helpers + DisplayEntry/CachedIcons
-// (extracted verbatim from standings_hud.cpp; no behavior change)
 // ============================================================================
 
 #include "standings_hud.h"
@@ -31,11 +30,10 @@ using namespace PluginConstants;
 //
 // The rule is the title identity icon's (m_titleIconSize = fontSize * titleIconSize):
 // an icon sitting in a line of text is sized BY that text, so it follows uiFontSize the
-// way the glyphs beside it do. These were absolute constants times m_fScale -- the
-// HUD's own scale and not the text's -- so they were right at the default text size and
-// stayed put at every other one. 0.30 * the default 0.02 font IS the 0.006 that was
-// hardcoded, so a user who never changed the text size sees no difference; the caret is
-// stated as a fraction OF the flag so the two cannot drift apart.
+// way the glyphs beside it do. An absolute constant times m_fScale -- the HUD's own
+// scale and not the text's -- is right at the default text size and stays put at every
+// other one. The caret is stated as a fraction OF the flag so the two cannot drift
+// apart.
 
 void StandingsHud::CachedIcons::ensureInitialized() {
     if (initialized) return;
@@ -114,17 +112,17 @@ StandingsHud::DisplayEntry StandingsHud::DisplayEntry::fromRaceEntry(const RaceE
 // How far the race number sits from its plate's centre, as a signed fraction of the
 // plate's height. ZERO IS CENTRED; positive is low, negative is high.
 //
-// It reported the string ORIGIN's inset from the plate's top edge until the number
-// went visibly low, and that framing is why: the correct value was a bare -0.033 with
-// no meaning of its own, so a test could only pin it against a hand-computed constant
-// or -- as the drag test did -- against ITSELF at another moment. Both stayed green
-// while the number sat on the plate's bottom edge. Measuring the offset from centre
-// makes the right answer 0, which a test can assert without knowing the metrics.
+// Measured from CENTRE rather than as the string ORIGIN's inset from the plate's top
+// edge, because the right answer is then 0, which a test can assert without knowing
+// the metrics. An inset's correct value is a bare -0.033 with no meaning of its own,
+// so a test can only pin it against a hand-computed constant or against ITSELF at
+// another moment -- and both stay green while the number sits on the plate's bottom
+// edge.
 //
 // The glyph CENTRE, not its origin: a string's y is the top of its cell.
-// The far-out-of-band NOT_FOUND sentinel stays -- the value is signed, so a negative
-// one is a legitimate reading (-1.0f was the first choice, and a real -0.03 was
-// misread as "no plate").
+// The NOT_FOUND sentinel is far out of band -- the value is signed, so a negative
+// one is a legitimate reading (a -1.0f sentinel would misread a real -0.03 as "no
+// plate").
 float StandingsHud::testPlateNumberInsetY(int row) const {
     constexpr float NOT_FOUND = -1000.0f;
     for (const auto& plate : m_raceNumPlateQuads) {
@@ -153,9 +151,9 @@ float StandingsHud::testPlateNumberInsetY(int row) const {
 void StandingsHud::setBrandMarkQuad(SPluginQuad_t& quad, float x, float y, const PlateGeometry& pg) {
     m_iconCache.ensureInitialized();
     if (m_iconCache.caretUp > 0) {
-        // PIXEL-SQUARE, centred on the slot the triangle occupied -- NOT stretched to
-        // fill it. caret-up.tga is square art, so filling a 0.85-char x 0.7-plate rect
-        // scaled its two axes differently and thickened its outline on one of them.
+        // PIXEL-SQUARE, centred on the triangle's slot -- NOT stretched to fill it.
+        // caret-up.tga is square art, so filling a 0.85-char x 0.7-plate rect scales
+        // its two axes differently and thickens its outline on one of them.
         //
         // Drawing it square costs nothing in silhouette, which is why this is the fix
         // rather than a compromise: the icon's ink is 64x41 inside its 64x64 texture,
@@ -172,8 +170,8 @@ void StandingsHud::setBrandMarkQuad(SPluginQuad_t& quad, float x, float y, const
         quad.m_iSprite = m_iconCache.caretUp;
         return;
     }
-    // No caret in the icon set: the hand-built triangle, which is what this drew
-    // before and is still the right shape -- just without the icon set's styling.
+    // No caret in the icon set: the hand-built triangle, the same silhouette without
+    // the icon set's styling.
     setQuadPositionsArrowRight(quad, x, y, pg.brandStripWidth, pg.arrowHeight);
     quad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
 }
@@ -195,8 +193,8 @@ float StandingsHud::getColumnTextX(uint8_t columnIndex, float columnPosition, fl
         // position above. COL_TRACKED_WIDTH is 3 = 2 content + 1 trailing spacing,
         // the same shape every other column uses, so the centre is 1 char in.
         //
-        // Was a quarter of the FULL column width (0.75 char), which centred it on
-        // nothing -- a quarter-char left of where it belongs, and measured against a
+        // Not a quarter of the FULL column width (0.75 char): that centres it on
+        // nothing -- a quarter-char left of where it belongs, measured against a
         // width that includes the spacing the column does not draw in.
         return columnPosition + charW;
     }
@@ -361,13 +359,11 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
 
                 if (spriteIndex > 0) {
                     // Render icon sprite (tracked or hazard), sized as a FRACTION OF
-                    // THE ROW FONT -- the rule the title identity icon already follows
-                    // (m_titleIconSize = fontSize * titleIconSize). It was
-                    // 0.006 * m_fScale: correct at the default text size and frozen
-                    // against every other one, so raising uiFontSize grew the row and
-                    // left the flag behind in it. dim.fontSize carries m_fScale, so the
-                    // HUD's own scale still applies, and 0.30 * 0.02 IS the old 0.006 --
-                    // nothing moves for a user who never touched the size.
+                    // THE ROW FONT -- the rule the title identity icon follows
+                    // (m_titleIconSize = fontSize * titleIconSize) -- so raising
+                    // uiFontSize grows the flag with the row instead of leaving it
+                    // behind. dim.fontSize carries m_fScale, so the HUD's own scale
+                    // still applies.
                     float spriteHalfSize = dim.fontSize * STATUS_ICON_HALF_RATIO;
 
                     float spriteCenterX = getColumnTextX(COL_IDX_TRACKED, col.position, dim.fontSize, false, false);
@@ -486,7 +482,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
             if (!m_bClassicLayout) {
                 columnColor = this->getColor(ColorSlot::BACKGROUND);
                 // White number on a dark custom plate (e.g. black) so it stays
-                // legible. The tracked colour now drives the plate whenever the
+                // legible. The tracked colour drives the plate whenever the
                 // rider isn't muted (it beats the podium plates), so flip the
                 // number to light whenever that tracked plate is dark.
                 bool plateUsesTracked = !isMutedRider && entry.trackedColor != 0;

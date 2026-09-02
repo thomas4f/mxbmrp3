@@ -6,6 +6,8 @@
   .val{fill:#24292f;font-size:12px;font-weight:600}
   .title{fill:#24292f;font-size:14px;font-weight:700}
   .sub{fill:#57606a;font-size:11px}
+  .gap{fill:#57606a;opacity:.09}
+  .gaplbl{fill:#57606a;font-size:10px;opacity:.85}
   @media (prefers-color-scheme: dark){
     .grid{stroke:#30363d}
     .axis{stroke:#8b949e}
@@ -13,5 +15,7 @@
     .val{fill:#e6edf3}
     .title{fill:#e6edf3}
     .sub{fill:#8b949e}
+    .gap{fill:#8b949e;opacity:.13}
+    .gaplbl{fill:#8b949e}
   }
-</style><text x="12" y="20" class="title">Installs by OS</text><text x="12" y="37" class="sub">3,886 of 5,575 installs report an OS</text><text x="200" y="60" class="lbl" text-anchor="end">Windows 11</text><rect x="210" y="44" width="454" height="22" rx="3" fill="#3fb950"/><text x="670" y="60" class="val">3,156 (81%)</text><text x="200" y="90" class="lbl" text-anchor="end">Windows 10</text><rect x="210" y="74" width="97" height="22" rx="3" fill="#58a6ff"/><text x="313" y="90" class="val">680 (17%)</text><text x="200" y="120" class="lbl" text-anchor="end">Linux / Proton / Wine</text><rect x="210" y="104" width="7" height="22" rx="3" fill="#d29922"/><text x="223" y="120" class="val">50 (1%)</text></svg>
+</style><text x="12" y="20" class="title">Installs by OS</text><text x="12" y="37" class="sub">9,263 of 10,999 installs report an OS</text><text x="200" y="60" class="lbl" text-anchor="end">Windows 11</text><rect x="210" y="44" width="454" height="22" rx="3" fill="#3fb950"/><text x="670" y="60" class="val">7,230 (78%)</text><text x="200" y="90" class="lbl" text-anchor="end">Windows 10</text><rect x="210" y="74" width="121" height="22" rx="3" fill="#58a6ff"/><text x="337" y="90" class="val">1,937 (21%)</text><text x="200" y="120" class="lbl" text-anchor="end">Linux / Proton / Wine</text><rect x="210" y="104" width="6" height="22" rx="3" fill="#d29922"/><text x="222" y="120" class="val">96 (1%)</text></svg>

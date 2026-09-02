@@ -40,8 +40,8 @@ namespace Adapters {
 // ============================================================================
 // Each game has different session ID meanings. Adapters expose
 // toCanonicalSession(rawSession, rawEventType) which returns a Unified::Session
-// (see game/unified_types.h). The previous NormalizedSession enum is gone -
-// Unified::Session is now the single canonical session type.
+// (see game/unified_types.h). Unified::Session is the single canonical session
+// type.
 
 // Session state flags (bitwise) - common across all games
 namespace SessionStateFlags {

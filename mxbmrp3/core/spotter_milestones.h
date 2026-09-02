@@ -6,7 +6,7 @@
 // clock each track-position tick (timed sessions) and the leader's completed
 // laps at each of the leader's crossings (pure lap races).
 //
-// Design constraints, all learned from the detectors before it:
+// Design constraints:
 //  - CROSSING-edged, not level-triggered: joining a session mid-way (or a
 //    tape seek) must swallow already-passed thresholds silently, not machine-
 //    gun three announcements. The first tick only arms the baseline.
@@ -83,10 +83,10 @@ public:
         if (totalLaps < 4) return nullptr;
         const bool passed = leaderCompletedLaps * 2 >= totalLaps;
         // The first call ARMS, exactly as updateTime's first tick does, and a
-        // threshold already behind you at that point is spent SILENTLY. This
-        // was level-triggered — the header two functions up promises crossings
-        // and this one did not keep it — so joining a ten-lap race with the
-        // leader on lap eight announced "Halfway there" on the spot.
+        // threshold already behind you at that point is spent SILENTLY. The
+        // header promises crossings, and level-triggered this would announce
+        // "Halfway there" on the spot when joining a ten-lap race with the
+        // leader on lap eight.
         if (!m_lapArmed) {
             m_lapArmed = true;
             if (passed) m_firedHalf = true;

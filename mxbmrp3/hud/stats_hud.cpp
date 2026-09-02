@@ -109,8 +109,8 @@ bool StatsHud::computeLayout(Layout& out) const {
     int colGaps = (out.cols > 1) ? (out.cols - 1) * COLUMN_GAP_CHARS : 0;
     int widthChars = LABEL_WIDTH_CHARS + out.cols * COLUMN_WIDTH_CHARS + colGaps;
     // BOX-MODEL: the plan owns the box; the caption band is its, not a content
-    // term. This file spelling the panel terms itself is what once put it 34.557
-    // cells tall — the plan is the one owner now.
+    // term. This file must not spell the panel terms itself — the plan is the one
+    // owner.
     BaseHud::PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(widthChars, out.dim.fontSize);
     want.sectionH = { out.dim.lineHeightNormal * rowCount };
@@ -322,7 +322,7 @@ void StatsHud::rebuildRenderData() {
     char sPenCntBuf[8], sPenTimeBuf[16], sSpeedBuf[24], sAvgBuf[24];
     unsigned long sBestColor = valueColor, sPenCntColor = valueColor, sPenTimeColor = valueColor;
     unsigned long sSpeedColor = valueColor, sAvgColor = valueColor;
-    // Spectate-mode overrideable colors for the rows that used to hardcode valueColor.
+    // Spectate-mode overrideable colors for the remaining rows.
     unsigned long sLapsColor = valueColor, sTimeColor = valueColor, sDistColor = valueColor;
     unsigned long sCrashColor = valueColor, sShiftColor = valueColor;
 
@@ -369,7 +369,7 @@ void StatsHud::rebuildRenderData() {
     char aPenCntBuf[8], aPenTimeBuf[16], aSpeedBuf[24], aAvgBuf[24];
     unsigned long aBestColor = valueColor, aPenCntColor = valueColor, aPenTimeColor = valueColor;
     unsigned long aSpeedColor = valueColor;
-    // Spectate-mode overrideable colors for the rows that used to hardcode valueColor.
+    // Spectate-mode overrideable colors for the remaining rows.
     unsigned long aLapsColor = valueColor, aTimeColor = valueColor, aDistColor = valueColor;
     unsigned long aCrashColor = valueColor, aShiftColor = valueColor;
     // Average speed is never tracked all-time (no per-session distance persistence)

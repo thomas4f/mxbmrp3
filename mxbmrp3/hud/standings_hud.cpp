@@ -199,10 +199,9 @@ void StandingsHud::rebuildLayout() {
         float trackedColPosition = m_columns.tracked;
 
         // Same size calculation as renderRiderRow -- through the SHARED ratio, not a
-        // second copy of the number. This kept the absolute 0.006 * m_fScale the full
-        // rebuild had moved off, so at any uiFontSize but the default every flag
-        // resized itself for the duration of a drag or a position-slide and snapped
-        // back on the next data rebuild.
+        // second copy of the number: a copy that drifts from the full rebuild's makes
+        // every flag resize itself for the duration of a drag or a position-slide and
+        // snap back on the next data rebuild.
         float spriteHalfSize = dim.fontSize * STATUS_ICON_HALF_RATIO;
         float spriteHalfWidth = spriteHalfSize / UI_ASPECT_RATIO;
         // Same anchor the full rebuild uses, so a drag cannot move the icon relative

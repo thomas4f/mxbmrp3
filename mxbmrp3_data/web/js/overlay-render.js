@@ -1,6 +1,6 @@
 // ============================================================================
 // MXBMRP3 Web Overlay — Main render loop: header, standings tower & event log
-// Part 05/11 of the overlay client (split from the former monolithic app.js).
+// Part 05/11 of the overlay client.
 // Ordered classic script: files share one global scope and MUST load in the
 // order listed in index.html. Customize freely — served from disk by the plugin.
 // ============================================================================
@@ -286,8 +286,8 @@ function renderStandings(standings, session) {
     // proportional to font-size. A fixed-px column adds a constant term that
     // breaks that linearity and overflows. rem keeps it proportional, so the
     // measured value is identical on desktop yet still scales on mobile.
-    // px -> rem ratio (font-size independent) + a small rem margin in place of
-    // the old +1px guard, rounded so float noise doesn't churn the cache.
+    // px -> rem ratio (font-size independent) + a small rem margin, rounded so
+    // float noise doesn't churn the cache.
     var cs = getComputedStyle(document.documentElement);
     var rootPx = parseFloat(cs.fontSize) || 16;
     // Skip the (layout-forcing) probe measurements unless the font-size or a
@@ -400,7 +400,7 @@ function renderStandings(standings, session) {
         // the whole battle group: when the director frames a fight the battle PANEL
         // shows the group; the tower strip stays on the tracked rider alone. When the
         // auto-director is driving, that's its subject; on a manual camera it's whoever
-        // you're spectating. (This replaces the old camera chip.)
+        // you're spectating. There is no camera chip.
         var isCamera = !!(rider.chips && rider.chips.indexOf("camera") !== -1);
         if (isCamera) rowCls += " camera-row";
         if (rider.state === STATE_DNS || rider.state === STATE_RETIRED || rider.state === STATE_DSQ) rowCls += " state-inactive";

@@ -23,7 +23,7 @@ PerformanceHud::PerformanceHud() : m_historyIndex(0), m_fpsMin(0.0f), m_fpsMax(0
     // One-time setup
     DEBUG_INFO("PerformanceHud created");
     setDraggable(true);
-    // Body cards, one PER SECTION: Frame Rate and CPU Time are two separate graphs,
+    // Body cards, one PER SECTION: Frame Rate and Plugin Time are two separate graphs,
     // and one card round both of them says they are one thing. See
     // BaseHud::m_bContentSections.
     m_bContentCard = true;
@@ -122,9 +122,8 @@ void PerformanceHud::rebuildRenderData() {
     // Get debug metrics from PluginData
     const auto& metrics = PluginData::getInstance().getDebugMetrics();
 
-    // PERFORMANCE OPTIMIZATION: Use incremental statistics instead of rescanning 120 samples every frame
-    // Previous: O(120) scan every frame
-    // New: O(1) best case, O(120) only when min/max value is replaced
+    // PERFORMANCE OPTIMIZATION: incremental statistics instead of rescanning 120 samples every frame
+    // O(1) best case, O(120) only when the min/max value is replaced
 
     // Get old values at current index (about to be overwritten)
     float oldFps = m_fpsHistory[m_historyIndex];
@@ -210,7 +209,7 @@ void PerformanceHud::rebuildRenderData() {
 
     // Calculate per-section content heights
     // Each section's height = max(graph height, legend height for that section)
-    // When both FPS and CPU are enabled, sections stack vertically with a gap
+    // When both FPS and plugin time are enabled, sections stack vertically with a gap
     bool hasFps = (m_enabledElements & ELEM_FPS) != 0;
     bool hasCpu = (m_enabledElements & ELEM_CPU) != 0;
 
@@ -247,7 +246,7 @@ void PerformanceHud::rebuildRenderData() {
     float contentStartX = plan.contentX();
     float currentY = plan.contentY(0);
 
-    // Title. In plugin-thread mode the CPU figure is the WORKER's build time, not the
+    // Title. In plugin-thread mode the plugin-time figure is the WORKER's build time, not the
     // game-thread cost (which is ~0) — flag it so a >100% frame-budget reading reads as
     // "off-thread build exceeds a frame", not "the game is stalled".
     addPlanTitle(plan, title, this->getFont(FontCategory::TITLE),
@@ -378,18 +377,18 @@ void PerformanceHud::rebuildRenderData() {
         float fpsGraphBottom = currentY + graphHeight;
         if (fpsGraphBottom > legendY) legendY = fpsGraphBottom;
     }
-    // CPU Section: its own sibling card — its content starts at the plan's
-    // second section (or the first when FPS is off); the seam is the plan's.
+    // Plugin Time section: its own sibling card — its content starts at the
+    // plan's second section (or the first when FPS is off); the seam is the plan's.
     if (hasCpu) {
         currentY = plan.contentY(hasFps ? 1 : 0);
-        addSectionHeading("CPU Time", contentStartX, currentY, dims);
+        addSectionHeading("Plugin Time", contentStartX, currentY, dims);
         currentY += subHeadH;
         legendY = currentY;
     } else {
         currentY = legendY;
     }
     if (m_enabledElements & ELEM_CPU) {
-        // CPU Time Graph - only render if graphs are shown
+        // Plugin Time graph - only render if graphs are shown
         // Ceiling is the 480fps frame budget -- see MAX_PLUGIN_TIME_MS.
         if (showGraphs) {
             // Plugin Time grid lines (0-MAX_PLUGIN_TIME_MS range, at 0%/50%/100%)
@@ -434,18 +433,21 @@ void PerformanceHud::rebuildRenderData() {
             }
         }
 
-        // CPU Legend (vertical format on right side)
+        // Plugin Time legend (vertical format on right side)
         if (showValues) {
             // Format (12 chars wide):
-            // CPU y.yy
+            // Now y.yy
             // Max y.yy
             // Avg y.yy
             // Min y.yy
             char buffer[16];
             float valueX = legendStartX + PluginUtils::calculateMonospaceTextWidth(4, dims.fontSize);  // After "XXX "
 
-            // CPU current value
-            addLabel("CPU", legendStartX, legendY, Justify::LEFT,
+            // Current value. "Now", not a repeat of the metric name: the
+            // heading above already says WHAT is measured, so the four rows can
+            // all be statistics (Now/Max/Avg/Min) instead of one metric name
+            // followed by three statistics.
+            addLabel("Now", legendStartX, legendY, Justify::LEFT,
                 fontLabel, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%5.2f", metrics.pluginTimeMs);
             addString(buffer, valueX, legendY, Justify::LEFT,

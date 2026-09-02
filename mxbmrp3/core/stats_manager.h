@@ -51,11 +51,11 @@ struct StatsPersonalBestData {
 // that set it), but what the user is SHOWN as their all-time reference depends on
 // UiConfig's PBScope: under PBScope::CATEGORY the TimingHud "Alltime" row compares
 // against the fastest lap across every bike in the class, not just the current bike.
-// Those two questions have different answers, and returning a bare bool let the
-// caller silently use the storage answer to drive a user-facing notice: on a new
-// bike in a class you already had a faster time in, the write succeeded (that bike
-// had no PB yet) so the green "ALL-TIME PB" notice fired while the Alltime row
-// showed red against the class best. Name both facts so a caller has to pick one.
+// Those two questions have different answers, and a bare bool lets the caller
+// silently use the storage answer to drive a user-facing notice: on a new bike in
+// a class you already have a faster time in, the write succeeds (that bike has no
+// PB yet) so the green "ALL-TIME PB" notice fires while the Alltime row shows red
+// against the class best. Name both facts so a caller has to pick one.
 //
 // Invariant: beatsScopedBest implies stored. The category best is the minimum over
 // every bike in the class INCLUDING this one, so it is never slower than this bike's

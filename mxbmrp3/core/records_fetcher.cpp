@@ -1,8 +1,7 @@
 // ============================================================================
 // core/records_fetcher.cpp
-// Background HTTP fetch + JSON parse for the external lap-records providers.
-// Extracted from hud/records_hud.cpp (which keeps presentation only); the
-// transport/parse bodies moved here verbatim — see records_fetcher.h for the
+// Background HTTP fetch + JSON parse for the external lap-records providers;
+// hud/records_hud.cpp keeps presentation only. See records_fetcher.h for the
 // threading contract and the GAME_HAS_RECORDS_PROVIDER gating note.
 // ============================================================================
 #include "records_fetcher.h"
@@ -198,8 +197,8 @@ void RecordsFetcher::performFetch() {
     // std::terminate() and kills the host game process. The body below does
     // std::string / std::wstring / std::vector allocations and WinHTTP calls
     // — any of those can throw under memory pressure or unexpected response
-    // shapes. parseResponse is internally guarded, but the outer thread
-    // body wasn't.
+    // shapes. parseResponse is internally guarded; the outer thread body
+    // needs its own barrier.
     try {
 
 #if defined(MXBMRP3_TEST_BUILD)

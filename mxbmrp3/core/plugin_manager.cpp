@@ -12,6 +12,7 @@
 #include "input_manager.h"
 #include "hotkey_manager.h"
 #include "plugin_thread.h"
+#include "gl_probe.h"
 #include "asset_manager.h"
 #include "../handlers/draw_handler.h"
 #include "../handlers/event_handler.h"
@@ -107,12 +108,10 @@ PluginManager::~PluginManager() {
     // FIRST singleton constructed (every DLL export routes through
     // getInstance()), so its atexit destructor runs LAST — by the time we get
     // here, StatsManager, PluginData, RumbleProfileManager and the rest are
-    // already destructed, and reaching into them is use-after-destruction.
-    // Not theoretical: the v1.27.7.44 analytics crash stacks show exactly this
-    // — _execute_onexit_table -> ~PluginManager -> shutdown() faulting inside
-    // StatsManager::save() and inside PluginData::getStanding() (via
-    // tryRecordRaceFinish). Same static-destruction-order fiasco as the old
-    // ~HudManager auto-save crash (see hud_manager.cpp), one level up.
+    // already destructed, and reaching into them is use-after-destruction
+    // (shutdown() from here faults inside StatsManager::save() and inside
+    // PluginData::getStanding() via tryRecordRaceFinish). Pinned by
+    // teardown_test.cpp.
     //
     // Nothing else is needed here: every singleton owns its own teardown
     // backstop for this path (~HudManager shutdownInternal(allowSave=false),
@@ -131,8 +130,8 @@ PluginManager::~PluginManager() {
     m_bShutdown = true;
     // Guarded like the call site in initialize(): uninstall() only touches POD
     // statics and cannot throw today, but a throw escaping a destructor during
-    // _execute_onexit_table is precisely the failure mode this destructor was
-    // rewritten to avoid, and there is no outer handler here.
+    // _execute_onexit_table is precisely the failure mode this destructor exists
+    // to avoid, and there is no outer handler here.
     try { CrashHandler::uninstall(); } catch (...) {}
 }
 
@@ -151,7 +150,7 @@ void PluginManager::initialize(const char* savePath) {
     // (Startup returns -1), that filter would be left dangling in
     // unmapped memory — and the next host-side fault anywhere in the
     // process would jump to garbage, which is exactly the failure mode
-    // this PR is meant to prevent. Catch + uninstall + rethrow so init
+    // this guard is meant to prevent. Catch + uninstall + rethrow so init
     // is transactional w.r.t. the SEH filter.
     try {
 
@@ -427,8 +426,8 @@ void PluginManager::handleRunStop() {
 
     Handlers::handleRunStop();
 
-    // Window refresh and HUD validation now happens automatically
-    // when cursor is re-enabled (see InputManager::updateFrame)
+    // Window refresh and HUD validation happen automatically
+    // when the cursor is re-enabled (see InputManager::updateFrame)
 }
 
 void PluginManager::handleRunLap(Unified::PlayerLapData* psLapData) {
@@ -475,6 +474,13 @@ int PluginManager::handleDrawInit(int* piNumSprites, char** pszSpriteName, int* 
 }
 
 void PluginManager::handleDraw(int iState, int* piNumQuads, void** ppQuad, int* piNumString, void** ppString) {
+    // Phase 0 GL feasibility probe ([Advanced] glProbe, off by default -- see
+    // core/gl_probe.h). It lives HERE, above the threaded-mode early return,
+    // because a GL context is per-THREAD: this function is the game's Draw
+    // callback thread in both render modes, and the pluginThread worker would
+    // answer "no context" for reasons that have nothing to do with the game.
+    GlProbe::onDraw(iState);
+
     // Apply any live mode switch first (game thread). A RELOAD_CONFIG hotkey that
     // flipped [Advanced] pluginThread starts/stops the worker here, so legacy<->threaded
     // can change without a game restart. No-op when the flag already matches.
@@ -498,8 +504,19 @@ void PluginManager::handleDraw(int iState, int* piNumQuads, void** ppQuad, int* 
             *ppQuad = const_cast<SPluginQuad_t*>(q);
             *piNumString = ns;
             *ppString = const_cast<SPluginString_t*>(s);
+            // In-context GL, on THIS thread because that is where the context
+            // is. Suppression follows what actually drew, never the setting.
+            if (HudManager::getInstance().renderInContextGl(q, nq, s, ns)) {
+                *piNumQuads = 0; *ppQuad = nullptr;
+                *piNumString = 0; *ppString = nullptr;
+            }
+        } else {
+            // No frame this time. renderInContextGl OWNS m_glDrewLastFrame, so it
+            // is still called (it returns immediately on an empty frame) rather
+            // than left to report last frame's answer. The export wrapper has
+            // already zeroed the outputs.
+            HudManager::getInstance().renderInContextGl(nullptr, 0, nullptr, 0);
         }
-        // else: the export wrapper already zeroed the outputs (no frame built yet).
         return;
     }
 
@@ -507,6 +524,32 @@ void PluginManager::handleDraw(int iState, int* piNumQuads, void** ppQuad, int* 
 
     // Delegate to DrawHandler for performance tracking and rendering
     DrawHandler::getInstance().handleDraw(iState, piNumQuads, ppQuad, piNumString, ppString);
+
+    // In-context GL renderer ([Advanced] glInGame). It draws HERE rather than
+    // inside produceFrame because a GL context is per-THREAD and this is the
+    // Draw callback thread in both render modes; produceFrame runs on the
+    // worker when [Advanced] pluginThread is on, where there is no context.
+    //
+    // Suppression follows what ACTUALLY DREW, never the setting. If the backend
+    // cannot run, the engine must keep drawing and the user must never be left
+    // with no HUD. Pinned by gl_render_test's suppression case.
+    // The null guard is NOT redundant with the one in the threaded branch above:
+    // DrawHandler::handleDraw returns early on exactly this condition, so without
+    // it the dereference below is the first thing to touch the pointers the game
+    // just told us are absent.
+    if (piNumQuads == nullptr || ppQuad == nullptr ||
+        piNumString == nullptr || ppString == nullptr) {
+        return;
+    }
+    // Called unconditionally, empty frames included: renderInContextGl owns
+    // m_glDrewLastFrame and clears it on entry, so gating the call here is what
+    // would let the hook report a stale "we drew".
+    if (HudManager::getInstance().renderInContextGl(
+            static_cast<const SPluginQuad_t*>(*ppQuad), *piNumQuads,
+            static_cast<const SPluginString_t*>(*ppString), *piNumString)) {
+        *piNumQuads = 0; *ppQuad = nullptr;
+        *piNumString = 0; *ppString = nullptr;
+    }
 }
 
 void PluginManager::handleTrackCenterline(int iNumSegments, Unified::TrackSegment* pasSegment, void* pRaceData) {
@@ -679,7 +722,7 @@ void PluginManager::handleRaceTrackPosition(int iNumVehicles, Unified::TrackPosi
     // SCOPED_TIMER_THRESHOLD("Plugin::handleRaceTrackPosition", 500);  // Commented out - too noisy for debugging
     // Skip logging (high-frequency event - runs at vehicle update rate)
 
-    // Null check and bounds validation moved to handler
+    // Null check and bounds validation live in the handler
     Handlers::handleRaceTrackPosition(iNumVehicles, pasRaceTrackPosition);
 }
 

@@ -187,10 +187,10 @@ void EventRecorder::writeEvent(Recording::EventType type, const void* data, size
     // Calculate timestamp relative to recording start
     uint64_t timestamp = getCurrentTimeUs() - m_startTimeUs;
 
-    // Write event header. A failed write (disk full, I/O error) previously went
-    // unnoticed: the tape silently truncated/corrupted while m_eventCount kept
-    // climbing. Stop on first failure instead — a partial trailing record is fine
-    // (the replayer reads to EOF and drops an incomplete tail), more writes aren't.
+    // Write event header. Stop on the first failed write (disk full, I/O error):
+    // otherwise the tape silently truncates/corrupts while m_eventCount keeps
+    // climbing. A partial trailing record is fine (the replayer reads to EOF and
+    // drops an incomplete tail), more writes aren't.
     Recording::EventHeader eventHeader(type, static_cast<uint32_t>(size), timestamp);
     if (fwrite(&eventHeader, sizeof(eventHeader), 1, m_file) != 1) {
         handleWriteFailure();
@@ -283,8 +283,7 @@ void EventRecorder::recordRaceSplit(const SPluginsRaceSplit_t* data) {
 
 // Tapped by the RaceHoleshot export in mxb_api.cpp. The game doesn't currently fire
 // RaceHoleshot and the plugin takes no action on it, but we record it anyway so a
-// captured tape stays complete if PiBoSo ever starts sending it (matching the old
-// standalone recorder, which also carried a RaceHoleshot export).
+// captured tape stays complete if PiBoSo ever starts sending it.
 void EventRecorder::recordRaceHoleshot(const SPluginsRaceHoleshot_t* data) {
     if (!m_recording || !data) return;
     writeEvent(Recording::EventType::RaceHoleshot, data, sizeof(SPluginsRaceHoleshot_t));
@@ -337,7 +336,7 @@ void EventRecorder::recordRaceTrackPosition(const SPluginsRaceTrackPosition_t* p
         // Positions follow after this
     } trackPositionData;
     // Tape contract: tape.h's TrackPositionPrefix mirrors this (see event_recorder.h)
-    // and now shares its name — this used to be a third `TrackPositionData`.
+    // and shares its name.
     static_assert(sizeof(TrackPositionPrefix) == 4,
                   "tape contract: RaceTrackPosition payload prefix changed — update tape.h + golden tapes");
 

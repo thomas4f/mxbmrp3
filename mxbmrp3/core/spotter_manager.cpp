@@ -27,8 +27,8 @@ constexpr const char* kPackRoot = "plugins\\mxbmrp3_data\\spotters\\";
 constexpr const char* kBasePackName = "default";
 
 // Default join between stitched chunks, for a pack that does not state one.
-// The offline demos used 60-90ms; the low end reads best once the radio
-// compression flattens the joins. A pack tunes this — including negative, for
+// The low end of the 60-90ms range reads best once the radio compression
+// flattens the joins. A pack tunes this — including negative, for
 // overlapping joins — with `[Mix] gap_ms`; see spotter_cue_pack.h.
 constexpr int kMixGapMs = 60;
 
@@ -42,17 +42,16 @@ SpotterManager& SpotterManager::getInstance() {
 
 
 // The eight hazard setters below all clamp, and three of them clamp to the
-// same cooldown range. std::clamp says what the hand-rolled nested ternary
-// said, in the vocabulary the rest of the plugin already uses for this.
+// same cooldown range.
 namespace {
 constexpr int kCooldownMinMs = 5000, kCooldownMaxMs = 300000;
 }
 
 void SpotterManager::setBehindOnMeters(float m) {
     // The SAME range the stepper enforces, which is what spotter_manager.h
-    // promises: a hand-edited behind_on_m=90 used to load as 90 and then snap
-    // to 60 on the first click, so the INI and the UI disagreed about what a
-    // valid value was.
+    // promises: otherwise a hand-edited behind_on_m=90 loads as 90 and then
+    // snaps to 60 on the first click, so the INI and the UI disagree about what
+    // a valid value is.
     m_hazardCfg.behindOnMeters = std::clamp(m, 2.0f, 60.0f);
     if (m_hazardCfg.clearMeters < m_hazardCfg.behindOnMeters + 5.0f) {
         m_hazardCfg.clearMeters = m_hazardCfg.behindOnMeters + 5.0f;
@@ -76,8 +75,8 @@ void SpotterManager::setAlongsideOnMeters(float m) {
 
 void SpotterManager::setAlongsideAheadMeters(float m) {
     // 0 is meaningful and is the point of the knob: call nobody you could see
-    // by turning your head. The ceiling is the old symmetric behaviour, for
-    // anyone who preferred it.
+    // by turning your head. The ceiling matches the alongside-on range, so a
+    // symmetric window stays reachable for anyone who prefers it.
     m_hazardCfg.alongsideAheadMeters = std::clamp(m, 0.0f, 20.0f);
 }
 
@@ -89,7 +88,8 @@ void SpotterManager::setAlongsideClearMeters(float m) {
 
 void SpotterManager::setLateralMeters(float m) {
     // Down to 3m is "same rut only"; 60 is most of a start straight. Wider
-    // than that is the along-track-only behaviour this gate exists to end.
+    // than that is along-track-only detection, which this gate exists to
+    // prevent.
     m_hazardCfg.lateralMeters = std::clamp(m, 3.0f, 60.0f);
 }
 
@@ -173,16 +173,12 @@ bool readPackFile(const std::string& name, SpotterCuePack::Pack& out,
 // The active vocabulary: the SHIPPED pack's words, with the selected pack's
 // laid over them.
 //
-// There is no third copy in C++. The plugin used to carry a built-in phrase
-// for every cue — compose() plus a defaultText argument at each emitCue — and
-// a pack line merely overrode it. Two consequences, both reported from the
-// seat: commenting a row out of a pack changed nothing, because the hidden
-// copy still spoke (it silenced other riders' penalties for exactly zero
-// races); and the pack picker needed a "None" entry whose only meaning was
-// "use the copy you cannot edit". The registry's `quiet` flag and a whole
-// census case existed solely to keep the two in step. Deleting the copy
-// deletes all of that: mxbmrp3_data/spotters/default/spotter.ini is now the
-// only place the spotter's words exist, and an absent row is silence.
+// There is no third copy in C++. A built-in phrase per cue, with a pack line
+// merely overriding it, means commenting a row out of a pack changes nothing
+// (the hidden copy still speaks), a "None" picker entry whose only meaning is
+// "use the copy you cannot edit", and a census to keep the two in step.
+// mxbmrp3_data/spotters/default/spotter.ini is the only place the spotter's
+// words exist, and an absent row is silence.
 //
 // WHAT LAYERS AND WHAT DOES NOT. Phrases layer, so a recorded pack covering
 // twenty cues still speaks the other forty in the shipped wording rather than
@@ -197,9 +193,8 @@ void SpotterManager::reloadCuePack() {
     // default join rather than the previous pack's.
     m_mixGapPublished.store(kMixGapMs, std::memory_order_relaxed);
 
-    // An empty name is a settings file from before the split, when "" meant
-    // "no pack, use the built-ins". The built-ins are gone, and the shipped
-    // pack is what that user was effectively hearing, so read it as such.
+    // An empty name is an older settings file, where "" means the built-in
+    // wording; the shipped pack is that wording, so read it as such.
     if (m_packName.empty()) m_packName = kBasePackName;
 
     std::string baseDir;
@@ -213,13 +208,13 @@ void SpotterManager::reloadCuePack() {
     }
 
     // OVERLAID MEANS "AND IT LOADED", not merely "a different name is stored".
-    // It was the name comparison alone, so a missing folder still took the
-    // audio branch below with an EMPTY pack and an empty directory -- the log
-    // said "using the shipped wording" while the shipped pack's wavs, mixes and
-    // join gap were silently dropped. Inert only because `default` is text
-    // only; the first shipped pack with clips would land a user whose folder
-    // went missing on TTS, i.e. silence under Wine, which is the exact case the
-    // layering exists to prevent.
+    // On the name comparison alone a missing folder still takes the audio
+    // branch below with an EMPTY pack and an empty directory -- the log says
+    // "using the shipped wording" while the shipped pack's wavs, mixes and join
+    // gap are silently dropped. Inert only while `default` is text only; the
+    // first shipped pack with clips would land a user whose folder went missing
+    // on TTS, i.e. silence under Wine, which is the exact case the layering
+    // exists to prevent.
     bool overlaid = m_packName != kBasePackName;
     SpotterCuePack::Pack sel;
     std::string selDir;
@@ -234,15 +229,13 @@ void SpotterManager::reloadCuePack() {
     // The picker's LABEL only. Cycling and the stored setting stay FOLDER names
     // (a pack is stored by name, never by index or title -- the asset-pack
     // invariant), so a pack that renames itself can never reassign anyone's
-    // choice. Falls back to the folder name, which is what the picker showed
-    // before this key existed.
+    // choice. Falls back to the folder name.
     // Only the pack the player actually SELECTED may name itself. `overlaid` is
     // cleared when the chosen folder is missing (see above), and reading
     // base.displayName then would put the SHIPPED pack's title on a selection
     // that is not it -- the picker would claim the folder came back. The stored
-    // name is the honest answer there, and it is what the picker showed before
-    // this key existed. Latent today only because no shipped pack declares a
-    // name; the docs now invite one.
+    // name is the honest answer there. Latent only because no shipped pack
+    // declares a name; the docs invite one.
     const bool selfNamed = (m_packName == kBasePackName) || overlaid;
     m_packDisplayName = overlaid ? sel.displayName
                                  : (selfNamed ? base.displayName : std::string());
@@ -273,8 +266,8 @@ void SpotterManager::reloadCuePack() {
     // waiting for a line that will never play.
     // NAMED BY THE PACK THE ROW CAME FROM, not by the selected one: these maps
     // are MERGED (shipped words with the selection over them), so attributing
-    // every unknown key to m_packName reported a typo in the shipped spotter.ini
-    // against the user's own pack -- and sent them looking in a file they did
+    // every unknown key to m_packName reports a typo in the shipped spotter.ini
+    // against the user's own pack -- and sends them looking in a file they did
     // not write.
     auto reportUnknown = [&](const std::string& key, const char* from) {
         if (SpotterCuePack::isCueKey(SpotterCuePack::stripVariantSuffix(key))) {
@@ -288,10 +281,10 @@ void SpotterManager::reloadCuePack() {
         return (overlaid && sel.phrases.count(key)) ? selName : kBasePackName;
     };
     // Audio comes from ONE pack, so its rows need no per-key lookup -- but which
-    // pack that is depends on whether the overlay loaded, and `overlaid` is now
-    // false when the folder is missing. Naming the selection unconditionally
-    // reintroduced the misattribution three lines above, in exactly the case the
-    // same commit created: base rows blamed on a pack that is not there.
+    // pack that is depends on whether the overlay loaded, and `overlaid` is
+    // false when the folder is missing. Naming the selection unconditionally is
+    // the misattribution above again: base rows blamed on a pack that is not
+    // there.
     const char* audioName = overlaid ? selName : kBasePackName;
     for (const auto& kv : m_pack.phrases) reportUnknown(kv.first, whose(kv.first));
     for (const auto& kv : m_pack.wavs) reportUnknown(kv.first, audioName);

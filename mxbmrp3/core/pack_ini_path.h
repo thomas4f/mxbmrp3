@@ -5,43 +5,40 @@
 // THE RULE: <root>\<name>\<type>.ini -- theme.ini, gamepad.ini, pitboard.ini,
 // spotter.ini, gauge.ini. A FIXED name per type, never the pack's own name.
 //
-// WHY IT CHANGED. Packs were <name>\<name>.ini, which broke the obvious way to
-// author one: copy a shipped pack, rename the folder. That produces a pack the
-// plugin cannot see -- the ini inside still carries the OLD name -- and the
-// failure is silent, because a folder with no readable ini is indistinguishable
-// from a folder that is not a pack. Renaming the folder is now the whole job.
+// WHY A FIXED NAME. The obvious way to author a pack is to copy a shipped one
+// and rename the folder. An ini named after the pack would then carry the OLD
+// name inside, producing a pack the plugin cannot see -- silently, because a
+// folder with no readable ini is indistinguishable from a folder that is not a
+// pack. With a fixed name, renaming the folder is the whole job.
 //
-// THE FALLBACK IS PERMANENT. <name>.ini is still read when <type>.ini is
-// absent, so every pack published before this keeps working untouched. It costs
-// one existence check on a path the caller was about to open anyway. Do not
-// "clean it up" later: packs are downloaded from forum posts and Discord
-// attachments that outlive any release, and there is no upgrade step that can
-// reach them.
+// THE FALLBACK IS PERMANENT. <name>.ini is read when <type>.ini is absent, so
+// a pack authored as <name>\<name>.ini keeps working untouched. It costs one
+// existence check on a path the caller was about to open anyway. Do not "clean
+// it up": packs are downloaded from forum posts and Discord attachments that
+// outlive any release, and there is no upgrade step that can reach them.
 //
 // The canonical name WINS when both are present, and the caller is told so it
 // can warn. An upgrade leaves the old file sitting next to the new one (the
 // user-folder sync copies in, it never deletes), and without that warning the
 // stale <name>.ini is an edit that silently does nothing -- the same class of
-// bug this change exists to remove.
+// silent failure the fixed name exists to remove.
 //
 // BUT ONLY FOR A PACK THE USER OWNS, which is what `userDir` decides. The
 // duplicate has two very different origins and they need opposite treatment:
 //
 //   - the user edited a pack they authored, or copied a shipped one into their
-//     own folder. Their <name>.ini is now being ignored. Telling them is the
-//     entire point of the warning.
-//   - they upgraded, and an older Setup had shipped <name>.ini into the game's
-//     plugins folder. Nothing deletes it, so it sits there for all 33 shipped
-//     packs -- and warning is then noise twice per launch per pack, telling
-//     people to delete files they never created.
+//     own folder. Their <name>.ini is being ignored. Telling them is the entire
+//     point of the warning.
+//   - an older Setup shipped <name>.ini into the game's plugins folder and
+//     nothing deletes it, so it sits there for every shipped pack -- and warning
+//     is then noise twice per launch per pack, telling people to delete files
+//     they never created.
 //
 // Only the first has a copy in the user's own asset tree, because that tree is
 // the only place a person puts files (the same rule the gauge-art migration
-// uses). Setup used to prune the leftovers instead, from a macro that had to
-// re-derive this file's `legacy != canonical` rule in NSIS and got it wrong --
-// deleting the canonical ini of any pack named after its own type. Deciding it
-// here instead is one rule in one place, and no install-time file deletion at
-// all.
+// uses). Deciding it here is one rule in one place, and no install-time file
+// deletion at all -- an NSIS macro re-deriving the `legacy != canonical` rule
+// would delete the canonical ini of any pack named after its own type.
 //
 // Existence is tested by opening rather than through GetFileAttributes, so this
 // header stays free of <windows.h> and compiles into the Linux unit tests. The
@@ -67,11 +64,9 @@ constexpr const char* kGauges   = "gauge";
 //
 // Named here rather than spelled at each site because the readers match
 // "<section>.<key>": a writer that spells the section differently is not an
-// error, it is silently ignored. That is exactly how the gauge-art migration
-// shipped a generated pack whose `base = classic` was dropped -- the readers had
-// been renamed to `pack.*` and the one WRITER had not, so a user who redrew only
-// the tacho got a pack that failed the completeness check and vanished. Anything
-// that EMITS a pack ini builds the header from this.
+// error, it is silently ignored -- a generated pack whose `base` line sits under
+// the wrong section loses its base, fails the completeness check and vanishes.
+// Anything that EMITS a pack ini builds the header from this.
 constexpr const char* kSection = "pack";
 
 // What resolve() found. `path` is always the file to read -- when NEITHER

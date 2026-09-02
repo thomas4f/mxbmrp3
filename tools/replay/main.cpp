@@ -178,25 +178,25 @@ enum class EventType : uint32_t {
     RunDeinit = 6,
     RunStart = 7,
     RunStop = 8,
-    RunLap = 9,              // Added (was missing)
-    RunSplit = 10,           // Added (was missing)
-    RunTelemetry = 11,       // Fixed (was 9)
-    DrawInit = 12,           // Fixed (was 10)
-    Draw = 13,               // Fixed (was 11)
-    TrackCenterline = 14,    // Fixed (was 12)
-    RaceEvent = 15,          // Fixed (was 13)
-    RaceDeinit = 16,         // Fixed (was 14)
-    RaceSession = 17,        // Fixed (was 15)
-    RaceSessionState = 18,   // Fixed (was 16)
-    RaceAddEntry = 19,       // Fixed (was 17)
-    RaceRemoveEntry = 20,    // Fixed (was 18)
-    RaceLap = 21,            // Fixed (was 19)
-    RaceSplit = 22,          // Added (was missing)
-    RaceHoleshot = 23,       // Added (was missing)
-    RaceClassification = 24, // Fixed (was 20)
-    RaceTrackPosition = 25,  // Fixed (was 21)
-    RaceCommunication = 26,  // Fixed (was 22)
-    RaceVehicleData = 27,    // Added (was missing)
+    RunLap = 9,
+    RunSplit = 10,
+    RunTelemetry = 11,
+    DrawInit = 12,
+    Draw = 13,
+    TrackCenterline = 14,
+    RaceEvent = 15,
+    RaceDeinit = 16,
+    RaceSession = 17,
+    RaceSessionState = 18,
+    RaceAddEntry = 19,
+    RaceRemoveEntry = 20,
+    RaceLap = 21,
+    RaceSplit = 22,
+    RaceHoleshot = 23,
+    RaceClassification = 24,
+    RaceTrackPosition = 25,
+    RaceCommunication = 26,
+    RaceVehicleData = 27,
 };
 
 const char* getEventTypeName(EventType type) {
@@ -477,10 +477,10 @@ static bool setUpCompanionWindow(const char* pluginPath, const std::string& iniB
 // escape, so the natural-looking
 //     --savepath "%USERPROFILE%\Documents\replay-tool\"
 // hands us  C:\Users\me\Documents\replay-tool"  — a path with a literal quote
-// in it. Every subsequent CreateDirectory/fopen then fails, which used to
-// surface as "the companion window doesn't open" rather than as a path
-// problem. Quotes are not legal in Windows paths at all, so dropping them is
-// always the right reading of the user's intent.
+// in it. Every subsequent CreateDirectory/fopen then fails, which surfaces as
+// "the companion window doesn't open" rather than as a path problem. Quotes are
+// not legal in Windows paths at all, so dropping them is always the right
+// reading of the user's intent.
 static std::string stripQuotes(std::string p) {
     p.erase(std::remove(p.begin(), p.end(), '"'), p.end());
     return p;

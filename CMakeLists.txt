@@ -164,6 +164,9 @@ mxb_gate(thread-join-selftest fast 120 "-" "./tests/integration/check_thread_joi
 # a gate that can SKIP cannot be the thing that protects the skip detector.
 mxb_gate(session-hook fast 120 "-" "./tests/integration/check_session_hook.sh")
 mxb_gate(docs fast 120 "python3" "python3 tools/check_docs.py")
+# The docs as the PAGES SITE renders them (kramdown, not GitHub's cmark-gfm):
+# the two disagree, and the disagreement is silent. See the script's header.
+mxb_gate(pages-render fast 120 "ruby" "./tests/integration/check_pages_render.sh")
 mxb_gate(python-lint fast 120 "ruff" "ruff check .")
 mxb_gate(vendored-manifest fast 120 "python3" "python3 tools/check_vendored_manifest.py")
 # Guarded with the subdirectory that defines them: $<TARGET_FILE:unit_tests> is
@@ -224,6 +227,7 @@ mxb_gate(eslint fast 600 "node" "./tests/web/lint.sh")
 #     what turns "not installed" into SKIPPED here; the scripts themselves exit 1
 #     with a readable error when run directly.
 mxb_gate(cross-build slow 1800 "x86_64-w64-mingw32-g++" "./tests/integration/build.sh")
+mxb_gate(lazy-imports slow 900 "x86_64-w64-mingw32-objdump x86_64-w64-mingw32-g++" "./tests/integration/check_lazy_module_imports.sh")
 mxb_gate(integration slow 2400 "x86_64-w64-mingw32-g++ wine" "./tests/integration/run_tests.sh")
 mxb_gate(persistence slow 900 "x86_64-w64-mingw32-g++ wine" "./tests/integration/run_persist_test.sh")
 mxb_gate(fuzz-config slow 900 "x86_64-w64-mingw32-g++ wine" "./tests/integration/run_fuzz.sh")
@@ -285,7 +289,7 @@ mxb_gate(codeql slow 3600 "codeql x86_64-w64-mingw32-g++ python3"
 # own database clobbered in return -- 224 of ~307 files, caught only because
 # run_codeql.sh checks its own file count before believing "no findings".
 set_tests_properties(cross-build integration persistence fuzz-config
-                     fuzz-callbacks perf codeql
+                     fuzz-callbacks perf codeql lazy-imports
                      PROPERTIES RESOURCE_LOCK mxbmrp3_test_dll)
 
 # The two WEB gates share a different resource, and it bit the same way: both

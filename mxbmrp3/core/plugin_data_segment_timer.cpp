@@ -1,7 +1,6 @@
 // ============================================================================
 // core/plugin_data_segment_timer.cpp
 // Segment timer (training tool)
-// (extracted verbatim from plugin_data.cpp; no behavior change)
 // ============================================================================
 
 #include "plugin_data.h"
@@ -89,8 +88,8 @@ void PluginData::addSegmentPoint() {
 
     m_segmentNotice = SegmentNoticeKind::Added;
     // Number by the POINT just placed (each Add press = one point), so the notice counts
-    // up 1,2,3 as you build the chain. Numbering by formed SEGMENT instead made the first
-    // press show no number (0 segments until the 2nd point) then jump to "SEG 1".
+    // up 1,2,3 as you build the chain. Numbering by formed SEGMENT instead would show no
+    // number on the first press (0 segments until the 2nd point) then jump to "SEG 1".
     m_segmentNoticeNumber = static_cast<int>(m_segment.points.size());
     m_segmentNoticeTime = std::chrono::steady_clock::now();
 }

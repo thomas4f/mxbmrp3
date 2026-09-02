@@ -16,6 +16,16 @@
 //      hasn't yet crossed into the bonus laps, the clock HOLDS at "00:00" (the
 //      documented finish-before-timer freeze), then steps N TO GO → FINAL LAP →
 //      CHECKERED as the leader completes the added laps.
+
+// A third, read from the StandingsHud's own session-info row rather than the
+// snapshot (the row is rendered text, not a JSON field):
+//
+//   3. An UNLIMITED session — no clock and no lap target, which is what Testing
+//      and an open practice are — shows the game's clock COUNTING UP, because
+//      that is the direction it runs when there is nothing to count down to.
+//      "Waiting" is the exception: between sessions the game sends no
+//      classifications, so the value sitting in the clock belongs to the session
+//      that just ended and the row states the label alone.
 //
 // One lifecycle (singletons persist across TEST_CASEs). The non-arming formats run
 // first; overtime (a sticky flag) is driven last. Self-contained doctest.
@@ -26,14 +36,24 @@
 #include "plugin_host.h"
 #include "assertions.h"
 
-// PiBoSo session enum: 1=Practice, 6=Race1. state 16 = running.
-static constexpr int PRACTICE = 1, RACE1 = 6;
+// PiBoSo session enum: 0=Waiting, 1=Practice, 6=Race1. state 16 = running.
+static constexpr int WAITING = 0, PRACTICE = 1, RACE1 = 6;
 
 static std::string sessTime(const nlohmann::json& d) {
     return d["session"].value("time", std::string());
 }
 static std::string sessFormat(const nlohmann::json& d) {
     return d["session"].value("format", std::string());
+}
+
+// The StandingsHud's session-info row ("<session>: <clock / lap / label>"), by its
+// label rather than by string index: what the row SAYS is the assertion, and an
+// index would also pass on the title above it.
+static std::string sessionInfoRow(PluginHost& host, const std::string& label) {
+    for (const auto& r : host.hudStringRows(PluginHost::HUD_STANDINGS)) {
+        if (r.text.rfind(label, 0) == 0) return r.text;
+    }
+    return {};
 }
 
 TEST_CASE("session format + overtime clock: laps vs time vs time+laps") {
@@ -74,6 +94,38 @@ TEST_CASE("session format + overtime clock: laps vs time vs time+laps") {
         CHECK(sessTime(d) != "CHECKERED");
         CHECK(sessTime(d) != "FINAL LAP");
     }
+
+    // --- Unlimited session: the clock counts UP -------------------------------
+    // Neither limit set, which is what a Testing event and an open practice send.
+    // The game's own clock is then elapsed time, and the row shows it; the
+    // format string has nothing to state.
+    REQUIRE(host.hasStringRows());
+    host.session(PRACTICE, /*numLaps=*/0, /*lengthMs=*/0);
+    host.classify(PRACTICE, 300000, {
+        { .num = 10, .best = 88000, .laps = 3 },
+        { .num = 22, .best = 89000, .laps = 3 },
+    });
+    {
+        CHECK(sessFormat(host.snapshot()) == "");
+        CHECK(sessionInfoRow(host, "Practice") == "Practice: 05:00");
+    }
+    // Ascending, not a frozen or counted-down value: a later classification reads
+    // higher. (The countdown cases above go the other way, which is the point.)
+    host.classify(PRACTICE, 425000, {
+        { .num = 10, .best = 88000, .laps = 4 },
+        { .num = 22, .best = 89000, .laps = 4 },
+    });
+    CHECK(sessionInfoRow(host, "Practice") == "Practice: 07:05");
+
+    // --- Waiting: the label alone -------------------------------------------
+    // Same unlimited shape, but the clock is a leftover from the session that
+    // ended, so nothing is shown after the label.
+    host.session(WAITING, /*numLaps=*/0, /*lengthMs=*/0);
+    host.classify(WAITING, 425000, {
+        { .num = 10, .best = 88000, .laps = 4 },
+        { .num = 22, .best = 89000, .laps = 4 },
+    });
+    CHECK(sessionInfoRow(host, "Waiting") == "Waiting");
 
     // --- Time+laps race: "8:00 + 2L", then the overtime state machine --------
     // 8 minutes then 2 added laps. Overtime arms when the clock first ticks
@@ -121,6 +173,33 @@ TEST_CASE("session format + overtime clock: laps vs time vs time+laps") {
         { .num = 22, .laps = 5, .gap = 2000 },
     });
     CHECK(sessTime(host.snapshot()) == "CHECKERED");
+
+    // --- The two labels the count-up was added for ---------------------------
+    // Everything above runs in a Race event, so the label reads "Practice". The
+    // sessions a player actually meets this in are a TESTING event's, and their
+    // labels are the event type's doing, not the session's: eventType arrives on
+    // EventInit (m_iType = 1), and the same session reads "Open Practice" when
+    // that event is online (serverType 2) and "Testing" when it is not.
+    // Driven last so re-initialising the event cannot disturb the overtime
+    // machine above, which is a sticky flag.
+    host.eventInit("TestTrack", "Alice", 1600.0f, /*type=*/1);
+    host.raceEvent("TestTrack", /*type=*/1);
+    host.session(PRACTICE, /*numLaps=*/0, /*lengthMs=*/0);
+    host.classify(PRACTICE, 610000, {
+        { .num = 10, .best = 88000, .laps = 6 },
+        { .num = 22, .best = 89000, .laps = 6 },
+    });
+    CHECK(sessionInfoRow(host, "Testing") == "Testing: 10:10");
+
+    host.eventInit("TestTrack", "Alice", 1600.0f, /*type=*/1, "Test 450", "MX1", "",
+                   /*serverType=*/2);
+    host.raceEvent("TestTrack", /*type=*/1);
+    host.session(PRACTICE, /*numLaps=*/0, /*lengthMs=*/0);
+    host.classify(PRACTICE, 610000, {
+        { .num = 10, .best = 88000, .laps = 6 },
+        { .num = 22, .best = 89000, .laps = 6 },
+    });
+    CHECK(sessionInfoRow(host, "Open Practice") == "Open Practice: 10:10");
 
     host.shutdown();
 }

@@ -6,28 +6,16 @@
 // TWO of these are settable, from [Advanced] in the settings INI: `uiFontSize` and
 // `uiLineHeight`. Everything else is a design constant.
 //
-// IT WAS ALL SETTABLE ONCE, from a defaults ini under the themes folder documenting forty
-// keys, and the reason it is not any more is worth keeping: across every theme a
-// user would actually pick, the number of layout keys set was ZERO. The themes of
-// the day set slice values, colours and fonts and nothing else; the only file that
-// exercised the tuning surface was the debug theme, whose job is to demonstrate
-// that the surface exists. (Every shipped theme states the full box now -- they
-// share one geometry, so the surface is exercised by all of them.)
+// Those two are the two that answer a real question -- "make it bigger", "give rows
+// more air" -- and answer it without moving anything relative to anything else. A
+// layout knob that moves several things at once, or nothing, is not exposed: slice
+// sizes are stated in cells, so they land on the grid by construction rather than
+// by a ceil, and no border term is needed to work around quantisation.
 //
-// The two that survive are the two that answer a real question -- "make it bigger",
-// "give rows more air" -- and answer it without moving anything relative to anything
-// else. The rest either moved several things at once or, measured, moved nothing:
-// [panel] border-x/-y existed ONLY to work around a quantisation dead zone that no
-// longer exists (slice sizes are stated in cells now, so they land on the grid by
-// construction rather than by a ceil).
-//
-// [panel] padding-x/-y CAME BACK, as a per-theme key rather than a layout one, and the
-// argument that removed it stands unchanged: it is inert below the frame's clearance,
-// which at the debug theme's [frame] 6 meant inert below 6 cells. What changed is that
-// the number is no longer a mystery. It was the last unreachable quantity in the box
-// model -- with every border at 0 a panel still held its content 2 cells in and nothing
-// could say why -- and a knob that is dead in part of its range is easier to explain
-// than a constant that is dead in all of it. The dead zone is documented at
+// [panel] padding-x/-y is a per-theme key rather than a layout one. It is inert
+// below the frame's clearance (at the debug theme's [frame] 6, inert below 6
+// cells); a knob that is dead in part of its range is easier to explain than a
+// constant that is dead in all of it. The dead zone is documented at
 // ThemeAsset::panelPaddingXOverride, pinned by theme_panel_padding_test, and shown in
 // the box-model mock, which flags when the border rather than the key is setting the
 // padding.
@@ -40,23 +28,20 @@
 // ONE GRID, AND IT IS THE CHARACTER BOX. cellW and cellH are the character's own
 // width and the row's own height, divided by cellsPerChar / cellsPerRow. Nothing
 // else defines a lattice: snapX/snapY/ceilX/ceilY hang off this struct, and the grid
-// overlay draws these. There used to be THREE copies of each axis -- the live one
-// here, a `constexpr` pair in plugin_constants.h that could not follow a font-size
-// change, and a hardcoded 0.0111 inside ScaledDimensions::gridV that had already
-// drifted 5.4% from both. Panels snapped to one lattice while laying out their
-// insides on another.
+// overlay draws these. A second copy of either axis cannot follow a font-size
+// change, and panels then snap to one lattice while laying out their insides on
+// another.
 //
-// ROOTS vs DERIVED, which is still the design. derive() recomputes everything from
-// the roots, because the relationships are LOAD-BEARING. The one that matters most:
-// a normal row is exactly `cellsPerRow` cells, so vertical snapping lands on row
-// boundaries. Break the link between the row and the cell and it stops.
+// ROOTS vs DERIVED. derive() recomputes everything from the roots, because the
+// relationships are LOAD-BEARING. The one that matters most: a normal row is
+// exactly `cellsPerRow` cells, so vertical snapping lands on row boundaries. Break
+// the link between the row and the cell and it stops.
 //
-// EACH KNOB CHANGES ONE THING, which was not true until it was measured against a
-// screenshot. lineHeightNormal used to be SOLVED from the gauge widgets' pixel-square
-// requirement -- (8 + 2*padH) * cellW * aspect / (3 + padV) -- which made the row
-// pitch of the WHOLE UI a function of three widgets' padding. That squareness
-// requirement belongs to those three widgets and is now a property of the shipped
-// defaults, not an invariant enforced against the user.
+// EACH KNOB CHANGES ONE THING. lineHeightNormal is the font's alone, never solved
+// from the gauge widgets' pixel-square requirement -- that would make the row pitch
+// of the WHOLE UI a function of three widgets' padding. The squareness requirement
+// belongs to those three widgets and is a property of the shipped defaults, not an
+// invariant enforced against the user.
 //
 // Pure and header-only: no I/O, no singletons, no game types, so it compiles straight
 // into the unit suite.
@@ -72,10 +57,10 @@ struct LayoutMetrics {
     // in this section is a multiple of it, so this one number moves the whole UI.
     float fontSizeNormal = 0.0200f;
 
-    // font.size-xs/-s/-l/-xl -- the other tiers, as multiples of font.size. They
-    // were absolute screen fractions, which meant raising font.size grew the body
-    // text and left every title exactly where it was: the one knob advertised as
-    // "moves the entire UI" was the one that didn't.
+    // font.size-xs/-s/-l/-xl -- the other tiers, as multiples of font.size, not
+    // absolute screen fractions: raising font.size must grow the titles with the
+    // body text, or the one knob advertised as "moves the entire UI" is the one
+    // that doesn't.
     float fontSizeXS = 0.625f;              // 0.0125 at the default size
     float fontSizeS = 0.75f;                // 0.0150
     float fontSizeL = 1.5f;                 // 0.0300
@@ -84,8 +69,7 @@ struct LayoutMetrics {
     // font.row-xs/-s/-l/-xl -- the ROW each tier occupies, as a multiple of
     // font.line-height. Separate from the text size on purpose, and the numbers say
     // why: -l text is 1.5x but sits in a 2x row, because a title wants air its
-    // glyphs do not. That asymmetry was a pair of literals in derive() where nobody
-    // could see it, let alone change it.
+    // glyphs do not.
     float rowXS = 0.625f;
     float rowS = 0.75f;
     float rowL = 2.0f;
@@ -106,63 +90,46 @@ struct LayoutMetrics {
     // shipped font with `center = 1`, which shifts the baseline until that band is
     // centred in the cell — so the answer is 0.5 BY CONSTRUCTION, and the ink is
     // the only thing that could make it otherwise. test_font_metrics.cpp measures
-    // all eight shipped atlases against it.
-    //
-    // It used to be a pair, an ink HEIGHT (0.46) and an ink TOP (0.16), eyeballed
-    // from a screenshot. Only their combination `top + height/2` ever reached the
-    // arithmetic, so they were one number wearing two hats — and that number came
-    // to 0.39, putting every value it placed 0.11 font sizes LOW. Invisible at
-    // default padding; with the air terms at 0 it is a value hanging out of the
-    // bottom of its own panel.
+    // all eight shipped atlases against it. One number, not an ink top plus an ink
+    // height: only their combination `top + height/2` ever reaches the arithmetic,
+    // and a wrong value places every centred value low -- invisible at default
+    // padding, but with the air terms at 0 it is a value hanging out of the bottom
+    // of its own panel.
     float inkCenterRatio = 0.5f;
 
     // font.line-height -- row pitch, as a multiple of the base font size. A ROOT,
     // because cellH is half of it and cellH is the vertical snap grid.
     //
-    // 1.1 is TASTE, not arithmetic, and so was the 1.17335 it replaced. That number
-    // reproduced the pre-knob shipped row pitch exactly (see below), which was the
-    // right default while the ratio was newly settable and the engine was not yet
-    // trusted at any other value. It is not the right default now: 1.17335 is a
-    // sixth of a row of air between every pair of text rows, and at the panel
-    // densities this UI actually runs -- twenty-odd rows in the settings panel, a
-    // full standings grid -- that reads as slack rather than as breathing room.
-    // 1.1 keeps a tenth of a row and gives the space back.
+    // 1.1 is TASTE, not arithmetic: a tenth of a row of air between every pair of
+    // text rows. At the panel densities this UI actually runs -- twenty-odd rows in
+    // the settings panel, a full standings grid -- a sixth of a row (1.17335) reads
+    // as slack rather than as breathing room.
     //
     // Settings v9 moves an existing file to it, but ONLY where the stored value is
-    // the old default: the writer emits this key into every INI whether or not
-    // anyone chose it, so "the file says 1.17335" carries no user intent, while any
-    // other value does and is left alone. Same conservative rule the v5 colour/font
-    // unpinning uses, and for the same reason.
+    // PREV_DEFAULT_LINE_HEIGHT_RATIO: the writer emits this key into every INI
+    // whether or not anyone chose it, so "the file says 1.17335" carries no user
+    // intent, while any other value does and is left alone. Same conservative rule
+    // the v5 colour/font unpinning uses, and for the same reason.
     //
-    // It is NOT load-bearing: an earlier
-    // note here claimed it uniquely aligns the row grid with the theme border
-    // lattice, and that was wrong twice over -- the border lattice is
-    // cellW * UI_ASPECT_RATIO (font-derived, 0.009778), which NO positive ratio
-    // makes equal to cellH, and the wobbles blamed on "misalignment" were two
-    // real defects that the shipped 5:6 lattice ratio happened to cancel
-    // (layoutPanel gave a band's slack to the wrong column; planTitleY centred
-    // the caption into titleSlack -- both fixed, pinned by the
-    // split-tall-second parity vectors and title_band_test). The engine is
-    // exact at ANY ratio: terms spend exactly, panel heights ceil to whole
-    // cells with the remainder going to a named absorber (panel_box.h), and
-    // the geometry tests derive expectations from the live lattice
-    // (MXBMRP3_Test_LayoutCells) rather than from this default -- which is what
-    // makes moving the default a one-line change rather than a re-baselining.
+    // It is NOT load-bearing: the border lattice is cellW * UI_ASPECT_RATIO
+    // (font-derived, 0.009778), which NO positive ratio makes equal to cellH, so no
+    // value here aligns the row grid with it. The engine is exact at ANY ratio:
+    // terms spend exactly, panel heights ceil to whole cells with the remainder
+    // going to a named absorber (panel_box.h), and the geometry tests derive
+    // expectations from the live lattice (MXBMRP3_Test_LayoutCells) rather than
+    // from this default -- which is what makes moving the default a one-line
+    // change rather than a re-baselining. Pinned by the split-tall-second parity
+    // vectors and title_band_test.
     //
-    // 1.17335, the previous default, reproduced the shipped 0.023467 exactly
-    // (0.023467 / 0.02). That
-    // number used to be written as 12 * charWidth * 16/9 / 5 -- where the 12 and 5
-    // are the gauge widgets' content PLUS their padding -- so the row pitch of the
-    // entire UI was a function of three widgets' padding, frozen into a literal
-    // where nobody could see it. Making padding settable turned that frozen
-    // assumption live, and widening the panel padding visibly crushed every text
-    // row in the settings panel. Row pitch is its own knob now.
+    // Row pitch is its own knob, never a function of any widget's padding: the
+    // gauge widgets' content-plus-padding arithmetic stays theirs, so widening the
+    // panel padding cannot crush every text row in the settings panel.
     float lineHeightRatio = 1.1f;
 
-    // The default this replaced, kept because the v9 migration needs to RECOGNISE it
-    // -- a stored 1.17335 is the old writer's, not a choice, and only a value that
-    // is neither default carries intent. Not a fallback and not a clamp bound; it
-    // exists solely so that test can be written against a number rather than a
+    // The pre-v9 default, which the v9 migration needs to RECOGNISE -- a stored
+    // 1.17335 is the old writer's, not a choice, and only a value that is neither
+    // default carries intent. Not a fallback and not a clamp bound; it exists solely
+    // so that the migration test can be written against a number rather than a
     // literal buried in the migration.
     static constexpr float PREV_DEFAULT_LINE_HEIGHT_RATIO = 1.17335f;
 
@@ -177,16 +144,11 @@ struct LayoutMetrics {
     // 1 and 2 is the shipped lattice, and the asymmetry is deliberate rather than
     // an oversight: horizontal layout is done in whole characters (the settings
     // panel's columns are character counts), while vertical layout wants a HALF-row
-    // step so a small row and the gap above it can both land on it. It used to be a
-    // bare `0.5f *` inside derive() with the reason in a comment, so "why is
-    // padding-x = 2 not the same amount of space as padding-y = 2" had no answer
-    // you could reach from the file.
+    // step so a small row and the gap above it can both land on it. That is why
+    // padding-x = 2 is not the same amount of space as padding-y = 2.
     //
     // Whatever these are, cellW/cellH are the ONLY grid: snapping, ceil-to-cell and
     // the grid overlay all read them, so a changed font moves the lattice with it.
-    // There used to be three copies of each axis -- the live one, a compile-time
-    // constant in plugin_constants.h, and a hardcoded 0.0111 in gridV() that had
-    // already drifted 5.4% from the other two.
     int cellsPerChar = 1;                   // grid.cells-per-char
     int cellsPerRow = 2;                    // grid.cells-per-row
 
@@ -199,7 +161,7 @@ struct LayoutMetrics {
     // values; a theme overrides either axis with `[panel] padding-x/-y`
     // (ThemeAsset::panelPaddingXOverride), and BaseHud::basePadding{X,Y}() is the only
     // reader that resolves the two. Read here directly and you get the built-in for a
-    // theme that set its own, which was true of the whole tree until the key existed.
+    // theme that set its own.
     // ---- [box] -- the AIR-term BUILT-INS the box model falls back to when the
     // active theme does not name the key (BaseHud::resolvePanelSpec's fallbacks;
     // the theme inis' "(default N)" notes are THESE numbers). Settable from the
@@ -214,13 +176,6 @@ struct LayoutMetrics {
     // stacked children, and every other term is zero — so the air a reader sees
     // is the sum of at most two numbers rather than of six, and the two that are
     // left are the two a user reaches for ("looser panel", "looser stack").
-    //
-    // The old set spent something at almost every boundary (2 outside, half a
-    // cell around each card, each button, each caption) and their sums were what
-    // you actually saw. Those halves date from the era when the box terms only
-    // reached THEMED panels — four of them were dead unthemed until layoutPanel
-    // stopped collapsing a box for want of a border to draw — so they were tuned
-    // against a case most users never see.
     PanelBox::Sides boxPanelPadding{1.0, 1.0, 1.0, 1.0};
     PanelBox::Sides boxTitleMargin{0.0, 0.0, 0.0, 0.0};
     PanelBox::Sides boxTitlePadding{0.0, 0.0, 0.0, 0.0};
@@ -241,55 +196,42 @@ struct LayoutMetrics {
     // The LEGACY panel padding, read by BaseHud::basePadding{X,Y}() for the panels
     // that have NOT moved onto the box model — speedo, tacho, and the settings panel.
     //
-    // Deliberately still 2 while boxPanelPadding went to 1, and NOT because they are
-    // different quantities: they are the same one, and a box panel now pads a cell
-    // where a legacy panel pads two. Following it to 1 was tried and reverted --
-    // basePaddingY does not convert cells the way the box model does, so at 1 the
-    // legacy panels pad 1.5 CELLS and break the whole-cell invariant
-    // theme_panel_padding_test's "padding lands on the lattice" case exists to hold.
-    // Closing the gap means porting those three panels, not retuning this number.
+    // Deliberately 2 while boxPanelPadding is 1, and NOT because they are different
+    // quantities: they are the same one, and a box panel pads a cell where a legacy
+    // panel pads two. Do not follow it to 1: basePaddingY does not convert cells the
+    // way the box model does, so at 1 the legacy panels pad 1.5 CELLS and break the
+    // whole-cell invariant theme_panel_padding_test's "padding lands on the lattice"
+    // case exists to hold. Closing the gap means porting those three panels, not
+    // retuning this number.
     float panelPaddingXCells = 2.0f;
     float panelPaddingYCells = 2.0f;
 
     // THE VISIBLE GAP BETWEEN TWO CARDED BOXES has no built-in of its own: it is
     // boxContentMargin's two facing sides, summed, read by BaseHud::contentGapCells.
-    // There used to be a `sectionGap` here holding 1.0 next to a margin of 0.5 per
-    // side -- one distance written twice, kept equal by hand until somebody retuned
-    // the margin alone.
+    // A separate `sectionGap` beside the margin would be one distance written twice,
+    // kept equal by hand.
     //
-    // ONE TERM FOR ALL THREE BOUNDARIES, which is what it was not. There are three
-    // places two carded boxes meet, and each used to answer differently:
-    //
-    //     title band -> body card      FLUSH. `[content] gap-y` used to put a cell
-    //                                  here and was scrapped as "a knob no theme can
-    //                                  turn"; the reason it was wanted is that two
-    //                                  abutting edge slices read as one rule.
-    //     HUD section -> HUD section   pad + pad and no visible term, so UNTHEMED it
-    //                                  computed to zero and sections touched.
-    //     settings -> settings         pad + gap + pad. The only one with a middle
-    //                                  term, at `settingsSectionGap`.
-    //
-    // So the settings panel separated its cards by a cell while every HUD hugged, for
-    // no reason anybody chose. Each boundary spends its own pads (which legitimately
-    // differ) plus the shared margin seam.
+    // ONE TERM FOR ALL THREE BOUNDARIES where two carded boxes meet -- title band ->
+    // body card, HUD section -> HUD section, settings -> settings. Each boundary
+    // spends its own pads (which legitimately differ) plus the shared margin seam, so
+    // the settings panel cannot separate its cards by a cell while every HUD hugs.
 
     // ---- [title] -- the themed title band ----
     // THERE IS NO title.padding-y HERE. The air above and below the caption glyph is
     // [title] padding -- the box term, defaulted by boxTitlePadding above and
-    // resolved by BaseHud::titlePadY(). Half a cell here, on the ROW lattice, was a
-    // third spelling of one distance, and the one the band was actually built from,
-    // so moving [Advanced] titlePadding changed what a panel RESERVED without moving
-    // the band or the glyph.
+    // resolved by BaseHud::titlePadY(). A second spelling of that distance here, on
+    // the ROW lattice, would let [Advanced] titlePadding change what a panel RESERVES
+    // without moving the band or the glyph.
     //
-    // What the box term kept from it: CELLS, not an em of the caption's font. As a
-    // ratio one value produced different air per tier -- 8.1px on a HUD titling at
-    // font.size-l against 5.4px on a widget at font.size -- so two bands set from
-    // the same number did not look alike. In cells both get the same air, and the
-    // band's spacing reads against the grid overlay like every other distance here.
+    // The box term is in CELLS, not an em of the caption's font. As a ratio one
+    // value produces different air per tier -- 8.1px on a HUD titling at font.size-l
+    // against 5.4px on a widget at font.size -- so two bands set from the same
+    // number do not look alike. In cells both get the same air, and the band's
+    // spacing reads against the grid overlay like every other distance here.
 
-    // title.icon-gap -- between the identity icon and the caption, in CELLS. Was
-    // 0.35 * the icon size, hardcoded, which is the same bug one level down: the gap
-    // moved when you resized the icon.
+    // title.icon-gap -- between the identity icon and the caption, in CELLS rather
+    // than a fraction of the icon size, so the gap does not move when the icon is
+    // resized.
     float titleIconGap = 1.0f;
     // title.icon-size -- identity icons are drawn smaller than the title font: icon
     // glyphs fill their box more than text fills the em. A ratio because it is a
@@ -299,21 +241,16 @@ struct LayoutMetrics {
     // ---- [content] -- the themed card behind a HUD's content block ----
     // Enabled per theme ([card] content); these place it. In CELLS.
     //
-    // THERE IS NO content.gap-y ANY MORE. A cell used to sit between the title band's
-    // bottom and the body card's top, so that two abutting edge slices did not read as
-    // one double-thickness rule. The card's other three edges were already flush with
-    // the frame, and an untitled panel's card hugged it -- so the seam was the only
-    // place in the panel where two themed boxes did NOT meet, which is a harder thing
-    // to explain than the doubled border it avoided. They hug now, like everything else.
-    // THERE IS NO content.padding-x / -y EITHER. They offered to grow or shrink the body
-    // card past its flush position, shipped at zero, and became unreachable when the
-    // layout file went away -- so every one of their six call sites added or subtracted
-    // a literal nothing. Scrapped with content.gap-y, for the same reason: a knob no
-    // theme can turn is not a knob, it is arithmetic pretending to be one.
+    // THERE IS NO content.gap-y. The body card hugs the title band's bottom, as its
+    // other three edges hug the frame and an untitled panel's card hugs it: two
+    // abutting edge slices reading as one double-thickness rule is easier to explain
+    // than the one seam in the panel where two themed boxes do NOT meet.
+    // THERE IS NO content.padding-x / -y EITHER: a knob no theme can turn is not a
+    // knob, it is arithmetic pretending to be one.
 
     // ---- [label] -- a styled string's own background quad ----
     // label.padding-x, in CELLS like every other spacing value (a cell is one
-    // character wide at the default grid, which is what "character widths" meant).
+    // character wide at the default grid).
     float labelPaddingX = 0.5f;
 
     // ---- [settings] -- the settings panel. In CELLS throughout. ----
@@ -325,19 +262,12 @@ struct LayoutMetrics {
     // panel's TOP is the title band instead, flush at [panel] border-y -- also the
     // same rule every other themed HUD follows.)
     //
-    // There was a `settings.padding-bottom` here, at 0.5 cells against the 2 that
-    // free-floating HUDs use, and it was spent at BOTH ends despite the name. It
-    // was removed on the reading that the panel is not height-constrained -- "the
-    // tallest tab under the tightest theme comes to 1046 of 1080 pixels". THAT
-    // MEASUREMENT WENT STALE and the note kept asserting it: the box-model port
-    // gave the footer a real button box (margins, border, padding, the [panel] gap
-    // above it) and the sidebar's group gaps became theme terms, and the panel
-    // reached 1.015 of the screen unthemed and 1.070 under a 2-cell frame -- clipped
-    // at BOTH ends, on the one panel a user cannot move, resize or hide.
-    //
-    // The panel measures itself now, so nothing here pays for its height. It is NOT
+    // The panel measures itself, so nothing here pays for its height. It is NOT
     // clamped to the display -- a theme can ask for more air than the screen has, and
     // that is the theme author's to see rather than something to hide by clipping.
+    // The footer's button box (margins, border, padding, the [panel] gap above it)
+    // and the sidebar's group gaps are theme terms, so a wide frame CAN push the one
+    // panel a user cannot move, resize or hide past both screen edges:
     // theme_geometry_test holds the SHIPPED configurations to fitting 1080p; see
     // there for why a frame of 3+ cells cannot be made to.
     // Sidebar column's content ask, in characters. It has to hold, on one row:
@@ -348,10 +278,10 @@ struct LayoutMetrics {
     // (2.25) for "New" -- 3 cells, on top of that row's own name.
     //
     // 17 rather than 16 because the WORST ROW is not the longest name: it is
-    // "Appearance" (10) plus a "New", at 4 + 10 + 3 = 17. At 16 the tag started
-    // exactly where the label's last glyph ended and the row read "AppearanceNew"
-    // -- reported off a screenshot, and not visible in any layout test, which count
-    // strings and rows rather than looking at them.
+    // "Appearance" (10) plus a "New", at 4 + 10 + 3 = 17. At 16 the tag starts
+    // exactly where the label's last glyph ends and the row reads "AppearanceNew"
+    // -- not visible in any layout test, which count strings and rows rather than
+    // looking at them.
     //
     // Badging a LONGER name than "Appearance" means redoing this sum. Nothing
     // automates it: the sidebar is one row per tab with no wrap and no ellipsis, so
@@ -359,31 +289,27 @@ struct LayoutMetrics {
     int settingsSidebarWidth = 17;
     // The content column's stated ask, characters. The panel's width is
     // COMPOSED from the columns — sidebar + trough + this + the theme/padding
-    // chrome — growing outward with the terms like any plan panel's, instead
-    // of the fixed 71-char total (`settings.width`) the columns used to carve.
+    // chrome — growing outward with the terms like any plan panel's, not a
+    // fixed total the columns carve.
     int settingsContentColumnChars = 53;
     // settings.label-column -- where labels start, in characters from the content
     // area's left edge. Also the inset a section card is drawn at, so the card wraps
-    // its content: that was `settings.section-indent`, a second key holding a copy
-    // of this number, which unwrapped every card as soon as the two disagreed.
+    // its content: one number, because a second key holding a copy of it unwraps
+    // every card as soon as the two disagree.
     int settingsLabelColumn = 2;
     int settingsControlColumn = 28;      // settings.control-column
-    // settings.rows is GONE, and this time not as a floor either. The panel MEASURES
-    // its tallest tab (SettingsHud::measureTallestContentRows) and is that tall on
-    // every tab, so the buttons never move and no number has to be re-established by
-    // a sweep. It could not follow a theme in any case: `[content] padding` is paid
-    // per section, so air in an ini came out of the budget and the panel clipped
-    // rather than grew.
-    // settings.section-padding is GONE. It was the pad inside a settings card,
-    // above its first row and below its last -- which is [content] padding, the
-    // term every other card already spends, written a second time on this panel's
-    // own lattice and reachable from no ini. SettingsHud::cardPad*() reads
-    // boxContentPadding now.
-    // settings.row-gap and settings.block-gap are GONE. One cell and two, a
-    // private vertical rhythm this panel used at six call sites in a single tab
-    // and no ini could reach -- while the seam on either side of them (a section
-    // card's boundary) already spent [content] margin + [panel] gap.
-    // SettingsLayoutContext::addSpacing() spends the junction gap now.
+    // There is no settings.rows, not even as a floor. The panel MEASURES its tallest
+    // tab (SettingsHud::measureTallestContentRows) and is that tall on every tab, so
+    // the buttons never move and no number has to be re-established by a sweep. A
+    // row count could not follow a theme in any case: `[content] padding` is paid
+    // per section, so air in an ini would come out of the budget and the panel
+    // would clip rather than grow.
+    // There is no settings.section-padding. The pad inside a settings card, above
+    // its first row and below its last, is [content] padding, the term every other
+    // card spends: SettingsHud::cardPad*() reads boxContentPadding.
+    // There are no settings.row-gap / settings.block-gap. The seam on either side of
+    // a section card's boundary already spends [content] margin + [panel] gap, and
+    // SettingsLayoutContext::addSpacing() spends the junction gap.
 
     // ---- DERIVED: written by derive(), never parsed ----
     float charWidth = 0.0f;          // one character, in screen units
@@ -405,9 +331,9 @@ struct LayoutMetrics {
     // after loading defaults, and again after a theme overrides one.
     void derive() {
         charWidth = fontSizeNormal * charWidthRatio;
-        // Row pitch from the font alone. Padding is deliberately absent: it used to
-        // be in here (via the gauge-square solve) and that made every text row in
-        // the UI move when a user touched the panel padding.
+        // Row pitch from the font alone. Padding is deliberately absent: with it in
+        // here every text row in the UI would move when a user touched the panel
+        // padding.
         lineHeightNormal = fontSizeNormal * lineHeightRatio;
 
         // The grid IS the character box, subdivided. See [grid].
@@ -440,12 +366,12 @@ struct LayoutMetrics {
     //
     // A panel's position is never the thing that gets snapped directly: it is a
     // layout built in un-dragged space, plus an offset (a saved drag) or a centring
-    // term. Snapping the OFFSET -- which the drag path did -- only quantises the
-    // delta, so a panel whose own left edge is off-grid stays off-grid at every
-    // offset. The internal rhythm was on the lattice and the panel holding it was
-    // not. Snap the resulting EDGE and fold the delta back into whatever moves the
-    // panel; that works the same for a drag offset, a centring anchor and a bar
-    // drawn around its own centre, which is why all four call sites share it.
+    // term. Snapping the OFFSET only quantises the delta, so a panel whose own left
+    // edge is off-grid stays off-grid at every offset: the internal rhythm on the
+    // lattice and the panel holding it not. Snap the resulting EDGE and fold the
+    // delta back into whatever moves the panel; that works the same for a drag
+    // offset, a centring anchor and a bar drawn around its own centre, which is why
+    // all four call sites share it.
     float snapDeltaX(float edge) const { return snapX(edge) - edge; }
     float snapDeltaY(float edge) const { return snapY(edge) - edge; }
 
@@ -485,16 +411,16 @@ public:
     // the character arithmetic integral -- rather than deriving it back out of the
     // emitted floats -- means the derived widths are exact.
     //
-    // THAT IS NOT A STYLE POINT. The tooltip box used to recover its width by
-    // dividing a float span by the width of one character. Real arithmetic makes
-    // that exactly settingsTooltipCharsPerLine(); IEEE floats made it that at most
-    // HUD scales and ONE LESS at 0.70, so the tooltip box quietly lost a character
-    // for anyone running the menu small -- a truncated tooltip at one scale and not
-    // another, with nothing in the code saying so. The integer form cannot do that.
+    // THAT IS NOT A STYLE POINT. Recovering the tooltip box's width by dividing a
+    // float span by the width of one character gives settingsTooltipCharsPerLine()
+    // in real arithmetic; in IEEE floats it gives that at most HUD scales and ONE
+    // LESS at 0.70, so the tooltip box quietly loses a character for anyone running
+    // the menu small -- a truncated tooltip at one scale and not another, with
+    // nothing in the code saying so. The integer form cannot do that.
 
-    // Content area width in characters — the stated ask, no longer derived by
-    // subtraction from a fixed panel width (the derivation inverted when the
-    // width became composed). Integer so the tooltip budget below stays exact.
+    // Content area width in characters — the stated ask, not derived by
+    // subtraction from a panel width that is itself composed from the columns.
+    // Integer so the tooltip budget below stays exact.
     int settingsContentAreaChars() const {
         return settingsContentColumnChars;
     }
@@ -503,11 +429,10 @@ public:
     // ONE CHARACTER NARROWER WITH A CARD, because the box is the only thing in the
     // panel that actually fills its width and the card has a border to clear. On the
     // left the text already clears it: the card starts (border + row lead-in) left of
-    // the first glyph. On the right nothing took that back, so a full-width line's
-    // last glyph landed ON the card's right border, touching it with nothing between
-    // -- measured at 1317 against a border starting at 1318. Five shipped tab tooltips
-    // wrap to a full line; `hotkeys` ends that line on "buttons", which is how it was
-    // reported.
+    // the first glyph. On the right nothing takes that back, so without this a
+    // full-width line's last glyph lands ON the card's right border, touching it with
+    // nothing between (1317 against a border starting at 1318). Five shipped tab
+    // tooltips wrap to a full line.
     //
     // ONE character, not the two SettingsLayoutContext::rowSpanWidth() takes off: a
     // row is inset by the whole label column at each end, while the text only owes the
@@ -524,10 +449,9 @@ public:
 // so there is no author to warn and no previous value to keep -- the useful behaviour
 // is to land on the nearest sane number and carry on.
 //
-// Everything else in this struct is a design constant. It was all settable once, from
-// a defaults ini that no shipped theme ever wrote a line of; the two
-// that survive are the two that answer a real question ("make it bigger", "give rows
-// more air") without moving anything relative to anything else.
+// Everything else in this struct is a design constant; these two are the two that
+// answer a real question ("make it bigger", "give rows more air") without moving
+// anything relative to anything else.
 // NON-FINITE FIRST, and that ordering is the whole guard: a clamp written as
 // `(v < lo) ? lo : (v > hi ? hi : v)` passes NaN straight through, because NaN
 // compares false against BOTH bounds. These two feed derive(), so a NaN here is not

@@ -7,57 +7,59 @@
 
 #include "base_hud.h"
 #include "../core/layout_metrics.h"
-#include "ideal_lap_hud.h"
-#include "lap_log_hud.h"
-#include "friends_hud.h"
-#include "session_charts_hud.h"
-#include "standings_hud.h"
-#include "performance_hud.h"
-#include "pitboard_hud.h"
-#include "time_widget.h"
-#include "position_widget.h"
-#include "lap_widget.h"
-#include "session_hud.h"
-#include "speed_widget.h"
-#include "gear_widget.h"
-#include "crash_widget.h"
-#include "speedo_widget.h"
-#include "tacho_widget.h"
-#include "timing_hud.h"
-#include "gap_bar_hud.h"
-#include "bars_widget.h"
-#include "version_widget.h"
-#include "notices_hud.h"
-#include "fuel_widget.h"
-#include "pointer_widget.h"
-#include "settings_button_widget.h"
-#include "records_hud.h"
-#include "gamepad_widget.h"
-#include "lean_widget.h"
-#include "gforce_widget.h"
-#include "compass_widget.h"
-#include "clock_widget.h"
-#if GAME_HAS_TYRE_TEMP
-#include "tyre_temp_widget.h"
-#endif
-#if GAME_HAS_ECU
-#include "ecu_widget.h"
-#endif
-#include "fmx_hud.h"
-#include "event_log_hud.h"
 #include <variant>
 #include <string>
 #include <cmath>
 #include <functional>
-#include "map_hud.h"
-#include "radar_hud.h"
 #include "../core/plugin_constants.h"
 #include "../core/color_config.h"
 #include "../core/font_config.h"
 #include "../core/xinput_reader.h"
 #include "../core/hotkey_config.h"
 
-// Forward declarations
+// THE HUD TYPES ARE FORWARD-DECLARED, NOT INCLUDED. This class only ever holds
+// them by pointer (the m_* targets the tabs edit and their getters), so the
+// declaration needs the names and nothing else. Including the HUD headers here
+// would make every includer of this header -- the settings serializers,
+// HudManager, the test hooks -- recompile whenever ANY HUD header changed. The
+// .cpp files that call into a concrete HUD include that HUD's header
+// themselves; the compiler names the one that is missing.
+class IdealLapHud;
+class LapLogHud;
+class FriendsHud;
+class SessionChartsHud;
+class StandingsHud;
+class PerformanceHud;
+class PitboardHud;
+class TimeWidget;
+class PositionWidget;
+class LapWidget;
+class SessionHud;
+class SpeedWidget;
+class GearWidget;
+class CrashWidget;
+class SpeedoWidget;
+class TachoWidget;
+class TimingHud;
+class GapBarHud;
+class BarsWidget;
+class VersionWidget;
+class NoticesHud;
+class FuelWidget;
+class PointerWidget;
+class SettingsButtonWidget;
+class RecordsHud;
+class GamepadWidget;
+class LeanWidget;
+class GForceWidget;
+class CompassWidget;
+class ClockWidget;
+class TyreTempWidget;
+class EcuWidget;
+class FmxHud;
+class EventLogHud;
+class MapHud;
+class RadarHud;
 class TelemetryHud;
 class RumbleHud;
 class StatsHud;
@@ -95,7 +97,7 @@ public:
     // it. This one always draws its own background, so every shadow here is a second
     // string rendered underneath an opaque surface -- invisible work. And it is the
     // heaviest string emitter in the plugin by a wide margin (84 against the next
-    // panel's 44), so it was paying that twice over more than anything else.
+    // panel's 44), so it would pay that twice over more than anything else.
     //
     // It also reads better: a shadow behind dense UI text on a solid panel muddies
     // the glyph edges rather than separating them from anything.
@@ -128,16 +130,16 @@ public:
             CHECKBOX,                  // Toggle column/row visibility (bitfield)
             // Shared data-driven stepped-value control: the region's steppedIndex
             // selects a SteppedControl descriptor registered at layout time (same
-            // rebuild lifecycle as the click regions themselves). Replaces the old
-            // one-enum-pair-per-control pattern for plain "step + clamp/wrap +
-            // mark dirty" numeric settings; see SettingsLayoutContext::addSteppedControl.
+            // rebuild lifecycle as the click regions themselves). One descriptor,
+            // not one enum pair per control, for plain "step + clamp/wrap + mark
+            // dirty" numeric settings; see SettingsLayoutContext::addSteppedControl.
             STEPPED_UP,                // Step the descriptor's value up
             STEPPED_DOWN,              // Step the descriptor's value down
             // Shared data-driven mod-N cycle control: the region's cycleIndex
             // selects a CycleControl descriptor registered at layout time (same
-            // rebuild lifecycle as the click regions). Replaces the old
-            // one-enum-pair-per-control pattern for plain "value = (value ± 1)
-            // mod N + mark dirty" enum/mode cycles; see
+            // rebuild lifecycle as the click regions). One descriptor, not one
+            // enum pair per control, for plain "value = (value ± 1) mod N + mark
+            // dirty" enum/mode cycles; see
             // SettingsLayoutContext::addCycleControl (descriptor overload).
             // Cycles never hold-accelerate (repeat steps are always ±1).
             CYCLE_UP,                  // Cycle the descriptor's value forward
@@ -355,7 +357,7 @@ public:
             DIRECTOR_VARIETY_DOWN,     // Decrease variety cadence
             DIRECTOR_HOLD_UP,          // Increase the shared story hold
             DIRECTOR_HOLD_DOWN,        // Decrease the shared story hold
-            // (Incident hold cap is an INI-only tunable now - no click region.)
+            // (Incident hold cap is an INI-only tunable - no click region.)
             DIRECTOR_HUD_VISIBLE,      // Toggle the on-screen director status button
             // FMX HUD
             // (Trick stack rows is a data-driven STEPPED control.)
@@ -383,6 +385,7 @@ public:
             // tab it never touched. At the end only the count moves.
             PROBE_SWEEP,               // Developer: run the render-probe sweep
             OPEN_LINK_OVERLAY,         // Open the live web overlay in a browser
+            DIRECT_GL_TOGGLE,          // "Direct GL Rendering" toggle (General tab)
 
             // Sentinel, always last. settings_layout_test.cpp's golden encodes
             // region types as raw ORDINALS, and this enum is unnumbered and
@@ -712,16 +715,15 @@ protected:
     void rebuildLayout() override;
 
     // NO SURFACE OVERRIDES AND NO edgeInsetX. This panel's surfaces -- the caption
-    // band, the sidebar's cards and the content column's -- are PanelBox's boxes
-    // now, placed from panelInnerLeft/panelInner like every other plan panel's, so
+    // band, the sidebar's cards and the content column's -- are PanelBox's boxes,
+    // placed from panelInnerLeft/panelInner like every other plan panel's, so
     // there is nothing here to keep in step with the base class.
     //
-    // What they used to be is worth one line, because two reported bugs came out of
-    // it: an override composing frame border + [panel] padding, against a base class
-    // that took a MAX of the two. "The settings panel does not respect the panel
-    // padding like huds do" was that composition missing; "holes at the sides of the
-    // settings title" was the band using one spelling while the cards used the other.
-    // One engine, one answer, no spellings.
+    // An override composing frame border + [panel] padding against a base class
+    // that takes a MAX of the two is a second spelling, and a second spelling is
+    // how the panel stops respecting the panel padding like HUDs do, or how holes
+    // open at the sides of the settings title when the band uses one spelling and
+    // the cards the other. One engine, one answer, no spellings.
 
 
 #if defined(MXBMRP3_TEST_BUILD)
@@ -762,8 +764,8 @@ public:
     }
     // The HOVER dismissal, through the same helper the real pointer path uses --
     // dismiss plus markSettingsDirty, never WhatsNew::dismissRow on its own. A hook
-    // that called the free function directly is what let the persistence case pass
-    // while dismissals never reached disk.
+    // calling the free function directly would let the persistence case pass while
+    // dismissals never reach disk.
     void testHoverDismissRow(const char* tooltipId) { dismissMarkedRow(tooltipId); }
     // The footer's About button, through dispatchRegion -- the same path a real
     // click takes, so the tab change AND the easter-egg counter both run. A test
@@ -791,8 +793,8 @@ public:
     // testTabNameAt, which enumerates the SIDEBAR LIST. About is hidden from the
     // list but its content still counts toward the panel's height, so a test
     // sweeping "every tab that can set the panel height" needs this one and a test
-    // asserting "what the sidebar shows" needs the other. Conflating them is what
-    // made title_band_test stop finding the tallest tab.
+    // asserting "what the sidebar shows" needs the other. Conflating them leaves
+    // title_band_test unable to find the tallest tab.
     const char* testAnyTabNameAt(int i) const;
     int testTabIndexForName(const char* name) const {
         if (!name) return -1;
@@ -819,6 +821,18 @@ public:
     void testRegionSignature(char* out, int cap) const;
     bool testClickCycle(int index, bool up);
 
+    // Click EVERY control on the active tab once, through the real click path,
+    // skipping only the regions that navigate, open a link, capture input, start an
+    // external action, or are the reset controls themselves (see isPerturbSafe in the
+    // .cpp). Returns how many it clicked. This is the perturbation half of
+    // reset_tab_test: a tab's Reset has to put back everything the tab can change,
+    // and the only list of what a tab can change that cannot go stale is the one the
+    // tab itself emits. A NEW control type is clicked by default.
+    int testPerturbActiveTab();
+    // Press the footer's "Reset <tab>" button through the real click path (the
+    // perturbation sweep deliberately skips it).
+    bool testClickResetTab();
+
     // Click the Director tab's "Visible" row through the REAL path. Named rather
     // than taking a ClickRegion::Type ordinal: that enum is unnumbered and grouped
     // by topic, so an ordinal crossing the DLL boundary silently means something
@@ -830,17 +844,16 @@ public:
     // a theme those are the two columns' card edges; without one they are the tab
     // highlight's left and the row highlight's right. Same two numbers either way,
     // which is the point -- the symmetry rule they exist to pin is the same rule in
-    // both modes, and it broke separately in each.
+    // both modes, and each mode can break it on its own.
     //
     // Stashed rather than measured back out of m_quads: unthemed a full-width row is
     // only drawn UNDER THE CURSOR, so a headless scan of the emitted quads answers
     // with whatever else happens to be rightmost (the Close button) and reads as a
-    // 27-cell margin. Measured that, hence this.
+    // 27-cell margin.
     // The gutter's bounding card edges (test builds; see the fields). The
     // gutter — content card left minus sidebar card right — must equal the
     // vertical seam read (contentGapY) for the same terms; theme_geometry_test
-    // pins that after it was measured broken twice (gap-only composition, the
-    // unpaid row lead-in).
+    // pins that (a gap-only composition, or an unpaid row lead-in, reads short).
     void testCardEdgesX(float& sidebarRight, float& contentLeft) const {
 #if defined(MXBMRP3_TEST_BUILD)
         sidebarRight = m_testSidebarCardRightX; contentLeft = m_testContentCardLeftX;
@@ -876,21 +889,21 @@ private:
     // rather than declared, and why it runs per LAYOUT rather than per rebuild.
     // The tallest tab's BODY HEIGHT, laid out -- not its content flow.
     //
-    // It used to return a row COUNT (a tab's cursor end plus one card pad), and that
-    // is a different quantity from the height the engine produces: a column's body is
-    // sum(section heights) PLUS, per section, the card's own margin/border/padding,
-    // PLUS a seam between each pair. None of that scales with the cursor, all of it
-    // scales with the SECTION COUNT -- so a tab with more sections outgrew the floor
-    // and the panel changed height as you switched tabs, which is the one thing the
-    // floor exists to prevent. (Reported as General vs Appearance resizing.)
+    // A row COUNT (a tab's cursor end plus one card pad) is a different quantity
+    // from the height the engine produces: a column's body is sum(section heights)
+    // PLUS, per section, the card's own margin/border/padding, PLUS a seam between
+    // each pair. None of that scales with the cursor, all of it scales with the
+    // SECTION COUNT -- so measured by rows, a tab with more sections outgrows the
+    // floor and the panel changes height as you switch tabs, which is the one thing
+    // the floor exists to prevent.
     //
     // So each tab is laid out for real and the tallest body wins. Deliberately NOT by
-    // adding the per-card terms here: this file's own header records that every
-    // geometry fault reported against this panel was a second spelling of something
-    // PanelBox already computes, and a hand-summed `nSections * (pad+border+margin) +
-    // (n-1) * gap` would be exactly that again. The layout is cached behind the same
-    // key as before, so the cost is a dozen layouts when the metrics move, never per
-    // frame -- and it already ran a full tab RENDER per tab to get here.
+    // adding the per-card terms here: a hand-summed `nSections * (pad+border+margin)
+    // + (n-1) * gap` is a second spelling of something PanelBox already computes,
+    // and second spellings are where this panel's geometry faults come from. The
+    // layout is cached behind TallestKey, so the cost is a dozen layouts when the
+    // metrics move, never per frame -- and it already runs a full tab RENDER per tab
+    // to get here.
     float measureTallestBodyH(const ScaledDimensions& dim,
                               float labelX, float controlX, float rightColumnX,
                               float contentAreaStartX, float contentAreaWidth,
@@ -916,13 +929,12 @@ private:
     // it -- and a theme's generation counter covers discovery and a change of
     // selected theme alike (the same key ColorConfig's memo uses).
     //
-    // A KEY RATHER THAN A SENTINEL, because the sentinel was dropped from
-    // rebuildLayout(), and rebuildLayout() runs on every frame of a DRAG. A drag
-    // arrives as a layout dirty exactly like a scale change does, so the panel
-    // re-laid all twenty-eight tabs per frame to answer a question whose inputs had
-    // not moved -- roughly 29x the cost of the one rebuild the drag actually needs.
-    // The old comment named the triggers correctly ("theme, scale, fonts, the set of
-    // tabs") and then invalidated on something that is none of them.
+    // A KEY RATHER THAN A SENTINEL dropped from rebuildLayout(): rebuildLayout()
+    // runs on every frame of a DRAG, and a drag arrives as a layout dirty exactly
+    // like a scale change does, so a sentinel re-lays every tab per frame to answer
+    // a question whose inputs have not moved -- roughly 29x the cost of the one
+    // rebuild the drag actually needs. The key names the real triggers and nothing
+    // else.
     struct TallestKey {
         float lineHeight = 0.0f;
         float fontSize = 0.0f;
@@ -945,7 +957,7 @@ private:
 #if defined(MXBMRP3_TEST_BUILD)
 public:
     // How far the last-built tab overran the space reserved for it, in rows;
-    // negative is slack. Should be <= 0 always, now that the height is MEASURED from
+    // negative is slack. Should be <= 0 always, since the height is MEASURED from
     // the tallest tab: a positive value means the measure pass and the real lay-out
     // disagree about some tab. See MXBMRP3_Test_SettingsOverflowRows and
     // settings_fit_test.
@@ -954,9 +966,8 @@ private:
     float m_testOverflowRows = 0.0f;
 #endif
 
-    // Tab-bar build, split out of rebuildRenderData(). See the comment at their
-    // definitions in settings_hud_render.cpp for the parameter count that a long-
-    // standing "8+ parameters" rule had assumed rather than measured.
+    // Tab-bar build, split out of rebuildRenderData(); see their definitions in
+    // settings_hud_render.cpp.
     // Distance from the panel's TOP EDGE to where tab content begins -- the title
     // and the air around it. See the definition for why it is one function.
     // A settings card's interior pad per end, in CELLS: the panel's own base
@@ -976,24 +987,23 @@ private:
     // between them and the panel's inner edge, exactly as a plan panel spends
     // c.m.l/c.m.r (PanelBox: cardLeft = panelInnerLeft + c.m.l).
     //
-    // The vertical sides were always live here -- contentGapCells() reads them as
-    // the seam between two section cards -- and these two were not read at all, so
-    // a theme's `[content] margin = 2` spread the settings sections apart while
-    // every card still ran flush to the panel's surface line. Reported as "[content]
-    // margin does not appear to apply to the content of the settings menu"; half of
-    // it did. Not gated on hasThemedCard(): margin is AIR, and only the border
-    // reads as zero unthemed (the same split cardBorderOverhangX makes).
+    // The vertical sides are read by contentGapCells() as the seam between two
+    // section cards; these two must be read as well, or a theme's `[content]
+    // margin = 2` spreads the settings sections apart while every card still runs
+    // flush to the panel's surface line. Not gated on hasThemedCard(): margin is
+    // AIR, and only the border reads as zero unthemed (the same split
+    // cardBorderOverhangX makes).
     // The caption's box height, band or not -- see titleAdvance for why the two
     // differ by the band's border and by nothing else.
     // THE PANEL'S OWN PAD and the caption block's, resolved from the box terms
     // (theme key → [Advanced] built-in) and converted the BOX way — one stated
     // cell square on screen, as PanelBox::Spec::unit spends every vertical term.
     //
-    // These replaced reads of basePaddingY()/dim.paddingH, which resolve the
-    // LEGACY panelPadding{X,Y}Cells on a different lattice: that pair is
-    // unreachable from any ini, so [Advanced] panelPadding, titleMargin and
-    // titlePadding were all inert on this panel while they worked everywhere
-    // else (pinned, when they were still inert, by box_terms_test).
+    // Not basePaddingY()/dim.paddingH: those resolve the LEGACY
+    // panelPadding{X,Y}Cells on a different lattice, a pair unreachable from any
+    // ini, which would leave [Advanced] panelPadding, titleMargin and titlePadding
+    // inert on this panel while they work everywhere else (pinned by
+    // box_terms_test).
     // The sidebar↔content trough, in characters: the same composed seam read
     // the vertical card seams spend (contentGapCells = sectionGap + gap), so
     // the gutter measures what the air between two cards measures.
@@ -1372,6 +1382,9 @@ private:
     // with the chain's bugs).
     float m_testSidebarCardRightX = 0.0f;
     float m_testContentCardLeftX = 0.0f;
+    // Index of the first click region belonging to the ACTIVE TAB's content (the
+    // sidebar's regions precede it). See testPerturbActiveTab.
+    int m_testContentRegionBegin = 0;
     // See testContentColumnX().
     float m_testLabelX = 0.0f;
     float m_testControlX = 0.0f;

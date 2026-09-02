@@ -72,7 +72,7 @@ namespace Settings {
         // The two by-name asset keys that live in GLOBAL sections rather than a
         // per-HUD one. Named here so isFolderNameValue() below can reference every
         // one of them through a symbol -- see it for why a literal is not good
-        // enough. (Deliberately not a count: this list has grown twice.)
+        // enough.
         namespace Global {
             constexpr const char* PANEL_THEME = "panelTheme";
             constexpr const char* SPOTTER_PACK = "pack";
@@ -232,7 +232,7 @@ namespace Settings {
             constexpr const char* EST = "row_est";
         }
 
-        // SessionHud rows (row_type retired — session type now shows in the StandingsHud)
+        // SessionHud rows (no row_type: the session type shows in the StandingsHud)
         namespace SessionRows {
             constexpr const char* TRACK = "row_track";
             constexpr const char* FORMAT = "row_format";
@@ -498,7 +498,7 @@ namespace Settings {
 
         // StandingsHud settings
         namespace Standings {
-            // Now also exposed in-game (Standings tab "Top positions"); key kept here so existing INIs still load.
+            // Also exposed in-game (Standings tab "Top positions"); the key stays here so existing INIs load.
             constexpr Setting TOP_POSITIONS = {"topPositions", "Top positions always shown (0-10, default 3)"};
             constexpr Setting PLAYER_ROW_HIGHLIGHT = {"playerRowHighlight", "Full-row color background on the player/spectated rider's row (1 = on, default; 0 = off, falls back to accent-colored name marker)"};
             constexpr Setting PLAYER_ROW_HIGHLIGHT_BRAND = {"playerRowHighlightBrand", "When playerRowHighlight=1, use the bike brand color instead of the default accent color (1 = on; 0 = off, default)"};
@@ -589,6 +589,13 @@ namespace Settings {
             constexpr Setting BLUE_FLAG_AWARENESS_DISTANCE = {"blueFlagAwarenessDistance", "Blue flag detection range in meters (10-500, default 100.0)"};
             constexpr Setting GAP_NOTIFY_INTERVAL_MS = {"gapNotifyIntervalMs", "Min interval between live-gap HUD refreshes in ms; 0=refresh on every change (0-1000, default 100)"};
             constexpr Setting PLUGIN_THREAD = {"pluginThread", "EXPERIMENTAL: run the plugin's callbacks + HUD render build on its own thread so hiccups never stall the game frame (1=on, 0=off default). Read once at startup"};
+            constexpr Setting HW_ACCEL = {"hwAccel", "GPU-render the companion window via D3D11 (4x MSAA, bilinear sampling) instead of the software rasterizer; falls back automatically when unavailable (1=on default, 0=software). Applies when a window next opens"};
+            constexpr Setting GL_IN_GAME = {"glInGame", "EXPERIMENTAL: draw the in-game HUD inside the GAME'S OWN OpenGL context instead of handing primitives to the engine (1=on, 0=off default). It draws into the game's own framebuffer, so game capture sees it exactly as it sees the rest of the HUD. Falls back to engine rendering on any failure"};
+            constexpr Setting GL_PROBE = {"glProbe", "DEBUG: probe the game's OpenGL context from the Draw callback to find out whether the HUD could be drawn in-context instead of by the engine (Phase 0 of that spike). 0=off default, 1=report only (read-only, cannot perturb the game), 2=also draw one magenta test bar top-left with full state save/restore and verify both that it landed and that nothing leaked. Results go to the log as GlProbe: lines"};
+            constexpr Setting GL_PROBE_X = {"glProbeX", "DEBUG: x of the glProbe test bars in normalized HUD coords (default 0.02). Move them ON TOP OF one of the GAME's own on-track UI elements to find out whether an in-context GL draw lands above or below it - that is the layering question the spike has to answer, and it can only be asked where the game draws its own UI in the same frame"};
+            constexpr Setting GL_PROBE_Y = {"glProbeY", "DEBUG: y of the glProbe test bars in normalized HUD coords (default 0.02). See glProbeX"};
+            constexpr Setting GL_PROBE_QUADS = {"glProbeQuads", "DEBUG: draw N extra quads per frame IN-CONTEXT (our own GL), the counterpart of renderProbeQuads which draws them through the ENGINE. Sweep both at equal N and compare frame time: that difference is the entire case for an in-context renderer. Needs glProbe=2. 0=off default"};
+            constexpr Setting GL_PROBE_BATCH = {"glProbeBatch", "DEBUG: how glProbeQuads submits - 0=immediate mode (glBegin/glEnd, the slowest GL path, so a FLOOR on what GL can do), 1=one glDrawArrays over a client vertex array (default, much closer to a real backend). Sweep both: the floor alone understates GL, the batch alone understates how much work Phase 2 is"};
             constexpr Setting RENDER_PROBE_QUADS = {"renderProbeQuads", "DEBUG: emit N extra synthetic quads each frame for the ENGINE to draw, to measure its per-primitive render cost differentially (sweep N with uncapped FPS at a fixed spot, watch frame time rise; slope = engine cost). 0=off default"};
             constexpr Setting RENDER_PROBE_FULLSCREEN = {"renderProbeFullscreen", "DEBUG: make renderProbeQuads FULL-SCREEN quads (measures fill-rate) instead of tiny ones (measures per-quad submit cost); 1=fullscreen, 0=tiny default. Fill and sprite types (not text)"};
             constexpr Setting RENDER_PROBE_TYPE = {"renderProbeType", "DEBUG: which primitive renderProbeQuads emits — 0=solid-fill quad (default), 1=sprite quad (textured, cycles all registered sprites to exercise texture switches), 2=text string (glyph-atlas). The three have different engine costs; sweep each separately"};
@@ -605,26 +612,23 @@ namespace Settings {
     // FOLDER-NAME VALUES: the keys whose value is a directory the user chose,
     // where a `;` is DATA and not the start of an inline comment.
     //
-    // `;` is legal in a Windows directory name and the loader's comment strip
-    // was unconditional, so a theme in `retro;90s` loaded as `retro`, degraded
-    // to unthemed, and then the next save wrote the TRUNCATED name back --
-    // destroying the choice permanently, which is the one thing the by-name
-    // asset storage exists to prevent (CLAUDE.md: an unknown name degrades
-    // WITHOUT rewriting the stored value).
+    // `;` is legal in a Windows directory name. With the loader's comment strip
+    // applied to these, a theme in `retro;90s` loads as `retro`, degrades to
+    // unthemed, and the next save writes the TRUNCATED name back -- destroying
+    // the choice permanently, which is the one thing the by-name asset storage
+    // exists to prevent (CLAUDE.md: an unknown name degrades WITHOUT rewriting
+    // the stored value).
     //
-    // ONE TABLE, THROUGH THE KEY SYMBOLS, and that is the point of this block
-    // rather than a comment somewhere: the first version of this rule spelled
-    // the names as string literals of its own, so renaming Gamepad::PACK would
-    // have left the exemption silently pointing at a key that no longer exists
-    // and truncated every pad name again -- with nothing to notice. Now a rename
-    // either updates both or fails to compile.
+    // ONE TABLE, THROUGH THE KEY SYMBOLS, not string literals of its own: a
+    // rename either updates both or fails to compile. A literal would leave the
+    // exemption silently pointing at a key that no longer exists and truncate
+    // every pad name again -- with nothing to notice.
     //
     // A RENAME is what the symbols protect against. ADDING a pack type is the
-    // other half and nothing here can catch it: the gauges pack shipped with its
-    // key missing from this list, so a set in a folder like `retro;90s` would
-    // have been truncated on load and the truncation written back on save --
+    // other half and nothing here can catch it: a pack key missing from this
+    // list is truncated on load and the truncation written back on save --
     // exactly the permanent loss described above. pack_by_name_test.cpp walks the
-    // pack types and requires each one's key to be exempt, so a sixth type fails
+    // pack types and requires each one's key to be exempt, so a new type fails
     // there instead of at a user's install.
     //
     // TWO RULES COME WITH BEING ON THIS LIST, and both are checked by
@@ -637,8 +641,7 @@ namespace Settings {
     // it must keep stripping. A Windows voice name with a semicolon in it would
     // truncate, which is the trade that buys the comment.
     inline bool isFolderNameValue(const std::string& key) {
-        // The table is here rather than behind an accessor: it had one, with one
-        // caller, an hour after being written. One consumer is a local array.
+        // A local array rather than an accessor: one consumer.
         static const char* const kKeys[] = {
             Keys::Global::PANEL_THEME,
             Keys::Global::SPOTTER_PACK,

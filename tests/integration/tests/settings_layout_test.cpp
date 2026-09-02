@@ -123,7 +123,21 @@ int countTooltipRows(const std::vector<std::string>& regions, const char* toolti
 // every LABEL is unchanged, and `strings` did not move -- so the General tab's
 // click surface is the same surface, renumbered. A diff with any other shape
 // would have been a real change to this tab, which is what the guard is for.
-constexpr int kClickRegionTypeCount = 200;
+//
+// 200 -> 201: DIRECT_GL_TOGGLE (named OVERLAY_RENDERER_TOGGLE when it landed,
+// before the renderer it toggles was renamed), APPENDED like PROBE_SWEEP, so no
+// ordinal moved -- only this count.
+//
+// The golden itself then gained ONE row when that control landed on the GENERAL
+// tab (it started on Appearance) as a TOGGLE rather than a two-value cycler:
+// `143:general.direct_gl;200:-;200:-` after screen_clamp, and strings
+// 123 -> 128. RE-BLESSED on exactly that basis: the inserted triple is
+// byte-identical in SHAPE to the screen_clamp and grid_snap rows beside it
+// (tooltip row + the control's two regions), every other entry is unchanged and
+// nothing was reordered -- what a control added to the end of an existing
+// section should look like, and what made the diff readable instead of a wall
+// of shifted ordinals.
+constexpr int kClickRegionTypeCount = 201;
 
 }  // namespace
 
@@ -228,6 +242,15 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
     // so it moves when the marker table is curated for a release; the whatsNewReset()
     // above is what keeps it from ALSO moving with whatever this machine dismissed on
     // a previous run.
+    // RENAMED, 2026-09-01: the "Overlay Renderer" row now drives the in-context GL
+    // backend and is called "Direct GL Rendering", so its tooltip id moved from
+    // general.overlay_renderer to general.direct_gl. The diff is EXACTLY that one
+    // token: typecount stays 201, strings stays 128, and the row still emits label
+    // + two regions. Which is the interesting part - the control ALSO changed from
+    // a toggle to a status cycler (it has to show Off/On/Failed, because the
+    // backend can stand down on its own and a boolean cannot say so), and that
+    // conversion turned out to be structurally free. A golden that moved by one
+    // string is the evidence for that claim.
     // MOVED, 2026-08-25: the Ko-fi link left this tab for the About page, taking
     // region 195 (OPEN_LINK_KOFI) and its two strings with it -- 125 -> 123. That the
     // diff was exactly one region and exactly two strings is what says the move
@@ -239,9 +262,9 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
         "ssion;14:-;93:timing;14:-;93:gap_bar;14:-;93:notices;14:-;93:event_log;14:-;93:friends;14:-;93:fmx;1"
         "4:-;93:stats;14:-;93:performance;92:-;93:widgets;143:general.pb_scope;70:-;70:-;143:general.controll"
         "er;97:-;96:-;143:general.auto_save;82:-;82:-;143:general.grid_snap;76:-;76:-;143:general.screen_clam"
-        "p;77:-;77:-;143:general.steam_friends;143:general.web_server;85:-;85:-;143:general.web_port;86:-;87:"
-        "-;143:general.auto_switch;90:-;90:-;143:general.copy_profile;10:-;9:-;12:-;13:-;195:-;196:-;94:-;8:-"
-        ";142:-;typecount=200;strings=123";
+        "p;77:-;77:-;143:general.direct_gl;200:-;200:-;143:general.steam_friends;143:general.web_serve"
+        "r;85:-;85:-;143:general.web_port;86:-;87:-;143:general.auto_switch;90:-;90:-;143:general.copy_profil"
+        "e;10:-;9:-;12:-;13:-;195:-;196:-;94:-;8:-;142:-;typecount=201;strings=128";
 
     MESSAGE("General tab signature: " << sig);
     CHECK(sig == kGolden);

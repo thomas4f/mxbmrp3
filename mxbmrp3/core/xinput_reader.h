@@ -241,7 +241,7 @@ public:
     void startIoThread();
     void stopIoThread();
 
-    // Update controller state (call once per frame). Now cheap: copies the latest
+    // Update controller state (call once per frame). Cheap: copies the latest
     // snapshot the I/O thread published — issues no XInput call itself.
     void update();
 
@@ -256,9 +256,9 @@ public:
     void testForceData(const XInputData& d) { m_testData = d; m_testForced = true; }
     void testClearForcedData() { m_testForced = false; }
     // Drain the rumble command setVibration's policy posted (what the I/O thread would
-    // execute), so a headless test can assert the send policy + 8-bit quantization are
-    // preserved after moving the actual XInputSetState off-thread. Stop the I/O thread
-    // first (testStopIoForTest) so it doesn't drain the command out from under the test.
+    // execute), so a headless test can assert the send policy + 8-bit quantization
+    // without the actual XInputSetState. Stop the I/O thread first
+    // (testStopIoForTest) so it doesn't drain the command out from under the test.
     bool testConsumePendingRumble(int& left8, int& right8, int& idx) {
         MutexLock lk(m_ioMutex);
         if (!m_pendingRumble) return false;

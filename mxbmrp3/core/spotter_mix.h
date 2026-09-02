@@ -48,8 +48,7 @@
 namespace SpotterMix {
 
 // A canonical PCM16 mono RIFF header — what assemble() writes and what
-// parseWav() requires at minimum. Named because three places used to spell
-// the literal 44.
+// parseWav() requires at minimum. Named so no site spells the literal 44.
 constexpr size_t kHeaderSize = 44;
 
 // A parsed chunk: raw PCM16 samples + the rate they play at.
@@ -118,9 +117,9 @@ inline Pcm parseWav(const uint8_t* data, size_t size) {
 
 // Scale a RIFF's samples in place for the [Spotter] volume (0..100), so the
 // wav backends honour the same slider SAPI does. Without this the control
-// moved nothing on the DEFAULT audio path — packs ship as fixed-level wavs
+// moves nothing on the DEFAULT audio path — packs ship as fixed-level wavs
 // and PlaySound has no per-sound volume, so the only thing the slider
-// touched was TTS, which most players never hear.
+// touches is TTS, which most players never hear.
 //
 // Linear on amplitude, not perceptual: 50% reads as "half as loud" closely
 // enough for one-second callouts, and a curve here would fight the level
@@ -316,9 +315,9 @@ inline std::vector<uint8_t> assemble(const std::vector<Pcm>& chunks,
         const size_t prevLen = chunks[i - 1].samples.size();
         size_t ov = overlapSamples;
         // Clamp against the PREVIOUS chunk, not the whole buffer written so
-        // far. pcm.size() grows with every chunk, so bounding by it let the
+        // far. pcm.size() grows with every chunk, so bounding by it lets the
         // fade-out reach back through a short middle chunk and into the one
-        // before it — at gap_ms = -200 a brief clip ("oh", "point") could be
+        // before it — at gap_ms = -200 a brief clip ("oh", "point") can be
         // faded away entirely, dropping a word out of a stitched number.
         if (ov > prevLen / 2) ov = prevLen / 2;
         if (ov > s.size() / 2) ov = s.size() / 2;

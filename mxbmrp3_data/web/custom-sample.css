@@ -124,7 +124,10 @@
 /* ── FONTS ───────────────────────────────────────────────────────────────────
  * Also game-synced → use !important. Bundled families: 'Audiowide-Regular',
  * 'EnterSansman-Italic', 'RobotoMono-Regular', 'RobotoMono-Bold',
- * 'FuzzyBubbles-Regular', 'Tiny5-Regular'. For a font of your own, add an
+ * 'FuzzyBubbles-Regular', 'Tiny5-Regular', 'PermanentMarker-Regular',
+ * 'RockSalt-Regular', 'CaveatBrush-Regular', 'ReenieBeanie-Regular',
+ * 'GloriaHallelujah-Regular', 'IBMPlexSans-Regular',
+ * 'IBMPlexSans-SemiBold', 'IBMPlexMono-Regular'. For a font of your own, add an
  * @font-face here (drop the file in this folder) and reference it. */
 /*
 :root {

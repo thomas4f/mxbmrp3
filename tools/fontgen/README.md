@@ -14,7 +14,7 @@ tools/fontgen/build.sh                      # builds tools/fontgen/mxbmrp3_fontg
 
 # Auto-normalise: drop a .ttf/.otf in and get a normalised, drop-in .fnt.
 # Sizes the cell to 135px, width-normalises digits to the plugin's column, and
-# centres the cap/digit band - the whole "make it match the others" pipeline.
+# centres the digit band - the whole "make it match the others" pipeline.
 tools/fontgen/mxbmrp3_fontgen MyFont.ttf             # -> MyFont.fnt
 tools/fontgen/mxbmrp3_fontgen MyFont.ttf out.fnt
 
@@ -46,8 +46,13 @@ off-centre (~7% of the cell). `fontgen` has no way to correct this.
 
 `mxbmrp3_fontgen` adds these knobs:
 
-- `center = 1` - shift the baseline so the **cap/digit band** is centred in the
+- `center = 1` - shift the baseline so the **digit band** is centred in the
   cell. Fixes the plate case automatically (Tiny5 goes from ~7% off to centred).
+  The band is the union of the digit boxes, and digits only, because that is the
+  measurement `LayoutMetrics::inkCenterRatio` names and `test_font_metrics.cpp`
+  asserts of every shipped atlas. Averaging caps in as well agrees with it on
+  regular faces and diverges badly on handwritten ones, whose digits need not
+  share the cap band.
 - `voffset = <px>` - manual nudge, `+` = down. Use when you want a specific shift.
 - `mono_advance = <ratio>` - **width-normalise**: size the font so the average
   digit advance / cell height equals `<ratio>`, at a fixed cell. Different fonts
@@ -75,7 +80,7 @@ spacing     = 20                          # px gap between glyphs in the atlas (
 bitmap_x    = 512                         # atlas width
 bitmap_y    = 512                         # atlas height
 cell_height = 135                         # NEW: cell height in px (omit = auto-fit)
-center      = 0                           # NEW: 1 = centre the cap/digit band
+center      = 0                           # NEW: 1 = centre the digit band
 voffset     = 0                           # NEW: manual vertical nudge in px (+ = down)
 mono_advance = 0                          # NEW: >0 = width-normalise digit advance to this ratio
 normalize   = 0                           # NEW: 1 = apply the standard defaults below
@@ -91,7 +96,7 @@ width, and vertical position** in-game:
 |---|---|---|
 | `cell_height` | 135 | high-resolution cell - same on-screen size across fonts, but crisp when a HUD scales text up (high-DPI, large widgets); atlas auto-grows to 2048² |
 | `mono_advance` | 0.489 | RobotoMono's digit-advance/cell = the plugin's monospace column, so numbers fit the plate the same in every font |
-| `center` | on | centre the cap/digit band (fixes off-centre bakes like Tiny5) |
+| `center` | on | centre the digit band (fixes off-centre bakes like Tiny5) |
 | `spacing` | 20 | mip-safe inter-glyph gap. The games render the atlas with mipmaps; at the small sizes most HUD text is drawn (~20-40px, far below the 135px cell) the mip chain box-averages neighbouring cells together, so too small a gap makes the next glyph bleed across as a faint bar hugging the edge (the "green bar to the right of the K"). 20px keeps the neighbour out of the mip footprint; padding changes only atlas packing, not glyph widths/advances (on-screen layout is unchanged) |
 
 Any field you set explicitly wins, so `normalize = 1` with `center = 0` (or a

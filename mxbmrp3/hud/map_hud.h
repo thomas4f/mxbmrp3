@@ -71,7 +71,7 @@ public:
     }
     float getOutlineWidthScale() const { return m_fOutlineWidthScale; }
 
-    // 100% is the classic pre-1.27.6 rim; the default ships at a slimmer 50%.
+    // 100% is the classic rim; the default ships at a slimmer 50%.
     static constexpr float DEFAULT_OUTLINE_WIDTH_SCALE = 0.5f;
     static constexpr float MIN_OUTLINE_WIDTH_SCALE = 0.25f;
     static constexpr float MAX_OUTLINE_WIDTH_SCALE = 3.0f;
@@ -167,13 +167,13 @@ public:
 
     // Track detail — controls ribbon subdivision density (quad count).
     //
-    // Two independent knobs (replacing the old Auto/High/Low preset):
+    // Two independent knobs:
     //  * Detail scale 20-200% — quad DENSITY scales linearly with the
     //    percentage (200% emits ~10x the ribbon quads of 20%). This is the
     //    user's CPU/GPU budget dial: the game re-renders every emitted quad on
     //    every frame, so at very high frame rates (300-400 fps) quad count is
     //    the fps-proportional cost, and a percentage gives real granularity
-    //    where the old three presets didn't (and matches the other % knobs).
+    //    (and matches the other % knobs).
     //  * Adaptive (default ON) — density is normalized in SCREEN space (a
     //    target on-screen step between quads), so a long/windy track gets the
     //    same visual density — and roughly the same quad count — as a short
@@ -181,14 +181,14 @@ public:
     //    world units regardless of how big the track draws.
     //
     // The mapping from scale to density is anchored by DETAIL_BASELINE (an
-    // INI-only multiplier, default 1.0): 100% at baseline 1.0 reproduces the
-    // old AUTO exactly; fixed-mode 200% is the old HIGH (1.0m).
+    // INI-only multiplier, default 1.0): 100% at baseline 1.0 is the density a
+    // legacy `detail=AUTO` INI migrates to; fixed-mode 200% is 1.0m (legacy HIGH).
     static constexpr float MIN_DETAIL_SCALE = 0.2f;
     static constexpr float MAX_DETAIL_SCALE = 2.0f;
-    // Default is deliberately LEANER than the old AUTO (which sits at 100%):
-    // 50% halves the default quad budget with little visible difference at the
+    // Default is deliberately LEANER than the 100% a legacy AUTO maps to: 50%
+    // halves the default quad budget with little visible difference at the
     // default map size. Legacy `detail=AUTO` INIs migrate to 100%, not this
-    // default, so upgraders keep their exact old look.
+    // default, so upgraders keep their exact look.
     static constexpr float DEFAULT_DETAIL_SCALE = 0.5f;
     static constexpr float MIN_DETAIL_BASELINE = 0.25f;
     static constexpr float MAX_DETAIL_BASELINE = 4.0f;
@@ -310,11 +310,9 @@ private:
     // rebuildRenderData() and read by every site that converts a world point to a
     // screen point (map_hud_track.cpp, map_hud_riders.cpp).
     //
-    // It replaced five independent reservedTitleHeight(dim, Large) calls -- one per
-    // drawing site -- which were the map's own spelling of "how far down does the
-    // title push us" and covered the Y axis only. That was true while the panel had
-    // no horizontal inset at all; the map was the one panel whose content ran to its
-    // own edges, so a themed frame drew over the track. One owner, both axes.
+    // One owner, both axes: a per-site spelling of "how far down does the title push
+    // us" covers the Y axis only, and content that runs to the panel's own edges has
+    // a themed frame drawn over the track.
     float m_fContentDX = 0.0f;
     float m_fContentDY = 0.0f;
 

@@ -159,11 +159,11 @@ float SettingsLayoutContext::addSectionHeading(const char* title, const char* hi
 
 void SettingsLayoutContext::addNote(const char* text) {
     // A note stays INSIDE the section it follows: half a row of air, then the
-    // muted line, advanced at the 0.9 row its type draws. It used to close the
-    // card and draw on air below it -- rows no section reported, which the
-    // engine (reserving per section) could not see, so every tab ending in a
-    // tip overflowed the panel by exactly the tip's height (nine tabs,
-    // measured by settings_fit_test). Reserving the tail separately priced the
+    // muted line, advanced at the 0.9 row its type draws. Drawn on air below a
+    // closed card it would be rows no section reported, which the engine
+    // (reserving per section) cannot see, so every tab ending in a tip would
+    // overflow the panel by exactly the tip's height (pinned by
+    // settings_fit_test). Reserving the tail separately would price the
     // tallest tabs past the screen at the themed frames; as section content it
     // is measured by the same walk as every other row, for free.
     //
@@ -376,10 +376,8 @@ void SettingsLayoutContext::openSectionCard() {
     // makes for every term.
     m_sectionTop = currentY;
     m_sectionOpen = true;
-    // NO CARD IS PUSHED HERE ANY MORE. addPlanBackground drew one per section of
-    // both columns, from the engine's own boxes, before any row was emitted -- so
-    // the reserve-then-rewrite pair this used to run (and the card edges it had to
-    // derive) are gone with it.
+    // NO CARD IS PUSHED HERE. addPlanBackground draws one per section of both
+    // columns, from the engine's own boxes, before any row is emitted.
     m_sectionCardIndex = -1;
 }
 
@@ -392,8 +390,7 @@ void SettingsLayoutContext::closeSectionCard() {
     m_sectionOpen = false;
 #if defined(MXBMRP3_TEST_BUILD)
     // The card's left edge, straight off the engine's box for this column -- what
-    // testCardEdgesX() reports. It used to be derived here, from the column and the
-    // card's own terms, which is the derivation the engine now owns.
+    // testCardEdgesX() reports. The engine owns the derivation.
     parent->m_testContentCardLeftX = planCardLeftX;
 #endif
 }
@@ -408,11 +405,10 @@ void SettingsLayoutContext::addTabTooltip(const char* tabId) {
     currentTabId = tabId ? tabId : "";
 
     // The description gets its OWN section card, like every other block in the
-    // content column. It used to be the one exception, and being the exception cost
-    // it two hand-written vertical corrections -- one giving back the pad the panel
-    // reserves for a card that wasn't there, one re-adding the following card's --
-    // which existed only to make an un-carded block sit at the same rhythm as the
-    // carded ones. A card gets that rhythm for free.
+    // content column. An un-carded block would need two hand-written vertical
+    // corrections -- one giving back the pad the panel reserves for a card that
+    // isn't there, one re-adding the following card's -- just to sit at the same
+    // rhythm as the carded ones. A card gets that rhythm for free.
     //
     // Reserve-then-size, exactly as addSectionHeading does: the card must be pushed
     // before the text (quads draw in order) but is only sized once the block ends.
@@ -540,9 +536,9 @@ void SettingsLayoutContext::addCycleControl(
     const int cycleIndex = static_cast<int>(parent->m_cycleControls.size());
     parent->m_cycleControls.push_back(control);
 
-    // Emit the row via the legacy cycle control, then tag the arrow regions it
-    // created with the descriptor index (and optionally the row tooltip, which
-    // is what the old per-type tooltip fallback resolved to for these controls).
+    // Emit the row via the enum-pair addCycleControl overload, then tag the arrow
+    // regions it created with the descriptor index (and optionally the row
+    // tooltip).
     const size_t firstRegion = parent->m_clickRegions.size();
     addCycleControl(label, value, valueWidth,
         SettingsHud::ClickRegion::CYCLE_DOWN,
@@ -787,8 +783,8 @@ void SettingsLayoutContext::addPerHudThemeControl(BaseHud* hud) {
 // textures/ variant -- the gamepad and the pit board. Same row, same label and the
 // same two arrows Radar gets; only the source of the names differs.
 //
-// It replaces the per-HUD Theme control these two used to fall through to, which was
-// dead on exactly them (see BaseHud::m_packKind). Labelled "Texture" rather than
+// Not the per-HUD Theme control, which is dead on exactly these two (see
+// BaseHud::m_packKind). Labelled "Texture" rather than
 // "Pack" deliberately: it is the same question every other HUD's row asks, and a
 // second word for it would be a second concept in the same column.
 // The gauges pack a gauge row is DRAWING, by display name.
@@ -959,11 +955,10 @@ float SettingsLayoutContext::addStandardHudControls(BaseHud* hud) {
     bool hasTextures = !hud->getAvailableTextureVariants().empty();
     if (hud->m_packKind != BaseHud::PackKind::None) {
         // A PACK HUD gets a Texture row that cycles PACKS -- the same row Radar gets,
-        // driven by a different source. It used to fall through to the per-HUD Theme
-        // control below (no texture base name, so hasTextures is false), and that
-        // control is DEAD here: the artwork is mandatory on these HUDs and artwork
-        // suppresses the theme, so nothing it offered could take effect. Reported as
-        // "why does the pitboard still have a theme option".
+        // driven by a different source. Not the per-HUD Theme control below (which
+        // it would otherwise reach: no texture base name, so hasTextures is false) --
+        // that control is DEAD here: the artwork is mandatory on these HUDs and
+        // artwork suppresses the theme, so nothing it offers can take effect.
         addPackControl(hud);   // advances currentY itself (addCycleControl does)
     } else if (!hasTextures && AssetManager::getInstance().getThemeCount() > 0) {
         addPerHudThemeControl(hud);
@@ -1208,14 +1203,8 @@ void SettingsLayoutContext::addSpacing() {
     // already named for "air between a panel's stacked children", which is
     // exactly what a caller is asking for here.
     //
-    // It replaced settingsRowGap (1 cell) and settingsBlockGap (2), a private
-    // two-tier rhythm reachable from no ini and spent at six call sites in one
-    // tab. Two knobs for one distance, and neither the same knob the seam either
-    // side of them already used.
-    //
-    // Converted the BOX way (cellW * aspect), not on cellH: one stated cell is
-    // square on screen wherever it is spent, and this used to be the one place
-    // in the panel where it was not.
+    // Converted the BOX way (cellW * aspect), not on cellH, so one stated cell is
+    // square on screen wherever it is spent.
     currentY += static_cast<float>(parent->panelGapCells())
               * layout().cellW * PluginConstants::UI_ASPECT_RATIO * parent->getScale();
 }
@@ -1417,12 +1406,9 @@ void SettingsLayoutContext::addWidgetRow(
         // one of them.
         const AssetManager& assets = AssetManager::getInstance();
         // No "Off": the pack artwork IS the widget, so the cycle is packs only (see
-        // BaseHud::m_textureRequired). The two comments that used to sit here said the
-        // opposite -- that Off was a real position and the only thing clearing
-        // showBackgroundTexture -- and both stopped being true when it was removed.
+        // BaseHud::m_textureRequired).
         //
-        // This block assumed pack HUD == gamepad, which held while the gamepad was
-        // the only pack widget in this table. The gauges are the second.
+        // Pack HUD != gamepad: the gauges are the second pack widget in this table.
         const bool isGauges = (hud->m_packKind == BaseHud::PackKind::Gauges);
         const size_t packCount =
             isGauges ? assets.getGaugesCount() : assets.getGamepadCount();

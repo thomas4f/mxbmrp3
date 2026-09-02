@@ -15,14 +15,11 @@
 // produced it, and every interior distance is spent in that em. Three inputs, one
 // number, and similarity across all of them by construction.
 //
-// It used to be otherwise, and the bug is the reason this file exists: the offsets
-// were scaled by the widget's scale slider ALONE while the frame around them also
-// grew with uiFontSize. Raise the font size and the controller got bigger while
-// every button stayed where it was — sticks, d-pad and face buttons walking off
-// their sockets. A second symptom of the same split: the row pitch was pinned to
-// `fontSize * 1.11` to survive a grid retune that had grown the rows relative to
-// the frame. Both are gone; kLineRatio is that same 1.11, now just another authored
-// constant spent through the same em.
+// The failure this prevents: scale the offsets by the widget's scale slider ALONE
+// while the frame around them also grows with uiFontSize, and raising the font size
+// makes the controller bigger while every button stays where it is — sticks, d-pad
+// and face buttons walking off their sockets. kLineRatio is just another authored
+// constant spent through the same em, not a pin against the global grid.
 //
 // Pinned by tests/unit/test_gamepad_geometry.cpp.
 // ============================================================================
@@ -71,9 +68,8 @@ inline float unitScale(float em) {
 //
 // The defaults here are the LAST-RESORT fallback used when a pad has no ini at
 // all; the shipped values live in gamepads/<name>/gamepad.ini. They deliberately
-// match the shipped Xbox pack: the previous fallback was a hand-copied struct
-// that had drifted from it (dpad 34x56 / face 53 against the real 32x53 / 47),
-// so an unrecognised pad drew at subtly wrong sizes.
+// match the shipped Xbox pack: a fallback that drifts from it makes an
+// unrecognised pad draw at subtly wrong sizes.
 struct PadGeometry {
     // Reference background dimensions (the artwork's pixel size).
     float backgroundWidth = 750.0f;
@@ -109,10 +105,9 @@ struct PadGeometry {
 //
 // It lives HERE, beside the struct, rather than in AssetManager's discovery walk so
 // that the mapping is reachable without a filesystem: tests/unit/test_asset_packs.cpp
-// feeds the shipped inis through this same table and checks they still produce the
-// geometry that used to be hardcoded in the widget. A copy of this table inside the
-// discovery code could not be checked that way, which is exactly how a moved
-// constant goes quietly wrong.
+// feeds the shipped inis through this same table and checks they produce the
+// expected geometry. A copy of this table inside the discovery code could not be
+// checked that way, which is how a constant goes quietly wrong.
 struct PadGeometryIniEntry {
     const char* key;
     float PadGeometry::* field;
@@ -172,9 +167,8 @@ inline constexpr PadGeometryIniEntry kPadGeometryIni[] = {
 // So is a non-positive art.*/size.* -- see PadGeometryIniEntry::positive. `art.width =
 // 0` (a typo, or a value commented out so it parses as absent-but-present) divides the
 // whole pad by zero: backgroundHeight becomes inf, fitPanelToGrid returns inf/NaN, and
-// NaN vertices go to the game's DrawQuad for every quad the widget owns. These were
-// compile-time constants before the geometry moved into packs, so the ini is a new
-// trust boundary and this is the guard CLAUDE.md asks every parse site to carry.
+// NaN vertices go to the game's DrawQuad for every quad the widget owns. The ini is
+// a trust boundary, and this is the guard CLAUDE.md asks every parse site to carry.
 //
 // REJECTED, not clamped: the field keeps its shipped default, which is the same way an
 // unknown pack name degrades. A clamp would invent a number the author never wrote.

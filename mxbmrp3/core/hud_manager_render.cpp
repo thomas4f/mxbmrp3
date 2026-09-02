@@ -11,6 +11,7 @@
 // ============================================================================
 
 #include "hud_manager.h"
+#include "../hud/gl_confirm_hud.h"
 #include "layout_config.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
@@ -25,6 +26,9 @@
 #include "profile_manager.h"
 #include "ui_config.h"
 #include "render_probe_sweep.h"
+#include "gl_probe.h"
+#include "hud_gl_renderer.h"
+#include "ui_viewport.h"
 #include "../hud/base_hud.h"
 #include "../hud/standings_hud.h"
 #include "../hud/performance_hud.h"
@@ -233,6 +237,32 @@ void HudManager::produceFrame(int iState) {
         }
     }
 
+    // GL feasibility probe ([Advanced] glProbe=2, off by default): one ENGINE-drawn
+    // reference bar, flush under the bar the probe draws itself in the game's GL
+    // context (core/gl_probe.cpp, kQuadX0..kRefY1).
+    //
+    // The pairing is the point. We do not know what mapping the engine applies to
+    // these normalized coordinates, so a GL bar drawn alone could only ever answer
+    // "something appeared" - never "it appeared in the right place". Two bars of
+    // the same width, stacked flush, say the two mappings agree; any horizontal
+    // offset or width difference measures the disagreement directly, in one look,
+    // on the single game launch this whole phase gets. Cyan against the probe's
+    // magenta so which is which is never in doubt.
+    if (UiConfig::getInstance().getGlProbe() >= 2) {
+        SPluginQuad_t q{};
+        q.m_iSprite = 0;                 // solid fill
+        q.m_ulColor = 0xFFFFFF00ul;      // ABGR: opaque cyan
+        // From GlProbe, never restated here: if the two sides disagreed, the
+        // misalignment would read as "the engine's coordinate mapping differs
+        // from ours" when it was only our own arithmetic - indistinguishable
+        // from the real finding this pair exists to produce.
+        float x0 = 0.0f, y0 = 0.0f, x1 = 0.0f, y1 = 0.0f;
+        GlProbe::referenceBarRect(x0, y0, x1, y1);
+        q.m_aafPos[0][0]=x0; q.m_aafPos[0][1]=y0; q.m_aafPos[1][0]=x0; q.m_aafPos[1][1]=y1;
+        q.m_aafPos[2][0]=x1; q.m_aafPos[2][1]=y1; q.m_aafPos[3][0]=x1; q.m_aafPos[3][1]=y0;
+        m_quads.push_back(q);
+    }
+
     // Render-load probe ([Advanced] renderProbeQuads, off by default): append N
     // synthetic quads for the ENGINE to draw. The engine's cost to render our
     // primitives happens after Draw() returns and no in-plugin timer can see it — but
@@ -361,7 +391,32 @@ void HudManager::produceFrame(int iState) {
     bool activeCompanion =
         InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion;
     bool settingsOnGame = m_pSettingsHud && m_pSettingsHud->isVisible() && !activeCompanion;
+
+    // Suppression of the engine handoff has ONE source here now: the display
+    // target. The in-context GL renderer's own suppression is decided later, on
+    // the Draw thread, and gated on whether it actually drew - see
+    // renderInContextGl. The overlay window used to add a third arm; it was
+    // removed once Direct GL Rendering superseded it (see the plan for why the
+    // second-window approach was the wrong shape).
     m_bSuppressInGame = (target == DisplayTarget::COMPANION && !settingsOnGame);
+
+    // The Direct GL Rendering status row reports live state (Off / Failed / On),
+    // but the settings panel only rebuilds when it is DIRTY - so without this the
+    // row sat on whatever it said when it was last built and only caught up when
+    // the user happened to move the mouse. Reported from the field as "On does
+    // not go green until I wiggle the mouse".
+    //
+    // The comparison lives HERE, on the build thread, and deliberately not at the
+    // point the state changes: that is the Draw thread, and m_bDataDirty is a
+    // plain bool that produceFrame reads on the worker in pluginThread mode.
+    // Setting it from Draw would be a data race for a cosmetic refresh.
+    if (m_pSettingsHud) {
+        const int glStatus = glStatusCode();
+        if (glStatus != m_glStatusLastShown) {
+            m_glStatusLastShown = glStatus;
+            m_pSettingsHud->setDataDirty();
+        }
+    }
     if (bm.active) bm.frameTailTimeUs += DrawHandler::getCurrentTimeUs() - tailStart;
 }
 
@@ -619,6 +674,12 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
         // surface, whatever its companion visibility says. See BaseHud.
         bool visible = hud && (companion ? (hud->rendersOnCompanion() && hud->getCompanionVisible())
                                          : hud->isVisible());
+        // While the prompt is up the settings MENU stands down, so the modal is
+        // not competing with the panel the user just clicked in - and so the one
+        // readable thing on screen is the question. The settings BUTTON and the
+        // pointer stay: they are how the menu comes back afterwards, and how the
+        // prompt gets clicked at all.
+        if (m_pGlConfirm && m_pGlConfirm->isActive() && hud && hud.get() == m_pSettingsHud) continue;
         if (visible) {
             // Where this HUD's primitives start, so we can translate them to the
             // companion position afterward (delta is 0 for the game / a mirrored HUD).

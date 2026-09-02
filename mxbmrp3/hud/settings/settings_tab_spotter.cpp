@@ -31,9 +31,8 @@
 
 namespace {
 // Step the pack choice through the installed pack folders. There is no "None"
-// entry any more: it used to mean "speak the plugin's built-in phrases", and
-// those are gone — the shipped `default` pack is the wording now, so "None"
-// would have meant silence, which is what the Spoken audio switch is for.
+// entry: the shipped `default` pack is the wording, so "None" would mean
+// silence, which is what the Spoken audio switch is for.
 //
 // The CURRENT name is honored even when its folder is missing: it still
 // occupies its sorted slot, so cycling away and back never rewrites a
@@ -120,61 +119,46 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     //
     // addTextRow, NOT addNote. A note is a muted 0.9x aside that belongs to the
     // control above it, and it opens with half a row of air on top of the heading's
-    // full one -- which read on screen as a gap where nothing goes, and as body text
-    // that had been shrunk for no reason the reader can see. This paragraph is not an
-    // aside about a control; it is what the tab says before it asks anything, so it is
-    // ordinary text at ordinary size, one row under its heading like every other row.
+    // full one -- on screen that reads as a gap where nothing goes, and as body text
+    // shrunk for no reason the reader can see. This paragraph is not an aside about a
+    // control; it is what the tab says before it asks anything, so it is ordinary
+    // text at ordinary size, one row under its heading like every other row.
     //
     // Lines do not wrap: each is its own row, broken by hand inside the content
     // column's budget (settingsContentAreaChars - settingsLabelColumn, one narrower
-    // with a themed card -- so 50 at the shipped 53). At full size that budget is ~11%
-    // tighter than the 0.9x notes these replaced, which is why the wording is shorter
-    // rather than just re-flowed.
+    // with a themed card -- so 50 at the shipped 53). Each line is written to that
+    // length, not trimmed to one.
     //
     // THREE LINES, and the ceiling is real rather than taste: every tab shares one
-    // panel height, set by the tallest, and the panel does not scroll. Six 0.9x lines
-    // put this tab at 1.033 screens -- settings_render_test measures exactly that, and
-    // caught it after settings_fit_test had passed. Full-size rows cost more each, so
-    // the line count is the same budget spent differently, not a smaller ask.
+    // panel height, set by the tallest, and the panel does not scroll.
+    // settings_render_test measures the tab against one screen.
     //
-    // Written for a player, not a developer: no versions, no file formats, no roadmap.
-    //
-    // WHAT IT SAYS, and why it changed. It used to lead with "what the spotter says
-    // will change" and then ask for opinions on MXB-Mods. Both were true and neither
-    // was the point: a player reading a tab called Beta already expects change, and
-    // the request read as work being handed to them before they had heard the thing.
-    //
-    // It leads with what this release IS -- a demonstration of what the spotter can
-    // do -- because that is what sets the right expectation for a first hearing.
-    // Someone who knows they are hearing a sketch judges it as a sketch. The tuning
-    // is then stated as intent ("its behavior will change based on your feedback"),
-    // which says the same thing the request did without asking anyone for anything.
+    // WHAT IT SAYS. It leads with what this release IS -- a demonstration of what the
+    // spotter can do -- because that is what sets the right expectation for a first
+    // hearing. Someone who knows they are hearing a sketch judges it as a sketch. The
+    // tuning is then stated as intent ("its behavior will change based on your
+    // feedback") rather than as a request for opinions: a player reading a tab called
+    // Beta already expects change, and a request reads as work being handed to them
+    // before they have heard the thing.
     //
     // US spelling ("behavior") because the user-facing strings and the README use it
     // throughout; the code comments are the only place British spelling survives.
     //
-    // ONE SENTENCE PER ROW. Packing lines to the margin instead broke sentences
-    // mid-clause -- "...and when, will" / "change. Tell us..." -- which reads worse
-    // than the ragged right it was fixing: the eye has to carry a fragment across
-    // the break on every line. So each row is a whole sentence short enough to fit,
-    // and the wording was cut to make that possible rather than the break moved.
-    //
-    // The budget is settingsContentAreaChars - settingsLabelColumn, one narrower
-    // with a themed card: 50 at the shipped 53. "The spotter is new: what it says,
-    // and when, will change." is 56 and cannot be a row, which is the constraint that
-    // shapes every line here -- each is written to a length, not trimmed to one.
+    // ONE SENTENCE PER ROW, not lines packed to the margin: a sentence broken
+    // mid-clause makes the eye carry a fragment across the break on every line, which
+    // reads worse than a ragged right. So each row is a whole sentence short enough
+    // to fit, and the wording is cut to make that possible rather than the break
+    // moved.
     //
     // WARNING-COLOURED, the same slot the sidebar's "Beta" tag draws in. Secondary is
-    // the colour of every other line of prose in the panel, which made three rows of
-    // "this is provisional" read exactly like three rows of ordinary help text -- and
-    // the tag that says so was the only thing on screen in the beta colour, with
-    // nothing connecting the two. One slot for the whole idea, so the tag and the
-    // paragraph it expands read as the same statement.
+    // the colour of every other line of prose in the panel, so in it three rows of
+    // "this is provisional" would read exactly like three rows of ordinary help text,
+    // with nothing connecting them to the tag. One slot for the whole idea, so the
+    // tag and the paragraph it expands read as the same statement.
     //
-    // The heading carries NO hint. It held "(docs on the General tab)", which lands at
-    // SECTION_HINT_COLUMN (16) -- a column chosen for hints that annotate a wide table
-    // ("(click to track/untrack)"), so beside a 4-letter word it read as a caption
-    // floating in the middle of nowhere.
+    // The heading carries NO hint: a hint lands at SECTION_HINT_COLUMN (16), a column
+    // chosen for hints that annotate a wide table ("(click to track/untrack)"), so
+    // beside a 4-letter word it reads as a caption floating in the middle of nowhere.
     ctx.addSectionHeading("Beta");
     ctx.addTextRow("This is a demonstration, not a finished spotter.",
                    ColorConfig::getInstance().getWarning());
@@ -286,8 +270,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     // category's cues fire at all — the distances behind the switch of the
     // same name directly above. Its own section because these are the only
     // rows that tune WHEN a cue happens rather than what is said or how it
-    // sounds; the width row used to sit mid-Voice, between Speed and the pack
-    // picker, where it read as an audio setting.
+    // sounds.
     //
     // Live whenever either output is on: the gate runs before composition, so
     // it decides the subtitles as much as the audio.
@@ -348,10 +331,10 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     }
 
     // How far ACROSS the track a rider can be and still be called. The Radar
-    // HUD's "Alert distance" is the same idea and the reason this exists: the
-    // radar filters on straight-line distance, so it correctly shows a rider
-    // on the far side of a wide straight as nowhere near, while the proximity
-    // calls measured along the racing line only and announced them anyway.
+    // HUD's "Alert distance" is the same idea: the radar filters on
+    // straight-line distance, so a rider on the far side of a wide straight
+    // is nowhere near, and without this width the proximity calls, measured
+    // along the racing line only, would announce them anyway.
     // Same units, same kind of control — this one is the WIDTH of the gate,
     // where the two above are its length.
     snprintf(buf, sizeof(buf), "%.0fm", spotter.hazardConfig().lateralMeters);

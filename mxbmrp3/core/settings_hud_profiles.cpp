@@ -228,7 +228,7 @@ void SettingsManager::applyToAllProfiles(HudManager& hudManager) {
 
 void SettingsManager::resetAllToFactoryDefaults(HudManager& hudManager) {
     if (!m_factoryDefaultsCaptured) {
-        // Shouldn't happen post-load, but fall back to the legacy behavior rather
+        // Shouldn't happen post-load, but fall back to applyToAllProfiles rather
         // than wiping every profile to an empty cache.
         DEBUG_WARN("resetAllToFactoryDefaults: factory defaults not captured, falling back to applyToAllProfiles");
         applyToAllProfiles(hudManager);
@@ -255,8 +255,8 @@ void SettingsManager::resetAllToFactoryDefaults(HudManager& hudManager) {
 
     // Persist. saveSettings re-captures the (now default) live state into the
     // active profile and rewrites the file from scratch, so stale per-profile
-    // overrides are dropped (and, unlike before, stale base-section defaults are
-    // replaced with this build's factory defaults).
+    // overrides are dropped (and stale base-section defaults are replaced with
+    // this build's factory defaults).
     // Deferred: the change is applied live now; persistence waits for the leave-track flush
     // (or the manual Save button), so profile switches / applies / resets never write on track.
     markDirty();
@@ -324,7 +324,8 @@ void SettingsManager::resetActiveProfileToFactoryDefaults(HudManager& hudManager
     applyActiveProfile(hudManager);
 }
 
-void SettingsManager::replayGlobalDefaults(HudManager& hudManager, const std::vector<std::string>* sectionFilter) {
+void SettingsManager::replayGlobalDefaults(HudManager& hudManager, const std::vector<std::string>* sectionFilter,
+                                           const std::vector<GlobalKeyRef>* keyFilter, bool keysAreExclusions) {
     if (m_globalDefaultsIni.empty()) {
         // Snapshot not captured yet (shouldn't happen post-load); nothing to restore.
         return;
@@ -365,12 +366,16 @@ void SettingsManager::replayGlobalDefaults(HudManager& hudManager, const std::ve
         return !sectionFilter ||
                std::find(sectionFilter->begin(), sectionFilter->end(), name) != sectionFilter->end();
     };
-    if (sectionSelected("Colors")) {
+    // Not reachable from the key-list path (see resetGlobalKeysToFactoryDefaults): an
+    // include-list never names a colour or font, and clearing every override for a tab
+    // that asked for two [Display] keys is exactly the over-reach the gate above fixed.
+    const bool clearsSparseOverrides = !(keyFilter && !keysAreExclusions);
+    if (clearsSparseOverrides && sectionSelected("Colors")) {
         for (int i = 0; i < static_cast<int>(ColorSlot::COUNT); ++i) {
             ColorConfig::getInstance().clearOverride(static_cast<ColorSlot>(i));
         }
     }
-    if (sectionSelected("Fonts")) {
+    if (clearsSparseOverrides && sectionSelected("Fonts")) {
         for (int i = 0; i < static_cast<int>(FontCategory::COUNT); ++i) {
             FontConfig::getInstance().clearOverride(static_cast<FontCategory>(i));
         }
@@ -416,6 +421,16 @@ void SettingsManager::replayGlobalDefaults(HudManager& hudManager, const std::ve
             value = (valueEnd != std::string::npos) ? value.substr(0, valueEnd + 1) : std::string();
         }
 
+        if (keyFilter) {
+            bool listed = false;
+            for (const GlobalKeyRef& k : *keyFilter) {
+                if (section == k.section && key == k.key) { listed = true; break; }
+            }
+            // Exclusions: the listed keys are the ones to skip. Include-list: the
+            // listed keys are the only ones to apply.
+            if (keysAreExclusions == listed) continue;
+        }
+
         applyGlobalLine(section, key, value, hudManager);
     }
 
@@ -429,9 +444,16 @@ void SettingsManager::resetGlobalsToFactoryDefaults(HudManager& hudManager) {
     DEBUG_INFO("Reset global settings to factory defaults");
 }
 
-void SettingsManager::resetGlobalSectionsToFactoryDefaults(HudManager& hudManager, const std::vector<std::string>& sections) {
-    replayGlobalDefaults(hudManager, &sections);
+void SettingsManager::resetGlobalSectionsToFactoryDefaults(HudManager& hudManager, const std::vector<std::string>& sections,
+                                                           const std::vector<GlobalKeyRef>& excludeKeys) {
+    replayGlobalDefaults(hudManager, &sections, excludeKeys.empty() ? nullptr : &excludeKeys, /*keysAreExclusions=*/true);
     DEBUG_INFO_F("Reset %zu global section(s) to factory defaults", sections.size());
+}
+
+void SettingsManager::resetGlobalKeysToFactoryDefaults(HudManager& hudManager, const std::vector<GlobalKeyRef>& keys) {
+    if (keys.empty()) return;
+    replayGlobalDefaults(hudManager, nullptr, &keys, /*keysAreExclusions=*/false);
+    DEBUG_INFO_F("Reset %zu global key(s) to factory defaults", keys.size());
 }
 
 void SettingsManager::copyToProfile(HudManager& hudManager, ProfileType targetProfile) {

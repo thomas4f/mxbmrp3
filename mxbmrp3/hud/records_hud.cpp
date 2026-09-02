@@ -474,8 +474,7 @@ void RecordsHud::rebuildRenderData() {
     }
     int totalRecords = static_cast<int>(allRecords.size());
     // The table section's rows: the optional column-header row, the records,
-    // and the footer note as a real last row (it used to render in "bottom
-    // padding" off a row count three constants had to agree on).
+    // and the footer note as a real last row.
     const int tableRows = (m_bShowHeaders ? 1 : 0) + m_recordsToShow
                         + (m_bShowFooter ? 1 : 0);
 
@@ -483,9 +482,8 @@ void RecordsHud::rebuildRenderData() {
     // Note: padding is added by calculateBackgroundWidth(), don't double-count
     // Order: POS, RIDER, BIKE, SECTORS (S1/S2/S3), LAPTIME, DATE
     // Pure arithmetic, unit-tested in tests/unit/test_records_window.cpp -- including
-    // WHY the last column keeps its gap, which is the bug this used to have and which
-    // is invisible in the numbers. It subtracted the trailing gap here, on the reading
-    // that a gap after the last column is wasted width; it is that column's right
+    // WHY the last column keeps its gap, which is invisible in the numbers. A gap
+    // after the last column reads as wasted width; it is that column's right
     // clearance inside the panel, and without it the lap time's final digit ends on
     // the same pixel as the player row's highlight band.
     const int bgWidthChars = RecordsWindow::backgroundWidthChars(
@@ -916,12 +914,11 @@ void RecordsHud::rebuildRenderData() {
     // === Footer Note: the table section's last row ===
     if (m_bShowFooter) {
         // "Submit by playing on <provider> servers" (small font, row height unchanged).
-        // Rendered as ONE string so it can't misalign: the provider used to be a
-        // separately-positioned, differently-colored segment placed by the monospace
-        // width estimate, which broke with a proportional NORMAL font (gap after "on",
-        // suffix jammed into the provider name). A single left-justified string spaces
-        // correctly in any font (the whole line is muted; the provider is no longer
-        // color-highlighted).
+        // Rendered as ONE string so it can't misalign: a separately-positioned,
+        // differently-colored provider segment placed by the monospace width estimate
+        // breaks with a proportional NORMAL font (gap after "on", suffix jammed into
+        // the provider name). A single left-justified string spaces correctly in any
+        // font (the whole line is muted; the provider is not color-highlighted).
         char footer[128];
         snprintf(footer, sizeof(footer), "Submit by playing on %s servers",
                  RecordsFetcher::getProviderDisplayName(recordsProvider));

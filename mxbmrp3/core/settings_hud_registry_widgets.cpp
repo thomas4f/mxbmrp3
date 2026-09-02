@@ -1,13 +1,12 @@
 // ============================================================================
 // mxbmrp3/core/settings_hud_registry_widgets.cpp
 // Per-HUD settings serializers (cap_*/app_*), group 2: widgets, simpler HUDs, and Global. The registry TABLE and group-1 (full-HUD) serializers stay in settings_hud_registry.cpp.
-// (extracted verbatim from settings_hud_registry.cpp; no behavior change)
 // ============================================================================
 
 #include "settings_hud_registry.h"
 // profile-level operations built on them (switch, copy-to-all, and the reset
-// family). Split out of settings_manager.cpp, which keeps global-section
-// serialization, the file serialize/build helpers, and save/load orchestration.
+// family). settings_manager.cpp keeps global-section serialization, the file
+// serialize/build helpers, and save/load orchestration.
 // ============================================================================
 #include "settings_manager.h"
 #include "settings_keys.h"
@@ -458,8 +457,8 @@ void SettingsManager::cap_GapBarHud(const HudManager& hudManager, SettingsManage
         settings["barWidth"] = std::to_string(hud.m_barWidthPercent);
         settings["markerScale"] = std::to_string(hud.m_fMarkerScale);
         // The NAME, matching Map and Radar -- same enum (MarkerLabel::Mode), same key,
-        // so the three sections now read alike in the INI. The int this used to write
-        // is still accepted on load; see stringToLabelMode.
+        // so the three sections read alike in the INI. A bare int is still accepted
+        // on load; see stringToLabelMode.
         settings["labelMode"] = labelModeToString(hud.m_labelMode);
         settings[IniOnly::Marker::LABEL_ANCHOR.key] = labelAnchorToString(hud.getLabelAnchor());
         settings["colorMode"] = gapBarRiderColorModeToString(hud.m_riderColorMode);
@@ -528,8 +527,7 @@ void SettingsManager::app_GapBarHud(HudManager& hudManager, const SettingsManage
                         hud.m_fMarkerScale = scale;
                     }
                 }
-                // Label mode -- the shared converter, which also reads the bare int
-                // this section wrote before the two spellings were unified.
+                // Label mode -- the shared converter, which also reads a bare int.
                 if (settings.count("labelMode")) {
                     hud.m_labelMode = stringToLabelMode(settings.at("labelMode"), hud.m_labelMode);
                 }
@@ -538,11 +536,9 @@ void SettingsManager::app_GapBarHud(HudManager& hudManager, const SettingsManage
                 if (settings.count(IniOnly::Marker::LABEL_ANCHOR.key)) {
                     hud.setLabelAnchor(stringToLabelAnchor(settings.at(IniOnly::Marker::LABEL_ANCHOR.key)));
                 }
-                // Color mode. (This carried a "with backwards compatibility for integer
-                // format" note for its whole life; there was never an integer format to
-                // be compatible with -- it shipped name-based -- and the converter has
-                // no numeric branch. Corrected rather than implemented: adding one would
-                // give meaning to a value no released build ever wrote.)
+                // Color mode. Name-based only: the converter has no numeric branch, and
+                // no released build has ever written an integer here, so adding one
+                // would give meaning to a value nothing wrote.
                 if (settings.count("colorMode")) {
                     hud.m_riderColorMode = stringToGapBarRiderColorMode(settings.at("colorMode"));
                 }

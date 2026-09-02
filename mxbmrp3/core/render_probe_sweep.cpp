@@ -17,6 +17,7 @@
 #include "plugin_constants.h"
 #include "settings_manager.h"
 #include "ui_config.h"
+#include "gl_probe.h"
 
 namespace {
 
@@ -94,6 +95,31 @@ constexpr RenderProbeSweep::Step kSteps[] = {
     // rows at the same N.
     { "fill, DEGENERATE",            0, 0, false, 1000,  1, 64 },
     { "fill, DEGENERATE",            0, 0, false, 2000,  1, 64 },
+
+    // R9 -- THE IN-CONTEXT GL COMPARISON (spike Phase 1; needs glProbe=2, and
+    // the rows read as zero-cost without it, which the report says out loud).
+    //
+    // Each row prices the SAME load as an "fill, tiny" row above, drawn by us
+    // inside the game's GL context instead of handed to the engine. Same shape,
+    // same alpha, same scene, seconds apart -- which is the comparison the
+    // spike's pass/fail bar is stated in, and one no pair of hand-run sessions
+    // can produce. (This file's header records what hand-stepping a sweep
+    // actually produced: five internally-perfect reports of an experiment that
+    // never happened.)
+    //
+    // 6000 is included on BOTH sides because the bar is stated at realistic HUD
+    // loads and a themed frame reaches ~6k quads; 500/1000/2000 mirror the
+    // engine rows exactly so the two matrices difference straight across.
+    { "fill, tiny",                  0, 0, false, 6000, 15, 64 },
+    { "GL fill, tiny, batched",      0, 0, false,    0, 15, 64,  500, 1 },
+    { "GL fill, tiny, batched",      0, 0, false,    0, 15, 64, 1000, 1 },
+    { "GL fill, tiny, batched",      0, 0, false,    0, 15, 64, 2000, 1 },
+    { "GL fill, tiny, batched",      0, 0, false,    0, 15, 64, 6000, 1 },
+    // Immediate mode is the slowest submission GL has, so these rows are a
+    // FLOOR, not a prediction of a real backend. Kept because a batched-only
+    // report would leave "how much of this is the batching?" unanswerable.
+    { "GL fill, tiny, immediate",    0, 0, false,    0, 15, 64, 1000, 0 },
+    { "GL fill, tiny, immediate",    0, 0, false,    0, 15, 64, 2000, 0 },
 };
 constexpr std::size_t kStepCount = sizeof(kSteps) / sizeof(kSteps[0]);
 
@@ -126,8 +152,10 @@ void RenderProbeSweep::applyProbe(const Step& s) const {
     ui.setRenderProbeFullscreen(s.fullscreen);
     ui.setRenderProbeTextChars(s.chars);
     ui.setRenderProbeAlpha(s.alpha);
+    ui.setGlProbeBatch(s.glBatch);
     ui.setRenderProbeQuads(s.n);   // LAST: the count is the switch, so nothing is
                                    // emitted under a half-applied configuration
+    ui.setGlProbeQuads(s.glQuads); // ...and the same for the GL side's own switch
 }
 
 void RenderProbeSweep::start() {
@@ -140,6 +168,8 @@ void RenderProbeSweep::start() {
     m_savedSprite = ui.getRenderProbeSprite();
     m_savedTextChars = ui.getRenderProbeTextChars();
     m_savedAlpha = ui.getRenderProbeAlpha();
+    m_savedGlQuads = ui.getGlProbeQuads();
+    m_savedGlBatch = ui.getGlProbeBatch();
 
     m_results.clear();
     m_results.reserve(kStepCount);
@@ -168,6 +198,7 @@ void RenderProbeSweep::finishStep() {
     r.step = kSteps[m_stepIndex];
     r.frames = static_cast<int>(m_samplesUs.size());
     r.quadsHandedOver = static_cast<int>(HudManager::getInstance().gameFrameQuads().size());
+    r.glPainted = GlProbe::status().loadPainted;
     double sum = 0.0;
     for (double v : m_samplesUs) sum += v;
     r.meanUs = m_samplesUs.empty() ? 0.0 : sum / static_cast<double>(m_samplesUs.size());
@@ -224,6 +255,8 @@ void RenderProbeSweep::finish(bool completed) {
     ui.setRenderProbeTextChars(m_savedTextChars);
     ui.setRenderProbeAlpha(m_savedAlpha);
     ui.setRenderProbeQuads(m_savedQuads);
+    ui.setGlProbeQuads(m_savedGlQuads);
+    ui.setGlProbeBatch(m_savedGlBatch);
 
     writeReport(completed);
     DEBUG_INFO_F("RenderProbeSweep: %s after %zu steps",
@@ -403,6 +436,150 @@ std::string RenderProbeSweep::buildReport(bool completed) const {
         }
     }
 
+    // ---- The in-context GL comparison (spike Phase 1) --------------------
+    // Stated as numbers on both sides and then judged, because the plan's bar is
+    // explicit that "faster" is not a result.
+    //
+    // ESTIMATOR: the SLOPE between the smallest and largest N of a family, not
+    // delta/N of one row. The baseline drifts tens of microseconds between steps
+    // (visible in the fullscreen rows, which cost nearly nothing yet came in at
+    // -29 us in one field run and -1 us in the next), and that offset is charged
+    // in full to a single-row estimate. Differencing two rows cancels it - which
+    // is what this file's own header says about the engine cost being the RISE
+    // and not the level, applied to itself. It matters: on the field data the
+    // single-row estimate put the engine at 0.71-0.74 us/quad while the slope put
+    // it at 0.9393 and 0.9364 across two runs, agreeing to 0.3%.
+    {
+        struct Fam { double firstDelta = 0, lastDelta = 0; int firstN = 0, lastN = 0; int rows = 0; };
+        auto family = [&](const char* label, int batch, bool glSide) {
+            Fam f;
+            for (const Result& r : m_results) {
+                const int n = glSide ? r.step.glQuads : r.step.n;
+                if (n <= 0 || std::string(r.step.label) != label) continue;
+                if (glSide && r.step.glBatch != batch) continue;
+                const double d = r.p50Us - baseP50;
+                if (f.rows == 0) { f.firstDelta = d; f.firstN = n; }
+                f.lastDelta = d; f.lastN = n;
+                ++f.rows;
+            }
+            return f;
+        };
+        auto slopeOf = [](const Fam& f) {
+            return (f.rows >= 2 && f.lastN > f.firstN)
+                 ? (f.lastDelta - f.firstDelta) / (f.lastN - f.firstN) : 0.0;
+        };
+
+        const Fam engineF = family("fill, tiny", 1, false);
+        const Fam batchF  = family("GL fill, tiny, batched", 1, true);
+        const Fam immedF  = family("GL fill, tiny, immediate", 0, true);
+        const double enginePer = slopeOf(engineF);
+        const double glBatched = slopeOf(batchF);
+        const double glImmed   = slopeOf(immedF);
+
+        // Noise, derived from THIS run rather than hardcoded: the fullscreen rows
+        // draw 2-10 quads and so cost almost nothing, making their spread a direct
+        // reading of the baseline's wander during this sweep. An earlier version
+        // hardcoded 20 us and was wrong on a machine that swings +-32 us.
+        double fsMin = 0.0, fsMax = 0.0; bool haveFs = false;
+        for (const Result& r : m_results) {
+            if (!r.step.fullscreen || r.step.glQuads > 0) continue;
+            const double d = r.p50Us - baseP50;
+            if (!haveFs) { fsMin = fsMax = d; haveFs = true; }
+            if (d < fsMin) fsMin = d;
+            if (d > fsMax) fsMax = d;
+        }
+        const double noiseUs = haveFs ? (fsMax - fsMin) : 0.0;
+        const double glRise = batchF.lastDelta - batchF.firstDelta;
+
+        bool anyGlRow = false, anyPaintConfirmed = false, anyPaintFailed = false;
+        for (const Result& r : m_results) {
+            if (r.step.glQuads <= 0) continue;
+            anyGlRow = true;
+            if (r.glPainted == 1) anyPaintConfirmed = true;
+            if (r.glPainted == 0) anyPaintFailed = true;
+        }
+
+        if (anyGlRow) {
+            out += "\nIn-context GL vs engine (per untextured tiny quad, from the SLOPE\n";
+            out += "across N so the baseline's drift between steps cancels):\n";
+            const GlProbe::Status gp = GlProbe::status();
+            if (!gp.contextCurrent || !gp.drew) {
+                out += "  *** GL ROWS MEASURED NOTHING. ";
+                out += (!gp.contextCurrent ? "No GL context was current on the Draw thread"
+                                           : "The probe never drew (is [Advanced] glProbe=2?)");
+                out += ".\n      Every number below is the cost of drawing zero quads. Ignore\n";
+                out += "      them, fix the setting, and re-run.\n";
+            } else if (anyPaintFailed) {
+                out += "  *** GL ROWS DREW NOTHING (readback found no pixels). Their timing\n";
+                out += "      is the cost of drawing zero quads. No verdict.\n";
+            } else if (!anyPaintConfirmed) {
+                out += "  *** ENGAGEMENT UNVERIFIED: no GL row confirmed it painted (the\n";
+                out += "      readback never ran). The timings below may be the cost of\n";
+                out += "      drawing nothing, which is indistinguishable from being fast.\n";
+                out += "      No verdict. Check the log for 'measurement load ... readback'.\n";
+            } else {
+                // The rise must clear the baseline's own wander before it counts.
+                const bool resolved = (glRise > 0.0) && (glRise > 2.0 * noiseUs);
+                const double glCost = resolved ? glBatched
+                                    : (batchF.lastN > 0 ? (2.0 * noiseUs) / batchF.lastN : 0.0);
+                snprintf(line, sizeof(line), "  engine:              %.5f us/quad\n", enginePer);
+                out += line;
+                if (resolved) {
+                    snprintf(line, sizeof(line), "  in-context, batched: %.5f us/quad"
+                             "  (rise %.0f us over N=%d..%d, vs %.0f us of baseline noise)\n",
+                             glBatched, glRise, batchF.firstN, batchF.lastN, noiseUs);
+                } else {
+                    // Split appends, never one long snprintf: the previous version
+                    // built a 319-char message into a 320-char buffer and lost its
+                    // trailing newline, running two report lines together.
+                    out += "  in-context, batched: BELOW THIS INSTRUMENT'S RESOLUTION -\n";
+                    snprintf(line, sizeof(line),
+                             "                       the rise across N (%.0f us) does not clear the\n",
+                             glRise); out += line;
+                    snprintf(line, sizeof(line),
+                             "                       baseline's own wander (%.0f us), so only a bound\n",
+                             noiseUs); out += line;
+                    snprintf(line, sizeof(line),
+                             "                       is defensible: < %.5f us/quad\n", glCost);
+                }
+                out += line;
+                // The immediate row does not feed the verdict, but a negative
+                // us/quad is meaningless wherever it appears - and printing one
+                // is exactly the habit that made the first field report look
+                // authoritative while being nonsense.
+                if (glImmed > 0.0) {
+                    snprintf(line, sizeof(line), "  in-context, immediate (a FLOOR, not a backend):"
+                                                 " %.5f us/quad\n", glImmed); out += line;
+                } else {
+                    out += "  in-context, immediate (a FLOOR, not a backend):"
+                           " also below resolution\n";
+                }
+                if (enginePer > 0.0) {
+                    double recovered = (enginePer - glCost) / enginePer * 100.0;
+                    if (recovered > 100.0) recovered = 100.0;
+                    if (recovered < 0.0) recovered = 0.0;
+                    snprintf(line, sizeof(line),
+                             "  batched GL recovers %s%.1f%% of the engine's per-quad cost"
+                             " (%.0fx cheaper)\n",
+                             resolved ? "" : "at least ", recovered,
+                             glCost > 0.0 ? enginePer / glCost : 0.0); out += line;
+                    snprintf(line, sizeof(line),
+                             "  at 6000 quads: engine %.3f ms, in-context %s%.3f ms"
+                             " (budget 2.08 ms)\n",
+                             enginePer * 6.0, resolved ? "" : "<", glCost * 6.0);
+                    out += line;
+                    const bool majority = recovered > 50.0;
+                    const bool inBudget = (glCost * 6.0) < 2.08;
+                    out += (majority && inBudget)
+                        ? "  => PASS by the plan's bar (majority recovered, inside budget).\n"
+                          "     Confirm it reproduces across runs before acting on it.\n"
+                        : "  => FAILS the plan's bar. A marginal win does not justify a\n"
+                          "     second renderer's permanent maintenance -- see the plan.\n";
+                }
+            }
+        }
+    }
+
     out += "\nWhat these imply is in tools/probetheme/README.md. Texture SIZE is\n";
     out += "the one variable this cannot reach -- that needs probetheme.py's themes.\n";
 
@@ -410,10 +587,11 @@ std::string RenderProbeSweep::buildReport(bool completed) const {
     out += "\n";
     for (const Result& r : m_results) {
         snprintf(line, sizeof(line),
-                 "SWEEP step=\"%s\" type=%d sprite=%d fs=%d n=%d frames=%d "
-                 "p50_us=%.0f mean_us=%.0f delta_us=%.0f quads=%d\n",
+                 "SWEEP step=\"%s\" type=%d sprite=%d fs=%d n=%d gl_n=%d gl_batch=%d "
+                 "frames=%d p50_us=%.0f mean_us=%.0f delta_us=%.0f quads=%d\n",
                  r.step.label, r.step.type, r.step.sprite, r.step.fullscreen ? 1 : 0,
-                 r.step.n, r.frames, r.p50Us, r.meanUs, r.p50Us - baseP50,
+                 r.step.n, r.step.glQuads, r.step.glBatch,
+                 r.frames, r.p50Us, r.meanUs, r.p50Us - baseP50,
                  r.quadsHandedOver);
         out += line;
     }
@@ -423,7 +601,8 @@ std::string RenderProbeSweep::buildReport(bool completed) const {
 
 #if defined(MXBMRP3_TEST_BUILD)
 std::string RenderProbeSweep::testReportSynthetic(double fillUs, double alpha0Us,
-                                                  double degenUs) {
+                                                  double degenUs, double glPerQuadUs,
+                                                  int glPaintState) {
     // Baseline frame time, arbitrary: the derived block differences against it,
     // so each row's delta is exactly the injected per-quad cost times its N.
     constexpr double kBase = 1000.0;
@@ -441,7 +620,16 @@ std::string RenderProbeSweep::testReportSynthetic(double fillUs, double alpha0Us
         Result r;
         r.step = s;
         r.frames = 100;
-        r.p50Us = kBase + per * s.n;
+        // A GL row carries its load in glQuads, not n.
+        r.p50Us = (s.glQuads > 0) ? kBase + glPerQuadUs * s.glQuads
+                                  : kBase + per * s.n;
+        // A synthetic GL row with zero cost IS the drew-nothing case - that is
+        // what "free" and "absent" have in common and why timing cannot separate
+        // them. So the seam models it, and the refusal branch gets covered.
+        if (s.glQuads > 0) {
+            r.glPainted = (glPaintState != -2) ? glPaintState
+                                              : ((glPerQuadUs != 0.0) ? 1 : 0);
+        }
         r.meanUs = r.p50Us;
         r.quadsHandedOver = s.n;
         m_results.push_back(r);

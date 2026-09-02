@@ -5,6 +5,8 @@
 #include "hud_manager.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
+#include "asset_path.h"
+#include "hud_gl_renderer.h"
 #include "asset_manager.h"
 #include "companion_window.h"
 #include "input_manager.h"
@@ -31,6 +33,7 @@
 #include "../hud/speed_widget.h"
 #include "../hud/gear_widget.h"
 #include "../hud/crash_widget.h"
+#include "../hud/gl_confirm_hud.h"
 #include "../hud/speedo_widget.h"
 #include "../hud/tacho_widget.h"
 #include "../hud/timing_hud.h"
@@ -173,6 +176,10 @@ void HudManager::initialize() {
     createHud(m_pSpeed, "speed_widget");
     createHud(m_pGear, "gear_widget");
     createHud(m_pCrash, "crash_widget");
+    // Registered like any other HUD so it gets update(), visibility and the dirty
+    // machinery for free - but SKIPPED by collectSurface, because its primitives
+    // are routed to the engine instead. See collectGlConfirm.
+    createHud(m_pGlConfirm, "gl_confirm");
     createHud(m_pSpeedo, "speedo_widget");
     createHud(m_pTacho, "tacho_widget");
     createHud(m_pTiming, "timing_hud");
@@ -363,8 +370,20 @@ void HudManager::clear(bool allowCrossSingleton) {
     m_strings.clear();
 
     // Clean up resource name storage
+    // The in-context GL renderer. Its destructor deliberately does NOT delete GL
+    // textures (no guaranteed current context at teardown - see ~Renderer), but
+    // the C++ object is ours and was previously never freed at all, despite the
+    // header claiming otherwise. A later Draw simply constructs a fresh one.
+    if (hudgl::Renderer* gl = m_glRenderer.exchange(nullptr, std::memory_order_acq_rel)) {
+        delete gl;
+    }
+    m_glLatchedOff.store(false, std::memory_order_relaxed);
+    m_glDrewLastFrame.store(false, std::memory_order_relaxed);
+
     m_spriteNames.clear();
     m_fontNames.clear();
+    m_spriteBases.clear();
+    m_fontBases.clear();
     m_spriteBuffer.clear();
     m_fontBuffer.clear();
 
@@ -665,6 +684,26 @@ void HudManager::setupDefaultResources() {
     DEBUG_INFO_F("Added %zu fonts", fontCount);
 
     m_spriteOrderMismatches = verifySpriteRegistrationOrder(assetMgr);
+
+    // Derive the RENDER-NAME tables here, in the same function that builds the
+    // paths they come from, so the two cannot drift. These are what any
+    // in-process renderer needs: m_spriteNames/m_fontNames hold full paths with
+    // extensions ("mxbmrp3_data\\fonts\\X.fnt") because that is what the GAME's
+    // DrawInit wants, while hudsw::Frame wants basenames to resolve against its
+    // own asset root. Handing the former where the latter is expected loads
+    // nothing, silently -- see renderInContextGl.
+    //
+    // A plain derived cache is correct ONLY because these tables are rebuilt
+    // wholesale: setupDefaultResources() and clear() are the sole mutators
+    // (testSpriteOrderWithSwap is test-only and self-reverting), so there is no
+    // in-place edit that could leave this stale. Add such an edit and this must
+    // move with it.
+    m_spriteBases.clear();
+    m_fontBases.clear();
+    m_spriteBases.reserve(m_spriteNames.size());
+    m_fontBases.reserve(m_fontNames.size());
+    for (const auto& p : m_spriteNames) m_spriteBases.push_back(AssetPath::renderName(p));
+    for (const auto& p : m_fontNames) m_fontBases.push_back(AssetPath::renderName(p));
 
     DEBUG_INFO_F("Default HUD resources configured: %zu sprites, %zu fonts",
         m_spriteNames.size(), m_fontNames.size());

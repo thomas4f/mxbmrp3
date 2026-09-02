@@ -48,12 +48,26 @@ and share; adoption charts label with share then count. Two things are worth int
   installs actually sent the field. The *About this data* section spells out the gaps per
   release line, so a partial rollout is never mistaken for a real trend.
 
+- **A gap in the data is drawn as a gap.** Ingestion stops when the Aptabase account's
+  monthly event quota runs out, and the export then has no rows for those hours - which is
+  not the same fact as "nobody played". The generator finds those stretches from the data
+  (`collection_gaps`: hours holding under 5% of what the surrounding week's hours hold, run
+  together, ignoring anything under 3 h so a quiet night is not mistaken for an outage),
+  keeps those days on the axis, shades them, and **breaks every line across them** rather
+  than joining the days either side. A day a gap ate more than a tenth of is left blank for
+  the same reason a partial export day is: its total is real but not comparable. Every
+  average divides by the days actually observed, and the header states both numbers
+  (*"68 days, 51 observed"*). The one thing the report will not do is interpolate.
+
 - **Adoption is per-game.** HUDs/widgets/features are game-specific (ECU & Tyre Temp are GP
   Bikes only; FMX/Records are MX Bikes only), and the plugin only emits a flag where that
   item exists. So the adoption charts are computed for the **primary (most-installed) game**
   - otherwise a GP-Bikes-only widget's rate would sit next to MX-Bikes rates over a totally
   different base. Within that one game, a flag reported by fewer installs (a newer feature) is
-  shown as *"N of M"* so its smaller base is explicit.
+  shown as *"N of M"* so its smaller base is explicit - and one reported by fewer than
+  `MIN_ADOPTION_BASE` installs gets no bar at all, only a line naming it and its base. A flag
+  a couple of dev builds report is a 100% adoption rate by arithmetic, and ranking by share
+  puts it straight to the top of the chart.
 
 ## Crash linkage
 

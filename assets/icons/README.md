@@ -27,6 +27,25 @@ so it never collides with the outlined status set.
 > the icons were historically built that way for the outlined set but are now
 > uniformly smooth so identity and status icons match.
 
+## Taking an icon from Font Awesome
+
+This set is uniformly on FA7's **640 grid** - 512 units of artwork inside a
+64-unit margin. The FA GitHub repo (`FortAwesome/Font-Awesome`) serves the
+**512 grid** on every branch and tag, artwork bleeding to the edges; the 640
+version comes from the fontawesome.com icon page's *Download SVG*.
+
+Drop in a 512-grid file unchanged and it renders 1.25x larger than every icon
+beside it, which looks like a mistake and is easy to miss on a single icon. Take
+the 640 one from the website; it also arrives with the attribution comment the
+rest of the set carries, so the file lands here unedited.
+
+If the website is genuinely out of reach, re-frame rather than rescale - set the
+viewBox to `-64 -64 640 640` and leave the path alone. That is a stand-in, not
+an equal: it was measured once against the real 640 file for `hud-confirm` and
+came out within 2/255 of alpha on 231 of 4096 pixels (anti-aliasing only), but
+that is one icon's worth of evidence, and FA is free to actually redraw a glyph
+on the larger grid rather than scale it.
+
 ## Theme overrides
 
 A panel theme may restyle any of these icons by shipping its own `.tga` under

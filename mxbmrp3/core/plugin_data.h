@@ -204,11 +204,10 @@ public:
     void batchUpdateStandings(Unified::RaceClassificationEntry* entries, int numEntries);
     const std::unordered_map<int, StandingsData>& getStandings() const { return m_standings; }  // Collection (never null)
     // The session's best lap by ANYONE, -1 when nobody has set one. Lives here
-    // rather than on a HUD because it is a question about the STANDINGS, and
-    // three consumers were each scanning them: TimingHud's "Overall" row, the
-    // pit board's lap reference, and the spotter's {overall_best} — the last
-    // of which duplicated the scan on the grounds that a core singleton must
-    // not reach into a HUD, which was true and pointed at this instead.
+    // rather than on a HUD because it is a question about the STANDINGS with
+    // three consumers: TimingHud's "Overall" row, the pit board's lap
+    // reference, and the spotter's {overall_best} — and a core singleton must
+    // not reach into a HUD.
     int getOverallBestLapTime() const {
         int best = -1;
         for (const auto& [raceNum, standing] : m_standings) {
@@ -312,13 +311,14 @@ public:
         // NOTHING has elapsed before the green flag, and the raw clock says
         // otherwise: through PRE_START and the sighting lap the game sends a
         // NEGATIVE countdown (race_classification_handler documents it), so
-        // `length - time` came out ABOVE the session length and then dropped
-        // to ~0 at the green. That is the one place this was not the
-        // monotonic value it promises to be, and it is not a quiet one: cues
-        // do fire on the grid (spectate target, session state, proximity),
-        // so a whole race's transcript opened with timestamps from beyond its
-        // own end. Overtime's negative clock is deliberately NOT clamped —
-        // bonus laps take real time, so elapsed passing the length is true.
+        // `length - time` comes out ABOVE the session length and then drops
+        // to ~0 at the green. Unclamped, that is the one place this is not
+        // the monotonic value it promises to be, and it is not a quiet one:
+        // cues do fire on the grid (spectate target, session state,
+        // proximity), so a whole race's transcript would open with timestamps
+        // from beyond its own end. Overtime's negative clock is deliberately
+        // NOT clamped — bonus laps take real time, so elapsed passing the
+        // length is true.
         if (m_sessionData.sessionState &
             (PluginConstants::SessionState::PRE_START |
              PluginConstants::SessionState::SIGHTING_LAP)) {
@@ -391,8 +391,8 @@ public:
     // A scan of the same cache rather than a second map beside it: it is the
     // grid at worst, and it is asked once per blue-flag CUE (cooldown-gated,
     // seconds apart), never per frame. A reverse map would be a derived cache
-    // whose eviction has to stay in step with the forward one — which is the
-    // failure this file has had before — to save nothing measurable.
+    // whose eviction has to stay in step with the forward one, to save nothing
+    // measurable.
     int getRiderLappedBy(int raceNum) const;
 
     // Blue flag tuning (INI-only advanced setting)
@@ -412,8 +412,6 @@ public:
     // ONE RULE, EVERY SURFACE. Standings, Map, Event Log and Session Charts all offer
     // click-to-spectate, and each must gate BOTH its hover highlight and its click region on
     // this — a row that highlights and then does nothing when clicked reads as a broken HUD.
-    // Standings owned the only copy of this test; the other surfaces either lacked it or
-    // (Map) offered a click region for every rider drawn.
     bool isRiderSpectatable(int raceNum) const;
 
     // Hazard detection (stationary or wrong-way riders ahead on track)
@@ -423,8 +421,8 @@ public:
 
 
     // Live-gap HUD refresh coalescing (INI-only setting: [Advanced]
-    // gapNotifyIntervalMs). 0 = notify on every change (pre-coalescing
-    // behavior: table HUDs may rebuild every frame during close racing).
+    // gapNotifyIntervalMs). 0 = notify on every change (table HUDs may
+    // rebuild every frame during close racing).
     void setGapNotifyIntervalMs(int ms) { m_gapNotifyIntervalMs = std::max(0, std::min(ms, 1000)); }
     int getGapNotifyIntervalMs() const { return m_gapNotifyIntervalMs; }
 
@@ -464,6 +462,17 @@ public:
     // Session type checks
     bool isRaceSession() const;     // Returns true for RACE_1, RACE_2, SR sessions
     bool isQualifySession() const;  // Returns true for PRE_QUALIFY, QUALIFY_PRACTICE, QUALIFY
+    // "Waiting" is the gap BETWEEN sessions (online lobbies, and a Testing event
+    // before it goes green), not a session with a clock of its own: the game stops
+    // sending classifications, so the last session's time just sits in
+    // m_currentSessionTime.
+    //
+    // NOT a project-wide rule about that value -- the Time widget, the TimingHud
+    // readout and the web header all keep drawing the raw clock here, deliberately:
+    // a bare MM:SS claims nothing about which session it belongs to. This exists
+    // for the callers that LABEL it, where "<session>: <clock>" would attribute the
+    // previous session's time to this one.
+    bool isWaitingSession() const;
 
     // Data accessors for HUD components
     const SessionData& getSessionData() const { return m_sessionData; }
@@ -592,7 +601,7 @@ public:
 
         // Index of the last completed segment: drives the split-style freeze display and
         // which segment the panel shows. The displayed time/delta come from the cumulative
-        // aggregation in `cum` below (per-arc isolated values are no longer cached here).
+        // aggregation in `cum` below.
         int lastSeg = -1;
         unsigned int completionCounter = 0;  // bumped on each completion (drives the display freeze)
 
@@ -657,7 +666,7 @@ public:
     // nums: the event's NUMBERS, for consumers that need to compute with them
     // rather than render them (the spotter speaks the amounts). Defaulted —
     // most events have none, and the three that do are the three whose detail
-    // column the spotter used to parse back. See EventNumbers.
+    // column the spotter would otherwise have to parse back. See EventNumbers.
     void addEventLogEntry(EventLogType type, const char* message, const char* detail = nullptr,
                           int iconColorSlot = -1, int raceNum = -1,
                           const EventNumbers& nums = {});
@@ -710,10 +719,10 @@ private:
     // Any container keyed by raceNum that holds AUTHORITATIVE per-rider state
     // must be evicted in removeRaceEntry() and reset in clear() — otherwise a
     // new rider joining mid-event with a departed rider's number inherits stale
-    // standings / gap / position-reference / lap-history state. That rule used
-    // to be a hand-maintained erase list in removeRaceEntry() and was found
-    // violated repeatedly; PerRider<> makes it hold by construction: declaring
-    // the member registers erase + clear callbacks with the owning PluginData,
+    // standings / gap / position-reference / lap-history state. PerRider<>
+    // makes that hold by construction rather than by a hand-maintained erase
+    // list: declaring the member registers erase + clear callbacks with the
+    // owning PluginData,
     // and removeRaceEntry() / clear() iterate the registry. The declaration IS
     // the registration — there is no second list to update.
     //

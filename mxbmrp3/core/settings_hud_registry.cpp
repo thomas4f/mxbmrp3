@@ -3,8 +3,8 @@
 // The single per-HUD serializer registry: one ordered table of
 // {section name, capture fn, apply fn}. captureToCache(), applyProfile(), and
 // serializeSettings() all iterate THIS table, so a HUD is registered for capture,
-// apply, and on-disk serialization in one place — collapsing what used to be three
-// parallel hardcoded lists (the "third hardcoded list" / FriendsHud trap).
+// apply, and on-disk serialization in one place — there is no second or third
+// parallel list to keep in step (the "third hardcoded list" trap).
 //
 // The cap_*/app_* functions are SettingsManager *members* for one reason: they
 // inherit its `friend`-ship with the HUD classes, and their bodies read and write
@@ -12,17 +12,16 @@
 // their addresses. A free function here would compile until the first private
 // member and then fail confusingly.
 //
-// Each cap_*/app_* body is the verbatim per-HUD block moved out of the old giant
-// captureToCache/applyProfile; the only change is that the section-name literal
-// became the `name` parameter (supplied by the table), so the name lives ONLY in
-// the table. Generated once from the original functions; edit the functions here
-// when a HUD's settings change, and add a table row (below) for a new HUD.
+// Each cap_*/app_* body takes its section name from the `name` parameter
+// (supplied by the table), so the name lives ONLY in the table. Edit the
+// functions here when a HUD's settings change, and add a table row (below) for a
+// new HUD.
 // ============================================================================
 // file-budget: 1150 one cap_/app_ pair per HUD section; grows a HUD at a time by design
 #include "settings_hud_registry.h"
 // profile-level operations built on them (switch, copy-to-all, and the reset
-// family). Split out of settings_manager.cpp, which keeps global-section
-// serialization, the file serialize/build helpers, and save/load orchestration.
+// family). settings_manager.cpp keeps global-section serialization, the file
+// serialize/build helpers, and save/load orchestration.
 // ============================================================================
 #include "settings_manager.h"
 #include <algorithm>   // std::clamp (graphRows)
@@ -66,6 +65,7 @@
 // *provider* feature stays runtime/registration-gated; only these includes are always on.
 #include "../hud/records_hud.h"
 #include "../hud/settings_hud.h"
+#include "../hud/crash_widget.h"
 #include "../hud/rumble_hud.h"
 #include "../hud/helmet_overlay_hud.h"
 #include "../hud/benchmark_widget.h"
@@ -121,9 +121,8 @@ using namespace Settings;
 
 // Per-HUD capture/apply, defined as SettingsManager members (declared in
 // settings_hud_registry_decls.inc) so they inherit SettingsManager's friendship
-// with the HUD classes. Bodies are the verbatim per-HUD blocks moved out of the
-// old captureToCache/applyProfile; the only change is the section-name literal
-// became the `name` parameter (supplied by the registry table below).
+// with the HUD classes. The section name is the `name` parameter (supplied by
+// the registry table below).
 
 void SettingsManager::cap_StandingsHud(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
         using namespace Keys::Standings;

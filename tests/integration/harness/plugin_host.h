@@ -201,8 +201,23 @@ public:
         m_cycleCount   = sym<int(*)(int)>("MXBMRP3_Test_SettingsCycleCount");
         m_regionSig    = sym<void(*)(char*,int)>("MXBMRP3_Test_SettingsRegionSignature");
         m_cycleClick   = sym<int(*)(int,int)>("MXBMRP3_Test_SettingsClickCycle");
+        m_perturbTab   = sym<int(*)()>("MXBMRP3_Test_SettingsPerturbActiveTab");
+        m_clickResetTab = sym<int(*)()>("MXBMRP3_Test_SettingsClickResetTab");
         m_ruBumpsLight = sym<float(*)()>("MXBMRP3_Test_RumbleActiveBumpsLight");
         m_companion = sym<void(*)(int)>("MXBMRP3_Test_CompanionWindow");
+        m_glProbeConfig = sym<void(*)(int)>("MXBMRP3_Test_GlProbeConfig");
+        m_glProbeStatus = sym<int(*)(int)>("MXBMRP3_Test_GlProbeStatus");
+        m_glProbeLoad = sym<void(*)(int,int)>("MXBMRP3_Test_GlProbeLoad");
+        m_glRenderProbe = sym<int(*)(int,int,int,int,int)>("MXBMRP3_Test_GlRenderProbe");
+        m_glInGame = sym<void(*)(int)>("MXBMRP3_Test_GlInGame");
+        m_glConfirmArm = sym<void(*)(int)>("MXBMRP3_Test_GlConfirmArm");
+        m_glInGameGet = sym<int(*)()>("MXBMRP3_Test_GlInGameGet");
+        m_glConfirmActive = sym<int(*)()>("MXBMRP3_Test_GlConfirmActive");
+        m_glConfirmPct = sym<int(*)()>("MXBMRP3_Test_GlConfirmRemainingPct");
+        m_glConfirmTick = sym<void(*)(int)>("MXBMRP3_Test_GlConfirmTick");
+        m_glDrewLastFrame = sym<int(*)()>("MXBMRP3_Test_GlDrewLastFrame");
+        m_glFrameAssetName = sym<int(*)(int,int,char*,int)>("MXBMRP3_Test_GlFrameAssetName");
+        m_glFrameAssetCount = sym<int(*)(int)>("MXBMRP3_Test_GlFrameAssetCount");
         m_getActiveTab = sym<void(*)(char*, int)>("MXBMRP3_Test_GetActiveTab");
         m_capturedSections = sym<void(*)(char*, int)>("MXBMRP3_Test_CapturedSections");
         m_anPrime      = sym<void(*)()>("MXBMRP3_Test_AnalyticsPrime");
@@ -369,6 +384,14 @@ public:
     // REQUIRE above it skips teardown and restores exactly the crashy path.
     // Doing it here covers every caller, present and future, plus the abort.
     ~PluginHost() {
+        // Any GL context this host brought up goes FIRST, and unconditionally.
+        // It is current on this thread and the plugin has cached entry points
+        // through it, so letting it outlive the DLL unload (or reach process
+        // exit at all, which is what happens on any path that misses the
+        // explicit teardown call - an early return, a failed assertion) leaves
+        // teardown ordering to chance. It cost one intermittently missing
+        // harness sentinel before it was made unconditional.
+        glMakeContext(false);
         if (!m_h) return;
         if (!m_skipShutdownOnDestroy) shutdown();
         FreeLibrary(m_h);
@@ -1135,12 +1158,15 @@ public:
     bool probeSweepRunning() { return m_sweepRunning && m_sweepRunning() != 0; }
     // The sweep's report text for a SYNTHETIC result set (supplied per-quad
     // costs, no wall-clock sweep) — see MXBMRP3_Test_ProbeSweepReport.
-    std::string probeSweepReport(double fillUs, double alpha0Us, double degenUs) {
-        auto fn = sym<void (*)(double, double, double, char*, int)>(
+    // glPaintState: -2 derive from glUs (default), else force -1/0/1.
+    std::string probeSweepReport(double fillUs, double alpha0Us, double degenUs,
+                                 double glUs = 0.0, int glPaintState = -2) {
+        auto fn = sym<void (*)(double, double, double, double, int, char*, int)>(
             "MXBMRP3_Test_ProbeSweepReport");
         if (!fn) return {};
         std::vector<char> buf(16384);
-        fn(fillUs, alpha0Us, degenUs, buf.data(), static_cast<int>(buf.size()));
+        fn(fillUs, alpha0Us, degenUs, glUs, glPaintState,
+           buf.data(), static_cast<int>(buf.size()));
         return std::string(buf.data());
     }
     // Glyphs per probe string. The engine bills per glyph, so the sweep steps this
@@ -1347,10 +1373,360 @@ public:
         m_regionSig(buf.data(), static_cast<int>(buf.size()));
         return std::string(buf.data());
     }
+    // Click every control on the active settings tab (see reset_tab_test); returns
+    // how many were clicked, -1 if the hook is missing.
+    int perturbActiveTab() { return m_perturbTab ? m_perturbTab() : -1; }
+    // Press the active tab's "Reset <tab>" footer button.
+    bool clickResetTab() { return m_clickResetTab && m_clickResetTab() != 0; }
     bool clickCycle(int index, bool up) {
         return m_cycleClick && m_cycleClick(index, up ? 1 : 0) != 0;
     }
     void companionWindow(bool v = true) { if (m_companion) m_companion(v ? 1 : 0); }
+    // Bind a VBO and a VAO and LEAVE THEM BOUND, the way a real game engine
+    // does across the Draw callback. This is not a synthetic worry: with a VBO
+    // bound, glVertexPointer's pointer is reinterpreted as an offset into that
+    // buffer, and with a non-zero VAO bound client arrays are invalid outright -
+    // either way a client-array draw silently renders nothing, which measures
+    // as "free" and passes a performance bar perfectly. Returns false when this
+    // context is too old to have them (nothing to simulate).
+    bool glBindGameLikeState() {
+        HMODULE gl = GetModuleHandleA("opengl32.dll");
+        if (!gl) return false;
+        auto gpa = reinterpret_cast<PROC (WINAPI*)(LPCSTR)>(
+            reinterpret_cast<void*>(GetProcAddress(gl, "wglGetProcAddress")));
+        if (!gpa) return false;
+        auto genBuf = reinterpret_cast<void (WINAPI*)(int, unsigned*)>(
+            reinterpret_cast<void*>(gpa("glGenBuffers")));
+        auto bindBuf = reinterpret_cast<void (WINAPI*)(unsigned, unsigned)>(
+            reinterpret_cast<void*>(gpa("glBindBuffer")));
+        auto bufData = reinterpret_cast<void (WINAPI*)(unsigned, long long, const void*, unsigned)>(
+            reinterpret_cast<void*>(gpa("glBufferData")));
+        auto genVao = reinterpret_cast<void (WINAPI*)(int, unsigned*)>(
+            reinterpret_cast<void*>(gpa("glGenVertexArrays")));
+        auto bindVao = reinterpret_cast<void (WINAPI*)(unsigned)>(
+            reinterpret_cast<void*>(gpa("glBindVertexArray")));
+        if (!genBuf || !bindBuf || !bufData || !genVao || !bindVao) return false;
+
+        unsigned vao = 0, vbo = 0;
+        genVao(1, &vao);
+        if (vao) bindVao(vao);
+        genBuf(1, &vbo);
+        if (!vbo) return false;
+        bindBuf(0x8892u /*GL_ARRAY_BUFFER*/, vbo);
+        // Small and real, so an offset-misread lands inside a live buffer rather
+        // than faulting - the quiet version of the bug, which is the one that
+        // produced a plausible-looking measurement.
+        static const float junk[64] = { 0.0f };
+        bufData(0x8892u, static_cast<long long>(sizeof(junk)), junk, 0x88E4u /*STATIC_DRAW*/);
+        return true;
+    }
+
+    // Compile and BIND a shader program whose fragment stage outputs pure BLUE,
+    // and leave it bound - which is what a modern game engine does across the
+    // Draw callback. This is the one failure the GL backend cannot feel: a bound
+    // program silently replaces fixed-function processing, raises NO GL error,
+    // and would send our vertices through the game's shader. The blue is chosen
+    // so the failure is unmistakable in a test that asks for a RED quad.
+    // Returns false if this context cannot compile shaders (nothing to simulate).
+    // Plant a GL error in the queue and LEAVE IT THERE, the way an injected
+    // layer (ReShade replaces opengl32.dll) or the game itself can. GL errors
+    // are a queue; anything that does not drain leaves its errors for whoever
+    // calls glGetError next. Returns false if the error could not be raised.
+    bool glPlantStaleError() {
+        HMODULE gl = GetModuleHandleA("opengl32.dll");
+        if (!gl) return false;
+        auto enable = reinterpret_cast<void (WINAPI*)(unsigned)>(
+            reinterpret_cast<void*>(GetProcAddress(gl, "glEnable")));
+        auto getError = reinterpret_cast<unsigned (WINAPI*)()>(
+            reinterpret_cast<void*>(GetProcAddress(gl, "glGetError")));
+        if (!enable || !getError) return false;
+        while (getError() != 0) { }        // start from a clean queue
+        enable(0xFFFF);                    // not a valid cap -> GL_INVALID_ENUM
+        return true;                       // deliberately NOT drained
+    }
+
+    // Leave the context in the states the GL backend has no way to FEEL: none of
+    // these raises a GL error, so the backend's own error check never fires and
+    // it never falls back - it just draws wrong. That is the class of bug a
+    // tester hit in the field (glyphs and icons as solid blocks on an AMD
+    // driver, a completely clean log), so each bit is planted independently and
+    // asserted independently rather than as one undifferentiated "hostile"
+    // blob. Bits: 1 = texture units, 2 = texgen, 4 = fog, 8 = logic op,
+    // 16 = polygon mode, 32 = clip plane, 64 = polygon stipple.
+    // Returns false if this context cannot express the requested state.
+    bool glPlantSilentState(int mask) {
+        HMODULE gl = GetModuleHandleA("opengl32.dll");
+        if (!gl) return false;
+        auto sym = [&](const char* n) {
+            return reinterpret_cast<void*>(GetProcAddress(gl, n));
+        };
+        auto enable = reinterpret_cast<void (WINAPI*)(unsigned)>(sym("glEnable"));
+        if (!enable) return false;
+
+        if (mask & 1) {
+            auto gpa = reinterpret_cast<PROC (WINAPI*)(LPCSTR)>(sym("wglGetProcAddress"));
+            if (!gpa) return false;
+            auto active = reinterpret_cast<void (WINAPI*)(unsigned)>(
+                reinterpret_cast<void*>(gpa("glActiveTexture")));
+            auto clientActive = reinterpret_cast<void (WINAPI*)(unsigned)>(
+                reinterpret_cast<void*>(gpa("glClientActiveTexture")));
+            auto genTex = reinterpret_cast<void (WINAPI*)(int, unsigned*)>(sym("glGenTextures"));
+            auto bindTex = reinterpret_cast<void (WINAPI*)(unsigned, unsigned)>(sym("glBindTexture"));
+            auto texImage = reinterpret_cast<void (WINAPI*)(unsigned,int,int,int,int,int,unsigned,unsigned,const void*)>(
+                sym("glTexImage2D"));
+            auto texParam = reinterpret_cast<void (WINAPI*)(unsigned,unsigned,int)>(sym("glTexParameteri"));
+            auto getInt = reinterpret_cast<void (WINAPI*)(unsigned,int*)>(sym("glGetIntegerv"));
+            if (!active || !clientActive || !genTex || !bindTex || !texImage || !texParam || !getInt)
+                return false;
+            int units = 0;
+            getInt(0x84E2 /*MAX_TEXTURE_UNITS*/, &units);
+            if (units < 2) return false;         // nothing to be wrong about here
+            // Unit 1 ENABLED with a solid BLUE texture: fixed-function applies
+            // every enabled unit in turn, so a red quad that still comes back
+            // red proves the backend turned it off.
+            active(0x84C1 /*TEXTURE1*/);
+            unsigned junk = 0;
+            genTex(1, &junk);
+            if (!junk) return false;
+            bindTex(0x0DE1 /*TEXTURE_2D*/, junk);
+            const unsigned char blue[4] = { 0, 0, 255, 255 };
+            texImage(0x0DE1, 0, 0x1908 /*RGBA*/, 1, 1, 0, 0x1908, 0x1401 /*UNSIGNED_BYTE*/, blue);
+            texParam(0x0DE1, 0x2801 /*MIN_FILTER*/, 0x2600 /*NEAREST*/);
+            texParam(0x0DE1, 0x2800 /*MAG_FILTER*/, 0x2600);
+            enable(0x0DE1);
+            // Back to unit 0 as the SERVER-active unit. Both selectors left on
+            // 1 would be self-consistent - the backend would simply do all its
+            // work on unit 1 and come out right - which is how the first version
+            // of this plant tested nothing at all and passed against a
+            // deliberately broken backend. The hazard is the MISMATCH:
+            //   - unit 1 stays ENABLED behind the unit we draw on, so
+            //     fixed-function modulates our red by its blue,
+            //   - and CLIENT_ACTIVE_TEXTURE stays on 1, so glTexCoordPointer
+            //     feeds a unit we are not drawing through and unit 0 samples one
+            //     constant texel for the whole frame.
+            // Which is what a game leaves behind: it restores the unit it draws
+            // on and forgets the rest.
+            active(0x84C0 /*TEXTURE0*/);
+            clientActive(0x84C1);
+        }
+        if (mask & 2) {
+            enable(0x0C60 /*TEXTURE_GEN_S*/);    // generated UVs REPLACE ours
+            enable(0x0C61 /*TEXTURE_GEN_T*/);
+        }
+        if (mask & 4) {
+            auto fogi = reinterpret_cast<void (WINAPI*)(unsigned,int)>(sym("glFogi"));
+            auto fogf = reinterpret_cast<void (WINAPI*)(unsigned,float)>(sym("glFogf"));
+            auto fogfv = reinterpret_cast<void (WINAPI*)(unsigned,const float*)>(sym("glFogfv"));
+            if (!fogi || !fogf || !fogfv) return false;
+            // Start/end behind the eye so the linear factor clamps to FULL fog
+            // at our z of 0; otherwise fog is enabled and does nothing, which
+            // would make this a test of nothing.
+            const float blue[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
+            fogi(0x0B65 /*FOG_MODE*/, 0x2601 /*LINEAR*/);
+            fogf(0x0B63 /*FOG_START*/, -2.0f);
+            fogf(0x0B64 /*FOG_END*/, -1.0f);
+            fogfv(0x0B66 /*FOG_COLOR*/, blue);
+            enable(0x0B60 /*FOG*/);
+        }
+        if (mask & 8) {
+            auto logicOp = reinterpret_cast<void (WINAPI*)(unsigned)>(sym("glLogicOp"));
+            if (!logicOp) return false;
+            // GL_CLEAR, not the more lifelike XOR or AND: those combine with
+            // the DESTINATION, and against this probe's dark background XOR
+            // leaves a red quad red - a plant that cannot fail is worse than no
+            // plant. CLEAR forces zero whatever is underneath, so the assertion
+            // measures the cap and nothing else.
+            logicOp(0x1500 /*CLEAR*/);
+            enable(0x0BF2 /*COLOR_LOGIC_OP*/);   // replaces blending outright
+        }
+        if (mask & 16) {
+            auto polyMode = reinterpret_cast<void (WINAPI*)(unsigned,unsigned)>(sym("glPolygonMode"));
+            if (!polyMode) return false;
+            polyMode(0x0408 /*FRONT_AND_BACK*/, 0x1B01 /*LINE*/);   // a wireframe HUD
+        }
+        if (mask & 32) {
+            auto clipPlane = reinterpret_cast<void (WINAPI*)(unsigned,const double*)>(sym("glClipPlane"));
+            if (!clipPlane) return false;
+            // 0x+0y+0z-1 is negative everywhere, so this plane clips the whole
+            // frame away - the loud version of a plane a game left enabled.
+            const double eqn[4] = { 0.0, 0.0, 0.0, -1.0 };
+            clipPlane(0x3000 /*CLIP_PLANE0*/, eqn);
+            enable(0x3000);
+        }
+        if (mask & 64) {
+            auto stipple = reinterpret_cast<void (WINAPI*)(const unsigned char*)>(sym("glPolygonStipple"));
+            if (!stipple) return false;
+            const unsigned char none[128] = { 0 };   // every bit off: draws nothing
+            stipple(none);
+            enable(0x0B42 /*POLYGON_STIPPLE*/);
+        }
+        return true;
+    }
+
+    bool glBindHijackingProgram() {
+        HMODULE gl = GetModuleHandleA("opengl32.dll");
+        if (!gl) return false;
+        auto gpa = reinterpret_cast<PROC (WINAPI*)(LPCSTR)>(
+            reinterpret_cast<void*>(GetProcAddress(gl, "wglGetProcAddress")));
+        if (!gpa) return false;
+        auto createShader = reinterpret_cast<unsigned (WINAPI*)(unsigned)>(
+            reinterpret_cast<void*>(gpa("glCreateShader")));
+        auto shaderSource = reinterpret_cast<void (WINAPI*)(unsigned,int,const char* const*,const int*)>(
+            reinterpret_cast<void*>(gpa("glShaderSource")));
+        auto compileShader = reinterpret_cast<void (WINAPI*)(unsigned)>(
+            reinterpret_cast<void*>(gpa("glCompileShader")));
+        auto createProgram = reinterpret_cast<unsigned (WINAPI*)()>(
+            reinterpret_cast<void*>(gpa("glCreateProgram")));
+        auto attachShader = reinterpret_cast<void (WINAPI*)(unsigned,unsigned)>(
+            reinterpret_cast<void*>(gpa("glAttachShader")));
+        auto linkProgram = reinterpret_cast<void (WINAPI*)(unsigned)>(
+            reinterpret_cast<void*>(gpa("glLinkProgram")));
+        auto getProgramiv = reinterpret_cast<void (WINAPI*)(unsigned,unsigned,int*)>(
+            reinterpret_cast<void*>(gpa("glGetProgramiv")));
+        auto useProgram = reinterpret_cast<void (WINAPI*)(unsigned)>(
+            reinterpret_cast<void*>(gpa("glUseProgram")));
+        if (!createShader || !shaderSource || !compileShader || !createProgram ||
+            !attachShader || !linkProgram || !getProgramiv || !useProgram) return false;
+
+        // Deliberately GLSL 1.10 so it links on the widest range of contexts.
+        const char* vs = "void main(){ gl_Position = ftransform(); }";
+        const char* fs = "void main(){ gl_FragColor = vec4(0.0, 0.0, 1.0, 1.0); }";
+        unsigned v = createShader(0x8B31 /*VERTEX_SHADER*/);
+        unsigned f = createShader(0x8B30 /*FRAGMENT_SHADER*/);
+        if (!v || !f) return false;
+        shaderSource(v, 1, &vs, nullptr); compileShader(v);
+        shaderSource(f, 1, &fs, nullptr); compileShader(f);
+        unsigned p = createProgram();
+        if (!p) return false;
+        attachShader(p, v); attachShader(p, f); linkProgram(p);
+        int linked = 0;
+        getProgramiv(p, 0x8B82 /*LINK_STATUS*/, &linked);
+        if (!linked) return false;
+        useProgram(p);
+        return true;
+    }
+
+    // Phase 0 GL feasibility probe (core/gl_probe.h). glProbe(0|1|2) sets the
+    // mode; the status fields are read by the index the hook documents:
+    //   0 ran, 1 moduleResident, 2 entryPointsOk, 3 contextCurrent,
+    //   4 glVersion (x10), 5 compatProfile, 6 drew, 7 readbackMatched,
+    //   8 stateDiffs (-1 = not measured), 9 glErrors.
+    void glProbe(int mode) { if (m_glProbeConfig) m_glProbeConfig(mode); }
+    int  glProbeStatus(int field) const { return m_glProbeStatus ? m_glProbeStatus(field) : 0; }
+    // Phase 1 measurement load: N in-context quads, batch 0=immediate 1=glDrawArrays.
+    void glProbeLoad(int quads, int batch) { if (m_glProbeLoad) m_glProbeLoad(quads, batch); }
+    // Render a synthetic frame through the in-context GL backend into the
+    // context glMakeContext() created, and read one pixel back (top-down
+    // coords). Returns 0xRRGGBBAA, or -1 if the render failed.
+    int glRenderProbe(int w, int h, int px, int py, int scenario) {
+        return m_glRenderProbe ? m_glRenderProbe(w, h, px, py, scenario) : -1;
+    }
+    // [Advanced] glInGame: the in-context GL renderer. glDrewLastFrame() reports
+    // whether it ACTUALLY drew, which is what suppression must follow.
+    void glInGame(bool on) { if (m_glInGame) m_glInGame(on ? 1 : 0); }
+
+    // The Direct GL confirmation prompt. glConfirmTick advances it by DRAWN
+    // milliseconds, which is what the production path feeds it.
+    bool hasGlConfirm() const { return m_glConfirmArm && m_glConfirmActive && m_glConfirmTick; }
+    void glConfirmArm(bool on) { if (m_glConfirmArm) m_glConfirmArm(on ? 1 : 0); }
+    // The [Advanced] glInGame SETTING, which is what a timeout must turn off.
+    bool glInGameEnabled() const { return m_glInGameGet && m_glInGameGet() != 0; }
+    bool glConfirmActive() const { return m_glConfirmActive && m_glConfirmActive() != 0; }
+    int glConfirmPct() const { return m_glConfirmPct ? m_glConfirmPct() : -1; }
+    void glConfirmTick(int ms) { if (m_glConfirmTick) m_glConfirmTick(ms); }
+    bool glDrewLastFrame() const { return m_glDrewLastFrame && m_glDrewLastFrame() != 0; }
+
+    // The asset names the in-context GL frame carries (kind 0 = fonts,
+    // 1 = sprites). These are RENDER names - what the backend resolves against
+    // its asset root - not the paths the game's DrawInit is given.
+    int glFrameAssetCount(int kind) const {
+        return m_glFrameAssetCount ? m_glFrameAssetCount(kind) : -1;
+    }
+    std::string glFrameAssetName(int kind, int index) const {
+        if (!m_glFrameAssetName) return "";
+        char buf[512] = {0};
+        return m_glFrameAssetName(kind, index, buf, sizeof(buf)) < 0 ? std::string() : std::string(buf);
+    }
+    // Bring up a real OpenGL context on THIS thread - the one that calls draw(),
+    // so the probe sees it exactly as it would see the game's. True when a
+    // context is current afterwards; false means this environment has no GL
+    // (headless Wine), which is a legitimate branch of the test, not a skip.
+    //
+    // It lives in the HARNESS rather than behind a test hook because it is pure
+    // test scaffolding: the plugin has no business creating GL contexts, and the
+    // harness is already in the same process on the same thread. LoadLibrary
+    // (not GetModuleHandle) on purpose - making opengl32 resident is what the
+    // probe's own GetModuleHandle is then supposed to find, standing in for the
+    // game having loaded it.
+    bool glMakeContext(bool on = true) {
+        HMODULE gl = LoadLibraryA("opengl32.dll");
+        if (!gl) return false;
+        auto create  = reinterpret_cast<HGLRC (WINAPI*)(HDC)>(
+            reinterpret_cast<void*>(GetProcAddress(gl, "wglCreateContext")));
+        auto makeCur = reinterpret_cast<BOOL (WINAPI*)(HDC, HGLRC)>(
+            reinterpret_cast<void*>(GetProcAddress(gl, "wglMakeCurrent")));
+        auto destroy = reinterpret_cast<BOOL (WINAPI*)(HGLRC)>(
+            reinterpret_cast<void*>(GetProcAddress(gl, "wglDeleteContext")));
+        if (!create || !makeCur || !destroy) return false;
+
+        if (!on) {
+            makeCur(nullptr, nullptr);
+            if (m_glRc) { destroy(m_glRc); m_glRc = nullptr; }
+            if (m_glWnd && m_glDc) { ReleaseDC(m_glWnd, m_glDc); m_glDc = nullptr; }
+            if (m_glWnd) { DestroyWindow(m_glWnd); m_glWnd = nullptr; }
+            return false;
+        }
+        if (m_glRc) return true;
+
+        static bool s_registered = false;
+        const wchar_t* cls = L"MXBMRP3TestGlWindow";
+        if (!s_registered) {
+            WNDCLASSW wc{};
+            wc.lpfnWndProc = DefWindowProcW;
+            wc.hInstance = GetModuleHandleW(nullptr);
+            wc.lpszClassName = cls;
+            wc.style = CS_OWNDC;   // a GL context wants a DC that survives
+            if (!RegisterClassW(&wc)) return false;
+            s_registered = true;
+        }
+        m_glWnd = CreateWindowExW(0, cls, L"gl", WS_POPUP, 0, 0, 320, 240,
+                                  nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+        if (!m_glWnd) return false;
+        m_glDc = GetDC(m_glWnd);
+        if (!m_glDc) { DestroyWindow(m_glWnd); m_glWnd = nullptr; return false; }
+
+        PIXELFORMATDESCRIPTOR pfd{};
+        pfd.nSize = sizeof(pfd);
+        pfd.nVersion = 1;
+        pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+        pfd.iPixelType = PFD_TYPE_RGBA;
+        pfd.cColorBits = 32;
+        pfd.cDepthBits = 24;
+        pfd.cStencilBits = 8;
+        // Resolved from gdi32 rather than linked, so this stays contained to the
+        // harness header instead of adding -lgdi32 to the link line of all ~70
+        // test binaries for the sake of one of them.
+        HMODULE gdi = LoadLibraryA("gdi32.dll");
+        auto choosePf = gdi ? reinterpret_cast<int (WINAPI*)(HDC, const PIXELFORMATDESCRIPTOR*)>(
+            reinterpret_cast<void*>(GetProcAddress(gdi, "ChoosePixelFormat"))) : nullptr;
+        auto setPf = gdi ? reinterpret_cast<BOOL (WINAPI*)(HDC, int, const PIXELFORMATDESCRIPTOR*)>(
+            reinterpret_cast<void*>(GetProcAddress(gdi, "SetPixelFormat"))) : nullptr;
+        const int fmt = (choosePf && setPf) ? choosePf(m_glDc, &pfd) : 0;
+        if (fmt == 0 || !setPf(m_glDc, fmt, &pfd)) {
+            ReleaseDC(m_glWnd, m_glDc); m_glDc = nullptr;
+            DestroyWindow(m_glWnd); m_glWnd = nullptr;
+            return false;
+        }
+        m_glRc = create(m_glDc);
+        if (!m_glRc || !makeCur(m_glDc, m_glRc)) {
+            if (m_glRc) { destroy(m_glRc); m_glRc = nullptr; }
+            ReleaseDC(m_glWnd, m_glDc); m_glDc = nullptr;
+            DestroyWindow(m_glWnd); m_glWnd = nullptr;
+            return false;
+        }
+        return true;
+    }
+
     // Force a fake connected controller and show the gamepad widget (preview/tests).
     void fakeGamepad(bool on = true) { if (m_fakeGamepad) m_fakeGamepad(on ? 1 : 0); }
     // Gamepad packs. installGamepad() adds one with no files on disk; the two
@@ -1595,7 +1971,13 @@ public:
                  HUD_SPEED = 15, HUD_GEAR = 16, HUD_CRASH = 17,
                  // The gauge widgets, so the card-anchor sweep can cover every panel
                  // that centres on its card.
-                 HUD_BARS = 18, HUD_COMPASS = 19, HUD_LEAN = 20 };
+                 HUD_BARS = 18, HUD_COMPASS = 19, HUD_LEAN = 20,
+                 // The Direct GL confirmation prompt. It centres its rows on the
+                 // card box like any panel, so the anchor sweep has to see it -
+                 // and it is the one panel a user meets when the renderer under
+                 // it may be misdrawing, so a layout fault here is worse than
+                 // elsewhere, not better.
+                 HUD_GL_CONFIRM = 21 };
 
     // THE ONE TRANSLATION. Strings are HudManager::initialize()'s registration names;
     // an id outside the enum yields "", which resolves to no panel rather than to
@@ -1623,6 +2005,7 @@ public:
             case HUD_BARS:           return "bars_widget";
             case HUD_COMPASS:        return "compass_widget";
             case HUD_LEAN:           return "lean_widget";
+            case HUD_GL_CONFIRM:     return "gl_confirm";
         }
         return "";
     }
@@ -2301,6 +2684,52 @@ public:
     }
     static bool rawValid(uintptr_t s) { return (SOCKET)s != INVALID_SOCKET; }
 
+    // --- SSE (/api/events), for the streaming path ---------------------------
+    // The event stream is not request/response: the server holds the socket open
+    // and pushes frames for the life of the connection, so httpGet()'s read-to-EOF
+    // would block until shutdown and return the whole session at once. sseOpen()
+    // sends the request and hands back the LIVE socket; sseRead() drains what has
+    // arrived, stopping early once `want` appears. rawClose() frees it.
+    //
+    // HTTP/1.1, not the 1.0 httpGet() uses: a chunked content provider needs it,
+    // and the bytes on the wire are therefore chunk-framed around the SSE fields
+    // -- so read them by searching for "id: " / "data: ", never by parsing the
+    // body as one document.
+    uintptr_t sseOpen() {
+        char req[192];
+        int n = snprintf(req, sizeof(req),
+                         "GET /api/events HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                         "Accept: text/event-stream\r\nConnection: keep-alive\r\n\r\n");
+        uintptr_t s = rawConnectSend(req, n);
+        if (!rawValid(s)) return s;
+        // Short per-recv timeout so sseRead() polls at this granularity and its
+        // own deadline is what bounds the wait -- one long SO_RCVTIMEO would make
+        // every read cost the full timeout when the stream is simply idle.
+        DWORD tv = 250;
+        setsockopt((SOCKET)s, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+        return s;
+    }
+    // Accumulate bytes until `want` is seen, the peer closes, or timeoutMs
+    // elapses. Returns what arrived (possibly empty) -- a caller asserting a push
+    // arrived should check for its marker, not for non-emptiness.
+    std::string sseRead(uintptr_t s, const char* want = nullptr, int timeoutMs = 5000) {
+        std::string acc;
+        const ULONGLONG deadline = GetTickCount64() + (ULONGLONG)timeoutMs;
+        char buf[4096];
+        while (GetTickCount64() < deadline) {
+            int r = recv((SOCKET)s, buf, sizeof(buf), 0);
+            if (r > 0) {
+                acc.append(buf, (size_t)r);
+                if (want && acc.find(want) != std::string::npos) break;
+                continue;
+            }
+            if (r == 0) break;   // peer closed the stream
+            // Otherwise a recv timeout (SO_RCVTIMEO): the stream is idle, keep
+            // waiting until OUR deadline rather than treating it as the end.
+        }
+        return acc;
+    }
+
 private:
     // Dispatch one recorded tape event into the matching real export. Returns
     // true if applied, false if the type is skipped (unhandled).
@@ -2552,11 +2981,29 @@ private:
     int         (*m_cycleCount)(int) = nullptr;
     void        (*m_regionSig)(char*,int) = nullptr;
     int         (*m_cycleClick)(int,int) = nullptr;
+    int         (*m_perturbTab)() = nullptr;
+    int         (*m_clickResetTab)() = nullptr;
     float       (*m_ruBumpsLight)() = nullptr;
     void        (*m_showSettings)(int) = nullptr;
     int         (*m_setThemeGap)(float) = nullptr;
     void        (*m_settingsGutter)(int*,int*,int*) = nullptr;
     void        (*m_companion)(int) = nullptr;
+    void        (*m_glProbeConfig)(int) = nullptr;
+    int         (*m_glProbeStatus)(int) = nullptr;
+    void        (*m_glProbeLoad)(int,int) = nullptr;
+    int         (*m_glRenderProbe)(int,int,int,int,int) = nullptr;
+    void        (*m_glInGame)(int) = nullptr;
+    void        (*m_glConfirmArm)(int) = nullptr;
+    int         (*m_glInGameGet)() = nullptr;
+    int         (*m_glConfirmActive)() = nullptr;
+    int         (*m_glConfirmPct)() = nullptr;
+    void        (*m_glConfirmTick)(int) = nullptr;
+    int         (*m_glDrewLastFrame)() = nullptr;
+    int         (*m_glFrameAssetName)(int,int,char*,int) = nullptr;
+    int         (*m_glFrameAssetCount)(int) = nullptr;
+    HWND  m_glWnd = nullptr;
+    HGLRC m_glRc = nullptr;
+    HDC   m_glDc = nullptr;
     void        (*m_stSetVisible)(int) = nullptr;
     void        (*m_installTheme)(const char*,float,float,int,int,int,int) = nullptr;
     int         (*m_setThemeTitleBorder)(float) = nullptr;

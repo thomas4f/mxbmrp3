@@ -17,8 +17,8 @@ class SettingsHud;
 class BaseHud;
 
 // Layout context for settings panel rendering
-// Replaces lambda captures with explicit context object, enabling extraction of tab
-// rendering into separate files while maintaining access to shared state.
+// An explicit context object rather than lambda captures, so tab rendering lives in
+// separate files while keeping access to shared state.
 // Width of a `< value >` control's VALUE field, in characters. One definition so a
 // hand-rolled row (the Appearance tab's colour and font rows, which need click
 // targets the helpers do not carry) lines its arrows up with every helper-built row
@@ -90,47 +90,44 @@ struct SettingsLayoutContext {
     //
     // `hint` is the muted parenthetical some sections carry ("(click to track/untrack)").
     // It lives here rather than in the callers so a hand-rolled heading has no reason
-    // to exist: a heading drawn with addString gets no card, which is how the Riders
-    // tab ended up with no section cards at all while every other tab had them.
+    // to exist: a heading drawn with addString gets no card, and that tab is then the
+    // one tab without section cards.
     // Returns the Y the heading row was drawn at, for the rare caller that needs to
     // put something else on that row (the Hotkeys tab's column labels). Deriving it
     // as currentY - lineHeightNormal works today and breaks silently the moment this
     // function's advance changes.
     //
-    // HEADING, not "header": that word had been doing duty for a settings block, a
-    // HUD section and a table's column-label row in the same sentence. A HUD opens
-    // its content blocks with the SAME thing under the SAME name
-    // (BaseHud::addSectionHeading) -- see there for why the two are one concept and
-    // the face is the only difference.
+    // HEADING, not "header": that word does duty for a settings block, a HUD section
+    // and a table's column-label row. A HUD opens its content blocks with the SAME
+    // thing under the SAME name (BaseHud::addSectionHeading) -- see there for why the
+    // two are one concept and the face is the only difference.
     // Width of a full-width row -- a hover highlight, a click region -- inside the
     // content column's section card.
     //
     // THEMED, the row is symmetric inside its CARD: it starts one label-column inset
     // from the card's left edge and must end the same distance from its right, so the
-    // inset comes off TWICE. It came off once, which put the row's right edge exactly
-    // ON the card's border -- a clean gap on the left and a spill through the card on
-    // the right.
+    // inset comes off TWICE. Off once, the row's right edge lands exactly ON the
+    // card's border -- a clean gap on the left and a spill through the card on the
+    // right.
     //
-    // UNTHEMED there is no card, and taking it off twice is what made the row stop two
-    // cells short of everything else. The panel's margin is [panel] padding-x, and
-    // unthemed every other element honours exactly that: the tab column's highlight,
-    // the Reset button, the right-aligned version string. Only the row highlight was at
-    // double it, so the content column looked like it ended early while the tab column
-    // looked glued to the edge. The row's LEFT edge is the label text either way -- the
-    // label column is an indent, not a margin, and only the card turns it into one.
+    // UNTHEMED there is no card, and taking it off twice stops the row two cells
+    // short of everything else. The panel's margin is [panel] padding-x, and unthemed
+    // every other element honours exactly that: the tab column's highlight, the Reset
+    // button, the right-aligned version string. A row highlight at double it makes
+    // the content column look like it ends early while the tab column looks glued to
+    // the edge. The row's LEFT edge is the label text either way -- the label column
+    // is an indent, not a margin, and only the card turns it into one.
     float rowSpanWidth() const {
         const float inset = labelX - contentAreaStartX;
         return panelWidth - (parent->hasThemedCard() ? 2.0f * inset : inset);
     }
 
     // THE OPEN SECTION CARD'S LEFT EDGE, handed over by the panel from the engine's
-    // own box for this column. It used to be derived here from the column and the
-    // card's terms -- a derivation that had to stay equal to the one the card was
-    // drawn with.
-    //
-    // The right edge lived here too, for the hover band that had to fill the card's
-    // INTERIOR. The band is PanelPlan::rowBandX/W now -- one owner for every row
-    // highlight in the plugin -- so nothing reads it.
+    // own box for this column -- not derived here from the column and the card's
+    // terms, which would be a second derivation that has to stay equal to the one
+    // the card is drawn with. No right edge: the hover band that fills the card's
+    // INTERIOR is PanelPlan::rowBandX/W, one owner for every row highlight in the
+    // plugin.
     float planCardLeftX = 0.0f;
 
     float addSectionHeading(const char* title, const char* hint = nullptr);
@@ -138,10 +135,10 @@ struct SettingsLayoutContext {
     // A muted tip INSIDE the section it follows ("Tip: click to rebind, ESC to
     // cancel."), half a row below the section's last control. Inside on
     // purpose: rows outside a section are invisible to the box engine, which
-    // reserves per section — as a card-free block below the last card the tips
-    // drew on unreserved air (nine tabs overflowed the panel by exactly their
-    // tip; settings_fit_test measures it), and reserving that tail separately
-    // priced the tallest tabs past the screen at the themed frames.
+    // reserves per section — a card-free block below the last card draws on
+    // unreserved air (the tab overflows the panel by exactly its tip;
+    // settings_fit_test measures it), and reserving that tail separately prices
+    // the tallest tabs past the screen at the themed frames.
     void addNote(const char* text);
 
     // A RADIO row's shared half: the row-wide tooltip region, a click region
@@ -158,8 +155,8 @@ struct SettingsLayoutContext {
     // A muted caption INSIDE the open section card, under the control it explains
     // (the General tab's web-server hint). Same voice as addNote -- muted, 0.9x --
     // but it belongs to its section rather than ending it, so no card is closed.
-    // The junction above it is addSpacing()'s [panel] gap; it was a hardcoded
-    // `lineHeightNormal * 0.5f` that no ini could reach.
+    // The junction above it is addSpacing()'s [panel] gap, not a hardcoded
+    // fraction of a row that no ini could reach.
     void addInlineNote(const char* text);
 
     // A plain TEXT ROW inside the content column: one line at labelX, advanced by
@@ -182,26 +179,23 @@ struct SettingsLayoutContext {
     // slices when there are any, a solid quad otherwise, and fills its row. `color`
     // is the caller's state colour -- disabled/hover/normal are the caller's
     // decision, not this helper's. Every in-tab button goes through here so none can
-    // be left unthemed the way Copy / Reset / Check Now were.
+    // be left unthemed.
     // Geometry for a centred in-card ACTION BUTTON row, from the [button]
     // terms: the box wraps the label (insets each side, full box height), and
     // labelY sits below the top inset so the glyph stays row-centred in the
     // box's content row. One helper so the five action buttons (Copy, Reset,
     // Check Now, Retry, Install) cannot each miss a term their own way.
     //
-    // THE MARGIN IS PART OF THE ANSWER, which it was not: the box carried the
-    // [button] border and padding, but `bt.marginT/B` were simply unread — so
-    // `[button] margin` moved the settings FOOTER and did nothing at all to
-    // Copy, Reset, Check Now, Retry or Install. `.y` already has the top margin
-    // in it and `advance` is the whole vertical cost, so a caller adds
-    // `advance` to currentY and nothing else.
+    // THE MARGIN IS PART OF THE ANSWER: `.y` already has the top margin in it
+    // and `advance` is the whole vertical cost, so a caller adds `advance` to
+    // currentY and nothing else. With `bt.marginT/B` unread, `[button] margin`
+    // would move the settings FOOTER and do nothing at all to Copy, Reset,
+    // Check Now, Retry or Install.
     //
     // The JUNCTION above the button stays the caller's addSpacing() — [panel]
-    // gap, the same term every other stacked thing in a tab uses, and what the
-    // three Updates buttons already called. General spelled it as a hardcoded
-    // `lineHeightNormal * 0.5f` no setting could reach; that is gone. The split
-    // is the box model's own: a junction belongs to the stack, a margin belongs
-    // to the box.
+    // gap, the same term every other stacked thing in a tab uses. The split is
+    // the box model's own: a junction belongs to the stack, a margin belongs to
+    // the box.
     struct ButtonRowGeom { float x, y, w, h, centerX, labelY, advance; };
     ButtonRowGeom buttonRow(int labelChars) const;
     void addButtonBackground(float x, float y, float width, float height, unsigned long color);
@@ -218,10 +212,9 @@ struct SettingsLayoutContext {
     // ever shows (Check Now becomes "Checking...", so 11), so it does not resize
     // under the cursor.
     //
-    // The five of these each hand-rolled the same seven steps, and drifted while
-    // doing it -- Check Now dimmed to 0.3 alpha where Copy and Reset used 64/255,
-    // and the ten-line comment explaining why the glyph colour is DERIVED lived
-    // in three copies. One spelling now; the comment is at the implementation.
+    // One spelling for all five, so they cannot drift (one dimming to 0.3 alpha
+    // where another uses 64/255); why the glyph colour is DERIVED is explained at
+    // the implementation.
     void addActionButton(const char* label, int labelChars,
                          SettingsHud::ClickRegion::Type type,
                          ButtonRole role = ButtonRole::Accent,
@@ -229,14 +222,13 @@ struct SettingsLayoutContext {
 
     // TWO buttons side by side on one row, centred as a pair with the [button] gap
     // between them -- for a choice between two acts rather than one act with a
-    // preceding selection. The Reset section used to be two radio rows plus a shared
-    // button (four rows for two outcomes); this is one.
+    // preceding selection (the Reset section: one row for two outcomes).
     //
     // Both take the same width so neither reads as the default, which for a pair
     // where one is destructive is the point.
     // A "label: url" row where only the URL is clickable and lights on hover.
     //
-    // ONE OWNER for that styling and hit-testing, because there are now two callers
+    // ONE OWNER for that styling and hit-testing, because there are two callers
     // in different sections -- the Help & Community footer and the web server's own
     // "live overlay at ..." line, which is a link the moment the server is actually
     // serving. A second hand-rolled copy is how the two would drift into looking like
@@ -290,10 +282,8 @@ struct SettingsLayoutContext {
     // ColorSlot, a HotkeyAction. Same row as the plain overload, emitted through
     // it and stamped afterwards (the shape the CycleControl/SteppedControl
     // overloads already use), so a payload-carrying row cannot pick its own
-    // column geometry. Before this existed the font and colour rows hand-rolled
-    // the whole "< value >" run purely to get their payload onto the arrows, and
-    // drifted: they had their own value width, and the colour row skipped
-    // formatValue entirely.
+    // column geometry -- a hand-rolled "< value >" run gets its own value width
+    // and skips formatValue.
     void addCycleControl(
         const char* label,
         const char* value,
@@ -310,10 +300,8 @@ struct SettingsLayoutContext {
     // a dedicated enum pair when the handler would be the plain archetype
     // "value = (value ± 1) mod N; hud->setDataDirty(); setDataDirty();"
     // (optionally with uniform postStep work). Cycles never hold-accelerate.
-    // tooltipOnArrows mirrors addSteppedControl: stamp tooltipId onto the two
-    // arrow regions when the old per-type getTooltipIdForRegion fallback had an
-    // entry for the control; pass false for controls whose arrows historically
-    // showed no tooltip.
+    // tooltipOnArrows mirrors addSteppedControl: also stamp tooltipId onto the
+    // two arrow regions; pass false for controls whose arrows show no tooltip.
     void addCycleControl(
         const char* label,
         const char* value,
@@ -332,9 +320,8 @@ struct SettingsLayoutContext {
     // of a dedicated enum pair when the handler would be the plain archetype
     // "value = applyAccelerated*(...); hud->setDataDirty(); setDataDirty();".
     // Handlers with any other side effect keep their own enum pair.
-    // tooltipOnArrows: also stamp tooltipId onto the two arrow regions (matches
-    // the old per-type getTooltipIdForRegion fallback; pass false for controls
-    // whose arrows historically showed no tooltip).
+    // tooltipOnArrows: also stamp tooltipId onto the two arrow regions; pass
+    // false for controls whose arrows show no tooltip.
     void addSteppedControl(
         const char* label,
         const char* value,
@@ -384,8 +371,7 @@ struct SettingsLayoutContext {
     // Add standard HUD controls block (Visible, Title, Texture|Theme, Opacity, Scale)
     // Returns the Y position where the section started (for right column alignment).
     // Whether the Title row appears comes from BaseHud::m_titleSupported, not from an
-    // argument here -- it used to be one, and a bool at the call site can disagree with
-    // the HUD it describes.
+    // argument here -- a bool at the call site can disagree with the HUD it describes.
     float addStandardHudControls(BaseHud* hud);
 
     // Add a data toggle control in the right column (for bitfield toggles)
@@ -431,10 +417,9 @@ struct SettingsLayoutContext {
     void nextLine();
 
     // One junction's worth of vertical air: [Advanced] panelGap, the same term
-    // every seam between two stacked children spends. NO multiplier -- callers
-    // used to pick between a private settingsRowGap and settingsBlockGap, which
-    // was two unreachable knobs for one distance. Never before
-    // addSectionHeading(), which owns its own gap (check_section_spacing.sh).
+    // every seam between two stacked children spends. NO multiplier -- one
+    // distance, one knob. Never before addSectionHeading(), which owns its own
+    // gap (check_section_spacing.sh).
     void addSpacing();
 
     // Helper to format and truncate values for cycle controls

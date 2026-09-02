@@ -45,8 +45,8 @@ void RumbleHud::update() {
     // InputTelemetry change, ~100Hz while riding) or layout changed. The rumble
     // effect values and their history deques are all telemetry-driven, so the
     // graph output is identical between telemetry ticks — rebuilding every render
-    // frame (~2,600 line-segment quads with all channels on) wasted most of the
-    // work at 480fps. Same fix TelemetryHud received for the identical pattern.
+    // frame (~2,600 line-segment quads with all channels on) would waste most of
+    // the work at 480fps. TelemetryHud gates the same way for the identical pattern.
     if (isDataDirty() || isLayoutDirty()) {
         rebuildAndRecord();
     }
@@ -67,9 +67,9 @@ void RumbleHud::resetToDefaults() {
     setPosition(cellsX(133), cellsY(32));
     setScale(1.0f);
     m_bShowMaxMarkers = false;  // Max markers OFF by default
-    // Linger counts REBUILDS, which since the dirty-gate fix tick at telemetry
-    // rate (~100Hz while riding), not render fps — so 60 ≈ 0.6s on track (and
-    // markers freeze while paused/in menus, when no telemetry arrives).
+    // Linger counts REBUILDS, which tick at telemetry rate (~100Hz while riding),
+    // not render fps — so 60 ≈ 0.6s on track (and markers freeze while paused/in
+    // menus, when no telemetry arrives).
     m_maxMarkerLingerFrames = 60;
 
     // Reset max tracking state

@@ -99,21 +99,17 @@ float PitboardHud::calculateBackgroundHeight(int /*rowCount*/) const {
     // panelHeight(), not a locally spelled `dim.lineHeightNormal * 1.0f`.
     //
     // The two are EQUAL unthemed -- a normal row is two cells and so is [panel]
-    // padding-y -- which is why the local read as a harmless synonym. It is not one:
+    // padding-y -- so the local reads as a harmless synonym. It is not one:
     // dim.paddingV IS contentPaddingY(), which widens the base padding to push
-    // content clear of the frame's edge slices, so this panel silently opted out of it.
-    // Measured at the shipped metrics: 12.67px short per side under a themed panel and
-    // 50.69px under Debug, with the rows sitting inside the frame.
+    // content clear of the frame's edge slices, and a panel spelling it locally opts
+    // out of that: at the shipped metrics, 12.67px short per side under a themed
+    // panel and 50.69px under Debug, with the rows sitting inside the frame.
     //
-    // NO LONGER REACHABLE, and kept anyway. A background texture supersedes the theme
-    // (activeTheme() returns nullptr for it), and this HUD's artwork can no longer be
-    // switched off (m_textureRequired), so there is now no state where this panel draws
-    // a frame at all. The correct spelling costs nothing and stops the divergence
-    // reappearing the day that changes -- which is the whole argument for one spelling.
-    //
-    // (An earlier version of this comment claimed a shipped ini recommends turning the art
-    // off. It does not: its note is about the HUD's background PANEL on widgets with no
-    // texture at all -- Gear and Speed -- which is a different setting.)
+    // NOT REACHABLE TODAY, and kept anyway. A background texture supersedes the theme
+    // (activeTheme() returns nullptr for it), and this HUD's artwork cannot be
+    // switched off (m_textureRequired), so there is no state where this panel draws a
+    // frame at all. The correct spelling costs nothing and stops the divergence
+    // appearing the day that changes -- which is the whole argument for one spelling.
     return panelHeight(dim, titleHeight + MAX_ROW_COUNT * dim.lineHeightNormal);
 }
 
@@ -302,9 +298,9 @@ void PitboardHud::rebuildRenderData() {
     int enabledRows = getEnabledRowCount();
     float backgroundHeight = calculateBackgroundHeight(enabledRows);
     // Width from the ACTIVE PACK's own proportions, so a board drawn at any aspect
-    // keeps its shape instead of being stretched to whatever the rows needed. This
-    // was a compiled 1920/1080 named after the one shipped .tga, which is why a
-    // custom board at another aspect could not be made to look right.
+    // keeps its shape instead of being stretched to whatever the rows needed. A
+    // compiled aspect would make a custom board at another aspect impossible to get
+    // right.
     const PitboardAsset* pack = activePack();
     static const PitboardLayout::BoardGeometry kNoPackGeometry;
     const PitboardLayout::BoardGeometry& layout = pack ? pack->geometry : kNoPackGeometry;
@@ -322,11 +318,11 @@ void PitboardHud::rebuildRenderData() {
     // the caption is drawn small (MARKER font at dim.fontSize, in the pack's text colour, over the art)
     // while the row reserved for it is the header band the artwork already has. Routing
     // this through reservedTitleHeight would have to pick a tier, and both are wrong:
-    // (The caption reservation that used to sit here is gone with the title call it
-    // fed. The HEIGHT calculation keeps its own copy -- see calculateBackgroundHeight
-    // -- because that one is still read; this one had no reader once the caption row
-    // stopped being emitted, and m_bShowTitle is unreachable-true here anyway:
-    // disableTitle() in the constructor, and setShowTitle() refuses to set it.)
+    // Normal shrinks the board's header by a cell, Large claims a caption size this
+    // panel does not use. No caption row is emitted here (m_bShowTitle is
+    // unreachable-true: disableTitle() in the constructor, and setShowTitle() refuses
+    // to set it); the HEIGHT calculation keeps the reservation -- see
+    // calculateBackgroundHeight.
     setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
     addBackgroundQuad(START_X, START_Y, backgroundWidth, backgroundHeight);
 
@@ -334,15 +330,13 @@ void PitboardHud::rebuildRenderData() {
     float leftX = START_X + (backgroundWidth * LEFT_ALIGN_OFFSET);
     float rightX = START_X + (backgroundWidth * RIGHT_ALIGN_OFFSET);
     // The partner of calculateBackgroundHeight()'s panelHeight() -- see there for why
-    // the local `dim.lineHeightNormal * 1.0f` this replaces was not a synonym. Both
-    // sites had it, so the panel was internally consistent and uniformly wrong.
+    // a local `dim.lineHeightNormal * 1.0f` is not a synonym.
     float currentY = panelContentY(dim, START_Y);
 
-    // THE BODY CARD, asked for directly -- the same swap the radar made, for the same
-    // reason. This called addTitleString("Pitboard", ...), which disableTitle() in the
-    // constructor made unreachable past its title-hidden early-out: card, empty
-    // string, return. There is no layout fast path here (rebuildLayout does a full
-    // rebuild), so nothing wanted that empty string either.
+    // THE BODY CARD, asked for directly rather than through addTitleString: this
+    // panel has no caption (disableTitle() in the constructor) and no layout fast
+    // path (rebuildLayout does a full rebuild), so nothing wants the empty string a
+    // title call would emit.
     //
     // Worth keeping rather than deleting: with a pit board pack installed the pack's
     // artwork supersedes the theme and this draws nothing, but the NO-PACK path is a

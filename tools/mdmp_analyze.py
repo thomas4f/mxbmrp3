@@ -406,7 +406,7 @@ def _registry_candidates(dump_path):
         os.path.join("crash_analysis", "known_game_crashes.json"),
         "known_game_crashes.json",
     ]
-    # Fallback to the pre-rename filename so an old local copy still resolves.
+    # Also accept the older filename so an old local copy still resolves.
     if dump_dir:
         candidates.append(os.path.join(dump_dir, "known_crashes.json"))
     candidates += [
@@ -806,9 +806,9 @@ def record_sample(reg_path, d, dump_path, note=None):
 
 def main(argv):
     global KNOWN_PATH
-    # Usage before anything else: no args (or -h/--help) previously fell through
-    # to the dump loop, which either exited silently or tracebacked with
-    # FileNotFoundError('--help') — an ironic rough edge in a triage tool.
+    # Usage before anything else: no args (or -h/--help) must not fall through to
+    # the dump loop, which would either exit silently or traceback with
+    # FileNotFoundError('--help').
     if not argv or "-h" in argv or "--help" in argv:
         print("usage: mdmp_analyze.py [--known <registry.json>] <file.dmp> ...")
         print("       mdmp_analyze.py --compare <a.dmp> <b.dmp>")

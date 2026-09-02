@@ -147,6 +147,53 @@ public:
     bool getPluginThread() const { return m_bPluginThread.load(std::memory_order_relaxed); }
     void setPluginThread(bool enabled) { m_bPluginThread.store(enabled, std::memory_order_relaxed); }
 
+    // EXPERIMENTAL in-context GL renderer ([Advanced] glInGame, off by default):
+    // draw the in-game HUD inside the game's own GL context and hand the engine
+    // ZERO primitives. Atomic for the same reason as the pluginThread flag
+    // (applied on whichever thread runs the settings load, read by whichever
+    // thread runs produceFrame).
+    bool getGlInGame() const { return m_bGlInGame.load(std::memory_order_relaxed); }
+    void setGlInGame(bool on) { m_bGlInGame.store(on, std::memory_order_relaxed); }
+
+    // GL feasibility probe ([Advanced] glProbe, INI-only, off by default):
+    // 0 = off, 1 = report the game's GL context read-only, 2 = also draw one
+    // conservatively state-saved quad and verify it. Phase 0 of the in-context
+    // renderer spike -- see core/gl_probe.h. Atomic for the same reason as the
+    // flags above: a RELOAD_CONFIG in threaded mode writes it off the game thread
+    // while the Draw callback reads it.
+    int  getGlProbe() const { return m_glProbe.load(std::memory_order_relaxed); }
+    void setGlProbe(int mode) {
+        m_glProbe.store(std::clamp(mode, 0, 2), std::memory_order_relaxed);
+    }
+    // Where the probe's two bars sit, in normalized HUD coords (top-left of the
+    // pair). Configurable because the z-order test needs them ON TOP OF a native
+    // game UI element, and only the player knows where those are on their
+    // layout - a compiled-in position would mean a rebuild per attempt.
+    // Deliberately unclamped to [0,1]: HUD coordinates legitimately go outside
+    // it, and a probe you cannot park off-screen is harder to use, not safer.
+    float getGlProbeX() const { return m_glProbeX.load(std::memory_order_relaxed); }
+    float getGlProbeY() const { return m_glProbeY.load(std::memory_order_relaxed); }
+    void setGlProbeX(float v) { m_glProbeX.store(std::clamp(v, -1.0f, 2.0f), std::memory_order_relaxed); }
+    void setGlProbeY(float v) { m_glProbeY.store(std::clamp(v, -1.0f, 2.0f), std::memory_order_relaxed); }
+
+    // PHASE 1 measurement: N extra quads drawn IN-CONTEXT each frame, the GL
+    // counterpart of renderProbeQuads (which measures the same load through the
+    // ENGINE). Sweep the two at equal N and the difference is the whole question
+    // the spike is asking. Geometry and alpha are deliberately taken from the
+    // renderProbe* keys so the two sides cannot drift out of comparability.
+    static constexpr int MAX_GL_PROBE_QUADS = 100000;
+    int  getGlProbeQuads() const { return m_glProbeQuads.load(std::memory_order_relaxed); }
+    void setGlProbeQuads(int n) {
+        m_glProbeQuads.store(std::clamp(n, 0, MAX_GL_PROBE_QUADS), std::memory_order_relaxed);
+    }
+    // 0 = immediate mode (glBegin/glEnd), the SLOWEST GL path and therefore a
+    // floor; 1 = one glDrawArrays over a client-side vertex array, far closer to
+    // what a real backend does. Both are measured because reporting only the
+    // floor would understate GL, and reporting only the batch would overstate
+    // how little work Phase 2 is.
+    int  getGlProbeBatch() const { return m_glProbeBatch.load(std::memory_order_relaxed); }
+    void setGlProbeBatch(int m) { m_glProbeBatch.store((m != 0) ? 1 : 0, std::memory_order_relaxed); }
+
     // Render-load probe (INI-only debug aid, off by default). Emit N extra synthetic
     // quads each frame for the ENGINE to draw so its per-primitive render cost — which
     // no in-plugin timer can see — can be measured differentially (sweep N, watch the
@@ -245,6 +292,12 @@ private:
     float m_fCursorActivationThreshold = 0.015f;  // Mouse travel from rest before cursor appears (~29px horiz on 1080p)
     bool m_bTitleIcons = true;       // HUD title identity icons enabled by default
     std::atomic<bool> m_bPluginThread{ false };  // Experimental plugin worker thread (INI-only, off by default; live-toggle via reconcileEnabled)
+    std::atomic<float> m_glProbeX{ 0.02f };          // DEBUG: probe bar position, normalized HUD coords
+    std::atomic<float> m_glProbeY{ 0.02f };
+    std::atomic<int>  m_glProbeQuads{ 0 };           // DEBUG: N in-context GL quads/frame (Phase 1 measurement)
+    std::atomic<int>  m_glProbeBatch{ 1 };           // DEBUG: 0=immediate mode, 1=one glDrawArrays batch
+    std::atomic<bool> m_bGlInGame{ false };          // EXPERIMENTAL in-context GL renderer (INI-only, off by default)
+    std::atomic<int>  m_glProbe{ 0 };                // DEBUG: GL feasibility probe (INI-only, off by default; 0=off, 1=report, 2=report+draw)
     std::atomic<int>  m_renderProbeQuads{ 0 };       // DEBUG: extra synthetic quads/frame for engine render-cost measurement (INI-only, off by default)
     std::atomic<bool> m_renderProbeFullscreen{ false };  // DEBUG: probe quads full-screen (fill-rate) vs tiny (submit cost)
     std::atomic<int>  m_renderProbeType{ 0 };        // DEBUG: 0=fill quad, 1=sprite quad, 2=text string

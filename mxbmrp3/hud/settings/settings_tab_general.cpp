@@ -9,6 +9,7 @@
 #include "../../core/profile_manager.h"
 #include "../../core/settings_manager.h"
 #include "../../core/hud_manager.h"
+#include "../gl_confirm_hud.h"
 #include "../../core/plugin_data.h"
 #include "../../core/xinput_reader.h"
 #include "../../core/color_config.h"
@@ -48,6 +49,28 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
                 bool current = UiConfig::getInstance().getGridSnapping();
                 UiConfig::getInstance().setGridSnapping(!current);
                 setDataDirty();
+            }
+            return true;
+
+        case ClickRegion::DIRECT_GL_TOGGLE:
+            {
+                // Toggling is the retry gesture after a latched GL failure,
+                // which is why clearGlFailLatch is here: a backend that stood
+                // down needs a way back without a restart, and the row that
+                // reports "Failed" is the obvious place to ask for it.
+                UiConfig& uiConfig = UiConfig::getInstance();
+                const bool turningOn = !uiConfig.getGlInGame();
+                uiConfig.setGlInGame(turningOn);
+                HudManager::getInstance().clearGlFailLatch();
+                rebuildRenderData();
+                // ARM THE DEAD-MAN'S SWITCH on the way ON, and only then. This is
+                // the moment a user can strand themselves: if the backend renders
+                // wrongly on their driver, the HUD stays laid out and clickable but
+                // becomes unreadable, so they cannot find this row again to undo it.
+                // See hud/gl_confirm_hud.h. Turning it OFF needs no confirmation -
+                // they are on their way back to the renderer that works.
+                if (turningOn) HudManager::getInstance().getGlConfirmHud().arm();
+                else           HudManager::getInstance().getGlConfirmHud().cancel();
             }
             return true;
 
@@ -196,9 +219,9 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
             }
             return true;  // Don't save - just UI state
 
-        // ARM, then PERFORM. These two region types were the radios' toggles and are
-        // now the buttons themselves: an unarmed click arms (and disarms its
-        // opposite), an armed click does the thing. The two-step is the whole
+        // ARM, then PERFORM. These two region types are the buttons themselves: an
+        // unarmed click arms (and disarms its opposite), an armed click does the
+        // thing. The two-step is the whole
         // protection -- neither of these is undoable -- so a handler that ever
         // performs on the first click has removed it.
         case ClickRegion::RESET_PROFILE_CHECKBOX:
@@ -235,8 +258,8 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
             }
             return true;
 
-        // The shared Reset button is gone -- each outcome has its own button now, and
-        // performs from its own case above. The type stays in the enum so no region
+        // No shared Reset button: each outcome has its own button and performs from
+        // its own case above. The type stays in the enum so no region
         // ordinal moves (settings_layout_test's golden encodes them raw).
         case ClickRegion::RESET_BUTTON:
             return true;
@@ -306,8 +329,8 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     constexpr int VALUE_WIDTH = 10;  // Standard width for vertical alignment
 
     // === PREFERENCES SECTION ===
-    // (Display section — speed/fuel/temp units + clock format — moved to the
-    // Appearance tab; persisted under [Display].)
+    // (Speed/fuel/temp units and clock format are on the Appearance tab; persisted
+    // under [Display].)
     ctx.addSectionHeading("Preferences");
 
     // PB scope. Both arrows drive the same 2-state toggle.
@@ -367,11 +390,11 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::AUTOSAVE_TOGGLE, nullptr, nullptr, 0, true,
         "general.auto_save");
 
-    // Note: the menu-only-cursor toggle moved to the Pointer row on the Widgets tab
+    // Note: the menu-only-cursor toggle is the Pointer row on the Widgets tab
     // (rendered as the pointer's On/Off, since it controls whether the pointer shows
-    // during play). Still persisted under [Display] as menuOnlyCursor.
+    // during play). Persisted under [Display] as menuOnlyCursor.
 
-    // HUD placement toggles (moved here from the Appearance tab; persisted under [Display])
+    // HUD placement toggles (persisted under [Display])
     // grid-snap-exempt: renders the setting's own checkbox -- it reads the gate to
     // DISPLAY it, which is the one place that legitimately does.
     ctx.addToggleControl("Grid Snap", UiConfig::getInstance().getGridSnapping(),
@@ -380,6 +403,58 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Screen Clamp", UiConfig::getInstance().getScreenClamping(),
         SettingsHud::ClickRegion::SCREEN_CLAMP_TOGGLE, nullptr, nullptr, 0, true,
         "general.screen_clamp");
+
+    // Direct GL Rendering: draw the in-game HUD ourselves, inside the GAME'S OWN
+    // GL context, instead of handing primitives to the engine. Each word of the
+    // name earns its place -- "direct" = no handoff to the engine and no
+    // intermediate window, "GL" = the actual mechanism, which also quietly
+    // explains why it can do nothing on a setup whose game does not render with
+    // OpenGL. It is NOT named for being faster: that is the consequence, and a
+    // name that describes an outcome ages badly if the outcome ever changes.
+    //
+    // Measured +36% avg FPS and +31% on 1% lows on a real driver, replicated
+    // across both render modes. The value shows the SETTING -- if the backend
+    // cannot run it latches off, the HUD stays engine-drawn, and nothing about
+    // this row changes.
+    // A STATUS row, not a toggle, and the difference is the whole point. This
+    // backend can stand down on its own - a driver it cannot use, or an injected
+    // GL layer leaving errors in the queue - and a plain toggle would keep
+    // showing "on" while nothing happened: the switch looks enabled, the HUD is
+    // engine-drawn, and the only evidence is a line in a log file no player
+    // opens. Same shape as the Discord row above, and for the same reason: three
+    // states where a boolean can only say two.
+    {
+        HudManager& hm = HudManager::getInstance();
+        const bool glOn = UiConfig::getInstance().getGlInGame();
+        const char* glStatus;
+        uint32_t glColor;
+        if (!glOn) {
+            glStatus = "Off";
+            glColor = colorConfig.getMuted();
+        } else if (hm.glLatchedOff()) {
+            // NEGATIVE, deliberately: this is the one state the user must not
+            // mistake for working. Toggling the row off and on is the retry.
+            glStatus = "Failed";
+            glColor = colorConfig.getNegative();
+        } else if (hm.glStatusCode() == 2) {
+            // Has drawn at least once. Deliberately STICKY rather than
+            // "drew last frame": that flickers on any frame with nothing to
+            // draw, which would blink the colour and churn the rebuild the
+            // status-change check in produceFrame triggers.
+            glStatus = "On";
+            glColor = colorConfig.getPositive();
+        } else {
+            // Asked for, nothing drawn yet. Muted rather than green - we do not
+            // claim it works until it has.
+            glStatus = "On";
+            glColor = colorConfig.getMuted();
+        }
+        ctx.addCycleControl("Direct GL Rendering", glStatus, VALUE_WIDTH,
+            SettingsHud::ClickRegion::DIRECT_GL_TOGGLE,
+            SettingsHud::ClickRegion::DIRECT_GL_TOGGLE,
+            nullptr, /*enabled=*/true, /*isOff=*/false,
+            "general.direct_gl", glColor);
+    }
 
 #if GAME_HAS_STEAM_FRIENDS || GAME_HAS_DISCORD || GAME_HAS_HTTP_SERVER || GAME_HAS_ANALYTICS
     // === INTEGRATIONS SECTION ===
@@ -421,7 +496,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     // Discord Rich Presence toggle.
     //
     // DELIBERATELY hand-rolled rather than ctx.addCycleControl: while CONNECTING
-    // the arrows must go muted and non-clickable (clicking mid-connect froze the
+    // the arrows must go muted and non-clickable (clicking mid-connect freezes the
     // game) while the LABEL stays secondary. The helper derives label, arrow
     // colour and clickability from one `enabled` flag, so routing this through it
     // would also mute the label — a visual change in a state no headless test can
@@ -524,12 +599,11 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
 
         // THE ADDRESS, as a link, and ONLY when the server is actually serving.
         //
-        // The three-state helper note that used to live here is gone. It said one of
-        // "enable to serve a live overlay" / the address / "port may be in use", and
-        // because those are different lengths and the row only exists in some of
-        // them, everything below it JUMPED as you toggled the server -- a line that
-        // moved the tab around to tell you what the toggle two rows up already says.
-        // What was worth keeping is the address, and that is worth more as something
+        // Not a three-state helper note ("enable to serve a live overlay" / the
+        // address / "port may be in use"): those are different lengths and the row
+        // would only exist in some of them, so everything below it JUMPS as you
+        // toggle the server -- a line that moves the tab around to tell you what the
+        // toggle two rows up already says. The address is worth more as something
         // you can click than as a sentence about where to point a browser. Same row
         // style as the Help & Community links at the foot of the tab (addLinkRow owns
         // it), so a link looks like a link wherever it appears.
@@ -576,17 +650,17 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     // === RESET SECTION ===
     ctx.addSectionHeading("Reset");
     {
-        // TWO BUTTONS, not two radios plus a shared one. The old shape spent four
-        // rows -- a radio row each, a gap, and a Reset button whose meaning depended
-        // on which radio was lit -- to express two outcomes. A button per outcome is
-        // one row and says which one you are about to get.
+        // TWO BUTTONS, not two radios plus a shared one: a radio row each, a gap,
+        // and a Reset button whose meaning depends on which radio is lit spends four
+        // rows to express two outcomes. A button per outcome is one row and says
+        // which one you are about to get.
         //
-        // The confirmation survives as ARMING: the first click lights that button and
-        // renames it, the second performs it. That is the same two-step the radios
-        // gave (choose, then Reset) with the same protection against a single stray
-        // click, and arming either disarms the other so the two can never be lit at
-        // once. Both buttons are Negative: neither of these is a safe act, and a pair
-        // where one wore the accent would read as the default.
+        // The confirmation is ARMING: the first click lights that button and renames
+        // it, the second performs it. The two-step (choose, then perform) is the
+        // protection against a single stray click, and arming either disarms the
+        // other so the two can never be lit at once. Both buttons are Negative:
+        // neither of these is a safe act, and a pair where one wore the accent would
+        // read as the default.
         const bool armProfile = ctx.parent->m_resetProfileConfirmed;
         const bool armAll = ctx.parent->m_resetAllConfirmed;
         ctx.addActionButtonPair(

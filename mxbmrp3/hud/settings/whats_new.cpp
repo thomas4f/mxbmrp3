@@ -64,6 +64,15 @@ const Marker kMarkers[] = {
     // hotkey lives on the Hotkeys tab, which is not where anyone reading about
     // the spotter would think to look.
     { SettingsHud::TAB_HOTKEYS,    "hotkeys.spotter_cue", "1.29" },
+    // Direct GL Rendering. The gain is large but HARDWARE-DEPENDENT - the field
+    // spread ran from roughly a tenth to over half again, on three machines - so
+    // nothing user-facing quotes a number; see plans/gl_in_context_renderer.md
+    // for the measurements with the machine and scene each came from. Nothing on
+    // screen changes when it is on — which makes it the definition of a feature
+    // nobody finds without a marker. (Its sibling, GPU rendering for the
+    // companion window itself, is hwAccel: default-on with automatic
+    // fallback, so there is nothing to go find.)
+    { SettingsHud::TAB_GENERAL,    "general.direct_gl",        "1.29" },
 };
 
 // The dismissed keys. A std::set of strings rather than flags on the table:

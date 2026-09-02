@@ -488,6 +488,15 @@ void StandingsHud::rebuildRenderData() {
                 if (leaderLap > sessionData.sessionNumLaps) leaderLap = sessionData.sessionNumLaps;
                 snprintf(value, sizeof(value), "Lap %d/%d", leaderLap, sessionData.sessionNumLaps);
             }
+        } else if (!pluginData.isWaitingSession()) {
+            // UNLIMITED session (Testing / Open Practice, and any practice run with
+            // neither a clock nor a lap target): the game's clock has nothing to count
+            // down TO, so it counts UP. ELAPSED time is what this row means, so it
+            // reads the accessor that says so; formatTimeMinutesSeconds, not
+            // formatSessionClock, because no overtime label can apply where no clock
+            // can expire. Skipped in Waiting -- see isWaitingSession().
+            PluginUtils::formatTimeMinutesSeconds(pluginData.getSessionElapsedTime(),
+                                                  value, sizeof(value));
         }
 
         if (value[0] != '\0') {

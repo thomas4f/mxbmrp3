@@ -24,7 +24,7 @@ public:
     // Settings reset (all per-profile: position, visibility, scale, opacity, display elements)
     void resetToDefaults();
 
-    // Row visibility constants (moved from FmxManager — these are display config, not detection)
+    // Row visibility constants (display config, not detection — FmxManager owns detection)
     static constexpr uint32_t ROW_ARCS         = 1 << 0;
     static constexpr uint32_t ROW_DEBUG_VALUES = 1 << 1;
     static constexpr uint32_t ROW_COMBO_ARC    = 1 << 2;

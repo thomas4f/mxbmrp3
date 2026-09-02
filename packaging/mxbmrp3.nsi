@@ -112,8 +112,9 @@
 
   ; Licence notices. Required, not courtesy: everything below carries assets whose
   ; licences make the notice a CONDITION of redistributing a copy -- the OFL-1.1
-  ; font families under fonts\ and web\fonts\ (OFL section 2), and Gamepad Viewer's
-  ; MIT-licensed artwork under gamepads\. The zip has always carried both files at
+  ; font families under fonts\ and web\fonts\ (OFL section 2), the Apache-2.0 ones
+  ; beside them (Apache section 4a), and Gamepad Viewer's MIT-licensed artwork
+  ; under gamepads\. The zip has always carried both files at
   ; its root; the installer carried neither, so the recommended install path was
   ; the one shipping the fonts and the art with no notice attached.
   ;

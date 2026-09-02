@@ -169,7 +169,7 @@ Here's how data flows through the plugin:
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-> The **CompanionWindow** is an optional second render target: `HudManager` builds a second frame with `collectSurface(companion)` and submits it to a standalone OS window (drag it to a second monitor). It draws the *same* primitives with an in-process software renderer (`hud_sw_renderer`) instead of the game engine. See Core Components §13.
+> The **CompanionWindow** is an optional second render target: `HudManager` builds a second frame with `collectSurface(companion)` and submits it to a standalone OS window (drag it to a second monitor). It draws the *same* primitives with an in-process renderer (D3D11, else `hud_sw_renderer`) instead of the game engine. See Core Components §13; the in-game HUD can be drawn by the plugin too, in the game's own GL context (§13a).
 
 ## Core Components
 
@@ -474,6 +474,22 @@ A standalone, in-process OS window that renders the plugin's own HUD **outside**
 
 **Feature gating:** runtime only (the `[Display]` target: In-game / Companion / Both). Wired to analytics as `feat_companion`.
 
+**GPU backend (`core/hud_gpu_renderer.*`, INI-only `[Advanced] hwAccel`, default on):** both windows try a D3D11 backend first and fall back to the software rasterizer on ANY failure (init or runtime), so the worst case equals the software-only behavior. It consumes the same `hudsw::Frame`, and shares the `.tga`/`.fnt` decoders and the text-layout math with the software path (`core/render_asset_decode.h` - parity by construction, extracted verbatim and pinned by the sw renderer's golden-frame tests). One shader computes texel × quad color - the game's texture stage - so tint/opacity semantics are identical; what it adds is fill cost measured in microseconds instead of milliseconds (the software path was fill-rate bound: ~3.2 ms/frame at 1080p themed), 4x MSAA edge AA, and bilinear sampling. d3d11.dll/d3dcompiler_47.dll load dynamically, so the plugin gains no import that could fail at DLL load. It has ONE present path - a blt-model swapchain for the companion window. It used to have three: a **DirectComposition** composition swapchain and an `UpdateLayeredWindow` fallback existed for the in-game overlay window, and went with it when Direct GL Rendering superseded that approach. One measurement from that era is worth keeping even though the code is gone: ULW's win32k locking SERIALIZED the game thread, taking the plugin's game-thread cost from 0.09 to 1.6 ms under a ~400 fps game, which is why DComp existed at all - anyone tempted to present a HUD through `UpdateLayeredWindow` should know that first. Its header records why Direct2D and DirectXTK were rejected.
+
+**In-game overlay renderer - REMOVED.** A transparent click-through window that drew the game-surface frame on its own thread once lived here, and it worked: roughly +30% fps. It was removed when `hud_gl_renderer` (§13a) reached the same goal by drawing inside the game's OWN GL context. The reason is worth keeping: every bug that path ever had - capture hooks, plane promotion, z-order, taskbar, focus, the monitor-sized-window scanout problem it had to grow the game window a pixel to defeat - existed *because it was a second window*. Those are not a bug list you finish; they are a category you leave. In-context GL does not fix them, it makes them unrepresentable. The `[Advanced] overlayInGame` and `overlayRefreshHz` keys are accepted and ignored so an old INI does not look corrupt.
+
+### 13a. Direct GL Rendering - the in-game HUD, drawn by us (`core/hud_gl_renderer.*`)
+
+The plugin normally hands its quads and strings to the game to draw. With `[Advanced] glInGame` on it draws them itself, **inside the game's own GL context**, and reports zero primitives back (`*piNumQuads = 0`) so the engine draws nothing. No window, no swapchain, no compositor: the HUD lands in the game's own framebuffer, so game capture sees it exactly as it sees the rest of the HUD. Phase 1 measured the engine at ~0.94 us per quad against this path's ~0.007, which is where the frame time comes back.
+
+**It runs from `PluginManager::handleDraw`, never from `produceFrame`.** A GL context is current on a THREAD, and `produceFrame` runs on the worker under `[Advanced] pluginThread`; the Draw callback is the only place the game's context is guaranteed current. The threaded path therefore builds the frame on the worker and renders it here, on the game thread, like the companion window's split.
+
+**GL 1.1, deliberately** - client-side vertex arrays, `GL_MODULATE`, no shaders, no VBOs. The win is BATCHING (one draw call per texture run), not any modern feature, and every draw entry point is a real `opengl32.dll` export resolved with `GetProcAddress`, so there is no import table entry to fail at load (`check_lazy_module_imports.sh`). The few `wglGetProcAddress` names are all NEUTRALISERS - state the game may have left that a fixed-function draw must undo - and each is reached only when something implies its own availability. The header states the rule.
+
+**Inherited fixed-function state is the failure mode, and it is silent.** A tester's HUD drew panels correctly while every glyph and icon came out a solid block: the game had left texture unit 7 active and fog on. Nothing raises a GL error for that, so nothing reaches the error-based fallback. The renderer now sets every state it depends on - texture units down to unit 0, texgen, fog, logic op, polygon mode/stipple, clip planes, sample coverage, and any bound program/VBO/VAO - inside one push/pop window that also brackets batch building. Anything that DOES raise a GL error latches the backend off for the session and the engine draws the HUD, which is also what a non-GL game gets.
+
+**Two consequences worth knowing.** Text and icons are sampled from mip chains (`hudassets::buildFntMips` / `buildTexMips`) because the shipped `.fnt` cell is 135 px and HUD text is ~20 px - ~7x minification, which is what made unmipped glyphs look thin and broken up. And the settings row is a STATUS, not a toggle (Off / On / Failed): the backend can stand down by itself, and a plain toggle would keep reading "on" while the engine was drawing. Turning it on arms `hud/gl_confirm_hud.h` - a countdown the user confirms or lets expire, which is the way back for someone whose HUD came out unreadable. Pinned by `gl_render_test.cpp` (real GL under Xvfb) and `gl_probe_test.cpp`.
+
 ### 14. DirectorManager (`core/director_manager.*`)
 
 An **auto-director** for spectating and replays: it scores an "interest" model over the field and cuts the broadcast camera to the most compelling story, with broadcast-style pacing. Global (broadcast) feature persisted in the `[Director]` INI section like HelmetOverlay/Rumble - **not** per-profile - passive except while spectating or replaying, and **off by default** so an upgrade never seizes a spectator's camera. The `DirectorWidget` status button is the discoverability path: one click enables, and the choice persists.
@@ -558,7 +574,7 @@ Abstract base class that all HUDs inherit from. Provides:
 - `IdealLapHud` - Ideal (purple) sector times with gap comparison
 - `MapHud` - 2D track map with rider positions and zoom/range mode
 - `TelemetryHud` - Throttle/brake/suspension graphs
-- `PerformanceHud` - FPS, CPU usage graphs
+- `PerformanceHud` - FPS and plugin-time graphs
 - `RadarHud` - Proximity radar with nearby rider alerts
 - `PitboardHud` - Pitboard-style lap/split information. Ships as a **pack** (`pitboards/<name>/` = art + `pitboard.ini` of its proportions and row offsets), selected by name - what makes a custom board portable: its geometry used to live in the *user's* settings file, and its aspect was a compiled constant
 - `RecordsHud` - Track records from online databases (CBR or MXB-Ranked providers)
@@ -679,7 +695,7 @@ struct SPluginString_t {
 
 - Normalized: `(0, 0)` = top-left, `(1, 1)` = bottom-right
 - Based on 16:9 aspect ratio
-- On ultrawide monitors, x extends beyond [0,1]
+- On ultrawide monitors, x extends beyond `[0,1]`
 - Y is always 0-1 (vertical is reference)
 
 ### Color Format
@@ -811,7 +827,7 @@ In-game settings menu (toggle with `~` key). Allows users to:
 The settings UI uses a helper class (`SettingsLayoutContext`) for consistent layout across all tabs:
 
 ```
-mxbmrp3/hud/settings_hud.h/.cpp  # Main SettingsHud class (in hud/, alongside settings_hud_input.cpp / settings_hud_render.cpp)
+mxbmrp3/hud/settings_hud.h/.cpp  # Main SettingsHud class (in hud/, alongside settings_hud_input.cpp / settings_hud_render.cpp / settings_hud_reset.cpp)
 mxbmrp3/hud/settings/
 ├── settings_layout.h/.cpp       # SettingsLayoutContext helper
 ├── settings_tab_general.cpp     # General preferences & profiles

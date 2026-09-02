@@ -17,7 +17,7 @@ for testing.
 The cross-build powers the Layer-2 and Layer-3 tests (see `../../TESTING.md`):
 
 ```
-./run_tests.sh          # every doctest integration test in tests/ (smoke/race/sessions/director/reset/version)
+./run_tests.sh          # every doctest integration test in tests/ (pass a basename to run one)
 ./run_persist_test.sh   # settings round-trip property test
 ./run_fuzz.sh           # config-file survival fuzzing
 ./run_fuzz_callbacks.sh # DLL-boundary callback survival fuzzing
@@ -26,26 +26,18 @@ The cross-build powers the Layer-2 and Layer-3 tests (see `../../TESTING.md`):
 ./run_tape_bench.sh     # per-HUD render footprint over a real tape (inspection, not gated)
 ```
 
-This directory also holds the **enforced invariant checks** (compile/grep
-passes, no Wine, CI fails on violations): `check_game_configs.sh` (GPB/KRP
-feature-macro syntax), `check_visibility_gates.sh` (HUD `isVisibleAnySurface()`
-gates), `check_api_guards.sh` (DLL-export exception barriers),
-`check_thread_safety.sh` (clang `-Wthread-safety` over the annotated mutexes),
-`check_mt_flags.sh` (a plain `bool` in a thread-owning class),
-`check_hud_raw_cache.sh` (raw `Unified::` members cached in a HUD),
-`check_change_consumers.sh` (`onDataChanged` definitions state their
-`change-gate:`), `check_test_hook_placement.sh` (`MXBMRP3_Test_*` code only in
-`core/test_hooks.cpp`), `check_thread_join.sh` (`std::thread` members name
-their Shutdown-path join site),
-`check_style.sh` (tabs/trailing-WS/CRLF/final newline) and
-`check_session_hook.sh` (the SessionStart hook's own behaviour).
-Each script's header documents its invariant and escape-hatch annotation.
+This directory also holds the **enforced invariant checks** - the `check_*.sh`
+scripts (compile/grep passes, no Wine, CI fails on violations). What each one
+enforces is in its own header, alongside the escape-hatch annotation that opts a
+line out of it; [`DEVELOPMENT.md`](../../DEVELOPMENT.md) lists them in one place,
+one line each. Not repeated here: this listing was eleven of the nineteen by the
+time anyone noticed, which is what a second copy of a list is for.
 
 Every `*.cpp` under `core/`, `handlers/`, `hud/`, `diagnostics/` (minus
 `discord_manager.cpp`, which `mxbmrp3/CMakeLists.txt` drops under
 `MXBMRP3_TEST_BUILD` because `GAME_HAS_DISCORD` is 0 there and the TU would only
 drag the SDK in), plus `mxb_api.cpp` and the miniz `.c` files, compiles clean
-into a genuine PE32+ DLL exporting the full PiBoSo plugin API - ~150 translation
+into a genuine PE32+ DLL exporting the full PiBoSo plugin API - ~185 translation
 units. `build.sh` prints the exported-symbol count on each link; a sudden drop
 means a TU quietly stopped being compiled. Under Wine it runs the real lifecycle:
 all managers initialize, settings load/save round-trips, HUDs rebuild render

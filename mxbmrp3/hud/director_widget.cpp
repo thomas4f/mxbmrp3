@@ -115,9 +115,9 @@ void DirectorWidget::resetToDefaults() {
     m_fBackgroundOpacity = 0.1f;
     // 100% scale, matching SettingsButtonWidget -> the same box. The position is DERIVED
     // from the gear's, one cell to its left; see hud/corner_buttons.h for why the two
-    // defaults share a header and what it cost when they did not (this button overlapped
-    // its neighbour by a cell, and a click in the overlap toggled the director AND opened
-    // the settings panel).
+    // defaults share a header (computed apart, this button overlaps its neighbour by a
+    // cell, and a click in the overlap toggles the director AND opens the settings
+    // panel).
     m_fScale = 1.0f;
     setPosition(cellsX(CornerButtons::DIRECTOR_X), cellsY(CornerButtons::BUTTON_Y));
     setDataDirty();
@@ -191,22 +191,20 @@ void DirectorWidget::rebuildRenderData() {
     // (or icons disabled) degrades to the "DIR <state>" text button below - like
     // SettingsButtonWidget, never a meaningless coloured square.
     if (camSprite > 0) {
-        // Content + padding, like every other panel. This was a fixed 6 x 5 grid cells --
-        // a true pixel-square that let a 2x2 block fill one square gauge widget -- which
-        // also made panelPaddingXCells/panelPaddingYCells no-ops on the only two buttons in the UI. The glyph
-        // is the content and the panel padding surrounds it, so the box now follows the
-        // same rule every other panel does.
+        // Content + padding, like every other panel: the glyph is the content and the
+        // panel padding surrounds it, so panelPaddingXCells/panelPaddingYCells apply
+        // here as on every other panel.
         //
-        // The tiling property is the cost: the box is only pixel-square when the padding
-        // makes it so (the grid cell is 10.56 x 12.672px, so equal cell counts are not
-        // equal pixels). Uniform padding was the explicit trade.
+        // The box is only pixel-square when the padding makes it so (the grid cell is
+        // 10.56 x 12.672px, so equal cell counts are not equal pixels); a fixed
+        // pixel-square would let a 2x2 block fill one square gauge widget, and uniform
+        // padding is the explicit trade against it.
         const float btnIcon = dim.fontSizeLarge * layout().titleIconSize;
         // BOTH AXES ON THE LATTICE. Unlike a dial, this box is not art -- it is a chip
         // (a themed button slice set, or a plain solid quad), which is MEANT to be sized to
         // the box, so growing it to whole cells distorts nothing and the glyph stays centred
-        // in it. The trade the comment above describes is unchanged: the box is still not
-        // pixel-square, because a cell is not. It is now a whole number of cells, which is
-        // what tiling actually needs. See fitPanelToGrid.
+        // in it. The box is not pixel-square, because a cell is not; it is a whole number
+        // of cells, which is what tiling actually needs. See fitPanelToGrid.
         const GridFit btnFit = fitPanelToGrid(dim.paddingH + btnIcon + dim.paddingH,
                                               panelHeight(dim, btnIcon));
         const float bgW = btnFit.w;
@@ -225,7 +223,7 @@ void DirectorWidget::rebuildRenderData() {
             PluginUtils::applyOpacity(getColor(ColorSlot::ACCENT), chipAlpha);
 
         // A button, not a panel: takes the theme's BUTTON slices. See SettingsButtonWidget
-        // for why the old frame-plus-opaque-chip pair read as unthemed.
+        // for why a frame-plus-opaque-chip pair reads as unthemed.
         if (addThemedButton(startX, startY, bgW, bgH, chipColor)) {
             // Same reason as SettingsButtonWidget: the themed branch skips
             // addBackgroundQuad, which is what arms the panel rect and fill strips.
@@ -264,9 +262,9 @@ void DirectorWidget::rebuildRenderData() {
     const float gap = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize) * 0.5f;
     const float textW = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(std::strlen(detail)), dim.fontSize);
     const float lineH = dim.lineHeightNormal;
-    // Whole cells, like the icon branch above. The height already was (paddingV + a row
-    // + paddingV); the WIDTH was not, because the dot is 0.6 of the font and the gap is
-    // half a character -- neither of which has any reason to land on a cell. This box is
+    // Whole cells, like the icon branch above. The height (paddingV + a row + paddingV)
+    // lands there by itself; the WIDTH does not, because the dot is 0.6 of the font and
+    // the gap is half a character -- neither has any reason to land on a cell. This box is
     // a plain background quad, so growing it distorts nothing; the content is re-centred
     // in it rather than left hugging one edge. See fitPanelToGrid.
     const GridFit fit = fitPanelToGrid(dim.paddingH + dotDia + gap + textW + dim.paddingH,

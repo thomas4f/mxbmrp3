@@ -37,6 +37,7 @@
 // ============================================================================
 #include <algorithm>
 #include <cctype>
+#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -295,20 +296,37 @@ int main(int argc, char** argv) {
     // Rows from cell top to baseline: the topmost ink sits at cell row 0.
     int baseline = int(std::lround(unitTop * scale));
 
-    // Optional vertical centring: shift so the CAP/DIGIT band (the plate-relevant
-    // glyphs) is centred in the cell. Fonts whose cell reserves deep-descender room
-    // (e.g. Tiny5) otherwise float their digits high — the user's number-plate case.
+    // Optional vertical centring: shift so the DIGIT ink band is centred in the
+    // cell. Fonts whose cell reserves deep-descender room (e.g. Tiny5) otherwise
+    // float their digits high — the user's number-plate case.
+    //
+    // The band is the UNION of the digit boxes, and digits only. It used to be
+    // the per-glyph AVERAGE over digits *and* A-Z, which is a different
+    // measurement that merely agrees with this one on regular faces: give a font
+    // digits that sit off its cap band, or one digit taller than the rest, and
+    // the two answers separate. Handwritten faces do exactly that — Reenie
+    // Beanie's digits hang a tenth of a cell below its caps — so the average put
+    // their digits well off centre while every mono/display font looked fine.
+    //
+    // Union-of-digits is not an arbitrary pick between the two: it is the
+    // measurement LayoutMetrics::inkCenterRatio names and the one
+    // test_font_metrics.cpp asserts of every shipped atlas, so centring on it
+    // makes that gate true by construction rather than by luck of the typeface.
+    // Caps are not a second constraint to satisfy — one baseline shift cannot
+    // centre two bands that disagree, and it is the number plate that has to
+    // read right.
     if (cfg.center) {
-        long topSum = 0, botSum = 0; int n = 0;
-        auto acc = [&](int c) {
+        int inkTop = INT_MAX, inkBot = INT_MIN;
+        for (int c = '0'; c <= '9'; ++c) {
             int x0, y0, x1, y1;
             stbtt_GetCodepointBitmapBox(&font, c, scale, scale, &x0, &y0, &x1, &y1);
-            if (x1 > x0 && y1 > y0) { topSum += baseline + y0; botSum += baseline + y1; ++n; }
-        };
-        for (int c = '0'; c <= '9'; ++c) acc(c);
-        for (int c = 'A'; c <= 'Z'; ++c) acc(c);
-        if (n > 0) {
-            double inkCentre = (double(topSum) + double(botSum)) / (2.0 * n);
+            if (x1 > x0 && y1 > y0) {
+                inkTop = std::min(inkTop, baseline + y0);
+                inkBot = std::max(inkBot, baseline + y1);
+            }
+        }
+        if (inkBot > inkTop) {
+            const double inkCentre = (double(inkTop) + double(inkBot)) / 2.0;
             cfg.voffset += (cellH / 2.0) - inkCentre;
         }
     }

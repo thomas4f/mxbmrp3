@@ -295,19 +295,17 @@ ISpObjectToken* findVoiceToken(const std::string& displayName) {
     return nullptr;
 }
 
-// What everything else calls. SAPI's own enumeration and nothing else: a
-// registry walk of the two voice hives used to back this up, and it was
-// deleted because it can only ever be a SUBSET — the voices worth reaching
-// with this menu, the neural ones a third-party engine supplies, have no
-// registry entry at all.
+// What everything else calls. SAPI's own enumeration and nothing else — not a
+// registry walk of the two voice hives, which can only ever be a SUBSET: the
+// voices worth reaching with this menu, the neural ones a third-party engine
+// supplies, have no registry entry at all.
 //
-// It did serve one case this cannot, and the case is why it is worth naming
-// rather than pretending it did not exist: if CoInitializeEx fails on the
-// GAME thread, this returns empty while the audio worker — which does its own
-// init — could still have spoken. The list would be empty rather than wrong,
-// on a machine where COM is broken enough that the rest of the game is in
-// trouble too. A second implementation of the same question, kept for that,
-// is a thing waiting to disagree with the first.
+// The one case a registry walk would serve and this cannot: if CoInitializeEx
+// fails on the GAME thread, this returns empty while the audio worker — which
+// does its own init — could still have spoken. The list is then empty rather
+// than wrong, on a machine where COM is broken enough that the rest of the
+// game is in trouble too. A second implementation of the same question, kept
+// for that, is a thing waiting to disagree with the first.
 std::vector<std::pair<std::string, std::string>> enumerateTtsVoices() {
     auto viaSapi = enumerateTtsVoicesViaSapi();
     // ONCE per run, not per call. Cycling the voice setting calls this on
@@ -368,19 +366,19 @@ void SpotterManager::setTtsVoice(const std::string& name) {
     // Resolved HERE, not in publishAudioSettings() and not at the utterance.
     // Not at the utterance because the worker must touch neither the
     // registry nor a game-thread member; not in publishAudioSettings()
-    // because that is the volume/speed stepper's per-tick callback — putting
-    // a registry enumeration behind it walked the SAPI catalogue ten times a
-    // second while somebody held the volume arrow. The voice can only change
+    // because that is the volume/speed stepper's per-tick callback — a
+    // registry enumeration behind it would walk the SAPI catalogue ten times a
+    // second while somebody holds the volume arrow. The voice can only change
     // here, so this is the only place the lookup belongs.
     //
     // What crosses to the worker is the DISPLAY NAME, which the worker matches
-    // against a live SAPI enumeration. It used to be a resolved registry path,
-    // because an earlier attempt to hand over a name failed — but that attempt
-    // was `<voice required="Name=...">` markup, which matches the token's
-    // Attributes\Name rather than its display name and fails silently
-    // (spotter_tts_voice.h). Matching the display string ourselves has neither
-    // problem, and it reaches the voices a path cannot: an engine that
-    // produces its tokens through an enumerator has no registry path at all.
+    // against a live SAPI enumeration. Not `<voice required="Name=...">`
+    // markup, which matches the token's Attributes\Name rather than its
+    // display name and fails silently (spotter_tts_voice.h), and not a
+    // resolved registry path: matching the display string ourselves has
+    // neither problem, and it reaches the voices a path cannot — an engine
+    // that produces its tokens through an enumerator has no registry path at
+    // all.
     //
     // Checked here anyway, so an uninstalled voice says so ONCE at the click
     // rather than at every utterance. The setting is kept either way, so
@@ -517,14 +515,13 @@ void SpotterManager::workerThread() {
     try {
         // APARTMENT-threaded, deliberately, and it is load-bearing: a TTS
         // engine registered ThreadingModel=Apartment (eSpeak's SAPI wrapper is
-        // one) is homed in its creator's apartment. From the MTA this used to
-        // be, that home was NOT this thread -- COM put the engine in the
-        // process's main STA, the GAME's thread, and every dispatch into it
-        // executed there, outside every SEH guard in this file. That is the
-        // third espeak-ng crash: same faulting instruction as the first two,
-        // reached through combase onto the game thread. As an STA the engine
-        // lives on THIS thread instead, and its work arrives only inside the
-        // guarded pump/wait calls in speak(). See the guard block above.
+        // one) is homed in its creator's apartment. From an MTA that home is
+        // NOT this thread -- COM puts the engine in the process's main STA, the
+        // GAME's thread, and every dispatch into it executes there, outside
+        // every SEH guard in this file, so an engine fault (espeak-ng's) reaches
+        // the game thread through combase. As an STA the engine lives on THIS
+        // thread instead, and its work arrives only inside the guarded
+        // pump/wait calls in speak(). See the guard block above.
         const HRESULT coHr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
         const bool comReady = SUCCEEDED(coHr);
         if (!comReady) {
@@ -569,7 +566,7 @@ void SpotterManager::workerThread() {
 
         // Hand a built RIFF to winmm. SND_MEMORY plays from OUR memory, so
         // the previous sound must be stopped BEFORE the buffer it is reading
-        // is replaced — one place for that rule, now that two paths use it.
+        // is replaced — one place for that rule, shared by both paths.
         auto playFromMemory = [&](std::vector<uint8_t> wav) {
             PlaySoundA(nullptr, nullptr, 0);
             m_activeMixBuffer = std::move(wav);
@@ -694,8 +691,7 @@ void SpotterManager::workerThread() {
                     applied = SUCCEEDED(thr);
                     if (FAILED(thr)) {
                         // Keep talking in whatever voice we have. A wrong
-                        // voice you can hear beats a right one you cannot —
-                        // which is exactly what the markup path used to do.
+                        // voice you can hear beats a right one you cannot.
                         // The NEXT cue tries again: `applied` stays false, so
                         // the selection is not recorded and this block re-runs.
                         DEBUG_WARN_F("Spotter: could not select TTS voice "

@@ -45,6 +45,8 @@ _STYLE = """<style>
   .val{fill:#24292f;font-size:12px;font-weight:600}
   .title{fill:#24292f;font-size:14px;font-weight:700}
   .sub{fill:#57606a;font-size:11px}
+  .gap{fill:#57606a;opacity:.09}
+  .gaplbl{fill:#57606a;font-size:10px;opacity:.85}
   @media (prefers-color-scheme: dark){
     .grid{stroke:#30363d}
     .axis{stroke:#8b949e}
@@ -52,6 +54,8 @@ _STYLE = """<style>
     .val{fill:#e6edf3}
     .title{fill:#e6edf3}
     .sub{fill:#8b949e}
+    .gap{fill:#8b949e;opacity:.13}
+    .gaplbl{fill:#8b949e}
   }
 </style>"""
 
@@ -144,12 +148,25 @@ def vbars(title, cats, subtitle="", value_fmt=_fmt, width=760, height=300):
     return _svg(width, height, "".join(parts))
 
 
+def _polyline(pts, color):
+    return ('<polyline points="{p}" fill="none" stroke="{c}" stroke-width="2" '
+            'stroke-linejoin="round" stroke-linecap="round"/>'
+            .format(p=" ".join("{:.1f},{:.1f}".format(x, y) for x, y in pts), c=color))
+
+
 def lines(title, x_labels, series, subtitle="", value_fmt=_fmt, width=760, height=320,
-          x_tick_every=None, log=False):
+          x_tick_every=None, log=False, gaps=()):
     """Multi-series line chart.
 
     x_labels: list of tick labels (one per x index).
     series: list of (name, [y values], color). All y-lists share the x axis.
+             A y value of None means NO OBSERVATION, which is not zero: the line
+             breaks there rather than diving to the axis and climbing back out.
+
+    gaps: [(i0, i1, label)] index ranges with no data, shaded and labelled. The x
+          axis keeps those positions rather than closing them up, so a ten-day
+          outage reads as ten days of silence instead of two adjacent days that
+          happen to sit either side of it. See analytics_report.collection_gaps.
 
     log=True puts the y axis on a base-10 scale, for series whose magnitudes differ
     by orders of magnitude -- without it the small ones are pinned to the axis and
@@ -163,10 +180,30 @@ def lines(title, x_labels, series, subtitle="", value_fmt=_fmt, width=760, heigh
     Gridlines are decades, so the labels stay in real units.
     """
     pad_l, pad_r, pad_t, pad_b = 52, 16, (74 if subtitle else 56), 46
+    # LEGEND FIRST, because it decides how much room the plot has. One row was fine at
+    # four series and ran off the right edge at seven (the version chart, once a second
+    # month of data brought more releases into view) - the last entry simply vanished
+    # past the frame, with nothing to say a series was missing from the key.
+    legend_rows, row, row_w = [], [], 0.0
+    for name, _ys, color in series:
+        w = 22 + 8 * len(name) + 20
+        if row and row_w + w > width - pad_l - pad_r:
+            legend_rows.append(row)
+            row, row_w = [], 0.0
+        row.append((name, color))
+        row_w += w
+    if row:
+        legend_rows.append(row)
+    # Grow the CANVAS by what the extra legend rows take, so the plot keeps its height
+    # instead of being squeezed by its own key.
+    extra = 18 * max(0, len(legend_rows) - 1)
+    pad_t += extra
+    height += extra
     plot_w = width - pad_l - pad_r
     plot_h = height - pad_t - pad_b
     n = max((len(s[1]) for s in series), default=0)
-    vmax = max((max(s[1]) for s in series if s[1]), default=0) or 1
+    vmax = max((max(v for v in s[1] if v is not None) for s in series
+                if any(v is not None for v in s[1])), default=0) or 1
     # round vmax up to a nice-ish number
     def nice(v):
         if v <= 0:
@@ -195,6 +232,19 @@ def lines(title, x_labels, series, subtitle="", value_fmt=_fmt, width=760, heigh
             return base - plot_h * (math.log10(1 + max(0, v)) / lmax)
         return base - plot_h * (v / vmax)
 
+    # NO-DATA BANDS, behind everything else. Half a step either side so the band
+    # covers the missing days themselves rather than only the ticks.
+    half = (plot_w / max(1, n - 1)) / 2 if n > 1 else plot_w / 2
+    for g in gaps or ():
+        i0, i1 = g[0], g[1]
+        label = g[2] if len(g) > 2 else "no data"
+        x0, x1 = px(i0) - half, px(i1) + half
+        parts.append('<rect x="{x:.1f}" y="{y}" width="{w:.1f}" height="{h}" class="gap"/>'.format(
+            x=x0, y=pad_t, w=max(1.0, x1 - x0), h=plot_h))
+        if x1 - x0 > 7 * len(label):
+            parts.append('<text x="{x:.1f}" y="{y}" class="gaplbl" text-anchor="middle">{t}</text>'
+                         .format(x=(x0 + x1) / 2, y=pad_t + 12, t=escape(label)))
+
     # horizontal gridlines + y labels
     if log:
         ticks = [0] + [10 ** k for k in range(0, int(round(math.log10(top))) + 1)]
@@ -209,26 +259,39 @@ def lines(title, x_labels, series, subtitle="", value_fmt=_fmt, width=760, heigh
     # x tick labels
     if x_tick_every is None:
         x_tick_every = max(1, n // 8)
+    # The last label is forced so the axis states where it ends - but only when it is
+    # far enough from the previous tick to be read: at 68 days it landed on top of it
+    # and the two dates printed through each other ("0891-01").
+    last_ok = n > 1 and ((n - 1) % x_tick_every) > x_tick_every / 2
     for i, lab in enumerate(x_labels):
-        if i % x_tick_every == 0 or i == n - 1:
+        if i % x_tick_every == 0 or (i == n - 1 and last_ok):
             parts.append('<text x="{x:.1f}" y="{y}" class="sub" text-anchor="middle">{v}</text>'.format(
                 x=px(i), y=base + 16, v=escape(str(lab))))
-    # series polylines
+    # series polylines, one per RUN of observed points: a None breaks the line.
     for _name, ys, color in series:
         if not ys:
             continue
-        pts = " ".join("{:.1f},{:.1f}".format(px(i), py(v)) for i, v in enumerate(ys))
-        parts.append('<polyline points="{p}" fill="none" stroke="{c}" stroke-width="2" '
-                     'stroke-linejoin="round" stroke-linecap="round"/>'.format(p=pts, c=color))
-    # legend (own row, below the title/subtitle so nothing overlaps)
-    lx = pad_l
+        run = []
+        for i, v in enumerate(ys):
+            if v is None:
+                if run:
+                    parts.append(_polyline(run, color))
+                    run = []
+                continue
+            run.append((px(i), py(v)))
+        if run:
+            parts.append(_polyline(run, color))
+    # legend (its own rows, below the title/subtitle so nothing overlaps)
     ly = 54 if subtitle else 40
-    for name, _ys, color in series:
-        parts.append('<rect x="{x}" y="{y}" width="11" height="11" rx="2" fill="{c}"/>'.format(
-            x=lx, y=ly - 10, c=color))
-        parts.append('<text x="{x}" y="{y}" class="lbl">{n}</text>'.format(
-            x=lx + 16, y=ly, n=escape(name)))
-        lx += 22 + 8 * len(name) + 20
+    for r_i, r_entries in enumerate(legend_rows):
+        lx = pad_l
+        y = ly + 18 * r_i
+        for name, color in r_entries:
+            parts.append('<rect x="{x}" y="{y}" width="11" height="11" rx="2" fill="{c}"/>'.format(
+                x=lx, y=y - 10, c=color))
+            parts.append('<text x="{x}" y="{y}" class="lbl">{n}</text>'.format(
+                x=lx + 16, y=y, n=escape(name)))
+            lx += 22 + 8 * len(name) + 20
     return _svg(width, height, "".join(parts))
 
 

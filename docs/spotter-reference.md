@@ -77,7 +77,7 @@ shipped ini - the three deliberately agree.
 | `sector_completed_faster` | silent | ahead of your best lap at this split |
 | `sector_completed_slower` | silent | behind your best lap at this split |
 | `sector_best` | on | that sector ON ITS OWN beat your best of it this session - so it still fires for a great sector inside a scrappy lap, which the rows above cannot say |
-| `on_pace_session_best` | on | at the last split before the line, up on your best lap of the session by at least [Spotter] on_pace_margin_ms |
+| `on_pace_session_best` | on | at the last split before the line, up on your best lap of the session by at least `[Spotter] on_pace_margin_ms` |
 | `on_pace_personal_best` | on | ...up on your best lap ever here (outranks the session one) |
 | `on_pace_record` | on | ...up on the track record (outranks both) |
 | `ten_minutes_remaining` | on | ten minutes of the session left |

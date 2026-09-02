@@ -70,6 +70,14 @@ public:
         int n;           // primitives per frame
         int chars;       // type 2 only: glyphs per string (see below)
         int alpha;       // quad alpha; 0 answers "is a transparent quad free?"
+        // The GL side of the comparison (Phase 1 of the in-context renderer
+        // spike). A step sets EITHER n (primitives handed to the engine) or
+        // glQuads (quads we draw ourselves inside the game's GL context), never
+        // both - the whole point is to price the same load through each path,
+        // in the same scene, seconds apart. glBatch: 0 = immediate mode (a
+        // floor on GL), 1 = one glDrawArrays.
+        int glQuads = 0;
+        int glBatch = 1;
     };
 
     // What a step measured. Frame time, not FPS: the cost of N primitives is additive
@@ -81,6 +89,11 @@ public:
         double p50Us = 0.0;
         double meanUs = 0.0;
         int quadsHandedOver = 0;   // the frame's total, as a did-it-engage check
+        // The GL rows' equivalent engagement check, from GlProbe's readback:
+        // -1 not checked, 0 drew nothing, 1 painted. The engine rows have
+        // quadsHandedOver; without this a GL load that silently drew nothing
+        // measures as zero cost, which is a PERFECT score on a perf bar.
+        int glPainted = -1;
     };
 
 #if defined(MXBMRP3_TEST_BUILD)
@@ -90,7 +103,17 @@ public:
     // wall-clock and its numbers are the machine's, so nothing else can pin
     // that the alpha-0 and zero-area verdicts difference against the OPAQUE
     // fill baseline rather than each other.
-    std::string testReportSynthetic(double fillUs, double alpha0Us, double degenUs);
+    // glPerQuadUs prices the in-context GL rows, so the PASS/FAIL verdict the
+    // report draws against the plan's bar can be asserted in BOTH directions
+    // headlessly. Without it those rows cost zero, which is the flattering
+    // wrong answer the report's own guard exists to catch.
+    // glPaintState forces the GL rows' engagement flag (-1 unchecked, 0 drew
+    // nothing, 1 painted) instead of deriving it from glPerQuadUs. It exists
+    // because the report's "a sub-noise cost may pass AS A BOUND" rule is only
+    // sound while paint is independently confirmed - so that precondition has to
+    // be pinned in all three states, not just the two a cost value can imply.
+    std::string testReportSynthetic(double fillUs, double alpha0Us, double degenUs,
+                                    double glPerQuadUs = 0.0, int glPaintState = -2);
 #endif
 
 private:
@@ -120,4 +143,6 @@ private:
     int m_savedSprite = 0;
     int m_savedTextChars = 15;
     int m_savedAlpha = 64;
+    int m_savedGlQuads = 0;
+    int m_savedGlBatch = 1;
 };

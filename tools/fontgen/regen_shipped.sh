@@ -42,7 +42,8 @@ TMP="$(mktemp -d)"; trap 'rm -rf "${TMP}"' EXIT
 # event (their metrics matched; only this list had drifted) but it left the
 # header's "every shipped font is normalised" unverifiable by running the script,
 # which is the only way anyone would check it. Both have since been removed with
-# the themes that brought them; the lesson is why this list is exhaustive.
+# the themes that brought them; the lesson is why this list is exhaustive -- and
+# why test.sh now fails if it stops matching the shipped .fnt set or their .ttf.
 #
 # `name` is the display string stored in the .fnt and NOTHING READS IT: fonts are
 # identified by file stem, and the picker generates its label from that stem
@@ -51,13 +52,18 @@ TMP="$(mktemp -d)"; trap 'rm -rf "${TMP}"' EXIT
 # than a tidier string nobody sees.
 NORMALISED=(
   "Audiowide Regular|Audiowide-Regular"
+  "Caveat Brush Regular|CaveatBrush-Regular"
   "Enter Sansman Italic|EnterSansman-Italic"
   "Fuzzy Bubbles Regular|FuzzyBubbles-Regular"
+  "Gloria Hallelujah Regular|GloriaHallelujah-Regular"
   "IBM Plex Mono Regular|IBMPlexMono-Regular"
   "IBM Plex Sans Regular|IBMPlexSans-Regular"
   "IBM Plex Sans SemiBold|IBMPlexSans-SemiBold"
+  "Permanent Marker Regular|PermanentMarker-Regular"
+  "Reenie Beanie Regular|ReenieBeanie-Regular"
   "Roboto Mono Bold|RobotoMono-Bold"
   "Roboto Mono Regular|RobotoMono-Regular"
+  "Rock Salt Regular|RockSalt-Regular"
   "Tiny5 Regular|Tiny5-Regular"
 )
 for entry in "${NORMALISED[@]}"; do

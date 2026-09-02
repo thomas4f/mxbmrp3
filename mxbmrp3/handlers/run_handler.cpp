@@ -88,4 +88,9 @@ void Handlers::handleRunDeinit() {
 
     // Exiting the run: flush any deferred settings changes (no-op if nothing changed).
     SettingsManager::getInstance().flushIfDirty(HudManager::getInstance());
+
+    // Off the track: take the in-game overlay's HUD off screen immediately
+    // instead of waiting out its staleness backstop (see notifyGameInactive) —
+    // the game issues no Draw calls in the menus, so a lingering HUD sits over
+    // them. No-op unless the overlay renderer is on.
 }

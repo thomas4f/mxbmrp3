@@ -157,7 +157,7 @@ void DrawHandler::handleDraw(int iState, int* piNumQuads, void** ppQuad, int* pi
     }
 
     // Note: draw state is set in HudManager::produceFrame() (shared by sync + threaded
-    // render paths), so it isn't set here anymore.
+    // render paths), not here.
 
     // Delegate to HUD manager
     HudManager::getInstance().draw(iState, piNumQuads, ppQuad, piNumString, ppString);

@@ -604,14 +604,13 @@ void MapHud::rebuildRenderData() {
     //
     // The map's SIZE is still derived -- the square comes from the track's own
     // bounds at every rotation, which no row-and-cell composition can produce --
-    // but it is now the plan's contentW/sectionH ask, so everything WRAPPED around
-    // it is the engine's: the frame's clearance, the caption's column, its band and
-    // the card's border. That is what the Map was missing. It composed
-    // `squareHeight + titleHeight` with no horizontal inset at all, so it was the
-    // one panel whose content ran to its own edges and the one panel whose caption
-    // sat a cell right and 23px low of every other HUD's -- because the caption came
-    // from the legacy chain (contentPaddingX(), a max) while every plan panel's
-    // comes from the box model (panelInner + the title box's inset, a sum).
+    // but it is the plan's contentW/sectionH ask, so everything WRAPPED around it
+    // is the engine's: the frame's clearance, the caption's column, its band and
+    // the card's border. Composing `squareHeight + titleHeight` by hand instead
+    // leaves the content running to its own edges and the caption a cell right and
+    // 23px low of every other HUD's, because the legacy chain's caption inset
+    // (contentPaddingX(), a max) differs from the box model's (panelInner + the
+    // title box's inset, a sum).
     PanelWant want;
     want.tier = TitleTier::Large;
     want.contentW = squareWidth;
@@ -629,7 +628,7 @@ void MapHud::rebuildRenderData() {
 
     // Centre the track in the map AREA. The offsets are NOT subtracted here: every
     // drawing site adds them to worldToScreen's output too, so they cancel, and
-    // subtracting them once more slid the track down by a whole caption row.
+    // subtracting them once more slides the track down by a whole caption row.
     x = currMinX - (squareWidth - currWidth) / 2.0f;
     y = currMinY - (squareHeight - currHeight) / 2.0f;
 
@@ -637,10 +636,10 @@ void MapHud::rebuildRenderData() {
     //
     // The plan's own box is composed of whole cells, but its content ask is not:
     // the square comes from track geometry, a continuous float that lands wherever
-    // it lands -- so the one panel whose size is derived rather than composed from
-    // rows and cells was the one panel that did not line up with the others.
-    // Invisible while the background was off, which is how it survived: turn a
-    // themed background on and the map is the odd one out on every edge.
+    // it lands -- so without this, the one panel whose size is derived rather than
+    // composed from rows and cells is the one panel that does not line up with the
+    // others: invisible with the background off, the odd one out on every edge with
+    // a themed background on.
     //
     // Rounded UP so the square never has to shrink (ceilY/ceilX leave an exact
     // multiple alone), and the slack is split evenly -- the track keeps its
@@ -735,7 +734,7 @@ void MapHud::rebuildRenderData() {
     // Clip to the map area below the title
     // Inset by half outline width since we clip on centerline but edges extend beyond
     // OUTLINE_WIDTH_MULTIPLIER lives in map_hud_internal.h (markers size to the
-    // track fill width now, so this clip inset is its only remaining consumer).
+    // track fill width, so this clip inset is its only consumer).
     // Calculate effective track width for clipping (same ratio as renderTrack)
     float clipTrackWidth = m_maxX - m_minX;
     float clipTrackHeight = m_maxY - m_minY;
@@ -744,19 +743,19 @@ void MapHud::rebuildRenderData() {
     // User outline scale acts on the RIM (the extra width past the fill), so the
     // classic 1.4x pass multiplier becomes 1 + 0.4*scale — 100% keeps the exact
     // shipped look. The clip inset follows the effective multiplier so a fat
-    // outline isn't cut off at the map edge (outline OFF keeps the historical
-    // 1.4x inset rather than shrinking the clip rect).
+    // outline isn't cut off at the map edge (outline OFF keeps the 1.4x inset
+    // rather than shrinking the clip rect).
     float effOutlineMult = 1.0f + (OUTLINE_WIDTH_MULTIPLIER - 1.0f) * m_fOutlineWidthScale;
     float clipOutlineMult = m_bShowOutline ? effOutlineMult : OUTLINE_WIDTH_MULTIPLIER;
     float outlineHalfWidth = clipEffectiveWidthMeters * 0.5f * clipOutlineMult * m_fTrackScale;
     // THE CARD, not the panel. Clipping to the panel means clipping to the OUTSIDE of
-    // the theme's frame, so a rotating map drew over its own border and out into the
-    // frame margin -- the track only stayed inside while the panel had no frame to
+    // the theme's frame, so a rotating map draws over its own border and out into the
+    // frame margin -- the track only stays inside while the panel has no frame to
     // spill past. contentClipRect() falls back to exactly this rect (panel interior,
-    // below the title) when there is no card, so the unthemed map is unchanged.
+    // below the title) when there is no card, so the unthemed map behaves the same.
     //
-    // THE MAP AREA, from the plan -- not the panel rect it used to be, which counted
-    // the frame's clearance as map.
+    // THE MAP AREA, from the plan -- not the panel rect, which counts the frame's
+    // clearance as map.
     float clipLeft = x + m_fContentDX + m_fOffsetX + outlineHalfWidth;
     float clipTop = y + m_fContentDY + m_fOffsetY + outlineHalfWidth;
     float clipRight = x + m_fContentDX + squareWidth + m_fOffsetX - outlineHalfWidth;
@@ -885,14 +884,14 @@ void MapHud::rebuildRenderData() {
     // back at it. After the riders so it is never hidden under one.
     //
     // GATED ON trackQuads, which is both the cheap test and the CORRECT one. The
-    // pointer's own work is a scan of the whole world ribbon for the nearest sample,
-    // and doing that before deciding whether to draw cost 4-5us on EVERY zoom frame
-    // -- about three times the entire rider phase, for a marker that is not drawn
-    // 99% of the time (measured with run_perf.sh: zoom riders 2.1us -> 6.3us).
+    // pointer's own work is a scan of the whole world ribbon for the nearest sample
+    // -- 4-5us, about three times the entire rider phase -- so it must not run
+    // before deciding whether to draw, for a marker that is not drawn 99% of the
+    // time (run_perf.sh's zoom riders phase sees it).
     //
     // Zero track quads is exactly "the ribbon culled away entirely", so it is also
-    // a better trigger than the proxy it replaced ("the nearest sample is
-    // off-screen"), which could fire on a hairpin with track still plainly in view.
+    // a better trigger than "the nearest sample is off-screen", which can fire on a
+    // hairpin with track still plainly in view.
     if (trackQuads == 0) {
         renderOffTrackPointer(rotation, clipLeft, clipTop, clipRight, clipBottom);
     }

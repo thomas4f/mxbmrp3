@@ -85,8 +85,8 @@ bool BaseHud::handleMouseInput(bool allowInput) {
             // Snap the panel's resulting top-LEFT EDGE, not the offset. Snapping the
             // offset quantises only the drag delta, so a HUD whose layout starts at an
             // off-grid x (most of them: a default position is a designed number, not a
-            // multiple of 0.0055) stayed off-grid no matter where it was dropped -- the
-            // rows inside it on the lattice, the panel around them between two lines.
+            // multiple of 0.0055) would stay off-grid no matter where it was dropped --
+            // the rows inside it on the lattice, the panel around them between two lines.
             //
             // Only the offset changes, so nothing moves until the user drags: a saved
             // position from an older build keeps its exact pixels until it is touched.
@@ -226,10 +226,7 @@ bool BaseHud::isVisibleAnySurface() const {
     // snapshot copies the game flag into the companion one), then switch it off in
     // game -- now the game flag is false, the companion flag is true, and the overlay
     // is drawn on neither surface while rebuilding full-screen every frame.
-    //
-    // Same producer/consumer asymmetry that check_visibility_gates.sh exists to
-    // police: the new gate went into the renderer but not into the predicate the
-    // renderer's own consumers read.
+    // check_visibility_gates.sh polices the producer/consumer half of this.
     return rendersOnCompanion()
         && CompanionWindow::getInstance().isEnabled()
         && getCompanionVisible();
@@ -278,8 +275,8 @@ bool BaseHud::clampPositionToBounds(float& offsetX, float& offsetY, const Window
 void BaseHud::rebuildAndRecord() {
     // THE WHOLE DIRTY PATH IS THE REBUILD, not just rebuildRenderData(): the two
     // calls below run on exactly the same frames and are part of what a rebuild
-    // costs. Timed only around the middle one, their cost fell out of the per-HUD
-    // table and into the Draw remainder instead.
+    // costs. Timed only around the middle one, their cost would fall out of the
+    // per-HUD table and into the Draw remainder instead.
     auto& bm = PluginData::getInstance().getBenchmarkMetrics();
     if (bm.active && m_benchmarkIndex >= 0) {
         long long start = DrawHandler::getCurrentTimeUs();
@@ -347,20 +344,21 @@ void BaseHud::setTextureVariant(int variant) {
     // through setBackgroundTextureIndex() on every rebuild -- so a variant request
     // here has nothing to resolve against and must change nothing.
     //
-    // Without this it fell through to the no-base-name arm at the bottom, which
+    // Without this it falls through to the no-base-name arm at the bottom, which
     // assumes a HUD that FORGOT to declare a stem and switches the background off to
     // say so. For a pack HUD that assumption is wrong twice over: the stem is absent
     // on purpose, and switching the background off is exactly the state
     // m_textureRequired exists to prevent.
     //
-    // It reached users as a silent upgrade break. An INI written before the pit board
-    // and the gamepad pad became packs still carries `textureVariant=1` from when
-    // they were texture-based, and applyBaseSettings walks the section's keys in map
-    // (alphabetical) order -- so `showBackgroundTexture=1` was applied first and this
-    // call turned it straight back off. The pack art vanished and the panel drew its
-    // flat background colour with the loose button/stick sprites still on top: a grey
-    // slab wearing half a controller. Nothing failed, nothing logged, and a fresh
-    // install could not reproduce it, because only an upgraded file has the key.
+    // The path is live on every upgrade: an INI written before a HUD became a pack
+    // still carries `textureVariant=1` from when it was texture-based, and
+    // applyBaseSettings walks the section's keys in map (alphabetical) order -- so
+    // `showBackgroundTexture=1` is applied first and this call would turn it straight
+    // back off: the pack art vanishes and the panel draws its flat background colour
+    // with the loose button/stick sprites still on top, a grey slab wearing half a
+    // controller. Nothing fails, nothing logs, and a fresh install cannot reproduce
+    // it, because only an upgraded file has the key. Pinned by
+    // pack_texture_variant_test.cpp.
     //
     // Returning early also lets the stale key heal itself: m_textureVariant stays 0,
     // so the next save writes 0 and the file stops carrying the trap.
@@ -382,11 +380,11 @@ void BaseHud::setTextureVariant(int variant) {
         // (resolveActiveTheme returns nullptr while one is on), so all four exits
         // from here can change which theme this HUD resolves to.
         //
-        // It was on the success branch only, and the asymmetry is what made it easy
-        // to miss: turning a texture ON invalidated, turning it OFF did not. Cycling
-        // a HUD's Texture control to "Off" under a global theme then left the memo
-        // holding nullptr, so the rebuild that setDataDirty() triggers drew a FLAT
-        // background -- and stayed flat until something else bumped the generation,
+        // On the success branch only, the asymmetry is easy to miss: turning a
+        // texture ON would invalidate, turning it OFF would not. Cycling a HUD's
+        // Texture control to "Off" under a global theme then leaves the memo holding
+        // nullptr, so the rebuild that setDataDirty() triggers draws a FLAT
+        // background -- and stays flat until something else bumps the generation,
         // because nothing does so on a normal frame.
         invalidateThemeCache();
 
@@ -406,16 +404,10 @@ void BaseHud::setTextureVariant(int variant) {
             }
         } else {
             // A VARIANT WAS ASKED FOR AND THERE IS NO STEM TO RESOLVE IT AGAINST.
-            // This arm did not exist, so the request was dropped in silence: no
-            // sprite, no warning, and a HUD whose artwork is mandatory
-            // (m_textureRequired) simply drew nothing where its dial should be.
-            //
-            // It could not happen while HudManager ALSO set the stem at
-            // registration, because that second call covered a HUD that forgot to
-            // declare one in its constructor -- ClockWidget and FmxHud were both
-            // relying on exactly that. The duplicate declaration is gone, so the
-            // constructor is now the only place a stem comes from and forgetting it
-            // is a real mistake. Say so.
+            // The constructor is the only place a stem comes from, so forgetting it
+            // is a real mistake -- and dropped in silence it would be no sprite, no
+            // warning, and a HUD whose artwork is mandatory (m_textureRequired)
+            // drawing nothing where its dial should be. Say so.
             m_bShowBackgroundTexture = false;
             DEBUG_WARN_F("Texture variant %d requested with no texture base name "
                          "(declare one in the HUD's constructor, before resetToDefaults)",
