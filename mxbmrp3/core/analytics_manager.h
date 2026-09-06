@@ -63,6 +63,7 @@ public:
     void testSeedAndReportCrash(const std::string& markerPath,
                                 const std::string& fault, const std::string& code);  // never gated
     std::vector<std::string> testDrainPending();    // pop + return the queued event bodies
+    std::vector<std::string> testDrainErrors();     // pop + return the queued error reports (2.22.0)
     // Start the REAL custom-event worker thread (testPrime() deliberately doesn't:
     // the wiring test wants the queue, not a thread). Capture mode keeps postSync()
     // a no-op, so the thread just parks on its condvar — which is precisely the
@@ -123,6 +124,16 @@ private:
     // initialize() only when Aptabase is active this launch.
     void sendPendingCrashReport();
 
+    // The same crash as ONE error report for Aptabase's Errors page (2.22.0):
+    // POST /api/v0/error takes a single JSON object, not an events array, with
+    // no custom props - so the fault, the access-violation type and the game
+    // build go into errorType/errorMessage as text, and the backtrace goes
+    // whole into stackTrace (10,000 characters, against the 180 a string prop
+    // allows the crash event). Grouped by the dashboard on type + message.
+    std::string buildErrorReportBody(const std::string& fault, const std::string& code,
+                                     const std::string& avType, const std::string& gameBuild,
+                                     const std::string& pluginVer, const std::string& stack) const;
+
     // Queue the session_end event (with this session's duration) at shutdown so a
     // clean exit's length is tracked. Crashed sessions are covered by the crash
     // event's duration instead (no session_end is sent).
@@ -141,9 +152,11 @@ private:
     // Aptabase app_started POST. No-op caller path when Aptabase isn't configured.
     void postAptabase(const std::wstring& host, const std::string& body);
 
-    // Synchronous one-shot POST used by the custom-event worker. Short timeout
-    // so a slow send can't stall shutdown for long; not cancellable.
-    void postSync(const std::wstring& host, const std::string& body, unsigned long timeoutMs);
+    // Synchronous one-shot POST used by the custom-event worker, to `path`
+    // (/api/v0/events, or /api/v0/error for a crash's error report). Short
+    // timeout so a slow send can't stall shutdown for long; not cancellable.
+    void postSync(const std::wstring& host, const wchar_t* path, const std::string& body,
+                  unsigned long timeoutMs);
     // The single sanctioned way to write a request body to the log — it redacts
     // the install id first. See its definition in analytics_manager_transport.cpp.
     void logOutgoing(const std::wstring& host, const char* path, const std::string& body) const;
@@ -204,8 +217,11 @@ private:
     void* m_hRequest MXB_GUARDED_BY(m_handleMutex);
 
     // Custom-event queue drained by m_eventWorker (started only when Aptabase is
-    // active this launch). Each entry is a finished JSON body ready to POST.
-    std::deque<std::string> m_eventQueue MXB_GUARDED_BY(m_eventMutex);
+    // active this launch). Each entry is a finished JSON body ready to POST, and
+    // the path it goes to: the events endpoint, or the error endpoint for the
+    // crash's error report (2.22.0).
+    struct Outgoing { const wchar_t* path; std::string body; };
+    std::deque<Outgoing> m_eventQueue MXB_GUARDED_BY(m_eventMutex);
     Mutex m_eventMutex;
     std::condition_variable m_eventCv;
     std::thread m_eventWorker;    // joined-by: shutdown() (PluginManager::shutdown)

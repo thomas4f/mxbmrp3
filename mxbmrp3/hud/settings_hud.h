@@ -114,6 +114,10 @@ public:
 
     // Open settings panel directly to Updates tab
     void showUpdatesTab();
+    // The toast card's click: the menu, on the Achievements tab, on the page
+    // holding that row (the tab finds it as it lays the page out); no row
+    // (the summary card) opens the first page.
+    void showAchievementsTab(int catalogueIndex = -1);
 
     // Persisted active-tab restore. The last-focused tab is saved to the INI
     // ([Profiles] activeTab) and restored on load, so reopening the settings menu lands on
@@ -366,6 +370,9 @@ public:
             STATS_SHOW_LAP_TOGGLE,     // Toggle lap column
             STATS_SHOW_SESSION_TOGGLE, // Toggle session column
             STATS_SHOW_ALLTIME_TOGGLE, // Toggle all-time column
+            ACHIEVEMENTS_TOASTS_TOGGLE,// Achievement toasts on/off (global master; also the tab-list checkbox)
+            ACHIEVEMENTS_PAGE_PREV,    // Previous page of the achievements list
+            ACHIEVEMENTS_PAGE_NEXT,    // Next page of the achievements list
             // Clock Widget
             CLOCK_FORMAT_TOGGLE,       // Toggle 12h/24h format (ClockWidget)
             // Event Log HUD
@@ -620,6 +627,7 @@ public:
     static BaseHud* renderTabRiders(SettingsLayoutContext& ctx);
     static BaseHud* renderTabUpdates(SettingsLayoutContext& ctx);
     static BaseHud* renderTabFmx(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabAchievements(SettingsLayoutContext& ctx);
     static BaseHud* renderTabStats(SettingsLayoutContext& ctx);
     static BaseHud* renderTabEventLog(SettingsLayoutContext& ctx);
     static BaseHud* renderTabDirector(SettingsLayoutContext& ctx);
@@ -660,6 +668,7 @@ public:
     }
     bool handleClickTabSpotter(const ClickRegion& region);
     bool handleClickTabFmx(const ClickRegion& region);
+    bool handleClickTabAchievements(const ClickRegion& region);
     bool handleClickTabStats(const ClickRegion& region);
     bool handleClickTabEventLog(const ClickRegion& region);
     // (Notices has no tab-specific click handler: its Duration control is a
@@ -749,6 +758,24 @@ public:
         if (!tooltipId) return false;
         for (const ClickRegion& r : m_clickRegions) {
             if (r.tooltipId == tooltipId) return true;
+        }
+        return false;
+    }
+    // The centre of the LAST-BUILT region carrying this tooltip id, in the
+    // panel's build space (the cursor space in-game), so a test can put the
+    // injected mouse on a control. False when no region carries it.
+    // The achievements list's current page and the group it shows.
+    int testAchievementsPage(const char** group) const {
+        if (group) *group = m_achievementsPageGroup;
+        return m_achievementsPage;
+    }
+    bool testRegionCenter(const char* tooltipId, float* x, float* y) const {
+        if (!tooltipId || !x || !y) return false;
+        for (const ClickRegion& r : m_clickRegions) {
+            if (r.tooltipId != tooltipId) continue;
+            *x = r.x + r.width * 0.5f;
+            *y = r.y + r.height * 0.5f;
+            return true;
         }
         return false;
     }
@@ -1128,6 +1155,7 @@ private:
     void resetTabRiders();
     void resetTabDirector();
     void resetTabSpotter();
+    void resetTabAchievements();
 
     // Check if point is inside a clickable region
     bool isPointInRect(float x, float y, float rectX, float rectY, float width, float height) const;
@@ -1257,7 +1285,8 @@ public:
         TAB_DIRECTOR = 26,     // Auto-director (spectate broadcast tool)
         TAB_SPOTTER = 27,      // Spotter (audio callouts + subtitles)
         TAB_ABOUT = 28,        // About (hidden from the tab list; opened from the footer)
-        TAB_COUNT = 29
+        TAB_ACHIEVEMENTS = 29, // Achievements (global: lifetime numbers as tiered progress)
+        TAB_COUNT = 30
     };
 private:
     int m_activeTab;
@@ -1270,6 +1299,8 @@ private:
     // Last-seen SettingsManager dirty state, so update() can rebuild the Save button the frame
     // the unsaved-changes state flips (e.g. a HUD dragged while the panel is open).
     bool m_lastSettingsDirty = false;
+    // Stats tab periodic refresh timer (epoch default triggers immediate first refresh)
+    std::chrono::steady_clock::time_point m_lastStatsRefresh{};
 
     // Hover tracking for button backgrounds
     int m_hoveredRegionIndex;  // -1 = none hovered
@@ -1295,6 +1326,9 @@ private:
     // Pagination for Riders tab
     int m_serverPlayersPage;           // Current page of server players (0-based)
     int m_trackedRidersPage;           // Current page of tracked riders (0-based)
+    int m_achievementsPage = 0;        // Current page of the achievements list (0-based)
+    int m_achievementsJumpTo = -1;     // A row to open the page of at the next layout (-1: none)
+    const char* m_achievementsPageGroup = "";   // The drawn page's group name (for the tests)
 
     // Tooltip support (Phase 2 description system)
     std::string m_hoveredTooltipId;    // Current tooltip ID from hovered region (empty = none)
@@ -1368,9 +1402,6 @@ private:
         if (next > hi) next = hi;
         return next;
     }
-
-    // Stats tab periodic refresh timer (epoch default triggers immediate first refresh)
-    std::chrono::steady_clock::time_point m_lastStatsRefresh{};
 
 #if defined(MXBMRP3_TEST_BUILD)
     // See testColumnEdgesX().

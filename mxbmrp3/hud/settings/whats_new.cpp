@@ -19,60 +19,14 @@ namespace {
 // check_whats_new.sh fails the build if a version here falls behind resource.h,
 // so the review is not optional.
 //
-// 1.29, the first release since 1.28.0, shipped about twenty menu-reachable
-// changes. Six are marked, and the ones left out were left out on purpose:
-//   - the SPOTTER tab already carries a Beta tag, and two badges on one row say
-//     less than one;
-//   - the per-HUD Theme row is the same feature as Appearance > Theme, and
-//     marking it would light up every HUD tab to say so twice;
-//   - Standings' last-lap column and the radar/gap-bar label anchor are real, and
-//     findable by someone already in that tab.
+// 1.30 is the achievements release. One marker: the tab is new from top to
+// bottom, and the row banded is the one switch on it a player might want to
+// find (the toasts). The tab itself draws no tag - its name fills the sidebar
+// (tabCanTag below) - and being a new tab is its own announcement. The 1.29 markers - panel themes, the Crashes widget, the
+// pack pickers, the Timing readouts, the spotter hotkey, Direct GL - are gone:
+// each had its release, and a tag still lit a release later says nothing.
 const Marker kMarkers[] = {
-    // Panel themes: the most visible thing in the release, and invisible until
-    // you find the one picker that turns it on. The row itself is conditional --
-    // the Appearance tab hides it when no themes are installed -- so a player who
-    // deleted mxbmrp3_data\themes\ gets the tab tag with nothing behind it. Left
-    // as is: no themes means the feature is genuinely not there to point at, and
-    // suppressing the tag would mean teaching the marker table about layout.
-    { SettingsHud::TAB_APPEARANCE, "appearance.theme", "1.29" },
-    // A whole new widget, in a long list of widgets.
-    { SettingsHud::TAB_WIDGETS,    "widgets.crashes",  "1.29" },
-    // The gamepad's Texture row picks a PACK now, not a texture number.
-    { SettingsHud::TAB_WIDGETS,    "widgets.gamepad",  "1.29" },
-    // ...and so does the pit board's. NOTE the id: a pack HUD's Texture row is
-    // built by addPackControl and registers "pitboard.pack", NOT the
-    // "common.texture" that every non-pack HUD's Texture row uses. Both rows are
-    // labelled "Texture" on screen, so the wrong one here is invisible -- it draws
-    // no band and reports nothing, while the tab keeps its tag. It was wrong here
-    // first; whats_new_test's resolve case is what found it.
-    { SettingsHud::TAB_PITBOARD,   "pitboard.pack",    "1.29" },
-    // ...and now the two gauges', for the same reason and with the same shape of
-    // change: their Texture row picks a gauges PACK (the dial face plus what it
-    // READS) rather than a texture number. Two markers for one feature, unlike
-    // the single badge the table prefers, because they are two independent rows
-    // -- somebody who runs only the tacho would never see a badge left on the
-    // speedo. The ids are the row-wide tooltips addWidgetRow registers, which is
-    // what the gamepad row above uses too; a pack HUD in the WIDGETS table does
-    // not go through addPackControl and so has no "<type>.pack" id of its own.
-    { SettingsHud::TAB_WIDGETS,    "widgets.speedo",   "1.29" },
-    { SettingsHud::TAB_WIDGETS,    "widgets.tacho",    "1.29" },
-    // The Timing panel's second section. All seven rows share one tooltip id, so
-    // one marker bands the whole block -- which is what it is: they arrived
-    // together and are one feature, not seven.
-    { SettingsHud::TAB_TIMING,     "timing.readouts",  "1.29" },
-    // The spotter's own hotkey. Marked even though the Spotter tab is not: a
-    // hotkey lives on the Hotkeys tab, which is not where anyone reading about
-    // the spotter would think to look.
-    { SettingsHud::TAB_HOTKEYS,    "hotkeys.spotter_cue", "1.29" },
-    // Direct GL Rendering. The gain is large but HARDWARE-DEPENDENT - the field
-    // spread ran from roughly a tenth to over half again, on three machines - so
-    // nothing user-facing quotes a number; see plans/gl_in_context_renderer.md
-    // for the measurements with the machine and scene each came from. Nothing on
-    // screen changes when it is on — which makes it the definition of a feature
-    // nobody finds without a marker. (Its sibling, GPU rendering for the
-    // companion window itself, is hwAccel: default-on with automatic
-    // fallback, so there is nothing to go find.)
-    { SettingsHud::TAB_GENERAL,    "general.direct_gl",        "1.29" },
+    { SettingsHud::TAB_ACHIEVEMENTS, "achievements.toasts", "1.30" },
 };
 
 // The dismissed keys. A std::set of strings rather than flags on the table:
@@ -118,7 +72,15 @@ bool isLive(const Marker& m) {
     return d.find(rowKey(m.tabId, m.rowTooltipId)) == d.end();
 }
 
+// A tab whose name fills the sidebar's label cells gets no "New" tag: the
+// Achievements row in s_tabRegistry (settings_hud_render.cpp) has the
+// arithmetic. Its markers still band their rows.
+bool tabCanTag(int tabId) {
+    return tabId != SettingsHud::TAB_ACHIEVEMENTS;
+}
+
 bool tabHasLive(int tabId) {
+    if (!tabCanTag(tabId)) return false;
     if (dismissed().count(tabKey(tabId))) return false;
     for (int i = 0; i < MARKER_COUNT; ++i) {
         if (kMarkers[i].tabId == tabId && isLive(kMarkers[i])) return true;

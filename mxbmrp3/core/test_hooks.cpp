@@ -12,7 +12,7 @@
 // target, so only the test build compiles it at all. See tests/integration/ and
 // DEVELOPMENT.md.
 // ============================================================================
-// file-budget: 3200 one export per MXBMRP3_Test_* hook; excluded from every shipping DLL
+// file-budget: 3300 one export per MXBMRP3_Test_* hook, so it grows a hook at a time; excluded from every shipping DLL
 #include "steam_friends_manager.h"
 #include "../game/game_config.h"
 
@@ -70,6 +70,9 @@
 #include "profile_manager.h"
 #include "director_manager.h"
 #include "stats_manager.h"
+#include "tracked_riders_manager.h"
+#include "achievement_manager.h"
+#include "../hud/achievement_widget.h"
 #include "spotter_manager.h"
 #include "../handlers/spectate_handler.h"
 #if GAME_HAS_FMX
@@ -1264,6 +1267,32 @@ __declspec(dllexport) float MXBMRP3_Test_RumbleActiveBumpsLight() {
     return XInputReader::getInstance().getRumbleConfig().suspensionEffect.lightStrength;
 }
 
+// The injected mouse (InputManager::testInjectMouse): the next draws see this
+// cursor and button state (bit 0 left, bit 1 right) instead of the real
+// mouse. Off restores polling.
+__declspec(dllexport) void MXBMRP3_Test_InjectMouse(int on, float x, float y, int buttons) {
+    InputManager::getInstance().testInjectMouse(on != 0, x, y, buttons);
+}
+
+// The achievements list's current page (0-based) and, when asked, the group
+// name of the page as last drawn (a toast's click lands on its row's page).
+__declspec(dllexport) int MXBMRP3_Test_AchievementsPage(char* groupOut, int cap) {
+    const char* group = "";
+    const int page = HudManager::getInstance().getSettingsHud().testAchievementsPage(&group);
+    if (groupOut && cap > 0) snprintf(groupOut, static_cast<size_t>(cap), "%s", group);
+    return page;
+}
+// Where to put that mouse: the centre of the settings menu's region carrying a
+// tooltip id (a sidebar tab's is its tab id, "map"). 0 when none does.
+__declspec(dllexport) int MXBMRP3_Test_SettingsRegionCenter(const char* tooltipId, float* x, float* y) {
+    return HudManager::getInstance().getSettingsHud().testRegionCenter(tooltipId, x, y) ? 1 : 0;
+}
+
+// Whether the settings menu is open (a toast click opens it).
+__declspec(dllexport) int MXBMRP3_Test_SettingsVisible() {
+    return HudManager::getInstance().isSettingsVisible() ? 1 : 0;
+}
+
 // Open/close the settings menu (SettingsHud) — mirrors the TOGGLE_SETTINGS hotkey.
 // Lets a dump/preview test capture the settings UI without simulating input.
 __declspec(dllexport) void MXBMRP3_Test_ShowSettings(int visible) {
@@ -1433,6 +1462,15 @@ __declspec(dllexport) void MXBMRP3_Test_AnalyticsSeedCrash(const char* markerPat
         const char* fault, const char* code) {
     AnalyticsManager::getInstance().testSeedAndReportCrash(
         markerPath ? markerPath : "", fault ? fault : "", code ? code : "");
+}
+// The queued error reports (2.22.0), the same way. Separate from the events so
+// a test can say which destination a crash reached.
+__declspec(dllexport) int MXBMRP3_Test_AnalyticsDrainErrors(char* out, int cap) {
+    std::vector<std::string> reports = AnalyticsManager::getInstance().testDrainErrors();
+    std::string joined;
+    for (const auto& r : reports) { joined += r; joined += '\n'; }
+    if (out && cap > 0) { strncpy(out, joined.c_str(), cap - 1); out[cap - 1] = '\0'; }
+    return static_cast<int>(reports.size());
 }
 // Join the pending event bodies with '\n' into out; returns the number drained.
 __declspec(dllexport) int MXBMRP3_Test_AnalyticsDrainPending(char* out, int cap) {
@@ -2970,6 +3008,96 @@ __declspec(dllexport) void MXBMRP3_Test_StatsOdometerState(double* bikeOdometer,
 __declspec(dllexport) int MXBMRP3_Test_CrashTally(int doReset) {
     if (doReset) HudManager::getInstance().getCrashWidget().resetCounter();
     return StatsManager::getInstance().getCrashTally();
+}
+
+// --- Achievements. Tier and value by catalogue ID (achievements.h), the
+// toast ledger (every toast ever queued this run, and the last one's text),
+// and the RELOAD_CONFIG feed -- which HudManager reaches through the input
+// path a headless run cannot drive, so the same entry point is exported here.
+__declspec(dllexport) int MXBMRP3_Test_AchievementTier(const char* id) {
+    const Achievements::Entry* e = Achievements::findById(id);
+    if (!e) return -1;
+    return AchievementManager::getInstance().stateOf(static_cast<int>(e - Achievements::kCatalogue)).tier;
+}
+__declspec(dllexport) double MXBMRP3_Test_AchievementValue(const char* id) {
+    const Achievements::Entry* e = Achievements::findById(id);
+    if (!e) return -1.0;
+    return AchievementManager::getInstance().valueOf(static_cast<int>(e - Achievements::kCatalogue));
+}
+// The Progress summary's numbers: earned tiers (hidden ones included) over
+// listed tiers (hidden ones excluded), so the pair can read past 100%.
+__declspec(dllexport) void MXBMRP3_Test_AchievementUnits(int* earned, int* total) {
+    const AchievementManager& a = AchievementManager::getInstance();
+    if (earned) *earned = a.earnedUnits();
+    if (total) *total = a.totalUnits();
+}
+// Achievements earned at any tier, and the listed total (the tab's summary).
+__declspec(dllexport) void MXBMRP3_Test_AchievementRows(int* earned, int* total) {
+    const AchievementManager& a = AchievementManager::getInstance();
+    if (earned) *earned = a.earnedAchievements();
+    if (total) *total = a.listedAchievements();
+}
+__declspec(dllexport) unsigned int MXBMRP3_Test_AchievementToastsQueued() {
+    return AchievementManager::getInstance().toastsQueued();
+}
+// "title|detail" of the most recently queued toast.
+__declspec(dllexport) void MXBMRP3_Test_AchievementLastToast(char* out, int cap) {
+    if (!out || cap <= 0) return;
+    const AchievementManager::Toast& t = AchievementManager::getInstance().lastToast();
+    snprintf(out, static_cast<size_t>(cap), "%s|%s", t.title, t.detail);
+}
+__declspec(dllexport) void MXBMRP3_Test_ConfigReloaded() {
+    AchievementManager::getInstance().onConfigReloaded();
+}
+// 1 while the toast widget has a toast on screen (after a draw()).
+__declspec(dllexport) int MXBMRP3_Test_AchievementToastShowing() {
+    const AchievementWidget* w = HudManager::getInstance().getAchievementWidget();
+    return (w && w->isShowing()) ? 1 : 0;
+}
+// The hide-all-HUDs hotkey's state, set directly: the widget must not take a
+// toast while it cannot be drawn.
+__declspec(dllexport) void MXBMRP3_Test_SetHudsEnabled(int enabled) {
+    HudManager::getInstance().setHudsEnabled(enabled != 0);
+}
+// The Widgets master toggle, the same way.
+__declspec(dllexport) void MXBMRP3_Test_SetWidgetsEnabled(int enabled) {
+    HudManager::getInstance().setWidgetsEnabled(enabled != 0);
+}
+// One HUD's game-surface visibility, by harness id (testHudByName). 0 = no
+// such HUD. With SetEveryHudVisible(0) first, a test can put exactly the HUDs
+// it drives on screen, so none sits on top of another at the default layout.
+__declspec(dllexport) int MXBMRP3_Test_SetHudVisible(const char* name, int visible) {
+    for (const auto& hud : HudManager::getInstance().getHuds()) {
+        if (hud && name && std::strcmp(hud->getHarnessId(), name) == 0) {
+            hud->setVisible(visible != 0);
+            // As the checkbox would: the setup is observed at the switch.
+            StatsManager::getInstance().exploration().observeSettings(HudManager::getInstance());
+            return 1;
+        }
+    }
+    return 0;
+}
+// Every registered HUD's game-surface visibility at once (Tyre Kicker counts
+// the ones ever seen on at a settings save).
+__declspec(dllexport) void MXBMRP3_Test_SetEveryHudVisible(int visible) {
+    for (const auto& hud : HudManager::getInstance().getHuds()) {
+        if (hud) hud->setVisible(visible != 0);
+    }
+    StatsManager::getInstance().exploration().observeSettings(HudManager::getInstance());   // as the checkboxes would
+}
+// Put a rider on the tracked list, as the Riders tab does (Stalker).
+__declspec(dllexport) int MXBMRP3_Test_TrackRider(const char* name) {
+    return TrackedRidersManager::getInstance().addTrackedRider(name ? name : "") ? 1 : 0;
+}
+// The local clock the date-based exploration signals read (fixed in a test
+// build until set here), and the once-a-second tick DrawHandler would fire.
+__declspec(dllexport) void MXBMRP3_Test_SetLocalTime(int year, int month, int day, int hour) {
+    ExplorationStats::setLocalTimeOverride(year, month, day, hour);
+}
+__declspec(dllexport) void MXBMRP3_Test_ExplorationTick(int spectating, int rumbleLive, int onTrack,
+                                                        int frames, unsigned int overlayTotal) {
+    StatsManager::getInstance().exploration().tick(spectating != 0, rumbleLive != 0, onTrack != 0,
+                                                   frames, overlayTotal);
 }
 
 __declspec(dllexport) void MXBMRP3_Test_StatsSave() {

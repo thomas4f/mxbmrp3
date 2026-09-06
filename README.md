@@ -1,3 +1,6 @@
+[![Latest release](https://img.shields.io/github/v/release/thomas4f/mxbmrp3?sort=semver&label=release)](https://github.com/thomas4f/mxbmrp3/releases)
+[![Downloads](https://img.shields.io/github/downloads/thomas4f/mxbmrp3/total?label=downloads)](https://github.com/thomas4f/mxbmrp3/releases)
+
 An [open-source](https://github.com/thomas4f/mxbmrp3) plugin for MX Bikes, GP Bikes, and Kart Racing Pro with customizable on-screen displays, immersion features, social tools, and streaming/broadcasting overlays.
 
 ![MXBMRP3 HUD Screenshot](assets/mxbmrp3.jpg)
@@ -12,6 +15,7 @@ An [open-source](https://github.com/thomas4f/mxbmrp3) plugin for MX Bikes, GP Bi
 - Social features including Steam friends, Discord Rich Presence, and rider tracking with colors/icons
 - Broadcasting features with auto-director, OBS overlay, controller visualization, and companion window
 - First-person helmet overlay with telemetry-driven tilt and vibration, plus controller rumble
+- Achievements from Bronze to Platinum for riding, racing, freestyle, and exploring the plugin itself
 - Persistent stats and personal bests across sessions, plus FMX freestyle trick scoring
 - Moddable panel themes, textures, fonts, icons, web overlay styling, and INI-level configuration
 
@@ -133,6 +137,7 @@ The settings menu provides global settings that apply to all profiles, followed 
 | <img src="assets/icons/hud-helmet-mx.svg" width="20" height="20" alt=""> | **Helmet** | First-person helmet overlay configuration |
 | <img src="assets/icons/hud-video.svg" width="20" height="20" alt=""> | **Director** | Auto-director for spectating and replays - automatically follows the most interesting rider |
 | <img src="assets/icons/hud-spotter.svg" width="20" height="20" alt=""> | **Spotter** | Spoken race callouts and their subtitles - voice, categories, and proximity distances |
+| <img src="assets/icons/hud-achievements.svg" width="20" height="20" alt=""> | **Achievements** | Tiered achievements for riding, racing and exploring the plugin, and their toasts |
 | <img src="assets/icons/hud-updates.svg" width="20" height="20" alt=""> | **Updates** | Check for new versions and install updates in-game |
 
 <!-- Deliberately NO row for the About screen: it is not a tab (it opens from
@@ -209,6 +214,9 @@ A few larger features live beyond the HUDs and widgets above, each behind its ow
 
 ### Web Overlay
 Turn on **Web Server** (Settings > General) and the plugin serves a live browser overlay: a standings tower, event log, rider focus card, and periodic broadcast panels (fastest-lap boards, a "down the order" rundown, and on-track battles). Point an OBS **Browser Source** at `http://localhost:8080` (the port is shown beside the setting), or just open it in a browser. Colors and fonts follow your in-game settings, and a gear icon on the overlay sets tower size, filters and the rest per browser. Full guide: [Web overlay](docs/web-overlay.md).
+
+### Achievements
+Open **Settings > Achievements** for tiered achievements, Bronze to Platinum, for riding, racing, conduct, freestyle and for trying out what the plugin itself can do. A toast appears when a tier is earned, and a halfway card on the long steps to Gold and Platinum (**Show toasts** turns them off; tracking continues either way). Everything is stored with your stats, so an existing install starts with what its numbers already earn. A few are hidden until you stumble on them.
 
 ### Spotter (voice callouts)
 Turn on **Spoken audio** (Settings > Spotter, or the checkbox beside the tab) and the plugin talks to you while you ride: riders behind or alongside you, blue flags, a rider down, and - each time you cross the line - your position and the gaps ahead and behind. Windows text-to-speech reads it out of the box, with **TTS voice**, **Speed** and **Volume** to choose how; recorded voice packs are a separate download. Five **Callouts** switches decide what gets announced, and **Subtitles** puts every call on screen so you can run it silent. It follows whoever you're watching, so it works while spectating and in replays. Full guide: [Spotter voice](docs/spotter.md).
@@ -308,6 +316,7 @@ Fonts, textures and icons are loose files in their own subfolders. Themes, gamep
 - [Modding guide](docs/modding.md) - the folder layout, panel themes, textures, gamepad, pit board and gauges packs, fonts, icons, and the web overlay's HTML/CSS/JS.
 - [Spotter voice](docs/spotter.md) - what it calls, how to set it up, and how to reword it or record your own voice.
 - [Web overlay](docs/web-overlay.md) - the OBS browser source, the overlay's own settings panel, and where they are saved.
+- [FMX tricks](docs/tricks.md) - every trick the FMX HUD recognises, what it takes, what it is worth, and how a chain multiplies.
 
 ### Data Files
 
@@ -316,7 +325,7 @@ Fonts, textures and icons are loose files in their own subfolders. Themes, gamep
 | `mxbmrp3_settings.ini` | All HUD settings (positions, visibility, options) |
 | `mxbmrp3_tracked_riders.json` | Tracked riders with colors and icons |
 | `mxbmrp3_rumble_profiles.json` | Per-bike rumble effect profiles |
-| `mxbmrp3_stats.json` | Unified stats, personal bests, and odometer data |
+| `mxbmrp3_stats.json` | Unified stats, personal bests, odometer data, and earned achievements |
 | `mxbmrp3_analytics.json` | Anonymous random install ID for usage analytics (see [Privacy](#privacy)) |
 | `mxbmrp3_log.txt` | The plugin's log for the current session - worth attaching to a bug report |
 
@@ -393,6 +402,7 @@ What it sends:
 | Spotter voice | Which of the plugin's own voice packs you use, that you use Windows text-to-speech instead, or that the spotter is off. A pack you installed or made yourself counts only as "custom" - its name never leaves your machine |
 | Environment | Operating system and version/build (e.g., Windows 11 22631, or Wine/Proton on Linux), language, and whether it's the Steam or standalone build |
 | Usage counters | How many times this install has launched, and how many days since it was first installed |
+| Achievement progress | Which achievements are unlocked and at what tier, plus two totals: the share of tiers earned, and how many are unlocked |
 | Session length | How long a play session lasted (start to clean exit), so the developer can gauge typical usage |
 | Crashes | If the game crashed last session: which module faulted and where, the error code and access type (read/write/execute), the plugin and game versions at the time, and a short backtrace of the faulting call stack (the top several module-and-offset frames, so a plugin fault can be told apart from a bystander to a game or driver crash) - enough to group similar crashes, but never the memory dump or its contents. Reported on the next launch |
 | Link clicks | Which in-plugin link you click (docs, community, or support/donate) - nothing else |

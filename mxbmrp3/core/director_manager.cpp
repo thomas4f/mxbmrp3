@@ -2,6 +2,7 @@
 // core/director_manager.cpp
 // ============================================================================
 #include "director_manager.h"
+#include "stats_manager.h"
 #include "director_manager_internal.h"
 
 #include "plugin_data.h"
@@ -306,6 +307,7 @@ bool DirectorManager::isActivelyDirecting() const {
 void DirectorManager::cutTo(int raceNum, bool isBattle, long long now, int forceRole,
                             int shotType, int partner,
                             const std::vector<int>* group, const char* reason) {
+    StatsManager::getInstance().exploration().onDirectorCut();   // Director's Cut
     int target = raceNum;
     int role;
     if (forceRole >= 0) {

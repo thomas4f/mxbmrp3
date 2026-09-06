@@ -170,7 +170,7 @@ void CrashWidget::rebuildRenderData() {
 void CrashWidget::handleClickDetection() {
     // Any-surface, like VersionWidget's chips: a widget enabled only on the
     // companion still has a clickable button there.
-    if (!isVisibleAnySurface() || !m_bShowResetButton) return;
+    if (!isVisibleAnySurface() || isHeldBack() || !m_bShowResetButton) return;
 
     const InputManager& input = InputManager::getInstance();
     if (!input.isCursorEnabled()) return;

@@ -4,6 +4,7 @@
 // ============================================================================
 #include "tracked_riders_manager.h"
 #include "atomic_file_writer.h"
+#include "stats_manager.h"
 #include "plugin_data.h"
 #include "asset_manager.h"
 #include "../diagnostics/logger.h"
@@ -142,6 +143,7 @@ bool TrackedRidersManager::addTrackedRider(const std::string& name, unsigned lon
     m_bDirty = true;
     m_needsSave = true;
     PluginData::getInstance().notifyTrackedRidersChanged();
+    StatsManager::getInstance().exploration().onRiderTracked();   // Stalker
 
     DEBUG_INFO_F("TrackedRidersManager: Added rider '%s' with color %lu and shape %d",
                  name.c_str(), color, shapeIndex);

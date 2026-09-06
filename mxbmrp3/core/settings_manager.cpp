@@ -4,13 +4,23 @@
 // Supports per-profile settings (Practice, Race, Spectate)
 // ============================================================================
 #include "settings_manager.h"
+#include "settings_manager_internal.h"
 #include "settings_keys.h"
 #include "settings_serde.h"
 #include "settings_hud_registry.h"
+#include "exploration_stats.h"
+#include "hotkey_manager.h"
+#include "stats_manager.h"
+#include "../hud/achievement_widget.h"
+#include "../hud/benchmark_widget.h"
+#include "../hud/pointer_widget.h"
+#include "../hud/settings_button_widget.h"
+#include <sstream>
 #include "atomic_file_writer.h"
 #include "hud_manager.h"
 #include "profile_manager.h"
 #include "../diagnostics/logger.h"
+#include <cstdint>
 #include <cstring>   // std::strcmp, for the v4 -> v5 font-slot migration
 #include <set>       // the v7/v8 migrations' record of file-carried base keys
 #include "../hud/standings_hud.h"
@@ -69,41 +79,7 @@
 // existing `Keys::...` and `IniOnly::...` references below resolve unchanged.
 using namespace Settings;
 
-namespace {
-    constexpr const char* SETTINGS_SUBDIRECTORY = "mxbmrp3";
-    constexpr const char* SETTINGS_FILENAME = "mxbmrp3_settings.ini";
-
-    // Settings format version - bump this when making incompatible changes
-    // Version 1: Original format with bitmasks (implicit, no version field)
-    // Version 2: Named keys instead of bitmasks for columns/rows/elements
-    // Version 3: String enums instead of integers for all enum settings
-    // Version 4: Base sections + sparse profile sections (reduced INI size)
-    // 5: [Colors]/[Fonts] became SPARSE -- only slots the user pinned are written, so
-    //    absence means "follow the theme". A file at 4 or below wrote all ten colours
-    //    and all six fonts unconditionally, and the load path pins every key it sees;
-    //    see the migration in loadSettings().
-    // 6: the gamepad AND the pit board are chosen by PACK NAME (gamepads/<name>/,
-    //    pitboards/<name>/) rather than by texture variant index. Files at 5 or below
-    //    store the old index; the migration in loadSettings() maps the shipped
-    //    variants onto their pack names.
-    // 7: Notices and Timing offsetX means the panel's CENTRE, like the Gap Bar and
-    //    Version, instead of a delta from a centre computed at render time. The
-    //    migration in loadSettings() adds the anchor in.
-    // 8: the Radar joins them. Its offsetX meant a LEFT EDGE, so unlike 7 the shift
-    //    is half the panel's width and depends on the stored scale -- hence its own
-    //    version: a file already stamped 7 would skip the shift.
-    constexpr int SETTINGS_VERSION = 9;
-
-    // The on-disk shape has been stable since v4 (base [HudName] sections + sparse
-    // [HudName:Profile] overrides). The load dispatch keys off THIS floor, not off
-    // == SETTINGS_VERSION, so a file written by any version >= this one still loads
-    // its HUD sections after SETTINGS_VERSION is later bumped. Gating on
-    // == SETTINGS_VERSION would silently wipe every user's HUD settings the moment
-    // the version is bumped (a v4 file then matches neither the v4+ nor the v3
-    // branch and every [HudName] section is skipped). Only bump this floor when
-    // the base/profile section layout itself changes incompatibly.
-    constexpr int FIRST_BASE_SECTION_VERSION = 4;
-}
+using namespace SettingsInternal;
 
 SettingsManager& SettingsManager::getInstance() {
     static SettingsManager instance;
@@ -141,153 +117,6 @@ std::string SettingsManager::getSettingsFilePath(const char* savePath) const {
     return path;
 }
 
-
-
-std::string SettingsManager::serializeSettings(const HudManager& hudManager, const char* savePath) {
-    m_savePath = savePath ? savePath : "";
-
-    // Capture current live state to the active profile before building the file.
-    // Note: This modifies m_profileCache, which is why serialize/save is non-const.
-    captureCurrentState(hudManager);
-
-    // Build the full file into an in-memory stream; the caller writes it atomically.
-    std::ostringstream file;
-
-    // Write header comment with usage notes
-    file << "; MXBMRP3 Settings File\n";
-    file << "; To edit manually, disable Auto-Save in Settings > General,\n";
-    file << "; then reload in-game with the hotkey after saving changes.\n";
-    file << "\n";
-
-    // Write Settings section (format versioning)
-    file << "[Settings]\n";
-    file << "version=" << SETTINGS_VERSION << "\n\n";
-
-    // Write Profiles section
-    const ProfileManager& profileManager = ProfileManager::getInstance();
-    file << "[Profiles]\n";
-    file << "activeProfile=" << static_cast<int>(profileManager.getActiveProfile()) << "\n";
-    file << "autoSwitch=" << (profileManager.isAutoSwitchEnabled() ? 1 : 0) << "\n";
-    // Last-focused settings tab (by name), restored on load so reopening the menu lands
-    // where the player left it. Menu-navigation state, kept here with the active profile
-    // (and, like it, deliberately outside the factory-defaults snapshot so "Reset all
-    // settings" doesn't move the player's open tab).
-    file << "activeTab=" << hudManager.getSettingsHud().getActiveTabName() << "\n\n";
-
-    // Write all global (non-per-profile) sections via the shared serializer, keeping the
-    // factory-defaults snapshot (see captureFactoryDefaults) in sync with the saved output.
-    writeGlobalSettings(file, hudManager);
-
-    // Save tracked riders to separate JSON file
-    TrackedRidersManager::getInstance().save();
-
-    // Per-profile HUD/widget sections, in the registry's fixed order for a stable
-    // file. The per-HUD serializer registry (settings_hud_registry) is the SINGLE
-    // source of truth for the section list: captureToCache, applyProfile, and this
-    // serializer all iterate it, so a HUD is registered for capture, apply, and
-    // on-disk serialization in exactly one place -- a HUD missing from a parallel
-    // list would silently drop its settings on restart. settings_sections_test.cpp
-    // asserts capture ⊆ serialized as a belt-and-suspenders guard.
-    // Note: HelmetOverlayHud is global (own [HelmetOverlay] section), not per-profile.
-    // Game-gated HUDs are #if'd out of the registry on builds without them, and
-    // buildHudSection() returns "" for any section absent from m_hudDefaults.
-    for (const Settings::HudSectionSerializer& s : Settings::hudSectionRegistry()) {
-        file << buildHudSection(s.name);
-    }
-
-    return file.str();
-}
-
-// Build one HUD/widget's block: base [Section] + sparse [Section:Profile] overrides.
-// "" if the section has no defaults entry (a game-gated HUD absent from this build).
-std::string SettingsManager::buildHudSection(const char* hudName) const {
-    auto defaultIt = m_hudDefaults.find(hudName);
-    if (defaultIt == m_hudDefaults.end()) return std::string();
-
-    std::ostringstream file;
-
-    // Write base section [HudName] with default values
-    file << "[" << hudName << "]\n";
-
-    // Write base properties first (for consistent ordering)
-    writeBaseHudSettings(file, defaultIt->second);
-
-    // Write HUD-specific properties (with inline comments for IniOnly settings)
-    for (const auto& [key, value] : defaultIt->second) {
-        if (isBaseKey(key)) continue;
-        writeSettingWithComment(file, hudName, key, value);
-    }
-    file << "\n";
-
-    // Write profile-specific overrides [HudName:ProfileName]
-    // Only write values that differ from defaults
-    for (int profileIdx = 0; profileIdx < static_cast<int>(ProfileType::COUNT); ++profileIdx) {
-        ProfileType profile = static_cast<ProfileType>(profileIdx);
-        const ProfileCache& cache = m_profileCache[static_cast<size_t>(profileIdx)];
-        const char* profileName = ProfileManager::getProfileName(profile);
-
-        auto cacheIt = cache.find(hudName);
-        if (cacheIt == cache.end()) continue;
-
-        // Collect keys that differ from defaults
-        std::vector<std::pair<std::string, std::string>> diffKeys;
-        for (const auto& [key, value] : cacheIt->second) {
-            bool isDifferent = true;
-            auto defKeyIt = defaultIt->second.find(key);
-            if (defKeyIt != defaultIt->second.end() && defKeyIt->second == value) {
-                isDifferent = false;
-            }
-            if (isDifferent) {
-                diffKeys.emplace_back(key, value);
-            }
-        }
-
-        // Only write section if there are differences
-        if (!diffKeys.empty()) {
-            file << "[" << hudName << ":" << profileName << "]\n";
-
-            // Write differing keys (base properties first for consistency)
-            for (const auto& [key, value] : diffKeys) {
-                if (isBaseKey(key)) {
-                    file << key << "=" << value << "\n";
-                }
-            }
-            for (const auto& [key, value] : diffKeys) {
-                if (!isBaseKey(key)) {
-                    file << key << "=" << value << "\n";
-                }
-            }
-            file << "\n";
-        }
-    }
-
-    return file.str();
-}
-
-void SettingsManager::saveSettings(const HudManager& hudManager, const char* savePath) {
-    // Synchronous path (explicit Save / Reset / leave-track flush / shutdown): serialize, then
-    // write on this thread so the file is durable before we return.
-    const std::string filePath = getSettingsFilePath(savePath);
-    const std::string data = serializeSettings(hudManager, savePath);
-    DEBUG_INFO_F("Saving settings to: %s (synchronous)", filePath.c_str());
-    if (AtomicFileWriter::writeFileAtomic(filePath, data)) {
-        DEBUG_INFO("Settings saved successfully");
-        m_settingsDirty = false;   // persisted; nothing pending
-    } else {
-        DEBUG_WARN_F("Failed to save settings: %s", filePath.c_str());
-    }
-}
-
-void SettingsManager::flushIfDirty(const HudManager& hudManager) {
-    // Called on the track->off-track transition (pits / exit). Auto-persist pending changes
-    // where the ~2ms serialize is invisible — but only when Auto-Save is on. With Auto-Save
-    // off the user is in manual mode (persists via the Save button), so leaving the track must
-    // NOT write. No-op if nothing changed either way.
-    if (!m_settingsDirty) return;
-    if (!UiConfig::getInstance().getAutoSave()) return;
-    saveSettings(hudManager, m_savePath.c_str());   // clears m_settingsDirty on success
-}
-
 void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* savePath) {
     std::string filePath = getSettingsFilePath(savePath);
     m_savePath = savePath ? savePath : "";
@@ -299,6 +128,9 @@ void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* saveP
 
     // Mark that settings loading has started (used by assertion in captureFactoryDefaults)
     m_settingsLoaded = true;
+
+    m_loadedFileHash = ExplorationStats::hashFileAboveTrailer(filePath);   // see fingerprintTrailer
+    m_expectedFileHash = 0;
 
     std::ifstream file(filePath);
     if (!file.is_open()) {
@@ -890,6 +722,7 @@ void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* saveP
     // disabled user doesn't leave the pending file lingering on disk; gate only the
     // showing on the enabled flag.
     bool nudgePending = UpdateDownloader::getInstance().checkAndClearDonationNudge();
+    if (nudgePending) m_updateInstalled = true;   // Fresh Coat, read at the stats load
     if (nudgePending && UpdateDownloader::getInstance().isDonationNudgeEnabled()) {
         hudManager.getVersionWidget().showDonationNudge();
     }
@@ -929,8 +762,23 @@ void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* saveP
 // by then, so this either overrides a value it is entitled to override or does
 // nothing at all.
 void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath) {
+    const bool reload = m_settingsLoaded;   // any load after the first is RELOAD_CONFIG
     loadSettingsImpl(hudManager, savePath);
     applyInstallPrefs();
+    if (reload) {   // Under the Hood, Developer, and the setup the file now says
+        StatsManager::getInstance().exploration().onSettingsReloaded();
+        StatsManager::getInstance().exploration().observeSettings(hudManager);
+        if (m_crashOnReload && m_developerMode) {
+            // Asked for, by hand, in developer mode: fault here so the crash
+            // handler writes its marker and the next launch reports it, the
+            // way a real crash would. A write through a null pointer, read from
+            // a volatile so no compiler folds it away or warns it into -Werror.
+            DEBUG_WARN("[Advanced] crashOnReload=1 with developerMode=1: faulting on request");
+            static volatile std::uintptr_t s_null = 0;
+            // cppcheck-suppress nullPointer
+            *reinterpret_cast<volatile int*>(s_null) = 1;   // the point of the knob
+        }
+    }
 }
 
 // See the declaration and core/install_prefs.h. Reads the marker Setup may have

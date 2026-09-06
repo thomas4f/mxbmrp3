@@ -47,6 +47,7 @@
 #include "../core/update_downloader.h"
 #include "../core/director_manager.h"
 #include "../core/spotter_manager.h"
+#include "../core/achievement_manager.h"
 #include "director_widget.h"
 #include "../core/hotkey_manager.h"
 #if GAME_HAS_DISCORD
@@ -102,6 +103,9 @@ const SettingsHud::TabDescriptor SettingsHud::s_tabRegistry[] = {
     { TAB_HELMET,       "Helmet",     "helmet",        nullptr,                                                              false, &SettingsHud::renderTabHelmet,          &SettingsHud::handleClickTabHelmet,       nullptr,            &SettingsHud::resetTabHelmet,           nullptr, nullptr },
     { TAB_DIRECTOR,     "Director",   "director",      nullptr,                                                              false, &SettingsHud::renderTabDirector,        nullptr,                                  nullptr,            &SettingsHud::resetTabDirector,         nullptr, nullptr },
     { TAB_SPOTTER,      "Spotter",    "spotter",       nullptr,                                                              false, &SettingsHud::renderTabSpotter,         &SettingsHud::handleClickTabSpotter,      nullptr,            &SettingsHud::resetTabSpotter,          nullptr, "Beta" },
+    // NO badge, ever: "Achievements" is 12 of the sidebar's 13 label cells, so a
+    // Small "New" (2.25 cells) would collide with it -- see settingsSidebarWidth.
+    { TAB_ACHIEVEMENTS, "Achievements", "achievements", nullptr,                                                            false, &SettingsHud::renderTabAchievements,    &SettingsHud::handleClickTabAchievements, nullptr,            &SettingsHud::resetTabAchievements,     nullptr, nullptr },
     { TAB_UPDATES,      "Updates",    "updates",       nullptr,                                                              false, &SettingsHud::renderTabUpdates,         &SettingsHud::handleClickTabUpdates,      nullptr,            &SettingsHud::resetTabUpdates,          nullptr, nullptr },
     // HIDDEN (the trailing true): reached from the footer's About button, never
     // drawn in the sidebar. Its POSITION still matters even so -- it is in the GLOBAL
@@ -339,6 +343,10 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
             // standalone mode (silent, captioned), so a lit checkbox here
             // means "you will hear it".
             isHudEnabled = SpotterManager::getInstance().isEnabled();
+        } else if (i == TAB_ACHIEVEMENTS) {
+            // The toast master. Tracking is unconditional; the checkbox says
+            // whether an unlock is shown.
+            isHudEnabled = AchievementManager::getInstance().isToastsEnabled();
         } else {
             isHudEnabled = true;  // General is always "enabled"
         }
@@ -361,7 +369,7 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
         // than select (pinned by settings_layout_test's region golden).
         const bool rowHasCheckbox = (tabHud != nullptr) || i == TAB_WIDGETS || i == TAB_RUMBLE
                                  || i == TAB_HELMET || i == TAB_UPDATES || i == TAB_DIRECTOR
-                                 || i == TAB_SPOTTER;
+                                 || i == TAB_SPOTTER || i == TAB_ACHIEVEMENTS;
         const size_t tabRegionIndex = m_clickRegions.size() + (rowHasCheckbox ? 1u : 0u);
         {
             // The highlight spans the tab COLUMN, not the label: full row width,
@@ -479,6 +487,18 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
             // Identity icon, from assets/icons/hud-spotter.svg like every
             // other tab's — a headset, for the voice in your ear.
             drawTabToggle(currentTabX, tabStartY, "hud-spotter", isHudEnabled, isActive, dim, checkboxWidth);
+
+            currentTabX += checkboxWidth;
+        } else if (i == TAB_ACHIEVEMENTS) {
+            // Checkbox click region for the achievement-toast master. Common
+            // handler, like the spotter's, for the same reason.
+            m_clickRegions.push_back(ClickRegion(
+                currentTabX, tabStartY, checkboxWidth, dim.lineHeightNormal,
+                ClickRegion::ACHIEVEMENTS_TOASTS_TOGGLE, nullptr
+            ));
+
+            // Identity icon: a medal (assets/icons/hud-achievements.svg), the flat copy of the podium marker.
+            drawTabToggle(currentTabX, tabStartY, "hud-achievements", isHudEnabled, isActive, dim, checkboxWidth);
 
             currentTabX += checkboxWidth;
         } else {
@@ -842,7 +862,13 @@ float SettingsHud::measureTallestBodyH(const ScaledDimensions& dim,
         w.buttonW = PluginUtils::calculateMonospaceTextWidth(5, dim.fontSize);
         w.buttonH = dim.lineHeightNormal;
 
-        tallest = std::max(tallest, planBodyHeight(dim, w));
+        const float bodyH = planBodyHeight(dim, w);
+        // One line per tab per measure (a measure is per key, not per frame): the
+        // number a tab must stay under is whichever tab binds, and nothing else
+        // reports it -- theme_geometry_test says only that the panel overflows.
+        DEBUG_INFO_F("Settings tab %d measures %.2f body rows", row.tabId,
+                     bodyH / dim.lineHeightNormal);
+        tallest = std::max(tallest, bodyH);
     }
 
     m_tallestContentRows = tallest;

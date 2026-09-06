@@ -385,6 +385,16 @@ Features:
 
 **Non-finite hardening.** The persisted floats (per-bike odometer, `totalDistanceM`, `topSpeedMs`) are integrated from `speed × dt`, and the `>=`/`>` comparisons that gate them reject NaN but not `+Inf` - so one bad physics sample corrupts state that survives restarts. `updateTelemetry` sanitises at the sample, `finiteOrZero()` in `stats_manager_persistence.cpp` heals an already-corrupted file on load, and the reasoning sits at both. **Any new persisted float needs the same guard at both ends** - that is a Maintenance Invariant in CLAUDE.md, pinned by `stats_test.cpp` and `odometer_test.cpp`.
 
+### 8a. AchievementManager (`core/achievement_manager.*`, `core/achievements.h`)
+
+Lifetime achievements over the numbers StatsManager keeps. `achievements.h` is the pure, header-only catalogue (id, title, templates, icon, metric, thresholds) plus the tier/progress arithmetic, unit-tested by `test_achievements.cpp`. `AchievementManager` holds the earned tier per row, evaluates on StatsManager's record points and on the RELOAD_CONFIG hotkey (the "Tinkerer" row, the on-demand way to see a toast), and queues toasts for `AchievementWidget`.
+
+- **Stored in the stats file**, under an `achievements` block keyed by row id (never index); the manager sees only `restore()`/`stateOf()`, never JSON.
+- **Upgrade rule**: on load, everything the numbers already satisfy is granted silently, then ONE summary toast. Pinned by `achievements_test.cpp`.
+- **`[Achievements] visible` (the toast master) gates display only**: tiers are still earned and stored with it off. The widget is global (geometry in `[Achievements]`, like the Director's button).
+- **Exploration and hidden rows** read `ExplorationStats` (`core/exploration_stats.h`): one value per signal, one feed call each. Adding, disabling (`kDisabledIds`) and removing a row is one rule for every row, stated at the catalogue.
+- The settings tab (`settings_tab_achievements.cpp`) is a global tab: the toast card's controls, then a page per group of entries, each a title over the next tier's task on a progress band. The on-track Stats HUD keeps its own per-profile tab.
+
 ### 9. FmxManager (`core/fmx_manager.*`)
 
 Manages FMX (Freestyle Motocross) trick detection and scoring:

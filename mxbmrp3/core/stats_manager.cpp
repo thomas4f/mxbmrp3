@@ -4,6 +4,7 @@
 // personal bests, and odometer data in a single JSON file
 // ============================================================================
 #include "stats_manager.h"
+#include "achievement_manager.h"
 #include "atomic_file_writer.h"
 #include "plugin_data.h"
 #include "plugin_utils.h"
@@ -66,6 +67,9 @@ void StatsManager::setCurrentContext(const std::string& trackId, const std::stri
     // Ensure entries exist for telemetry-rate lookups (avoids operator[] creating entries at 100Hz)
     m_trackBikeStats[m_currentKey];
     m_bikeOdometers[bikeName];
+    m_distinctDirty = true;   // a first visit is a new key (Globetrotter / Collector)
+    // A new track, bike or class is earned at the event, not at the next lap.
+    AchievementManager::getInstance().onStatsChanged();
 
     // Reset odometer time tracking for new context
     m_hasLastOdometerUpdateTime = false;
@@ -80,6 +84,12 @@ void StatsManager::clearCurrentContext() {
     m_currentCategory.clear();
     m_lastSessionType = -1;
     m_hasLastOdometerUpdateTime = false;
+    consumeRaceLeft();   // the event is over: an unfinished race stays unfinished
+}
+
+void StatsManager::consumeRaceLeft() {
+    if (m_raceLeftArmed) m_exploration.onRaceLeft();
+    m_raceLeftArmed = false;
 }
 
 std::string StatsManager::getCurrentTrackId() const {
@@ -124,6 +134,7 @@ void StatsManager::recordLap(int lapTime, int sector1, int sector2, int sector3,
     if (isValid && lapTime > 0) {
         stats.validLaps++;
         m_sessionLaps++;
+        if (m_sessionLaps > m_globalStats.maxSessionLaps) m_globalStats.maxSessionLaps = m_sessionLaps;
         stats.totalLapTimeMs += lapTime;
 
         // Update best lap
@@ -152,7 +163,9 @@ void StatsManager::recordLap(int lapTime, int sector1, int sector2, int sector3,
         m_playerHasFastestLapInRace = true;
     }
 
+    if (isValid) m_exploration.onLapTime(lapTime);   // palindrome, deja vu, metronome
     m_dirty = true;
+    AchievementManager::getInstance().onStatsChanged();
 }
 
 void StatsManager::updateTelemetry(float speedMs, bool isCrashed, int currentGear) {
@@ -182,20 +195,23 @@ void StatsManager::updateTelemetry(float speedMs, bool isCrashed, int currentGea
         m_dirty = true;
         if (stats) {
             stats->crashCount++;
-            m_globalTotalsDirty = true;
+            if (!m_globalTotalsDirty) ++m_cachedTotalCrashes;   // clean cache stays exact (see the members)
             m_sessionCrashes++;
             m_curLapCrashes++;
         }
+        m_exploration.onCrash(m_sessionCrashes, m_globalStats.crashTally);
+        AchievementManager::getInstance().onStatsChanged();
     }
     m_wasCrashed = isCrashed;
 
     // Gear shift edge detection — count any gear change (including neutral transitions)
     if (m_lastGear >= 0 && currentGear >= 0 && currentGear != m_lastGear && stats) {
         stats->gearShiftCount++;
-        m_globalTotalsDirty = true;
+        if (!m_globalTotalsDirty) ++m_cachedTotalGearShifts;
         m_sessionGearShifts++;
         m_curLapGearShifts++;
         m_dirty = true;
+        AchievementManager::getInstance().onStatsChanged();
     }
     if (currentGear >= 0) {
         m_lastGear = currentGear;
@@ -233,12 +249,24 @@ void StatsManager::updateTelemetry(float speedMs, bool isCrashed, int currentGea
                 m_curLapDistance += distanceMeters;
                 m_bikeOdometers[m_currentBikeName] += distanceMeters;
                 stats->totalDistanceM += distanceMeters;
+                if (!m_globalTotalsDirty) {
+                    m_cachedTotalOdometer += distanceMeters;
+                    const double bike = m_bikeOdometers[m_currentBikeName];
+                    if (bike > m_cachedMaxBikeOdometer) m_cachedMaxBikeOdometer = bike;
+                }
                 m_unsavedDistance += distanceMeters;
-                // Only mark dirty every ~100m to avoid per-frame save overhead
+                // Only mark dirty every ~100m to avoid per-frame save overhead.
+                // The same mark is the achievement evaluation's cadence for the
+                // continuous metrics (distance, ride time): never per tick.
                 if (m_unsavedDistance >= 100.0) {
                     m_dirty = true;
-                    m_globalTotalsDirty = true;
                     m_unsavedDistance = 0.0;
+                    // The longest session grows WHILE it is ridden (Iron Butt lands
+                    // at the hour, not at the exit); the session's end still takes
+                    // the final figure.
+                    const int64_t live = getSessionDurationMs();
+                    if (live > m_globalStats.maxSessionTimeMs) m_globalStats.maxSessionTimeMs = live;
+                    AchievementManager::getInstance().onStatsChanged();
                 }
             }
         }
@@ -249,11 +277,16 @@ void StatsManager::recordSessionStart(int sessionType) {
     if (m_currentKey.empty()) {
         DEBUG_WARN("[StatsManager] recordSessionStart called before setCurrentContext — session stats may be incomplete");
     }
-
     // Only reset session stats when the session type actually changes
     // (not on pit stop re-entries within the same session)
     bool sessionChanged = (sessionType != m_lastSessionType);
     m_lastSessionType = sessionType;
+
+    // The exploration scratch follows the same rule: a pit visit must not
+    // restart Steady Hands' clock or forget lap one's position (Charger, Wire
+    // to Wire). The clock reading (Night Owl, the day) happens on every run.
+    if (sessionChanged) m_exploration.onSessionStart();
+    else                m_exploration.onRunStart();
 
     if (sessionChanged) {
         m_sessionLaps = 0;
@@ -276,6 +309,7 @@ void StatsManager::recordSessionStart(int sessionType) {
 
     // Only reset race finish tracking on actual session changes.
     if (sessionChanged) {
+        consumeRaceLeft();
         m_raceFinishRecorded = false;
         m_playerHasFastestLapInRace = false;
     }
@@ -318,11 +352,16 @@ void StatsManager::recordSessionEnd() {
     int64_t rawDuration = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() - m_totalPausedMs;
     m_cachedSessionDurationMs = rawDuration > 0 ? rawDuration : 0;
     m_sessionActive = false;
+    if (m_cachedSessionDurationMs > m_globalStats.maxSessionTimeMs) {
+        m_globalStats.maxSessionTimeMs = m_cachedSessionDurationMs;   // Iron Butt
+        m_dirty = true;
+    }
 
     if (!m_currentKey.empty()) {
         m_trackBikeStats[m_currentKey].totalTimeOnTrackMs += m_cachedSessionDurationMs;
         m_globalTotalsDirty = true;
         m_dirty = true;
+        AchievementManager::getInstance().onStatsChanged();
     }
 
     m_unsavedDistance = 0.0;
@@ -362,12 +401,51 @@ void StatsManager::tryRecordRaceFinish(const PluginData& pd) {
         if (classOrder[i] == playerRaceNum) {
             int position = i + 1;  // 1-indexed
             m_raceFinishRecorded = true;
+            m_raceLeftArmed = false;
             m_globalStats.raceCount++;
             if (position == 1) m_globalStats.firstPositions++;
             else if (position == 2) m_globalStats.secondPositions++;
             else if (position == 3) m_globalStats.thirdPositions++;
             if (m_playerHasFastestLapInRace) m_globalStats.fastestLapCount++;
+            // Clean = no crash since this session began (m_sessionCrashes resets
+            // on the session-type change, so practice spills are not counted
+            // against the race). Only meaningful with GAME_HAS_CRASH_STATE; the
+            // catalogue hides the row elsewhere, so an always-zero count is inert.
+            if (m_sessionCrashes == 0) m_globalStats.cleanRaceCount++;
+            // The penalty-free run: a finish with no penalty this session
+            // extends it, one with a penalty ends it. The row reads the best.
+            if (m_sessionPenaltyCount == 0) {
+                m_globalStats.penaltyFreeStreak++;
+                if (m_globalStats.penaltyFreeStreak > m_globalStats.bestPenaltyFreeStreak) {
+                    m_globalStats.bestPenaltyFreeStreak = m_globalStats.penaltyFreeStreak;
+                }
+            } else {
+                m_globalStats.penaltyFreeStreak = 0;
+            }
+            if (pd.getSessionData().conditions == static_cast<int>(Unified::WeatherCondition::Rainy)) {
+                m_globalStats.rainRaceCount++;
+            }
+            if (static_cast<int>(pd.getRaceEntries().size()) >= BIG_GRID_ENTRIES) {
+                m_globalStats.bigGridRaceCount++;
+            }
+            // The race-shaped signals: the gap to second, the field's laps down,
+            // the player's own laps down.
+            {
+                int gapToSecond = 0;
+                if (classOrder.size() > 1) {
+                    const StandingsData* second = pd.getStanding(classOrder[1]);
+                    gapToSecond = second ? second->gap : 0;
+                }
+                bool everyOtherLapped = classOrder.size() > 1;
+                for (int other : classOrder) {
+                    if (other == playerRaceNum) continue;
+                    const StandingsData* so = pd.getStanding(other);
+                    if (!so || so->gapLaps < 1) { everyOtherLapped = false; break; }
+                }
+                m_exploration.onRaceFinished(position, gapToSecond, everyOtherLapped, standing->gapLaps);
+            }
             m_dirty = true;
+            AchievementManager::getInstance().onStatsChanged();
             return;
         }
     }
@@ -399,8 +477,39 @@ void StatsManager::recordPenalty(int penaltyTimeMs, bool isRace) {
         m_globalStats.penaltyTimeMs += penaltyTimeMs;
         m_dirty = true;  // persisted stat (global["penaltyTimeMs"]); mutated even when m_currentKey is empty
     }
+    AchievementManager::getInstance().onStatsChanged();
 }
 
+
+void StatsManager::recordFmxTrick(const FmxTrickSample& trick) {
+    // Finite-guard the two floats at the write, like every persisted float here.
+    const float duration = std::isfinite(trick.durationSec) && trick.durationSec > 0.0f ? trick.durationSec : 0.0f;
+    const float distance = std::isfinite(trick.distanceM) && trick.distanceM > 0.0f ? trick.distanceM : 0.0f;
+    m_fmx.tricksLanded++;
+    if (trick.backflip) m_fmx.backflips++;
+    if (trick.frontflip) m_fmx.frontflips++;
+    if (trick.whip) m_fmx.whips++;
+    if (trick.scrub) m_fmx.scrubs++;
+    if (trick.oppo) m_fmx.oppos++;
+    if (trick.turnDown) m_fmx.turnDowns++;
+    if (trick.airborne && duration > m_fmx.longestAirtimeSec) m_fmx.longestAirtimeSec = duration;
+    if (trick.wheelie) {
+        if (duration > m_fmx.longestWheelieSec) m_fmx.longestWheelieSec = duration;
+        m_fmx.wheelieDistanceM += distance;
+    }
+    if (trick.kind && trick.kind[0]) m_fmx.kinds.insert(trick.kind);
+    m_exploration.onTrickTime(trick.airborne, trick.shred, duration);   // Air Miles, Tyre Shredder
+    m_dirty = true;
+}
+
+void StatsManager::recordFmxChainBanked(int chainScore) {
+    if (chainScore > 0) {
+        m_fmx.totalScore += chainScore;
+        if (chainScore > m_fmx.bestChainScore) m_fmx.bestChainScore = chainScore;
+    }
+    m_dirty = true;
+    AchievementManager::getInstance().onStatsChanged();
+}
 
 // ============================================================================
 // Query — current track+bike
@@ -456,10 +565,15 @@ PersonalBestUpdate StatsManager::updatePersonalBest(const StatsPersonalBestData&
         return result;  // Existing PB for this bike is faster
     }
 
+    if (it != m_personalBests.end() && it->second.lapTime - entry.lapTime >= PB_LEAP_MS) {
+        m_globalStats.pbLeaps++;   // Leap Forward: a whole second off an existing PB
+    }
     m_personalBests[m_currentKey] = entry;
+    m_globalStats.pbCount++;
     m_dirty = true;   // deferred: persisted on leave-track (RunStop/RunDeinit). A PB is set at
                       // lap completion (start/finish) — on track — and we never write on track.
     result.stored = true;
+    AchievementManager::getInstance().onStatsChanged();
     return result;
 }
 
@@ -531,9 +645,14 @@ PersonalBestUpdate StatsManager::updatePersonalBest(const std::string& trackId, 
     if (it != m_personalBests.end() && it->second.lapTime <= entry.lapTime) {
         return result;
     }
+    if (it != m_personalBests.end() && it->second.lapTime - entry.lapTime >= PB_LEAP_MS) {
+        m_globalStats.pbLeaps++;
+    }
     m_personalBests[key] = entry;
+    m_globalStats.pbCount++;
     m_dirty = true;   // deferred: persisted on leave-track (RunStop/RunDeinit) — never on track.
     result.stored = true;
+    AchievementManager::getInstance().onStatsChanged();
     return result;
 }
 
@@ -621,99 +740,6 @@ int64_t StatsManager::getSessionDurationMs() const {
 }
 
 // ============================================================================
-// Query — global
-// ============================================================================
-
-GlobalStats StatsManager::getGlobalStats() const {
-    return m_globalStats;
-}
-
-void StatsManager::updateBreakoutHighScore(int score) {
-    if (score <= m_globalStats.breakoutHighScore) return;
-    m_globalStats.breakoutHighScore = score;
-    m_dirty = true;
-    save();
-}
-
-double StatsManager::getOdometerForBike(const std::string& bikeName) const {
-    auto it = m_bikeOdometers.find(bikeName);
-    return it != m_bikeOdometers.end() ? it->second : 0.0;
-}
-
-double StatsManager::getOdometerForCurrentBike() const {
-    return getOdometerForBike(m_currentBikeName);
-}
-
-double StatsManager::getTotalOdometer() const {
-    if (m_globalTotalsDirty) recomputeGlobalTotals();
-    return m_cachedTotalOdometer;
-}
-
-void StatsManager::recomputeGlobalTotals() const {
-    m_cachedTotalLaps = 0;
-    m_cachedTotalTimeMs = 0;
-    m_cachedTotalCrashes = 0;
-    m_cachedTotalGearShifts = 0;
-    m_cachedTotalPenalties = 0;
-    m_cachedTotalPenaltyTimeMs = 0;
-    m_cachedTotalOdometer = 0.0;
-    for (const auto& [_, stats] : m_trackBikeStats) {
-        m_cachedTotalLaps += stats.validLaps;
-        m_cachedTotalTimeMs += stats.totalTimeOnTrackMs;
-        m_cachedTotalCrashes += stats.crashCount;
-        m_cachedTotalGearShifts += stats.gearShiftCount;
-        m_cachedTotalPenalties += stats.penaltyCount;
-        m_cachedTotalPenaltyTimeMs += stats.penaltyTimeMs;
-    }
-    for (const auto& [_, distance] : m_bikeOdometers) {
-        m_cachedTotalOdometer += distance;
-    }
-    m_globalTotalsDirty = false;
-}
-
-int StatsManager::getGlobalTotalLaps() const {
-    if (m_globalTotalsDirty) recomputeGlobalTotals();
-    return m_cachedTotalLaps;
-}
-
-int64_t StatsManager::getGlobalTotalTimeMs() const {
-    if (m_globalTotalsDirty) recomputeGlobalTotals();
-    int64_t total = m_cachedTotalTimeMs;
-    if (m_sessionActive) total += getSessionDurationMs();
-    return total;
-}
-
-int StatsManager::getGlobalTotalCrashes() const {
-    if (m_globalTotalsDirty) recomputeGlobalTotals();
-    return m_cachedTotalCrashes;
-}
-
-// Back to zero, and PERSISTED at once rather than at the next autosave: the
-// button exists so a streamer can start a run clean on camera, and a count that
-// came back after a crash-to-desktop would be the one failure that matters.
-void StatsManager::resetCrashTally() {
-    if (m_globalStats.crashTally == 0) return;
-    m_globalStats.crashTally = 0;
-    m_dirty = true;
-    save();
-}
-
-int StatsManager::getGlobalTotalGearShifts() const {
-    if (m_globalTotalsDirty) recomputeGlobalTotals();
-    return m_cachedTotalGearShifts;
-}
-
-int StatsManager::getGlobalTotalPenalties() const {
-    if (m_globalTotalsDirty) recomputeGlobalTotals();
-    return m_cachedTotalPenalties;
-}
-
-int64_t StatsManager::getGlobalTotalPenaltyTimeMs() const {
-    if (m_globalTotalsDirty) recomputeGlobalTotals();
-    return m_cachedTotalPenaltyTimeMs;
-}
-
-// ============================================================================
 // Clear
 // ============================================================================
 
@@ -728,6 +754,7 @@ bool StatsManager::clearEntry(const std::string& trackId, const std::string& bik
     if (tbIt != m_trackBikeStats.end()) m_trackBikeStats.erase(tbIt);
     if (pbIt != m_personalBests.end()) m_personalBests.erase(pbIt);
     m_globalTotalsDirty = true;
+    m_distinctDirty = true;
     m_dirty = true;
 
     // Re-create entry if we just cleared the active session's track+bike combo,
@@ -783,8 +810,13 @@ void StatsManager::clearAll() {
     m_bikeOdometers.clear();
     m_bikeCategories.clear();
     m_globalStats = GlobalStats();
+    m_fmx = FmxLifetimeStats();
+    m_exploration.clear();
     m_globalTotalsDirty = true;
+    m_distinctDirty = true;
     m_dirty = true;
+    // The achievements are facts about these numbers: gone with them.
+    AchievementManager::getInstance().clearAll();
 
     // Reset session transients so HUD doesn't show stale data
     m_sessionLaps = 0;

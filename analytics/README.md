@@ -59,6 +59,14 @@ and share; adoption charts label with share then count. Two things are worth int
   average divides by the days actually observed, and the header states both numbers
   (*"68 days, 51 observed"*). The one thing the report will not do is interpolate.
 
+- **Achievements are Steam-style global stats.** Since 2.21.0 the launch ping carries every
+  achievement at tier 1 or higher by its catalogue id (`ach_<id>` = tier), beside two totals
+  (`ach_pct`, `ach_unlocked`). The section shows how far installs get, how many they hold,
+  and the share of reporting installs holding each one; rows are labelled from
+  [`docs/achievements.md`](../docs/achievements.md), which is generated from the plugin's
+  own catalogue. The denominator is installs that report the totals at all - a version
+  from before the feature is silent, not at zero.
+
 - **Adoption is per-game.** HUDs/widgets/features are game-specific (ECU & Tyre Temp are GP
   Bikes only; FMX/Records are MX Bikes only), and the plugin only emits a flag where that
   item exists. So the adoption charts are computed for the **primary (most-installed) game**

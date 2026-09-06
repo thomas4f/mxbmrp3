@@ -181,6 +181,15 @@ public:
 
     // Developer mode - shows debug options in UI when enabled via INI
     bool isDeveloperMode() const { return m_developerMode; }
+
+    // The settings file's fingerprint (see exploration_stats.h): the hash of the
+    // file as loaded, minus its trailing [Fingerprint] section, and the hash
+    // that section claimed (0 = none). ExplorationStats::onStartup compares.
+    uint64_t loadedFileHash() const { return m_loadedFileHash; }
+    uint64_t expectedFileHash() const { return m_expectedFileHash; }
+    // True once, after a startup that followed an in-game update install
+    // (Fresh Coat); consumed by ExplorationStats::onStartup.
+    bool consumeUpdateInstalled() { const bool b = m_updateInstalled; m_updateInstalled = false; return b; }
     void setDeveloperMode(bool enabled) { m_developerMode = enabled; }
 
 #if defined(MXBMRP3_TEST_BUILD)
@@ -313,6 +322,15 @@ private:
 
     // Developer mode flag (shows debug options in UI)
     bool m_developerMode = false;
+    // [Advanced] crashOnReload: a hand-set, never-written knob that makes the
+    // NEXT RELOAD_CONFIG fault on purpose (with developer mode on), so the crash
+    // marker -> crash event -> error report path can be exercised end to end
+    // against the live services. Reload-only: a startup never reads it, so a
+    // file left with it set cannot crash every launch.
+    bool m_crashOnReload = false;
+    uint64_t m_loadedFileHash = 0;
+    uint64_t m_expectedFileHash = 0;
+    bool m_updateInstalled = false;
 
     // Set by markDirty() when a HUD setting changes; cleared by saveSettings()/flushIfDirty()
     // once written. The write itself is deferred to a track->off-track transition so it never

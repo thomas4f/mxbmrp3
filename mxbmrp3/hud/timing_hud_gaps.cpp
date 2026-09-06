@@ -376,9 +376,13 @@ void TimingHud::cacheAllTimePB() {
 // CurrentLapData splits, which aren't populated until the first split of a fresh lap is
 // crossed). currentSector: 0=before S1, 1=before S2, …, (GAME_SECTOR_COUNT-1)=before the
 // finish; the last one (and a stopped/finished timer) maps to -1 (=> full lap).
+//
+// Before the lap starts (the time cell's placeholder) the chips show the reference's full
+// lap; once the timer starts they show the active sector's target. Gated on the same
+// elapsed time the cell shows, so the two cannot disagree.
 int TimingHud::currentTargetSplit() const {
     const PluginData& pluginData = PluginData::getInstance();
-    if (pluginData.isLapTimerValid() && !pluginData.isDisplayRiderFinished()) {
+    if (pluginData.getElapsedLapTime() >= 0 && !pluginData.isDisplayRiderFinished()) {
         int sec = pluginData.getLapTimerCurrentSector();
         if (sec >= 0 && sec < GAME_SECTOR_COUNT - 1) return sec;
     }
@@ -443,14 +447,20 @@ int TimingHud::cumulativeReferenceMs(GapTypeFlags type, int targetSplit) const {
     if (!comparisonAppliesToDisplayRider(type)) return -1;   // same rule at the split entry point
     const PluginData& pluginData = PluginData::getInstance();
 
+    // A reference that has no sector times (a record served without splits, a PB
+    // from a source that kept only the lap) shows its FULL LAP at every split
+    // rather than "N/A" until the last sector: the lap is what it has.
+    const int fullLap = fullLapReferenceMs(type);
+
     // All-Time PB keeps its cumulative points pre-summed (cacheAllTimePB()).
     if (type == GAP_TO_ALLTIME) {
-        if (targetSplit == 0) return m_previousAllTimeSector1;
-        if (targetSplit == 1) return m_previousAllTimeS1PlusS2;
+        int cum = m_previousAllTimeLap;
+        if (targetSplit == 0) cum = m_previousAllTimeSector1;
+        else if (targetSplit == 1) cum = m_previousAllTimeS1PlusS2;
 #if GAME_SECTOR_COUNT >= 4
-        if (targetSplit == 2) return m_previousAllTimeS1PlusS2PlusS3;
+        else if (targetSplit == 2) cum = m_previousAllTimeS1PlusS2PlusS3;
 #endif
-        return m_previousAllTimeLap;
+        return cum > 0 ? cum : fullLap;
     }
 
     // Everything else exposes per-sector reference times; sum the first (targetSplit+1).
@@ -497,11 +507,11 @@ int TimingHud::cumulativeReferenceMs(GapTypeFlags type, int targetSplit) const {
         default: break;
     }
 
-    if (s1 <= 0) return -1;
+    if (s1 <= 0) return fullLap;
     int sum = s1;
-    if (targetSplit >= 1) { if (s2 <= 0) return -1; sum += s2; }
+    if (targetSplit >= 1) { if (s2 <= 0) return fullLap; sum += s2; }
 #if GAME_SECTOR_COUNT >= 4
-    if (targetSplit >= 2) { if (s3 <= 0) return -1; sum += s3; }
+    if (targetSplit >= 2) { if (s3 <= 0) return fullLap; sum += s3; }
 #endif
     return sum;
 }

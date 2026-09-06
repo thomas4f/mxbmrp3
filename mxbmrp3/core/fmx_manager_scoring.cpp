@@ -12,6 +12,7 @@
 #include "fmx_scoring.h"
 #include "plugin_data.h"
 #include "plugin_constants.h"
+#include "stats_manager.h"
 #include "../diagnostics/logger.h"
 #include <algorithm>
 #include <cmath>
@@ -103,6 +104,33 @@ void FmxManager::completeTrick() {
     }
     m_score.currentTrickScore = 0;
 
+    // Lifetime totals (achievements): every trick of the chain, then the banked
+    // score. Here and not at addTrickToChain, so a chain that ends in a crash
+    // counts for nothing -- the same rule tricksCompleted above follows.
+    {
+        StatsManager& stats = StatsManager::getInstance();
+        for (const Fmx::TrickInstance& t : m_chainTricks) {
+            FmxTrickSample sample;
+            sample.kind = Fmx::getTrickIniKey(t.type);
+            sample.backflip = (t.type == Fmx::TrickType::BACKFLIP);
+            sample.frontflip = (t.type == Fmx::TrickType::FRONTFLIP);
+            sample.whip = (t.type == Fmx::TrickType::WHIP_LEFT || t.type == Fmx::TrickType::WHIP_RIGHT);
+            sample.scrub = (t.type == Fmx::TrickType::SCRUB_LEFT || t.type == Fmx::TrickType::SCRUB_RIGHT);
+            sample.oppo = (t.type == Fmx::TrickType::OPPO_LEFT || t.type == Fmx::TrickType::OPPO_RIGHT);
+            sample.turnDown = (t.type == Fmx::TrickType::TURN_DOWN_LEFT || t.type == Fmx::TrickType::TURN_DOWN_RIGHT);
+            sample.airborne = t.hasBeenAirborne && Fmx::isAirTrick(t.type);
+            sample.wheelie = (t.type == Fmx::TrickType::WHEELIE || t.type == Fmx::TrickType::COASTER_WHEELIE);
+            sample.shred = (t.type == Fmx::TrickType::BURNOUT || t.type == Fmx::TrickType::DONUT ||
+                            t.type == Fmx::TrickType::DRIFT_LEFT || t.type == Fmx::TrickType::DRIFT_RIGHT);
+            // A jump's length is its airtime from the lip; a wheelie's is the
+            // time held past the pitch threshold, which is what `duration` is.
+            sample.durationSec = sample.airborne ? t.airTime : t.duration;
+            sample.distanceM = t.distance;
+            stats.recordFmxTrick(sample);
+        }
+        stats.recordFmxChainBanked(totalScore);
+    }
+
     FMX_LOG("FMX: COMPLETED %d tricks +%d pts (x%.1f chain) (session: %d)",
         totalTricks, totalScore, chainMultiplier, m_score.sessionScore);
     FMX_LOG("FMX: ============== CHAIN END ==============");
@@ -134,6 +162,10 @@ void FmxManager::completeTrick() {
 void FmxManager::failTrick(bool crashed) {
     // Save previous state before overwriting — needed to detect if trick was already in chain
     bool wasInChain = (m_activeTrick.state == Fmx::TrickState::CHAIN);
+    // Case of the Mondays: a crash taking a chain of five or more with it.
+    if (crashed && m_score.chainCount >= 5) {
+        StatsManager::getInstance().exploration().onChainCrash();
+    }
 
     m_activeTrick.state = Fmx::TrickState::FAILED;
     m_activeTrick.endTime = Fmx::clockNow();
@@ -151,6 +183,8 @@ void FmxManager::failTrick(bool crashed) {
     if (wasCommitted || (crashed && m_score.chainCount > 0)) {
         // Trick was committed - lose the chain
         m_score.tricksFailed++;
+        // Weakest Link: what the chain was worth when it broke, however it broke.
+        StatsManager::getInstance().exploration().onChainLost(m_score.chainScore);
 
         // Start chain-end animation (failure) — copy chain before clearing
         m_chainEndAnimation.active = true;

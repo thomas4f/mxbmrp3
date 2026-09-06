@@ -41,6 +41,9 @@ namespace httplib { class Server; }
 
 class HttpServer {
 public:
+    // Every SSE connection ever accepted this run (On Air); read by the game
+    // thread's once-a-second tick.
+    uint32_t sseConnectsTotal() const { return m_sseConnectsTotal.load(std::memory_order_relaxed); }
     static HttpServer& getInstance();
 
 #if defined(MXBMRP3_TEST_BUILD)
@@ -145,6 +148,7 @@ private:
 
     // SSE connection tracking
     std::atomic<int> m_sseConnections{0};
+    std::atomic<uint32_t> m_sseConnectsTotal{0};
     static constexpr int MAX_SSE_CONNECTIONS = 3;  // Reserve 1 thread for REST
 
     // Client-activity gate for snapshot builds: while nobody is consuming the

@@ -10,6 +10,7 @@
 // ============================================================================
 
 #include "hud_manager.h"
+#include "stats_manager.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include "asset_manager.h"
@@ -20,6 +21,7 @@
 #include "plugin_manager.h"
 #include "settings_manager.h"
 #include "spotter_manager.h"  // RELOAD_CONFIG re-reads the active cue pack
+#include "achievement_manager.h"  // RELOAD_CONFIG counts toward Tinkerer
 #include "director_manager.h"
 #include "profile_manager.h"
 #include "ui_config.h"
@@ -277,6 +279,26 @@ void HudManager::processKeyboardInput() {
         DEBUG_INFO_F("Hotkey: Friends %s", m_pFriends->isVisible() ? "shown" : "hidden");
     }
 
+    // A HUD switched on by hotkey counts for Tyre Kicker as it is switched on,
+    // like one switched on in the menu (SettingsHud::markSettingsDirty). AFTER
+    // the last toggle above: the walk reads visibility, so it must follow them all.
+    {
+        static constexpr HotkeyAction kHudToggles[] = {
+            HotkeyAction::TOGGLE_STANDINGS, HotkeyAction::TOGGLE_MAP, HotkeyAction::TOGGLE_RADAR,
+            HotkeyAction::TOGGLE_LAP_LOG, HotkeyAction::TOGGLE_IDEAL_LAP, HotkeyAction::TOGGLE_TELEMETRY,
+            HotkeyAction::TOGGLE_RECORDS, HotkeyAction::TOGGLE_PITBOARD, HotkeyAction::TOGGLE_TIMING,
+            HotkeyAction::TOGGLE_GAP_BAR, HotkeyAction::TOGGLE_PERFORMANCE, HotkeyAction::TOGGLE_RUMBLE,
+            HotkeyAction::TOGGLE_EVENT_LOG, HotkeyAction::TOGGLE_FRIENDS, HotkeyAction::TOGGLE_HELMET,
+            HotkeyAction::TOGGLE_SESSION_CHARTS, HotkeyAction::TOGGLE_FMX, HotkeyAction::TOGGLE_STATS,
+            HotkeyAction::TOGGLE_SESSION, HotkeyAction::TOGGLE_NOTICES,
+        };
+        for (HotkeyAction a : kHudToggles) {
+            if (!hotkeyMgr.wasActionTriggered(a)) continue;
+            StatsManager::getInstance().exploration().observeSettings(*this);
+            break;
+        }
+    }
+
     // Auto-director (spectate broadcast tool): toggle on/off, and hold current shot.
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::DIRECTOR_TOGGLE)) {
         DirectorManager::getInstance().toggleEnabled();
@@ -345,6 +367,11 @@ void HudManager::processKeyboardInput() {
             DEBUG_INFO("Hotkey: Reloading config from file");
             settingsMgr.loadSettings(*this, savePath.c_str());
         }
+
+        // The reload is itself an achievement feed (Tinkerer), and -- with the
+        // hidden devToast key -- the way to put a toast on screen on demand. After
+        // loadSettings, so a devToast=1 just written to the INI counts this press.
+        AchievementManager::getInstance().onConfigReloaded();
 
         // OUTSIDE the savePath guard, deliberately. The layout files live in
         // mxbmrp3_data/themes/, not in the settings INI, so a missing or unset save

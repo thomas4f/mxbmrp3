@@ -321,6 +321,9 @@ public:
 
     // Get current motor output values (for visualization)
     float getLastHeavyMotor() const { return m_lastLeftMotor; }   // Left = heavy/low-freq
+    // True while the last telemetry frame asked the connected pad to rumble
+    // (Good Vibrations, read by DrawHandler's once-a-second tick).
+    bool rumbleLive() const { return m_rumbleLive; }
     float getLastLightMotor() const { return m_lastRightMotor; }  // Right = light/high-freq
 
     // Get individual effect contributions (for visualization)
@@ -451,6 +454,7 @@ private:
 
     // Vibration state tracking to avoid redundant API calls
     float m_lastLeftMotor;
+    bool m_rumbleLive = false;   // mt-plain: game thread only (updateRumbleFromTelemetry writes, DrawHandler reads)
     float m_lastRightMotor;
 
     // Motor speeds last sent via XInputSetState (8-bit quantized). Nonzero

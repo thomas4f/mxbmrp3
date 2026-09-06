@@ -2,11 +2,11 @@
 // core/settings_manager_global.cpp
 // Global (non-per-profile) settings serialization for SettingsManager:
 // writeGlobalSettings() / applyGlobalLine() and their helpers. These handle the
-// [General], [Rumble], [HelmetOverlay], [Display], [WebServer], colors, fonts,
-// hotkeys, and per-feature analytics-flag sections. settings_manager.cpp owns
+// [General], [Rumble], [HelmetOverlay], [Achievements], [Display], [WebServer],
+// colors, fonts, hotkeys, and per-feature analytics-flag sections. settings_manager.cpp owns
 // per-HUD capture/apply/serialize and load.
 // ============================================================================
-// file-budget: 1500 one applyGlobalLine/writeGlobalSettings pair per global section
+// file-budget: 1570 one applyGlobalLine/writeGlobalSettings pair per global section; [Achievements] added its pair, the [Fingerprint] trailer its applier
 #include "settings_manager.h"
 #include "layout_config.h"
 #include "settings_keys.h"
@@ -65,6 +65,8 @@
 #endif
 #include "../hud/fmx_hud.h"
 #include "../hud/stats_hud.h"
+#include "../hud/achievement_widget.h"
+#include "achievement_manager.h"
 #include "../hud/event_log_hud.h"
 #include "fmx_manager.h"
 #include "color_config.h"
@@ -549,6 +551,32 @@ void SettingsManager::writeGlobalSettings(std::ostream& out, const HudManager& h
         out << "\n";
     }
 
+    // Write Achievements section (global; the toast widget's geometry lives here
+    // like the Director button's, so a profile switch never moves it).
+    {
+        const AchievementManager& ach = AchievementManager::getInstance();
+        out << "[Achievements]\n";
+        // "visible", not "showToasts": the toast master IS this element's
+        // visibility, and the harness isolates HUDs by rewriting every visible= key.
+        out << "visible=" << (ach.isToastsEnabled() ? 1 : 0) << "\n";
+        out << "toastMs=" << ach.getToastDurationMs() << "\n";
+        if (const AchievementWidget* hud = hudManager.getAchievementWidget()) {
+            out << "hudX=" << hud->getOffsetX() << "\n";
+            out << "hudY=" << hud->getOffsetY() << "\n";
+            out << "hudScale=" << hud->getScale() << "\n";
+            out << "hudOpacity=" << hud->getBackgroundOpacity() << "\n";
+            out << "hudTitle=" << (hud->getShowTitle() ? 1 : 0) << "\n";
+        }
+        out << "devToast=" << (ach.isDevToastEnabled() ? 1 : 0)
+            << " ; Dev-only: every config reload queues a test toast\n";
+        // Written only while it is on, so a test session's knob cannot linger unseen.
+        if (ach.getDevValueScale() != 1.0) {
+            out << "devScale=" << ach.getDevValueScale()
+                << " ; Dev-only: every achievement number, times this\n";
+        }
+        out << "\n";
+    }
+
 #if GAME_HAS_RECORDER
     // Write Recorder section (global; hidden developer tool). Off by default;
     // a developer sets enabled=1 by hand-editing the INI to capture a callback
@@ -783,6 +811,8 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
         try {
             if (key == "developerMode") {
                 m_developerMode = (std::stoi(value) != 0);
+            } else if (key == "crashOnReload") {   // dev knob, never written back (settings_manager.h)
+                m_crashOnReload = (std::stoi(value) != 0);
             }
             // The two layout roots. Clamped, not rejected: this file is one the plugin
             // itself rewrites, so there is no author to warn and no previous value worth
@@ -1381,6 +1411,49 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
         return true;
     }
 
+    // Handle Achievements section (global, not per-profile)
+    if (section == "Achievements") {
+        AchievementManager& ach = AchievementManager::getInstance();
+        AchievementWidget* hud = hudManager.getAchievementWidget();
+        try {
+            if (key == "visible") {
+                ach.setToastsEnabled(std::stoi(value) != 0);
+            } else if (key == "toastMs") {
+                ach.setToastDurationMs(std::stoi(value));
+            } else if (key == "devToast") {
+                ach.setDevToastEnabled(std::stoi(value) != 0);
+            } else if (key == "devScale") {
+                ach.setDevValueScale(std::stod(value));
+            } else if (key == "hudX") {   // isfinite-guarded like the Director's geometry
+                float v = std::stof(value);
+                if (std::isfinite(v) && hud) hud->setPosition(v, hud->getOffsetY());
+            } else if (key == "hudY") {
+                float v = std::stof(value);
+                if (std::isfinite(v) && hud) hud->setPosition(hud->getOffsetX(), v);
+            } else if (key == "hudScale") {
+                float v = std::stof(value);
+                if (std::isfinite(v) && hud) hud->setScale(v);
+            } else if (key == "hudOpacity") {
+                float v = std::stof(value);
+                if (std::isfinite(v) && hud) hud->setBackgroundOpacity(v);
+            } else if (key == "hudTitle") {
+                if (hud) hud->setShowTitle(std::stoi(value) != 0);
+            }
+        } catch (const std::exception& e) {
+            DEBUG_WARN_F("Achievements: Failed to parse setting '%s': %s", key.c_str(), e.what());
+        }
+        return true;
+    }
+
+    // The file's own fingerprint trailer (exploration_stats.h): the hash the
+    // writer took over everything above it.
+    if (section == "Fingerprint") {
+        if (key == "settings") {
+            try { m_expectedFileHash = std::stoull(value, nullptr, 16); } catch (const std::exception&) { m_expectedFileHash = 0; }
+        }
+        return true;
+    }
+
 #if GAME_HAS_RECORDER
     // Handle Recorder section (hidden dev tool). Only reads the enabled flag;
     // the actual session tape is opened at startup if enabled (see plugin_manager).
@@ -1445,3 +1518,4 @@ bool SettingsManager::applyGlobalLine(const std::string& section, const std::str
 
     return false;
 }
+

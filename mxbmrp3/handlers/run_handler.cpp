@@ -81,6 +81,15 @@ void Handlers::handleRunDeinit() {
 
     // Record race finish if player actually completed the race
     StatsManager::getInstance().tryRecordRaceFinish(PluginData::getInstance());
+    // ...and if they raced but did not finish, arm Rage Quit: counted only if
+    // the race is gone before they finish (a pit stop is also a RunDeinit).
+    {
+        StatsManager& stats = StatsManager::getInstance();
+        if (PluginData::getInstance().isRaceSession() && !stats.raceFinishRecorded() &&
+            stats.getSessionLaps() > 0) {
+            stats.armRaceLeft();
+        }
+    }
 
     // End stats session and save
     StatsManager::getInstance().recordSessionEnd();

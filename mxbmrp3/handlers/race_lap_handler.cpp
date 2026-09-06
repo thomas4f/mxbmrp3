@@ -220,6 +220,16 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
     if (raceNum == data.getPlayerRaceNum()) {
         bool isFastestLapForStats = (psRaceLap->bestFlag == 2);
         bool isRace = data.isRaceSession();
+        if (isRace) {
+            // Where the player sits after this lap: Charger and Wire to Wire.
+            const auto& order = data.getClassificationOrder();
+            for (int i = 0; i < static_cast<int>(order.size()); ++i) {
+                if (order[i] == raceNum) {
+                    StatsManager::getInstance().exploration().onRaceLapPosition(completedLapNumZeroIndexed + 1, i + 1);
+                    break;
+                }
+            }
+        }
         StatsManager::getInstance().recordLap(lapTime, sector1, sector2, sector3, sector4, isLapValid, isFastestLapForStats, isRace);
     } else if (psRaceLap->bestFlag == 2 && data.isRaceSession()) {
         // Another rider set the overall fastest lap — player no longer holds it
@@ -265,6 +275,11 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
             const PersonalBestUpdate pbUpdate = StatsManager::getInstance().updatePersonalBest(
                 sessionData.trackId, sessionData.bikeName, pbEntry);
             isAllTimePB = pbUpdate.beatsScopedBest;
+            // Sandbagger: a PB stored on the last lap of a race.
+            if (pbUpdate.stored && data.isRaceSession() && sessionData.sessionNumLaps > 0 &&
+                completedLapNumZeroIndexed + 1 == sessionData.sessionNumLaps) {
+                StatsManager::getInstance().exploration().onSandbag();
+            }
             if (isAllTimePB) {
                 data.notifyAllTimePB();
                 // The spotter speaks the same edge the notice latches on —

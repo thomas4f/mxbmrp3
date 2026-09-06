@@ -20,6 +20,45 @@ Changelog's categories.
 
 ## [Unreleased]
 
+## [1.30.0] - 2026-09-06
+
+Achievements, Bronze to Platinum: your laps, races, crashes, tricks and
+tinkering now add up to something.
+
+### Added
+- Achievements (Settings > Achievements), Bronze to Platinum, for riding,
+  racing, conduct, the moments of one race, freestyle and tricks, and for
+  trying out what the plugin itself can do. A toast when a tier is earned and
+  a halfway card on the long steps to Gold and Platinum; a click on the toast
+  opens the tab on that row. An existing install gets what its numbers already
+  earn on the first start. A few are hidden until you stumble on them
+- Some are dedicated to the people who asked for the feature behind them,
+  named at the end of the sentence
+- Reset Achievements, on the tab; **Show toasts** turns the cards off, tracking
+  continues either way
+- A guide to every FMX trick, what it takes and what it is worth:
+  [`docs/tricks.md`](docs/tricks.md)
+
+### Changed
+- The anonymous usage ping now includes which achievements you have unlocked
+  and at what tier; the Privacy page and the README's table say so
+- The Riders tab's page controls are buttons with chevrons rather than "<" and
+  ">" text
+- The FMX trick Turn Up is called Oppo, in the HUD and in its INI switch
+  (`trickEnabled_Oppo`)
+
+### Fixed
+- A Timing HUD comparison whose reference has no sector times (a record served
+  without splits) shows its full lap, not "N/A" until the last sector
+- Before a lap starts, the Timing HUD's comparison rows show the reference's
+  full lap time rather than its first split; they switch to the active sector
+  once the timer starts, as before
+- While the Direct GL confirmation was up, the settings menu it hides still took
+  clicks: a click on the empty space where a tab or Close had been still landed
+- With the hide-all-HUDs hotkey or the Widgets toggle on, hidden HUDs could
+  still be dragged and their buttons clicked (the crash counter's reset, a
+  standings row) whenever the settings menu was open
+
 ## [1.29.5] - 2026-09-02
 
 The HUD can draw itself now, instead of asking the game to, which hands back
@@ -862,7 +901,8 @@ Pre-release. Its contents shipped in 1.26.0.0, minus the analytics addition.
 
 Initial public release.
 
-[Unreleased]: https://github.com/thomas4f/mxbmrp3/compare/v1.29.5...HEAD
+[Unreleased]: https://github.com/thomas4f/mxbmrp3/compare/v1.30.0...HEAD
+[1.30.0]: https://github.com/thomas4f/mxbmrp3/compare/v1.29.5...v1.30.0
 [1.29.5]: https://github.com/thomas4f/mxbmrp3/compare/v1.29.3...v1.29.5
 [1.29.3]: https://github.com/thomas4f/mxbmrp3/compare/v1.29.1...v1.29.3
 [1.29.1]: https://github.com/thomas4f/mxbmrp3/compare/v1.28.0...v1.29.1

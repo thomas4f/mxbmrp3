@@ -64,6 +64,7 @@
 #include "../core/update_checker.h"
 #include "../core/director_manager.h"
 #include "../core/spotter_manager.h"
+#include "../core/achievement_manager.h"
 #include "../core/tracked_riders_manager.h"
 #include "../core/ui_config.h"
 #include "../core/plugin_data.h"
@@ -365,6 +366,17 @@ void SettingsHud::resetTabSpotter() {
     // written INTO [Director] as hudX/hudY/hudScale/hudOpacity.)
     SettingsManager::getInstance().resetHudsToFactoryDefaults(
         HudManager::getInstance(), {"SpotterWidget"}, /*keepVisibility=*/true);
+}
+
+void SettingsHud::resetTabAchievements() {
+    // Achievements edits one global snapshot section, [Achievements] (toast
+    // duration, the widget's geometry). Replay it but keep the master switch,
+    // as every other per-tab reset keeps its master. The tiers themselves are
+    // stats, not settings: nothing here touches mxbmrp3_stats.json.
+    const bool wasOn = AchievementManager::getInstance().isToastsEnabled();
+    SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
+        HudManager::getInstance(), {"Achievements"});
+    AchievementManager::getInstance().setToastsEnabled(wasOn);
 }
 
 void SettingsHud::resetCurrentProfile() {

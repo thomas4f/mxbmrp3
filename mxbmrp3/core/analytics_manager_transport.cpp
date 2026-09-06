@@ -331,7 +331,7 @@ bool AnalyticsManager::fetchRemoteConfig(std::string& out) {
     return !out.empty();
 }
 
-void AnalyticsManager::postSync(const std::wstring& host, const std::string& body,
+void AnalyticsManager::postSync(const std::wstring& host, const wchar_t* path, const std::string& body,
                                 unsigned long timeoutMs) {
 #if defined(MXBMRP3_TEST_BUILD)
     if (s_testCaptureMode) return;   // dry-run: a test build never sends
@@ -349,7 +349,7 @@ void AnalyticsManager::postSync(const std::wstring& host, const std::string& bod
                                         INTERNET_DEFAULT_HTTPS_PORT, 0);
     if (!hConnect) { WinHttpCloseHandle(hSession); return; }
 
-    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"POST", L"/api/v0/events",
+    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"POST", path,
                                             NULL, WINHTTP_NO_REFERER,
                                             WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
     if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return; }
@@ -365,9 +365,9 @@ void AnalyticsManager::postSync(const std::wstring& host, const std::string& bod
         DWORD size = sizeof(status);
         WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
                             WINHTTP_HEADER_NAME_BY_INDEX, &status, &size, WINHTTP_NO_HEADER_INDEX);
-        DEBUG_INFO_F("AnalyticsManager: event POST (HTTP %lu)", status);
+        DEBUG_INFO_F("AnalyticsManager: POST %ls (HTTP %lu)", path, status);
     } else {
-        DEBUG_INFO_F("AnalyticsManager: event POST failed (WinHTTP error %lu)", GetLastError());
+        DEBUG_INFO_F("AnalyticsManager: POST %ls failed (WinHTTP error %lu)", path, GetLastError());
     }
 
     WinHttpCloseHandle(hRequest);

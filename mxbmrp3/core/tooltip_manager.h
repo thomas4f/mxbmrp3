@@ -35,11 +35,23 @@ public:
         return (it != m.end()) ? it->second : "";
     }
 
-    // Get control tooltip by control ID (e.g., "common.visible", "standings.rows")
+    // Get control tooltip by control ID (e.g., "common.visible", "standings.rows").
+    // A DYNAMIC entry (below) wins over the compiled table.
     const char* getControlTooltip(const char* controlId) const {
+        auto dyn = m_dynamic.find(controlId);
+        if (dyn != m_dynamic.end()) return dyn->second.c_str();
         const auto& m = controls();
         auto it = m.find(controlId);
         return (it != m.end()) ? it->second : "";
+    }
+
+    // A tooltip whose text lives with its DATA rather than in the table above:
+    // the achievements tab registers one per catalogue row ("achievements.<id>")
+    // from Achievements::Entry::tooltip, so the row and its hover are one edit.
+    // Called from a settings rebuild, not per frame; the length limit above still
+    // applies (test_achievements.cpp wraps them).
+    void setDynamicControlTooltip(const char* controlId, const char* text) {
+        m_dynamic[controlId] = text;
     }
 
     // Enumerate every tooltip (tab + control) as {id, text}. For tests/tooling —
@@ -56,6 +68,8 @@ private:
     ~TooltipManager() = default;
     TooltipManager(const TooltipManager&) = delete;
     TooltipManager& operator=(const TooltipManager&) = delete;
+
+    std::unordered_map<std::string, std::string> m_dynamic;
 
     using Map = std::unordered_map<std::string, const char*>;
 
@@ -87,6 +101,7 @@ private:
             {"event_log", "Scrolling feed of race events: session changes, fastest laps, penalties, and finishes."},
             {"fmx", "Freestyle trick detection with scoring, chain combos, and rotation visualization."},
             {"stats", "Per-track statistics including lap counts, crashes, gear shifts, top speed, and riding time."},
+            {"achievements", "Lifetime milestones as Bronze-to-Platinum progress bars, plus a toast when a tier is earned."},
             {"helmet", "First-person helmet overlay with lean tilt and vibration."},
             {"director", "Auto-director for spectating: follows the most interesting rider - battles, passes, hot laps."},
             {"spotter", "Spoken race callouts - fastest laps, leader changes, penalties - with optional subtitles."},
@@ -98,6 +113,8 @@ private:
         static const Map m = {
             {"common.visible", "Show or hide this element during gameplay."},
             {"common.title", "Toggle the title bar at the top of this HUD."},
+            {"pager.prev", "Previous page."},
+            {"pager.next", "Next page."},
             {"common.texture", "Pick the artwork this element draws from. Elements whose artwork is mandatory have no Off option."},
             {"common.opacity", "Background transparency. 0% is fully transparent, 100% is fully opaque."},
             {"common.scale", "Size multiplier. Affects all text and graphics in this HUD."},
@@ -373,6 +390,8 @@ private:
             {"stats.show_lap", "Show last completed lap column with per-lap stats."},
             {"stats.show_session", "Show current session column with accumulated session stats."},
             {"stats.show_alltime", "Show all-time column with lifetime stats for this track and bike."},
+            {"achievements.toasts", "The toast card shown when a tier is earned. Off still tracks."},
+            {"achievements.toast_duration", "How long each toast stays on screen."},
 
             {"fmx.chain_rows", "Tricks shown in the stack. Off hides it, 1 shows the active trick, 2+ shows history."},
             {"fmx.row_trick_stats", "Show duration, distance, and peak rotation below the active trick name."},

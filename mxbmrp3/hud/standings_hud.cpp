@@ -34,7 +34,7 @@ void StandingsHud::update() {
     // Handle mouse input for rider selection (LMB for clicking, RMB for dragging)
     const InputManager& input = InputManager::getInstance();
 
-    if (input.getLeftButton().isClicked()) {
+    if (input.getLeftButton().isClicked() && !isHeldBack()) {
         // Shift into build space so rider rows line up when dragged on the companion.
         CursorPosition cursor = input.getCursorPosition();
         mapCursorToHudSpace(cursor.x, cursor.y);

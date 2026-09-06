@@ -86,6 +86,21 @@ for f in mxbmrp3/hud/*.cpp mxbmrp3/core/hud_manager.cpp mxbmrp3/core/plugin_data
     fi
 done
 
+# THE SECOND HALF: a HUD that hit-tests its own clicks (reads the left button)
+# must also ask whether it is on screen at all -- BaseHud::isHeldBack(), the
+# hide hotkeys and the Direct GL prompt hide at DRAW time and leave the
+# visibility flags alone, so a visibility gate alone let a hidden crash-counter
+# button or standings row keep taking the click (hidden_input_test.cpp). A file
+# that legitimately reads the button without it says why with
+# `// held-back-exempt: <reason>` (the prompt itself, the settings chrome).
+for f in mxbmrp3/hud/*.cpp; do
+    grep -q 'getLeftButton()' "$f" || continue
+    grep -q 'isHeldBack()' "$f" && continue
+    grep -q 'held-back-exempt:' "$f" && continue
+    echo "  $f: reads getLeftButton() with no isHeldBack() gate"
+    fail=1
+done
+
 if [[ $fail -ne 0 ]]; then
     cat <<'EOF'
 
@@ -96,6 +111,9 @@ the companion window must still update — see CLAUDE.md Maintenance Invariants)
 If the game-surface flag really is correct there (active-surface-only element,
 toggle-transition logic), say why with a `// vis-gate: <reason>` annotation on
 the same line or the line above.
+A file listed as reading getLeftButton() with no isHeldBack() gate hit-tests
+its own clicks while a hide hotkey or the Direct GL prompt may have taken it
+off screen: gate the click on isHeldBack(), or annotate `// held-back-exempt:`.
 EOF
     exit 1
 fi

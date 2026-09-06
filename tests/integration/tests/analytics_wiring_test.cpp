@@ -43,6 +43,14 @@ TEST_CASE("analytics wiring: app_started always built; sampling gates session_en
     CHECK(has(app, "\"feat_companion\""));                            // companion HUD window adoption flag
     CHECK(has(app, "\"feat_thread\""));                               // plugin worker thread adoption flag
     CHECK(has(app, "\"feat_hwaccel\""));                              // GPU-rendering setting for both windows
+    CHECK(has(app, "\"ach_pct\""));                                   // 2.20.0: achievement tiers earned, percent
+    CHECK(has(app, "\"ach_unlocked\""));                              // 2.20.0: achievements earned at any tier
+    // 2.21.0: a row with a tier rides along by id; a locked one is absent.
+    CHECK_FALSE(has(app, "\"ach_config_reloads\""));
+    host.configReloaded();                                             // Tinkerer Bronze
+    const std::string earned = host.analyticsAppStarted();
+    CHECK(has(earned, "\"ach_config_reloads\":1"));
+    CHECK_FALSE(has(earned, "\"ach_races\""));
     CHECK(has(app, "\"isDebug\":true"));   // capture mode routes to the debug bucket (belt-and-suspenders)
 
     // --- panel_theme: the label, through the REAL AssetManager lookup. ---
@@ -107,6 +115,18 @@ TEST_CASE("analytics wiring: app_started always built; sampling gates session_en
     CHECK(has(crash, "mxbmrp3.dlo+0xeaab4"));
     // Access-violation sub-type also rides along (2.13.0).
     CHECK(has(crash, "\"av_type\":\"read\""));
+    // The same crash once more as an error report for the Errors page (2.22.0):
+    // one object, grouped by module, the whole walk one frame per line - a frame
+    // the event's 180-character stack could not carry is here.
+    std::string report;
+    CHECK(host.analyticsDrainErrors(report) == 1);
+    CHECK(has(report, "\"errorType\":\"mxbikes.exe\""));
+    CHECK(has(report, "mxbikes.exe+0x2a42f0 0xC0000005 read game"));
+    CHECK(has(report, "\"severity\":\"fatal\""));
+    CHECK(has(report, "\"kind\":\"crash\""));
+    CHECK(has(report, "mxbmrp3.dlo+0xeaab4\\nmxbmrp3.dlo+0x1234\\nntdll.dll+0x1234\\nkernel32.dll+0x5678"));
+    CHECK(has(report, "\"appVersion\":\"9.9.9\""));   // the version that CRASHED, from the marker
+    CHECK_FALSE(has(report, "\"eventName\""));         // not an event
 
     // --- Null-frame attribution contract of the backtrace resolver. ---
     // A call through a null function pointer (Rip==0) must resolve to the

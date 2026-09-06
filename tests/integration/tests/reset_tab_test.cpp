@@ -49,6 +49,9 @@ bool preservedByDesign(const std::string& tab, const ini::Key& k) {
     // Which page the menu is on. The sweep opens each tab in turn, so this differs
     // by construction; it is navigation state, not a setting.
     if (section == "Profiles" && key == "activeTab") return true;
+    // The file's own hash (exploration_stats.h): differs whenever anything above
+    // it does, so it can only ever echo another difference.
+    if (section == "Fingerprint") return true;
 
     // Visibility: a per-tab reset must not hide the element the user is
     // positioning (resetHudsToFactoryDefaults' keepVisibility). The Widgets tab is

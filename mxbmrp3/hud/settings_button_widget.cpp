@@ -68,6 +68,7 @@ bool SettingsButtonWidget::isClicked() const {
         return false;
     }
 
+    // held-back-exempt: the button stays live under every hide toggle; it is how the HUD comes back
     const MouseButton& leftButton = input.getLeftButton();
     if (!leftButton.isClicked()) {
         return false;

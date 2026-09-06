@@ -129,7 +129,7 @@ void MapHud::update() {
 
     if (canSwitchRider) {
         InputManager& input = InputManager::getInstance();
-        if (input.getLeftButton().isClicked()) {
+        if (input.getLeftButton().isClicked() && !isHeldBack()) {
             // Shift into build space so click-to-switch lands right when the map is
             // dragged to a different spot on the companion (no-op in-game).
             CursorPosition cursor = input.getCursorPosition();

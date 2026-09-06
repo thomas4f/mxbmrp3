@@ -414,7 +414,7 @@ void RecordsHud::update() {
         }
 
         // Handle clicks
-        if (inputManager.getLeftButton().isClicked() && isPointInBounds(mouseX, mouseY)) {
+        if (inputManager.getLeftButton().isClicked() && !isHeldBack() && isPointInBounds(mouseX, mouseY)) {
             handleClick(mouseX, mouseY);
         }
     }

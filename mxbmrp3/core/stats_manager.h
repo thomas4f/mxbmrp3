@@ -5,6 +5,9 @@
 // ============================================================================
 #pragma once
 
+#include "exploration_stats.h"
+
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <ctime>
@@ -74,6 +77,18 @@ struct GlobalStats {
     int fastestLapCount = 0;          // Times set overall fastest lap (bestFlag==2)
     int64_t penaltyTimeMs = 0;          // Accumulated penalty time in ms
     int breakoutHighScore = 0;          // Easter egg Breakout game high score
+    // Achievement feeds that no per-track record carries: races finished with
+    // zero session crashes (Rubber Side Down) and stored personal bests (Personal
+    // Best). Counted where the event happens, persisted with the rest.
+    int cleanRaceCount = 0;
+    int pbCount = 0;
+    int rainRaceCount = 0;      // finished with the session's weather reported Rainy
+    int bigGridRaceCount = 0;   // finished on a grid of BIG_GRID_ENTRIES or more
+    int maxSessionLaps = 0;     // most valid laps in one session
+    int64_t maxSessionTimeMs = 0;   // longest single session on track
+    int penaltyFreeStreak = 0;      // races finished in a row without a penalty (resets)
+    int bestPenaltyFreeStreak = 0;  // the longest such run ever
+    int pbLeaps = 0;                // personal bests beaten by a full second or more
     // THE CRASH TALLY the CrashWidget shows, and the only counter here the user
     // clears themselves.
     //
@@ -85,9 +100,62 @@ struct GlobalStats {
     int crashTally = 0;
 };
 
+// Lifetime FMX totals, fed by FmxManager when a chain COMPLETES (the same rule
+// its session totals follow: a chain ending in a crash earns nothing). Kept
+// here rather than in FmxManager because this is the file they persist in.
+struct FmxLifetimeStats {
+    int tricksLanded = 0;
+    int64_t totalScore = 0;
+    int backflips = 0;
+    int frontflips = 0;
+    int whips = 0;
+    int scrubs = 0;
+    int oppos = 0;
+    int turnDowns = 0;
+    float longestAirtimeSec = 0.0f;
+    float longestWheelieSec = 0.0f;
+    double wheelieDistanceM = 0.0;
+    int bestChainScore = 0;
+    // Trick KINDS landed at least once, by Fmx::getTrickIniKey name (a left and a
+    // right whip are one kind). Names, never enum indices: the enum reorders.
+    std::set<std::string> kinds;
+};
+
+// One landed trick, as FmxManager reports it: the kind name, and the shape the
+// achievements read (a flip, airborne, how long, how far, on the back wheel).
+struct FmxTrickSample {
+    const char* kind = "";
+    bool backflip = false;
+    bool frontflip = false;
+    bool whip = false;       // the named air tricks, left or right
+    bool scrub = false;
+    bool oppo = false;
+    bool turnDown = false;
+    bool airborne = false;
+    bool wheelie = false;
+    bool shred = false;      // burnout, donut or drift: rear tyre time (Tyre Shredder)
+    float durationSec = 0.0f;
+    float distanceM = 0.0f;
+};
+
 class StatsManager {
 public:
     static StatsManager& getInstance();
+
+    // A "big grid", for the Crowd Surfer achievement: entries in the session at
+    // the finish, the player included.
+    static constexpr int BIG_GRID_ENTRIES = 20;
+
+    // The exploration and hidden achievement signals, persisted in this file
+    // under "exploration" (see exploration_stats.h).
+    ExplorationStats& exploration() { return m_exploration; }
+    const ExplorationStats& exploration() const { return m_exploration; }
+    bool raceFinishRecorded() const { return m_raceFinishRecorded; }
+    // RunDeinit is "bike leaves the track" (a pit stop too), so leaving a race
+    // unfinished is ARMED there and counted (Rage Quit) only when the race is
+    // gone for good: the session changes or the event ends. A finish disarms.
+    void armRaceLeft() { m_raceLeftArmed = true; }
+    static constexpr int PB_LEAP_MS = 1000;   // a PB beaten by this much is a Leap Forward
 
     // Lifecycle
     void load(const char* savePath);
@@ -105,6 +173,9 @@ public:
     void tryRecordRaceFinish(const class PluginData& pd);
     void clearPlayerFastestLap();   // Called when another rider sets a faster lap
     void recordPenalty(int penaltyTimeMs, bool isRace);
+    // FMX: every trick of a completed chain, then the chain's banked score.
+    void recordFmxTrick(const FmxTrickSample& trick);
+    void recordFmxChainBanked(int chainScore);
 
     // Combined per-frame telemetry update — handles distance, top speed, crash and gear shift detection.
     // isCrashed uses edge detection (only counts transitions).
@@ -186,6 +257,18 @@ public:
     int getGlobalTotalGearShifts() const;
     int getGlobalTotalPenalties() const;
     int64_t getGlobalTotalPenaltyTimeMs() const;
+    // The most laps at any one track (every bike counted) and the longest single
+    // bike odometer, in metres: the Local Hero / Loyal achievements. On the
+    // same cache as the totals, since a lap or a metre moves them.
+    int getMaxLapsAtOneTrack() const;
+    double getMaxOdometerOnOneBike() const;
+    // Distinct tracks / bikes ever ridden (the Globetrotter / Collector
+    // achievements). Cached; recomputed only when a context is set or an entry
+    // is cleared, so the per-event achievement evaluation never walks the maps.
+    int getDistinctTrackCount() const;
+    int getDistinctBikeCount() const;
+    int getDistinctBikeClassCount() const;   // categories the ridden bikes span (Class Act)
+    const FmxLifetimeStats& getFmxLifetime() const { return m_fmx; }
 
     // ========================================================================
     // Clear
@@ -240,6 +323,7 @@ private:
     std::unordered_map<std::string, StatsPersonalBestData> m_personalBests;
     std::unordered_map<std::string, double> m_bikeOdometers;
     GlobalStats m_globalStats;
+    FmxLifetimeStats m_fmx;
 
     // Current context (cached for telemetry-rate calls)
     std::string m_currentTrackId;
@@ -272,6 +356,9 @@ private:
     bool m_wasCrashed = false;
     int m_lastGear = -1;              // Previous gear for shift edge detection (-1 = uninitialized)
     bool m_raceFinishRecorded = false;
+    bool m_raceLeftArmed = false;
+    void consumeRaceLeft();
+    ExplorationStats m_exploration;
     bool m_playerHasFastestLapInRace = false;
 
     // Per-lap transients — accumulate during current lap, snapshot to "last" on lap completion
@@ -299,7 +386,13 @@ private:
     bool m_hasLastOdometerUpdateTime = false;
     double m_unsavedDistance = 0.0;           // Accumulated distance since last dirty mark
 
-    // Cached global totals (updated incrementally, recomputed on load/clear)
+    // Cached global totals. Rare mutations (a lap, a penalty, a session end,
+    // load/clear) set the dirty flag and the next read recomputes over every
+    // track+bike record; the three TELEMETRY-RATE mutations (crash edge, gear
+    // shift, the odometer's per-tick distance) instead bump the cache in place
+    // while it is clean, so a gear shift never costs the O(records) walk -- which
+    // every achievement evaluation, not only a visible Stats HUD, would otherwise
+    // trigger. While dirty they leave it alone: the pending recompute covers them.
     mutable int m_cachedTotalLaps = 0;
     mutable int64_t m_cachedTotalTimeMs = 0;
     mutable int m_cachedTotalCrashes = 0;
@@ -307,9 +400,19 @@ private:
     mutable int m_cachedTotalPenalties = 0;
     mutable int64_t m_cachedTotalPenaltyTimeMs = 0;
     mutable double m_cachedTotalOdometer = 0.0;
+    mutable int m_cachedMaxTrackLaps = 0;
+    mutable double m_cachedMaxBikeOdometer = 0.0;
     mutable bool m_globalTotalsDirty = true;
 
     void recomputeGlobalTotals() const;
+
+    // Distinct track/bike counts. Separate flag from m_globalTotalsDirty: that one
+    // flips on every gear shift, and these only change when a KEY appears or goes.
+    mutable int m_cachedDistinctTracks = 0;
+    mutable int m_cachedDistinctBikes = 0;
+    mutable int m_cachedDistinctBikeClasses = 0;
+    mutable bool m_distinctDirty = true;
+    void recomputeDistinctCounts() const;
 
     // Persistence
     std::string m_savePath;

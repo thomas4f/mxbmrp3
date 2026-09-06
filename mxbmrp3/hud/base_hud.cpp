@@ -5,6 +5,7 @@
 #include "base_hud.h"
 #include "../core/layout_config.h"
 #include "../core/plugin_constants.h"
+#include "../core/hud_manager.h"
 #include "../core/plugin_manager.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
@@ -20,6 +21,10 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+
+bool BaseHud::isHeldBack() const {
+    return HudManager::getInstance().isHeldBack(this);
+}
 
 bool BaseHud::handleMouseInput(bool allowInput) {
     if (!m_bDraggable) return false;

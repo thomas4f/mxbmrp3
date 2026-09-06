@@ -53,6 +53,7 @@
 #include "../hud/pointer_widget.h"
 #include "../hud/rumble_hud.h"
 #include "../hud/director_widget.h"
+#include "../hud/achievement_widget.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
 #include "../hud/gforce_widget.h"
@@ -191,6 +192,7 @@ void HudManager::initialize() {
     createHud(m_pFuel, "fuel_widget");
     createHud(m_pRumble, "rumble_hud");
     createHud(m_pDirector, "director_widget");
+    createHud(m_pAchievement, "achievement_widget");  // toasts; content-gated on [Achievements] visible
     createHud(m_pGamepad, "gamepad_widget");
     createHud(m_pLean, "lean_widget");
     createHud(m_pGforce, "gforce_widget");

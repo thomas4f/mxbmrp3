@@ -37,6 +37,11 @@ constexpr int MAX_FRAMES = 16;
 // char string-prop cap so the value is never truncated mid-frame at ingest.
 constexpr int MAX_STACK_CHARS = 176;
 
+// Ceiling on the FULL backtrace string the marker also carries (stack_full, for
+// the error report, whose field takes 10,000): every one of MAX_FRAMES at the
+// widest a frame formats to, so nothing the walk found is dropped.
+constexpr int MAX_FULL_STACK_CHARS = MAX_FRAMES * 48;
+
 // Module basename buffer size (matches the crash handler's leaf resolver).
 constexpr int MODULE_NAME_SIZE = 64;
 

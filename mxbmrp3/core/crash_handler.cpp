@@ -302,10 +302,16 @@ LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
         // "" if the walk found nothing.
         char stackStr[CrashStack::MAX_STACK_CHARS + 1];
         stackStr[0] = '\0';
+        // The same walk, EVERY captured frame, for the error report (2.22.0),
+        // whose stackTrace field is not under the string-prop cap the short one
+        // is cut to. Same safe characters, so it embeds like the short one.
+        char stackFull[CrashStack::MAX_FULL_STACK_CHARS + 1];
+        stackFull[0] = '\0';
         if (info->ContextRecord) {
             CrashStack::Frame frames[CrashStack::MAX_FRAMES];
             int nf = captureBacktrace(info->ContextRecord, frames, CrashStack::MAX_FRAMES);
             CrashStack::formatFrameList(stackStr, sizeof(stackStr), frames, nf);
+            CrashStack::formatFrameList(stackFull, sizeof(stackFull), frames, nf, CrashStack::MAX_FULL_STACK_CHARS);
         }
 
         char marker[MAX_PATH];
@@ -325,13 +331,17 @@ LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
             stackFrag[0] = '\0';
             if (stackStr[0])
                 snprintf(stackFrag, sizeof(stackFrag), ",\"stack\":\"%s\"", stackStr);
+            char fullFrag[CrashStack::MAX_FULL_STACK_CHARS + 24];
+            fullFrag[0] = '\0';
+            if (stackFull[0])
+                snprintf(fullFrag, sizeof(fullFrag), ",\"stack_full\":\"%s\"", stackFull);
 
-            char bodyBuf[768];
+            char bodyBuf[768 + CrashStack::MAX_FULL_STACK_CHARS + 24];
             int wB = snprintf(bodyBuf, sizeof(bodyBuf),
                 "{\"fault\":\"%s+0x%llx\",\"code\":\"0x%08lX\",\"plugin\":\"%s\","
-                "\"game_build\":\"0x%08lX\",\"host\":\"%s\",\"time\":%llu%s%s}",
+                "\"game_build\":\"0x%08lX\",\"host\":\"%s\",\"time\":%llu%s%s%s}",
                 modName, offset, static_cast<unsigned long>(code),
-                PluginConstants::PLUGIN_VERSION, gameBuild, hostExe, epoch, avFrag, stackFrag);
+                PluginConstants::PLUGIN_VERSION, gameBuild, hostExe, epoch, avFrag, stackFrag, fullFrag);
             if (wB > 0 && wB < static_cast<int>(sizeof(bodyBuf))) {
                 HANDLE hMarker = CreateFileA(marker, GENERIC_WRITE, 0, nullptr,
                                              CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);

@@ -71,6 +71,14 @@ public:
     // (the companion window never takes focus, so it's never the foreground-derived
     // active surface under Wine). -1 clears the override.
     void testForceActiveSurface(int companion) { m_testForceSurface = companion; }
+    // Stand in for the mouse: while `on`, updateFrame() takes this cursor (UI
+    // space) and button state (bit 0 left, bit 1 right) instead of polling
+    // Win32, so a test can click or drag a HUD through the same frame path the
+    // game drives. Edge detection (isClicked/isReleased) still comes from
+    // consecutive frames.
+    void testInjectMouse(bool on, float x, float y, int buttons) {
+        m_testMouseOn = on; m_testMouseX = x; m_testMouseY = y; m_testButtons = buttons;
+    }
 #endif
 
     void initialize();
@@ -154,6 +162,9 @@ private:
     Surface m_activeSurface;   // Which surface m_activeWindow represents
 #ifdef MXBMRP3_TEST_BUILD
     int m_testForceSurface = -1;   // -1 = off, 0 = force Game, 1 = force Companion
+    bool m_testMouseOn = false;    // testInjectMouse
+    float m_testMouseX = 0.0f, m_testMouseY = 0.0f;
+    int m_testButtons = 0;
 #endif
 
     // Frame state

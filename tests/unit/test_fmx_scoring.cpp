@@ -14,6 +14,8 @@
 #include "doctest.h"
 
 #include "core/fmx_scoring.h"
+#include <cmath>
+#include <cstdio>
 
 using namespace Fmx;
 
@@ -113,4 +115,203 @@ TEST_CASE("fmx chain: L/R variants are one type, and the extra active trick coun
     // One banked trick + a different in-progress (extra) trick -> +0.5 -> 1.5.
     std::vector<TrickInstance> one = {makeTrick(TrickType::WHEELIE, 10, 1.0f, 0.0f)};
     CHECK(calculateChainMultiplier(one, TrickType::BACKFLIP, cfg) == doctest::Approx(1.5f));
+}
+
+// ============================================================================
+// docs/tricks.md is GENERATED from fmx_types.h (the trick table, its base
+// scores, axes, INI keys and thresholds), FmxConfig's defaults and the scoring
+// in fmx_scoring.h, then diffed against the committed copy, the way the
+// achievements overview and the spotter reference are. A trick added, renamed
+// or re-scored changes the generated text, this fails, and committing the
+// regenerated file is the fix. The rule column is worded here and NUMBERED
+// from the code: the words can only go stale if the detector's shape changes,
+// which is a review matter; the thresholds cannot.
+// ============================================================================
+#include <fstream>
+#include <sstream>
+#include <string>
+
+namespace {
+
+std::string num(float v) {
+    char buf[32];
+    if (v == static_cast<int>(v)) snprintf(buf, sizeof(buf), "%d", static_cast<int>(v));
+    else snprintf(buf, sizeof(buf), "%g", v);
+    return buf;
+}
+
+std::string deg(float v)  { return num(v) + " deg"; }
+std::string secs(float v) { return num(v) + " s"; }
+// Speeds are m/s in the code and km/h to a rider.
+std::string kmh(float v)  { return num(std::round(v * 36.0f) / 10.0f) + " km/h"; }
+
+// The stationary gate lives in GroundContactState as a comparison, not a
+// named constant: read it off the struct so the number here is the real one.
+float stationaryBelow() {
+    GroundContactState g;
+    for (int tenths = 0; tenths < 200; ++tenths) {
+        g.vehicleSpeed = tenths / 10.0f;
+        if (!g.isStationary()) return g.vehicleSpeed;
+    }
+    return 0.0f;
+}
+
+const char* axisName(RotationAxis a) {
+    switch (a) {
+        case RotationAxis::PITCH: return "pitch";
+        case RotationAxis::YAW:   return "yaw";
+        case RotationAxis::ROLL:  return "roll";
+        default:                  return "-";
+    }
+}
+
+// What fills the progress bar to 100%, from FmxManager::calculateProgress.
+std::string fullProgress(TrickType t, const FmxConfig& c) {
+    switch (t) {
+        case TrickType::BACKFLIP:
+        case TrickType::FRONTFLIP:         return deg(c.flipCompletionAngle) + " of pitch";
+        case TrickType::BARREL_ROLL_LEFT:  return deg(c.barrelRollCompletionAngle) + " of roll";
+        case TrickType::SPIN_LEFT:         return deg(c.spinCompletionAngle) + " of yaw";
+        case TrickType::SCRUB_LEFT:        return deg(c.scrubMaxAngle) + " of roll";
+        case TrickType::WHIP_LEFT:
+        case TrickType::OPPO_LEFT:
+        case TrickType::TURN_DOWN_LEFT:    return deg(c.whipMaxAngle) + " of yaw";
+        case TrickType::AIR:               return secs(AIR_TRICK_FULL_DURATION) + " airborne";
+        case TrickType::WHEELIE:
+        case TrickType::COASTER_WHEELIE:
+        case TrickType::ENDO:
+        case TrickType::STOPPIE:           return secs(BALANCE_TRICK_FULL_DURATION) + " held";
+        case TrickType::PIVOT_LEFT:        return deg(c.pivotCompletionAngle) + " of yaw";
+        case TrickType::BURNOUT:
+        case TrickType::DONUT:
+        case TrickType::DRIFT_LEFT:        return secs(GROUND_TRICK_FULL_DURATION) + " held";
+        case TrickType::FLAT_360_LEFT:     return deg(c.flipCompletionAngle) + " of pitch or roll";
+        default:                           return "-";
+    }
+}
+
+// How the detector recognises each trick (FmxManager::classifyCurrentTrick),
+// with the gates it reads from FmxConfig and the fmx_types.h thresholds.
+std::string recognisedBy(TrickType t, const FmxConfig& c) {
+    const std::string still = "under " + kmh(stationaryBelow());
+    switch (t) {
+        case TrickType::WHEELIE:
+            return "Rear wheel only, nose up past " + deg(c.wheelieAngleThreshold) +
+                   " (ends below half that)";
+        case TrickType::COASTER_WHEELIE:
+            return "A wheelie with the clutch held in; letting it out drops it back to a wheelie";
+        case TrickType::ENDO:
+            return "Front wheel only, nose down past " + deg(-c.endoAngleThreshold) + ", moving";
+        case TrickType::STOPPIE:
+            return "An endo " + still;
+        case TrickType::BURNOUT:
+            return "Rear wheel spinning " + kmh(c.burnoutSlipThreshold) + " faster than the bike, " + still;
+        case TrickType::DONUT:
+            return "A burnout turned through " + deg(c.donutYawThreshold);
+        case TrickType::DRIFT_LEFT:
+            return "Sliding at a slip angle past " + deg(c.driftSlipAngleThreshold) + ", moving";
+        case TrickType::PIVOT_LEFT:
+            return "A wheelie or endo turned through " + deg(c.pivotMinYaw) + " under " + kmh(c.pivotMaxSpeed);
+        case TrickType::AIR:
+            return "Airborne " + secs(c.airCommitTime) + " with no rotation past a threshold";
+        case TrickType::BACKFLIP:
+            return "Pitched backward through " + deg(FULL_ROTATION_MIN);
+        case TrickType::FRONTFLIP:
+            return "Pitched forward through " + deg(FULL_ROTATION_MIN);
+        case TrickType::BARREL_ROLL_LEFT:
+            return "Rolled through " + deg(FULL_ROTATION_MIN);
+        case TrickType::SCRUB_LEFT:
+            return "Rolled, or took off leaned, past " + deg(PARTIAL_ROTATION_MIN) + ", short of a barrel roll";
+        case TrickType::WHIP_LEFT:
+            return "Yawed past " + deg(PARTIAL_ROTATION_MIN) + " with the nose level, short of a spin";
+        case TrickType::SPIN_LEFT:
+            return "Yawed through " + deg(FULL_ROTATION_MIN);
+        case TrickType::OPPO_LEFT:
+            return "Yawed past " + deg(TURN_YAW_THRESHOLD) + " with the nose up past " + deg(TURN_PITCH_THRESHOLD);
+        case TrickType::TURN_DOWN_LEFT:
+            return "Yawed past " + deg(TURN_YAW_THRESHOLD) + " with the nose down past " + deg(TURN_PITCH_THRESHOLD);
+        case TrickType::FLAT_360_LEFT:
+            return "A flip rolled between " + deg(c.flat360MinRoll) + " and 180 deg";
+        default:
+            return "-";
+    }
+}
+
+void trickTable(std::ostringstream& out, bool air, const FmxConfig& c) {
+    out << "| Trick | INI key | Base | Scored on | Full progress | Recognised by |\n";
+    out << "|---|---|---|---|---|---|\n";
+    for (int i = 1; i < static_cast<int>(TrickType::COUNT); ++i) {
+        const auto t = static_cast<TrickType>(i);
+        if (isAirTrick(t) != air) continue;
+        if (getTrickDirection(t) == TrickDirection::RIGHT) continue;   // one row per pair
+        std::string name = getTrickName(t);
+        const bool paired = getTrickDirection(t) == TrickDirection::LEFT;
+        if (paired && name.size() > 2 && name.compare(name.size() - 2, 2, " L") == 0) name.resize(name.size() - 2);
+        out << "| " << name << (paired ? " (L/R)" : "")
+            << " | `" << getTrickIniKey(t) << "`"
+            << " | " << getTrickBaseScore(t)
+            << " | " << axisName(getPrimaryAxis(t))
+            << " | " << fullProgress(t, c)
+            << " | " << recognisedBy(t, c) << " |\n";
+    }
+    out << "\n";
+}
+
+std::string generateTricksDoc() {
+    const FmxConfig c;
+    std::ostringstream out;
+    out << "# FMX tricks\n\n";
+    out << "GENERATED from `mxbmrp3/core/fmx_types.h` and `mxbmrp3/core/fmx_scoring.h` by "
+           "`tests/unit/test_fmx_scoring.cpp` - do not edit. When a trick or a number changes, run the "
+           "unit gate and copy `/tmp/tricks.new.md` over this file.\n\n";
+    out << "What the FMX HUD recognises, what each trick is worth and how a score is built, at the "
+           "defaults. Left and right variants are one trick here, as in the settings: `trickEnabled_<INI key>=0` "
+           "under `[FmxHud]` in the settings file turns one off, both directions at once. *Base* is the score before the "
+           "multipliers below; *Scored on* is the axis whose rotation scales it; *Full progress* is what "
+           "fills the HUD's bar.\n\n";
+    out << "## Ground tricks\n\n";
+    out << "A ground trick counts once it reaches " << num(MIN_GROUND_TRICK_PROGRESS * 100.0f)
+        << "% of its full progress, so a momentary blip never scores.\n\n";
+    trickTable(out, false, c);
+    out << "## Air tricks\n\n";
+    out << "An air trick classifies once the bike has been off the ground " << secs(c.airCommitTime)
+        << "; before that a bump is not a trick. Full rotations (" << deg(FULL_ROTATION_MIN)
+        << ") are read first, then the turns, then whip and scrub, then plain air.\n\n";
+    trickTable(out, true, c);
+    out << "## Scoring\n\n";
+    out << "- **Rotation.** A trick with an axis is scaled by its peak rotation over 360 deg, never below 1x: "
+           "a 540 deg backflip is 1.5x the base.\n";
+    out << "- **Air bonus.** An air trick is then scaled by 1 + " << num(c.durationBonusRate)
+        << " per second airborne + " << num(c.distanceBonusRate) << " per metre covered.\n";
+    out << "- **Ground bonus.** A ground trick is scaled by its duration over its full-progress time (never "
+           "below 1x) + " << num(c.distanceBonusRate) << " per metre covered, so a stationary trick earns "
+           "no distance.\n";
+    out << "- **Coaster.** A coaster wheelie adds up to " << COASTER_SCORE_BONUS
+        << " points, in proportion to how much of it the clutch was held, before the ground bonus.\n";
+    out << "- **Chain.** A landed trick is confirmed after " << secs(c.landingGracePeriod)
+        << " (a crash in that window fails it), then " << secs(c.chainPeriod)
+        << " are open for the next trick. Every trick after the first adds " << num(c.chainBonusPerTrick)
+        << " to the chain's multiplier (two tricks " << num(1.0f + c.chainBonusPerTrick) << "x, three "
+        << num(1.0f + 2.0f * c.chainBonusPerTrick) << "x); a trick already in the chain adds "
+        << num(c.repetitionPenalty) << "x what its previous occurrence did. A crash loses the whole chain.\n";
+    return out.str();
+}
+
+}  // namespace
+
+TEST_CASE("docs/tricks.md is current") {
+    const std::string generated = generateTricksDoc();
+    const std::string path = std::string(MXB_DOCS_DIR) + "/tricks.md";
+    const std::string fresh = "/tmp/tricks.new.md";
+    {
+        std::ofstream out(fresh, std::ios::binary);
+        if (out.good()) out << generated;
+    }
+    std::ifstream in(path, std::ios::binary);
+    REQUIRE_MESSAGE(in.good(), "missing " << path << " - seed it with: cp " << fresh << " " << path);
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    CHECK_MESSAGE(ss.str() == generated,
+                  "docs/tricks.md is stale: a trick or a number changed and the generated overview "
+                  "no longer matches. Review the diff, then: cp " << fresh << " " << path);
 }

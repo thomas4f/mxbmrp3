@@ -108,7 +108,7 @@ void SessionChartsHud::update() {
     int drawState = pluginData.getDrawState();
     if (drawState == ViewState::SPECTATE || drawState == ViewState::REPLAY) {
         InputManager& input = InputManager::getInstance();
-        if (input.getLeftButton().isClicked()) {
+        if (input.getLeftButton().isClicked() && !isHeldBack()) {
             // Shift into build space so tags line up when dragged on the companion.
             CursorPosition cursor = input.getCursorPosition();
             mapCursorToHudSpace(cursor.x, cursor.y);

@@ -105,7 +105,7 @@ void VersionWidget::handleClickDetection() {
     // Any-surface: the notification buttons are clickable on the companion too
     // (the hit-test below maps the cursor via mapCursorToHudSpace), so a widget
     // enabled only there must still process clicks.
-    if (!isVisibleAnySurface()) return;
+    if (!isVisibleAnySurface() || isHeldBack()) return;
 
     const InputManager& input = InputManager::getInstance();
     if (!input.isCursorEnabled()) return;

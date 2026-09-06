@@ -3,6 +3,7 @@
 // Privacy-friendly anonymous usage analytics (Aptabase).
 // ============================================================================
 #include "analytics_manager.h"
+#include "analytics_manager_internal.h"
 #include "analytics_remote_config.h"
 #include "analytics_endpoint.h"
 #include "atomic_file_writer.h"
@@ -11,6 +12,7 @@
 #include "hud_manager.h"
 #include "xinput_reader.h"
 #include "director_manager.h"
+#include "achievement_manager.h"
 #include "spotter_manager.h"
 #include "update_checker.h"
 #include "profile_manager.h"
@@ -56,6 +58,8 @@
 // transport TU share one flag; every access sits inside a member function.
 bool AnalyticsManager::s_testCaptureMode = false;
 #endif
+
+using namespace AnalyticsInternal;
 
 namespace {
 
@@ -116,7 +120,32 @@ constexpr const char* ANALYTICS_FILENAME = "mxbmrp3_analytics.json";
 //          "asked for GL". Whether it actually DREW is the more interesting
 //          number and is not knowable here -- the benchmark report's gl_drew
 //          carries that, and a field report carries the "unavailable" log line.
-constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.18.0";
+// 2.19.0 = added feat_achievements (achievement toasts shown; tracking itself is
+//          unconditional, so this is the display choice, like feat_helmet).
+// 2.20.0 = added ach_pct (tiers earned over listed tiers, percent; passes 100
+//          with hidden rows) and ach_unlocked (achievements earned at any tier)
+//          to app_started: how far the catalogue gets played, two numbers
+//          rather than a flag per row.
+// 2.21.0 = added ach_<id> = tier for every achievement at tier 1 or higher
+//          (the catalogue id, hidden rows included; absent = locked), so the
+//          report can show which ones get earned, Steam-style. SPARSE on
+//          purpose: a fresh install adds nothing, a veteran a few dozen small
+//          numbers, and the export grows with what was earned rather than
+//          with the catalogue. Aptabase caps a key at 40 characters and does
+//          not count props; the longest id here is well under that.
+// 2.22.0 = a crash is ALSO posted as one error report to /api/v0/error (the
+//          dashboard's Errors page, beta; its own quota). The crash EVENT is
+//          unchanged - the report tool and the known-crash join read that - so
+//          this is a second destination, not a move. errorType = the faulting
+//          module, errorMessage = fault, code, AV type, game build and the
+//          crash-time plugin version, stackTrace = the whole backtrace from the
+//          marker's stack_full (up to MAX_FRAMES; the event's stack stays cut to
+//          the string-prop cap), severity fatal, kind crash.
+constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.22.0";
+
+// The two Aptabase ingest paths a queued POST can name.
+constexpr const wchar_t* PATH_EVENTS = L"/api/v0/events";
+constexpr const wchar_t* PATH_ERROR  = L"/api/v0/error";
 
 // Build a UUID-v4 string from 16 cryptographically-random bytes. This is the
 // ONLY identifier we ever send — it is random (not derived from hardware or
@@ -145,48 +174,6 @@ std::string isoTimestamp() {
     snprintf(out, sizeof(out), "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
              st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond,
              st.wMilliseconds);
-    return std::string(out);
-}
-
-// Seconds since the Unix epoch (UTC).
-unsigned long long epochSecondsNow() {
-    FILETIME ft;
-    GetSystemTimeAsFileTime(&ft);
-    ULARGE_INTEGER u;
-    u.LowPart = ft.dwLowDateTime;
-    u.HighPart = ft.dwHighDateTime;
-    const unsigned long long EPOCH_DIFF_100NS = 116444736000000000ULL;
-    return (u.QuadPart - EPOCH_DIFF_100NS) / 10000000ULL;
-}
-
-// Per-launch session id, in Aptabase's exact format: epoch SECONDS * 1e8 plus
-// an 8-digit random suffix (an ~18-digit number). This is critical — Aptabase
-// derives the session's start time as (sessionId / 100000000), so a plain
-// epoch-millis id decodes to a 1970 session date and the event never appears in
-// the dashboard. Matches what Aptabase's own SDKs emit.
-std::string makeSessionId() {
-    FILETIME ft;
-    GetSystemTimeAsFileTime(&ft);
-    ULARGE_INTEGER u;
-    u.LowPart = ft.dwLowDateTime;
-    u.HighPart = ft.dwHighDateTime;
-    // FILETIME is 100ns ticks since 1601; convert to seconds since Unix epoch.
-    const unsigned long long EPOCH_DIFF_100NS = 116444736000000000ULL;
-    unsigned long long epochSeconds = (u.QuadPart - EPOCH_DIFF_100NS) / 10000000ULL;
-
-    // 8-digit random suffix (0..99,999,999).
-    unsigned int rnd = 0;
-    unsigned long long suffix;
-    if (BCRYPT_SUCCESS(BCryptGenRandom(nullptr, reinterpret_cast<unsigned char*>(&rnd),
-                                       sizeof(rnd), BCRYPT_USE_SYSTEM_PREFERRED_RNG))) {
-        suffix = rnd % 100000000ULL;
-    } else {
-        suffix = u.QuadPart % 100000000ULL;  // fallback: sub-second clock bits
-    }
-
-    unsigned long long sid = epochSeconds * 100000000ULL + suffix;
-    char out[32];
-    snprintf(out, sizeof(out), "%llu", sid);
     return std::string(out);
 }
 
@@ -524,6 +511,26 @@ std::string AnalyticsManager::buildEventBody() const {
     props["feat_updates"] = UpdateChecker::getInstance().isEnabled() ? 1 : 0;
     // Master widgets toggle: when off, no widget_* shows regardless of its flag.
     props["feat_widgets"] = HudManager::getInstance().areWidgetsEnabled() ? 1 : 0;
+    // 2.19.0: the achievement-toast master ([Achievements] visible). Tracking
+    // is unconditional, so this is the DISPLAY choice, like feat_helmet.
+    props["feat_achievements"] = AchievementManager::getInstance().isToastsEnabled() ? 1 : 0;
+    // 2.20.0: how far the catalogue gets played. Tiers earned over listed tiers
+    // (the Completionist figure; hidden rows count on top, so it can pass 100)
+    // and achievements earned at any tier (the tab's "Unlocked" count).
+    // Not while the dev-only devScale is on: a test session's inflated tiers
+    // would read as one install's real progress.
+    if (const AchievementManager& ach = AchievementManager::getInstance(); ach.getDevValueScale() == 1.0) {
+        const int tiers = ach.totalUnits();
+        props["ach_pct"] = static_cast<long long>(tiers > 0 ? (ach.earnedUnits() * 100) / tiers : 0);
+        props["ach_unlocked"] = static_cast<long long>(ach.earnedAchievements());
+        // 2.21.0: which ones, at what tier. Only rows with a tier, keyed by the
+        // catalogue id (stable, never renamed), so a reorder cannot shift them.
+        for (int i = 0; i < Achievements::COUNT; ++i) {
+            const int tier = ach.stateOf(i).tier;
+            if (tier <= 0) continue;
+            props[std::string("ach_") + Achievements::kCatalogue[i].id] = static_cast<long long>(tier);
+        }
+    }
     // Companion window (standalone HUD window): COMPANION or BOTH counts as enabled.
     props["feat_companion"] = (UiConfig::getInstance().getDisplayTarget() != DisplayTarget::IN_GAME) ? 1 : 0;
     // Experimental plugin worker thread (INI-only [Advanced] pluginThread): adoption rate.
@@ -652,6 +659,62 @@ std::string AnalyticsManager::buildSessionEventBody(const std::string& eventName
     return arr.dump();
 }
 
+std::string AnalyticsManager::buildErrorReportBody(const std::string& fault, const std::string& code,
+        const std::string& avType, const std::string& gameBuild, const std::string& pluginVer,
+        const std::string& stack) const {
+    using nlohmann::json;
+    // errorType: the faulting module alone, so the Errors page groups by where
+    // it faulted; the offset (which moves with every game build) is in the message.
+    const size_t plus = fault.find('+');
+    std::string type = plus == std::string::npos ? fault : fault.substr(0, plus);
+    if (type.empty()) type = "unknown";
+    if (type.size() > 100) type.resize(100);
+    std::string message = fault.empty() ? std::string("unknown") : fault;
+    if (!code.empty()) message += " " + code;
+    if (!avType.empty()) message += " " + avType;
+    if (!gameBuild.empty()) message += " game " + gameBuild;
+    if (!pluginVer.empty()) message += " plugin " + pluginVer;
+    // One frame per line, leaf first, as the dashboard renders a stack trace.
+    std::string trace;
+    for (size_t i = 0; i < stack.size();) {
+        const size_t sp = stack.find(' ', i);
+        const std::string frame = stack.substr(i, sp == std::string::npos ? std::string::npos : sp - i);
+        if (!frame.empty()) { if (!trace.empty()) trace += '\n'; trace += frame; }
+        if (sp == std::string::npos) break;
+        i = sp + 1;
+    }
+    if (trace.size() > 10000) trace.resize(10000);
+
+    json r;
+    r["errorType"] = type;
+    r["errorMessage"] = message;
+    r["stackTrace"] = trace;
+    r["timestamp"] = isoTimestamp();
+    r["platform"] = "Windows";
+    r["osName"] = osName();
+    // The Errors page prints osName and osVersion side by side, and our version
+    // string already leads with the product ("Windows 10 (7600)"), so it read
+    // "Windows Windows 10 (7600)" there. Drop the repeated word for this body
+    // only; the events keep the full string the report tool parses.
+    if (!m_osVersion.empty()) {
+        const std::string prefix = "Windows ";
+        r["osVersion"] = m_osVersion.compare(0, prefix.size(), prefix) == 0
+                       ? m_osVersion.substr(prefix.size()) : m_osVersion;
+    }
+    // The version that CRASHED, when the marker pinned it; else the reporting one.
+    r["appVersion"] = pluginVer.empty() ? std::string(PluginConstants::PLUGIN_VERSION) : pluginVer;
+    r["sdkVersion"] = ANALYTICS_SDK_VERSION;
+    r["sessionId"] = m_sessionId;
+    r["severity"] = "fatal";
+    r["kind"] = "crash";
+#ifdef _DEBUG
+    r["isDebug"] = true;
+#else
+    r["isDebug"] = false;
+#endif
+    return r.dump();
+}
+
 void AnalyticsManager::sendPendingCrashReport() {
     // Called from initialize() only when Aptabase is active (worker running,
     // m_sessionId set). Reads the crash handler's marker from a previous launch,
@@ -661,7 +724,7 @@ void AnalyticsManager::sendPendingCrashReport() {
         return;  // no crash since the last launch
     }
 
-    std::string fault, code, pluginVer, gameBuild, host, stack, avType;
+    std::string fault, code, pluginVer, gameBuild, host, stack, stackFull, avType;
     unsigned long long crashTime = 0;
     try {
         std::ifstream in(m_pendingCrashPath);
@@ -679,6 +742,10 @@ void AnalyticsManager::sendPendingCrashReport() {
             // Forwarded verbatim as a string prop; the dashboard/tooling splits on
             // spaces. Absent on older markers or when the walk found nothing.
             stack = j.value("stack", "");
+            // The same walk, every captured frame (2.22.0): for the error report,
+            // whose stackTrace field is not under the string-prop cap. Absent on
+            // older markers, which then send the short one.
+            stackFull = j.value("stack_full", "");
             // Access-violation sub-type (read/write/execute). Absent on older markers
             // or for non-access-violation exceptions.
             avType = j.value("av_type", "");
@@ -704,9 +771,13 @@ void AnalyticsManager::sendPendingCrashReport() {
                 {"host", host}, {"stack", stack}, {"av_type", avType},
             };
             std::string body = buildSessionEventBody("crash", duration, props);
+            // 2.22.0: the same fault once more, for the Errors page.
+            std::string report = buildErrorReportBody(fault, code, avType, gameBuild, pluginVer,
+                                                      stackFull.empty() ? stack : stackFull);
             {
                 MutexLock lock(m_eventMutex);
-                m_eventQueue.push_back(std::move(body));
+                m_eventQueue.push_back({ PATH_EVENTS, std::move(body) });
+                m_eventQueue.push_back({ PATH_ERROR, std::move(report) });
             }
             m_eventCv.notify_one();
             DEBUG_INFO_F("AnalyticsManager: reporting previous crash: %s (%s)",
@@ -739,7 +810,7 @@ void AnalyticsManager::queueSessionEnd() {
         std::string body = buildSessionEventBody("session_end", duration, {});
         {
             MutexLock lock(m_eventMutex);
-            m_eventQueue.push_back(std::move(body));
+            m_eventQueue.push_back({ PATH_EVENTS, std::move(body) });
         }
         m_eventCv.notify_one();   // self-contained (shutdown() also notify_all's after)
     } catch (...) { /* never throw on shutdown */ }
@@ -763,7 +834,7 @@ void AnalyticsManager::trackEvent(const std::string& eventName,
     }
     {
         MutexLock lock(m_eventMutex);
-        m_eventQueue.push_back(std::move(body));
+        m_eventQueue.push_back({ PATH_EVENTS, std::move(body) });
     }
     m_eventCv.notify_one();
 }
@@ -772,7 +843,7 @@ void AnalyticsManager::eventWorkerLoop() {
     // Exception barrier: an uncaught throw here would std::terminate the game.
     try {
         for (;;) {
-            std::string body;
+            Outgoing next;
             {
                 CvLock lock(m_eventMutex);
                 // Predicate runs with the lock held (cv contract) — see thread_safety.h.
@@ -783,11 +854,11 @@ void AnalyticsManager::eventWorkerLoop() {
                     if (m_shutdownRequested) break;  // drained + asked to stop
                     continue;
                 }
-                body = std::move(m_eventQueue.front());
+                next = std::move(m_eventQueue.front());
                 m_eventQueue.pop_front();
             }
             // Short timeout so a slow send can't stall game shutdown for long.
-            postSync(m_host, body, 3000);
+            postSync(m_host, next.path, next.body, 3000);
         }
     } catch (const std::exception& e) {
         DEBUG_WARN_F("AnalyticsManager: event worker exception: %s", e.what());
@@ -904,80 +975,3 @@ void AnalyticsManager::shutdown() {
     m_eventCv.notify_all();
     if (m_eventWorker.joinable()) m_eventWorker.join();
 }
-
-#if defined(MXBMRP3_TEST_BUILD)
-// ============================================================================
-// Dry-run capture seam (headless wiring tests). Never compiled into a shipping
-// DLL. Drives the payload build + the sampling gate with no network and no
-// background threads — see analytics_wiring_test.cpp.
-// ============================================================================
-void AnalyticsManager::testPrime() {
-    // Fake just enough of what initialize() would establish (identity + session +
-    // ingest host) that the event-build gates pass and buildEventBody() has an
-    // identity — without loadAndUpdateIdentity() (file I/O), the beacon/worker
-    // threads, or any network. Capture mode makes the real senders no-ops.
-    m_enabled = true;
-    m_installId = "test-install-000000000000";
-    m_versionStatus = "new";
-    m_prevVersion.clear();
-    m_launchCount = 1;
-    m_firstSeenUnix = epochSecondsNow();
-    m_sessionStartUnix = m_firstSeenUnix;
-    m_host = L"capture.invalid";        // non-empty → queueSessionEnd()/trackEvent() gates pass
-    m_wAppKey = L"A-US-testtesttest";
-    m_sessionId = makeSessionId();
-    m_shutdownRequested = false;
-    m_fullLaunch.store(true);
-    m_pendingCrashPath.clear();
-    s_testCaptureMode = true;           // real senders become no-ops; isConfigured() → true
-    MutexLock lock(m_eventMutex);
-    m_eventQueue.clear();
-}
-
-void AnalyticsManager::testSetFullLaunch(bool full) { m_fullLaunch.store(full); }
-
-std::string AnalyticsManager::testBuildAppStarted() { return buildEventBody(); }
-
-bool AnalyticsManager::testStartEventWorker() {
-    if (m_eventWorker.joinable()) return true;   // never overwrite a live std::thread
-    m_shutdownRequested = false;
-    m_eventWorker = std::thread(&AnalyticsManager::eventWorkerLoop, this);
-    return m_eventWorker.joinable();
-}
-
-bool AnalyticsManager::testEventWorkerRunning() const { return m_eventWorker.joinable(); }
-
-void AnalyticsManager::testQueueSessionEnd() { queueSessionEnd(); }
-
-void AnalyticsManager::testQueueCustom(const std::string& name) { trackEvent(name, {}); }
-
-void AnalyticsManager::testSeedAndReportCrash(const std::string& markerPath,
-                                              const std::string& fault, const std::string& code) {
-    // Write a minimal crash marker (mirrors the crash handler's), point the manager at it,
-    // then run the crash path — which is DELIBERATELY not gated on m_fullLaunch, so it
-    // queues even in a minimal launch.
-    m_pendingCrashPath = markerPath;
-    try {
-        std::ofstream out(markerPath, std::ios::trunc);
-        nlohmann::json j;
-        j["fault"] = fault; j["code"] = code;
-        j["plugin"] = "9.9.9"; j["game_build"] = "test"; j["host"] = "test.exe";
-        j["time"] = static_cast<unsigned long long>(epochSecondsNow());
-        // Backtrace as the real crash handler writes it: a plain space-delimited
-        // "module+0xoffset ..." string (leaf first). Lets the wiring test prove the
-        // stack survives the marker -> event round-trip.
-        j["stack"] = fault + " mxbmrp3.dlo+0xeaab4 ntdll.dll+0x1234";
-        // Access-violation sub-type, as the crash handler writes it for a 0xC0000005.
-        j["av_type"] = "read";
-        out << j.dump();
-    } catch (...) { /* no marker → sendPendingCrashReport() no-ops */ }
-    sendPendingCrashReport();
-}
-
-std::vector<std::string> AnalyticsManager::testDrainPending() {
-    MutexLock lock(m_eventMutex);
-    std::vector<std::string> out(m_eventQueue.begin(), m_eventQueue.end());
-    m_eventQueue.clear();
-    return out;
-}
-#endif  // MXBMRP3_TEST_BUILD

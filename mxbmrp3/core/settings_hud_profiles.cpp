@@ -8,6 +8,7 @@
 // serialization, the file serialize/build helpers, and save/load orchestration.
 // ============================================================================
 #include "settings_manager.h"
+#include "stats_manager.h"
 #include "../hud/settings/whats_new.h"
 #include "settings_keys.h"
 #include "settings_serde.h"
@@ -200,6 +201,11 @@ bool SettingsManager::switchProfile(HudManager& hudManager, ProfileType newProfi
     // (or the manual Save button), so profile switches / applies / resets never write on track.
     markDirty();
 
+    // The one place every switch passes -- the sidebar, the hotkey, auto-switch
+    // -- so Profile Hopper counts them all, and only real changes (above).
+    StatsManager::getInstance().exploration().onProfileSwitched();
+    // ...and the HUDs the new profile turns on count as tried at once.
+    StatsManager::getInstance().exploration().observeSettings(hudManager);
     return true;
 }
 
@@ -227,6 +233,7 @@ void SettingsManager::applyToAllProfiles(HudManager& hudManager) {
 }
 
 void SettingsManager::resetAllToFactoryDefaults(HudManager& hudManager) {
+    StatsManager::getInstance().exploration().onFactoryReset();   // Factory Fresh
     if (!m_factoryDefaultsCaptured) {
         // Shouldn't happen post-load, but fall back to applyToAllProfiles rather
         // than wiping every profile to an empty cache.

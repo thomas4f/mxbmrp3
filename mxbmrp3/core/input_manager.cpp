@@ -88,6 +88,22 @@ void InputManager::updateFrame() {
     m_oem3Key.wasPressed = m_oem3Key.isPressed;
     m_oem5Key.wasPressed = m_oem5Key.isPressed;
 
+#ifdef MXBMRP3_TEST_BUILD
+    // The injected mouse (testInjectMouse): the frame's state is what the test
+    // said, nothing is polled, and the window bookkeeping below is skipped.
+    if (m_testMouseOn) {
+        m_bCursorEnabled = true;
+        m_bWasCursorEnabled = true;
+        m_bShouldShowCursor = true;
+        m_cursorPosition.x = m_testMouseX;
+        m_cursorPosition.y = m_testMouseY;
+        m_cursorPosition.isValid = true;
+        m_leftButton.isPressed = (m_testButtons & 1) != 0;
+        m_rightButton.isPressed = (m_testButtons & 2) != 0;
+        return;
+    }
+#endif
+
     // Step 2: Check if cursor should be enabled (game is foreground - always enabled)
     updateCursorEnabled();
 

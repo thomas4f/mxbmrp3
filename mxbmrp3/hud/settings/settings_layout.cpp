@@ -16,6 +16,9 @@
 #include "../gamepad_widget.h"   // the Gamepad row's pack cycle reads activePack()
 #include "../pitboard_hud.h"     // ...and the Pitboard row's
 #include "../tacho_widget.h"     // ...and both gauge rows'
+
+#include <cstdio>
+#include <cstring>
 #include "../speedo_widget.h"
 
 // Defined here rather than in the header: SettingsHud is only forward-declared
@@ -227,6 +230,48 @@ void SettingsLayoutContext::addLabelValueRow(
     currentY += lineHeightNormal;
 }
 
+// The track and the fill of a bar or band: two solid quads in the given rect.
+void SettingsLayoutContext::emitFillLevel(float x, float y, float width, float height,
+                                          float fraction, unsigned long trackColor,
+                                          unsigned long fillColor) {
+    if (width <= 0.0f || height <= 0.0f) return;
+    if (fraction < 0.0f) fraction = 0.0f;
+    if (fraction > 1.0f) fraction = 1.0f;
+    // Track first, fill over it: quads draw in push order.
+    addSolidQuad(x, y, width, height, trackColor);
+    addSolidQuad(x, y, width * fraction, height, fillColor);
+}
+
+void SettingsLayoutContext::addSolidQuad(float x, float y, float width, float height,
+                                         unsigned long color) {
+    if (width <= 0.0f || height <= 0.0f) return;
+    SPluginQuad_t q;
+    parent->applyOffset(x, y);
+    SettingsHud::setQuadPositions(q, x, y, width, height);   // named through the friend's class: clang rejects BaseHud:: here
+    q.m_iSprite = SpriteIndex::SOLID_COLOR;   // solid-quad-exempt: a fill level or a swatch is a flat rectangle by definition, not a themed button
+    q.m_ulColor = color;
+    parent->m_quads.push_back(q);
+}
+
+void SettingsLayoutContext::addProgressBar(float x, float width, float fraction,
+                                           unsigned long fillColor) {
+    // A bar about a third of the row, centred: thick enough to read as a fill
+    // level beside a text row, thin enough not to read as a second row.
+    const float barH = lineHeightNormal * 0.36f;
+    const float barY = currentY + (lineHeightNormal - barH) * 0.5f;
+    emitFillLevel(x, barY, width, barH, fraction,
+                  PluginUtils::applyOpacity(ColorConfig::getInstance().getMuted(), 0.3f), fillColor);
+}
+
+void SettingsLayoutContext::addProgressBand(float x, float y, float width, float height,
+                                            float fraction, unsigned long fillColor) {
+    // Faint enough for the text over it: the fill at the hover tint's alpha, the
+    // track at a third of that, so an empty band still marks the entry's extent.
+    emitFillLevel(x, y, width, height, fraction,
+                  PluginUtils::applyOpacity(ColorConfig::getInstance().getMuted(), 0.08f),
+                  PluginUtils::applyOpacity(fillColor, SettingsHud::ROW_HOVER_ALPHA));
+}
+
 void SettingsLayoutContext::addButtonBackground(float x, float y, float width, float height, unsigned long color) {
     // Height comes from the caller (buttonRow().h — the full [button] box).
     // There was a BUTTON_ROW_FILL fudge here once that shrank the button so it
@@ -344,6 +389,65 @@ void SettingsLayoutContext::addActionButton(
                            roleColor, state);
 
     currentY += bg.advance;
+}
+
+void SettingsLayoutContext::addPager(int page, int pageCount,
+                                     SettingsHud::ClickRegion::Type prevType,
+                                     SettingsHud::ClickRegion::Type nextType) {
+    if (pageCount <= 1) return;
+    ColorConfig& colors = ColorConfig::getInstance();
+    char pageText[16];
+    snprintf(pageText, sizeof(pageText), "Page %d/%d", page + 1, pageCount);
+    // The label's slot is sized for the LAST page's text ("Page 14/14"), not this
+    // page's: centred on its own width, the buttons stepped half a character
+    // when the page number gained a digit (9/14 -> 10/14).
+    char slotText[16];
+    snprintf(slotText, sizeof(slotText), "Page %d/%d", pageCount, pageCount);
+    const float cw = charWidth();
+    const float textW = cw * static_cast<float>(std::strlen(slotText));
+    // Row-height buttons three characters wide, a character of air to the label:
+    // the row costs what the text pager cost, so no tab grows by it.
+    const float btnW = cw * 3.0f;
+    const float btnH = lineHeightNormal;
+    const float gap = cw;
+    float x = labelX + (rowSpanWidth() - (btnW + gap + textW + gap + btnW)) * 0.5f;
+    const float y = currentY;
+    const int chevron = AssetManager::getInstance().getIconSpriteIndex("hud-angle");   // the flat identity copy of angle-up
+    const float halfIcon = lineHeightNormal * 0.3f;
+
+    // One end: region (only while it can be pressed), the state fill, the chevron
+    // turned to point the way (hud-angle rotated a quarter turn either way).
+    auto end = [&](float bx, bool enabled, SettingsHud::ClickRegion::Type type,
+                   const char* tipId, float sinYaw) {
+        const size_t regionIndex = parent->m_clickRegions.size();
+        if (enabled) {
+            parent->m_clickRegions.push_back(SettingsHud::ClickRegion(bx, y, btnW, btnH, type, nullptr));
+            parent->m_clickRegions.back().tooltipId = tipId;
+        }
+        const BaseHud::ButtonState state =
+            !enabled ? BaseHud::ButtonState::Disabled
+            : (parent->m_hoveredRegionIndex == static_cast<int>(regionIndex))
+                ? BaseHud::ButtonState::Hovered
+                : BaseHud::ButtonState::Idle;
+        parent->addStateButton(bx, y, btnW, btnH, "", y, fontSize, colors.getAccent(), state);
+        // The glyph's ink, by the same rule addStateButton applies to a label.
+        const unsigned long ink = (state == BaseHud::ButtonState::Disabled)
+            ? colors.getMuted()
+            : parent->buttonGlyphColor(parent->buttonStateColor(colors.getAccent(), state));
+        if (chevron > 0) {
+            parent->addRotatedSpriteQuad(bx + btnW * 0.5f, y + btnH * 0.5f, halfIcon,
+                                         0.0f, sinYaw, chevron, ink);
+        }
+    };
+    end(x, page > 0, prevType, "pager.prev", -1.0f);
+    x += btnW + gap;
+    // The label CENTRED in its slot: a page number a digit short of the last
+    // page's would otherwise sit that half-character left of the midpoint.
+    parent->addString(pageText, x + textW * 0.5f, y, PluginConstants::Justify::CENTER, Fonts::getNormal(),
+                      colors.getPrimary(), fontSize);
+    x += textW + gap;
+    end(x, page + 1 < pageCount, nextType, "pager.next", 1.0f);
+    currentY += lineHeightNormal;
 }
 
 void SettingsLayoutContext::openSectionCard() {

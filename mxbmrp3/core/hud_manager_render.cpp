@@ -127,6 +127,30 @@ void HudManager::draw(int iState, int* piNumQuads, void** ppQuad, int* piNumStri
     }
 }
 
+bool HudManager::standsDown(const BaseHud* hud) const {
+    return m_pGlConfirm && m_pGlConfirm->isActive() && hud && hud == m_pSettingsHud;
+}
+
+bool HudManager::isWidgetHud(const BaseHud* hud) const {
+    return hud == m_pLap || hud == m_pPosition || hud == m_pTime ||
+           hud == m_pSpeed || hud == m_pGear || hud == m_pSpeedo || hud == m_pTacho ||
+           hud == m_pBars || hud == m_pVersion || hud == m_pFuel ||
+           hud == m_pGamepad || hud == m_pLean || hud == m_pGforce || hud == m_pCompass ||
+           hud == m_pClock;
+}
+
+bool HudManager::isHeldBack(const BaseHud* hud) const {
+    if (!hud) return false;
+    if (standsDown(hud)) return true;
+    const bool versionGame = hud == m_pVersion && m_pVersion && m_pVersion->isGameActive();
+    if (versionGame) return false;
+    // The hide-all hotkey spares the settings chrome and the pointer: they are
+    // how the HUD comes back.
+    const bool chrome = hud == m_pSettingsHud || hud == m_pSettingsButton || hud == m_pPointer;
+    if (m_bAllHudsToggledOff && !chrome) return true;
+    return m_bAllWidgetsToggledOff && isWidgetHud(hud);
+}
+
 void HudManager::produceFrame(int iState) {
     if (!m_bInitialized) {
         m_bSuppressInGame = false;
@@ -489,7 +513,7 @@ void HudManager::updateHuds() {
             if (cursor.isValid) {
                 for (auto it = m_huds.rbegin(); it != m_huds.rend(); ++it) {
                     auto& hud = *it;
-                    if (!hud || !hud->isDraggable()) continue;
+                    if (!hud || !hud->isDraggable() || isHeldBack(hud.get())) continue;
                     bool visibleHere = dragCompanion ? hud->getCompanionVisible() : hud->isVisible();
                     if (!visibleHere) continue;
                     // Hit-test at THIS surface's offset (companion HUDs sit at their
@@ -509,7 +533,7 @@ void HudManager::updateHuds() {
     if (bmPoll.active) bmPoll.frameHudInputTimeUs += DrawHandler::getCurrentTimeUs() - dragSearchStart;
 
     for (auto& hud : m_huds) {
-        if (hud) {
+        if (hud && !standsDown(hud.get())) {
             // Allow mouse input only for the target HUD (and only if visible)
             bool allowInput = (hud.get() == inputTarget);
 
@@ -674,12 +698,10 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
         // surface, whatever its companion visibility says. See BaseHud.
         bool visible = hud && (companion ? (hud->rendersOnCompanion() && hud->getCompanionVisible())
                                          : hud->isVisible());
-        // While the prompt is up the settings MENU stands down, so the modal is
-        // not competing with the panel the user just clicked in - and so the one
-        // readable thing on screen is the question. The settings BUTTON and the
-        // pointer stay: they are how the menu comes back afterwards, and how the
-        // prompt gets clicked at all.
-        if (m_pGlConfirm && m_pGlConfirm->isActive() && hud && hud.get() == m_pSettingsHud) continue;
+        // Not drawn for a reason other than its own flag (the Direct GL prompt
+        // holding the menu back, the hide-all hotkey, the widgets toggle): the
+        // same answer the input pass reads, so what is off screen takes nothing.
+        if (isHeldBack(hud.get())) continue;
         if (visible) {
             // Where this HUD's primitives start, so we can translate them to the
             // companion position afterward (delta is 0 for the game / a mirrored HUD).
@@ -687,37 +709,11 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
             size_t stringStart = outStrings.size();
             float deltaX = companion ? (hud->getCompanionOffsetX() - hud->getOffsetX()) : 0.0f;
             float deltaY = companion ? (hud->getCompanionOffsetY() - hud->getOffsetY()) : 0.0f;
-            // Check if version widget's easter egg game is active (bypasses all toggles)
-            bool isVersionGameActive = (hud.get() == m_pVersion && m_pVersion && m_pVersion->isGameActive());
-
-            // Skip rendering if temporary toggle is active (except settings HUDs, pointer, and active game)
-            bool isSettingsHud = (hud.get() == m_pSettingsHud || hud.get() == m_pSettingsButton);
-            bool isPointer = (hud.get() == m_pPointer);
-            if (m_bAllHudsToggledOff && !isSettingsHud && !isPointer && !isVersionGameActive) {
-                continue;
-            }
-
             // Pointer and the open settings MENU render only on the active surface
             // (the settings BUTTON stays on both — it's how you open settings there).
+            bool isPointer = (hud.get() == m_pPointer);
             bool isMenu = (hud.get() == m_pSettingsHud);
             if ((isPointer || isMenu) && !surfaceIsActive) {
-                continue;
-            }
-
-            // Skip rendering widgets if widget toggle is active.
-            // SessionHud is intentionally NOT in this list: it started as a widget but was
-            // upgraded to a full HUD (its own settings tab + row config), so it's decoupled
-            // from the widgets master toggle and only hides via its own visibility/hotkey.
-            bool isWidget = (hud.get() == m_pLap || hud.get() == m_pPosition ||
-                           hud.get() == m_pTime ||
-                           hud.get() == m_pSpeed || hud.get() == m_pGear ||
-                           hud.get() == m_pSpeedo || hud.get() == m_pTacho ||
-                           hud.get() == m_pBars || hud.get() == m_pVersion ||
-                           hud.get() == m_pFuel ||
-                           hud.get() == m_pGamepad || hud.get() == m_pLean ||
-                           hud.get() == m_pGforce || hud.get() == m_pCompass ||
-                           hud.get() == m_pClock);
-            if (m_bAllWidgetsToggledOff && isWidget && !isVersionGameActive) {
                 continue;
             }
 

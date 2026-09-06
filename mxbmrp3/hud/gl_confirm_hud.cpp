@@ -265,6 +265,7 @@ void GlConfirmHud::handleClickDetection() {
     const InputManager& input = InputManager::getInstance();
     if (!input.isCursorEnabled()) return;
 
+    // held-back-exempt: the prompt is the one thing meant to take clicks while it is up
     const bool isLeftPressed = input.getLeftButton().isPressed;
     const bool isLeftClick = isLeftPressed && !m_wasLeftPressed;
     m_wasLeftPressed = isLeftPressed;

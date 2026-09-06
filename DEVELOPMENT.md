@@ -179,6 +179,20 @@ test, config/callback fuzzing, CPU perf baseline). Layer 4 drives the web overla
 in a real browser. The cross-build's source divergences from the shipping MSVC
 build are in [`tests/integration/README.md`](tests/integration/README.md).
 
+### Hidden INI knobs for the live services
+
+Two keys exist only for a developer and have no UI:
+
+- `[Achievements] devScale=N` multiplies every achievement's value by N at read
+  time, so the whole catalogue can be earned in a session. Written back while
+  it differs from 1, so it survives a save; the usage ping omits the achievement
+  fields while it is on. Set it back to 1 (or delete it) when done.
+- `[Advanced] crashOnReload=1`, with `developerMode=1` beside it, makes the next
+  RELOAD_CONFIG fault on purpose, so the crash marker, the crash event and the
+  Errors-page report can be seen arriving at Aptabase from a real game. Never
+  written back, and reload-only, so a file left with it set cannot crash every
+  launch; delete the key afterwards all the same.
+
 ### Prerequisites (Linux)
 
 ```bash

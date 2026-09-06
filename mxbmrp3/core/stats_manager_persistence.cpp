@@ -6,6 +6,8 @@
 // helper live here because only this half uses them.
 // ============================================================================
 #include "stats_manager.h"
+#include "achievement_manager.h"
+#include "plugin_constants.h"
 #include "atomic_file_writer.h"
 #include "plugin_data.h"
 #include "plugin_utils.h"
@@ -71,7 +73,13 @@ void StatsManager::load(const char* savePath) {
     m_bikeOdometers.clear();
     m_bikeCategories.clear();   // a reload must not keep stale bike->category mappings
     m_globalStats = GlobalStats();
+    m_fmx = FmxLifetimeStats();
+    m_exploration.clear();
+    m_globalTotalsDirty = true;
+    m_distinctDirty = true;
     m_dirty = false;
+    AchievementManager& achievements = AchievementManager::getInstance();
+    achievements.clearStates();
 
     std::string filePath = getFilePath();
 
@@ -79,12 +87,25 @@ void StatsManager::load(const char* savePath) {
     if (!file.is_open()) {
         DEBUG_INFO_F("[StatsManager] No stats file found at %s", filePath.c_str());
         migrateOldFiles();
+        m_exploration.onStartup(m_savePath, PluginConstants::PLUGIN_VERSION);
+        // Imported legacy odometers count toward Long Hauler like any other km.
+        achievements.onStatsLoaded();
         return;
     }
 
     try {
         nlohmann::json j;
         file >> j;
+
+        // The file's own fingerprint against the rest of it (exploration_stats.h).
+        {
+            uint64_t expected = 0;
+            if (j.contains("fingerprint") && j["fingerprint"].is_string()) {
+                try { expected = std::stoull(j["fingerprint"].get<std::string>(), nullptr, 16); } catch (const std::exception&) { expected = 0; }
+                j.erase("fingerprint");
+            }
+            m_exploration.noteStatsLoadedHash(ExplorationStats::fnv1a(j.dump(2)), expected);
+        }
 
         int version = j.value("version", 0);
         if (version != FILE_VERSION) {
@@ -103,6 +124,37 @@ void StatsManager::load(const char* savePath) {
             m_globalStats.penaltyTimeMs = (std::max)(g.value("penaltyTimeMs", static_cast<int64_t>(0)), static_cast<int64_t>(0));
             m_globalStats.breakoutHighScore = (std::max)(g.value("breakoutHighScore", 0), 0);
             m_globalStats.crashTally = (std::max)(g.value("crashTally", 0), 0);
+            m_globalStats.cleanRaceCount = (std::max)(g.value("cleanRaceCount", 0), 0);
+            m_globalStats.pbCount = (std::max)(g.value("pbCount", 0), 0);
+            m_globalStats.rainRaceCount = (std::max)(g.value("rainRaceCount", 0), 0);
+            m_globalStats.bigGridRaceCount = (std::max)(g.value("bigGridRaceCount", 0), 0);
+            m_globalStats.maxSessionLaps = (std::max)(g.value("maxSessionLaps", 0), 0);
+            m_globalStats.maxSessionTimeMs = (std::max)(g.value("maxSessionTimeMs", static_cast<int64_t>(0)), static_cast<int64_t>(0));
+            m_globalStats.penaltyFreeStreak = (std::max)(g.value("penaltyFreeStreak", 0), 0);
+            m_globalStats.bestPenaltyFreeStreak = (std::max)(g.value("bestPenaltyFreeStreak", 0), m_globalStats.penaltyFreeStreak);
+            m_globalStats.pbLeaps = (std::max)(g.value("pbLeaps", 0), 0);
+        }
+
+        // Lifetime FMX totals (motorbike games; absent on a kart's file).
+        if (j.contains("fmx") && j["fmx"].is_object()) {
+            const auto& f = j["fmx"];
+            m_fmx.tricksLanded = (std::max)(f.value("tricksLanded", 0), 0);
+            m_fmx.totalScore = (std::max)(f.value("totalScore", static_cast<int64_t>(0)), static_cast<int64_t>(0));
+            m_fmx.backflips = (std::max)(f.value("backflips", 0), 0);
+            m_fmx.frontflips = (std::max)(f.value("frontflips", 0), 0);
+            m_fmx.whips = (std::max)(f.value("whips", 0), 0);
+            m_fmx.scrubs = (std::max)(f.value("scrubs", 0), 0);
+            m_fmx.oppos = (std::max)(f.value("oppos", 0), 0);
+            m_fmx.turnDowns = (std::max)(f.value("turnDowns", 0), 0);
+            m_fmx.longestAirtimeSec = static_cast<float>((std::max)(finiteOrZero(f.value("longestAirtimeSec", 0.0)), 0.0));
+            m_fmx.longestWheelieSec = static_cast<float>((std::max)(finiteOrZero(f.value("longestWheelieSec", 0.0)), 0.0));
+            m_fmx.wheelieDistanceM = (std::max)(finiteOrZero(f.value("wheelieDistanceM", 0.0)), 0.0);
+            m_fmx.bestChainScore = (std::max)(f.value("bestChainScore", 0), 0);
+            if (f.contains("kinds") && f["kinds"].is_array()) {
+                for (const auto& k : f["kinds"]) {
+                    if (k.is_string()) m_fmx.kinds.insert(k.get<std::string>());
+                }
+            }
         }
 
         // Parse bike odometers
@@ -156,6 +208,11 @@ void StatsManager::load(const char* savePath) {
             }
         }
 
+        // pbCount arrived after the personal bests did: a file written before it
+        // existed has PBs and a zero counter, and Personal Best would sit at
+        // "0 / 1" under a list of them. The stored PBs are a floor for the count.
+        m_globalStats.pbCount = (std::max)(m_globalStats.pbCount, static_cast<int>(m_personalBests.size()));
+
         // Parse bike-to-category mapping
         if (j.contains("bikeCategories") && j["bikeCategories"].is_object()) {
             for (auto& [bikeName, categoryJson] : j["bikeCategories"].items()) {
@@ -163,6 +220,43 @@ void StatsManager::load(const char* savePath) {
                     m_bikeCategories[bikeName] = categoryJson.get<std::string>();
                 }
             }
+        }
+
+        // Achievements: earned tiers by catalogue ID (never by index -- see
+        // achievements.h), plus the counters no stat carries. A file from before
+        // achievements existed simply has no block; onStatsLoaded() below then
+        // grants what the numbers already satisfy.
+        if (j.contains("achievements") && j["achievements"].is_object()) {
+            const auto& a = j["achievements"];
+            if (a.contains("counters") && a["counters"].is_object()) {
+                achievements.setConfigReloads((std::max)(a["counters"].value("configReloads", 0), 0));
+            }
+            if (a.contains("unlocked") && a["unlocked"].is_object()) {
+                for (auto& [id, stateJson] : a["unlocked"].items()) {
+                    if (!stateJson.is_object()) continue;
+                    achievements.restore(id.c_str(), stateJson.value("tier", 0), stateJson.value("halfway", 0));
+                }
+            }
+        }
+
+        // The exploration signals, by name; unknown names (a removed signal) are
+        // left in place unread and dropped by the next save.
+        if (j.contains("exploration") && j["exploration"].is_object()) {
+            const auto& ex = j["exploration"];
+            for (const Exploration::SignalInfo& si : Exploration::kSignals) {
+                if (!ex.contains(si.key) || !ex[si.key].is_number()) continue;
+                m_exploration.restoreValue(static_cast<int>(si.signal),
+                                           (std::max)(finiteOrZero(ex[si.key].get<double>()), 0.0));
+            }
+            for (int which = 0; which < ExplorationStats::NAME_SET_COUNT; ++which) {
+                const char* key = ExplorationStats::kNameSets[which];
+                if (!ex.contains(key) || !ex[key].is_array()) continue;
+                for (const auto& n : ex[key]) {
+                    if (n.is_string()) m_exploration.restoreName(which, n.get<std::string>());
+                }
+            }
+            m_exploration.restoreScalars(ex.value("firstRunDate", ""), ex.value("lastDay", 0),
+                                         ex.value("crashDumpsSeen", 0), (std::max)(ex.value("dayStreak", 0), 0));
         }
 
         DEBUG_INFO_F("[StatsManager] Loaded stats: %zu track/bike combos, %zu bikes, %zu PBs from %s",
@@ -175,6 +269,9 @@ void StatsManager::load(const char* savePath) {
         m_bikeOdometers.clear();
         m_bikeCategories.clear();
         m_globalStats = GlobalStats();
+        m_fmx = FmxLifetimeStats();
+        m_exploration.clear();
+        achievements.clearStates();
     } catch (const std::exception& e) {
         DEBUG_INFO_F("[StatsManager] Error loading stats: %s — starting fresh", e.what());
         m_trackBikeStats.clear();
@@ -182,7 +279,15 @@ void StatsManager::load(const char* savePath) {
         m_bikeOdometers.clear();
         m_bikeCategories.clear();
         m_globalStats = GlobalStats();
+        m_fmx = FmxLifetimeStats();
+        m_exploration.clear();
+        achievements.clearStates();
     }
+    // What this startup itself says (days, versions, packs, the build), then:
+    // whatever was loaded (or not), the achievements now reflect it -- silent
+    // grants for anything already met, one summary toast if there were any.
+    m_exploration.onStartup(m_savePath, PluginConstants::PLUGIN_VERSION);
+    achievements.onStatsLoaded();
 }
 
 static nlohmann::json serializePersonalBest(const StatsPersonalBestData& pb) {
@@ -199,6 +304,10 @@ static nlohmann::json serializePersonalBest(const StatsPersonalBestData& pb) {
 }
 
 void StatsManager::save() {
+    // A tier earned outside a stats mutation (the config-reload counter) has
+    // nowhere else to be written from.
+    AchievementManager& achievements = AchievementManager::getInstance();
+    if (achievements.isDirty() || m_exploration.isDirty()) m_dirty = true;
     if (!m_dirty) return;
 
     std::string filePath = getFilePath();
@@ -221,7 +330,56 @@ void StatsManager::save() {
         if (m_globalStats.breakoutHighScore > 0) {
             global["breakoutHighScore"] = m_globalStats.breakoutHighScore;
         }
+        if (m_globalStats.cleanRaceCount > 0) {
+            global["cleanRaceCount"] = m_globalStats.cleanRaceCount;
+        }
+        if (m_globalStats.pbCount > 0) {
+            global["pbCount"] = m_globalStats.pbCount;
+        }
+        if (m_globalStats.rainRaceCount > 0) {
+            global["rainRaceCount"] = m_globalStats.rainRaceCount;
+        }
+        if (m_globalStats.bigGridRaceCount > 0) {
+            global["bigGridRaceCount"] = m_globalStats.bigGridRaceCount;
+        }
+        if (m_globalStats.maxSessionLaps > 0) {
+            global["maxSessionLaps"] = m_globalStats.maxSessionLaps;
+        }
+        if (m_globalStats.maxSessionTimeMs > 0) {
+            global["maxSessionTimeMs"] = m_globalStats.maxSessionTimeMs;
+        }
+        if (m_globalStats.penaltyFreeStreak > 0) {
+            global["penaltyFreeStreak"] = m_globalStats.penaltyFreeStreak;
+        }
+        if (m_globalStats.bestPenaltyFreeStreak > 0) {
+            global["bestPenaltyFreeStreak"] = m_globalStats.bestPenaltyFreeStreak;
+        }
+        if (m_globalStats.pbLeaps > 0) {
+            global["pbLeaps"] = m_globalStats.pbLeaps;
+        }
         j["global"] = global;
+
+        // Lifetime FMX totals: only once a trick has landed, so a kart's file (or
+        // a racer who never tricks) never carries an empty block.
+        if (m_fmx.tricksLanded > 0) {
+            nlohmann::json fmx;
+            fmx["tricksLanded"] = m_fmx.tricksLanded;
+            fmx["totalScore"] = m_fmx.totalScore;
+            fmx["backflips"] = m_fmx.backflips;
+            fmx["frontflips"] = m_fmx.frontflips;
+            fmx["whips"] = m_fmx.whips;
+            fmx["scrubs"] = m_fmx.scrubs;
+            fmx["oppos"] = m_fmx.oppos;
+            fmx["turnDowns"] = m_fmx.turnDowns;
+            fmx["longestAirtimeSec"] = m_fmx.longestAirtimeSec;
+            fmx["longestWheelieSec"] = m_fmx.longestWheelieSec;
+            fmx["wheelieDistanceM"] = m_fmx.wheelieDistanceM;
+            fmx["bestChainScore"] = m_fmx.bestChainScore;
+            nlohmann::json kinds = nlohmann::json::array();
+            for (const std::string& k : m_fmx.kinds) kinds.push_back(k);
+            fmx["kinds"] = kinds;
+            j["fmx"] = fmx;
+        }
 
         // Bike odometers
         nlohmann::json bikes = nlohmann::json::object();
@@ -282,13 +440,60 @@ void StatsManager::save() {
             j["bikeCategories"] = bikeCategories;
         }
 
+        // Achievements block: only rows with a tier, keyed by catalogue id.
+        {
+            nlohmann::json unlocked = nlohmann::json::object();
+            for (int i = 0; i < Achievements::COUNT; ++i) {
+                const AchievementManager::State& st = achievements.stateOf(i);
+                if (st.tier <= 0) continue;
+                nlohmann::json stateJson;
+                stateJson["tier"] = st.tier;
+                if (st.halfway > 0) stateJson["halfway"] = st.halfway;
+                unlocked[Achievements::kCatalogue[i].id] = stateJson;
+            }
+            nlohmann::json counters;
+            counters["configReloads"] = achievements.configReloads();
+            nlohmann::json a;
+            a["counters"] = counters;
+            a["unlocked"] = unlocked;
+            j["achievements"] = a;
+        }
+
+        // The exploration signals, by name (exploration_signals.h); zeros are
+        // not written, so a fresh file carries no block.
+        {
+            nlohmann::json ex;
+            for (const Exploration::SignalInfo& si : Exploration::kSignals) {
+                const double v = m_exploration.rawValue(static_cast<int>(si.signal));
+                if (std::isfinite(v) && v != 0.0) ex[si.key] = v;   // both sides guard (CLAUDE.md)
+            }
+            for (int which = 0; which < ExplorationStats::NAME_SET_COUNT; ++which) {
+                if (!m_exploration.names(which).empty()) ex[ExplorationStats::kNameSets[which]] = m_exploration.names(which);
+            }
+            if (!m_exploration.firstRunDate().empty()) ex["firstRunDate"] = m_exploration.firstRunDate();
+            if (m_exploration.lastDay() != 0) ex["lastDay"] = m_exploration.lastDay();
+            if (m_exploration.crashDumpsSeen() > 0) ex["crashDumpsSeen"] = m_exploration.crashDumpsSeen();
+            if (m_exploration.dayStreak() > 0) ex["dayStreak"] = m_exploration.dayStreak();
+            if (!ex.empty()) j["exploration"] = ex;
+        }
+
         // Write via the shared atomic writer (temp file + MoveFileExA replace). Synchronous:
         // stats are saved on discrete, infrequent events (lap completion, session end,
         // shutdown), not the per-frame path, and callers/tests read the file right after —
         // so this keeps immediate durability while sharing the one atomic-write helper. Only
         // clear m_dirty on success, so a failed write is retried on the next save().
+        // The file's own fingerprint: the hash of everything else, so a later
+        // load can tell a hand edit from its own writing (exploration_stats.h).
+        {
+            char hex[24];
+            snprintf(hex, sizeof(hex), "%016llx",
+                     static_cast<unsigned long long>(ExplorationStats::fnv1a(j.dump(2))));
+            j["fingerprint"] = hex;
+        }
         if (AtomicFileWriter::writeFileAtomic(filePath, j.dump(2))) {
             m_dirty = false;
+            achievements.clearDirty();
+            m_exploration.clearDirty();
             DEBUG_INFO_F("[StatsManager] Saved stats to %s", filePath.c_str());
         } else {
             DEBUG_WARN_F("[StatsManager] Failed to save stats to %s", filePath.c_str());
@@ -352,6 +557,7 @@ void StatsManager::migrateOldFiles() {
                     }
                 }
                 DEBUG_INFO_F("[StatsManager] Imported %zu personal bests from old file", m_personalBests.size());
+                m_globalStats.pbCount = (std::max)(m_globalStats.pbCount, static_cast<int>(m_personalBests.size()));
                 migrated = true;
             }
         }

@@ -781,9 +781,14 @@ void XInputReader::updateRumbleFromTelemetry(float suspVelFront, float suspVelRe
     // Send to controller (unless suppressed or disabled)
     // Graph still updates even when output is suppressed
     // Note: enabled comes from global config, not per-bike profile
+    m_rumbleLive = false;
     if (suppressOutput || !m_rumbleConfig.enabled) {
         setVibration(0.0f, 0.0f);
     } else {
         setVibration(heavyMotor, lightMotor);
+        // "Rumble on": enabled, not suppressed, and a controller to feel it --
+        // whether or not the motors are moving this frame. Good Vibrations
+        // counts riding time with it on, not the seconds it happens to buzz.
+        m_rumbleLive = isControllerConnectedCached(m_controllerIndex.load(std::memory_order_relaxed));
     }
 }

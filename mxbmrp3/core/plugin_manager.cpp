@@ -306,6 +306,10 @@ void PluginManager::shutdown() {
     // Record race finish if player quit mid-race (ALT-F4, etc.) and save stats
     StatsManager::getInstance().tryRecordRaceFinish(PluginData::getInstance());
     StatsManager::getInstance().recordSessionEnd();
+    // The setup as it stands, before the stats file is written below: the
+    // settings save inside HudManager::shutdown() observes too, but it runs
+    // after this write and anything it noticed would wait for the next run.
+    StatsManager::getInstance().exploration().observeSettings(HudManager::getInstance());
     StatsManager::getInstance().save();
 
     // Shutdown HUD manager (its own settings save on the way out is synchronous) — the

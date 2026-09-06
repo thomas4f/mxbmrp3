@@ -31,6 +31,7 @@ option(MXB_UNIT_WERROR "Treat warnings as errors in the unit-test targets" ON)
 set(MXB_UNIT_SOURCES
     test_plugin_utils.cpp
     test_notice_priority.cpp
+    test_achievements.cpp
     test_analytics_remote_config.cpp
     test_analytics_endpoint.cpp
     test_analytics_redact.cpp

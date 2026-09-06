@@ -4,6 +4,7 @@
 // ============================================================================
 
 #include "plugin_data.h"
+#include "stats_manager.h"
 #include "plugin_utils.h"
 #include "ui_config.h"
 #include "xinput_reader.h"
@@ -182,6 +183,7 @@ void PluginData::updateSegmentTimer(float trackPos) {
         double result = std::chrono::duration<double>(endWall - s.runStart).count();
         s.runningSeg = -1;
         if (result <= 0.0) return;  // degenerate ordering guard
+        StatsManager::getInstance().exploration().onSegmentCompleted();   // Split Decision
 
         float t = static_cast<float>(result);
         // Capture this segment's PRIOR best before updating it, so the cumulative fold

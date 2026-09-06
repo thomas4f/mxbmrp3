@@ -61,6 +61,29 @@ TEST_CASE("timing reference: cumulative target sums the reference's sectors prog
     host.shutdown();
 }
 
+TEST_CASE("timing reference: a reference without sector times shows its full lap at every split") {
+    // A record served without splits, or a PB whose source kept only the lap: the
+    // chip used to read "N/A" until the last sector. It shows the lap it has.
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_ref_nosec\\");
+    host.eventInit("TestTrack", "Thomas");
+    host.raceEvent("TestTrack", /*type=*/2);
+    host.session(RACE, /*numLaps=*/10, /*lengthMs=*/0);
+    host.addEntry(4, "Thomas");
+    host.draw();
+    host.spectateVehicles({ { 4, "Thomas" } }, /*curSelectionIndex=*/0);
+    host.classify(RACE, 200000, { { .num = 4, .best = 90000, .laps = 1, .gap = 0 } });
+    host.raceLap(RACE, 4, /*lapNum=*/1, /*lapTime=*/90000, /*best=*/2, /*split0=*/0, /*split1=*/0);   // no sectors
+    for (int gap : { GAP_PB, GAP_OVERALL, GAP_LASTLAP }) {
+        CAPTURE(gap);
+        CHECK(host.timingReferenceMs(gap, 0) == 90000);          // S1: the lap, not N/A
+        CHECK(host.timingReferenceMs(gap, 1) == 90000);          // S1+S2: the lap
+        CHECK(host.timingReferenceMs(gap, SPLIT_LAP) == 90000);
+    }
+    host.shutdown();
+}
+
 TEST_CASE("timing reference: live target tracks the lap-timer sector from the first lap") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
@@ -97,6 +120,49 @@ TEST_CASE("timing reference: live target tracks the lap-timer sector from the fi
     CHECK(host.timingTargetSplit() == 1);
     CHECK(host.timingReferenceMs(GAP_PB, -999) == 61000);   // live -> S1+S2 target
 
+    host.shutdown();
+}
+
+TEST_CASE("timing reference: the chips show the whole lap exactly while the clock shows its placeholder") {
+    // The reported annoyance: out of the pits before the lap has started, the time cell
+    // reads "-:--.---" but a chip named the S1 target. The chip's target is gated on the
+    // same clock the cell shows now, so at every step of a pit stop on track the two agree:
+    // placeholder <=> whole-lap reference, ticking <=> the sector's target.
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_agree\\");
+    host.eventInit("TestTrack", "Thomas");
+    host.raceEvent("TestTrack", /*type=*/1);   // Testing, on track
+    host.session(1, 0, 0);
+    host.addEntry(4, "Thomas");
+    host.runInit(1);
+    host.runStart();
+    host.draw();
+    host.classify(1, 200000, { { .num = 4, .best = 90000, .laps = 1, .gap = 0, .pit = 0 } });
+    host.raceLap(1, 4, /*lapNum=*/1, 90000, /*best=*/2, 30000, 61000);   // the PB to compare against
+    auto agree = [&](const char* step) {
+        CAPTURE(step);
+        const bool placeholder = host.elapsedLapTime() < 0;
+        CHECK((host.timingTargetSplit() < 0) == placeholder);
+        CHECK(host.timingReferenceMs(GAP_PB, -999) == (placeholder ? 90000 : 30000));
+    };
+    agree("out of the garage, before the first S/F");
+    host.raceTrackPosition({ { .num = 4, .trackPos = 0.92f } }); host.draw();
+    host.raceTrackPosition({ { .num = 4, .trackPos = 0.03f } }); host.draw();
+    CHECK(host.elapsedLapTime() >= 0);
+    agree("lap started");
+    host.runStop(); host.draw();
+    agree("into the pits");
+    host.classify(1, 205000, { { .num = 4, .best = 90000, .laps = 1, .gap = 0, .pit = 1 } });
+    host.classify(1, 210000, { { .num = 4, .best = 90000, .laps = 1, .gap = 0, .pit = 0 } });
+    host.runStart(); host.draw();
+    CHECK(host.elapsedLapTime() < 0);
+    agree("out of the pits, before the next S/F");
+    host.raceTrackPosition({ { .num = 4, .trackPos = 0.10f } }); host.draw();
+    agree("riding sector 1 towards the line");
+    host.raceTrackPosition({ { .num = 4, .trackPos = 0.92f } }); host.draw();
+    host.raceTrackPosition({ { .num = 4, .trackPos = 0.03f } }); host.draw();
+    agree("next lap started");
     host.shutdown();
 }
 

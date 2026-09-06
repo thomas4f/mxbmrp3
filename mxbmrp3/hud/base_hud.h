@@ -140,6 +140,11 @@ public:
     // on the companion still rebuilds and doesn't render stale. Equals isVisible()
     // when the companion is disabled, so single-window behavior is unchanged.
     bool isVisibleAnySurface() const;
+    // Not on screen for a reason other than the visibility flags: the hide-all
+    // hotkey, the widgets toggle, the Direct GL prompt (HudManager::isHeldBack).
+    // A HUD that hit-tests its own clicks gates on this beside
+    // isVisibleAnySurface(), else a hidden control keeps taking the click.
+    bool isHeldBack() const;
 
     // Temporary "show even if the mouse is idle" reveal, used by the corner status
     // buttons (settings / director) so they can flash into view on an event (entering
@@ -1325,6 +1330,16 @@ public:
     // constant, next to the function that consumes it: a defaults site that writes
     // THIS is declaring which convention it means.
     static constexpr float CENTER_ANCHOR_X = 0.5f;
+
+    // LAYOUT-SPACE LEFT FOR A RIGHT-ANCHORED ELEMENT: one whose stored offsetX
+    // means "where my RIGHT edge sits". The achievement toast is the one: its
+    // card is as wide as its text, and it lives in the right-hand column of
+    // widgets, so growing it leftward from a held right edge is what keeps it
+    // in the corner whatever it says. Same contract as the centre anchor
+    // above, unsnapped for the same reason; the drag path snaps the resulting
+    // absolute edges and the bounds are stored in this space, so hit-testing,
+    // clamping and edge magnetism all work unchanged.
+    static float rightAnchoredPanelLeft(float panelW);
 protected:
     // A ring or ring-slice as a fan of quads. Shared by every HUD that draws one;
     // see the definition for why the angles are rotated rather than recomputed.

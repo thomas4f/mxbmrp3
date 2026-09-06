@@ -14,6 +14,7 @@
 #include "fuel_estimate.h"
 #include "spotter_mix.h"
 #include "spotter_manager_internal.h"
+#include "stats_manager.h"
 #include "../diagnostics/logger.h"
 
 #include <algorithm>
@@ -604,6 +605,9 @@ void SpotterManager::emitCue(const char* key, SpotterPhrase::Category cat,
     }
 #endif
     if (text.empty() && mixFiles.empty() && !wavName) return;  // silent
+    // A cue with something to play, whichever backend plays it (the shipped
+    // pack is all .wav; the TTS path alone would never count it).
+    StatsManager::getInstance().exploration().onSpotterCallout();   // Backseat Driver
 
 #if MXBMRP3_SPOTTER_PROBE
     // TEMP-DEBUG(spotter-vs-standings): every spoken cue, interleaved with the

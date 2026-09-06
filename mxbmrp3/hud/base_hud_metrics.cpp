@@ -82,6 +82,12 @@ float BaseHud::centerAnchoredPanelLeft(float panelW) {
     return -panelW * 0.5f;
 }
 
+// Layout-space left for a right-anchored panel: its whole width to the left of
+// the stored right edge. Unsnapped, like the centre anchor -- see the declaration.
+float BaseHud::rightAnchoredPanelLeft(float panelW) {
+    return -panelW;
+}
+
 // A PANEL'S BASE PADDING, at this HUD's scale: the built-in, or the active theme's
 // `[panel] padding-x/-y` when it names one. The ONLY reader of
 // ThemeAsset::panelPadding*Override -- see it for why the sentinel and for when the

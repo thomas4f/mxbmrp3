@@ -165,6 +165,27 @@ struct SettingsLayoutContext {
     // the caller's, because that is the only thing that varies between them.
     void addTextRow(const char* text, unsigned long color);
 
+    // A PROGRESS BAR inside the current row, drawn as two solid quads (a faint
+    // track, a filled span of `fraction` of it) vertically centred on the row.
+    // Does NOT advance the cursor: the Achievements tab draws text on the same
+    // row (the unlock date, right-aligned), so the row is the caller's to end.
+    // `x`/`width` are in normalized units, like every other position here.
+    void addProgressBar(float x, float width, float fraction, unsigned long fillColor);
+    // A PROGRESS BAND behind a block of rows: the same two quads as the bar, but
+    // the given rect and translucent, so text drawn after it stays legible. The
+    // Achievements tab's entry is one (two rows tall) and draws its title and
+    // task over it; the entry is no hover region, so this is its only band.
+    void addProgressBand(float x, float y, float width, float height, float fraction,
+                         unsigned long fillColor);
+    // The two quads (track, then fill) both of the above are made of. A member,
+    // not a file-local helper: the quad emit needs the panel's protected offset
+    // and positioning, which this context reaches as SettingsHud's friend.
+    void emitFillLevel(float x, float y, float width, float height, float fraction,
+                       unsigned long trackColor, unsigned long fillColor);
+    // One flat rectangle in the given colour: the bar's quads, a tile behind an
+    // icon. Solid by definition (a fill level, a swatch), not a themed control.
+    void addSolidQuad(float x, float y, float width, float height, unsigned long color);
+
     // A LABEL + VALUE row, the value starting `valueColumn` characters right of
     // labelX: "Current:   v1.2.3", "Available: 1.3.0 (PRE)", a download step and
     // its "OK". The column is a parameter because the Updates tab aligns its
@@ -239,6 +260,15 @@ struct SettingsLayoutContext {
     void addLinkRow(const char* prefix, const char* url, int prefixChars,
                     SettingsHud::ClickRegion::Type type, float fontScale = 0.9f);
 
+    // A PAGER: two row-height buttons flanking "Page x/y", centred in the content
+    // column -- the same button emitter as the action buttons (themed fill, hover,
+    // disabled), with a chevron (angle-up, rotated) for a glyph. The end you
+    // cannot go past stays drawn, disabled, so the row never shifts. Nothing is
+    // drawn for a single page. One owner for the three pagers (Riders x2,
+    // Achievements), which were three hand-rolled "< Page x/y >" texts before.
+    // The junction above it is the caller's addSpacing(), like every button.
+    void addPager(int page, int pageCount,
+                  SettingsHud::ClickRegion::Type prevType, SettingsHud::ClickRegion::Type nextType);
     void addActionButtonPair(const char* labelA, SettingsHud::ClickRegion::Type typeA,
                              ButtonRole roleA, bool enabledA,
                              const char* labelB, SettingsHud::ClickRegion::Type typeB,

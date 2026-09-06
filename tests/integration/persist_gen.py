@@ -30,9 +30,10 @@ baseline, out, expect = sys.argv[1], sys.argv[2], sys.argv[3]
 #    by director_home_test.cpp.
 SKIP = {"autoSave", "activeProfile", "autoSwitch", "maxShotSec"}
 SKIP_SUBSTR = ("scale", "opacity", "alpha")  # case-insensitive
-def skip_key(key):
+SKIP_IN_SECTION = set()
+def skip_key(section, key):
     kl = key.lower()
-    return key in SKIP or any(s in kl for s in SKIP_SUBSTR)
+    return key in SKIP or (section, key) in SKIP_IN_SECTION or any(s in kl for s in SKIP_SUBSTR)
 
 lines = open(baseline, "r", encoding="utf-8", errors="replace").read().splitlines()
 section = ""
@@ -46,7 +47,7 @@ for line in lines:
     if not m:
         out_lines.append(line); continue
     key, val, comment = m.group(1).strip(), m.group(2).strip(), (m.group(3) or "")
-    if not skip_key(key) and val in ("0", "1"):
+    if not skip_key(section, key) and val in ("0", "1"):
         newval = "1" if val == "0" else "0"
         records.append((section, key, newval))
         out_lines.append(f"{key}={newval}{comment}")

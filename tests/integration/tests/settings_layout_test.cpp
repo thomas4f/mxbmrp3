@@ -137,7 +137,7 @@ int countTooltipRows(const std::vector<std::string>& regions, const char* toolti
 // nothing was reordered -- what a control added to the end of an existing
 // section should look like, and what made the diff readable instead of a wall
 // of shifted ordinals.
-constexpr int kClickRegionTypeCount = 201;
+constexpr int kClickRegionTypeCount = 204;
 
 }  // namespace
 
@@ -255,16 +255,27 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
     // region 195 (OPEN_LINK_KOFI) and its two strings with it -- 125 -> 123. That the
     // diff was exactly one region and exactly two strings is what says the move
     // touched nothing else on the tab.
+    // ADDED, 2026-09-03: an Achievements row joined the global group after Spotter,
+    // with a master-toggle checkbox in front of it ("189:-;93:achievements" --
+    // ACHIEVEMENTS_TOASTS_TOGGLE, then the tab region). Three new ClickRegion
+    // types (the toggle and the list's two pager arrows) took the typecount
+    // 201 -> 204 and shifted every ordinal after them by three. The Stats tab
+    // stayed where it was in the profile group ("14:-;93:stats" after FMX): it
+    // was folded into Achievements for a day and put back, so 128 -> 130 strings
+    // is the Achievements row's label and its checkbox (no badge, see the registry
+    // row) on top of the unchanged profile group. 130 -> 124 at 1.30: the six
+    // 1.29 "New" tags retired with their release, and 1.30's one marker sits on
+    // the tab that draws no tag.
     static const char* kGolden =
         "93:general;93:appearance;93:hotkeys;93:riders;95:-;93:rumble;104:-;93:helmet;150:-;93:director;161:-"
-        ";93:spotter;81:-;93:updates;88:-;89:-;14:-;93:standings;14:-;93:map;14:-;93:radar;14:-;93:lap_log;14"
-        ":-;93:ideal_lap;14:-;93:session_charts;14:-;93:telemetry;14:-;93:records;14:-;93:pitboard;14:-;93:se"
-        "ssion;14:-;93:timing;14:-;93:gap_bar;14:-;93:notices;14:-;93:event_log;14:-;93:friends;14:-;93:fmx;1"
-        "4:-;93:stats;14:-;93:performance;92:-;93:widgets;143:general.pb_scope;70:-;70:-;143:general.controll"
-        "er;97:-;96:-;143:general.auto_save;82:-;82:-;143:general.grid_snap;76:-;76:-;143:general.screen_clam"
-        "p;77:-;77:-;143:general.direct_gl;200:-;200:-;143:general.steam_friends;143:general.web_serve"
-        "r;85:-;85:-;143:general.web_port;86:-;87:-;143:general.auto_switch;90:-;90:-;143:general.copy_profil"
-        "e;10:-;9:-;12:-;13:-;195:-;196:-;94:-;8:-;142:-;typecount=201;strings=128";
+        ";93:spotter;189:-;93:achievements;81:-;93:updates;88:-;89:-;14:-;93:standings;14:-;93:map;14:-;93:ra"
+        "dar;14:-;93:lap_log;14:-;93:ideal_lap;14:-;93:session_charts;14:-;93:telemetry;14:-;93:records;14:-;"
+        "93:pitboard;14:-;93:session;14:-;93:timing;14:-;93:gap_bar;14:-;93:notices;14:-;93:event_log;14:-;93"
+        ":friends;14:-;93:fmx;14:-;93:stats;14:-;93:performance;92:-;93:widgets;143:general.pb_scope;70:-;70:"
+        "-;143:general.controller;97:-;96:-;143:general.auto_save;82:-;82:-;143:general.grid_snap;76:-;76:-;1"
+        "43:general.screen_clamp;77:-;77:-;143:general.direct_gl;203:-;203:-;143:general.steam_friends;143:ge"
+        "neral.web_server;85:-;85:-;143:general.web_port;86:-;87:-;143:general.auto_switch;90:-;90:-;143:gene"
+        "ral.copy_profile;10:-;9:-;12:-;13:-;198:-;199:-;94:-;8:-;142:-;typecount=204;strings=124";
 
     MESSAGE("General tab signature: " << sig);
     CHECK(sig == kGolden);

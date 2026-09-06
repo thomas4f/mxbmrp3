@@ -75,8 +75,8 @@ enum class TrickType {
     SPIN_RIGHT,         // Full right yaw rotation (360+)
 
     // Combination tricks (multi-axis)
-    TURN_UP_LEFT,       // Nose up + yaw left
-    TURN_UP_RIGHT,      // Nose up + yaw right
+    OPPO_LEFT,       // Nose up + yaw left
+    OPPO_RIGHT,      // Nose up + yaw right
     TURN_DOWN_LEFT,     // Nose down + yaw left
     TURN_DOWN_RIGHT,    // Nose down + yaw right
     FLAT_360_LEFT,      // Flip while rolled left ~90°
@@ -126,8 +126,8 @@ inline const char* getTrickIniKey(TrickType type) {
         case TrickType::WHIP_RIGHT:        return "Whip";
         case TrickType::SPIN_LEFT:
         case TrickType::SPIN_RIGHT:        return "Spin";
-        case TrickType::TURN_UP_LEFT:
-        case TrickType::TURN_UP_RIGHT:     return "TurnUp";
+        case TrickType::OPPO_LEFT:
+        case TrickType::OPPO_RIGHT:     return "Oppo";
         case TrickType::TURN_DOWN_LEFT:
         case TrickType::TURN_DOWN_RIGHT:   return "TurnDown";
         case TrickType::FLAT_360_LEFT:
@@ -161,8 +161,8 @@ inline const char* getTrickName(TrickType type) {
         case TrickType::WHIP_RIGHT:        return "Whip R";
         case TrickType::SPIN_LEFT:         return "Spin L";
         case TrickType::SPIN_RIGHT:        return "Spin R";
-        case TrickType::TURN_UP_LEFT:      return "Turn Up L";
-        case TrickType::TURN_UP_RIGHT:     return "Turn Up R";
+        case TrickType::OPPO_LEFT:      return "Oppo L";
+        case TrickType::OPPO_RIGHT:     return "Oppo R";
         case TrickType::TURN_DOWN_LEFT:    return "Turn Down L";
         case TrickType::TURN_DOWN_RIGHT:   return "Turn Down R";
         case TrickType::FLAT_360_LEFT:     return "Flat 360 L";
@@ -177,8 +177,8 @@ inline const char* getTrickName(TrickType type) {
 // ============================================================================
 constexpr float PARTIAL_ROTATION_MIN = 30.0f;   // Minimum rotation for scrub/whip
 constexpr float FULL_ROTATION_MIN = 270.0f;    // 3/4 rotation — ensures commitment before classifying as full trick
-constexpr float TURN_PITCH_THRESHOLD = 67.5f;   // World-space pitch angle for turn up/down classification
-constexpr float TURN_YAW_THRESHOLD = 67.5f;     // Minimum yaw rotation for turn up/down classification
+constexpr float TURN_PITCH_THRESHOLD = 67.5f;   // World-space pitch angle for oppo/turn down classification
+constexpr float TURN_YAW_THRESHOLD = 67.5f;     // Minimum yaw rotation for oppo/turn down classification
 
 // ============================================================================
 // Minimum Progress Threshold
@@ -208,8 +208,8 @@ inline bool isAirTrick(TrickType type) {
         case TrickType::WHIP_RIGHT:
         case TrickType::SPIN_LEFT:
         case TrickType::SPIN_RIGHT:
-        case TrickType::TURN_UP_LEFT:
-        case TrickType::TURN_UP_RIGHT:
+        case TrickType::OPPO_LEFT:
+        case TrickType::OPPO_RIGHT:
         case TrickType::TURN_DOWN_LEFT:
         case TrickType::TURN_DOWN_RIGHT:
         case TrickType::FLAT_360_LEFT:
@@ -245,8 +245,8 @@ inline RotationAxis getPrimaryAxis(TrickType type) {
         case TrickType::WHIP_RIGHT:
         case TrickType::SPIN_LEFT:
         case TrickType::SPIN_RIGHT:
-        case TrickType::TURN_UP_LEFT:
-        case TrickType::TURN_UP_RIGHT:
+        case TrickType::OPPO_LEFT:
+        case TrickType::OPPO_RIGHT:
         case TrickType::TURN_DOWN_LEFT:
         case TrickType::TURN_DOWN_RIGHT:
             return RotationAxis::YAW;
@@ -274,7 +274,7 @@ inline TrickType getBaseTrickType(TrickType type) {
         case TrickType::SCRUB_RIGHT:         return TrickType::SCRUB_LEFT;
         case TrickType::WHIP_RIGHT:          return TrickType::WHIP_LEFT;
         case TrickType::SPIN_RIGHT:          return TrickType::SPIN_LEFT;
-        case TrickType::TURN_UP_RIGHT:       return TrickType::TURN_UP_LEFT;
+        case TrickType::OPPO_RIGHT:       return TrickType::OPPO_LEFT;
         case TrickType::TURN_DOWN_RIGHT:     return TrickType::TURN_DOWN_LEFT;
         case TrickType::FLAT_360_RIGHT:      return TrickType::FLAT_360_LEFT;
         default:                             return type;
@@ -297,8 +297,8 @@ inline TrickType flipTrickDirection(TrickType type) {
         case TrickType::WHIP_RIGHT:          return TrickType::WHIP_LEFT;
         case TrickType::SPIN_LEFT:           return TrickType::SPIN_RIGHT;
         case TrickType::SPIN_RIGHT:          return TrickType::SPIN_LEFT;
-        case TrickType::TURN_UP_LEFT:        return TrickType::TURN_UP_RIGHT;
-        case TrickType::TURN_UP_RIGHT:       return TrickType::TURN_UP_LEFT;
+        case TrickType::OPPO_LEFT:        return TrickType::OPPO_RIGHT;
+        case TrickType::OPPO_RIGHT:       return TrickType::OPPO_LEFT;
         case TrickType::TURN_DOWN_LEFT:      return TrickType::TURN_DOWN_RIGHT;
         case TrickType::TURN_DOWN_RIGHT:     return TrickType::TURN_DOWN_LEFT;
         case TrickType::FLAT_360_LEFT:       return TrickType::FLAT_360_RIGHT;
@@ -374,8 +374,8 @@ inline int getTrickBaseScore(TrickType type) {
         case TrickType::WHIP_RIGHT:        return 25;
         case TrickType::SPIN_LEFT:         return 120;
         case TrickType::SPIN_RIGHT:        return 120;
-        case TrickType::TURN_UP_LEFT:      return 60;
-        case TrickType::TURN_UP_RIGHT:     return 60;
+        case TrickType::OPPO_LEFT:      return 60;
+        case TrickType::OPPO_RIGHT:     return 60;
         case TrickType::TURN_DOWN_LEFT:    return 60;
         case TrickType::TURN_DOWN_RIGHT:   return 60;
         case TrickType::FLAT_360_LEFT:     return 180;
@@ -423,6 +423,11 @@ struct TrickInstance {
 
     // Air vs ground tracking (for dynamic classification)
     bool hasBeenAirborne = false;   // True if trick involved any airtime
+    // Seconds spent airborne over the WHOLE trick, from take-off -- not
+    // backdated at classification the way `duration` is, because a jump's
+    // hang time starts at the lip, not when the flip passes 270 degrees.
+    // The Hang Time achievement reads this; scoring never does.
+    float airTime = 0.0f;
     bool isCurrentlyAirborne = false;  // Current frame state
 
     // Rotation tracking (accumulated degrees from start)
@@ -508,7 +513,7 @@ struct RotationTracker {
     float currentYaw = 0.0f;
     float currentRoll = 0.0f;
 
-    // Peak world-space pitch (tracks extremes for Turn Up/Down classification)
+    // Peak world-space pitch (tracks extremes for Oppo/Turn Down classification)
     float peakWorldPitch = 0.0f;    // Most positive (most nose-down)
     float minWorldPitch = 0.0f;     // Most negative (most nose-up)
 

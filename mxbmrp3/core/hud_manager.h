@@ -223,6 +223,10 @@ public:
     bool isTelemetryHistoryNeeded() const;
 
     // Widgets master toggle (hides all widgets without changing individual states)
+    // The hide-all-HUDs hotkey's state (the settings menu, the pointer and the
+    // toast widget's dequeue read it; the setter is the test hook's road in).
+    bool areHudsEnabled() const { return !m_bAllHudsToggledOff; }
+    void setHudsEnabled(bool enabled) { m_bAllHudsToggledOff = !enabled; }
     bool areWidgetsEnabled() const { return !m_bAllWidgetsToggledOff; }
     void setWidgetsEnabled(bool enabled) { m_bAllWidgetsToggledOff = !enabled; }
 
@@ -253,6 +257,22 @@ public:
     class GearWidget& getGearWidget() const { assert(m_pGear && "HudManager not initialized"); return *m_pGear; }
     class CrashWidget& getCrashWidget() const { assert(m_pCrash && "HudManager not initialized"); return *m_pCrash; }
     class GlConfirmHud& getGlConfirmHud() const { assert(m_pGlConfirm && "HudManager not initialized"); return *m_pGlConfirm; }
+    // True while the Direct GL prompt holds the settings MENU back: not drawn,
+    // not hit-tested, not updated -- one answer for all three, so a panel that is
+    // not on screen cannot take a click through the prompt (it did: the draw
+    // pass skipped it while the input pass still fed it). The settings button
+    // and the pointer are not held back; they are how the menu comes back.
+    bool standsDown(const BaseHud* hud) const;
+    // True for a HUD the frame is not drawing for a reason OTHER than its own
+    // visibility flag: the prompt above, the hide-all-HUDs hotkey, the widgets
+    // toggle. The one answer the draw pass and the input pass share, so a HUD
+    // that is not on screen is never a drag target and never takes a click
+    // (BaseHud::isHeldBack is the per-HUD view of this). The version widget's
+    // easter egg is exempt from the toggles while it runs, in both passes.
+    bool isHeldBack(const BaseHud* hud) const;
+    // The widgets the Widgets toggle covers. SessionHud is deliberately not one:
+    // it started as a widget and grew its own tab, so it hides only by itself.
+    bool isWidgetHud(const BaseHud* hud) const;
     class SpeedoWidget& getSpeedoWidget() const { assert(m_pSpeedo && "HudManager not initialized"); return *m_pSpeedo; }
     class TachoWidget& getTachoWidget() const { assert(m_pTacho && "HudManager not initialized"); return *m_pTacho; }
     class TimingHud& getTimingHud() const { assert(m_pTiming && "HudManager not initialized"); return *m_pTiming; }
@@ -269,6 +289,7 @@ public:
     class PointerWidget& getPointerWidget() const { assert(m_pPointer && "HudManager not initialized"); return *m_pPointer; }
     class RumbleHud& getRumbleHud() const { assert(m_pRumble && "HudManager not initialized"); return *m_pRumble; }
     class DirectorWidget* getDirectorWidget() const { return m_pDirector; }  // nullable; callers null-check
+    class AchievementWidget* getAchievementWidget() const { return m_pAchievement; }  // nullable; callers null-check
     class GamepadWidget& getGamepadWidget() const { assert(m_pGamepad && "HudManager not initialized"); return *m_pGamepad; }
     class LeanWidget& getLeanWidget() const { assert(m_pLean && "HudManager not initialized"); return *m_pLean; }
     class GForceWidget& getGForceWidget() const { assert(m_pGforce && "HudManager not initialized"); return *m_pGforce; }
@@ -436,6 +457,7 @@ private:
     class PointerWidget* m_pPointer;
     class RumbleHud* m_pRumble;
     class DirectorWidget* m_pDirector;
+    class AchievementWidget* m_pAchievement = nullptr;
     class GamepadWidget* m_pGamepad;
     class LeanWidget* m_pLean;
     class GForceWidget* m_pGforce;

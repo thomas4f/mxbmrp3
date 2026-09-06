@@ -55,12 +55,10 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // board's Texture row registers "common.texture", the id EVERY HUD's Texture
         // row uses, which is why a Marker carries a tab as well as an id -- and why
         // it is worth checking that the pairing resolves rather than assuming it.
-        // A synthetic theme first: the Appearance tab HIDES its Panel Theme row when
-        // no themes are installed, and a headless run has no mxbmrp3_data\\themes\\.
-        // Without this the theme marker reads as unresolved for a reason that has
-        // nothing to do with the table.
-        host.installTheme("synthetic", 0.0f, 0.0f, /*titleBand=*/1, /*card=*/1);
-
+        // (A marker on a CONDITIONAL row - 1.29's panel-theme picker, which the
+        // Appearance tab hides with no themes installed - needs that condition
+        // met here first, or it reads as unresolved for a reason that has nothing
+        // to do with the table. installTheme() is how; none of 1.30's rows need it.)
         REQUIRE(host.whatsNewMarkerCount() == total);
         for (int i = 0; i < host.whatsNewMarkerCount(); ++i) {
             INFO("marker " << i << ": " << host.whatsNewMarkerName(i));
@@ -69,35 +67,37 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // Opening the tabs above dismissed their tags; put the set back for the
         // cases that follow (doctest re-runs the body per subcase, but the DLL's
         // state is process-global).
-        host.clearTheme();
         host.whatsNewReset();
     }
 
-    SUBCASE("a marked tab carries the tag, and opening it clears only the tag") {
-        REQUIRE(host.whatsNewTabTagged("Widgets"));
+    SUBCASE("a tab whose name fills the sidebar carries no tag; opening it clears no row") {
+        // 1.30's one marker sits on the Achievements tab, whose 12-character name
+        // leaves no room for a Small "New" beside it (WhatsNew::tabCanTag), so the
+        // tag is withheld while the row band stays. The tag-dismissal path itself
+        // last ran against 1.29's Widgets markers; a future taggable marker puts
+        // it back under test.
+        REQUIRE_FALSE(host.whatsNewTabTagged("Achievements"));
 
-        REQUIRE(host.openSettingsTab("Widgets"));
-        // The TAG is gone...
-        CHECK_FALSE(host.whatsNewTabTagged("Widgets"));
-        // ...and the rows on it are NOT. This is the asymmetry: opening the tab
-        // says you know something is here, not that you found it.
+        REQUIRE(host.openSettingsTab("Achievements"));
+        // The rows on it are untouched: opening the tab says you know something
+        // is here, not that you found it.
         CHECK(host.whatsNewLiveCount() == total);
     }
 
     SUBCASE("hovering a marked row clears that row and no other") {
-        REQUIRE(host.openSettingsTab("Widgets"));
+        REQUIRE(host.openSettingsTab("Achievements"));
         const int before = host.whatsNewLiveCount();
-        REQUIRE(before >= 2);   // Widgets carries two; the case needs both
+        REQUIRE(before >= 1);
 
-        host.hoverSettingsRow("widgets.crashes");
+        host.hoverSettingsRow("achievements.toasts");
         CHECK(host.whatsNewLiveCount() == before - 1);
 
         // Hovering it again is not a second dismissal.
-        host.hoverSettingsRow("widgets.crashes");
+        host.hoverSettingsRow("achievements.toasts");
         CHECK(host.whatsNewLiveCount() == before - 1);
 
         // An unmarked row on the same tab dismisses nothing.
-        host.hoverSettingsRow("widgets.speed");
+        host.hoverSettingsRow("achievements.toast_duration");
         CHECK(host.whatsNewLiveCount() == before - 1);
     }
 
@@ -113,7 +113,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // the case can see it.
         REQUIRE_MESSAGE(host.hasMarkDirty(), "MXBMRP3_Test_FlushIfDirty/IsDirty absent");
         host.setAutoSave(true);
-        REQUIRE(host.openSettingsTab("Widgets"));
+        REQUIRE(host.openSettingsTab("Achievements"));
 
         // SAVE FIRST, to clear the flag. Opening a tab persists [Profiles] activeTab
         // and marks dirty by itself, so a dirty check straight after the click passes
@@ -122,7 +122,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         host.save();
         REQUIRE_FALSE(host.isDirty());
 
-        host.hoverSettingsRow("widgets.crashes");
+        host.hoverSettingsRow("achievements.toasts");
         const int afterDismiss = host.whatsNewLiveCount();
         REQUIRE(afterDismiss == total - 1);
         CHECK_MESSAGE(host.isDirty(),
@@ -136,7 +136,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         REQUIRE(host.whatsNewLiveCount() == total);
         host.loadSettings(saveWin);
         CHECK(host.whatsNewLiveCount() == afterDismiss);
-        CHECK_FALSE(host.whatsNewTabTagged("Widgets"));   // the tab dismissal too
+        CHECK_FALSE(host.whatsNewTabTagged("Achievements"));   // the tab dismissal too
     }
 
     SUBCASE("starting up does not silently dismiss a tab") {
@@ -191,14 +191,14 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // anywhere near this. Written against resetAll() alone, a test here would pass
         // while checking half a button.
         REQUIRE_MESSAGE(host.hasResetGlobals(), "MXBMRP3_Test_ResetGlobals not exported");
-        REQUIRE(host.openSettingsTab("Widgets"));
-        host.hoverSettingsRow("widgets.crashes");
+        REQUIRE(host.openSettingsTab("Achievements"));
+        host.hoverSettingsRow("achievements.toasts");
         REQUIRE(host.whatsNewLiveCount() == total - 1);
-        REQUIRE_FALSE(host.whatsNewTabTagged("Widgets"));
+        REQUIRE_FALSE(host.whatsNewTabTagged("Achievements"));
 
         host.resetEverything();
         CHECK(host.whatsNewLiveCount() == total - 1);
-        CHECK_FALSE(host.whatsNewTabTagged("Widgets"));
+        CHECK_FALSE(host.whatsNewTabTagged("Achievements"));
     }
 
     host.shutdown();

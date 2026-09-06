@@ -196,6 +196,7 @@ public:
         m_settingsOverflow = sym<int(*)()>("MXBMRP3_Test_SettingsOverflowRows");
         m_standingsRowBand = sym<int(*)(int*,int*)>("MXBMRP3_Test_StandingsRowBand");
         m_showSettings = sym<void(*)(int)>("MXBMRP3_Test_ShowSettings");
+        m_settingsVisible = sym<int(*)()>("MXBMRP3_Test_SettingsVisible");
         m_stepCount    = sym<int(*)(int)>("MXBMRP3_Test_SettingsSteppedCount");
         m_stepClick    = sym<int(*)(int,int,int)>("MXBMRP3_Test_SettingsClickStepped");
         m_cycleCount   = sym<int(*)(int)>("MXBMRP3_Test_SettingsCycleCount");
@@ -211,6 +212,9 @@ public:
         m_glRenderProbe = sym<int(*)(int,int,int,int,int)>("MXBMRP3_Test_GlRenderProbe");
         m_glInGame = sym<void(*)(int)>("MXBMRP3_Test_GlInGame");
         m_glConfirmArm = sym<void(*)(int)>("MXBMRP3_Test_GlConfirmArm");
+        m_injectMouse = sym<void(*)(int,float,float,int)>("MXBMRP3_Test_InjectMouse");
+        m_settingsRegionCenter = sym<int(*)(const char*,float*,float*)>("MXBMRP3_Test_SettingsRegionCenter");
+        m_achievementsPage = sym<int(*)(char*,int)>("MXBMRP3_Test_AchievementsPage");
         m_glInGameGet = sym<int(*)()>("MXBMRP3_Test_GlInGameGet");
         m_glConfirmActive = sym<int(*)()>("MXBMRP3_Test_GlConfirmActive");
         m_glConfirmPct = sym<int(*)()>("MXBMRP3_Test_GlConfirmRemainingPct");
@@ -227,6 +231,7 @@ public:
         m_anCustom     = sym<void(*)(const char*)>("MXBMRP3_Test_AnalyticsQueueCustom");
         m_anSeedCrash  = sym<void(*)(const char*, const char*, const char*)>("MXBMRP3_Test_AnalyticsSeedCrash");
         m_anDrain      = sym<int(*)(char*, int)>("MXBMRP3_Test_AnalyticsDrainPending");
+        m_anDrainErrors = sym<int(*)(char*, int)>("MXBMRP3_Test_AnalyticsDrainErrors");
         m_resolveFrame = sym<void(*)(unsigned long long, char*, int)>("MXBMRP3_Test_ResolveFrame");
         m_extractInstall = sym<int(*)(const char*, const char*, int, char*, int)>("MXBMRP3_Test_ExtractAndInstall");
         m_stSetVisible      = sym<void(*)(int)>("MXBMRP3_Test_StandingsSetVisible");
@@ -349,6 +354,21 @@ public:
         m_statsSetNow       = sym<void(*)(long long)>("MXBMRP3_Test_StatsSetNowUs");
         m_statsOdoState     = sym<void(*)(double*,double*,double*,int*)>("MXBMRP3_Test_StatsOdometerState");
         m_statsSave         = sym<void(*)()>("MXBMRP3_Test_StatsSave");
+        m_achTier           = sym<int(*)(const char*)>("MXBMRP3_Test_AchievementTier");
+        m_achValue          = sym<double(*)(const char*)>("MXBMRP3_Test_AchievementValue");
+        m_achToastsQueued   = sym<unsigned int(*)()>("MXBMRP3_Test_AchievementToastsQueued");
+        m_achLastToast      = sym<void(*)(char*,int)>("MXBMRP3_Test_AchievementLastToast");
+        m_configReloaded    = sym<void(*)()>("MXBMRP3_Test_ConfigReloaded");
+        m_achToastShowing   = sym<int(*)()>("MXBMRP3_Test_AchievementToastShowing");
+        m_setLocalTime      = sym<void(*)(int,int,int,int)>("MXBMRP3_Test_SetLocalTime");
+        m_achUnits          = sym<void(*)(int*,int*)>("MXBMRP3_Test_AchievementUnits");
+        m_achRows           = sym<void(*)(int*,int*)>("MXBMRP3_Test_AchievementRows");
+        m_trackRider        = sym<int(*)(const char*)>("MXBMRP3_Test_TrackRider");
+        m_explorationTick   = sym<void(*)(int,int,int,int,unsigned int)>("MXBMRP3_Test_ExplorationTick");
+        m_setHudsEnabled    = sym<void(*)(int)>("MXBMRP3_Test_SetHudsEnabled");
+        m_setEveryHudVisible = sym<void(*)(int)>("MXBMRP3_Test_SetEveryHudVisible");
+        m_setHudVisible = sym<int(*)(const char*,int)>("MXBMRP3_Test_SetHudVisible");
+        m_setWidgetsEnabled = sym<void(*)(int)>("MXBMRP3_Test_SetWidgetsEnabled");
         m_crashTally        = sym<int(*)(int)>("MXBMRP3_Test_CrashTally");
         m_recParse          = sym<int(*)(int, const char*)>("MXBMRP3_Test_RecordsParse");
         m_recCount          = sym<int(*)()>("MXBMRP3_Test_RecordsCount");
@@ -495,9 +515,12 @@ public:
                    // because fastest-of-one means nothing; ONLINE it speaks as
                    // the fastest lap. A case pinning either wording has to say
                    // which world it is in.
-                   int serverType = 0) {
+                   int serverType = 0,
+                   // Empty offline; a name is what Well Travelled counts.
+                   const char* serverName = "") {
         SPluginsBikeEvent_t ev{};
         ev.m_iServerType = serverType;
+        setStr(ev.m_szServerName, serverName);
         setStr(ev.m_szRiderName, riderName);
         setStr(ev.m_szBikeName, bikeName);
         setStr(ev.m_szCategory, category);
@@ -514,10 +537,14 @@ public:
         if (m_raceEvent) m_raceEvent(&re, (int)sizeof(re));
     }
     // session: 1=Practice .. 6/7=Race1/Race2 (PiBoSo session enum); state 16=running.
-    void session(int session, int numLaps, int lengthMs = 480000, int state = 16) {
+    // conditions is the game's weather (0 sunny, 1 cloudy, 2 rainy), read at a
+    // race finish for Mudder.
+    void session(int session, int numLaps, int lengthMs = 480000, int state = 16,
+                 int conditions = 0) {
         SPluginsRaceSession_t ss{};
         ss.m_iSession = session; ss.m_iSessionState = state;
         ss.m_iSessionLength = lengthMs; ss.m_iSessionNumLaps = numLaps;
+        ss.m_iConditions = conditions;
         if (m_session) m_session(&ss, (int)sizeof(ss));
     }
     // RaceSessionState: a session-state transition (256=pre-start, 16=in
@@ -811,9 +838,13 @@ public:
 
     // RunInit: player session start (feeds stats session timers). session matches
     // the RaceSession enum (6=Race1).
-    void runInit(int session) {
+    // conditions: the game sends the weather here too (SPluginsBikeSession_t),
+    // and the run handler stores it over the RaceSession value, so a test that
+    // wants rain says so on both.
+    void runInit(int session, int conditions = 0) {
         SPluginsBikeSession_t s{};
         s.m_iSession = session;
+        s.m_iConditions = conditions;
         if (m_runInit) m_runInit(&s, (int)sizeof(s));
     }
     void runDeinit() { if (m_runDeinit) m_runDeinit(); }
@@ -1356,6 +1387,7 @@ public:
         return out;
     }
     void showSettings(bool v = true) { if (m_showSettings) m_showSettings(v ? 1 : 0); }
+    bool settingsVisible() { return m_settingsVisible && m_settingsVisible() == 1; }
     // Stepped-control click seam: count/click STEPPED_UP (up=true) / STEPPED_DOWN
     // regions on the active tab, in layout order. holdRepeats drives the accel tier.
     int steppedCount(bool up) { return m_stepCount ? m_stepCount(up ? 1 : 0) : -1; }
@@ -1628,6 +1660,36 @@ public:
     // The Direct GL confirmation prompt. glConfirmTick advances it by DRAWN
     // milliseconds, which is what the production path feeds it.
     bool hasGlConfirm() const { return m_glConfirmArm && m_glConfirmActive && m_glConfirmTick; }
+    // A stand-in mouse the next draw()s read (MXBMRP3_Test_InjectMouse; buttons
+    // bit 0 left, bit 1 right), and where a settings control is so it can be
+    // put on one. A click is three draws: hover, press, release -- buttons
+    // dispatch on the release. A drag is the right button: press, move, release.
+    bool hasInjectedMouse() const { return m_injectMouse != nullptr; }
+    void injectMouse(bool on, float x = 0.0f, float y = 0.0f, int buttons = 0) {
+        if (m_injectMouse) m_injectMouse(on ? 1 : 0, x, y, buttons);
+    }
+    bool settingsRegionCenter(const char* tooltipId, float* x, float* y) {
+        return m_settingsRegionCenter && m_settingsRegionCenter(tooltipId, x, y) == 1;
+    }
+    // The achievements list's page (0-based) and the group of the page as last drawn.
+    int achievementsPage(std::string* group = nullptr) {
+        if (!m_achievementsPage) return -1;
+        char buf[32] = {0};
+        const int page = m_achievementsPage(buf, static_cast<int>(sizeof(buf)));
+        if (group) *group = buf;
+        return page;
+    }
+    void clickAt(float x, float y) {
+        injectMouse(true, x, y, 0); draw();
+        injectMouse(true, x, y, 1); draw();
+        injectMouse(true, x, y, 0); draw();
+    }
+    void dragAt(float x0, float y0, float x1, float y1) {
+        injectMouse(true, x0, y0, 0); draw();
+        injectMouse(true, x0, y0, 2); draw();
+        injectMouse(true, x1, y1, 2); draw();
+        injectMouse(true, x1, y1, 0); draw();
+    }
     void glConfirmArm(bool on) { if (m_glConfirmArm) m_glConfirmArm(on ? 1 : 0); }
     // The [Advanced] glInGame SETTING, which is what a timeout must turn off.
     bool glInGameEnabled() const { return m_glInGameGet && m_glInGameGet() != 0; }
@@ -1873,6 +1935,51 @@ public:
     }
     // Force a stats save (same save() as the leave-track flush; no-op when clean).
     void statsSave() { if (m_statsSave) m_statsSave(); }
+
+    // --- Achievements ----------------------------------------------------------
+    // See MXBMRP3_Test_Achievement*. Tier is 0..4 by catalogue id (-1 = unknown id).
+    bool hasAchievements() const { return m_achTier && m_achToastsQueued && m_achLastToast && m_configReloaded; }
+    int achievementTier(const char* id) { return m_achTier ? m_achTier(id) : -1; }
+    double achievementValue(const char* id) { return m_achValue ? m_achValue(id) : -1.0; }
+    unsigned achievementToastsQueued() { return m_achToastsQueued ? m_achToastsQueued() : 0u; }
+    std::string achievementLastToast() {
+        char buf[160] = {0};
+        if (m_achLastToast) m_achLastToast(buf, sizeof(buf));
+        return buf;
+    }
+    // The RELOAD_CONFIG hotkey's achievement half (Tinkerer + the dev toast).
+    void configReloaded() { if (m_configReloaded) m_configReloaded(); }
+    bool achievementToastShowing() { return m_achToastShowing && m_achToastShowing() == 1; }
+    // Put a rider on the tracked list (the Riders tab's add). False if already there or full.
+    bool trackRider(const char* name) { return m_trackRider && m_trackRider(name) == 1; }
+    // Earned tiers (hidden included) and listed tiers (hidden excluded).
+    std::pair<int,int> achievementUnits() {
+        int earned = 0, total = 0;
+        if (m_achUnits) m_achUnits(&earned, &total);
+        return { earned, total };
+    }
+    // Achievements earned at any tier (hidden included) and listed ones (hidden excluded).
+    std::pair<int,int> achievementRows() {
+        int earned = 0, total = 0;
+        if (m_achRows) m_achRows(&earned, &total);
+        return { earned, total };
+    }
+    // The exploration signals' clock (Night Owl, Anniversary, Regular) and their
+    // once-a-second tick (spectate and rumble time, Frame Perfect, On Air).
+    void setLocalTime(int year, int month, int day, int hour) {
+        if (m_setLocalTime) m_setLocalTime(year, month, day, hour);
+    }
+    void explorationTick(bool spectating, bool rumbleLive, bool onTrack, int frames, unsigned overlayTotal = 0) {
+        if (m_explorationTick) m_explorationTick(spectating ? 1 : 0, rumbleLive ? 1 : 0, onTrack ? 1 : 0, frames, overlayTotal);
+    }
+    // The hide-all-HUDs hotkey's state (see MXBMRP3_Test_SetHudsEnabled).
+    void setHudsEnabled(bool on) { if (m_setHudsEnabled) m_setHudsEnabled(on ? 1 : 0); }
+    // Every HUD's visibility at once (see MXBMRP3_Test_SetEveryHudVisible).
+    void setEveryHudVisible(bool on) { if (m_setEveryHudVisible) m_setEveryHudVisible(on ? 1 : 0); }
+    // One HUD's game-surface visibility by harness id (MXBMRP3_Test_SetHudVisible).
+    bool setHudVisible(const char* name, bool on) { return m_setHudVisible && m_setHudVisible(name, on ? 1 : 0) == 1; }
+    // The Widgets master toggle (see MXBMRP3_Test_SetWidgetsEnabled).
+    void setWidgetsEnabled(bool on) { if (m_setWidgetsEnabled) m_setWidgetsEnabled(on ? 1 : 0); }
 
     // The crash widget's streaming tally. crashTallyReset() goes through the
     // widget's own resetCounter(), the entry point the button and hotkey share.
@@ -2509,6 +2616,15 @@ public:
         text = buf.data();
         return n;
     }
+    // Drain the queued error reports (a crash's second destination, 2.22.0).
+    int analyticsDrainErrors(std::string& text) {
+        text.clear();
+        if (!m_anDrainErrors) return 0;
+        std::vector<char> buf(8192, 0);
+        int n = m_anDrainErrors(buf.data(), (int)buf.size());
+        text = buf.data();
+        return n;
+    }
     // Crash-backtrace frame resolver, formatted "module+0xoffset" (the dashboard
     // stack-frame format). Empty string if the hook isn't exported.
     std::string resolveFrame(unsigned long long addr) {
@@ -2994,6 +3110,9 @@ private:
     int         (*m_glRenderProbe)(int,int,int,int,int) = nullptr;
     void        (*m_glInGame)(int) = nullptr;
     void        (*m_glConfirmArm)(int) = nullptr;
+    void        (*m_injectMouse)(int,float,float,int) = nullptr;
+    int         (*m_settingsRegionCenter)(const char*,float*,float*) = nullptr;
+    int         (*m_achievementsPage)(char*,int) = nullptr;
     int         (*m_glInGameGet)() = nullptr;
     int         (*m_glConfirmActive)() = nullptr;
     int         (*m_glConfirmPct)() = nullptr;
@@ -3119,6 +3238,22 @@ private:
     void        (*m_statsSetNow)(long long) = nullptr;
     void        (*m_statsOdoState)(double*,double*,double*,int*) = nullptr;
     void        (*m_statsSave)() = nullptr;
+    int         (*m_achTier)(const char*) = nullptr;
+    double      (*m_achValue)(const char*) = nullptr;
+    unsigned int(*m_achToastsQueued)() = nullptr;
+    void        (*m_achLastToast)(char*, int) = nullptr;
+    void        (*m_configReloaded)() = nullptr;
+    int         (*m_achToastShowing)() = nullptr;
+    void        (*m_setLocalTime)(int,int,int,int) = nullptr;
+    void        (*m_achUnits)(int*,int*) = nullptr;
+    void        (*m_achRows)(int*,int*) = nullptr;
+    int         (*m_trackRider)(const char*) = nullptr;
+    void        (*m_explorationTick)(int,int,int,int,unsigned int) = nullptr;
+    void        (*m_setHudsEnabled)(int) = nullptr;
+    void        (*m_setEveryHudVisible)(int) = nullptr;
+    int         (*m_settingsVisible)() = nullptr;
+    int         (*m_setHudVisible)(const char*,int) = nullptr;
+    void        (*m_setWidgetsEnabled)(int) = nullptr;
     int         (*m_crashTally)(int) = nullptr;
     int         (*m_steamStartWorker)() = nullptr;
     int         (*m_steamWorkerAlive)() = nullptr;
@@ -3139,6 +3274,7 @@ private:
     void        (*m_anCustom)(const char*) = nullptr;
     void        (*m_anSeedCrash)(const char*, const char*, const char*) = nullptr;
     int         (*m_anDrain)(char*, int) = nullptr;
+    int         (*m_anDrainErrors)(char*,int) = nullptr;
     void        (*m_resolveFrame)(unsigned long long, char*, int) = nullptr;
     int         (*m_extractInstall)(const char*, const char*, int, char*, int) = nullptr;
 };

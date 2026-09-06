@@ -64,9 +64,9 @@ DEV_HOSTS = {"mxbmrp3_replay.exe", "mxbmrp3_hud_window.exe", "mxbmrp3_fontgen.ex
 # would otherwise show up as a phantom "plugin crash" cluster. Add IDs here; the
 # game's own dev-tool hosts are handled separately by DEV_HOSTS.
 DEV_INSTALL_IDS = {
-    "d7983bfc-166e-457b-9be5-60e1d8c33c49",  # author - MX Bikes
+    "d7983bfc-166e-457b-9be5-60e1d8c33c49",  # author - MX Bikes, until 2026-07-30 (id reset)
     "e44bd23d-4e50-40d0-9662-9398f7e9d4fe",  # author - GP Bikes
-    "8b10ae0d-ec97-4807-b51b-4e6802d51fa5",  # author - Kart Racing Pro
+    "8b10ae0d-ec97-4807-b51b-4e6802d51fa5",  # author - MX Bikes since 2026-07-10, and Kart Racing Pro
 }
 
 # Human labels for the stable feat_* flags (from analytics_manager.cpp). Unknown
@@ -88,6 +88,7 @@ FEATURE_LABELS = {
     # backend that came up (see the SDK notes in analytics_manager.cpp).
     "feat_hwaccel": "GPU rendering (companion)",
     "feat_glingame": "Direct GL (in-game HUD)",
+    "feat_achievements": "Achievement toasts",
     "feat_devmode": "Developer mode",
     "feat_discord": "Discord presence",
 }
@@ -98,6 +99,24 @@ FEATURE_LABELS = {
 
 
 _ACRONYMS = {"Fmx": "FMX", "Ecu": "ECU", "G Force": "G-Force", "Hud": "HUD"}
+
+
+def achievement_titles():
+    """id -> title, read off docs/achievements.md, which test_achievements.cpp
+    GENERATES from the plugin's catalogue and diffs against the committed copy.
+    Reading it (rather than a copy here) keeps the chart's labels on the same
+    gate as the rows themselves. Missing file -> {} and the ids label themselves."""
+    path = os.path.join(REPO_ROOT, "docs", "achievements.md")
+    out = {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                m = re.match(r"\| `([a-z0-9_]+)` \| .*?\| ([^|]+?) \|", line)
+                if m:
+                    out[m.group(1)] = m.group(2).strip()
+    except OSError:
+        pass
+    return out
 
 
 def _pretty_key(key):
@@ -197,7 +216,7 @@ def latest_per_install(started):
 
 
 # Numeric summary keys that share a flag prefix but are NOT 0/1 adoption flags.
-_NOT_FLAGS = {"hud_count", "widget_count"}
+_NOT_FLAGS = {"hud_count", "widget_count", "ach_pct", "ach_unlocked"}
 
 
 def flag_adoption(snap, prefix):
@@ -937,6 +956,66 @@ def _engagement(r, sessions, snap, started=None):
                           subtitle="{:,} installs reporting".format(len(lc))),
                 "Launches per install")
 
+    # ------------------------------------------------------------------------
+    # Achievements (2.20.0 / 2.21.0). The denominator throughout is installs that
+    # sent ach_pct at all -- older versions carry none of these keys and are not
+    # "0% progress", they are silent.
+    # ------------------------------------------------------------------------
+    ap = pd.to_numeric(snap["_n"].map(lambda n: n.get("ach_pct")), errors="coerce").dropna()
+    if len(ap):
+        r.w("## Achievements", "")
+        buckets = [("0%", 0, 1), ("1–9%", 1, 10), ("10–24%", 10, 25), ("25–49%", 25, 50),
+                   ("50–74%", 50, 75), ("75–99%", 75, 100), ("100%+", 100, 10**9)]
+        cats = [(lab, int(((ap >= lo) & (ap < hi)).sum())) for lab, lo, hi in buckets]
+        r.w("- **Achievement tiers earned, median per install:** {:.0f}%  ·  "
+            "**installs past the first tier:** {} of {:,} reporting".format(
+                ap.median(), cp(int((ap > 0).sum()), len(ap)), len(ap)), "")
+        r.chart("achievement_progress.svg",
+                svg.vbars("Achievement tiers earned per install", cats,
+                          subtitle="{:,} installs reporting".format(len(ap))),
+                "Achievement progress")
+        au = pd.to_numeric(snap["_n"].map(lambda n: n.get("ach_unlocked")), errors="coerce").dropna()
+        if len(au):
+            ub = [("0", 0, 1), ("1–4", 1, 5), ("5–9", 5, 10), ("10–24", 10, 25),
+                  ("25–49", 25, 50), ("50+", 50, 10**9)]
+            ucats = [(lab, int(((au >= lo) & (au < hi)).sum())) for lab, lo, hi in ub]
+            r.w("- **Achievements unlocked, median per install:** {:.0f}".format(au.median()), "")
+            r.chart("achievements_unlocked.svg",
+                    svg.vbars("Achievements unlocked per install", ucats,
+                              subtitle="{:,} installs reporting".format(len(au))),
+                    "Achievements unlocked")
+        # Global achievement stats (2.21.0): the share of reporting installs that
+        # hold each achievement, the way Steam lists them. A row is present in the
+        # ping only at tier 1 or higher, so presence IS the unlock. Titles come
+        # from docs/achievements.md, generated from the same catalogue the plugin
+        # ships, so the labels here can only be as stale as that gate allows.
+        reporting = snap[snap["_n"].map(lambda n: "ach_pct" in n)]
+        counts = {}
+        for n in reporting["_n"]:
+            for k in n:
+                if k.startswith("ach_") and k not in _NOT_FLAGS:
+                    counts[k[4:]] = counts.get(k[4:], 0) + 1
+        if counts:
+            titles = achievement_titles()
+            ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+            base = len(reporting)
+
+            def label(i):
+                return titles.get(i, _pretty_key(i))
+
+            top = ranked[:25]
+            r.chart("achievements_global.svg",
+                    svg.hbar("Most earned achievements (share of reporting installs)",
+                             [(label(i), pct(c, base), None, "{:.0f}% ({:,})".format(pct(c, base), c))
+                              for i, c in top],
+                             subtitle="% of {:,} installs reporting achievements".format(base),
+                             value_fmt=lambda v: "{:.0f}%".format(v)),
+                    "Most earned achievements")
+            rare = sorted(counts.items(), key=lambda kv: (kv[1], kv[0]))[:10]
+            r.w("- **Rarest, of those earned by anyone:** " +
+                "  ·  ".join("{} {}".format(label(i), cp(c, base)) for i, c in rare), "")
+            r.w("- **Achievements earned by at least one install:** {:,}".format(len(counts)), "")
+
     # How long a sitting actually lasts. duration_seconds rides every session_end, but
     # session_end ITSELF was added in 1.27 -- 1.26 sent 83k launches and zero of them, so
     # the naive total silently covered ~36% of launches and read as a full figure. Same
@@ -1161,7 +1240,11 @@ def _crashes(r, started, sessions, crashes):
     # Resolve each crash to a catalogued crash (or None), then present ONE ranked
     # table per unit: named crashes by name (with trigger + workaround), and the
     # uncatalogued tail by fault signature - so no crash is listed twice.
-    cr["known"] = cr.apply(lambda row: match_known(row["fault"], row["game_build"], lookup), axis=1)
+    # apply() over an EMPTY frame hands back a frame, not a Series, and the
+    # assignment then fails -- an export with no crash events (a fresh app, a
+    # synthetic one) must still produce a report.
+    cr["known"] = (cr.apply(lambda row: match_known(row["fault"], row["game_build"], lookup), axis=1)
+                   if len(cr) else pd.Series(dtype=object))
     matched = int(cr["known"].notna().sum())
 
     by_known = defaultdict(int)
@@ -1275,7 +1358,9 @@ def selftest():
     # One real install, two DIFFERENT rotating user_ids on two days -> must count as 1 install.
     flags = {"feat_overlay": 1, "feat_rumble": 0, "hud_map": 1, "hud_standings": 0,
              "widget_speed": 1, "hud_count": 5, "widget_count": 3, "launch_count": 2,
-             "steam_runtime": 1}
+             "steam_runtime": 1,
+             # 2.20.0 / 2.21.0: the two totals and two earned rows by id
+             "ach_pct": 12, "ach_unlocked": 2, "ach_races": 2, "ach_config_reloads": 1}
     # panel_theme rides on install-1 only, so the theme chart's denominator is the
     # REPORTING installs (1) rather than all of them (2) -- the same coverage-aware
     # shape the feat_* flags have, and the state the world is actually in while
@@ -1355,6 +1440,14 @@ def selftest():
     assert "Plugin (MXBMRP3)" not in md, "no plugin-module crash should survive dev exclusion"
     assert "About this data" in md
     assert os.path.exists(os.path.join(out, "charts", "crash_categories.svg"))
+    # The achievements section: both totals charted, and the per-achievement
+    # share with the catalogue's titles (Racer for ach_races) rather than raw ids.
+    assert "## Achievements" in md, "achievements section missing"
+    assert os.path.exists(os.path.join(out, "charts", "achievement_progress.svg"))
+    assert os.path.exists(os.path.join(out, "charts", "achievements_unlocked.svg"))
+    assert os.path.exists(os.path.join(out, "charts", "achievements_global.svg"))
+    assert "Racer" in open(os.path.join(out, "charts", "achievements_global.svg")).read(), \
+        "achievement chart should label rows by title from docs/achievements.md"
 
     # The per-game activity chart must exist AND be referenced. Producing FEWER
     # charts is not an error unless something asserts otherwise, so a section that

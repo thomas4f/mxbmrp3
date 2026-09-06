@@ -697,6 +697,41 @@ TEST_CASE("gl confirm: silence reverts the setting, so nobody is stranded on a b
                   "stranded user the prompt exists to rescue");
 }
 
+TEST_CASE("gl confirm: the settings menu it hides takes no clicks while it is up") {
+    // The draw pass skipped the menu while the prompt was up; the input pass
+    // did not, so a click on the empty space where a tab had been still changed
+    // the tab (and a click where Close had been closed it). HudManager::standsDown
+    // is now one answer for drawing, hit-testing and updating.
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\gl_confirm\\");
+    if (!host.hasGlConfirm() || !host.hasInjectedMouse()) { MESSAGE("build without the hooks"); return; }
+
+    host.showSettings(true);
+    host.draw();
+    // The Widgets tab, at the foot of the sidebar: well clear of the centred prompt.
+    float x = 0.0f, y = 0.0f;
+    REQUIRE(host.settingsRegionCenter("widgets", &x, &y));
+    host.clickAt(x, y);
+    REQUIRE(host.activeTab() == "Widgets");             // the stand-in mouse works
+    host.setActiveTab("General");
+    host.draw();
+    REQUIRE(host.activeTab() == "General");
+
+    host.glInGame(true);
+    host.glConfirmArm(true);
+    REQUIRE(host.glConfirmActive());
+    host.clickAt(x, y);
+    CHECK_MESSAGE(host.activeTab() == "General", "the hidden menu took the click");
+
+    // The prompt runs out (silence reverts) and the menu is back in play.
+    host.glConfirmTick(11000);
+    REQUIRE(!host.glConfirmActive());
+    host.clickAt(x, y);
+    CHECK(host.activeTab() == "Widgets");
+    host.injectMouse(false);
+}
+
 TEST_CASE("gl confirm: the prompt goes THROUGH Direct GL, so it is its own test") {
     // The design, and the one an earlier version of this file asserted the
     // opposite of. That version routed the prompt to the engine so it would stay

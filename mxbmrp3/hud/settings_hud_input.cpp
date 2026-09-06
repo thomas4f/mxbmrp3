@@ -9,6 +9,7 @@
 // ============================================================================
 // file-budget: 1100 click dispatch for every settings tab; shrinks as tabs move to SteppedControl
 #include "settings_hud.h"
+#include "../core/stats_manager.h"
 #include "clock_widget.h"
 #include "version_widget.h"
 #include "pitboard_hud.h"
@@ -35,6 +36,8 @@
 #include "../core/update_downloader.h"
 #include "../core/director_manager.h"
 #include "../core/spotter_manager.h"
+#include "../core/achievement_manager.h"
+#include "achievement_widget.h"
 #include "director_widget.h"
 #include "../core/hotkey_manager.h"
 #if GAME_HAS_DISCORD
@@ -177,6 +180,16 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
             {
                 SpotterManager& spotter = SpotterManager::getInstance();
                 spotter.setEnabled(!spotter.isEnabled());
+                rebuildRenderData();
+            }
+            break;
+        // Achievement-toast master: the same region from the tab list's checkbox
+        // and the tab's own row, so it lives here for the spotter's reason.
+        case ClickRegion::ACHIEVEMENTS_TOASTS_TOGGLE:
+            {
+                AchievementManager& ach = AchievementManager::getInstance();
+                ach.setToastsEnabled(!ach.isToastsEnabled());
+                if (auto* w = HudManager::getInstance().getAchievementWidget()) w->setDataDirty();
                 rebuildRenderData();
             }
             break;
@@ -864,6 +877,7 @@ void SettingsHud::handleScaleClick(const ClickRegion& region, bool increase) {
 
 void SettingsHud::handleTabClick(const ClickRegion& region) {
     m_activeTab = region.tabIndex;
+    StatsManager::getInstance().exploration().onTabOpened(getTabName(m_activeTab));   // Grand Tour
     // OPENING a marked tab clears its "New" tag -- the tag's only claim is that
     // there is something here you have not looked at, and now you have. The rows
     // keep their bands until hovered; finding the row is a separate thing from

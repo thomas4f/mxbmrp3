@@ -40,6 +40,10 @@ private:
     std::array<long long, FRAME_HISTORY_SIZE> m_frameTimestamps;
     int m_frameIndex;
     int m_validFrameCount;  // Number of valid (non-zero) frames in buffer
+    // ExplorationStats::tick cadence: one call a second, with the Draw count
+    // since the last (Frame Perfect) -- see updateFrameMetrics.
+    long long m_lastExplorationTickUs = 0;
+    int m_framesThisSecond = 0;
 
     // Accumulate actual plugin execution time for current frame
     long long m_accumulatedFrameTimeUs;  // Total time spent in plugin callbacks this frame

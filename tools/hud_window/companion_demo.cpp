@@ -13,6 +13,8 @@
 #include "plugin_host.h"
 
 #include <chrono>
+#include <cstdlib>
+#include <string>
 #include <cmath>
 #include <thread>
 #include <vector>
@@ -54,6 +56,10 @@ int main(int argc, char** argv) {
     // settings menu covering them — for eyeballing widget rendering. Otherwise the
     // default settings-menu scene.
     bool gamepadMode = false, gearMode = false, timingMode = false, eventlogMode = false;
+    // "toast": the gear scene with an achievement toast up (Tinkerer, from a config
+    // reload) -- for eyeballing the card's default place among the widgets. Pair it
+    // with EXTRA_INI=$'[Achievements]\ntoastMs=30000' so the card outlives the hold.
+    bool toastMode = false;
     // "records": the Records HUD with server records loaded AND the player's own PB
     // row highlighted -- the row whose last column runs closest to the panel edge, and
     // the only way to look at that edge without the live provider. Implies the timing
@@ -79,6 +85,7 @@ int main(int argc, char** argv) {
     for (int a = 1; a < argc; ++a) {
         if (std::string(argv[a]) == "gamepad") gamepadMode = true;
         if (std::string(argv[a]) == "gear") gearMode = true;
+        if (std::string(argv[a]) == "toast") { gearMode = true; toastMode = true; }
         if (std::string(argv[a]) == "timing") timingMode = true;
         if (std::string(argv[a]) == "eventlog") eventlogMode = true;
         // "update": publish a fake UPDATE_AVAILABLE, so the settings footer's
@@ -248,15 +255,27 @@ int main(int argc, char** argv) {
         }
     } else if (gearMode) {
         // nothing: the HUD renders its default-visible widgets over the empty scene
+        if (toastMode) host.configReloaded();   // Tinkerer - Bronze, taken on the next draw
     } else {
         // Default (or a specific tab named on the command line, e.g. "Timing").
         const char* tab = "General";
+        int page = 1;   // "page N": a paged tab opened on its Nth page
         for (int a = 1; a < argc; ++a) {
             std::string s(argv[a]);
             if (s == "tab" && a + 1 < argc) tab = argv[a + 1];
+            if (s == "page" && a + 1 < argc) page = std::atoi(argv[a + 1]);
         }
         host.showSettings(true);
         host.setActiveTab(tab);
+        // Page through with the mouse stand-in, before the surface is pinned below:
+        // the pager's next button is found by its tooltip id on the game surface.
+        for (int p = 1; p < page; ++p) {
+            host.draw();
+            float nx = 0.0f, ny = 0.0f;
+            if (!host.settingsRegionCenter("pager.next", &nx, &ny)) break;
+            host.clickAt(nx, ny);
+        }
+        host.injectMouse(false);
     }
     // Pin the companion as the active surface so surface-scoped chrome (the settings
     // menu, the pointer) renders on the companion window we screenshot — it never

@@ -838,7 +838,7 @@ Function ShowPrivacyPage
   ; almost never on the stack (zero across the 1.29.1 reports). Mentioned three
   ; times and never attributed, it read as "this plugin is unstable" -- both
   ; discouraging and untrue.
-  ${NSD_CreateLabel} 0 0 300u 48u "${PLUGIN_NAME} can send a small anonymous ping each game launch, so the developer can see how many people use it, which features are worth keeping, and what needs fixing.$\n$\nIt sends a random install ID, the plugin version and which game, your enabled features, operating system and language, session length, and where the game faulted if it crashed."
+  ${NSD_CreateLabel} 0 0 300u 48u "${PLUGIN_NAME} can send a small anonymous ping each game launch, so the developer can see how many people use it, which features are worth keeping, and what needs fixing.$\n$\nIt sends a random install ID, the plugin version and which game, your enabled features, which achievements you have unlocked, operating system and language, session length, and where the game faulted if it crashed."
   Pop $R1
 
   ; "Content you added" rather than the old "a theme or spotter voice": those

@@ -151,7 +151,7 @@ void FmxManager::updateRotation(const Unified::TelemetryData& telemetry, float d
     m_rotationTracker.currentYaw = telemetry.yaw;
     m_rotationTracker.currentRoll = telemetry.roll;
 
-    // Track peak world-space pitch for Turn Up/Down classification
+    // Track peak world-space pitch for Oppo/Turn Down classification
     // Only track once yaw has started accumulating — excludes ramp angle at launch
     if (std::abs(m_rotationTracker.accumulatedYaw) >= Fmx::TURN_YAW_THRESHOLD) {
         if (telemetry.pitch > m_rotationTracker.peakWorldPitch)
@@ -251,6 +251,7 @@ void FmxManager::updateTrickDetection(const Unified::TelemetryData& telemetry, f
             bool justConfirmedAirborne = false;
             if (airborne) {
                 m_continuousAirborneTime += dt;
+                m_activeTrick.airTime += dt;
                 if (!m_activeTrick.hasBeenAirborne &&
                     m_continuousAirborneTime >= AIRBORNE_DEBOUNCE_TIME) {
                     m_activeTrick.hasBeenAirborne = true;
@@ -606,12 +607,12 @@ Fmx::TrickType FmxManager::classifyCurrentTrick(const Unified::TelemetryData& te
     // rotations 270°+) intentionally don't get this gate — once a real flip
     // or spin is committed, the title should stick through landing.
     if (airborne && hasAirtime && m_activeTrick.duration >= m_config.airCommitTime) {
-        // Turn Up/Down: significant yaw rotation with nose pointing up/down in world space
+        // Oppo/Turn Down: significant yaw rotation with nose pointing up/down in world space
         // Uses peak world-space pitch — once the nose pointed up/down, the trick sticks
         if (absYaw >= TURN_YAW_THRESHOLD) {
             if (m_rotationTracker.minWorldPitch <= -TURN_PITCH_THRESHOLD) {
                 return (m_rotationTracker.accumulatedYaw > 0)
-                    ? TrickType::TURN_UP_RIGHT : TrickType::TURN_UP_LEFT;
+                    ? TrickType::OPPO_RIGHT : TrickType::OPPO_LEFT;
             } else if (m_rotationTracker.peakWorldPitch >= TURN_PITCH_THRESHOLD) {
                 return (m_rotationTracker.accumulatedYaw > 0)
                     ? TrickType::TURN_DOWN_RIGHT : TrickType::TURN_DOWN_LEFT;
@@ -753,8 +754,8 @@ float FmxManager::calculateProgress(Fmx::TrickType type) const {
 
         case Fmx::TrickType::WHIP_LEFT:
         case Fmx::TrickType::WHIP_RIGHT:
-        case Fmx::TrickType::TURN_UP_LEFT:
-        case Fmx::TrickType::TURN_UP_RIGHT:
+        case Fmx::TrickType::OPPO_LEFT:
+        case Fmx::TrickType::OPPO_RIGHT:
         case Fmx::TrickType::TURN_DOWN_LEFT:
         case Fmx::TrickType::TURN_DOWN_RIGHT:
             progress = absYaw / m_config.whipMaxAngle;

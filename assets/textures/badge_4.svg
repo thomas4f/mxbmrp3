@@ -1,0 +1,35 @@
+<!-- Badge tile, tier 4 (Platinum): the Gold tile with a brighter shine and a sparkle.
+     Greyscale on purpose: the tier's metal is multiplied in at draw time, so
+     white is the metal itself and grey a darker shade of it. Rendered by
+     tools/texture_gen.py. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="streak" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0.30" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.45" stop-color="#fff" stop-opacity="0.34"/>
+      <stop offset="0.55" stop-color="#fff" stop-opacity="0.34"/>
+      <stop offset="0.70" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.35" r="0.75">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.36"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="tile"><rect x="8" y="8" width="112" height="112" rx="16"/></clipPath>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="16" fill="#cccccc"/>
+  <rect x="8" y="8" width="112" height="112" rx="16" fill="url(#glow)"/>
+  <rect x="8" y="8" width="112" height="112" rx="16" fill="url(#sheen)"/>
+  <rect x="8" y="8" width="112" height="112" rx="16" fill="url(#streak)"/>
+  <g clip-path="url(#tile)">
+    <rect x="6" y="6" width="112" height="112" rx="16" fill="none" stroke="#fff" stroke-opacity="0.45" stroke-width="6"/>
+    <rect x="10" y="10" width="112" height="112" rx="16" fill="none" stroke="#000" stroke-opacity="0.30" stroke-width="6"/>
+  </g>
+  <path d="M100 18 l2.2 7.8 7.8 2.2 -7.8 2.2 -2.2 7.8 -2.2 -7.8 -7.8 -2.2 7.8 -2.2z" fill="#fff" fill-opacity="0.9"/>
+  <path d="M24 92 l1.4 4.6 4.6 1.4 -4.6 1.4 -1.4 4.6 -1.4 -4.6 -4.6 -1.4 4.6 -1.4z" fill="#fff" fill-opacity="0.6"/>
+  <rect x="13" y="13" width="102" height="102" rx="11" fill="none" stroke="#000" stroke-opacity="0.35" stroke-width="2"/>
+  <rect x="8" y="8" width="112" height="112" rx="16" fill="none" stroke="#fff" stroke-width="4"/>
+</svg>

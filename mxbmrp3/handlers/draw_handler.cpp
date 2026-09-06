@@ -5,6 +5,12 @@
 #include "draw_handler.h"
 #include "../core/hud_manager.h"
 #include "../core/plugin_data.h"
+#include "../core/stats_manager.h"
+#include "../core/xinput_reader.h"
+#include "../game/game_config.h"
+#if GAME_HAS_HTTP_SERVER
+#include "../core/http_server.h"
+#endif
 #include "../diagnostics/logger.h"
 #include <windows.h>
 #include <cstdint>
@@ -98,6 +104,24 @@ void DrawHandler::updateFrameMetrics(long long totalFrameTimeUs) {
 
     // Store frame timestamp
     m_frameTimestamps[m_frameIndex] = currentTimeUs;
+
+    // The exploration signals' once-a-second tick: the time sums, the frame
+    // rate flag, the overlay's connection total. One compare per frame here.
+    ++m_framesThisSecond;
+    if (currentTimeUs - m_lastExplorationTickUs >= 1000000LL) {
+        if (m_lastExplorationTickUs != 0) {
+            const PluginData& pd = PluginData::getInstance();
+            uint32_t overlayTotal = 0;
+#if GAME_HAS_HTTP_SERVER
+            overlayTotal = HttpServer::getInstance().sseConnectsTotal();
+#endif
+            StatsManager::getInstance().exploration().tick(
+                pd.getSpectatedRaceNum() >= 0, XInputReader::getInstance().rumbleLive(),
+                pd.isPlayerRunning(), m_framesThisSecond, overlayTotal);
+        }
+        m_lastExplorationTickUs = currentTimeUs;
+        m_framesThisSecond = 0;
+    }
 
     // Increment frame index (circular buffer)
     m_frameIndex = (m_frameIndex + 1) % FRAME_HISTORY_SIZE;

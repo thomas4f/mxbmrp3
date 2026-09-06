@@ -479,6 +479,7 @@ void HttpServer::serverThread() {
                 res.set_content("{\"error\":\"Too many connections\"}", "application/json");
                 return;
             }
+            m_sseConnectsTotal.fetch_add(1, std::memory_order_relaxed);
 
             res.set_header("Cache-Control", "no-cache");
             res.set_header("Connection", "keep-alive");

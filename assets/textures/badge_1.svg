@@ -1,0 +1,26 @@
+<!-- Badge tile, tier 1 (Bronze): a rounded square with an outline and a light top sheen.
+     Greyscale on purpose: the tier's metal is multiplied in at draw time, so
+     white is the metal itself and grey a darker shade of it. Rendered by
+     tools/texture_gen.py. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.14"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="streak" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0.30" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.45" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.55" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.70" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.35" r="0.75">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="tile"><rect x="8" y="8" width="112" height="112" rx="14"/></clipPath>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="14" fill="#bdbdbd"/>
+  <rect x="8" y="8" width="112" height="112" rx="14" fill="url(#sheen)"/>
+  <rect x="8" y="8" width="112" height="112" rx="14" fill="none" stroke="#fff" stroke-width="4"/>
+</svg>

@@ -3,6 +3,7 @@
 // Settings interface for configuring which columns/rows are visible in HUDs
 // ============================================================================
 #include "settings_hud.h"
+#include "../core/stats_manager.h"
 #include "ideal_lap_hud.h"
 #include "lap_log_hud.h"
 #include "friends_hud.h"
@@ -88,6 +89,11 @@ using namespace PluginConstants;
 // (see SettingsManager::markDirty) so it never spikes a gameplay frame.
 void SettingsHud::markSettingsDirty() {
     SettingsManager::getInstance().markDirty();
+    // And what the setup now says, for the achievements that read it (Tyre
+    // Kicker, Interior Decorator, Keymaster, Test Pilot): at the edit, not at
+    // the deferred save, so a switched-on HUD counts as it is switched on.
+    // One pass over the HUDs per click; never per frame.
+    StatsManager::getInstance().exploration().observeSettings(HudManager::getInstance());
 }
 
 // Helper template to cycle enum values forward or backward with wrap-around
@@ -421,6 +427,14 @@ void SettingsHud::showUpdatesTab() {
     show();
 }
 
+void SettingsHud::showAchievementsTab(int catalogueIndex) {
+    m_activeTab = TAB_ACHIEVEMENTS;
+    m_achievementsJumpTo = catalogueIndex;
+    if (catalogueIndex < 0) m_achievementsPage = 0;
+    setDataDirty();
+    show();
+}
+
 void SettingsHud::update() {
     if (!m_bVisible) return;  // vis-gate: menu is active-surface-only (see show())
 
@@ -452,8 +466,10 @@ void SettingsHud::update() {
         return;  // Skip other processing this frame
     }
 
-    // Periodic refresh for Stats tab (live session data: distance, time, speed, etc.)
-    if (m_activeTab == TAB_STATS) {
+    // Periodic refresh for the two tabs that show live numbers: Stats (session
+    // distance, time, speed) and Achievements (the totals its bands track keep
+    // moving while on track). One timer, since only one tab is open at a time.
+    if (m_activeTab == TAB_STATS || m_activeTab == TAB_ACHIEVEMENTS) {
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastStatsRefresh).count();
         if (elapsed >= 1000) {
@@ -592,6 +608,7 @@ void SettingsHud::update() {
     // Handle mouse input. Repeatable steppers (+/-) fire on press and then hold-repeat;
     // every other button/toggle fires on RELEASE, so the user can press and slide off to
     // abort. (See findClickRegionAt + m_leftPressArmed.)
+    // held-back-exempt: the menu is held back as a whole by HudManager::standsDown (no update at all)
     const auto& leftButton = input.getLeftButton();
     if (leftButton.isClicked()) {
         m_leftPressArmed = false;
@@ -799,6 +816,7 @@ void SettingsHud::setActiveTabByName(const char* name) {
             // same stale reading twenty-eight times, and pass.
             if (isTabAvailable(t) && t != m_activeTab) {
                 m_activeTab = t;
+                StatsManager::getInstance().exploration().onTabOpened(getTabName(t));   // Grand Tour
                 disarmResets();
                 rebuildRenderData();
             }

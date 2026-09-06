@@ -120,8 +120,8 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
     const ColorConfig& colors = ColorConfig::getInstance();
 
     // Use normal font for grid content (readable size)
-    float gridFontSize = ctx.fontSize;
     float gridLineHeight = ctx.lineHeightNormal;
+    float gridFontSize = ctx.fontSize;
     float gridCharWidth = charWidth;
 
     // Grid layout constants - 3 columns with pagination.
@@ -155,45 +155,6 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
     if (trackedNameChars < 5) trackedNameChars = 5;  // Minimum name length
 
     float cellHeight = gridLineHeight;
-
-    // Helper lambda to render pagination controls (reduces duplication)
-    // Returns the updated Y position after rendering
-    auto renderPagination = [&](float& y, int currentPage, int totalPages,
-                                SettingsHud::ClickRegion::Type prevType,
-                                SettingsHud::ClickRegion::Type nextType) {
-        if (totalPages <= 1) return;
-
-        y += ctx.lineHeightNormal * 0.5f;  // Gap before pagination
-        char pageText[16];
-        snprintf(pageText, sizeof(pageText), "Page %d/%d", currentPage + 1, totalPages);
-        float pageTextWidth = PluginUtils::calculateMonospaceTextWidth(
-            static_cast<int>(strlen(pageText)), gridFontSize);
-
-        // Position pagination at right edge
-        // Format: "< Page x/y >" with spaces around arrows
-        float paginationTotalWidth = gridCharWidth * 2 + pageTextWidth + gridCharWidth * 2;
-        float paginationX = rightEdgeX - paginationTotalWidth;
-
-        // "< " button
-        ctx.parent->addString("< ", paginationX, y, Justify::LEFT, Fonts::getNormal(),
-                     colors.getAccent(), gridFontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(paginationX, y, gridCharWidth * 2, cellHeight,
-            prevType, nullptr, 0, false, 0));
-        paginationX += gridCharWidth * 2;
-
-        // Page text
-        ctx.parent->addString(pageText, paginationX, y, Justify::LEFT, Fonts::getNormal(),
-                     colors.getSecondary(), gridFontSize);
-        paginationX += pageTextWidth;
-
-        // " >" button
-        ctx.parent->addString(" >", paginationX, y, Justify::LEFT, Fonts::getNormal(),
-                     colors.getAccent(), gridFontSize);
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(paginationX, y, gridCharWidth * 2, cellHeight,
-            nextType, nullptr, 0, false, 0));
-
-        y += ctx.lineHeightNormal;
-    };
 
     // =====================================================
     // SECTION 1: Server Players Grid
@@ -258,8 +219,9 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
     ctx.currentY = serverGridStartY + SERVER_PLAYERS_ROWS * cellHeight;
 
     // Server pagination
-    renderPagination(ctx.currentY, ctx.parent->m_serverPlayersPage, serverTotalPages,
-                    SettingsHud::ClickRegion::SERVER_PAGE_PREV, SettingsHud::ClickRegion::SERVER_PAGE_NEXT);
+    if (serverTotalPages > 1) ctx.addSpacing();   // the junction above a button row
+    ctx.addPager(ctx.parent->m_serverPlayersPage, serverTotalPages,
+                 SettingsHud::ClickRegion::SERVER_PAGE_PREV, SettingsHud::ClickRegion::SERVER_PAGE_NEXT);
 
 
     // =====================================================
@@ -373,8 +335,9 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
     ctx.currentY = trackedGridStartY + TRACKED_ROWS * cellHeight;
 
     // Tracked pagination
-    renderPagination(ctx.currentY, ctx.parent->m_trackedRidersPage, trackedTotalPages,
-                    SettingsHud::ClickRegion::TRACKED_PAGE_PREV, SettingsHud::ClickRegion::TRACKED_PAGE_NEXT);
+    if (trackedTotalPages > 1) ctx.addSpacing();
+    ctx.addPager(ctx.parent->m_trackedRidersPage, trackedTotalPages,
+                 SettingsHud::ClickRegion::TRACKED_PAGE_PREV, SettingsHud::ClickRegion::TRACKED_PAGE_NEXT);
 
     ctx.addNote("Tip: tracked riders are saved to mxbmrp3_tracked_riders.json.");
 

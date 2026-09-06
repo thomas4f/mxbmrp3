@@ -2,6 +2,7 @@
 // core/companion_window.cpp  — see companion_window.h
 // ============================================================================
 #include "companion_window.h"
+#include "stats_manager.h"
 #include "thread_detach_grace.h"
 #include "ui_viewport.h"
 
@@ -84,6 +85,7 @@ void CompanionWindow::getSavedGeometry(int& x, int& y, int& w, int& h) const {
 void CompanionWindow::setEnabled(bool enabled) {
     if (!enabled) { stop(); return; }
     if (m_enabled.exchange(true)) return;   // already open
+    StatsManager::getInstance().exploration().onCompanionOpened();   // Second Screen
     // Reap a previous thread that closed itself (e.g. via the window's X button)
     // before starting a new one — assigning over a joinable std::thread terminates.
     if (m_thread.joinable() && m_thread.get_id() != std::this_thread::get_id())
