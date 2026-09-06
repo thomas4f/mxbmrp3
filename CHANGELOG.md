@@ -20,6 +20,13 @@ Changelog's categories.
 
 ## [Unreleased]
 
+## [1.30.1] - 2026-09-06
+
+### Fixed
+- The anonymous usage ping reported no achievements at all: it was built
+  before the stats file had loaded, so every install read as having earned
+  nothing. It now goes out after the load, and carries your real tiers
+
 ## [1.30.0] - 2026-09-06
 
 Achievements, Bronze to Platinum: your laps, races, crashes, tricks and
@@ -901,7 +908,8 @@ Pre-release. Its contents shipped in 1.26.0.0, minus the analytics addition.
 
 Initial public release.
 
-[Unreleased]: https://github.com/thomas4f/mxbmrp3/compare/v1.30.0...HEAD
+[Unreleased]: https://github.com/thomas4f/mxbmrp3/compare/v1.30.1...HEAD
+[1.30.1]: https://github.com/thomas4f/mxbmrp3/compare/v1.30.0...v1.30.1
 [1.30.0]: https://github.com/thomas4f/mxbmrp3/compare/v1.29.5...v1.30.0
 [1.29.5]: https://github.com/thomas4f/mxbmrp3/compare/v1.29.3...v1.29.5
 [1.29.3]: https://github.com/thomas4f/mxbmrp3/compare/v1.29.1...v1.29.3

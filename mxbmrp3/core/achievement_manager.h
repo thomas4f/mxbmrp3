@@ -106,6 +106,8 @@ public:
     // hidden row is never in the total and its earned tiers count on top, so
     // the figure passes 100% (ten listed and one hidden: 110% at eleven). A
     // one-shot counts one.
+    // True until onStatsLoaded(): the states are not this install's yet.
+    bool isLoading() const { return m_loading; }
     int earnedUnits() const;
     int totalUnits() const;
     // Achievements earned at any tier (a hidden one counts) over the listed

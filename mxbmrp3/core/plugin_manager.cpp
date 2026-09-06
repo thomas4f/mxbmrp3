@@ -186,13 +186,6 @@ void PluginManager::initialize(const char* savePath) {
     HttpServer::getInstance().initialize(savePath);
 #endif
 
-#if GAME_HAS_ANALYTICS
-    // Fire the anonymous usage beacon (background thread, fire-and-forget).
-    // Must run AFTER settings load (HudManager::initialize) so the enabled flag
-    // and HUD visibility reflect the user's config.
-    AnalyticsManager::getInstance().initialize(savePath);
-#endif
-
     // Start the XInput I/O thread once settings (controller index / rumble config) are
     // loaded, so all XInputGetState/XInputSetState runs off the game/worker thread. A
     // degraded controller driver can then never stall whichever thread drives telemetry.
@@ -351,6 +344,16 @@ int PluginManager::handleStartup(const char* savePath) {
 
     // Load unified stats from disk (includes PB, odometer, and track/bike stats)
     StatsManager::getInstance().load(m_savePath);
+
+#if GAME_HAS_ANALYTICS
+    // Fire the anonymous usage beacon (background thread, fire-and-forget).
+    // Must run AFTER settings load (HudManager::initialize, inside initialize()
+    // above) so the enabled flag and HUD visibility reflect the user's config,
+    // and AFTER the stats load just above: the ping carries the achievement
+    // tiers, and built before that load every install reported zero of them
+    // (1.30.0's first pings did). buildEventBody() warns if this order slips.
+    AnalyticsManager::getInstance().initialize(m_savePath);
+#endif
 
     if (savePath != nullptr) {
         DEBUG_INFO_F("Startup called with save path: %s", savePath);

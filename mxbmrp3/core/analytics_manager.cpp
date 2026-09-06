@@ -519,7 +519,11 @@ std::string AnalyticsManager::buildEventBody() const {
     // and achievements earned at any tier (the tab's "Unlocked" count).
     // Not while the dev-only devScale is on: a test session's inflated tiers
     // would read as one install's real progress.
-    if (const AchievementManager& ach = AchievementManager::getInstance(); ach.getDevValueScale() == 1.0) {
+    // ...nor before the stats file is in: zeros then would read as a fresh
+    // install's progress. PluginManager::handleStartup orders the load first.
+    if (AchievementManager::getInstance().isLoading()) {
+        DEBUG_WARN("AnalyticsManager: app_started built before the stats loaded; achievement fields omitted");
+    } else if (const AchievementManager& ach = AchievementManager::getInstance(); ach.getDevValueScale() == 1.0) {
         const int tiers = ach.totalUnits();
         props["ach_pct"] = static_cast<long long>(tiers > 0 ? (ach.earnedUnits() * 100) / tiers : 0);
         props["ach_unlocked"] = static_cast<long long>(ach.earnedAchievements());
@@ -553,7 +557,7 @@ std::string AnalyticsManager::buildEventBody() const {
     // reading), a shipped theme reports itself, and anything else collapses to
     // "custom"/"missing". See analytics_theme.h for why the raw name never ships.
     // Built after AssetManager::discoverAssets() and the settings load
-    // (PluginManager::initialize orders analytics last), so the lookup sees the
+    // (PluginManager::handleStartup starts analytics after initialize() and the stats load), so the lookup sees the
     // real discovered set — were it built earlier every install would read
     // "missing".
     {
