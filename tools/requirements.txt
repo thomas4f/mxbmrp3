@@ -19,7 +19,7 @@ capstone>=5.0.9
 #               librsvg is deliberately unsupported - not pip-pinnable. See
 #               assets/icons/README.md.)
 Pillow>=12.3.0
-cairosvg==2.9.0
+cairosvg==2.9.1
 
 # tools/analytics_report.py (Aptabase export -> analytics/REPORT.md + SVG charts):
 #   - pyarrow: only needed for PARQUET exports; CSV exports need pandas alone.
