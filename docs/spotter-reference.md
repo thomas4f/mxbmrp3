@@ -1,10 +1,5 @@
 # Spotter reference
 
-GENERATED from `mxbmrp3/core/spotter_cue_pack.h` (`allCueKeys()`)
-and `mxbmrp3/core/spotter_vars.h` (`bindings()`).
-Do not edit by hand - `test_spotter_pack_census.cpp` rewrites it and
-fails if this copy is stale.
-
 This is the lookup table. The two files it goes with:
 
 - `mxbmrp3_data/spotters/default/spotter.ini` - the shipped pack,
@@ -13,6 +8,8 @@ This is the lookup table. The two files it goes with:
 - `docs/spotter.md` - the guide: what it calls and how to set it up,
   then the authoring half (optional groups, alternates, fallbacks,
   recorded packs, the chunk mixer and `[Mix] gap_ms`).
+
+<sub>Generated from `mxbmrp3/core/spotter_cue_pack.h` (`allCueKeys()`) and `mxbmrp3/core/spotter_vars.h` (`bindings()`) by `tests/unit/test_spotter_pack_census.cpp` - do not edit. Run the unit gate, which rewrites it and fails while this copy is stale.</sub>
 
 ## Cues
 
@@ -39,6 +36,7 @@ shipped ini - the three deliberately agree.
 | `session_prestart` | on | the session is about to go green |
 | `session_ended` | on | the session is over - fires whether you are still circulating or already parked |
 | `session_state` | on | the session changed to a state with no cue of its own - cancelled, sighting lap, race over. The idle gap between sessions is deliberately not announced |
+| `holeshot_you` | silent | YOU took the holeshot - first of the field through the opening timing line after a gate drop, whichever line that is (the splits are numbered from start/finish, and a grid need not sit behind it). DEFAULT-QUIET: it lands in the first seconds of a race, where a voice competes with the one moment nobody wants narrated |
 | `leader_you` | on | you took the lead |
 | `finished_you` | on | you took the flag |
 | `penalty_you` | on | you were penalised. {penalty_seconds} is THIS penalty and {penalty_total} the running total INCLUDING it - the standings column has not absorbed it yet at this instant, so the cue keeps its own tally. The total is empty on a first penalty, where it would only repeat the amount |

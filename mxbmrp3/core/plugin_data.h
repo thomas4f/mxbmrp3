@@ -224,6 +224,26 @@ public:
     void setClassificationOrder(const std::vector<int>& order);
     const std::vector<int>& getClassificationOrder() const { return m_classificationOrder; }
 
+    // True once every rider the classification still counts as RACING carries a
+    // finish time - the moment the race's numbers stop moving. What the finish
+    // achievements are recorded on (race_classification_handler): the margin to
+    // second and "every rider a lap down" are only final once the field is in.
+    // False for an empty order, and false throughout the race (the first rider
+    // still out there ends the scan), so it costs nothing until it matters.
+    bool isRaceFieldSettled() const;
+
+    // Roost / Side by Side: who the player is racing right now, off the same
+    // position batch the gaps are built from. The GEOMETRY is here because the
+    // positions are; the clock and the running totals are StatsManager's,
+    // which owns both the injectable clock and the exploration sums.
+    // Not SpotterManager's, though it runs a proximity pass of its own - that
+    // is a feature a player switches off. See roost_detect.h.
+    void updateProximity(int numVehicles, const Unified::TrackPositionData* positions);
+    // The measurement stops here: whatever time passes before the next
+    // updateProximity() is not time spent racing anyone. Cheap enough to call
+    // on every batch that is not a race in progress.
+    void endProximity();
+
     // Position lookup - efficiently find a rider's position by race number (1-based, or -1 if not found)
     // Uses cached map that's only rebuilt when classification changes
     int getPositionForRaceNum(int raceNum) const;

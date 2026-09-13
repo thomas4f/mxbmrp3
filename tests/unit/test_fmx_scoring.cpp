@@ -261,14 +261,17 @@ std::string generateTricksDoc() {
     const FmxConfig c;
     std::ostringstream out;
     out << "# FMX tricks\n\n";
-    out << "GENERATED from `mxbmrp3/core/fmx_types.h` and `mxbmrp3/core/fmx_scoring.h` by "
-           "`tests/unit/test_fmx_scoring.cpp` - do not edit. When a trick or a number changes, run the "
-           "unit gate and copy `/tmp/tricks.new.md` over this file.\n\n";
     out << "What the FMX HUD recognises, what each trick is worth and how a score is built, at the "
            "defaults. Left and right variants are one trick here, as in the settings: `trickEnabled_<INI key>=0` "
            "under `[FmxHud]` in the settings file turns one off, both directions at once. *Base* is the score before the "
            "multipliers below; *Scored on* is the axis whose rotation scales it; *Full progress* is what "
            "fills the HUD's bar.\n\n";
+    // The generated-doc note, in the one shape every generated page in this
+    // repo uses: after the intro, so a reader learns what the page IS before
+    // how it is made. check_docs.py holds all six to it.
+    out << "<sub>Generated from `mxbmrp3/core/fmx_types.h` and `mxbmrp3/core/fmx_scoring.h` by "
+           "`tests/unit/test_fmx_scoring.cpp` - do not edit. Run the unit gate and copy "
+           "`/tmp/tricks.new.md` over this file.</sub>\n\n";
     out << "## Ground tricks\n\n";
     out << "A ground trick counts once it reaches " << num(MIN_GROUND_TRICK_PROGRESS * 100.0f)
         << "% of its full progress, so a momentary blip never scores.\n\n";

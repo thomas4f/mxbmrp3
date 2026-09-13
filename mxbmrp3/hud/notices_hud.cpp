@@ -420,8 +420,19 @@ void NoticesHud::rebuildRenderData() {
 
     // Only render if there's something to show
     // Priority: WRONG WAY > HAZARD AHEAD > BLUE FLAG > LAPPER AHEAD > OVERTIME > ALL-TIME PB > FASTEST LAP > SESSION PB > SEGMENT > FINISHED > LAST LAP > SETUP NAME
+    //
+    // ...or the Notices tab is open (isPreviewing), in which case a stand-in slab
+    // draws at the foot of the chain below. A notice is up for a second or two an
+    // hour, which is no time to drag the panel anywhere.
+    //
+    // GATED ON HAVING ANY NOTICE SWITCHED ON, like every other element's preview
+    // is gated on its own content switch: with the lot turned off this panel can
+    // never show anything, so standing in for it would be arguing with the player.
+    // (m_bShowSegment is not in the mask -- it is self-gated by the segment hotkey
+    // -- so it is asked for separately.)
+    const bool preview = isPreviewing() && (m_enabledNotices != 0 || m_bShowSegment);
     if (!showWrongWay && !showHazard && !showBlueFlag && !showLapping && !showOvertime && !showAllTimePB && !showFastestLap &&
-        !showSessionPB && !showSegment && !showLastLap && !showFinished && !showDefaultSetup) {
+        !showSessionPB && !showSegment && !showLastLap && !showFinished && !showDefaultSetup && !preview) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
@@ -598,6 +609,22 @@ void NoticesHud::rebuildRenderData() {
         addString("DEFAULT SETUP", noticeCenterX, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE),
             captionOnSlabColor(this->getColor(ColorSlot::WARNING), m_fBackgroundOpacity),
+            dim.fontSizeLarge);
+    }
+
+    else if (preview) {
+        // LAST in the chain, so a real notice always wins: the sample only draws on
+        // a frame where nothing else would have. Accent rather than one of the
+        // notice colours, so it does not read as a warning that is actually up.
+        addNoticeBackground(slabX, slabY, slabW, slabH,
+            PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), m_fBackgroundOpacity));
+        // ONE WORD. This slot carries WRONG WAY and HAZARD AHEAD at a glance, so a
+        // sentence here reads as a notice rather than as the absence of one -- and
+        // the word says what it is, which is the whole job: something appeared
+        // that the player had not done anything to cause.
+        addString("PREVIEW", noticeCenterX, noticeY, Justify::CENTER,
+            this->getFont(FontCategory::TITLE),
+            captionOnSlabColor(this->getColor(ColorSlot::ACCENT), m_fBackgroundOpacity),
             dim.fontSizeLarge);
     }
 

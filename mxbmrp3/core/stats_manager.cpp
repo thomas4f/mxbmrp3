@@ -6,6 +6,7 @@
 #include "stats_manager.h"
 #include "achievement_manager.h"
 #include "atomic_file_writer.h"
+#include "finish_margin.h"
 #include "plugin_data.h"
 #include "plugin_utils.h"
 #include "ui_config.h"
@@ -18,30 +19,16 @@
 #include <cmath>
 #include <windows.h>
 
-// Minimum speed to count as movement (filters out noise when stationary)
-static constexpr float MIN_MOVEMENT_SPEED_MS = 0.1f;  // ~0.36 km/h
+// What counts as finishing on fumes, as a fraction of tank capacity: the band
+// from just above EMPTY up to this. Empty is literally zero litres, at the
+// telemetry edge in stats_manager_telemetry.cpp, so the two fuel rows describe
+// two different moments - crossing the line with a splash left, and the tank
+// actually running out - and either can be earned without the other.
+static constexpr float FUEL_FUMES_FRACTION = 0.01f;
 
 StatsManager& StatsManager::getInstance() {
     static StatsManager instance;
     return instance;
-}
-
-#if defined(MXBMRP3_TEST_BUILD)
-// Injectable simulated clock for the headless odometer test. -1 = real
-// steady_clock (production path). Never compiled into a shipping DLL.
-static long long s_statsTestNowUs = -1;
-void StatsManager::testSetNowUs(long long us) { s_statsTestNowUs = us; }
-#endif
-
-std::chrono::steady_clock::time_point StatsManager::odometerNow() {
-#if defined(MXBMRP3_TEST_BUILD)
-    if (s_statsTestNowUs >= 0) {
-        return std::chrono::steady_clock::time_point(
-            std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                std::chrono::microseconds(s_statsTestNowUs)));
-    }
-#endif
-    return std::chrono::steady_clock::now();
 }
 
 std::string StatsManager::makeKey(const std::string& trackId, const std::string& bikeName) {
@@ -52,7 +39,8 @@ std::string StatsManager::makeKey(const std::string& trackId, const std::string&
 // ============================================================================
 
 void StatsManager::setCurrentContext(const std::string& trackId, const std::string& bikeName,
-                                      const std::string& category) {
+                                      const std::string& category,
+                                      const std::string& trackName) {
     m_currentTrackId = trackId;
     m_currentBikeName = bikeName;
     m_currentKey = makeKey(trackId, bikeName);
@@ -62,6 +50,16 @@ void StatsManager::setCurrentContext(const std::string& trackId, const std::stri
     if (!bikeName.empty() && !category.empty()) {
         m_bikeCategories[bikeName] = category;
         m_dirty = true;
+    }
+
+    // Learn this track's display name. Overwrites, rather than filling a gap:
+    // a track renamed between releases should read by the name it has now.
+    if (!trackId.empty() && !trackName.empty()) {
+        std::string& stored = m_trackNames[trackId];
+        if (stored != trackName) {
+            stored = trackName;
+            m_dirty = true;
+        }
     }
 
     // Ensure entries exist for telemetry-rate lookups (avoids operator[] creating entries at 100Hz)
@@ -132,6 +130,14 @@ void StatsManager::recordLap(int lapTime, int sector1, int sector2, int sector3,
     m_globalTotalsDirty = true;
 
     if (isValid && lapTime > 0) {
+        // THE FIRST valid lap on this track+bike is what makes it count toward
+        // Globetrotter, Collector and Class Act -- those read keys with laps on
+        // them, not keys that exist. Nothing else dirties the distinct cache
+        // here: setCurrentContext dirties it when the KEY appears, and at that
+        // moment the key has no laps, so without this the count stayed one
+        // event behind (a track rode, left and came back before it was
+        // counted). Only on the 0 -> 1 edge, so a lap is not an O(records) walk.
+        if (stats.validLaps == 0) m_distinctDirty = true;
         stats.validLaps++;
         m_sessionLaps++;
         if (m_sessionLaps > m_globalStats.maxSessionLaps) m_globalStats.maxSessionLaps = m_sessionLaps;
@@ -163,114 +169,32 @@ void StatsManager::recordLap(int lapTime, int sector1, int sector2, int sector3,
         m_playerHasFastestLapInRace = true;
     }
 
+    // Spotless: a lap with nothing on its sheet. Read from the snapshot at the
+    // top of this function, which is the lap that just closed - the current-lap
+    // accumulators have already been reset by here. An invalid lap still counts
+    // as a lap; only a crash or a penalty breaks the run.
+    m_exploration.onLapCompleted(m_lastLapCrashes == 0 && m_lastLapPenaltyCount == 0);
     if (isValid) m_exploration.onLapTime(lapTime);   // palindrome, deja vu, metronome
     m_dirty = true;
     AchievementManager::getInstance().onStatsChanged();
 }
 
-void StatsManager::updateTelemetry(float speedMs, bool isCrashed, int currentGear) {
-    // Sanitize the speed sample: NaN is rejected by the comparisons below
-    // anyway, but +Inf passes them and would poison the odometer / top-speed
-    // values, which are PERSISTED - one bad physics sample would corrupt the
-    // stats file with no recovery path.
-    if (!std::isfinite(speedMs)) {
-        speedMs = 0.0f;
-    }
-
-    // Single lookup for the entire method — setCurrentContext() guarantees entry exists
-    TrackBikeStats* stats = nullptr;
-    if (!m_currentKey.empty()) {
-        auto it = m_trackBikeStats.find(m_currentKey);
-        if (it != m_trackBikeStats.end()) stats = &it->second;
-    }
-
-    // Crash edge detection — only count rising edges (not-crashed -> crashed)
-    if (isCrashed && !m_wasCrashed) {
-        // The TALLY first, and OUTSIDE the `stats` guard below. That guard exists
-        // because the per-track+bike record needs a track and a bike to be filed
-        // under; the tally needs neither -- it is a count of crashes, full stop --
-        // and a crash landing before setCurrentContext() has run would otherwise
-        // go uncounted on the one number a viewer is watching.
-        m_globalStats.crashTally++;
-        m_dirty = true;
-        if (stats) {
-            stats->crashCount++;
-            if (!m_globalTotalsDirty) ++m_cachedTotalCrashes;   // clean cache stays exact (see the members)
-            m_sessionCrashes++;
-            m_curLapCrashes++;
-        }
-        m_exploration.onCrash(m_sessionCrashes, m_globalStats.crashTally);
-        AchievementManager::getInstance().onStatsChanged();
-    }
-    m_wasCrashed = isCrashed;
-
-    // Gear shift edge detection — count any gear change (including neutral transitions)
-    if (m_lastGear >= 0 && currentGear >= 0 && currentGear != m_lastGear && stats) {
-        stats->gearShiftCount++;
-        if (!m_globalTotalsDirty) ++m_cachedTotalGearShifts;
-        m_sessionGearShifts++;
-        m_curLapGearShifts++;
-        m_dirty = true;
-        AchievementManager::getInstance().onStatsChanged();
-    }
-    if (currentGear >= 0) {
-        m_lastGear = currentGear;
-    }
-
-    if (!stats) return;
-
-    // Top speed (session + per-lap)
-    if (speedMs > m_sessionTopSpeedMs) {
-        m_sessionTopSpeedMs = speedMs;
-    }
-    if (speedMs > m_curLapTopSpeedMs) {
-        m_curLapTopSpeedMs = speedMs;
-    }
-    if (speedMs > stats->topSpeedMs) {
-        stats->topSpeedMs = speedMs;
-        m_dirty = true;
-    }
-
-    // Distance (integrated from speed * deltaTime)
-    if (!m_currentBikeName.empty()) {
-        auto now = odometerNow();
-
-        if (!m_hasLastOdometerUpdateTime) {
-            m_lastOdometerUpdateTime = now;
-            m_hasLastOdometerUpdateTime = true;
-        } else {
-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(now - m_lastOdometerUpdateTime);
-            float deltaTime = duration.count() / 1000000.0f;
-            m_lastOdometerUpdateTime = now;
-
-            if (deltaTime > 0.0f && deltaTime <= 0.5f && speedMs >= MIN_MOVEMENT_SPEED_MS) {
-                float distanceMeters = speedMs * deltaTime;
-                m_sessionTripDistance += distanceMeters;
-                m_curLapDistance += distanceMeters;
-                m_bikeOdometers[m_currentBikeName] += distanceMeters;
-                stats->totalDistanceM += distanceMeters;
-                if (!m_globalTotalsDirty) {
-                    m_cachedTotalOdometer += distanceMeters;
-                    const double bike = m_bikeOdometers[m_currentBikeName];
-                    if (bike > m_cachedMaxBikeOdometer) m_cachedMaxBikeOdometer = bike;
-                }
-                m_unsavedDistance += distanceMeters;
-                // Only mark dirty every ~100m to avoid per-frame save overhead.
-                // The same mark is the achievement evaluation's cadence for the
-                // continuous metrics (distance, ride time): never per tick.
-                if (m_unsavedDistance >= 100.0) {
-                    m_dirty = true;
-                    m_unsavedDistance = 0.0;
-                    // The longest session grows WHILE it is ridden (Iron Butt lands
-                    // at the hour, not at the exit); the session's end still takes
-                    // the final figure.
-                    const int64_t live = getSessionDurationMs();
-                    if (live > m_globalStats.maxSessionTimeMs) m_globalStats.maxSessionTimeMs = live;
-                    AchievementManager::getInstance().onStatsChanged();
-                }
-            }
-        }
-    }
+void StatsManager::onRaceStart(int starters) {
+    // Everything a single RACE owns, as opposed to the session around it. The
+    // session counters (crashes, penalties, laps) are deliberately NOT reset:
+    // "clean race" has always meant no crash since the session began, and a
+    // restart does not un-crash the one before it.
+    //
+    // AND THE RAGE QUIT ARM IS LEFT ALONE, deliberately. A restart pulls every
+    // rider off the track, so RunDeinit arms it for a race nobody chose to
+    // leave; consuming it here credited the row to a player who went on to
+    // finish the restarted race. The arm needs no help - a finish clears it
+    // (tryRecordRaceFinish) and a real session change consumes it - so the
+    // question "did they come back?" answers itself either way.
+    m_raceFinishRecorded = false;
+    m_pendingMarginPosition = 0;
+    m_playerHasFastestLapInRace = false;
+    m_exploration.onGateDrop(starters);
 }
 
 void StatsManager::recordSessionStart(int sessionType) {
@@ -300,6 +224,11 @@ void StatsManager::recordSessionStart(int sessionType) {
         m_cachedSessionDurationMs = 0;
         m_isPaused = false;
         m_hasLastLapData = false;
+        // Favorite Spot's run. A place on the centreline only means anything
+        // against the track it was measured on, and a session change is where
+        // the track can have moved under it.
+        m_lastCrashTrackPos = -1.0f;
+        m_sameSpotCrashRun = 0;
     }
 
     // Always reset time tracking on session (re-)entry to prevent double-counting
@@ -311,6 +240,7 @@ void StatsManager::recordSessionStart(int sessionType) {
     if (sessionChanged) {
         consumeRaceLeft();
         m_raceFinishRecorded = false;
+        m_pendingMarginPosition = 0;
         m_playerHasFastestLapInRace = false;
     }
 
@@ -318,6 +248,13 @@ void StatsManager::recordSessionStart(int sessionType) {
     m_wasCrashed = false;
     m_lastGear = -1;
     m_hasLastOdometerUpdateTime = false;
+
+    // The tank level is not continuous across a trip to the pits: the fuel load
+    // is part of the setup, so coming back out with LESS in the tank differences
+    // as a tank's worth of burn (more re-references harmlessly). Every track
+    // entry drops the reference, not just a new bike - setTankCapacity() only
+    // fires at EventInit, which a pit stop does not. Costs one tick's burn.
+    m_hasLastFuel = false;
 
     // Reset per-lap tracking
     m_curLapStartTime = std::chrono::steady_clock::now();
@@ -352,10 +289,6 @@ void StatsManager::recordSessionEnd() {
     int64_t rawDuration = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() - m_totalPausedMs;
     m_cachedSessionDurationMs = rawDuration > 0 ? rawDuration : 0;
     m_sessionActive = false;
-    if (m_cachedSessionDurationMs > m_globalStats.maxSessionTimeMs) {
-        m_globalStats.maxSessionTimeMs = m_cachedSessionDurationMs;   // Iron Butt
-        m_dirty = true;
-    }
 
     if (!m_currentKey.empty()) {
         m_trackBikeStats[m_currentKey].totalTimeOnTrackMs += m_cachedSessionDurationMs;
@@ -383,8 +316,51 @@ void StatsManager::notifyResume() {
     m_isPaused = false;
 }
 
-void StatsManager::tryRecordRaceFinish(const PluginData& pd) {
-    if (m_raceFinishRecorded) return;  // Guard against double-counting
+// The finishing margin, once more, for the two rows that need it when the lap
+// logs were still filling at the flag. Everything else the finish moved has
+// already counted; these are marks, so a retry that finds the same answer costs
+// nothing. Cleared either way -- one retry, not a standing request.
+void StatsManager::retryFinishMargin(const PluginData& pd) {
+    const int position = m_pendingMarginPosition;
+    if (position == 0) return;
+    m_pendingMarginPosition = 0;
+    const int playerRaceNum = pd.getPlayerRaceNum();
+    const auto& classOrder = pd.getClassificationOrder();
+    const StandingsData* own = pd.getStanding(playerRaceNum);
+    const std::deque<LapLogEntry>* ownLaps = own ? pd.getLapLog(playerRaceNum) : nullptr;
+    if (!ownLaps) return;
+    const int otherNum = (position == 1)
+        ? (classOrder.size() > 1 ? classOrder[1] : -1)
+        : (!classOrder.empty() ? classOrder[0] : -1);
+    if (otherNum < 0) return;
+    const StandingsData* other = pd.getStanding(otherNum);
+    const std::deque<LapLogEntry>* otherLaps = other ? pd.getLapLog(otherNum) : nullptr;
+    if (!otherLaps) return;
+    const int margin = (position == 1)
+        ? FinishMargin::marginMs(*ownLaps, own->numLaps, *otherLaps, other->numLaps)
+        : FinishMargin::marginMs(*otherLaps, other->numLaps, *ownLaps, own->numLaps);
+    if (margin < 0) return;
+    if (m_exploration.onFinishMargin(position, position == 1 ? margin : -1,
+                                     position == 2 ? margin : -1)) {
+        m_dirty = true;
+        AchievementManager::getInstance().onStatsChanged();
+    }
+}
+
+void StatsManager::tryRecordRaceFinish(const PluginData& pd, bool final) {
+    if (m_raceFinishRecorded) {
+        // The race is in. The MARGIN and the last-lap pass may not be: both wait
+        // on callbacks that can arrive after the classification settles. See
+        // retryFinishMargin and ExplorationStats::retryLastGasp.
+        if (final) {
+            retryFinishMargin(pd);
+            if (m_exploration.retryLastGasp()) {
+                m_dirty = true;
+                AchievementManager::getInstance().onStatsChanged();
+            }
+        }
+        return;
+    }
     if (!pd.isRaceSession()) return;
 
     int playerRaceNum = pd.getPlayerRaceNum();
@@ -428,21 +404,98 @@ void StatsManager::tryRecordRaceFinish(const PluginData& pd) {
             if (static_cast<int>(pd.getRaceEntries().size()) >= BIG_GRID_ENTRIES) {
                 m_globalStats.bigGridRaceCount++;
             }
-            // The race-shaped signals: the gap to second, the field's laps down,
-            // the player's own laps down.
+            // The race-shaped signals: the margin over second, the field's laps
+            // down, the player's own laps down.
             {
-                int gapToSecond = 0;
-                if (classOrder.size() > 1) {
+                // Photo Finish, and So Close. Differenced from the two riders'
+                // lap logs, not read from StandingsData::gap - finish_margin.h
+                // has the why. marginMs is (second argument's time - first
+                // argument's time), so the winner goes first in both and each
+                // margin comes out POSITIVE: only the pairing differs.
+                int gapToSecond = -1;   // P1: how far the runner-up finished behind us
+                int gapToWinner = -1;   // P2: how far we finished behind the winner
+                const std::deque<LapLogEntry>* ownLaps = pd.getLapLog(playerRaceNum);
+                if (position == 1 && classOrder.size() > 1) {
                     const StandingsData* second = pd.getStanding(classOrder[1]);
-                    gapToSecond = second ? second->gap : 0;
+                    const std::deque<LapLogEntry>* secondLaps = second ? pd.getLapLog(classOrder[1]) : nullptr;
+                    if (second && ownLaps && secondLaps) {
+                        gapToSecond = FinishMargin::marginMs(*ownLaps, standing->numLaps,
+                                                             *secondLaps, second->numLaps);
+                    }
+                } else if (position == 2 && !classOrder.empty()) {
+                    const StandingsData* winner = pd.getStanding(classOrder[0]);
+                    const std::deque<LapLogEntry>* winnerLaps = winner ? pd.getLapLog(classOrder[0]) : nullptr;
+                    if (winner && ownLaps && winnerLaps) {
+                        gapToWinner = FinishMargin::marginMs(*winnerLaps, winner->numLaps,
+                                                             *ownLaps, standing->numLaps);
+                    }
                 }
-                bool everyOtherLapped = classOrder.size() > 1;
+                // Lapped the Field. Only riders who actually raced can be
+                // lapped: a DNS never left the grid and a rider who retired or
+                // was disqualified stops being classified against the leader,
+                // so counting them against you means one quitter in a public
+                // lobby vetoes the row no matter how far ahead you finished.
+                int racedOthers = 0;
+                bool everyOtherLapped = true;
+                // Survivor counts the same rows from the other side: who took
+                // the start, and how many of them did not see the end of it.
+                int starters = 0;
+                int retired = 0;
                 for (int other : classOrder) {
-                    if (other == playerRaceNum) continue;
                     const StandingsData* so = pd.getStanding(other);
-                    if (!so || so->gapLaps < 1) { everyOtherLapped = false; break; }
+                    if (!so) continue;
+                    const bool didNotStart = (so->state == static_cast<int>(Unified::EntryState::DNS));
+                    if (!didNotStart) ++starters;
+                    if (so->state == static_cast<int>(Unified::EntryState::Retired) ||
+                        so->state == static_cast<int>(Unified::EntryState::DSQ)) {
+                        ++retired;
+                    }
+                    if (other == playerRaceNum) continue;
+                    if (everyOtherLapped) {
+                        if (so->state != static_cast<int>(Unified::EntryState::Racing)) continue;
+                        ++racedOthers;
+                        if (so->gapLaps < 1) everyOtherLapped = false;
+                    }
                 }
-                m_exploration.onRaceFinished(position, gapToSecond, everyOtherLapped, standing->gapLaps);
+                if (racedOthers == 0) everyOtherLapped = false;
+                // Running on Fumes: what was left in the tank at the flag. The
+                // capacity gate is what makes an unknown tank read as "cannot
+                // be known" rather than "empty" - with fuel consumption off the
+                // level never falls and this never fires, which is correct.
+                // STRICTLY ABOVE EMPTY: zero is Long Walk Home's moment, and the
+                // two are meant to be different ones. Without the lower bound a
+                // tank that ran dry on the last straight and coasted over the line
+                // fired both, which is the overlap that separating them removed.
+                if (m_hasLastFuel && m_tankCapacityL > 0.0f && m_lastFuel > 0.0f &&
+                    m_lastFuel <= m_tankCapacityL * FUEL_FUMES_FRACTION) {
+                    m_exploration.onFinishedOnFumes();
+                }
+                // Field by field, not a designated initializer: every shipping
+                // target is CXX_STANDARD 17 with /permissive- /WX, and MSVC
+                // rejects C++20 designated init outright (C7555). GCC takes it
+                // as an extension in C++17, so the mingw gates stay green and
+                // only the Windows build breaks - which is why this is spelled
+                // out rather than left to be caught downstream.
+                ExplorationStats::RaceFinish race;
+                race.position = position;
+                race.gapToSecondMs = gapToSecond;
+                race.gapToWinnerMs = gapToWinner;
+                race.everyOtherRiderLapped = everyOtherLapped;
+                race.ownGapLaps = standing->gapLaps;
+                race.starters = starters;
+                race.retired = retired;
+                race.lapsAtFinish = standing->numLaps;
+                race.hadFastestLap = m_playerHasFastestLapInRace;
+                m_exploration.onRaceFinished(race);
+                // THE MARGIN ROWS NEED THE LAP LOGS, and the classification can
+                // settle before the last RaceLap reaches them: the two come from
+                // different callbacks, and "settled" only asks that every racing
+                // rider has a finishTime. Everything else above has counted, so
+                // only the margin is owed - remembered here and retried once at
+                // RunDeinit, by which point the logs are complete.
+                m_pendingMarginPosition =
+                    (position == 1 && gapToSecond < 0) || (position == 2 && gapToWinner < 0)
+                        ? position : 0;
             }
             m_dirty = true;
             AchievementManager::getInstance().onStatsChanged();
@@ -492,13 +545,16 @@ void StatsManager::recordFmxTrick(const FmxTrickSample& trick) {
     if (trick.scrub) m_fmx.scrubs++;
     if (trick.oppo) m_fmx.oppos++;
     if (trick.turnDown) m_fmx.turnDowns++;
-    if (trick.airborne && duration > m_fmx.longestAirtimeSec) m_fmx.longestAirtimeSec = duration;
+    if (trick.endo) {
+        m_fmx.endos++;
+        if (duration > m_fmx.longestEndoSec) m_fmx.longestEndoSec = duration;
+    }
     if (trick.wheelie) {
         if (duration > m_fmx.longestWheelieSec) m_fmx.longestWheelieSec = duration;
         m_fmx.wheelieDistanceM += distance;
     }
     if (trick.kind && trick.kind[0]) m_fmx.kinds.insert(trick.kind);
-    m_exploration.onTrickTime(trick.airborne, trick.shred, duration);   // Air Miles, Tyre Shredder
+    m_exploration.onTrickTime(trick.shred, duration);   // Tyre Shredder
     m_dirty = true;
 }
 
@@ -805,10 +861,52 @@ bool StatsManager::clearEntry(const std::string& trackId, const std::string& bik
 }
 
 void StatsManager::clearAll() {
+    wipe(/*keepLapRecords=*/false);
+    save();
+}
+
+// The trade. PERSONAL BESTS AND TRACK NAMES SURVIVE (see the header): a lap
+// time is a record of something that happened on a track, and the prestige
+// button says it costs the ladder, not the lap book.
+//
+// THE SAVE IS AT THE END, AND THERE IS ONLY ONE. The first cut called
+// clearAll() and put the records back afterwards, which meant the file spent
+// the gap between the two saves with every PB gone -- a crash to desktop in
+// that window would have taken the one thing this promised to keep.
+bool StatsManager::prestige() {
+    if (!AchievementManager::getInstance().isPrestigeAvailable()) {
+        DEBUG_WARN("[StatsManager] prestige() refused: the Platinum Sweep is not earned");
+        return false;
+    }
+    wipe(/*keepLapRecords=*/true);
+    // pbCount went with the rest, and the stored bests must NOT put it back --
+    // see the load path's floor, which is why that floor now only applies to a
+    // file written before the counter existed.
+    //
+    // THE BIKE->CLASS MAP STAYS WITH THE BESTS, and has to: the default
+    // PBScope::CATEGORY reads it to find the class best across bikes
+    // (getPersonalBest). Wiped, every kept PB fell back to its own bike's
+    // time, so the first lap of a class fired the green ALL-TIME PB notice
+    // against a reference that was not the class best -- precisely the bug
+    // pb_scope_test.cpp exists to pin. It is a fact about bikes, not progress,
+    // and it grants nothing back: Class Act counts classes among bikes with
+    // LAPS on them, and the lap records are what this just cleared.
+    ++m_prestige;
+    m_dirty = true;
+    DEBUG_INFO_F("[StatsManager] Prestige %d taken: counters and achievements cleared, %zu personal bests kept",
+                 m_prestige, m_personalBests.size());
+    save();
+    return true;
+}
+
+void StatsManager::wipe(bool keepLapRecords) {
     m_trackBikeStats.clear();
-    m_personalBests.clear();
     m_bikeOdometers.clear();
-    m_bikeCategories.clear();
+    if (!keepLapRecords) {
+        m_personalBests.clear();
+        m_trackNames.clear();
+        m_bikeCategories.clear();
+    }
     m_globalStats = GlobalStats();
     m_fmx = FmxLifetimeStats();
     m_exploration.clear();
@@ -853,15 +951,21 @@ void StatsManager::clearAll() {
     m_totalPausedMs = 0;
     m_isPaused = false;
     m_unsavedDistance = 0.0;
+    // The other two coalescing buffers beside it. Litres and seconds measured
+    // before the wipe are pre-prestige riding, and flushing them afterwards
+    // would open the new ladder with them.
+    m_unflushedFuelL = 0.0;
+    m_roostPendingSec = 0.0;
+    m_proximitySinceFlushSec = 0.0;
+    m_hasLastProximityTime = false;
     m_wasCrashed = false;
     m_lastGear = -1;
     m_raceFinishRecorded = false;
+    m_pendingMarginPosition = 0;
     m_playerHasFastestLapInRace = false;
 
     // Re-create entry if a session is active so updateTelemetry() keeps working
     if (m_sessionActive && !m_currentKey.empty()) {
         m_trackBikeStats[m_currentKey];
     }
-
-    save();
 }

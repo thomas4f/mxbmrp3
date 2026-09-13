@@ -6,11 +6,17 @@
 // hues, and the palette carries eight of those hues under the SAME NAMES the
 // packs are shown by, so a player running the Crimson board can set their
 // primary text to the same #de1c21 rather than eyeballing a nearby red. That
-// promise is a pair of strings in two unrelated files -- a label in
-// getColorName's switch and a `name` in a pack's ini -- and nothing about
-// renaming one makes the other fail to build. Hence the census below, which is
-// the only thing standing between "exact match" and "two things that used to
-// agree".
+// promise is a pair of strings in two unrelated places -- a label in
+// getColorName's switch and the title the pack is listed under -- and nothing
+// about renaming one makes the other fail to build. Hence the census below,
+// which is the only thing standing between "exact match" and "two things that
+// used to agree".
+//
+// The skins state no `name` of their own any more: a pack with none is titled
+// from its FOLDER, so "crimson\" is listed as "Crimson" and copying a skin
+// needs no edit inside the ini. That moved the string this case has to read,
+// not the promise it checks -- so it reads what the picker would show, which is
+// the ini's name where one is stated and the folder title-cased where none is.
 //
 // Eight of the nine were ADDED; the ninth, Graphite, was already in the palette
 // at #646464 under the name "Dark Gray" -- pickable, but not findable by anyone
@@ -30,6 +36,7 @@
 #include "core/color_config.h"
 #include "core/plugin_constants.h"
 
+#include <cctype>
 #include <fstream>
 #include <set>
 #include <string>
@@ -41,7 +48,9 @@
 
 namespace {
 
-// The `name` a pack ini gives itself, or empty. Deliberately a tiny reader
+// The `name` a pack ini gives itself, or empty -- empty both when the key is
+// absent and when it is commented out, which is how the shipped skins leave it
+// (a `;name = ...` line has no key called "name"). Deliberately a tiny reader
 // rather than the production ini walk: this case is about what a HUMAN reading
 // the two files would see, so it should not share a parser with either side.
 std::string packDisplayName(const std::string& dir) {
@@ -64,6 +73,23 @@ std::string packDisplayName(const std::string& dir) {
         if (key == "name") return value;
     }
     return std::string();
+}
+
+// The title the picker lists a board under: the ini's `name` when it states one,
+// else the folder name title-cased. Mirrors the precedence in
+// AssetManager::discoverPitboards, which derives from the folder first and lets
+// a stated name override. Only the single-lowercase-word case is handled, which
+// every shipped skin folder is -- the REQUIRE says so out loud, so a hyphenated
+// skin added later fails here rather than being quietly mis-titled.
+std::string pickerTitle(const std::string& dir, const std::string& folder) {
+    const std::string stated = packDisplayName(dir);
+    if (!stated.empty()) return stated;
+    REQUIRE_MESSAGE(folder.find_first_not_of("abcdefghijklmnopqrstuvwxyz") == std::string::npos,
+                    "skin folder '" << folder << "' is not one lowercase word, so this case can "
+                    "no longer title-case it by hand -- extend pickerTitle()");
+    std::string title = folder;
+    title[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(title[0])));
+    return title;
 }
 
 // The palette's labels, as a set, so a case can ask "is this name offered".
@@ -107,8 +133,9 @@ TEST_CASE("palette: every shipped board skin's name is a colour a player can pic
     const std::set<std::string> names = paletteNames();
 
     for (const char* skin : kSkins) {
-        const std::string display = packDisplayName(std::string(PITBOARDS_DIR) + "/" + skin);
-        REQUIRE_MESSAGE(!display.empty(), "shipped board '" << skin << "' has no [pack] name");
+        const std::string display =
+            pickerTitle(std::string(PITBOARDS_DIR) + "/" + skin, skin);
+        REQUIRE_MESSAGE(!display.empty(), "shipped board '" << skin << "' has no title at all");
         CHECK_MESSAGE(names.count(display) == 1,
                       "board skin '" << display << "' has no palette colour of the same name, so a "
                       "player cannot match their text to it");

@@ -47,6 +47,8 @@
 #include "../hud/timing_hud.h"
 #include "../hud/bars_widget.h"
 #include "../hud/version_widget.h"
+#include "../hud/crash_widget.h"
+#include "../hud/prestige_widget.h"
 #include "../hud/notices_hud.h"
 #include "../hud/settings_hud.h"
 #include "../hud/settings_button_widget.h"
@@ -131,12 +133,16 @@ bool HudManager::standsDown(const BaseHud* hud) const {
     return m_pGlConfirm && m_pGlConfirm->isActive() && hud && hud == m_pSettingsHud;
 }
 
+// EVERY row of the Widgets tab, which is what the master toggle and its hotkey
+// mean by "the widgets". The Crash and Prestige widgets were missing and so sat
+// through a toggle that took every other one off screen - a hand-kept list, and
+// the two newest names are exactly what a hand-kept list loses.
 bool HudManager::isWidgetHud(const BaseHud* hud) const {
     return hud == m_pLap || hud == m_pPosition || hud == m_pTime ||
            hud == m_pSpeed || hud == m_pGear || hud == m_pSpeedo || hud == m_pTacho ||
            hud == m_pBars || hud == m_pVersion || hud == m_pFuel ||
            hud == m_pGamepad || hud == m_pLean || hud == m_pGforce || hud == m_pCompass ||
-           hud == m_pClock;
+           hud == m_pClock || hud == m_pCrash || hud == m_pPrestige;
 }
 
 bool HudManager::isHeldBack(const BaseHud* hud) const {
@@ -528,6 +534,16 @@ void HudManager::updateHuds() {
             }
         }
     }
+
+    // POSITIONING PREVIEW, resolved once per frame: the HUD whose settings tab is
+    // open draws placeholder content so it can be dragged into place even when it
+    // would normally be empty. One pointer compare per HUD and a single visibility
+    // read; setPreviewing() is a no-op unless the answer changed, so a frame with
+    // the menu shut costs the walk and nothing else. Here rather than in the panel
+    // because the panel has four ways to change the answer (open, close, tab click,
+    // the tab's own visibility checkbox) and this has one.
+    setPreviewHud(m_pSettingsHud && m_pSettingsHud->isVisible()
+                      ? m_pSettingsHud->activeTabHud() : nullptr);
 
     // Now update all HUDs
     if (bmPoll.active) bmPoll.frameHudInputTimeUs += DrawHandler::getCurrentTimeUs() - dragSearchStart;

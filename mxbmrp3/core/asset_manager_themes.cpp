@@ -69,7 +69,7 @@ void AssetManager::discoverThemes() {
             return readTgaDimensions(base + stem + ".tga", w, h);
         };
 
-        if (!readPackStringKey(packIniPath(base, dir, PackIni::kTheme), "pack.base").empty()) continue;
+        if (!readPackStringKey(packIniPath(base, dir, PackIni::kTheme), PackIni::kKeyBase).empty()) continue;
 
         if (!exists("frame_center")) {
             DEBUG_WARN_F("AssetManager: theme '%s' skipped - center.tga is required", dir.c_str());
@@ -210,7 +210,7 @@ void AssetManager::discoverThemes() {
     for (const std::string& dir : dirs) {
         const std::string skinDir = themesRoot + "\\" + dir + "\\";
         const std::string ini = packIniPath(skinDir, dir, PackIni::kTheme);
-        const std::string baseKey = readPackStringKey(ini, "pack.base");
+        const std::string baseKey = readPackStringKey(ini, PackIni::kKeyBase);
         if (baseKey.empty()) continue;
 
         const ThemeAsset* basePack = nullptr;
@@ -341,7 +341,7 @@ static void readThemeIniPairs(const std::string& iniPath, ThemeAsset& theme) {
         // the folder name cannot -- an acronym, or a title the directory has no
         // room for. Answered here with the other non-numeric keys, before the
         // numeric path below and before the unknown-key warning.
-        if (std::strcmp(key, "pack.name") == 0) {
+        if (std::strcmp(key, PackIni::kKeyName) == 0) {
             if (rawValue && *rawValue) t.displayName = rawValue;
             return true;
         }
@@ -351,7 +351,7 @@ static void readThemeIniPairs(const std::string& iniPath, ThemeAsset& theme) {
         // falls through to the numeric path and every documented theme skin logs
         // "'pack.base=carbon-dark' is not a number - ignored" on startup and on
         // every RELOAD_CONFIG.
-        if (std::strcmp(key, "pack.base") == 0) return true;
+        if (std::strcmp(key, PackIni::kKeyBase) == 0) return true;
 
         // [colors] / [fonts] first: their values are not numbers, so they must be
         // answered before anything reaches the numeric path.

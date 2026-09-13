@@ -1,9 +1,5 @@
 # The shipped spotter pack, rendered
 
-GENERATED from `mxbmrp3_data/spotters/default/spotter.ini` by
-`test_spotter_pack_census.cpp`, which rewrites it and fails if this
-copy is stale. Do not edit by hand - edit the pack.
-
 Every live row of the shipped pack, as the subtitle shows it and
 text-to-speech reads it. **Filled** is every variable at its sample
 value from `spotter-reference.md`; **empty** is the same line with
@@ -17,6 +13,8 @@ That is not always a bug - a cue whose emitter cannot fire without
 a position may say `P {position}` bare - but it is always worth a
 look, which is the point of generating this rather than asserting
 a rule about it.
+
+<sub>Generated from `mxbmrp3_data/spotters/default/spotter.ini` by `tests/unit/test_spotter_pack_census.cpp` - do not edit, edit the pack. Run the unit gate, which rewrites it and fails while this copy is stale.</sub>
 
 | Cue | Filled | Empty |
 |---|---|---|

@@ -185,6 +185,7 @@
 #include <vector>
 
 #include "event_log_types.h"
+#include "plugin_utils.h"
 #include "spotter_mix.h"
 #include "spotter_phrase.h"
 #include "spotter_vars.h"
@@ -271,6 +272,7 @@ inline const std::vector<CueKeyInfo>& allCueKeys() {
         { "final_lap", "the LEADER starts the last lap - a fact about the race, not about you. DEFAULT-QUIET: final_lap_you covers your own last lap from any position, and hearing both says one actionable moment twice" , SpotterPhrase::Category::Timing },
         { "final_lap_you", "YOU start your last lap - a lap or more later than the leader's if you are down the order" , SpotterPhrase::Category::Timing },
         // -- your race -------------------------------------------------------
+        { "holeshot_you", "YOU took the holeshot - first of the field through the opening timing line after a gate drop, whichever line that is (the splits are numbered from start/finish, and a grid need not sit behind it). DEFAULT-QUIET: it lands in the first seconds of a race, where a voice competes with the one moment nobody wants narrated" , SpotterPhrase::Category::General },
         { "fastest_lap_you", "you set the fastest lap of the session, beating the whole field" , SpotterPhrase::Category::Timing },
         { "personal_best", "you beat your best ever here; suppresses fastest_lap_you on the same lap" , SpotterPhrase::Category::Timing },
         { "record_beaten", "you beat the track record; replaces personal_best rather than adding to it (MX Bikes only)" , SpotterPhrase::Category::Timing },
@@ -482,9 +484,16 @@ inline Pack parse(const std::string& text) {
 
         if (line[0] == ';' || line[0] == '#') continue;
         if (line[0] == '[') {
-            inCues = (line == "[Cues]");
-            inMix = (line == "[Mix]");
-            inPack = (line == "[pack]");
+            // Case-insensitively, exactly as every other pack type matches its
+            // sections (layoutParseIniLineRaw lowers one for the reason). The
+            // documented spellings stay [Cues], [Mix] and [pack] -- what changes
+            // is that an author who writes [cues] no longer loses every word in
+            // the pack to a capital letter.
+            std::string tag = line;
+            PluginUtils::toLowerAscii(tag);
+            inCues = (tag == "[cues]");
+            inMix = (tag == "[mix]");
+            inPack = (tag == "[pack]");
             continue;
         }
         if (inPack) {

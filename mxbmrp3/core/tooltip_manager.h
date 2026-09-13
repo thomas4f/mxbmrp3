@@ -348,6 +348,7 @@ private:
             {"widgets.ecu", "Shows ECU aids: map, traction, engine braking, anti-wheeling. Chips brighten on intervention."},
             {"widgets.version", "Shows plugin version number."},
             {"widgets.settings_button", "Opens the settings menu. Hide it if you prefer to use a hotkey."},
+            {"widgets.prestige", "Earned by trading in a completed achievement ladder. Texture picks the badge."},
 
             {"hotkeys.settings", "Toggle the settings menu on/off."},
             {"hotkeys.standings", "Toggle the standings HUD on/off."},
@@ -392,9 +393,10 @@ private:
             {"stats.show_alltime", "Show all-time column with lifetime stats for this track and bike."},
             {"achievements.toasts", "The toast card shown when a tier is earned. Off still tracks."},
             {"achievements.toast_duration", "How long each toast stays on screen."},
+            {"achievements.prestige", "Trades every achievement and its counters for a badge. Lap records kept. Click twice; no way back."},
 
             {"fmx.chain_rows", "Tricks shown in the stack. Off hides it, 1 shows the active trick, 2+ shows history."},
-            {"fmx.row_trick_stats", "Show duration, distance, and peak rotation below the active trick name."},
+            {"fmx.row_trick_stats", "Show duration, distance, jump height and peak rotation below the active trick name."},
             {"fmx.row_combo_arc", "Show combo arc with chain multiplier and score breakdown."},
             {"fmx.row_arcs", "Show pitch, yaw, and roll rotation arcs with start and peak markers."},
             {"fmx.debug_logging", "Log trick detection state to the plugin log file at 10fps (developer mode only)."},

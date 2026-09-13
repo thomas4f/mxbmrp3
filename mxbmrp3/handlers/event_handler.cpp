@@ -54,7 +54,11 @@ void Handlers::handleEventInit(Unified::VehicleEventData* psEventData) {
 #endif
 
     // Set stats context for this track/bike combination
-    StatsManager::getInstance().setCurrentContext(psEventData->trackId, psEventData->vehicleName, psEventData->category);
+    // trackName comes along so the stats file can NAME a track it only has an id
+    // for (Local Hero's "(Seven Oaks)"); the records stay keyed by id.
+    StatsManager::getInstance().setCurrentContext(psEventData->trackId, psEventData->vehicleName,
+                                                  psEventData->category, psEventData->trackName);
+    StatsManager::getInstance().setTankCapacity(psEventData->maxFuel);
     StatsManager::getInstance().exploration().onServerJoined(psEventData->serverName);   // empty offline
 
     // Check if a RaceAddEntry with unactive=0 already arrived (spectate-first case)

@@ -570,10 +570,6 @@ std::string generateReference() {
     const std::map<std::string, std::string> rows = liveRows(shippedPackText());
     std::ostringstream md;
     md << "# Spotter reference\n\n"
-       << "GENERATED from `mxbmrp3/core/spotter_cue_pack.h` (`allCueKeys()`)\n"
-          "and `mxbmrp3/core/spotter_vars.h` (`bindings()`).\n"
-          "Do not edit by hand - `test_spotter_pack_census.cpp` rewrites it and\n"
-          "fails if this copy is stale.\n\n"
        << "This is the lookup table. The two files it goes with:\n\n"
        << "- `mxbmrp3_data/spotters/default/spotter.ini` - the shipped pack,\n"
           "  which is the wording itself. Every key below has a row in it, so it\n"
@@ -581,6 +577,10 @@ std::string generateReference() {
        << "- `docs/spotter.md` - the guide: what it calls and how to set it up,\n"
           "  then the authoring half (optional groups, alternates, fallbacks,\n"
           "  recorded packs, the chunk mixer and `[Mix] gap_ms`).\n\n"
+       << "<sub>Generated from `mxbmrp3/core/spotter_cue_pack.h` (`allCueKeys()`) and "
+          "`mxbmrp3/core/spotter_vars.h` (`bindings()`) by "
+          "`tests/unit/test_spotter_pack_census.cpp` - do not edit. Run the unit gate, which "
+          "rewrites it and fails while this copy is stale.</sub>\n\n"
        << "## Cues\n\n"
        << "A cue is a MOMENT. Each row is a key you can define in a pack's\n"
           "`[Cues]` section; the phrase you write against it is what gets said.\n\n"
@@ -676,9 +676,6 @@ std::string generatePackRender() {
 
     std::ostringstream md;
     md << "# The shipped spotter pack, rendered\n\n"
-       << "GENERATED from `mxbmrp3_data/spotters/default/spotter.ini` by\n"
-          "`test_spotter_pack_census.cpp`, which rewrites it and fails if this\n"
-          "copy is stale. Do not edit by hand - edit the pack.\n\n"
        << "Every live row of the shipped pack, as the subtitle shows it and\n"
           "text-to-speech reads it. **Filled** is every variable at its sample\n"
           "value from `spotter-reference.md`; **empty** is the same line with\n"
@@ -691,6 +688,9 @@ std::string generatePackRender() {
           "a position may say `P {position}` bare - but it is always worth a\n"
           "look, which is the point of generating this rather than asserting\n"
           "a rule about it.\n\n"
+       << "<sub>Generated from `mxbmrp3_data/spotters/default/spotter.ini` by "
+          "`tests/unit/test_spotter_pack_census.cpp` - do not edit, edit the pack. Run the "
+          "unit gate, which rewrites it and fails while this copy is stale.</sub>\n\n"
        << "| Cue | Filled | Empty |\n|---|---|---|\n";
 
     // Source order, not sorted: the pack groups cues the way the settings menu

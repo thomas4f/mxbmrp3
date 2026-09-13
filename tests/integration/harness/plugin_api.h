@@ -196,6 +196,12 @@ struct TelemetryRow {
     int   frontMaterial = 1, rearMaterial = 1;    // wheel contact; 0 = off the ground
     int   crashed = 0;
     float clutch = 0.0f;
+    // Chassis-local acceleration in G, already averaged over 10ms by the game.
+    // Gravity is in it, so a bike sitting still reads about 1g on one axis --
+    // the default here is that resting bike, so a row that says nothing about
+    // acceleration cannot accidentally author a spike.
+    float accelX = 0.0f, accelY = 1.0f, accelZ = 0.0f;
+    float fuel = 0.0f;                            // litres in the tank (Carbon Footprint / the fuel rows)
     float time = 0.0f, trackPos = 0.0f;           // the extra RunTelemetry args
     // Rumble inputs (m_afSuspVelocity / m_iRPM / m_fThrottle / m_fSteerTorque).
     // Suspension velocity keeps the GAME's sign: negative = compressing (the

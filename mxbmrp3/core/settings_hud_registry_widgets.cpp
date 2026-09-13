@@ -25,6 +25,7 @@
 #include "../hud/time_widget.h"
 #include "../hud/spotter_widget.h"
 #include "../hud/clock_widget.h"
+#include "../hud/prestige_widget.h"
 #include "../hud/position_widget.h"
 #include "../hud/lap_widget.h"
 #include "../hud/session_hud.h"
@@ -191,6 +192,30 @@ void SettingsManager::app_ClockWidget(HudManager& hudManager, const SettingsMana
                 DEBUG_WARN_F("ClockWidget: Failed to parse settings: %s", e.what());
             }
             hud.setDataDirty();
+        }
+}
+
+// The prestige badge is an ordinary per-profile panel with nothing of its own
+// to serialize -- which badge is worn is the base texture variant. It is here
+// rather than absent because every section in this registry is what makes the
+// panel's position, scale and opacity persist, and the badge is draggable like
+// any other widget. Its getter is nullable, so both halves fall through
+// silently when it is absent.
+void SettingsManager::cap_PrestigeWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
+        const PrestigeWidget* hud = hudManager.getPrestigeWidget();
+        if (!hud) return;
+        HudSettings settings;
+        captureBaseHudSettings(settings, *hud);
+        cache[name] = std::move(settings);
+}
+
+void SettingsManager::app_PrestigeWidget(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
+        PrestigeWidget* hud = hudManager.getPrestigeWidget();
+        if (!hud) return;
+        auto it = cache.find(name);
+        if (it != cache.end()) {
+            applyBaseHudSettings(*hud, it->second);
+            hud->setDataDirty();
         }
 }
 

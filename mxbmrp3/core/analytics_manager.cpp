@@ -122,8 +122,8 @@ constexpr const char* ANALYTICS_FILENAME = "mxbmrp3_analytics.json";
 //          carries that, and a field report carries the "unavailable" log line.
 // 2.19.0 = added feat_achievements (achievement toasts shown; tracking itself is
 //          unconditional, so this is the display choice, like feat_helmet).
-// 2.20.0 = added ach_pct (tiers earned over listed tiers, percent; passes 100
-//          with hidden rows) and ach_unlocked (achievements earned at any tier)
+// 2.20.0 = added ach_pct (tiers earned over listed tiers, percent) and
+//          ach_unlocked (achievements earned at any tier)
 //          to app_started: how far the catalogue gets played, two numbers
 //          rather than a flag per row.
 // 2.21.0 = added ach_<id> = tier for every achievement at tier 1 or higher
@@ -141,7 +141,24 @@ constexpr const char* ANALYTICS_FILENAME = "mxbmrp3_analytics.json";
 //          crash-time plugin version, stackTrace = the whole backtrace from the
 //          marker's stack_full (up to MAX_FRAMES; the event's stack stays cut to
 //          the string-prop cap), severity fatal, kind crash.
-constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.22.0";
+// 2.23.0 = added ach_bonus (achievements earned OUTSIDE the listed total --
+//          the hidden page and the misfortunes, which the tab shows as the
+//          "(+n)" beside the percentage). ach_pct AND ach_unlocked CHANGE
+//          MEANING here: both counted those rows in their numerator against a
+//          denominator they were not in, so ach_pct passed 100 and both
+//          flattered a completion figure with rows nobody aims at. They are the
+//          COUNTED set now (Achievements::countsTowardCompletion: riding, racing
+//          and tricks -- not the plugin's own pages, the misfortunes, the secrets
+//          or the Sweeps), and the rows they dropped are this field. ach_pct
+//          measures that set in TIERS and ach_unlocked in rows: one set, two
+//          resolutions, so they cannot tell different stories about it.
+//          Historical rows therefore mix the two definitions -- a pre-2.23
+//          ach_pct above 100 is the old one, which is why the report keeps its
+//          "100%+" bucket.
+// 2.24.0 = added the prestige_taken event, carrying the LEVEL just reached: the
+//          one act that destroys progress on purpose. Only where the trade
+//          HAPPENS -- the button re-checks its gate, and a refusal is a click.
+constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.24.0";
 
 // The two Aptabase ingest paths a queued POST can name.
 constexpr const wchar_t* PATH_EVENTS = L"/api/v0/events";
@@ -514,9 +531,10 @@ std::string AnalyticsManager::buildEventBody() const {
     // 2.19.0: the achievement-toast master ([Achievements] visible). Tracking
     // is unconditional, so this is the DISPLAY choice, like feat_helmet.
     props["feat_achievements"] = AchievementManager::getInstance().isToastsEnabled() ? 1 : 0;
-    // 2.20.0: how far the catalogue gets played. Tiers earned over listed tiers
-    // (the Completionist figure; hidden rows count on top, so it can pass 100)
-    // and achievements earned at any tier (the tab's "Unlocked" count).
+    // 2.20.0: how far the catalogue gets played. Tiers earned over the tiers
+    // that count (0-100), and achievements earned at any tier (the tab's
+    // "Unlocked" count). ONE SET behind both, countsTowardCompletion, so the
+    // two numbers cannot disagree about what the catalogue is.
     // Not while the dev-only devScale is on: a test session's inflated tiers
     // would read as one install's real progress.
     // ...nor before the stats file is in: zeros then would read as a fresh
@@ -527,6 +545,7 @@ std::string AnalyticsManager::buildEventBody() const {
         const int tiers = ach.totalUnits();
         props["ach_pct"] = static_cast<long long>(tiers > 0 ? (ach.earnedUnits() * 100) / tiers : 0);
         props["ach_unlocked"] = static_cast<long long>(ach.earnedAchievements());
+        props["ach_bonus"] = static_cast<long long>(ach.bonusAchievements());
         // 2.21.0: which ones, at what tier. Only rows with a tier, keyed by the
         // catalogue id (stable, never renamed), so a reorder cannot shift them.
         for (int i = 0; i < Achievements::COUNT; ++i) {

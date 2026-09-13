@@ -156,6 +156,11 @@ public:
     // from session_started — and one practice never has.
     void onGateDrop();
 
+    // You were first through the opening timing line after that gate drop.
+    // Ships DEFAULT-QUIET (the shipped pack's row is commented out): the moment
+    // is three seconds into a race, where a voice is the last thing wanted.
+    void onHoleshot();
+
     // The session's state, pushed at the moment it changes rather than read
     // back from PluginData: the handler stores it only AFTER logging the
     // change (the store is what its own change-detection compares against),

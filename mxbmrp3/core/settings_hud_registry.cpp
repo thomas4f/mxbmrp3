@@ -948,6 +948,7 @@ const std::vector<HudSectionSerializer>& hudSectionRegistry() {
         { "TimeWidget", &SettingsManager::cap_TimeWidget, &SettingsManager::app_TimeWidget },
         { "SpotterWidget", &SettingsManager::cap_SpotterWidget, &SettingsManager::app_SpotterWidget },
         { "ClockWidget", &SettingsManager::cap_ClockWidget, &SettingsManager::app_ClockWidget },
+        { "PrestigeWidget", &SettingsManager::cap_PrestigeWidget, &SettingsManager::app_PrestigeWidget },
         { "SessionHud", &SettingsManager::cap_SessionHud, &SettingsManager::app_SessionHud },
         { "SpeedWidget", &SettingsManager::cap_SpeedWidget, &SettingsManager::app_SpeedWidget },
         { "GearWidget", &SettingsManager::cap_GearWidget, &SettingsManager::app_GearWidget },

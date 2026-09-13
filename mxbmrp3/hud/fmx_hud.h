@@ -42,6 +42,27 @@ private:
     void rebuildRenderData() override;
     void rebuildLayout() override;
 
+    // The stats strip under the trick stack: up to four measurements, each an
+    // icon and a value, laid left to right and skipping the ones this trick has
+    // nothing to say about. Returns nothing - it emits straight into m_strings
+    // and m_quads like the rest of the rebuild.
+    void addTrickStatsRow(float x, float y, float maxWidth, const ScaledDimensions& dim, unsigned long color);
+
+    // The strip's four glyphs, resolved once. THIS HUD REBUILDS AT TELEMETRY
+    // RATE (handlesDataType takes InputTelemetry), and getIconSpriteIndex takes
+    // a std::string - so a per-rebuild lookup of "ruler-horizontal", at 16
+    // characters past the small-string buffer, heap-allocates ~100 times a
+    // second for the whole of every trick. Same shape as EventLogHud::
+    // CachedIcons, and safe to resolve once because sprite indices are assigned
+    // at startup by HudManager::setupDefaultResources() and never move again -
+    // a discovery that could renumber them would need a plugin reload.
+    struct CachedIcons {
+        int stopwatch = 0, rulerH = 0, rulerV = 0, corner = 0;
+        bool initialized = false;
+        void ensureInitialized();
+    };
+    CachedIcons m_icons;
+
     void addRotationArc(float centerX, float centerY, float radius, float thickness,
                         float startAngle, float accumulatedAngle, float peakAngle,
                         unsigned long bgColor, unsigned long fillColor, unsigned long markerColor);
@@ -75,10 +96,24 @@ private:
     struct StatsSnapshot {
         float duration = 0.0f;
         float distance = 0.0f;
+        float height = 0.0f;    // Peak metres above take-off (0 for a ground trick)
         float rotation = 0.0f;  // Peak rotation in degrees (max of |pitch|, |yaw|, |roll|)
         bool hasData = false;
     };
     StatsSnapshot m_statsSnapshot;
+
+    // The ended chain, held past FmxManager's linger while the rider is down
+    // (rebuildRenderData). POD only: the trick stack keeps the entries it built
+    // on the last animated frame rather than a copy of the chain.
+    struct ComboHold {
+        bool held = false;
+        bool success = false;
+        bool hasTricks = false;
+        float multiplier = 1.0f;
+        int trickScore = 0;
+        int chainScore = 0;
+    };
+    ComboHold m_comboHold;
 
     // Combo arc animated fill (fills during grace period, retreats during chain)
     float m_comboArcFill = 0.0f;

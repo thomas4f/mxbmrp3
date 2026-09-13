@@ -109,7 +109,12 @@ EnumT cycleEnum(EnumT current, int enumCount, bool forward) {
     return static_cast<EnumT>(val);
 }
 
-// Hold-to-repeat: determines which click region types support auto-repeat when held
+// Hold-to-repeat: which click region types auto-repeat when held. THE PROFILE
+// ARROWS ARE DELIBERATELY ABSENT: every other _UP/_DOWN pair walks a value, but
+// a profile switch captures the live setup, applies another and rebuilds every
+// HUD, and there are only four to walk. Held, it cycled them several times a
+// second (a streamer filmed the strobing) and made Profile Hopper a row you earn
+// by leaning on an arrow. One click, one switch; pinned by exploration_test.
 bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
     switch (type) {
         // Value cycling controls (all _UP/_DOWN pairs)
@@ -145,8 +150,6 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::COLOR_CYCLE_NEXT:
         case ClickRegion::FONT_CATEGORY_PREV:
         case ClickRegion::FONT_CATEGORY_NEXT:
-        case ClickRegion::PROFILE_CYCLE_DOWN:
-        case ClickRegion::PROFILE_CYCLE_UP:
         case ClickRegion::RUMBLE_CONTROLLER_UP:
         case ClickRegion::RUMBLE_CONTROLLER_DOWN:
         case ClickRegion::UPDATE_CHANNEL_UP:
@@ -361,7 +364,6 @@ void SettingsHud::show() {
     // closed, and none of that dirties the layout.
     invalidateTallestTab();
 
-    // Rebuild UI
     rebuildRenderData();
 }
 
@@ -411,6 +413,11 @@ void SettingsHud::hide() {
         markSettingsDirty();
     }
     disarmResets();
+    // Modal state must not outlive the panel that owns it, same as the resets
+    // above: an armed capture swallows the whole keyboard by design, so leaving
+    // one behind locks out every hotkey including the one that reopens this
+    // menu. Pinned by hotkey_capture_test.cpp, which has the story.
+    HotkeyManager::getInstance().cancelCapture();
     clearStrings();
     m_quads.clear();
     m_clickRegions.clear();
@@ -786,17 +793,6 @@ const char* SettingsHud::getTabName(int tabIndex) const {
     return (tabDesc && tabDesc->name) ? tabDesc->name : "Unknown";
 }
 
-bool SettingsHud::isTabAvailable(int tabId) const {
-    if (tabId < 0 || tabId >= TAB_COUNT) return false;
-    const TabDescriptor* tabDesc = findTabDescriptor(tabId);
-    if (!tabDesc) return false;
-    // Game-gated tabs (Records/FMX/Friends): selectable only when their backing HUD is
-    // registered on this build. The tab-list render loop and the persisted-tab restore
-    // both route through here, so they can't drift.
-    if (tabDesc->gameGated && !(tabDesc->hud && tabDesc->hud(*this))) return false;
-    return true;
-}
-
 const char* SettingsHud::getActiveTabName() const {
     return getTabName(m_activeTab);
 }
@@ -816,7 +812,8 @@ void SettingsHud::setActiveTabByName(const char* name) {
             // same stale reading twenty-eight times, and pass.
             if (isTabAvailable(t) && t != m_activeTab) {
                 m_activeTab = t;
-                StatsManager::getInstance().exploration().onTabOpened(getTabName(t));   // Grand Tour
+                // Grand Tour, LISTED tabs only: About is restored through here too.
+                recordTabOpened(t);   // Grand Tour; a hidden tab is not one of them
                 disarmResets();
                 rebuildRenderData();
             }

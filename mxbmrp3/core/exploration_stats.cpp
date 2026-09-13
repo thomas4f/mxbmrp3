@@ -15,15 +15,20 @@
 #include "settings_manager.h"
 #include "ui_config.h"
 #include "companion_window.h"
+#include "xinput_reader.h"
+#include "update_checker.h"
 #include "../hud/achievement_widget.h"
+
 #include "../diagnostics/logger.h"
 #include "../hud/gl_confirm_hud.h"
 #include "../hud/version_widget.h"
 #include "../hud/benchmark_widget.h"
 #include "../hud/pointer_widget.h"
+#include "../hud/prestige_widget.h"
 #include "../hud/settings_button_widget.h"
 #include "../hud/settings_hud.h"
 
+#include <cmath>
 #include <windows.h>
 
 #include <algorithm>
@@ -40,6 +45,9 @@ namespace {
 constexpr int NIGHT_OWL_FROM_HOUR = 2;
 constexpr int NIGHT_OWL_TO_HOUR = 5;
 constexpr int PHOTO_FINISH_MS = 100;
+// Survivor's floor: below this a single retirement is already a quarter of the
+// field, which is a two-rider lobby losing one, not a race of attrition.
+constexpr int SURVIVOR_MIN_STARTERS = 6;
 constexpr int METRONOME_SPREAD_MS = 100;
 
 // Subfolders under <savePath>\mxbmrp3\<subdir>\: each is one user pack.
@@ -159,30 +167,34 @@ void ExplorationStats::restoreValue(int index, double v) {
 }
 
 const std::set<std::string>& ExplorationStats::names(int which) const {
-    return which == 0 ? m_tabs : which == 1 ? m_versions : which == 2 ? m_huds : m_servers;
+    return which == 0 ? m_tabs : which == 1 ? m_huds : m_servers;
 }
 
 void ExplorationStats::restoreName(int which, const std::string& name) {
-    (which == 0 ? m_tabs : which == 1 ? m_versions : which == 2 ? m_huds : m_servers).insert(name);
+    (which == 0 ? m_tabs : which == 1 ? m_huds : m_servers).insert(name);
 }
 
-void ExplorationStats::restoreScalars(const std::string& firstRunDate, int lastDay, int crashDumpsSeen, int dayStreak) {
+void ExplorationStats::restoreScalars(const std::string& firstRunDate, int lastDay, int crashDumpsSeen, int dayStreak,
+                                      int rideDay, double todayRideSec) {
     m_firstRunDate = firstRunDate;
     m_lastDay = lastDay;
     m_crashDumpsSeen = crashDumpsSeen;
     m_dayStreak = dayStreak;
+    m_rideDay = rideDay;
+    m_todayRideSec = (std::isfinite(todayRideSec) && todayRideSec > 0.0) ? todayRideSec : 0.0;
 }
 
 void ExplorationStats::clear() {
     for (double& v : m_values) v = 0.0;
     m_tabs.clear();
-    m_versions.clear();
     m_huds.clear();
     m_servers.clear();
     m_firstRunDate.clear();
     m_lastDay = 0;
     m_dayStreak = 0;
     m_crashDumpsSeen = -1;
+    m_rideDay = 0;
+    m_todayRideSec = 0.0;
     m_dirty = false;
 }
 
@@ -243,10 +255,6 @@ void ExplorationStats::noteStatsLoadedHash(uint64_t loadedHash, uint64_t expecte
 
 // ---- feeds ---------------------------------------------------------------------
 
-void ExplorationStats::restoreAtLeast(Signal s, double v) {
-    if (raise(s, v)) m_dirty = true;
-}
-
 bool ExplorationStats::checkClock(bool riding) {
     bool moved = false;
     const LocalTime now = localNow();
@@ -267,7 +275,9 @@ bool ExplorationStats::checkClock(bool riding) {
         const int firstYear = std::atoi(m_firstRunDate.c_str());
         char monthDay[8];
         snprintf(monthDay, sizeof(monthDay), "%02d-%02d", now.month, now.day);
-        if (now.year > firstYear && m_firstRunDate.compare(5, 5, monthDay) == 0) moved |= mark(Signal::Anniversary);
+        if (now.year > firstYear && m_firstRunDate.compare(5, 5, monthDay) == 0) {
+            moved |= mark(Signal::Anniversary);
+        }
     }
     return moved;
 }
@@ -281,14 +291,7 @@ bool ExplorationStats::scanUserFiles() {
     user += "mxbmrp3";
     int packs = 0;
     for (const AssetManager::PackType& t : AssetManager::PACK_TYPES) {
-        const int n = countSubfolders(user + "\\" + t.subdir);
-        packs += n;
-        if (n <= 0) continue;
-        if (std::strcmp(t.subdir, AssetManager::GAMEPADS_SUBDIR) == 0)  moved |= mark(Signal::CustomGamepad);
-        if (std::strcmp(t.subdir, AssetManager::SPOTTERS_SUBDIR) == 0)  moved |= mark(Signal::CustomSpotter);
-        if (std::strcmp(t.subdir, AssetManager::PITBOARDS_SUBDIR) == 0 ||
-            std::strcmp(t.subdir, AssetManager::GAUGES_SUBDIR) == 0)    moved |= mark(Signal::CustomBoard);
-        if (std::strcmp(t.subdir, AssetManager::THEMES_SUBDIR) == 0)    moved |= mark(Signal::CustomTheme);
+        packs += countSubfolders(user + "\\" + t.subdir);
     }
     moved |= raise(Signal::CustomPacks, packs);
     // The stylesheet the overlay serves is the one in the plugin's own web
@@ -308,7 +311,7 @@ bool ExplorationStats::scanUserFiles() {
     return moved;
 }
 
-void ExplorationStats::onStartup(const std::string& savePath, const char* version) {
+void ExplorationStats::onStartup(const std::string& savePath) {
     bool moved = false;
     m_savePath = savePath;
     const LocalTime now = localNow();
@@ -316,20 +319,6 @@ void ExplorationStats::onStartup(const std::string& savePath, const char* versio
     snprintf(date, sizeof(date), "%04d-%02d-%02d", now.year, now.month, now.day);
     if (m_firstRunDate.empty()) { m_firstRunDate = date; m_dirty = true; }
     moved |= checkClock(/*riding=*/false);
-
-    // Version Hopper: x.y.z, never the build number.
-    {
-        std::string v = version ? version : "";
-        size_t dots = 0, cut = std::string::npos;
-        for (size_t i = 0; i < v.size(); ++i) {
-            if (v[i] == '.' && ++dots == 3) { cut = i; break; }
-        }
-        if (cut != std::string::npos) v.resize(cut);
-        if (!v.empty() && m_versions.insert(v).second) {
-            moved |= raise(Signal::VersionsRun, static_cast<double>(m_versions.size()));
-            m_dirty = true;
-        }
-    }
 
     moved |= scanUserFiles();
     const std::string user = savePath + "\\mxbmrp3";
@@ -347,12 +336,12 @@ void ExplorationStats::onStartup(const std::string& savePath, const char* versio
 #if !defined(MXBMRP3_APTABASE_KEY) && !defined(MXBMRP3_TEST_BUILD)
     moved |= mark(Signal::Homebrew);
 #endif
-    if (std::strcmp(PluginConstants::PLUGIN_NAME, "mxbmrp3") != 0) moved |= mark(Signal::SignedCopy);
 
     // What the settings file, loaded before this, already decided.
     const SettingsManager& settings = SettingsManager::getInstance();
     if (settings.isDeveloperMode()) moved |= mark(Signal::Developer);
     if (!AchievementManager::getInstance().isToastsEnabled()) moved |= mark(Signal::Ungrateful);
+    moved |= checkSwitches();
     moved |= checkSettingsEdited();
     if (SettingsManager::getInstance().consumeUpdateInstalled()) {
         add(Signal::UpdatesInstalled, 1.0);
@@ -368,6 +357,21 @@ void ExplorationStats::onStartup(const std::string& savePath, const char* versio
     if (moved) changed();
 }
 
+bool ExplorationStats::checkSwitches() {
+    bool moved = false;
+    // Rumble: the SETTING, deliberately - not a live controller. The hours
+    // version of this row could not be earned at all by a player whose pad the
+    // plugin does not see, which is exactly how it reached a stream and stayed
+    // locked all night with rumble switched on the whole time.
+    if (XInputReader::getInstance().getGlobalRumbleConfig().enabled) {
+        moved |= mark(Signal::RumbleOn);
+    }
+    if (UpdateChecker::getInstance().isPrereleaseChannel()) {
+        moved |= mark(Signal::Prerelease);
+    }
+    return moved;
+}
+
 bool ExplorationStats::checkSettingsEdited() {
     const SettingsManager& settings = SettingsManager::getInstance();
     if (settings.expectedFileHash() == 0 || settings.loadedFileHash() == settings.expectedFileHash()) return false;
@@ -381,12 +385,22 @@ void ExplorationStats::onSettingsReloaded() {
     // developer mode switched on by hand lands at the reload, not the restart.
     if (SettingsManager::getInstance().isDeveloperMode()) moved |= mark(Signal::Developer);
     if (!AchievementManager::getInstance().isToastsEnabled()) moved |= mark(Signal::Ungrateful);
+    moved |= checkSwitches();
     if (moved) changed();
 }
 
 void ExplorationStats::onSessionStart() {
     m_firstLapPosition = 0;
     m_ledEveryLap = true;
+    m_gotHoleshot = false;
+    m_prevLapPosition = 0;
+    m_lastLapPosition = 0;
+    m_lastPositionLap = 0;
+    m_pendingLastGaspPosition = 0;
+    m_pendingLastGaspLaps = 0;
+    m_holeshotArmed = false;
+    m_awaitingOpeningSplit = false;
+    m_cleanLapRun = 0;
     m_lapCount = 0;
     m_sessionLapTimes.clear();
     m_crashFreeMs = 0.0;
@@ -415,9 +429,18 @@ void ExplorationStats::observeSettings(const HudManager& hudManager) {
         // that show themselves: the Direct GL confirmation (armed by that
         // setting's prompt) and the version widget (an update notice, the
         // donation nudge). Counted, 100% would need both events, not every HUD.
+        //
+        // The PRESTIGE BADGE is here for a different reason: it is EARNED, not
+        // switched on, so it is a row nobody has until they trade for it. It
+        // also defaults to visible (a locked one simply draws nothing), so
+        // counting it put it in the tried set on every fresh install and handed
+        // everyone a free row toward Tyre Kicker. Excluded outright rather than
+        // while locked, so the denominator does not change under a player the
+        // day they prestige.
         const bool chrome = h == &hudManager.getSettingsHud() || h == &hudManager.getSettingsButtonWidget() ||
                             h == &hudManager.getPointerWidget() || h == hudManager.getBenchmarkWidget() ||
                             h == hudManager.getAchievementWidget() || h == &hudManager.getGlConfirmHud() ||
+                            h == hudManager.getPrestigeWidget() ||
                             h == &hudManager.getVersionWidget();
         if (!chrome) {
             ++hudsTotal;
@@ -455,10 +478,30 @@ void ExplorationStats::onSettingsSaved(int hudsTriedPercent, int customisations,
     if (moved) changed();
 }
 
-void ExplorationStats::onTabOpened(const char* tabName) {
+// A PERCENT of the tabs this build has, like HudsTried, not a raw count: three
+// tabs are game-gated (Records, Friends, FMX), so "open them all" as a fixed
+// number would be unreachable on karts and short of everything on MX Bikes.
+// The caller passes the count, since only SettingsHud knows which are gated.
+//
+// The set is what is persisted, so a stats file written when this was a raw
+// count reads its old number as a percent. That always UNDER-reports (a count
+// is never larger than its own percent of a smaller total) and the next tab
+// opened recomputes it, so nothing is granted that was not earned.
+void ExplorationStats::onTabOpened(const char* tabName, const char* const* listedTabs,
+                                   int listedCount) {
     if (!tabName || !tabName[0]) return;
     if (!m_tabs.insert(tabName).second) return;
-    raise(Signal::TabsVisited, static_cast<double>(m_tabs.size()));
+    // COUNTED OVER THE LIST, not off m_tabs.size(). The set is persisted and
+    // keeps every name ever opened, including ones this build does not list -- a
+    // game-gated tab from another game, or About, which was recorded until it
+    // stopped being. Sized against the listed count those names read as progress
+    // toward tabs the player cannot even see, and the row closed early.
+    int seen = 0;
+    for (int i = 0; i < listedCount; ++i) {
+        if (listedTabs[i] && m_tabs.count(listedTabs[i])) ++seen;
+    }
+    const int pct = listedCount > 0 ? std::min(100, seen * 100 / listedCount) : 0;
+    raise(Signal::TabsVisited, static_cast<double>(pct));
     changed();
 }
 
@@ -482,24 +525,228 @@ void ExplorationStats::onServerJoined(const char* serverName) {
     changed();
 }
 
-void ExplorationStats::onRaceLapPosition(int lapNum, int position) {
+void ExplorationStats::onRaceLapPosition(int position, int lapNum) {
     if (position <= 0) return;
-    if (lapNum == 1 || m_firstLapPosition == 0) m_firstLapPosition = position;
+    // Only if nothing has set it: after a gate drop that is the opening split's
+    // position, and overwriting it at lap one would discard the start.
+    if (m_firstLapPosition == 0) m_firstLapPosition = position;
     if (position != 1) m_ledEveryLap = false;
+    // The rolling pair Last Gasp reads: where the player sat after the lap
+    // before the last one, against where they finished.
+    m_prevLapPosition = m_lastLapPosition;
+    m_lastLapPosition = position;
+    // WHICH lap this pair describes, not how many have been seen: a count that
+    // misses one sample lags for the rest of the race and takes Last Gasp down
+    // with it silently, where the lap number only ever asks about the last one.
+    m_lastPositionLap = lapNum;
 }
 
-void ExplorationStats::onRaceFinished(int position, int gapToSecondMs, bool everyOtherRiderLapped, int ownGapLaps) {
+void ExplorationStats::onGateDrop(int starters) {
+    m_holeshotArmed = starters >= MIN_FIELD;
+    m_awaitingOpeningSplit = true;
+    // ...and the race scratch starts over, because A GATE DROP IS A RACE
+    // BEGINNING. recordSessionStart() cannot tell a restart from a pit stop -
+    // both re-enter the same session type - and it deliberately keeps this trio
+    // across the second so a pit visit does not forget where lap one was. Kept
+    // across the first, the abandoned race became the new one's history: its
+    // start position, its lead, its last-lap places.
+    m_firstLapPosition = 0;
+    m_ledEveryLap = true;
+    m_gotHoleshot = false;
+    m_prevLapPosition = 0;
+    m_lastLapPosition = 0;
+    m_lastPositionLap = 0;
+    m_pendingLastGaspPosition = 0;
+    m_pendingLastGaspLaps = 0;
+}
+
+void ExplorationStats::onPlayerOpeningSplit(int position) {
+    if (!m_awaitingOpeningSplit) return;
+    // DISARMED WHETHER OR NOT THE POSITION READS, because the opening split has
+    // happened either way. Left armed on an unreadable one - a player not yet in
+    // the classification order - LAP TWO's split claimed it instead and
+    // overwrote the lap-one fallback with a later, better place, which moves
+    // Charger's start forward and loses it exactly the places gained in between.
+    m_awaitingOpeningSplit = false;
+    if (position <= 0) return;
+    m_firstLapPosition = position;   // Charger counts from here, not from lap one
+}
+
+void ExplorationStats::onFirstSplit(bool isPlayer) {
+    if (!m_holeshotArmed) return;
+    m_holeshotArmed = false;   // whoever it was, the holeshot is settled
+    if (!isPlayer) return;
+    m_gotHoleshot = true;
+    add(Signal::Holeshots, 1.0);
+    changed();
+}
+
+void ExplorationStats::onLapCompleted(bool clean) {
+    if (!clean) { m_cleanLapRun = 0; return; }
+    ++m_cleanLapRun;
+    if (raise(Signal::CleanLapStreak, m_cleanLapRun)) changed();
+}
+
+bool ExplorationStats::onFinishMargin(int position, int gapToSecondMs, int gapToWinnerMs) {
     bool moved = false;
-    if (m_firstLapPosition > 0 && position > 0) {
-        moved |= raise(Signal::PositionsGained, m_firstLapPosition - position);
-    }
     if (position == 1) {
-        if (m_ledEveryLap && m_firstLapPosition == 1) { add(Signal::WireToWire, 1.0); moved = true; }
-        if (everyOtherRiderLapped) { add(Signal::LappedField, 1.0); moved = true; }
         if (gapToSecondMs > 0 && gapToSecondMs < PHOTO_FINISH_MS) moved |= mark(Signal::PhotoFinish);
+    } else if (position == 2) {
+        // So Close: the same tenth, on the wrong side of it. Second only -- a
+        // third place a tenth off the winner is a different race, and one a tenth
+        // off SECOND is not what the row is about.
+        if (gapToWinnerMs > 0 && gapToWinnerMs < PHOTO_FINISH_MS) moved |= mark(Signal::SoClose);
     }
-    if (ownGapLaps > 0) moved |= raise(Signal::BackMarker, ownGapLaps);   // the most laps down, on the way to three
     if (moved) changed();
+    return moved;
+}
+
+// The comparison itself, so the live path and the retry cannot drift apart.
+bool ExplorationStats::creditLastLap(int position) {
+    if (m_prevLapPosition <= 0 || position <= 0) return false;
+    bool moved = false;
+    // Last Gasp: a place taken on the final lap.
+    if (position < m_prevLapPosition) { add(Signal::LastLapPasses, 1.0); moved = true; }
+    // Choke: the lead going into it, and not at the flag. The mirror image of
+    // the line above and deliberately its neighbour - both ask the same pair
+    // the same question, and split apart they would drift the moment one of
+    // them learned something about the pair that the other did not.
+    if (m_prevLapPosition == 1 && position > 1) moved |= mark(Signal::Choke);
+    return moved;
+}
+
+bool ExplorationStats::retryLastGasp() {
+    const int position = m_pendingLastGaspPosition;
+    const int laps = m_pendingLastGaspLaps;
+    m_pendingLastGaspPosition = 0;
+    m_pendingLastGaspLaps = 0;
+    // Only once the lap it was waiting for has actually arrived. One that never
+    // does leaves the pair exactly as stale as it was at the flag, and a row
+    // that quietly does not count beats one credited on a guess.
+    if (position <= 0 || m_lastPositionLap < laps) return false;
+    if (!creditLastLap(position)) return false;
+    changed();
+    return true;
+}
+
+void ExplorationStats::onRaceFinished(const RaceFinish& race) {
+    bool moved = false;
+    if (m_firstLapPosition > 0 && race.position > 0) {
+        moved |= raise(Signal::PositionsGained, m_firstLapPosition - race.position);
+    }
+    // LED EVERY LAP, and there was a lap to lead: m_ledEveryLap starts true and
+    // only a lap position can falsify it, so without the second half a win in a
+    // race whose lap positions never arrived would read as a lights-to-flag one.
+    const bool ledEveryLap = m_ledEveryLap && m_lastPositionLap > 0;
+    // Starters, not entries: a rider who never took the start was not a field
+    // to lead. The holeshot arm read the grid at the drop for the same reason.
+    const bool field = race.starters >= MIN_FIELD;
+    if (race.position == 1) {
+        // NOT m_firstLapPosition. That field used to BE the lap-one position,
+        // which made this pair redundant; since Charger moved it to the opening
+        // SPLIT it means the first corner instead, and the conjunct quietly
+        // turned "lead every lap" into "take the holeshot and lead every lap" -
+        // in every gate-drop race, because the player always crosses that split.
+        // Leading from the first corner is Perfect Race's business, below.
+        if (field && ledEveryLap) { add(Signal::WireToWire, 1.0); moved = true; }
+        // add(), not mark(), though the row is a one-shot: a one-shot draws no
+        // progress numbers, so the tally past one is invisible in game and
+        // still reaches the stats file, where the usage survey can say how
+        // often this really happens. back_marker and ninety_nine accumulate
+        // behind a single tier for the same reason.
+        if (race.everyOtherRiderLapped) { add(Signal::LappedField, 1.0); moved = true; }
+        // Perfect Race: the holeshot, every lap led, the fastest lap and the
+        // win. Leading every lap says nothing about the START - you can take
+        // the lead in the first corner and still not have led out of the gate -
+        // so the holeshot is what pins the beginning, and it is the ONLY row
+        // that asks for it.
+        if (field && m_gotHoleshot && ledEveryLap && race.hadFastestLap) {
+            moved |= mark(Signal::PerfectRace);
+        }
+    }
+    // Consolation Prize: the fastest lap, and off the podium with it.
+    if (race.hadFastestLap && race.position > 3) moved |= mark(Signal::ConsolationPrize);
+    // The two MARGIN rows, together and on their own: the margin is read from the
+    // lap logs, which can still be filling when the classification settles, so
+    // this pair is retried at RunDeinit (StatsManager::retryFinishMargin) while
+    // everything else here has already counted. Marks only, so a second call is
+    // a no-op rather than a double count.
+    moved |= onFinishMargin(race.position, race.gapToSecondMs, race.gapToWinnerMs);
+    // Last Gasp: a place taken on the final lap. Needs a lap before it, so a
+    // one-lap race never counts - there is no last lap to distinguish.
+    //
+    // AND IT NEEDS THE FINAL LAP TO HAVE LANDED. The pair is fed from RaceLap
+    // and the finish from the classification, and when the field settles first
+    // the pair is still one lap behind - which reads a place taken on the
+    // PENULTIMATE lap as a last-lap pass. Same race between two callbacks the
+    // margin rows carry; same answer, deferred to RunDeinit (retryLastGasp).
+    if (m_lastPositionLap >= race.lapsAtFinish) {
+        moved |= creditLastLap(race.position);
+    } else {
+        m_pendingLastGaspPosition = race.position;
+        m_pendingLastGaspLaps = race.lapsAtFinish;
+    }
+    // Survivor: a quarter of the STARTERS gone. The floor is what stops a
+    // four-rider lobby losing one rider from counting; a DNS is not a
+    // retirement, so they are out of both halves of the fraction.
+    if (race.starters >= SURVIVOR_MIN_STARTERS && race.retired * 4 >= race.starters) {
+        add(Signal::Survivals, 1.0);
+        moved = true;
+    }
+    // Nobody else on the grid. Not a feat, just a moment worth noticing - the
+    // server emptied out, or you lined up alone and raced yourself.
+    if (race.starters == 1) moved |= mark(Signal::SoloRace);
+    if (race.ownGapLaps > 0) moved |= raise(Signal::BackMarker, race.ownGapLaps);   // the most laps down, on the way to three
+    if (moved) changed();
+}
+
+void ExplorationStats::onFuelBurnt(double litres) {
+    if (!(litres > 0.0)) return;
+    add(Signal::FuelBurnt, litres);
+    changed();
+}
+
+void ExplorationStats::onRanDry() {
+    if (mark(Signal::RanDry)) changed();
+}
+
+void ExplorationStats::onFinishedOnFumes() {
+    if (mark(Signal::Fumes)) changed();
+}
+
+void ExplorationStats::onProximityTime(double roostSeconds) {
+    if (roostSeconds <= 0.0) return;
+    add(Signal::RoostSec, roostSeconds);
+    changed();
+}
+
+void ExplorationStats::onCrashSpotRun(int run) {
+    if (run <= 0) return;
+    if (raise(Signal::FavoriteSpot, run)) changed();
+}
+
+void ExplorationStats::onRidersDown(int down) {
+    if (down <= 0) return;
+    if (raise(Signal::PileUp, down)) changed();
+}
+
+void ExplorationStats::onRodeThrough(int down) {
+    if (down <= 0) return;
+    if (raise(Signal::PeaceOut, down)) changed();
+}
+
+void ExplorationStats::onDiggingTime(double seconds) {
+    if (!(seconds > 0.0)) return;
+    if (raise(Signal::DiggingSec, seconds)) changed();
+}
+
+void ExplorationStats::onGForce(float g) {
+    // A landing reads a few g; anything past this is the physics engine losing
+    // its footing (a spawn, a wall, a reset), and a lifetime PEAK is exactly the
+    // number a single glitch would ruin permanently.
+    constexpr float MAX_PLAUSIBLE_G = 50.0f;
+    if (!std::isfinite(g) || g <= 0.0f || g > MAX_PLAUSIBLE_G) return;
+    if (raise(Signal::PeakG, g)) changed();
 }
 
 void ExplorationStats::onLapTime(int lapTimeMs) {
@@ -542,32 +789,86 @@ void ExplorationStats::onCrash(int sessionCrashes, int crashTally) {
     if (moved) changed();
 }
 
-void ExplorationStats::onTrickTime(bool airborne, bool shred, float seconds) {
+void ExplorationStats::onTrickTime(bool shred, float seconds) {
     if (!(seconds > 0.0f) || !(seconds < 3600.0f)) return;   // finite, sane
-    if (!airborne && !shred) return;
-    if (airborne) add(Signal::AirtimeSec, seconds);
-    if (shred) add(Signal::ShredSec, seconds);
+    // Airtime is NOT taken from here any more: a trick has to be classified,
+    // committed and landed to arrive, and most jumps are none of those, so Air
+    // Miles counted a fraction of the time actually spent in the air.
+    // The air rows measure FLIGHTS now (onFlight), so nothing airborne comes
+    // through here at all -- the `airborne` parameter this used to take was
+    // dead from the day the flight detector landed and went with Hang Time.
+    // Shredding has no flight path (it only happens as a trick), so it stays.
+    if (!shred) return;
+    add(Signal::ShredSec, seconds);
     changed();
 }
 
-void ExplorationStats::tick(bool spectating, bool rumbleLive, bool onTrack, int framesThisSecond,
+// THE WHOLE AIR GROUP, from this pair: three measurements read two ways each.
+// onFlight() sums every flight it is handed; onFlightLanded(), below, takes the
+// best of them. What makes the two differ is the CALLER, not these functions --
+// FmxManager banks the sums at touchdown, casing out included, and holds the
+// maxima back until the rider has stayed upright, so a max is a jump ridden
+// away from. Keep any new air row in this pair: a second entry point is how
+// Hang Time ended up measuring tricks while its sentence said jumps.
+void ExplorationStats::onFlight(float seconds, float heightM, float distanceM) {
+    if (!(seconds > 0.0f) || !(seconds < 3600.0f)) return;
+    add(Signal::AirtimeSec, seconds);
+    add(Signal::AirDistanceKm, distanceM / 1000.0);
+    add(Signal::AirHeightKm, heightM / 1000.0);
+    changed();
+}
+
+void ExplorationStats::onFlightLanded(float seconds, float heightM, float distanceM) {
+    if (!(seconds > 0.0f) || !(seconds < 3600.0f)) return;
+    raise(Signal::LongestFlightSec, seconds);
+    raise(Signal::JumpHeightM, heightM);
+    raise(Signal::JumpDistanceM, distanceM);
+    changed();
+}
+
+void ExplorationStats::tick(bool spectating, bool rumbleLive, bool onTrack, bool moving, int framesThisSecond,
                             uint32_t overlayConnectionsTotal) {
     bool moved = false;
     if (spectating) { add(Signal::SpectateHours, 1.0 / 3600.0); moved = true; }
-    if (rumbleLive && onTrack) { add(Signal::RumbleHours, 1.0 / 3600.0); moved = true; }   // riding, with it on
+    // A pad that is actually buzzing is a pad with rumble switched on, so this
+    // catches a player who enabled it mid-session without a settings reload.
+    // The settings read in checkSwitches() is the real feed; this is the
+    // backstop, and the only remaining use of onTrack in here.
+    if (rumbleLive && onTrack) moved |= mark(Signal::RumbleOn);
+    // Early Access, same shape and for the same reason: the Updates tab changes
+    // the channel with a click and reloads nothing, so the settings read in
+    // checkSwitches() would not see it until the next launch. One atomic load a
+    // second, and mark() stops caring the moment it is set.
+    if (UpdateChecker::getInstance().isPrereleaseChannel()) moved |= mark(Signal::Prerelease);
     moved |= raise(Signal::FramePerfect, framesThisSecond);   // the best second, on the way to 480
     // The clock, once a minute: a ride that runs into the small hours, a
     // session across midnight, the anniversary arriving mid-session.
     if (++m_clockTicks >= 60) {
         m_clockTicks = 0;
-        moved |= checkClock(onTrack);
+        // MOVING, not merely on track: Night Owl and Anniversary sit behind
+        // this gate and both say "Ride". The day rollover above is not gated -
+        // Regular and On a Roll count showing up, not riding.
+        moved |= checkClock(moving);
     }
-    // Riding time since the last crash (or the session's start): a trip to the
-    // pits pauses the clock rather than restarting it, so the row reads as it
-    // says -- an hour of riding without a crash, not an hour of it in one go.
-    if (onTrack) {
+    if (moving) {
+        // RIDING time since the last crash (or the session's start). Parking
+        // pauses this clock exactly as a trip to the pits does - it does not
+        // restart it - so the row reads as it says: half an hour of riding
+        // without a crash, not half an hour of it in one unbroken go, and not
+        // half an hour of sitting still, which is not riding and not a feat.
         m_crashFreeMs += 1000.0;
         moved |= raise(Signal::SteadyHands, m_crashFreeMs / 1000.0);   // the longest run, in seconds
+        // Iron Butt: hours ridden within one local DAY, not one session. A
+        // session ends at a crash, a pit visit or a track exit, so the old
+        // per-session figure punished exactly the marathon it was meant to
+        // reward. The day is the one checkClock keeps (re-read once a minute),
+        // so this shares its granularity rather than reading the clock at 1Hz.
+        if (m_rideDay != m_lastDay) {
+            m_rideDay = m_lastDay;
+            m_todayRideSec = 0.0;
+        }
+        m_todayRideSec += 1.0;
+        moved |= raise(Signal::DayRideHours, m_todayRideSec / 3600.0);
     }
     // The overlay's total restarts with the process: count what it grew by.
     if (overlayConnectionsTotal > m_overlaySeen) {

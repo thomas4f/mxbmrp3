@@ -1064,6 +1064,16 @@ void SpotterManager::onGateDrop() {
             PluginData::getInstance().getSessionElapsedTime());
 }
 
+// The other end of the start: the gate fell, and you were first to the opening
+// timing line. Announced from the same place the achievement is credited, so
+// the two can never disagree about who got it.
+void SpotterManager::onHoleshot() {
+    if (!m_enabled && !m_subtitles) return;
+    if (!isCategoryEnabled(SpotterPhrase::Category::General)) return;
+    emitCue("holeshot_you", SpotterPhrase::Category::General, {},
+            PluginData::getInstance().getSessionElapsedTime());
+}
+
 void SpotterManager::speakHotkeyCue() {
     // Entirely user-defined: nothing happens until a pack
     // writes `hotkey_triggered = ...`. That is the point — it is a line you

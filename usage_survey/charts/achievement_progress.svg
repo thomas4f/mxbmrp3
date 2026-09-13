@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="300" viewBox="0 0 760 300" role="img"><style>
+  text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+  .grid{stroke:#d0d7de;stroke-width:1}
+  .axis{stroke:#57606a;stroke-width:1}
+  .lbl{fill:#57606a;font-size:12px}
+  .val{fill:#24292f;font-size:12px;font-weight:600}
+  .title{fill:#24292f;font-size:14px;font-weight:700}
+  .sub{fill:#57606a;font-size:11px}
+  .gap{fill:#57606a;opacity:.09}
+  .gaplbl{fill:#57606a;font-size:10px;opacity:.85}
+  .ico{fill:#57606a}
+  .t1{fill:#d4a72c}
+  .t2{fill:#bf8700}
+  .t3{fill:#9e6a03}
+  .t4{fill:#7d4e00}
+  @media (prefers-color-scheme: dark){
+    .grid{stroke:#30363d}
+    .axis{stroke:#8b949e}
+    .lbl{fill:#8b949e}
+    .val{fill:#e6edf3}
+    .title{fill:#e6edf3}
+    .sub{fill:#8b949e}
+    .gap{fill:#8b949e;opacity:.13}
+    .gaplbl{fill:#8b949e}
+    .ico{fill:#8b949e}
+    .t1{fill:#bf8700}
+    .t2{fill:#d4a72c}
+    .t3{fill:#f2cc60}
+    .t4{fill:#fbe6a4}
+  }
+</style><text x="12" y="20" class="title">Achievement tiers earned per install</text><text x="12" y="37" class="sub">2,438 installs reporting</text><line x1="46" y1="260" x2="744" y2="260" class="axis"/><line x1="46" y1="152.0" x2="744" y2="152.0" class="grid" stroke-dasharray="3 3"/><text x="40" y="156.0" class="sub" text-anchor="end">718</text><line x1="46" y1="44.0" x2="744" y2="44.0" class="grid" stroke-dasharray="3 3"/><text x="40" y="48.0" class="sub" text-anchor="end">1,436</text><rect x="60.0" y="231.7" width="71.8" height="28.3" rx="2" fill="#3fb950"/><text x="95.9" y="274" class="sub" text-anchor="middle">0%</text><rect x="159.7" y="200.6" width="71.8" height="59.4" rx="2" fill="#3fb950"/><text x="195.6" y="274" class="sub" text-anchor="middle">1–9%</text><rect x="259.4" y="44.0" width="71.8" height="216.0" rx="2" fill="#3fb950"/><text x="295.3" y="274" class="sub" text-anchor="middle">10–24%</text><rect x="359.1" y="197.1" width="71.8" height="62.9" rx="2" fill="#3fb950"/><text x="395.0" y="274" class="sub" text-anchor="middle">25–49%</text><rect x="458.8" y="259.8" width="71.8" height="0.2" rx="2" fill="#3fb950"/><text x="494.7" y="274" class="sub" text-anchor="middle">50–74%</text><rect x="558.5" y="260.0" width="71.8" height="0.0" rx="2" fill="#3fb950"/><text x="594.4" y="274" class="sub" text-anchor="middle">75–99%</text><rect x="658.2" y="260.0" width="71.8" height="0.0" rx="2" fill="#3fb950"/><text x="694.1" y="274" class="sub" text-anchor="middle">100%+</text></svg>

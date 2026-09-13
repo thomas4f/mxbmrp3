@@ -89,6 +89,12 @@ private:
 
     // Update ground contact state
     void updateGroundContact(const Unified::TelemetryData& telemetry);
+    // Every flight, trick or no trick: airtime, how high above takeoff and how
+    // far across the ground. Deliberately independent of trick detection -
+    // "airtime is airtime", and most jumps on an MX lap carry no trick at all.
+    void updateFlight(const Unified::TelemetryData& telemetry, float dt);
+    void abortFlight();   // a teleport or a crash: the measurement is not real
+    void creditFlight();  // the settle window elapsed upright: bank the numbers
 
     // Main update loop for trick detection
     void updateTrickDetection(const Unified::TelemetryData& telemetry, float dt);
@@ -203,6 +209,25 @@ private:
     // On discard: timer resumes from paused value. On bank: timer resets normally.
     float m_chainPausedElapsed = 0.0f;   // chainElapsed value at moment of pause
     bool m_chainTimerPaused = false;     // true when committed mid-chain
+
+    // The flight in progress (see updateFlight). Airborne time accumulates into
+    // m_flightSec; the peak is tracked against the altitude at takeoff, and the
+    // distance is measured across the ground from where the wheels left it.
+    bool m_inFlight = false;
+    float m_flightSec = 0.0f;
+    float m_flightTakeoffX = 0.0f, m_flightTakeoffY = 0.0f, m_flightTakeoffZ = 0.0f;
+    float m_flightPeakY = 0.0f;
+
+    // A flight that has touched down but is not credited yet: it only counts
+    // once the rider is still upright landingGracePeriod later, the same window
+    // trick detection waits before confirming a trick. Held here rather than
+    // credited at touchdown because `crashed` arrives a few frames AFTER the
+    // impact that caused it, so crediting on contact banks the case-out.
+    bool m_flightPending = false;
+    float m_flightSettleSec = 0.0f;
+    float m_pendingFlightSec = 0.0f;
+    float m_pendingHeightM = 0.0f;
+    float m_pendingDistanceM = 0.0f;
 
     // Previous frame position for teleport detection and distance calculation
     float m_prevPosX = 0.0f;

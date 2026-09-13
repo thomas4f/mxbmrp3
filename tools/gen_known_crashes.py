@@ -15,15 +15,19 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", "crash_analysis", "known_game_crashes.json")
 OUT = sys.argv[2] if len(sys.argv) > 2 else os.path.join(HERE, "..", "crash_analysis", "KNOWN_GAME_CRASHES.md")
 
-HEADER = """<!-- GENERATED from known_game_crashes.json by tools/gen_known_crashes.py -- DO NOT EDIT BY HAND.
-     Edit known_game_crashes.json, then run: python3 tools/gen_known_crashes.py -->
-# Known MX Bikes crashes
+# The generated-doc note, in the one shape every generated page in this repo
+# uses: VISIBLE and after the intro. It was an HTML comment, which is invisible
+# in a rendered page - so the one reader it is addressed to, someone about to
+# edit this on GitHub, was the one reader who could not see it.
+HEADER = """# Known MX Bikes crashes
 
 A quick reference for working out which MX Bikes crash you hit and whether there's a
 workaround. These are crashes in the game itself, caught by the MXBMRP3 plugin's crash
 handler. They are not plugin bugs, and only PiBoSo (the game's developer) can fix them.
 (A few fault inside a shared component such as the Visual C++ runtime, but the bad input
 still comes from the game.)
+
+<sub>Generated from `crash_analysis/known_game_crashes.json` by `tools/gen_known_crashes.py` - do not edit. Edit the JSON, then run `python3 tools/gen_known_crashes.py`.</sub>
 """
 
 HOWTO = """## Which crash did you hit?

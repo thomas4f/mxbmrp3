@@ -13,6 +13,7 @@
 #include "plugin_constants.h"
 #include "../diagnostics/logger.h"
 #include <algorithm>
+
 #include <cmath>
 
 using PluginConstants::Math::DEG_TO_RAD;
@@ -72,6 +73,7 @@ void FmxManager::updateFromTelemetry(const Unified::TelemetryData& telemetry) {
         if (distSq > TELEPORT_THRESHOLD_SQ) {
             FMX_LOG("Teleport detected (%.1fm) - failing active trick",
                 std::sqrt(distSq));
+            abortFlight();   // a reset-to-track is not a jump
             if (m_activeTrick.state == Fmx::TrickState::ACTIVE ||
                 m_activeTrick.state == Fmx::TrickState::GRACE ||
                 m_activeTrick.state == Fmx::TrickState::CHAIN) {
@@ -82,6 +84,7 @@ void FmxManager::updateFromTelemetry(const Unified::TelemetryData& telemetry) {
 
     // Check for crash - fail any active trick or chain
     if (telemetry.crashed) {
+        abortFlight();   // a bike tumbling is airborne, and is not flying
         if (m_activeTrick.state == Fmx::TrickState::ACTIVE ||
             m_activeTrick.state == Fmx::TrickState::GRACE ||
             m_activeTrick.state == Fmx::TrickState::CHAIN) {
@@ -91,6 +94,7 @@ void FmxManager::updateFromTelemetry(const Unified::TelemetryData& telemetry) {
 
     // Update subsystems
     updateGroundContact(telemetry);
+    updateFlight(telemetry, dt);
     updateRotation(telemetry, dt);
     updateTrickDetection(telemetry, dt);
 
@@ -151,9 +155,18 @@ void FmxManager::updateRotation(const Unified::TelemetryData& telemetry, float d
     m_rotationTracker.currentYaw = telemetry.yaw;
     m_rotationTracker.currentRoll = telemetry.roll;
 
-    // Track peak world-space pitch for Oppo/Turn Down classification
-    // Only track once yaw has started accumulating — excludes ramp angle at launch
-    if (std::abs(m_rotationTracker.accumulatedYaw) >= Fmx::TURN_YAW_THRESHOLD) {
+    // Track peak world-space pitch for Oppo/Turn Down classification.
+    // Sampled only once the whip is underway (PARTIAL_ROTATION_MIN of yaw, the
+    // same gate that makes it a whip), so the ramp angle at launch and a
+    // bailed flip's nose-up before any yaw don't count. It used to wait for
+    // the full TURN_YAW_THRESHOLD, which never saw an oppo: the nose is up
+    // while the bike lays over EARLY in the whip, and the body-frame yaw
+    // integration books it slowly while the nose is up (see the threshold
+    // comment in fmx_types.h), so by the time yaw reached 67.5° the nose was
+    // level again. The classifier still requires peakYaw >= TURN_YAW_THRESHOLD
+    // before the trick becomes an oppo; this only decides WHEN the nose is
+    // looked at. Pinned by fmx_test.cpp's nose-up whip case.
+    if (std::abs(m_rotationTracker.accumulatedYaw) >= Fmx::PARTIAL_ROTATION_MIN) {
         if (telemetry.pitch > m_rotationTracker.peakWorldPitch)
             m_rotationTracker.peakWorldPitch = telemetry.pitch;
         if (telemetry.pitch < m_rotationTracker.minWorldPitch)
@@ -319,14 +332,48 @@ void FmxManager::updateTrickDetection(const Unified::TelemetryData& telemetry, f
             m_activeTrick.peakYaw = m_rotationTracker.peakYaw;
             m_activeTrick.peakRoll = m_rotationTracker.peakRoll;
 
-            // Accumulate horizontal distance traveled
-            if (m_bHasPrevPosition) {
+            // Horizontal distance, measured the way the trick was travelled.
+            //
+            // IN FLIGHT it is the displacement from the takeoff point - the same
+            // number the jump rows read (see updateFlight) - so the HUD cannot
+            // say 50 m where Gap Jumper grants 60. It used to be the path summed
+            // from wherever the trick CLASSIFIED, and firstClassify zeroes the
+            // distance on purpose, so everything before the air trick committed
+            // (0.3s, more for a rotation) was missing from the number on screen
+            // while the achievement counted the whole jump. The peak height in
+            // the same HUD row already comes off the flight, which is why it
+            // agreed and this did not.
+            //
+            // ON THE GROUND it stays the path ridden: a wheelie's distance is how
+            // far you held it, not how far apart its two ends are. Frozen once
+            // the wheels are down, so the roll-out during the landing grace
+            // period is not added to what the jump measured.
+            // TIME THE SAME WAY, and for the same reason: in flight the trick's
+            // duration is the flight's own seconds, which is what Hang Time
+            // reads, rather than the time since the trick classified.
+            if (m_inFlight && m_flightSec > m_activeTrick.duration) {
+                m_activeTrick.duration = m_flightSec;
+            }
+            if (m_inFlight) {
+                const float dx = telemetry.posX - m_flightTakeoffX;
+                const float dz = telemetry.posZ - m_flightTakeoffZ;
+                const float flown = std::sqrt(dx * dx + dz * dz);
+                if (flown > m_activeTrick.distance) m_activeTrick.distance = flown;
+            } else if (!m_activeTrick.hasBeenAirborne && m_bHasPrevPosition) {
                 float dx = telemetry.posX - m_prevPosX;
                 float dz = telemetry.posZ - m_prevPosZ;
                 float horizDist = std::sqrt(dx * dx + dz * dz);
                 if (horizDist < 2.0f) {  // Skip teleports (same threshold as rotation)
                     m_activeTrick.distance += horizDist;
                 }
+            }
+
+            // Height above take-off, from the flight tracker updated earlier
+            // this frame. High-water, so it survives the landing and the grace
+            // period alongside the peak rotations.
+            if (airborne && m_inFlight) {
+                const float above = m_flightPeakY - m_flightTakeoffY;
+                if (above > m_activeTrick.peakHeight) m_activeTrick.peakHeight = above;
             }
 
             // DYNAMIC CLASSIFICATION: Determine trick type based on current state

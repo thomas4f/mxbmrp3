@@ -508,7 +508,14 @@ void TimingHud::rebuildRenderData() {
     GapData segGap;  // cumulative delta-to-best, used only in segment mode
 
     // Nothing to show right now (Off, or At-Splits between freezes) -> collapse to zero size.
-    if (!contentVisible()) {
+    //
+    // ...unless the Timing tab is open (isPreviewing). At-Splits shows the panel
+    // for a few seconds a lap, which is no time to drag it into place; the
+    // readouts below already draw their own placeholders when they have no value.
+    // OFF is excluded deliberately: that switch is the player saying they do not
+    // want this panel, and a preview would argue with it.
+    const bool preview = isPreviewing() && m_displayMode != ColumnMode::OFF;
+    if (!contentVisible() && !preview) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }

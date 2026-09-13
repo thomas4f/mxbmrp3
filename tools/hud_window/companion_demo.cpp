@@ -82,6 +82,11 @@ int main(int argc, char** argv) {
     // Screenshottable only this way -- the tag is driven by UpdateChecker's live
     // status, which a demo with no network never reaches.
     bool updateMode = false;
+    // "fmx": the FMX HUD mid-trick, so the trick stack, the combo arc and the
+    // stats strip all have live content. The strip is the reason this scene
+    // exists - four measurements told apart by four glyphs is the one thing a
+    // capture can settle and the draw-list numbers cannot.
+    bool fmxMode = false;
     for (int a = 1; a < argc; ++a) {
         if (std::string(argv[a]) == "gamepad") gamepadMode = true;
         if (std::string(argv[a]) == "gear") gearMode = true;
@@ -96,6 +101,7 @@ int main(int argc, char** argv) {
         if (std::string(argv[a]) == "preview") { previewMode = true; recordsMode = true; }
         if (std::string(argv[a]) == "maplost") mapLostMode = true;
         if (std::string(argv[a]) == "update")  updateMode = true;
+        if (std::string(argv[a]) == "fmx")     fmxMode = true;
     }
     if (gamepadMode) {
         host.fakeGamepad(true);
@@ -253,6 +259,40 @@ int main(int argc, char** argv) {
             fprintf(stderr, "maplost: pointer l=%.4f t=%.4f r=%.4f b=%.4f\n",
                     a.l, a.t, a.r, a.b);
         }
+    } else if (fmxMode) {
+        // Fly a backflip and hold it in GRACE, which is where the stats strip is
+        // frozen and fully populated: duration, distance across the ground,
+        // height above take-off and peak rotation. The clock is driven by hand
+        // (fmxSetNowUs) so the airborne debounce and the grace window play out
+        // deterministically rather than at whatever rate Wine gets round to.
+        host.setHudVisible("fmx_hud", true);
+        host.runStart();
+        long long t = 1'000'000;
+        float x = 0.0f;
+        auto tick = [&](TelemetryRow r) {
+            t += 10'000;
+            x += r.speed * 0.01f;
+            r.posX = x;
+            r.time = t / 1.0e6f;
+            host.fmxSetNowUs(t);
+            host.telemetryFrame(r);
+        };
+        for (int i = 0; i < 20; ++i) { TelemetryRow r; r.speed = 18.0f; r.posY = 100.0f; tick(r); }
+        // 1.4s of air: ~420 degrees of pitch, rising 6.5m and coming back down.
+        for (int i = 0; i < 140; ++i) {
+            TelemetryRow r;
+            r.speed = 18.0f; r.frontMaterial = 0; r.rearMaterial = 0;
+            r.pitchVel = -300.0f;
+            const float u = i / 139.0f;
+            r.posY = 100.0f + 6.5f * 4.0f * u * (1.0f - u);
+            tick(r);
+        }
+        // Two grounded frames: the trick lands and enters GRACE, where the stats
+        // strip holds. Stopping short of landingGracePeriod keeps it there.
+        for (int i = 0; i < 2; ++i) { TelemetryRow r; r.speed = 18.0f; r.posY = 100.0f; tick(r); }
+        // The clock stays frozen deliberately: restoring it lets grace elapse,
+        // the chain bank and then time out, and the panel empties itself
+        // somewhere in the hold before the shutter.
     } else if (gearMode) {
         // nothing: the HUD renders its default-visible widgets over the empty scene
         if (toastMode) host.configReloaded();   // Tinkerer - Bronze, taken on the next draw

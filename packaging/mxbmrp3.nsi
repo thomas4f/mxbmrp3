@@ -805,7 +805,7 @@ Function OnPrivacyLinkClick
 FunctionEnd
 
 Function OnReportLinkClick
-  ExecShell "open" "${PLUGIN_URL}/blob/main/analytics/REPORT.md"
+  ExecShell "open" "${PLUGIN_URL}/blob/main/usage_survey/REPORT.md"
 FunctionEnd
 
 Function ShowPrivacyPage

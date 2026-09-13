@@ -8,6 +8,8 @@
 // ============================================================================
 
 #include "plugin_data.h"
+#include "roost_detect.h"
+#include "stats_manager.h"
 #include "spotter_manager.h"
 #include "plugin_utils.h"
 #include "ui_config.h"
@@ -226,6 +228,102 @@ void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, b
     m_blueFlagsDirty = true;
     m_hazardsDirty = true;
     m_hazardTypesDirty = true;
+}
+
+// Reused across batches so a steady state allocates nothing. File-local rather
+// than a member: it is scratch for one function, and the game thread is its
+// only caller (the callback path is single-threaded).
+static std::vector<Roost::Rider> s_proximityRiders;
+
+void PluginData::endProximity() {
+    StatsManager::getInstance().recordProximity(Roost::Contact::None, /*measuring=*/false);
+}
+
+// Pile-Up: the riders already on the floor around the player while the player
+// is on it too. Walked only from the one branch that knows they are - the
+// flatten below drops a crashed player and stops - so a race where nobody falls
+// never pays for this at all. Squared distance, like roost_detect.h: no sqrt.
+//
+// ONE COUNT, TWO ROWS. Pile-Up asks it while the player is down and Peace Out
+// while the player is upright and riding past, so the heap is measured the same
+// way from inside and outside it - two counts would be two chances to disagree
+// about what "the same incident" is.
+static int countRidersDownNear(int numVehicles, const Unified::TrackPositionData* positions,
+                               int me) {
+    // Close enough to be the same incident. Roost's own "side by side" band is
+    // 6m; a heap is tighter than a pair of riders racing, and wider than a bike
+    // length, so ten metres is the corner rather than the whole straight.
+    static constexpr float PILEUP_RADIUS_M = 10.0f;
+    int down = 0;
+    for (int i = 0; i < numVehicles; ++i) {
+        if (i == me || !positions[i].crashed) continue;
+        const float dx = positions[i].posX - positions[me].posX;
+        const float dz = positions[i].posZ - positions[me].posZ;
+        if (dx * dx + dz * dz <= PILEUP_RADIUS_M * PILEUP_RADIUS_M) ++down;
+    }
+    return down;
+}
+
+void PluginData::updateProximity(int numVehicles, const Unified::TrackPositionData* positions) {
+    StatsManager& stats = StatsManager::getInstance();
+    // Nobody to race, no player, or no track length to convert centreline
+    // positions with: drop the measurement rather than pause it, so the gap is
+    // not later credited as contact.
+    const int playerNum = getPlayerRaceNum();
+    if (!positions || numVehicles < 2 || playerNum < 0 || !(m_sessionData.trackLength > 0.0f)) {
+        stats.recordProximity(Roost::Contact::None, /*measuring=*/false);
+        return;
+    }
+
+    // Flatten to the pairwise core's three numbers, and find the player. One
+    // pass, no lookups - see roost_detect.h's performance contract. The buffer
+    // is reused across batches, so a steady state allocates nothing.
+    std::vector<Roost::Rider>& riders = s_proximityRiders;
+    riders.clear();
+    riders.reserve(static_cast<size_t>(numVehicles));
+    int myIndex = -1;
+    int myRaw = -1;          // the player's slot in the RAW batch, which survives the flatten
+    int othersDown = 0;      // anyone on the floor, at any distance: Peace Out's pre-filter
+    for (int i = 0; i < numVehicles; ++i) {
+        const bool isMe = positions[i].raceNum == playerNum;
+        // A rider on the floor is scenery, not company. Theirs is skipped -
+        // otherwise someone lying in the landing 3-12m up the track pays you
+        // roost seconds for riding past them - and the player's own ends the
+        // measurement, because being down is not racing.
+        if (positions[i].crashed) {
+            if (isMe) {
+                // Pile-Up, and the one branch that can measure it: the flatten
+                // drops a crashed player, so the count has to happen here.
+                myIndex = -1;
+                StatsManager::getInstance().recordRidersDown(
+                    countRidersDownNear(numVehicles, positions, i));
+                break;
+            }
+            ++othersDown;
+            continue;
+        }
+        if (isMe) { myIndex = static_cast<int>(riders.size()); myRaw = i; }
+        riders.push_back({ positions[i].posX, positions[i].posZ, positions[i].trackPos });
+    }
+    // Peace Out: the same heap, from the outside. Gated on somebody actually
+    // being down, which the loop above has already counted for free - a race in
+    // which nobody falls never walks the field a second time.
+    if (myRaw >= 0 && othersDown > 0) {
+        stats.recordRodeThrough(countRidersDownNear(numVehicles, positions, myRaw));
+    }
+    // Fewer than two upright riders is nobody to be near, which is a gap in the
+    // measurement rather than a stretch of clean air: the same call the
+    // no-player and no-track-length cases make above.
+    if (myIndex < 0 || riders.size() < 2) {
+        stats.recordProximity(Roost::Contact::None, /*measuring=*/false);
+        return;
+    }
+
+    static constexpr Roost::Tuning kBands{};
+    stats.recordProximity(Roost::classify(riders[static_cast<size_t>(myIndex)], riders.data(),
+                                          static_cast<int>(riders.size()), myIndex,
+                                          m_sessionData.trackLength, kBands),
+                          /*measuring=*/true);
 }
 
 void PluginData::updateActiveTrackPosRiders(int numVehicles, const Unified::TrackPositionData* positions) {

@@ -269,7 +269,7 @@ void SettingsHud::resetTabWidgets() {
         "LapWidget", "PositionWidget", "TimeWidget", "SpeedWidget", "GearWidget",
         "SpeedoWidget", "TachoWidget", "BarsWidget", "VersionWidget", "FuelWidget",
         "GamepadWidget", "LeanWidget", "GForceWidget", "CompassWidget", "ClockWidget",
-        "PointerWidget", "SettingsButtonWidget", "CrashWidget"
+        "PointerWidget", "SettingsButtonWidget", "CrashWidget", "PrestigeWidget"
     };
 #if GAME_HAS_TYRE_TEMP
     widgets.push_back("TyreTempWidget");

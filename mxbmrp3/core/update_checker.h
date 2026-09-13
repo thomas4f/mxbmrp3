@@ -12,6 +12,8 @@
 #include <functional>
 #include <vector>
 #include <cctype>
+#include <algorithm>
+#include "plugin_utils.h"
 
 class UpdateChecker {
 public:
@@ -135,12 +137,26 @@ public:
 
     // Compare two version strings, returns: -1 (a < b), 0 (a == b), 1 (a > b).
     // Strips leading "v"/"V", tolerates 3-vs-4 components and "-suffix".
-    // NOTE: returns 0 when EITHER string fails to parse, so callers that must
-    // distinguish "equal" from "unparseable" should pre-check with isValidVersion().
+    // NOTE: returns 0 when EITHER string fails to parse, so a caller that must
+    // tell "equal" from "unparseable" has to parse it itself. isSameRelease()
+    // below is the one that needed to, and does.
     static int compareVersions(const std::string& a, const std::string& b);
 
-    // True if the string parses as a version (same normalization as compareVersions).
-    static bool isValidVersion(const std::string& v);
+    // True if two version strings name the same RELEASE, i.e. they agree on
+    // major.minor.patch and both parse. The 4th component is deliberately NOT
+    // compared: a release tag is vX.Y.Z (release.yml derives it from resource.h
+    // and says so at its tag step), so it parses as build 0, while a running
+    // build's PLUGIN_VERSION carries VER_BUILD = the git commit count and is
+    // never 0. compareVersions() == 0 therefore NEVER holds between a tag and a
+    // running build - it is an ordering test, and equality is a stricter demand
+    // than it can meet. Pinned by test_update_version_match.cpp.
+    static bool isSameRelease(const std::string& a, const std::string& b) {
+        int aMajor, aMinor, aPatch, aBuild;
+        int bMajor, bMinor, bPatch, bBuild;
+        if (!parseVersion(a, aMajor, aMinor, aPatch, aBuild)) return false;
+        if (!parseVersion(b, bMajor, bMinor, bPatch, bBuild)) return false;
+        return aMajor == bMajor && aMinor == bMinor && aPatch == bPatch;
+    }
 
     // Choose which release asset to download, given the asset filenames (in the
     // order GitHub returns them). Returns the index of the plugin archive, or -1
@@ -157,7 +173,7 @@ public:
             // Case-insensitive substring match on "symbols" (the asset is
             // "mxbmrp3-symbols-vX.Y.Z.B.zip"); that bundle holds only .pdb/.map.
             std::string lower = n;
-            for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            PluginUtils::toLowerAscii(lower);
             return lower.find("symbols") != std::string::npos;
         };
 
@@ -186,8 +202,39 @@ private:
     // Worker thread function
     void workerThread();
 
-    // Parse version string to comparable integers (e.g., "1.6.6.0" -> {1,6,6,0})
-    static bool parseVersion(const std::string& version, int& major, int& minor, int& patch, int& build);
+    // Parse version string to comparable integers (e.g., "1.6.6.0" -> {1,6,6,0}).
+    // Defined here rather than in the .cpp so the inline isSameRelease() above
+    // can reach it, which is also what makes that check unit-testable.
+    //
+    // Hand-walked rather than through an istringstream: this header is included
+    // by a dozen TUs, and <sstream> is one of the heavier standard headers to
+    // drag into all of them for four integers off a dotted string.
+    static bool parseVersion(const std::string& version, int& major, int& minor, int& patch, int& build) {
+        major = minor = patch = build = 0;
+
+        size_t i = 0;
+        // Versions arrive with or without a 'v' prefix.
+        if (i < version.size() && (version[i] == 'v' || version[i] == 'V')) ++i;
+
+        // Anything from a hyphen on is a pre-release suffix ("1.11.0.0-beta1").
+        const size_t end = (std::min)(version.find('-', i), version.size());
+
+        int* const fields[4] = { &major, &minor, &patch, &build };
+        for (int f = 0; f < 4; ++f) {
+            const size_t digitsFrom = i;
+            long long value = 0;
+            while (i < end && version[i] >= '0' && version[i] <= '9') {
+                value = value * 10 + (version[i] - '0');
+                if (value > 1000000000LL) return false;   // not a version number
+                ++i;
+            }
+            if (i == digitsFrom) return false;            // a field with no digits
+            *fields[f] = static_cast<int>(value);
+            if (i >= end || version[i] != '.') return true;   // fewer than four is fine
+            ++i;                                              // step over the dot
+        }
+        return true;
+    }
 
     // HTTP fetch (blocking)
     bool fetchLatestRelease(std::string& outVersion, std::string& outError);

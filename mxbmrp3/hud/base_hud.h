@@ -140,6 +140,27 @@ public:
     // on the companion still rebuilds and doesn't render stale. Equals isVisible()
     // when the companion is disabled, so single-window behavior is unchanged.
     bool isVisibleAnySurface() const;
+    // POSITIONING PREVIEW. True while the settings panel is open on THIS HUD's own
+    // tab, and only for a HUD that is switched on -- a disabled HUD stays off the
+    // screen, because that is what disabling it meant.
+    //
+    // A HUD that draws nothing until something happens (the radar with auto-hide,
+    // the pitboard between splits, a notice, a toast) cannot be dragged into place:
+    // the player opens its tab and there is nothing on screen to aim at. Such a HUD
+    // fills itself with placeholder content while this is set, built straight into
+    // the render data -- never pushed into PluginData, the event log or the
+    // snapshot, which would leak a fake rider or a fake notice into everything
+    // downstream. EventLogHud is the model that needed no flag: it always draws its
+    // full configured height and fills the empty rows with dashes.
+    //
+    // Set by HudManager::setPreviewHud, from the panel's own open/close/tab change.
+    bool isPreviewing() const { return m_bPreviewing; }
+    void setPreviewing(bool on) {
+        if (m_bPreviewing == on) return;
+        m_bPreviewing = on;
+        setDataDirty();
+    }
+
     // Not on screen for a reason other than the visibility flags: the hide-all
     // hotkey, the widgets toggle, the Direct GL prompt (HudManager::isHeldBack).
     // A HUD that hit-tests its own clicks gates on this beside
@@ -2157,6 +2178,9 @@ public:
     // call VersionWidget::showUpdateNotification) while the game thread reads
     // them every frame. All access is plain load/store - no RMW needed.
     std::atomic<bool> m_bVisible;
+    // mt-plain: game thread only -- set from the settings panel's own click/open
+    // handling, read in rebuildRenderData. See isPreviewing().
+    bool m_bPreviewing = false;
     bool m_bShowTitle;
     float m_fBackgroundOpacity;  // 0.0 (fully transparent) to 1.0 (fully opaque)
     float m_fMinBackgroundOpacity = 0.0f;  // Lower bound for the opacity slider (most HUDs allow full transparency; raised for widgets that always render foreground content, e.g. the settings button)

@@ -118,6 +118,10 @@ void FmxManager::completeTrick() {
             sample.scrub = (t.type == Fmx::TrickType::SCRUB_LEFT || t.type == Fmx::TrickType::SCRUB_RIGHT);
             sample.oppo = (t.type == Fmx::TrickType::OPPO_LEFT || t.type == Fmx::TrickType::OPPO_RIGHT);
             sample.turnDown = (t.type == Fmx::TrickType::TURN_DOWN_LEFT || t.type == Fmx::TrickType::TURN_DOWN_RIGHT);
+            // A STOPPIE is an endo held until the bike stops - the classifier
+            // splits the two on speed alone - so a rider who has done ten of
+            // those has done ten endos, and the row counts both.
+            sample.endo = (t.type == Fmx::TrickType::ENDO || t.type == Fmx::TrickType::STOPPIE);
             sample.airborne = t.hasBeenAirborne && Fmx::isAirTrick(t.type);
             sample.wheelie = (t.type == Fmx::TrickType::WHEELIE || t.type == Fmx::TrickType::COASTER_WHEELIE);
             sample.shred = (t.type == Fmx::TrickType::BURNOUT || t.type == Fmx::TrickType::DONUT ||

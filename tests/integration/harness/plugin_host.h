@@ -115,6 +115,8 @@ public:
         m_spotPrev   = sym<void(*)(int)>("MXBMRP3_Test_SpotterPreview");
         m_spotPin    = sym<void(*)(int)>("MXBMRP3_Test_SpotterPinVariant");
         m_spotHotkey = sym<void(*)()>("MXBMRP3_Test_SpotterHotkey");
+        m_hkStartCapture = sym<void(*)(int)>("MXBMRP3_Test_HotkeyStartCapture");
+        m_hkCapturing    = sym<int(*)()>("MXBMRP3_Test_HotkeyCapturing");
         m_spotParked = sym<int(*)()>("MXBMRP3_Test_SpotterWorkerParked");
         m_stTheme   = sym<void(*)(char*,int)>("MXBMRP3_Test_StandingsTheme");
         m_stSetTheme = sym<void(*)(const char*)>("MXBMRP3_Test_StandingsSetTheme");
@@ -199,6 +201,7 @@ public:
         m_settingsVisible = sym<int(*)()>("MXBMRP3_Test_SettingsVisible");
         m_stepCount    = sym<int(*)(int)>("MXBMRP3_Test_SettingsSteppedCount");
         m_stepClick    = sym<int(*)(int,int,int)>("MXBMRP3_Test_SettingsClickStepped");
+        m_profileArrowRepeats = sym<int(*)()>("MXBMRP3_Test_SettingsProfileArrowRepeats");
         m_cycleCount   = sym<int(*)(int)>("MXBMRP3_Test_SettingsCycleCount");
         m_regionSig    = sym<void(*)(char*,int)>("MXBMRP3_Test_SettingsRegionSignature");
         m_cycleClick   = sym<int(*)(int,int)>("MXBMRP3_Test_SettingsClickCycle");
@@ -351,6 +354,7 @@ public:
         m_rcSetCharts       = sym<void(*)(int)>("MXBMRP3_Test_SessionChartsSetCharts");
         m_fmxSetNow         = sym<void(*)(long long)>("MXBMRP3_Test_FmxSetNowUs");
         m_fmxState          = sym<void(*)(int*,int*,int*,int*,int*,int*,int*,int*)>("MXBMRP3_Test_FmxState");
+        m_fmxTrickStats     = sym<void(*)(float*,float*,float*)>("MXBMRP3_Test_FmxTrickStats");
         m_statsSetNow       = sym<void(*)(long long)>("MXBMRP3_Test_StatsSetNowUs");
         m_statsOdoState     = sym<void(*)(double*,double*,double*,int*)>("MXBMRP3_Test_StatsOdometerState");
         m_statsSave         = sym<void(*)()>("MXBMRP3_Test_StatsSave");
@@ -359,12 +363,20 @@ public:
         m_achToastsQueued   = sym<unsigned int(*)()>("MXBMRP3_Test_AchievementToastsQueued");
         m_achLastToast      = sym<void(*)(char*,int)>("MXBMRP3_Test_AchievementLastToast");
         m_configReloaded    = sym<void(*)()>("MXBMRP3_Test_ConfigReloaded");
+        m_achLeader         = sym<void(*)(const char*,char*,int)>("MXBMRP3_Test_AchievementLeader");
+        m_prestige          = sym<int(*)()>("MXBMRP3_Test_Prestige");
+        m_setPrestige       = sym<void(*)(int)>("MXBMRP3_Test_SetPrestige");
+        m_takePrestige      = sym<int(*)()>("MXBMRP3_Test_TakePrestige");
+        m_explorationSet    = sym<void(*)(const char*, double)>("MXBMRP3_Test_ExplorationSet");
+        m_achForceTiers     = sym<void(*)(int, const char*)>("MXBMRP3_Test_AchievementForceTiers");
+        m_setUpdateChannel  = sym<void(*)(int)>("MXBMRP3_Test_SetUpdateChannel");
         m_achToastShowing   = sym<int(*)()>("MXBMRP3_Test_AchievementToastShowing");
         m_setLocalTime      = sym<void(*)(int,int,int,int)>("MXBMRP3_Test_SetLocalTime");
         m_achUnits          = sym<void(*)(int*,int*)>("MXBMRP3_Test_AchievementUnits");
         m_achRows           = sym<void(*)(int*,int*)>("MXBMRP3_Test_AchievementRows");
+        m_achBonus          = sym<int(*)()>("MXBMRP3_Test_AchievementBonus");
         m_trackRider        = sym<int(*)(const char*)>("MXBMRP3_Test_TrackRider");
-        m_explorationTick   = sym<void(*)(int,int,int,int,unsigned int)>("MXBMRP3_Test_ExplorationTick");
+        m_explorationTick   = sym<void(*)(int,int,int,int,int,unsigned int)>("MXBMRP3_Test_ExplorationTick");
         m_setHudsEnabled    = sym<void(*)(int)>("MXBMRP3_Test_SetHudsEnabled");
         m_setEveryHudVisible = sym<void(*)(int)>("MXBMRP3_Test_SetEveryHudVisible");
         m_setHudVisible = sym<int(*)(const char*,int)>("MXBMRP3_Test_SetHudVisible");
@@ -517,7 +529,12 @@ public:
                    // which world it is in.
                    int serverType = 0,
                    // Empty offline; a name is what Well Travelled counts.
-                   const char* serverName = "") {
+                   const char* serverName = "",
+                   // Tank capacity in litres. 0 (the default) means "unknown",
+                   // which is what every test that says nothing about fuel
+                   // wants: the fuel rows measure against capacity, so with
+                   // none they stay put.
+                   float maxFuel = 0.0f) {
         SPluginsBikeEvent_t ev{};
         ev.m_iServerType = serverType;
         setStr(ev.m_szServerName, serverName);
@@ -527,6 +544,7 @@ public:
         setStr(ev.m_szTrackID, trackId);
         setStr(ev.m_szTrackName, trackName);
         ev.m_fTrackLength = trackLength; ev.m_iType = type;
+        ev.m_fMaxFuel = maxFuel;
         ev.m_iNumberOfGears = 6;   // a real bike has gears (so the gear widget shows a digit, not "D")
         if (m_eventInit) m_eventInit(&ev, (int)sizeof(ev));
     }
@@ -887,6 +905,10 @@ public:
         d.m_fSteerTorque = r.steerTorque;
         d.m_iCrashed = r.crashed;
         d.m_fClutch = r.clutch;
+        d.m_fAccelerationX = r.accelX;
+        d.m_fAccelerationY = r.accelY;
+        d.m_fAccelerationZ = r.accelZ;
+        d.m_fFuel = r.fuel;
         if (m_telemetry) m_telemetry(&d, (int)sizeof(d), r.time, r.trackPos);
     }
 
@@ -1073,6 +1095,13 @@ public:
     void spotterPreview(bool ttsOnly = false) { if (m_spotPrev) m_spotPrev(ttsOnly ? 1 : 0); }
     // The Spotter Cue hotkey. See MXBMRP3_Test_SpotterHotkey.
     void spotterHotkey() { if (m_spotHotkey) m_spotHotkey(); }
+
+    // --- hotkey capture seam --------------------------------------------------
+    // Arm a keyboard capture for an action, and ask whether one is armed. See
+    // MXBMRP3_Test_HotkeyStartCapture.
+    bool hasHotkeyCapture() const { return m_hkStartCapture && m_hkCapturing; }
+    void hotkeyStartCapture(int action) { if (m_hkStartCapture) m_hkStartCapture(action); }
+    bool hotkeyCapturing() { return m_hkCapturing && m_hkCapturing() != 0; }
     // Block until the TTS worker is parked in its queue wait, or `timeoutMs`
     // elapses; returns whether it parked. Call it after a cue when the NEXT
     // thing the test does must not race the worker — the first speech cue
@@ -1394,6 +1423,10 @@ public:
     bool clickStepped(int index, bool up, int holdRepeats = 0) {
         return m_stepClick && m_stepClick(index, up ? 1 : 0, holdRepeats) != 0;
     }
+    // Whether holding a profile arrow auto-repeats. It must not: one click, one
+    // switch (see isRepeatableRegionType).
+    bool hasProfileArrowRepeats() const { return m_profileArrowRepeats != nullptr; }
+    bool profileArrowRepeats() { return m_profileArrowRepeats && m_profileArrowRepeats() != 0; }
     // Cycle-control click seam: count/click CYCLE_UP (up=true) / CYCLE_DOWN
     // regions on the active tab, in layout order (no hold tier - cycles never
     // accelerate).
@@ -1912,6 +1945,15 @@ public:
         int chainCount = -1, chainScore = -1;
         int activeState = -1, activeType = -1, lastTrickType = -1;
     };
+    // The active trick's own measurements - the three the FMX HUD prints. For a
+    // jump, distance and peakHeight are the flight's, so they can be held
+    // against what Gap Jumper and Sent It were granted for the same jump.
+    struct FmxTrickStats { float duration = -1.0f, distance = -1.0f, peakHeight = -1.0f; };
+    FmxTrickStats fmxTrickStats() {
+        FmxTrickStats s;
+        if (m_fmxTrickStats) m_fmxTrickStats(&s.duration, &s.distance, &s.peakHeight);
+        return s;
+    }
     FmxState fmxState() {
         FmxState s;
         if (m_fmxState) m_fmxState(&s.sessionScore, &s.tricksCompleted, &s.tricksFailed,
@@ -1949,6 +1991,40 @@ public:
     }
     // The RELOAD_CONFIG hotkey's achievement half (Tinkerer + the dev toast).
     void configReloaded() { if (m_configReloaded) m_configReloaded(); }
+    // The track or bike name a per-maximum row names beside its title; "" for
+    // every other row and while nothing has been ridden.
+    std::string achievementLeader(const char* id) {
+        char buf[128] = {0};
+        if (m_achLeader) m_achLeader(id, buf, sizeof(buf));
+        return buf;
+    }
+    // --- Prestige (StatsManager::prestige). `setPrestige` sets the LEVEL only,
+    // for a test that wants the Hat on screen without earning the catalogue;
+    // `takePrestige` is the real trade and returns false when it is refused.
+    bool hasPrestige() const { return m_prestige && m_setPrestige && m_takePrestige; }
+    int prestige() { return m_prestige ? m_prestige() : 0; }
+    void setPrestige(int level) { if (m_setPrestige) m_setPrestige(level); }
+    bool takePrestige() { return m_takePrestige && m_takePrestige() == 1; }
+    // Set an exploration signal by its persisted key and re-evaluate. For the
+    // tier/toast/halfway machinery, which needs a four-tier row steppable to an
+    // exact value; the feeds themselves are exploration_test's business.
+    bool hasExplorationSet() const { return m_explorationSet != nullptr; }
+    // Stand the ladder one row short of finished: every COUNTED row at `tier`
+    // except `exceptId`, written straight into the states. The row left out has
+    // to arrive the real way (explorationSet, a callback) for a Sweep test to be
+    // testing anything. See MXBMRP3_Test_AchievementForceTiers.
+    bool hasAchForceTiers() const { return m_achForceTiers != nullptr; }
+    void achievementForceTiers(int tier, const char* exceptId) {
+        if (m_achForceTiers) m_achForceTiers(tier, exceptId);
+    }
+    // The update channel, switched the way the Updates tab switches it.
+    bool hasUpdateChannel() const { return m_setUpdateChannel != nullptr; }
+    void setUpdateChannel(bool prerelease) {
+        if (m_setUpdateChannel) m_setUpdateChannel(prerelease ? 1 : 0);
+    }
+    void explorationSet(const char* signalKey, double value) {
+        if (m_explorationSet) m_explorationSet(signalKey, value);
+    }
     bool achievementToastShowing() { return m_achToastShowing && m_achToastShowing() == 1; }
     // Put a rider on the tracked list (the Riders tab's add). False if already there or full.
     bool trackRider(const char* name) { return m_trackRider && m_trackRider(name) == 1; }
@@ -1964,13 +2040,21 @@ public:
         if (m_achRows) m_achRows(&earned, &total);
         return { earned, total };
     }
+    // The tab's "(+n)": earned rows outside the listed total (hidden page and
+    // misfortunes alike), which neither figure above counts.
+    int achievementBonus() { return m_achBonus ? m_achBonus() : -1; }
     // The exploration signals' clock (Night Owl, Anniversary, Regular) and their
     // once-a-second tick (spectate and rumble time, Frame Perfect, On Air).
     void setLocalTime(int year, int month, int day, int hour) {
         if (m_setLocalTime) m_setLocalTime(year, month, day, hour);
     }
-    void explorationTick(bool spectating, bool rumbleLive, bool onTrack, int frames, unsigned overlayTotal = 0) {
-        if (m_explorationTick) m_explorationTick(spectating ? 1 : 0, rumbleLive ? 1 : 0, onTrack ? 1 : 0, frames, overlayTotal);
+    // `moving` is the RIDE gate (Iron Butt, Night Owl, Anniversary); `onTrack`
+    // alone is time on track (Steady Hands, Good Vibrations). Defaulted to
+    // onTrack so a caller that does not care still describes a rider who rides.
+    void explorationTick(bool spectating, bool rumbleLive, bool onTrack, int frames, unsigned overlayTotal = 0,
+                         bool moving = true) {
+        if (m_explorationTick) m_explorationTick(spectating ? 1 : 0, rumbleLive ? 1 : 0, onTrack ? 1 : 0,
+                                                 (moving && onTrack) ? 1 : 0, frames, overlayTotal);
     }
     // The hide-all-HUDs hotkey's state (see MXBMRP3_Test_SetHudsEnabled).
     void setHudsEnabled(bool on) { if (m_setHudsEnabled) m_setHudsEnabled(on ? 1 : 0); }
@@ -2084,7 +2168,13 @@ public:
                  // and it is the one panel a user meets when the renderer under
                  // it may be misdrawing, so a layout fault here is worse than
                  // elsewhere, not better.
-                 HUD_GL_CONFIRM = 21 };
+                 HUD_GL_CONFIRM = 21,
+                 // The prestige badge. It centres its box on the card box, so
+                 // the anchor sweep has to see it -- and it is the only panel
+                 // that draws NOTHING until a condition holds, so a sweep that
+                 // did not first grant a prestige level would pass by looking at
+                 // an empty plan (the trap glConfirmArm exists for).
+                 HUD_PRESTIGE = 22 };
 
     // THE ONE TRANSLATION. Strings are HudManager::initialize()'s registration names;
     // an id outside the enum yields "", which resolves to no panel rather than to
@@ -2113,6 +2203,7 @@ public:
             case HUD_COMPASS:        return "compass_widget";
             case HUD_LEAN:           return "lean_widget";
             case HUD_GL_CONFIRM:     return "gl_confirm";
+            case HUD_PRESTIGE:            return "prestige_widget";
         }
         return "";
     }
@@ -3007,6 +3098,8 @@ private:
     void        (*m_spotPrev)(int) = nullptr;
     void        (*m_spotPin)(int) = nullptr;
     void        (*m_spotHotkey)() = nullptr;
+    void        (*m_hkStartCapture)(int) = nullptr;
+    int         (*m_hkCapturing)() = nullptr;
     int         (*m_spotParked)() = nullptr;
     void        (*m_stTheme)(char*, int) = nullptr;
     void        (*m_stSetTheme)(const char*) = nullptr;
@@ -3091,6 +3184,7 @@ private:
     int         (*m_standingsRowBand)(int*,int*) = nullptr;
     int         (*m_stepCount)(int) = nullptr;
     int         (*m_stepClick)(int,int,int) = nullptr;
+    int         (*m_profileArrowRepeats)() = nullptr;
     bool        m_shutdownDone = false;
     bool        m_started = false;   // startup() was called at least once
     bool        m_skipShutdownOnDestroy = false;
@@ -3235,6 +3329,7 @@ private:
     void        (*m_rcSetCharts)(int) = nullptr;
     void        (*m_fmxSetNow)(long long) = nullptr;
     void        (*m_fmxState)(int*,int*,int*,int*,int*,int*,int*,int*) = nullptr;
+    void        (*m_fmxTrickStats)(float*,float*,float*) = nullptr;
     void        (*m_statsSetNow)(long long) = nullptr;
     void        (*m_statsOdoState)(double*,double*,double*,int*) = nullptr;
     void        (*m_statsSave)() = nullptr;
@@ -3243,12 +3338,20 @@ private:
     unsigned int(*m_achToastsQueued)() = nullptr;
     void        (*m_achLastToast)(char*, int) = nullptr;
     void        (*m_configReloaded)() = nullptr;
+    void        (*m_achLeader)(const char*,char*,int) = nullptr;
+    int         (*m_prestige)() = nullptr;
+    void        (*m_setPrestige)(int) = nullptr;
+    int         (*m_takePrestige)() = nullptr;
+    void        (*m_explorationSet)(const char*, double) = nullptr;
     int         (*m_achToastShowing)() = nullptr;
     void        (*m_setLocalTime)(int,int,int,int) = nullptr;
     void        (*m_achUnits)(int*,int*) = nullptr;
     void        (*m_achRows)(int*,int*) = nullptr;
+    int         (*m_achBonus)() = nullptr;
     int         (*m_trackRider)(const char*) = nullptr;
-    void        (*m_explorationTick)(int,int,int,int,unsigned int) = nullptr;
+    void        (*m_explorationTick)(int,int,int,int,int,unsigned int) = nullptr;
+    void        (*m_achForceTiers)(int, const char*) = nullptr;
+    void        (*m_setUpdateChannel)(int) = nullptr;
     void        (*m_setHudsEnabled)(int) = nullptr;
     void        (*m_setEveryHudVisible)(int) = nullptr;
     int         (*m_settingsVisible)() = nullptr;

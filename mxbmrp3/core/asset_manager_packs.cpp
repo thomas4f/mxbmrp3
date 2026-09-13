@@ -37,11 +37,11 @@ static void readGamepadIniPairs(const std::string& iniPath, GamepadAsset& pad) {
 
         // [pad] name and base are the two non-numeric keys, answered before
         // anything reaches the numeric path below.
-        if (std::strcmp(key, "pack.name") == 0) {
+        if (std::strcmp(key, PackIni::kKeyName) == 0) {
             if (rawValue && *rawValue) p.displayName = rawValue;
             return true;
         }
-        if (std::strcmp(key, "pack.base") == 0) {
+        if (std::strcmp(key, PackIni::kKeyBase) == 0) {
             if (rawValue && *rawValue) p.baseName = rawValue;
             return true;
         }
@@ -73,11 +73,11 @@ static void readPitboardIniPairs(const std::string& iniPath, PitboardAsset& boar
                                         bool numeric, void* raw) -> bool {
         PitboardAsset& b = *static_cast<Ctx*>(raw)->b;
 
-        if (std::strcmp(key, "pack.name") == 0) {
+        if (std::strcmp(key, PackIni::kKeyName) == 0) {
             if (rawValue && *rawValue) b.displayName = rawValue;
             return true;
         }
-        if (std::strcmp(key, "pack.base") == 0) {
+        if (std::strcmp(key, PackIni::kKeyBase) == 0) {
             if (rawValue && *rawValue) b.baseName = rawValue;
             return true;
         }
@@ -142,11 +142,11 @@ static void readGaugeIniPairs(const std::string& iniPath, GaugesAsset& set) {
                                         bool numeric, void* raw) -> bool {
         GaugesAsset& g = *static_cast<Ctx*>(raw)->s;
 
-        if (std::strcmp(key, "pack.name") == 0) {
+        if (std::strcmp(key, PackIni::kKeyName) == 0) {
             if (rawValue && *rawValue) g.displayName = rawValue;
             return true;
         }
-        if (std::strcmp(key, "pack.base") == 0) {
+        if (std::strcmp(key, PackIni::kKeyBase) == 0) {
             if (rawValue && *rawValue) g.baseName = rawValue;
             return true;
         }
@@ -439,7 +439,7 @@ void AssetManager::discoverGamepads() {
     for (const std::string& dir : dirs) {
         const std::string base = root + "\\" + dir + "\\";
         const std::string ini = packIniPath(base, dir, PackIni::kGamepad);
-        if (!readPackStringKey(ini, "pack.base").empty()) continue;
+        if (!readPackStringKey(ini, PackIni::kKeyBase).empty()) continue;
 
         bool complete = true;
         int w = 0, h = 0;
@@ -473,7 +473,7 @@ void AssetManager::discoverGamepads() {
     for (const std::string& dir : dirs) {
         const std::string skinDir = root + "\\" + dir + "\\";
         const std::string ini = packIniPath(skinDir, dir, PackIni::kGamepad);
-        const std::string baseKey = readPackStringKey(ini, "pack.base");
+        const std::string baseKey = readPackStringKey(ini, PackIni::kKeyBase);
         if (baseKey.empty()) continue;
 
         // The base must be a phase-1 pack: present, and baseless itself. One
@@ -559,7 +559,7 @@ void AssetManager::discoverPitboards() {
     for (const std::string& dir : dirs) {
         const std::string base = root + "\\" + dir + "\\";
         const std::string ini = packIniPath(base, dir, PackIni::kPitboard);
-        if (!readPackStringKey(ini, "pack.base").empty()) continue;
+        if (!readPackStringKey(ini, PackIni::kKeyBase).empty()) continue;
 
         // Verify the whole set BEFORE handing out any index, so a rejected pack
         // cannot shift the indices of the packs after it.
@@ -600,7 +600,7 @@ void AssetManager::discoverPitboards() {
     for (const std::string& dir : dirs) {
         const std::string skinDir = root + "\\" + dir + "\\";
         const std::string ini = packIniPath(skinDir, dir, PackIni::kPitboard);
-        const std::string baseKey = readPackStringKey(ini, "pack.base");
+        const std::string baseKey = readPackStringKey(ini, PackIni::kKeyBase);
         if (baseKey.empty()) continue;
 
         const PitboardAsset* basePack = nullptr;
@@ -685,7 +685,7 @@ void AssetManager::discoverGauges() {
     for (const std::string& dir : dirs) {
         const std::string base = root + "\\" + dir + "\\";
         const std::string ini = packIniPath(base, dir, PackIni::kGauges);
-        if (!readPackStringKey(ini, "pack.base").empty()) continue;
+        if (!readPackStringKey(ini, PackIni::kKeyBase).empty()) continue;
 
         // Verify the whole set BEFORE handing out any index, so a rejected pack
         // cannot shift the indices of the packs after it.
@@ -721,7 +721,7 @@ void AssetManager::discoverGauges() {
     for (const std::string& dir : dirs) {
         const std::string skinDir = root + "\\" + dir + "\\";
         const std::string ini = packIniPath(skinDir, dir, PackIni::kGauges);
-        const std::string baseKey = readPackStringKey(ini, "pack.base");
+        const std::string baseKey = readPackStringKey(ini, PackIni::kKeyBase);
         if (baseKey.empty()) continue;
 
         const GaugesAsset* basePack = nullptr;

@@ -9,6 +9,7 @@
 #include "../core/spotter_manager.h"
 #include "../core/plugin_utils.h"
 #include "../core/hud_manager.h"
+#include "../core/stats_manager.h"
 #include "draw_handler.h"
 
 void Handlers::handleRaceClassification(
@@ -40,6 +41,23 @@ void Handlers::handleRaceClassification(
         // and a different one from the session becoming active. This edge
         // already existed for the lap timer; the spotter just says it.
         SpotterManager::getInstance().onGateDrop();
+        // Holeshot arms here, for a grid of at least two STARTERS - the riders
+        // in the classification that drops the gate, less any marked DNS, which
+        // is the same count the finish rows read (RaceFinish::starters), so a
+        // rider sat in the pits makes a field for none of the three - and is
+        // claimed by the first opening line. The per-race state starts over
+        // here too, which is what makes a RESTARTED race count. See
+        // StatsManager::onRaceStart(). ONLY WHILE THE PLAYER RIDES: a replay
+        // delivers this same edge, and the stats must not start a race nobody
+        // is riding. The lap timer and the spotter cue above are display, and
+        // follow whoever is being watched.
+        if (pluginData.isPlayerRunning()) {
+            int starters = 0;
+            for (int i = 0; i < iNumEntries; ++i) {
+                if (pasRaceClassificationEntry[i].state != Unified::EntryState::DNS) ++starters;
+            }
+            StatsManager::getInstance().onRaceStart(starters);
+        }
     }
 
     // Batch update all standings AND build classification order in single pass
@@ -55,6 +73,33 @@ void Handlers::handleRaceClassification(
     // different cue deferred to this same moment, for a different reason (see
     // SpotterManager::PendingFastest).
     SpotterManager::getInstance().flushDeferredCues();
+
+    // The race finish is recorded HERE, at the flag - not at RunDeinit, where it
+    // used to be. The plugin gets no callbacks at all once the player is back in
+    // the menus, so an achievement earned by finishing had no Draw to render its
+    // toast into and first surfaced at the NEXT track load. Waiting for the field
+    // to settle rather than for the player's own crossing also means the margin
+    // to second and "every rider a lap down" are read off the final
+    // classification instead of a mid-race one. Idempotent (m_raceFinishRecorded),
+    // and handleRunDeinit stays the backstop for a race whose field never settles
+    // - a rider who quits without the classification ever dropping them.
+    // The trade: a penalty handed out AFTER the field is in no longer counts
+    // against the race's clean run. Penalties are live race events (cutting, a
+    // jump start), so in practice they land laps earlier.
+    {
+        // AND ONLY WHILE THE PLAYER IS OUT THERE. This fires off the all-rider
+        // classification, which a replay delivers in full: without the gate,
+        // watching a replay of your own race credits the race, the win, the
+        // podium and the clean run a second time - and on a fresh launch, where
+        // nothing has been recorded yet, watching one credits them at all.
+        // RunStop clears the flag, and handleRunDeinit's final pass is still the
+        // backstop for a player who pits before the field settles.
+        StatsManager& stats = StatsManager::getInstance();
+        if (!stats.raceFinishRecorded() && pluginData.isRaceSession() &&
+            pluginData.isPlayerRunning() && pluginData.isRaceFieldSettled()) {
+            stats.tryRecordRaceFinish(pluginData);
+        }
+    }
 
     // Detect overtime start for time+laps races (skip if already detected)
     const SessionData& sessionData = pluginData.getSessionData();

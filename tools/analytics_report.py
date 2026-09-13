@@ -2,7 +2,7 @@
 # ============================================================================
 # tools/analytics_report.py
 # Turn Aptabase monthly exports into a static Markdown dashboard + SVG charts,
-# checked into analytics/ (the raw exports are NOT kept in the repo).
+# checked into usage_survey/ (the raw exports are NOT kept in the repo).
 #
 #   python3 tools/analytics_report.py <export1.csv> [<export2.parquet> ...]
 #   python3 tools/analytics_report.py path/to/exports/*.csv --out analytics
@@ -49,6 +49,7 @@ except ImportError:
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import analytics_rollup as rollup  # noqa: E402
 import analytics_svg as svg  # noqa: E402
 
 REPO_ROOT = os.path.dirname(HERE)
@@ -68,6 +69,11 @@ DEV_INSTALL_IDS = {
     "e44bd23d-4e50-40d0-9662-9398f7e9d4fe",  # author - GP Bikes
     "8b10ae0d-ec97-4807-b51b-4e6802d51fa5",  # author - MX Bikes since 2026-07-10, and Kart Racing Pro
 }
+# Every frame carries install ids ALREADY HASHED (see load()), so the exclusion has
+# to match on the hash. Listing the raw ids above and deriving the set here keeps the
+# comments above readable -- an opaque digest would say nothing about whose machine
+# it is, and the rollup could not be re-derived from a list of digests.
+DEV_INSTALL_HASHES = {rollup.iid(i) for i in DEV_INSTALL_IDS}
 
 # Human labels for the stable feat_* flags (from analytics_manager.cpp). Unknown
 # flags still render, prettified generically, so new features aren't dropped.
@@ -101,22 +107,98 @@ FEATURE_LABELS = {
 _ACRONYMS = {"Fmx": "FMX", "Ecu": "ECU", "G Force": "G-Force", "Hud": "HUD"}
 
 
-def achievement_titles():
-    """id -> title, read off docs/achievements.md, which test_achievements.cpp
-    GENERATES from the plugin's catalogue and diffs against the committed copy.
-    Reading it (rather than a copy here) keeps the chart's labels on the same
-    gate as the rows themselves. Missing file -> {} and the ids label themselves."""
+# Rows of docs/achievements.md: | # | `id` | <img … title="icon"> | Title | Bronze |
+# Silver | Gold | Platinum | Needs |. A tier cell is "-" where the achievement is a
+# one-shot, and a description may carry a " (@credit)" suffix the report does not want.
+# The leading cell is the row's position within its group, or "off" where the row
+# is in kDisabledIds; it is consumed and discarded, so the capture groups below stay
+# the columns that carry meaning. It is matched rather than skipped because a row
+# that has LOST that column is a doc this regex should stop understanding, loudly.
+# A switched-off row is kept, deliberately: people earned it before it was switched
+# off, and dropping it here would label those rows by raw id with no icon or tiers.
+_CAT_ROW = re.compile(
+    r"\|\s*(?:\d+|off)\s*\| `([a-z0-9_]+)` \|(.*?)\| ([^|]+?) \| ([^|]*?) \| ([^|]*?) \| ([^|]*?) \| ([^|]*?) \|")
+_CAT_ICON = re.compile(r'title="([a-z0-9-]+)"')
+# The doc lays its rows out under one heading per Group, so the group a row belongs
+# to is readable without a column for it -- which is the only way this tool can tell
+# an UNLISTED row from an ordinary one. Renaming either group would silently start
+# publishing them, so the selftest asserts the sections are found.
+#
+# TWO groups are unlisted, for two different reasons, and both belong here. Hidden
+# is the spoiler case this filter was built for. Misfortune is unlisted in the
+# plugin as well (Achievements::isUnlistedGroup), so its rows are equally a
+# surprise to name -- and, more mechanically, the plugin leaves both out of the
+# listed total, so a set that disagreed here would put this report's percentages
+# out of step with the ones players see on their own tab.
+HIDDEN_GROUPS = ("Hidden", "Misfortune")
+
+
+def achievement_catalogue():
+    """id -> {"title", "icon", "tiers", "group", "hidden"}, read off docs/achievements.md, which
+    test_achievements.cpp GENERATES from the plugin's catalogue and diffs against the
+    committed copy. Reading it (rather than a copy here) keeps the report's labels,
+    icons and threshold wording on the same gate as the rows themselves, and is why
+    none of it can drift from what the plugin actually ships. Missing file -> {} and
+    the ids label themselves."""
     path = os.path.join(REPO_ROOT, "docs", "achievements.md")
     out = {}
+    group = ""
     try:
         with open(path, encoding="utf-8") as f:
             for line in f:
-                m = re.match(r"\| `([a-z0-9_]+)` \| .*?\| ([^|]+?) \|", line)
-                if m:
-                    out[m.group(1)] = m.group(2).strip()
+                if line.startswith("## "):
+                    # The heading carries a note for a group outside the completion
+                    # figures ("Hidden (not counted)"); the GROUP is the name before
+                    # it, which is what HIDDEN_GROUPS and every label here match on.
+                    group = line[3:].split(" (")[0].strip()
+                    continue
+                m = _CAT_ROW.match(line)
+                if not m:
+                    continue
+                icon = _CAT_ICON.search(m.group(2))
+                tiers = []
+                for cell in m.group(4), m.group(5), m.group(6), m.group(7):
+                    cell = re.sub(r"\s*\(@[^)]*\)", "", cell).strip()
+                    tiers.append(cell if cell not in ("", "-") else None)
+                out[m.group(1)] = {"title": m.group(3).strip(),
+                                   "icon": icon.group(1) if icon else None,
+                                   "tiers": tiers,
+                                   "group": group,
+                                   "hidden": group in HIDDEN_GROUPS}
     except OSError:
         pass
     return out
+
+
+_ICON_CACHE = {}
+
+
+def icon_geometry(name):
+    """(min_x, min_y, size, '<path data>') for an icon in assets/icons, or None.
+
+    The path data is INLINED into the chart rather than referenced: a committed SVG
+    that points at ../assets/icons/x.svg is rendered by GitHub as an image, and the
+    reference is not fetched. Every shipped icon is a single-path Font Awesome glyph
+    on one SQUARE viewBox, so this stays a regex rather than an XML dependency -- and
+    returns None for anything that is not, so an icon that stops being one drops out of
+    the chart instead of breaking it. The ORIGIN is returned rather than assumed: two
+    of the shipped icons are drawn on "-64 -64 640 640", and a parser that only
+    accepted "0 0" left exactly those two rows unillustrated."""
+    if name in _ICON_CACHE:
+        return _ICON_CACHE[name]
+    got = None
+    path = os.path.join(REPO_ROOT, "assets", "icons", (name or "") + ".svg")
+    try:
+        with open(path, encoding="utf-8") as f:
+            svg = f.read()
+        box = re.search(r'viewBox="(-?\d+) (-?\d+) (\d+) (\d+)"', svg)
+        paths = re.findall(r'<path[^>]*\sd="([^"]+)"', svg)
+        if box and box.group(3) == box.group(4) and len(paths) == 1:
+            got = (int(box.group(1)), int(box.group(2)), int(box.group(3)), paths[0])
+    except OSError:
+        pass
+    _ICON_CACHE[name] = got
+    return got
 
 
 def _pretty_key(key):
@@ -175,6 +257,17 @@ def load(paths):
         subset=["timestamp", "user_id", "session_id", "event_name",
                 "string_props", "numeric_props"]
     ).reset_index(drop=True)
+    return derive(df)
+
+
+def derive(df):
+    """Add every column the report reads to a raw export frame.
+
+    Shared with the selftest's fixture builder rather than mirrored there: the two
+    drifted the moment a column was added here (a fixture with no `cov` column reaches
+    the coverage table as a KeyError, and one with unhashed install ids walks straight
+    past the developer exclusion), and a fixture that is not shaped like the real thing
+    tests something else."""
 
     def parse(col):
         out = []
@@ -188,8 +281,21 @@ def load(paths):
 
     df["_s"] = parse("string_props")
     df["_n"] = parse("numeric_props")
-    df["install_id"] = [s.get("install_id") for s in df["_s"]]
+    # HASHED HERE, ONCE, so the raw id cannot reach a committed artifact by any later
+    # route: the rollup digest stores whatever this column holds. It is popped from the
+    # props for the same reason -- an install's latest string_props IS persisted, and
+    # the id would ride along inside it. Nothing downstream reads _s["install_id"].
+    df["install_id"] = [rollup.iid(s.pop("install_id", None)) or None for s in df["_s"]]
     df["game"] = [s.get("game") or "Unknown" for s in df["_s"]]
+    # Which fields each launch was ABLE to report, as a mask. The coverage table asks
+    # this per launch, and a launch that is already in the rollup no longer carries the
+    # props to answer it -- only this mask, which the digest stores. Computed for every
+    # export the same way so the two paths cannot drift.
+    df["cov"] = [rollup.coverage_bits(sp, np_, ov) if ev == "app_started" else 0
+                 for ev, sp, np_, ov in zip(df["event_name"], df["_s"], df["_n"],
+                                            df["os_version"])]
+    # Marks a row that came from an export rather than the rollup; see build().
+    df["hist"] = False
     df["ts"] = to_utc(df["timestamp"])
     # Anything still undated is a malformed row. Drop it loudly rather than letting a
     # NaT propagate into `date` and surface as an unrelated TypeError in a min()/max()
@@ -200,14 +306,30 @@ def load(paths):
               file=sys.stderr)
         df = df[df["ts"].notna()].reset_index(drop=True)
     df["date"] = df["ts"].dt.date
-    return df
+    return df.reset_index(drop=True)
 
 
 def latest_per_install(started):
-    """One row per install: its most recent app_started (current config snapshot)."""
-    s = started.sort_values("timestamp")
-    s = s[s["install_id"].notna()]
-    return s.groupby("install_id", as_index=False).last()
+    """One row per install: its most recent app_started (current config snapshot).
+
+    A TIE ON THE TIMESTAMP IS BROKEN BY launch_count, which the ping carries and which
+    only ever goes up. Three installs in this data launched twice inside the same
+    second; with the timestamp as the only key, `.last()` kept whichever of the pair the
+    frame order happened to end on, so the same data snapshotted differently depending
+    on how many exports were read in one run -- the last thing standing between a
+    rolled-up month and the raw export reproducing each other exactly. A build that
+    sends no launch_count sorts as -1, i.e. keeps the old frame-order behaviour among
+    itself rather than jumping ahead of a build that does."""
+    s = started[started["install_id"].notna()].copy()
+    s["_lc"] = pd.to_numeric(s["_n"].map(lambda n: n.get("launch_count")),
+                             errors="coerce").fillna(-1)
+    s = s.sort_values(["timestamp", "_lc"], kind="stable")
+    # drop_duplicates, not groupby().last(): the latter takes the last NON-NULL value
+    # per COLUMN, so an install whose newest ping is missing a field would be handed
+    # that field from an older row and the "snapshot" would be two pings spliced
+    # together. Identical output whenever no column is null, which is why it never
+    # showed up; taking whole rows means it cannot.
+    return s.drop_duplicates("install_id", keep="last").drop(columns=["_lc"])
 
 
 # ----------------------------------------------------------------------------
@@ -351,6 +473,18 @@ def pc(count, total):
     return "{} ({:,})".format(pctstr(count, total), int(count))
 
 
+def ranked(series):
+    """value_counts() with TIES BROKEN BY LABEL, most frequent first.
+
+    Plain value_counts() leaves equal counts in whatever order the rows happened to
+    arrive, so a chart's bars and a `.head(n)` cut-off both depend on the order the
+    exports were read in. Two runs over the same data then disagree -- which is how the
+    rollup round-trip first showed up as a "difference": two exception codes with 2
+    hits each, and head(4) kept a different one each way."""
+    return series.value_counts().sort_index(kind="stable").sort_values(
+        ascending=False, kind="stable")
+
+
 def ver_family(v):
     return ".".join(str(v).split(".")[:2])
 
@@ -372,11 +506,36 @@ def ver_ge(v, *minimum):
 CRASH_MIN = (1, 27, 5)
 CRASH_MIN_STR = ".".join(map(str, CRASH_MIN))
 
+# Achievements ride the launch ping, but 1.30.0 ASSEMBLED that ping before StatsManager
+# had loaded the save file, so every 1.30.0 install reports ach_pct=0 / ach_unlocked=0
+# and no earned rows at all. That is a FALSE ZERO, and it is worse than the silence of a
+# version predating the feature: silence is excluded by the "installs that report the
+# field" denominator, while a zero is counted as a player who has earned nothing. 1.30.1
+# moved analytics after the stats load, so the figures below are computed over 1.30.1+.
+# Same shape as CRASH_MIN, for the same reason: one consistent population per metric.
+ACH_MIN = (1, 30, 1)
+ACH_MIN_STR = ".".join(map(str, ACH_MIN))
 
-def build(df, out_dir):
+
+def build(df, out_dir, snap_hist=None):
+    """Write the report. Returns (path, snapshot).
+
+    The snapshot is returned because it is the one thing the rollup cannot re-derive
+    from its own event digest: an install's LATEST payload. It is returned BEFORE the
+    developer exclusion so the digest stays a faithful record of what was seen and the
+    exclusion stays this function's decision, re-applied on every future run.
+    """
     r = Report(out_dir)
+    # One row per install. Rolled-up launches carry no props (only the latest per
+    # install was kept), so they must not be candidates for "this install's current
+    # config" -- the stored snapshot is that, and merge_installs() picks whichever of
+    # the two is more recent per install.
+    started_all = df[df.event_name == "app_started"]
+    snap_all = rollup.merge_installs(
+        snap_hist, latest_per_install(started_all[~started_all["hist"]]))
+
     # Drop developer/test installs report-wide before deriving anything.
-    is_dev = df["install_id"].isin(DEV_INSTALL_IDS)
+    is_dev = df["install_id"].isin(DEV_INSTALL_HASHES)
     dev_installs = int(df.loc[is_dev, "install_id"].nunique())
     dev_events = int(is_dev.sum())
     df = df[~is_dev].copy()
@@ -384,16 +543,14 @@ def build(df, out_dir):
     started = df[df.event_name == "app_started"].copy()
     sessions = df[df.event_name == "session_end"].copy()
     crashes = df[df.event_name == "crash"].copy()
-    snap = latest_per_install(started)  # one row per install (current config)
+    snap = snap_all[~snap_all["install_id"].isin(DEV_INSTALL_HASHES)]
 
     d0, d1 = df["date"].min(), df["date"].max()
     n_days = (d1 - d0).days + 1
     installs = snap["install_id"].nunique()
 
     # ---- Header + summary tiles ------------------------------------------
-    r.w("# MXBMRP3 - Analytics Report", "")
-    r.w("<!-- GENERATED by tools/analytics_report.py from Aptabase exports. "
-        "Do not edit by hand; re-run the tool. Raw exports are not kept in the repo. -->", "")
+    r.w("# MXBMRP3 - Usage Survey Report", "")
     # The window states its COVERAGE, not just its ends. A reader comparing two
     # reports needs to know the denominator changed when a quota outage ate eleven
     # days of one of them; the gaps themselves are named in Activity over time.
@@ -401,6 +558,12 @@ def build(df, out_dir):
     window = "**Data window:** {} → {} ({} days".format(d0, d1, n_days)
     window += ", {} observed)".format(len(axis["observed"])) if axis["gaps"] else ")"
     r.w(window, "")
+    # The generated-doc note, in the repo's one shape: visible, after the intro.
+    # It used to be an HTML comment up by the title AND an italic footer at the
+    # end - invisible where it was read, and said twice.
+    r.w("<sub>Generated by `tools/analytics_report.py` from Aptabase exports - do not edit. "
+        "Re-run the tool after each monthly export; the raw exports stay out of the repo, "
+        "and the charts land in `charts/`.</sub>", "")
     # Reach only. Deliberately NOT games (always ~3, and the Games section breaks it
     # down anyway) and NOT a raw crash-report count -- that number is meaningless
     # without the denominator and the 1.27.5+ instrumentation caveat, both of which
@@ -421,14 +584,14 @@ def build(df, out_dir):
     _geography(r, snap)
     _os(r, snap)
     _engagement(r, sessions, snap, started)
+    _achievements(r, snap)
     _features(r, snap)
     _crashes(r, started, sessions, crashes)
     _coverage(r, started, snap, dev_installs, dev_events)
 
-    r.w("---")
-    r.w("*Generated by `tools/analytics_report.py`. Charts in `charts/`. "
-        "Re-run after each monthly Aptabase export; the raw `.parquet` files stay out of the repo.*")
-    return r.save()
+    # No trailing "generated by" line: the <sub> note under the data window says
+    # it once, where a reader starting at the top actually meets it.
+    return r.save(), snap_all
 
 
 def _highlights(r, df, started, sessions, snap):
@@ -442,7 +605,7 @@ def _highlights(r, df, started, sessions, snap):
                    "peak {:,} active on a single day.".format(
                        installs, games, "" if games == 1 else "s", countries, dau_peak))
 
-    top_game = started["game"].value_counts()
+    top_game = ranked(started["game"])
     if len(top_game):
         bullets.append("**Main game:** {} - {} of launches.".format(
             top_game.index[0], pctstr(int(top_game.iloc[0]), len(started))))
@@ -466,7 +629,7 @@ def _highlights(r, df, started, sessions, snap):
         bullets.append("**Repeat use:** {} of installs launched more than once.".format(
             pctstr(int((lc > 1).sum()), len(lc))))
 
-    primary = snap["game"].value_counts().index[0]
+    primary = ranked(snap["game"]).index[0]
     huds = flag_adoption(snap[snap["game"] == primary], "hud_")
     if huds:
         k, en, rep = huds[0]
@@ -649,7 +812,7 @@ def _activity(r, df, started, sessions, axis):
     # is where a reader meets a hole in the first place, and the header already states
     # the coverage the averages divide by ("68 days, 51 observed"). A paragraph
     # restating both in prose was three sentences nobody needed; how a gap is detected
-    # and why a day goes blank lives in analytics/README.md.
+    # and why a day goes blank lives in usage_survey/README.md.
 
     def game_series(game_list):
         out = []
@@ -787,7 +950,7 @@ def _versions(r, snap, started, axis):
     r.w("Each install counts once, at its **most recent** version (an upgrade moves it, "
         "never double-counts). Versions under {} installs are grouped.".format(
             MIN_VERSION_INSTALLS), "")
-    vc = snap["app_version"].value_counts()
+    vc = ranked(snap["app_version"])
     total = len(snap)
     main = [(v, int(c)) for v, c in vc.items() if c >= MIN_VERSION_INSTALLS]
     tail = sum(int(c) for v, c in vc.items() if c < MIN_VERSION_INSTALLS)
@@ -841,7 +1004,7 @@ def _versions(r, snap, started, axis):
                            .groupby(["date", "install_id"])["app_version"].last()
                            .reset_index())
         per_day_total = day_last.groupby("date").size()
-        vshare = day_last["app_version"].value_counts()
+        vshare = ranked(day_last["app_version"])
         named = [v for v in vshare.index
                  if vshare[v] >= MIN_VERSION_SHARE * len(day_last)]
         series = []
@@ -878,13 +1041,13 @@ def _versions(r, snap, started, axis):
                               value_fmt=lambda v: "{:.0f}%".format(v), gaps=axis["bands"]),
                     "Version migration over time")
 
-    famc = snap["app_version"].map(ver_family).value_counts()
+    famc = ranked(snap["app_version"].map(ver_family))
     r.w("**By release line:** " + "  ·  ".join(
         "`{}` {}".format(f, cp(c, total)) for f, c in famc.items()), "")
     ch = snap["_s"].map(lambda s: s.get("update_channel"))
     ch = ch[ch.notna()]
     if len(ch):
-        cc = ch.value_counts()
+        cc = ranked(ch)
         r.w("**Update channel:** " + "  ·  ".join(
             "{} {}".format(k, cp(v, len(ch))) for k, v in cc.items()), "")
 
@@ -892,7 +1055,7 @@ def _versions(r, snap, started, axis):
 def _geography(r, snap):
     r.w("## Geography", "")
     cn = snap["country_name"].replace("", pd.NA).dropna()
-    top = cn.value_counts().head(15)
+    top = ranked(cn).head(15)
     if len(top):
         r.chart("geography.svg",
                 svg.hbar("Installs by country (top 15)",
@@ -918,7 +1081,7 @@ def _os(r, snap):
             return "Windows 10"
         return "Other Windows"
 
-    b = osv.map(bucket).value_counts()
+    b = ranked(osv.map(bucket))
     r.chart("os.svg",
             svg.hbar("Installs by OS",
                      [(k, int(v), None, cp(v, len(osv))) for k, v in b.items()],
@@ -955,66 +1118,6 @@ def _engagement(r, sessions, snap, started=None):
                 svg.vbars("Lifetime launches per install", cats,
                           subtitle="{:,} installs reporting".format(len(lc))),
                 "Launches per install")
-
-    # ------------------------------------------------------------------------
-    # Achievements (2.20.0 / 2.21.0). The denominator throughout is installs that
-    # sent ach_pct at all -- older versions carry none of these keys and are not
-    # "0% progress", they are silent.
-    # ------------------------------------------------------------------------
-    ap = pd.to_numeric(snap["_n"].map(lambda n: n.get("ach_pct")), errors="coerce").dropna()
-    if len(ap):
-        r.w("## Achievements", "")
-        buckets = [("0%", 0, 1), ("1–9%", 1, 10), ("10–24%", 10, 25), ("25–49%", 25, 50),
-                   ("50–74%", 50, 75), ("75–99%", 75, 100), ("100%+", 100, 10**9)]
-        cats = [(lab, int(((ap >= lo) & (ap < hi)).sum())) for lab, lo, hi in buckets]
-        r.w("- **Achievement tiers earned, median per install:** {:.0f}%  ·  "
-            "**installs past the first tier:** {} of {:,} reporting".format(
-                ap.median(), cp(int((ap > 0).sum()), len(ap)), len(ap)), "")
-        r.chart("achievement_progress.svg",
-                svg.vbars("Achievement tiers earned per install", cats,
-                          subtitle="{:,} installs reporting".format(len(ap))),
-                "Achievement progress")
-        au = pd.to_numeric(snap["_n"].map(lambda n: n.get("ach_unlocked")), errors="coerce").dropna()
-        if len(au):
-            ub = [("0", 0, 1), ("1–4", 1, 5), ("5–9", 5, 10), ("10–24", 10, 25),
-                  ("25–49", 25, 50), ("50+", 50, 10**9)]
-            ucats = [(lab, int(((au >= lo) & (au < hi)).sum())) for lab, lo, hi in ub]
-            r.w("- **Achievements unlocked, median per install:** {:.0f}".format(au.median()), "")
-            r.chart("achievements_unlocked.svg",
-                    svg.vbars("Achievements unlocked per install", ucats,
-                              subtitle="{:,} installs reporting".format(len(au))),
-                    "Achievements unlocked")
-        # Global achievement stats (2.21.0): the share of reporting installs that
-        # hold each achievement, the way Steam lists them. A row is present in the
-        # ping only at tier 1 or higher, so presence IS the unlock. Titles come
-        # from docs/achievements.md, generated from the same catalogue the plugin
-        # ships, so the labels here can only be as stale as that gate allows.
-        reporting = snap[snap["_n"].map(lambda n: "ach_pct" in n)]
-        counts = {}
-        for n in reporting["_n"]:
-            for k in n:
-                if k.startswith("ach_") and k not in _NOT_FLAGS:
-                    counts[k[4:]] = counts.get(k[4:], 0) + 1
-        if counts:
-            titles = achievement_titles()
-            ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-            base = len(reporting)
-
-            def label(i):
-                return titles.get(i, _pretty_key(i))
-
-            top = ranked[:25]
-            r.chart("achievements_global.svg",
-                    svg.hbar("Most earned achievements (share of reporting installs)",
-                             [(label(i), pct(c, base), None, "{:.0f}% ({:,})".format(pct(c, base), c))
-                              for i, c in top],
-                             subtitle="% of {:,} installs reporting achievements".format(base),
-                             value_fmt=lambda v: "{:.0f}%".format(v)),
-                    "Most earned achievements")
-            rare = sorted(counts.items(), key=lambda kv: (kv[1], kv[0]))[:10]
-            r.w("- **Rarest, of those earned by anyone:** " +
-                "  ·  ".join("{} {}".format(label(i), cp(c, base)) for i, c in rare), "")
-            r.w("- **Achievements earned by at least one install:** {:,}".format(len(counts)), "")
 
     # How long a sitting actually lasts. duration_seconds rides every session_end, but
     # session_end ITSELF was added in 1.27 -- 1.26 sent 83k launches and zero of them, so
@@ -1057,6 +1160,126 @@ def _engagement(r, sessions, snap, started=None):
                 "Session length distribution")
 
 
+# Every achievement has the same four tiers (achievements.h kCatalogue), and the
+# ping sends the tier reached as the value -- so a row is both "who holds this" and
+# "how far in are they". A one-shot reports tier 1 and simply has no higher segments.
+TIERS = 4
+TIER_NAMES = ("Bronze", "Silver", "Gold", "Platinum")
+
+
+def _achievements(r, snap):
+    """How far installs get through the achievement catalogue, and which ones
+    they hold (2.20.0 / 2.21.0 pings).
+
+    The denominator throughout is installs that sent ach_pct AT ALL -- a version
+    from before the feature carries none of these keys and is silent, not "0%".
+
+    Its own section rather than a block inside Repeat usage: emitted mid-_engagement,
+    its heading swallowed the session-length bullets that follow, which then read as
+    achievement figures."""
+    snap = snap[snap["app_version"].map(lambda v: ver_ge(v, *ACH_MIN))]
+    ap = pd.to_numeric(snap["_n"].map(lambda n: n.get("ach_pct")), errors="coerce").dropna()
+    if len(ap):
+        r.w("## Achievements", "")
+        buckets = [("0%", 0, 1), ("1–9%", 1, 10), ("10–24%", 10, 25), ("25–49%", 25, 50),
+                   # "100%+" rather than "100%": a pre-2.23 ach_pct counted the
+                   # hidden rows in its numerator against a total they were not
+                   # in, so it could exceed 100. From 2.23 it is the listed set
+                   # alone and tops out at exactly 100 (the surplus moved to
+                   # ach_bonus), but historical rows still carry the old values.
+                   ("50–74%", 50, 75), ("75–99%", 75, 100), ("100%+", 100, 10**9)]
+        cats = [(lab, int(((ap >= lo) & (ap < hi)).sum())) for lab, lo, hi in buckets]
+        # COUNTED FROM THE ROWS, not from ach_pct > 0. ach_pct is integer-truncated
+        # over ~277 listed tiers, so one or two earned tiers floor to 0: 17 installs
+        # read "0%" while holding something. And "past the first tier" invited three
+        # different readings (earned anything / anything above Bronze / nonzero
+        # percentage) that differ by ~40 installs, so the label now says which.
+        held_any = int(snap["_n"].map(
+            lambda n: any(k.startswith("ach_") and k not in _NOT_FLAGS for k in n)).sum())
+        r.w("- **Achievement tiers earned, median per install:** {:.0f}%  ·  "
+            "**installs holding at least one achievement:** {} of {:,} reporting".format(
+                ap.median(), cp(held_any, len(ap)), len(ap)), "")
+        r.chart("achievement_progress.svg",
+                svg.vbars("Achievement tiers earned per install", cats,
+                          subtitle="{:,} installs reporting".format(len(ap))),
+                "Achievement progress")
+        au = pd.to_numeric(snap["_n"].map(lambda n: n.get("ach_unlocked")), errors="coerce").dropna()
+        if len(au):
+            ub = [("0", 0, 1), ("1–4", 1, 5), ("5–9", 5, 10), ("10–24", 10, 25),
+                  ("25–49", 25, 50), ("50+", 50, 10**9)]
+            ucats = [(lab, int(((au >= lo) & (au < hi)).sum())) for lab, lo, hi in ub]
+            r.w("- **Achievements unlocked, median per install:** {:.0f}".format(au.median()), "")
+            r.chart("achievements_unlocked.svg",
+                    svg.vbars("Achievements unlocked per install", ucats,
+                              subtitle="{:,} installs reporting".format(len(au))),
+                    "Achievements unlocked")
+        # Global achievement stats (2.21.0): the share of reporting installs that
+        # hold each achievement, the way Steam lists them. A row is present in the
+        # ping only at tier 1 or higher, so presence IS the unlock. Titles come
+        # from docs/achievements.md, generated from the same catalogue the plugin
+        # ships, so the labels here can only be as stale as that gate allows.
+        reporting = snap[snap["_n"].map(lambda n: "ach_pct" in n)]
+        # The ping's VALUE is the tier (1..4), not a flag, so the same rows answer
+        # both "who holds this" and "how far in are they" -- which is the difference
+        # between an achievement most people have and one most people have finished.
+        counts = Counter()
+        by_tier = defaultdict(Counter)
+        for n in reporting["_n"]:
+            for k, v in n.items():
+                if k.startswith("ach_") and k not in _NOT_FLAGS:
+                    counts[k[4:]] += 1
+                    by_tier[k[4:]][max(1, min(TIERS, int(v)))] += 1
+        cat = achievement_catalogue()
+        # HIDDEN ROWS ARE NEVER NAMED. The plugin keeps a handful unlisted until a
+        # player stumbles on them, and this report is public -- naming one, or charting
+        # its share, spoils exactly what it is for. They are rare BY CONSTRUCTION, so
+        # the "rarest" line below is where they surface first: it named Deja Vu before
+        # this filter existed. The per-install TOTALS keep them, because that is what
+        # the plugin sent and an earned hidden tier counts on top of the listed ones --
+        # which is why the progress chart has a bucket above 100%.
+        listed = {i: v for i, v in cat.items() if not v["hidden"]}
+        counts = {i: c for i, c in counts.items() if i in listed}
+        if counts:
+            base = len(reporting)
+
+            def label(i):
+                return cat.get(i, {}).get("title") or _pretty_key(i)
+
+            def icon(i):
+                return icon_geometry(cat.get(i, {}).get("icon"))
+
+            # Only rows somebody holds. Charting the whole catalogue put a fifth of it
+            # on the page as empty bars saying nothing but "the counter started
+            # yesterday" -- the count below carries that fact in one line instead.
+            ranked = sorted(counts, key=lambda i: (-counts[i], label(i)))
+            r.chart("achievements_global.svg",
+                    svg.stacked_hbar(
+                        "Achievements by tier reached",
+                        [(label(i), icon(i),
+                          [("t{}".format(t), pct(by_tier[i][t], base)) for t in range(1, TIERS + 1)],
+                          # pc(), not a raw %: the tail is visible now that every listed
+                          # row is charted, and ~15 rows sit under 1%. Formatted plainly
+                          # they all read "0%", so an achievement two people hold looks
+                          # exactly like one nobody has. pctstr's "<1%" is the report's
+                          # convention for precisely this.
+                          pc(counts.get(i, 0), base))
+                         for i in ranked],
+                        [("t{}".format(t), TIER_NAMES[t - 1]) for t in range(1, TIERS + 1)],
+                        subtitle="% of {:,} installs reporting achievements; bar length is "
+                                 "how many hold it, the split is how far they have taken "
+                                 "it".format(base)),
+                    "Achievements by tier reached")
+            # The hidden clause is not trivia: it is why this says 85 and not 93, and
+            # why the progress chart above has a bucket past 100%.
+            r.w("- **Earned so far:** {:,} of the {:,} listed achievements, which is what "
+                "the chart shows. {:,} hidden ones are never charted or named - they "
+                "still count towards the totals above, which is why that percentage "
+                "can pass 100%.".format(len(counts), len(listed), len(cat) - len(listed)), "")
+            rare = sorted(counts.items(), key=lambda kv: (kv[1], kv[0]))[:10]
+            r.w("- **Rarest, of those earned by anyone:** " +
+                "  ·  ".join("{} {}".format(label(i), cp(c, base)) for i, c in rare), "")
+
+
 def _features(r, snap):
     # HUD/widget/feature availability is game-specific (e.g. ECU & Tyre Temp are
     # GP Bikes only, FMX/Records are MX Bikes only), and the plugin only emits a
@@ -1064,7 +1287,7 @@ def _features(r, snap):
     # widget's rate next to MX-Bikes rates over wildly different bases, so adoption
     # is shown for the primary (most-installed) game - 98%+ of the base - where
     # every flag shares one denominator.
-    gc = snap["game"].value_counts()
+    gc = ranked(snap["game"])
     primary = gc.index[0]
     psnap = snap[snap["game"] == primary]
     others = ["{} {:,}".format(g, int(c)) for g, c in gc.items() if g != primary]
@@ -1127,7 +1350,7 @@ def _features(r, snap):
     th = psnap["_s"].map(lambda s: s.get("panel_theme"))
     th = th[th.notna()]
     if len(th):
-        tc = th.value_counts()
+        tc = ranked(th)
         r.chart("panel_theme.svg",
                 svg.hbar("Panel theme", [(str(k), int(v), None, cp(v, len(th)))
                                          for k, v in tc.items()],
@@ -1212,7 +1435,7 @@ def _crashes(r, started, sessions, crashes):
     # category breakdown
     cr["module"] = cr["fault"].map(lambda f: f.split("+")[0] if f else "unknown")
     cr["category"] = cr["module"].map(categorize_module)
-    catc = cr["category"].value_counts()
+    catc = ranked(cr["category"])
     r.chart("crash_categories.svg",
             svg.hbar("Crashes by faulting-module category",
                      [(k, int(v), None, cp(v, len(cr))) for k, v in catc.items()],
@@ -1226,11 +1449,11 @@ def _crashes(r, started, sessions, crashes):
 
     # av type + exception code (one compact line)
     av = cr["av"].dropna()
-    codec = cr["code"].dropna().value_counts().head(4)
+    codec = ranked(cr["code"].dropna()).head(4)
     parts = []
     if len(av):
         parts.append("**Access-violation type:** " + ", ".join(
-            "{} {:,}".format(k, int(v)) for k, v in av.value_counts().items()))
+            "{} {:,}".format(k, int(v)) for k, v in ranked(av).items()))
     if len(codec):
         parts.append("**exception codes:** " + ", ".join(
             "`{}` {:,}".format(k, int(v)) for k, v in codec.items()))
@@ -1261,7 +1484,7 @@ def _crashes(r, started, sessions, crashes):
     if by_known:
         r.w("| Crash | Share | Trigger | Fix / workaround |")
         r.w("|---|--:|---|:--:|")
-        for cid, cnt in sorted(by_known.items(), key=lambda x: x[1], reverse=True):
+        for cid, cnt in sorted(by_known.items(), key=lambda x: (-x[1], x[0])):
             k = kmeta[cid]
             trig = (k.get("summary") or k.get("trigger") or k.get("when") or "").strip()
             if len(trig) > 100:
@@ -1275,7 +1498,7 @@ def _crashes(r, started, sessions, crashes):
     # Uncatalogued tail - by fault signature, for whoever extends the catalogue.
     unc = cr[cr["known"].isna()]
     if len(unc):
-        sig = unc.groupby("fault").size().sort_values(ascending=False)
+        sig = ranked(unc["fault"])
         r.w("", "### Not yet catalogued", "")
         r.w("The remaining **{}** of reports do not yet match the catalogue. The most frequent "
             "unmatched signatures are listed below by module and per-build offset:".format(
@@ -1309,24 +1532,27 @@ def _coverage(r, started, snap, dev_installs=0, dev_events=0):
                 dev_installs, "" if dev_installs == 1 else "s", dev_events), "")
     started = started.copy()
     started["fam"] = started["app_version"].map(ver_family)
-    fields = {
-        "Features": lambda row: any(k.startswith("feat_") for k in row["_n"]),
-        "HUDs / widgets": lambda row: any(k.startswith(("hud_", "widget_")) for k in row["_n"]),
-        "OS version": lambda row: bool(row["os_version"]),
-        "Update channel": lambda row: "update_channel" in row["_s"],
-        "Panel theme": lambda row: "panel_theme" in row["_s"],
-        "Crash detail": lambda row: ver_ge(row["app_version"], *CRASH_MIN),
-    }
+    # Read off the `cov` mask load() computed, not the props: a launch already in the
+    # rollup no longer carries them, and asking each row for its props would quietly
+    # report 0% for every month that had aged into the digest. Crash detail stays a
+    # property of the VERSION, so it needs nothing stored.
+    fields = [
+        ("Features", lambda sub: (sub["cov"] & rollup.COV_FEATURES) != 0),
+        ("HUDs / widgets", lambda sub: (sub["cov"] & rollup.COV_HUDS) != 0),
+        ("OS version", lambda sub: (sub["cov"] & rollup.COV_OS) != 0),
+        ("Update channel", lambda sub: (sub["cov"] & rollup.COV_CHANNEL) != 0),
+        ("Panel theme", lambda sub: (sub["cov"] & rollup.COV_THEME) != 0),
+        ("Crash detail", lambda sub: sub["app_version"].map(lambda v: ver_ge(v, *CRASH_MIN))),
+    ]
     fams = sorted(started["fam"].unique())
     r.w("What each release line reports (share of its launches):", "")
-    r.w("| Release line | Launches | " + " | ".join(fields) + " |")
+    r.w("| Release line | Launches | " + " | ".join(n for n, _ in fields) + " |")
     r.w("|---|--:|" + "|".join(["--:"] * len(fields)) + "|")
     for fam in fams:
         sub = started[started["fam"] == fam]
         if not len(sub):
             continue
-        cells = ["{:.0f}%".format(100 * (sub.apply(fn, axis=1).mean() if len(sub) else 0))
-                 for _, fn in fields.items()]
+        cells = ["{:.0f}%".format(100 * fn(sub).mean()) for _, fn in fields]
         r.w("| `{}` | {:,} | {} |".format(fam, len(sub), " | ".join(cells)))
     r.w("")
 
@@ -1360,14 +1586,17 @@ def selftest():
              "widget_speed": 1, "hud_count": 5, "widget_count": 3, "launch_count": 2,
              "steam_runtime": 1,
              # 2.20.0 / 2.21.0: the two totals and two earned rows by id
-             "ach_pct": 12, "ach_unlocked": 2, "ach_races": 2, "ach_config_reloads": 1}
+             # deja_vu is Group::Hidden: earned here, and named nowhere in the output.
+             "ach_pct": 12, "ach_unlocked": 2, "ach_races": 2, "ach_config_reloads": 1,
+             "ach_deja_vu": 1}
     # panel_theme rides on install-1 only, so the theme chart's denominator is the
     # REPORTING installs (1) rather than all of them (2) -- the same coverage-aware
     # shape the feat_* flags have, and the state the world is actually in while
     # older builds are still out there.
-    ev("app_started", base, "userA1", "install-1", sp={"panel_theme": "carbon-dark"}, npr=flags)
+    ev("app_started", base, "userA1", "install-1",
+       sp={"panel_theme": "carbon-dark", "_ver": "1.30.1.56"}, npr=flags)
     ev("app_started", base + 86400, "userA2", "install-1",
-       sp={"panel_theme": "carbon-dark"}, npr=flags)
+       sp={"panel_theme": "carbon-dark", "_ver": "1.30.1.56"}, npr=flags)
     ev("session_end", base + 100, "userA1", "install-1", npr={"duration_seconds": 600})
     # A minimal (early-build) launch with NO feature flags -> coverage must exclude it.
     ev("app_started", base + 200, "userB1", "install-2",
@@ -1388,6 +1617,29 @@ def selftest():
 
     core_rows = [dict(x) for x in rows]  # snapshot for the direct-helper assertions
 
+    # A 1.30.0 install: its ping was assembled before the save file loaded, so it
+    # reports the achievement TOTALS as a hard zero and no earned rows. It must not
+    # land in the achievement denominators as a player who has earned nothing.
+    ev("app_started", base + 250, "userC1", "install-3", sp={"_ver": "1.30.0.55"},
+       npr={"launch_count": 3, "ach_pct": 0, "ach_unlocked": 0, "feat_overlay": 0,
+            "hud_map": 0, "widget_speed": 0, "hud_count": 0, "widget_count": 0})
+
+    # Two launches in the SAME HOUR with an upgrade between them. The version-migration
+    # chart credits an install to the last version it ran that day, so the pair has to
+    # stay the right way round -- which an hour-resolution digest only manages because
+    # it stores their order (see `seq` in analytics_rollup.py).
+    # A, then B, then A again -- somebody switching builds -- and the versions are
+    # 1.29.10 / 1.29.9, which sort the OTHER way round as text (".10" < ".9"). Both
+    # halves matter: an ordinary A-then-B pair is reproduced by accident, because the
+    # digest's own rows come out in version order and happen to end on the right one,
+    # and an A/B/A run is what a per-row sequence number still gets wrong.
+    ev("app_started", base + 60, "userE1", "install-4", sp={"_ver": "1.29.10.50"},
+       npr={"launch_count": 7})
+    ev("app_started", base + 120, "userE1", "install-4", sp={"_ver": "1.29.9.49"},
+       npr={"launch_count": 8})
+    ev("app_started", base + 180, "userE1", "install-4", sp={"_ver": "1.29.10.50"},
+       npr={"launch_count": 9})
+
     # A developer/test install -> MUST be dropped report-wide (launch + test crash).
     dev_id = next(iter(DEV_INSTALL_IDS))
     ev("app_started", base + 600, "userD1", dev_id, npr=flags)
@@ -1396,20 +1648,22 @@ def selftest():
            "game_build": "0x6A21833D", "code": "0xC0000005", "av_type": "write"})
 
     def mkdf(row_list):
-        d = pd.DataFrame(row_list)
-        d["_s"] = [json.loads(v) for v in d["string_props"]]
-        d["_n"] = [json.loads(v) for v in d["numeric_props"]]
-        d["install_id"] = [s.get("install_id") for s in d["_s"]]
-        d["game"] = [s.get("game") for s in d["_s"]]
-        d["ts"] = pd.to_datetime(d["timestamp"], unit="s", utc=True)
-        d["date"] = d["ts"].dt.date
-        return d
+        return derive(pd.DataFrame(row_list))
 
     # Direct-helper invariants on the core fixture (no dev install).
     core = mkdf(core_rows)
     snap = latest_per_install(core[core.event_name == "app_started"])
     assert snap["install_id"].nunique() == 2, "install_id should collapse rotating user_ids"
     assert core["user_id"].nunique() == 3, "sanity: 3 rotating user_ids in fixture"
+    # Two launches inside ONE second: the snapshot must be the later of them (higher
+    # launch_count), not whichever row the frame happens to end on.
+    tied = mkdf([dict(core_rows[0], timestamp=base + 9000, user_id="userT",
+                      session_id="userT-s",
+                      string_props=json.dumps({"install_id": "install-t", "game": "MX Bikes"}),
+                      numeric_props=json.dumps({"launch_count": lc}))
+                 for lc in (2, 1)])   # deliberately the wrong way round in the frame
+    assert latest_per_install(tied)["_n"].iloc[0]["launch_count"] == 2, \
+        "a timestamp tie must resolve to the later launch, not to frame order"
 
     fa = dict((k, (en, rep)) for k, en, rep in flag_adoption(snap, "hud_"))
     assert "hud_count" not in fa, "hud_count must not be treated as an adoption flag"
@@ -1430,7 +1684,7 @@ def selftest():
 
     # Full pipeline including the dev install, which build() must drop report-wide.
     out = tempfile.mkdtemp(prefix="analytics_selftest_")
-    path = build(mkdf(rows), out)
+    path, _ = build(mkdf(rows), out)
     md = open(path).read()
     # 1 pre-threshold + 1 dev-host crash excluded, leaving exactly 1 counted player crash;
     # the dev install's launch + test crash must not appear.
@@ -1446,8 +1700,70 @@ def selftest():
     assert os.path.exists(os.path.join(out, "charts", "achievement_progress.svg"))
     assert os.path.exists(os.path.join(out, "charts", "achievements_unlocked.svg"))
     assert os.path.exists(os.path.join(out, "charts", "achievements_global.svg"))
-    assert "Racer" in open(os.path.join(out, "charts", "achievements_global.svg")).read(), \
+    glob_svg = open(os.path.join(out, "charts", "achievements_global.svg")).read()
+    assert "Racer" in glob_svg, \
         "achievement chart should label rows by title from docs/achievements.md"
+    # HIDDEN ACHIEVEMENTS ARE NEVER NAMED. They are rare by construction, so the
+    # "rarest" line is where they surface first -- it named Deja Vu in a published
+    # report before this filter existed. The catalogue check is the other half: the
+    # flag is read off the doc's group HEADINGS, so renaming one would quietly turn
+    # the filter into a no-op and start publishing them again. Asserted per group, so
+    # renaming ONE of the two is caught -- a combined count would stay non-empty and
+    # pass while half the rows became publishable.
+    cat_for_hidden = achievement_catalogue()
+    for grp in HIDDEN_GROUPS:
+        ids = [i for i, v in cat_for_hidden.items() if v["hidden"] and v["group"] == grp]
+        assert ids, "no rows found under '## {}' - has the section been renamed? " \
+                    "its rows would now be publishable".format(grp)
+    assert "Deja Vu" not in glob_svg, "a hidden achievement must not be charted"
+    assert "Deja Vu" not in md, "a hidden achievement must not be named in the report"
+    # One row per achievement somebody HOLDS - the fixture's Racer and Tinkerer, and
+    # not the 80-odd listed rows nobody has, which were empty bars saying only that the
+    # catalogue is new. The count line under the chart carries that instead.
+    assert glob_svg.count('clip-path="url(#b') == 2, \
+        "chart should carry one row per held achievement, got {}".format(
+            glob_svg.count('clip-path="url(#b'))
+    assert "**Earned so far:** 2 of the" in md, \
+        "the section must say how much of the catalogue is charted"
+    # The bar is SPLIT BY TIER, not a flat holder count: the fixture holds Racer at
+    # tier 2 and Tinkerer at tier 1, so both classes have to appear. Reading the tier
+    # off the ping's VALUE is the whole point -- an achievement most people have and
+    # one most people have finished are the same bar without it.
+    assert 'class="t2"' in glob_svg and 'class="t1"' in glob_svg, \
+        "achievement bars must be split into tier segments"
+    assert ">Platinum<" in glob_svg, "tier chart needs its legend - colour alone is not identity"
+    # Icons are INLINED. A committed SVG that merely references ../assets/icons/x.svg
+    # renders as an empty row once GitHub serves the chart as an image.
+    assert 'class="ico"' in glob_svg and "assets/icons" not in glob_svg, \
+        "achievement rows should carry inlined icon paths, not references"
+    # EVERY BULLET UNDER THE HEADING IT BELONGS TO. The achievements block first
+    # shipped inside _engagement, so its heading was emitted mid-section and the
+    # session-length bullets that follow rendered underneath it -- a median session
+    # length filed as an achievement figure. Nothing else here would have caught it:
+    # both sections were present, both charts were written, every number was right.
+    def section_of(needle):
+        head = None
+        for line in md.split("\n"):
+            if line.startswith("## "):
+                head = line[3:].strip()
+            elif needle in line:
+                return head
+        return None
+
+    assert section_of("**Median session:**") == "Repeat usage", \
+        "session length belongs to Repeat usage, not " + str(section_of("**Median session:**"))
+    assert section_of("**Achievements unlocked") == "Achievements", \
+        "achievement totals belong to the Achievements section"
+    # The 1.30.0 install reports ach_pct=0 because its ping was built before the save
+    # file loaded. Counted, it would drag every achievement figure toward zero and put a
+    # player who has earned plenty in the "0%" bucket, so the section states the
+    # exclusion and divides by the 1.30.1+ installs only.
+    assert "**installs holding at least one achievement:** 1 (100%) of 1 reporting" in md, \
+        "1.30.0's false zero must be out of the achievement denominator"
+    # The 1.30.0 install is silently out of the denominator now: the report no longer
+    # narrates the exclusion (the build it describes is nearly gone), so the figures
+    # themselves are the only place it can be caught.
+    assert "hard zero" not in md, "the 1.30.0 exclusion note should no longer be printed"
 
     # The per-game activity chart must exist AND be referenced. Producing FEWER
     # charts is not an error unless something asserts otherwise, so a section that
@@ -1619,7 +1935,62 @@ def selftest():
     assert hdf["ts"].notna().all(), "repeated header row leaked through as an undated event"
     # And the full pipeline runs on CSV-loaded data.
     csv_out = tempfile.mkdtemp(prefix="analytics_selftest_csvout_")
-    assert os.path.exists(build(cdf, csv_out))
+    assert os.path.exists(build(cdf, csv_out)[0])
+
+    # ---- Rollup round trip --------------------------------------------------
+    # THE CONTRACT the rollup lives or dies by: a stretch of data that has aged into
+    # usage_survey/rollup/ must produce the same report as the raw export it was made
+    # from. Asserted by splitting the fixture at its day boundary and comparing
+    #   day 1 rolled up + day 2 raw   against   both days raw.
+    # Comparing the whole REPORT.md rather than a handful of figures is deliberate:
+    # the digest drops most of what an export carries, and the interesting failure is
+    # a metric nobody thought to re-check quietly reading 0 (the coverage table did
+    # exactly that on the first draft, because a stored launch has no props).
+    day1 = [x for x in rows if x["timestamp"] < base + 86400]
+    day2 = [x for x in rows if x["timestamp"] >= base + 86400]
+    assert day1 and day2, "fixture must straddle a day boundary for this to test anything"
+    roll_dir = tempfile.mkdtemp(prefix="analytics_selftest_rollup_")
+    seed_out = tempfile.mkdtemp(prefix="analytics_selftest_seed_")
+    seed = mkdf(day1)
+    _, seed_snap = build(seed, seed_out)
+    rollup.write(roll_dir, seed, seed_snap)
+
+    hist, hist_snap = rollup.read(roll_dir)
+    assert hist is not None and len(hist) == len(day1), \
+        "rollup must restore one row per stored event, got {}".format(len(hist))
+    assert set(hist["event_name"]) == set(seed["event_name"]), "rollup lost an event kind"
+
+    merged_out = tempfile.mkdtemp(prefix="analytics_selftest_merged_")
+    merged_path, _ = build(rollup.merge_events(hist, mkdf(day2)), merged_out,
+                           snap_hist=hist_snap)
+    raw_out = tempfile.mkdtemp(prefix="analytics_selftest_raw_")
+    raw_path, _ = build(mkdf(rows), raw_out)
+    for name in sorted(os.listdir(os.path.join(raw_out, "charts"))):
+        a = open(os.path.join(raw_out, "charts", name), "rb").read()
+        b_path = os.path.join(merged_out, "charts", name)
+        assert os.path.exists(b_path), "rollup report is missing chart " + name
+        assert open(b_path, "rb").read() == a, \
+            "chart {} differs between the raw and rolled-up runs".format(name)
+    if open(merged_path).read() != open(raw_path).read():
+        import difflib
+        diff = "\n".join(list(difflib.unified_diff(
+            open(raw_path).read().split("\n"), open(merged_path).read().split("\n"),
+            "raw", "rollup", lineterm=""))[:40])
+        raise AssertionError("rollup report differs from the raw report:\n" + diff)
+
+    # A re-run must not double-count: re-reading an export whose days the rollup
+    # already holds replaces those days rather than adding to them. This is the whole
+    # reason merge_events() drops by DAY instead of de-duplicating rows -- the digest
+    # has no event identity left to de-duplicate on.
+    again = rollup.merge_events(hist, mkdf(day1))
+    assert len(again) == len(day1), \
+        "re-reading a stored day must replace it, not append ({} rows)".format(len(again))
+
+    # And the files are byte-stable, so a month nobody touched shows no git diff.
+    before = open(os.path.join(roll_dir, "installs.csv.gz"), "rb").read()
+    rollup.write(roll_dir, seed, seed_snap)
+    assert open(os.path.join(roll_dir, "installs.csv.gz"), "rb").read() == before, \
+        "rewriting unchanged rollup data must be byte-identical"
 
     print("selftest OK -> {}".format(path))
 
@@ -1629,25 +2000,51 @@ def main():
         return selftest()
     ap = argparse.ArgumentParser(
         description="Generate a static Markdown+SVG analytics dashboard from Aptabase exports (CSV or Parquet).")
-    ap.add_argument("inputs", nargs="+", help="Export file(s) or globs (.csv or .parquet)")
-    ap.add_argument("--out", default=os.path.join(REPO_ROOT, "analytics"),
-                    help="output directory (default: analytics/)")
+    ap.add_argument("inputs", nargs="*",
+                    help="Export file(s) or globs (.csv or .parquet). May be omitted to "
+                         "re-render from the stored rollup alone.")
+    ap.add_argument("--out", default=os.path.join(REPO_ROOT, "usage_survey"),
+                    help="output directory (default: usage_survey/)")
+    ap.add_argument("--no-rollup", action="store_true",
+                    help="ignore the stored rollup and do not update it - the report then "
+                         "covers only the exports given. To REBUILD the rollup instead, "
+                         "delete <out>/rollup and re-run with every export.")
     args = ap.parse_args()
 
     paths = []
     for pat in args.inputs:
         hit = sorted(glob.glob(pat))
         paths.extend(hit if hit else [pat])
+    missing = [p for p in paths if not os.path.exists(p)]
+    for p in missing:
+        print("warning: no such export: {}".format(p), file=sys.stderr)
     paths = [p for p in paths if os.path.exists(p)]
-    if not paths:
-        sys.exit("error: no input parquet files found")
 
-    print("Reading {} file(s)...".format(len(paths)))
-    df = load(paths)
-    print("  {:,} events, {} → {}".format(len(df), df['date'].min(), df['date'].max()))
-    out = build(df, args.out)
+    rollup_dir = os.path.join(args.out, "rollup")
+    hist, hist_installs = (None, None) if args.no_rollup else rollup.read(rollup_dir)
+    if hist is not None:
+        print("Rollup: {:,} stored events, {} → {}".format(
+            len(hist), hist["date"].min(), hist["date"].max()))
+
+    fresh = None
+    if paths:
+        print("Reading {} file(s)...".format(len(paths)))
+        fresh = load(paths)
+        print("  {:,} events, {} → {}".format(
+            len(fresh), fresh["date"].min(), fresh["date"].max()))
+    elif hist is None:
+        sys.exit("error: no exports found and no rollup in {}".format(rollup_dir))
+
+    df = rollup.merge_events(hist, fresh)
+    print("Reporting on {:,} events, {} → {}".format(
+        len(df), df["date"].min(), df["date"].max()))
+    out, snap = build(df, args.out, snap_hist=hist_installs)
     print("Wrote {}".format(out))
     print("Charts in {}".format(os.path.join(args.out, "charts")))
+    if not args.no_rollup:
+        manifest = rollup.write(rollup_dir, df, snap)
+        print("Rollup updated: {} month(s), {:,} installs in {}".format(
+            len(manifest["months"]), manifest["installs"], rollup_dir))
 
 
 if __name__ == "__main__":

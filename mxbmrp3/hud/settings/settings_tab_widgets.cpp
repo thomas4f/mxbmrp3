@@ -5,6 +5,7 @@
 #include "settings_layout.h"
 #include "../settings_hud.h"
 #include "../../game/game_config.h"
+#include "../../core/hud_manager.h"
 #include "../session_hud.h"
 #include "../bars_widget.h"
 #include "../clock_widget.h"
@@ -14,6 +15,7 @@
 #include "../gamepad_widget.h"
 #include "../gear_widget.h"
 #include "../gforce_widget.h"
+#include "../prestige_widget.h"
 #include "../lap_widget.h"
 #include "../lean_widget.h"
 #include "../pointer_widget.h"
@@ -121,6 +123,17 @@ BaseHud* SettingsHud::renderTabWidgets(SettingsLayoutContext& ctx) {
     ctx.addWidgetRow("Pointer", ctx.parent->getPointerWidget(), false, true, false, true, "widgets.pointer", /*menuOnlyPointerRow=*/true);
     ctx.addWidgetRow("Settings", ctx.parent->getSettingsButtonWidget(), true, true, true, true, "widgets.settings_button");
     ctx.addWidgetRow("Version", ctx.parent->getVersionWidget(), true, true, true, true, "widgets.version");
+    // Prestige is the one row in this table that is EARNED. Left out entirely
+    // rather than greyed: a greyed row is a control you have not found yet, and
+    // this one you have not got. Fetched from HudManager rather than through a
+    // SettingsHud member, like the achievement widget on its own tab -- there is
+    // nothing tab-specific to hold. Its Texture column is the ordinary variant
+    // cycle: the badge artwork IS the widget (prestige_widget.h).
+    if (PrestigeWidget* badge = HudManager::getInstance().getPrestigeWidget()) {
+        if (PrestigeWidget::isUnlocked()) {
+            ctx.addWidgetRow("Prestige", badge, true, true, true, true, "widgets.prestige");
+        }
+    }
 
     ctx.addNote("Tip: more options are available in mxbmrp3_settings.ini");
 

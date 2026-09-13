@@ -43,15 +43,27 @@ void Handlers::handleRaceTrackPosition(int iNumVehicles, Unified::TrackPositionD
     SpotterManager::getInstance().onTrackPositions(iNumVehicles,
                                                    pasRaceTrackPosition);
 
-    // Only calculate real-time gaps for race sessions in progress
-    if (!pluginData.isRaceSession()) {
-        return;
-    }
-
     const SessionData& sessionData = pluginData.getSessionData();
-    if (!(sessionData.sessionState & PluginConstants::SessionState::IN_PROGRESS)) {
-        return;
+    const bool inProgress =
+        (sessionData.sessionState & PluginConstants::SessionState::IN_PROGRESS) != 0;
+
+    // Roost. ANY session in progress, not races only: following someone round a
+    // practice session is the same riding, and the row's sentence never said
+    // race - the only thing that implied it was the page it sits on. What the
+    // gate still keeps out is a grid: a race's pre-start is not IN_PROGRESS.
+    //
+    // And only while the player is RIDING: a replay and a spectated race deliver
+    // the same batches with the player's own bike among them, and a bike that is
+    // not moving is not riding (that half is in recordProximity, which is where
+    // the speed is). Ended rather than paused, like every other gap here.
+    if (inProgress && pluginData.isPlayerRunning()) {
+        pluginData.updateProximity(iNumVehicles, pasRaceTrackPosition);
+    } else {
+        pluginData.endProximity();
     }
 
+    // Live gaps stay RACE-only: they are the standings' running order, and there
+    // is no order to keep in a practice session.
+    if (!pluginData.isRaceSession() || !inProgress) return;
     pluginData.updateRealTimeGaps();
 }

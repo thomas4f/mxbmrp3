@@ -111,6 +111,11 @@ public:
     void show();
     void hide();
     bool isVisible() const { return m_bVisible; }
+    // The HUD the panel is currently talking about: the active tab's backing HUD,
+    // or nullptr for a tab that has none (General, Appearance, About...). What
+    // HudManager previews each frame, so a HUD that would otherwise be empty can
+    // still be dragged into place. See BaseHud::isPreviewing.
+    BaseHud* activeTabHud() const;
 
     // Open settings panel directly to Updates tab
     void showUpdatesTab();
@@ -373,6 +378,7 @@ public:
             ACHIEVEMENTS_TOASTS_TOGGLE,// Achievement toasts on/off (global master; also the tab-list checkbox)
             ACHIEVEMENTS_PAGE_PREV,    // Previous page of the achievements list
             ACHIEVEMENTS_PAGE_NEXT,    // Next page of the achievements list
+            ACHIEVEMENTS_PRESTIGE,     // Trade the ladder for a prestige level (arms, then performs)
             // Clock Widget
             CLOCK_FORMAT_TOGGLE,       // Toggle 12h/24h format (ClockWidget)
             // Event Log HUD
@@ -665,6 +671,7 @@ public:
     void disarmResets() {
         m_resetProfileConfirmed = false;
         m_resetAllConfirmed = false;
+        m_prestigeConfirmed = false;
     }
     bool handleClickTabSpotter(const ClickRegion& region);
     bool handleClickTabFmx(const ClickRegion& region);
@@ -840,6 +847,14 @@ public:
     // Same seam for the shared CYCLE_UP/CYCLE_DOWN regions (no hold tier — cycles
     // never accelerate).
     int testCycleRegionCount(bool up) const;
+    // Whether holding a profile arrow auto-repeats. It must not: see the comment
+    // on isRepeatableRegionType. Asked by name rather than by passing a
+    // ClickRegion::Type across the DLL boundary, where the enum's values are not
+    // a contract.
+    bool testProfileArrowRepeats() const {
+        return isRepeatableRegionType(ClickRegion::PROFILE_CYCLE_UP) ||
+               isRepeatableRegionType(ClickRegion::PROFILE_CYCLE_DOWN);
+    }
     // Characterization seam: a stable text signature of the ACTIVE tab's emitted
     // click regions (type + tooltip id, in emission order) plus the string count.
     // Lets a headless test pin the settings panel's rendered output across a
@@ -1085,6 +1100,19 @@ private:
     // game-gated backing HUD is registered. Single source of truth for the tab-list skips
     // and the persisted-tab restore validation, so they can't drift.
     bool isTabAvailable(int tabId) const;
+
+    // A tab the player can find and open from the sidebar: available on this
+    // build, and not hidden from the list. Grand Tour's fraction is out of these,
+    // and only these are recorded into it -- About is available but hidden, and is
+    // reached by a footer button that sets the tab directly, so counting it in the
+    // denominator made the row top out one tab short of 100% forever.
+    bool isTabListed(int tabId) const {
+        const TabDescriptor* d = findTabDescriptor(tabId);
+        return d && !d->hidden && isTabAvailable(tabId);
+    }
+    // Grand Tour's fraction, recorded: the tab just opened, and the whole list it
+    // is counted over. Walked on a tab change only, never per frame.
+    void recordTabOpened(int tabId) const;
     // Note: Tab-specific handlers inlined into settings_tab_*.cpp files
 
     // ------------------------------------------------------------------
@@ -1129,6 +1157,13 @@ private:
         // About if that is where it was closed). Only the list/measure loops read
         // this.
         bool hidden = false;
+        // THE HUD THIS TAB CONFIGURES, when it is not the one `hud` names. `hud` is
+        // the tab-list CHECKBOX's HUD, and two tabs have controls for a HUD that
+        // carries no checkbox there: Achievements owns the toast widget, Spotter
+        // owns the subtitle widget. activeTabHud() prefers this, so the positioning
+        // preview reaches them. LAST, and defaulted, for the same reason `hidden`
+        // is: the thirty rows that do not set it must not have to mention it.
+        BaseHud* (*previewHud)(const SettingsHud&) = nullptr;
     };
     // Rows are in VISUAL ORDER - the tab-list render loop iterates this table
     // directly, so row position = position in the tab column. The negative
@@ -1229,6 +1264,10 @@ private:
     // Reset radio button states (mutually exclusive)
     bool m_resetProfileConfirmed;
     bool m_resetAllConfirmed;
+    // The prestige button's arm. Same two-step and the same rule as the pair
+    // above (disarmResets clears all three): trading the ladder in is the least
+    // undoable act in the panel.
+    bool m_prestigeConfirmed = false;
 
     // Easter egg click detection (version string)
     static constexpr int EASTER_EGG_CLICKS = 5;

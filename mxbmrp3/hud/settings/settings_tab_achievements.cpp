@@ -38,24 +38,32 @@
 #include "../settings_hud.h"
 #include "../achievement_widget.h"
 #include "../../core/achievement_manager.h"
+#include "../../core/achievement_text.h"
 #include "../../core/achievements.h"
+#include "../../core/completion_floor.h"
 #include "../../core/asset_manager.h"
 #include "../../core/color_config.h"
 #include "../../core/hud_manager.h"
 #include "../../core/plugin_constants.h"
 #include "../../core/plugin_utils.h"
+#include "../../core/stats_manager.h"
 #include "../../core/ui_config.h"
+#include "../../game/game_config.h"
+#if GAME_HAS_ANALYTICS
+#include "../../core/analytics_manager.h"
+#endif
 
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <string>
 #include <vector>
 
 using namespace PluginConstants;
 
 namespace {
 
-constexpr int ENTRIES_PER_PAGE = 8;
+using Achievements::ENTRIES_PER_PAGE;   // the catalogue's own page size
 
 // The metal each tier is drawn in; locked rows take the muted text colour.
 unsigned long tierColor(int tier, const ColorConfig& colors) {
@@ -76,15 +84,57 @@ bool SettingsHud::handleClickTabAchievements(const ClickRegion& region) {
     // while its own tab is open -- so it lives in dispatchRegion's common switch
     // (settings_hud_input.cpp), like the spotter's.
     switch (region.type) {
+        // DISARMED ON THE WAY OUT, both of them: the Prestige button is drawn on
+        // the Completion page only, so leaving that page has to cancel a half-made
+        // decision or "Confirm?" waits on a page nobody is on. Here rather than in
+        // the render pass, which is where it was: a rebuild is a drawing of state,
+        // and a drawing that edits what it draws is the one thing the panel avoids.
+        // Leaving the TAB is already covered by disarmResets().
         case ClickRegion::ACHIEVEMENTS_PAGE_PREV:
             if (m_achievementsPage > 0) {
                 m_achievementsPage--;
+                m_prestigeConfirmed = false;
                 rebuildRenderData();
             }
             return true;
         case ClickRegion::ACHIEVEMENTS_PAGE_NEXT:
             m_achievementsPage++;   // clamped against the page count at render
+            m_prestigeConfirmed = false;
             rebuildRenderData();
+            return true;
+        // ARM, then PERFORM -- the Reset buttons' two-step (settings_tab_general),
+        // and for a stronger reason: this one is not undoable by anything, not
+        // even a reset. StatsManager::prestige() re-checks the gate, so an armed
+        // button that somehow outlived the Platinum Sweep still does nothing.
+        case ClickRegion::ACHIEVEMENTS_PRESTIGE:
+            if (m_prestigeConfirmed) {
+                m_prestigeConfirmed = false;
+                // The re-check can refuse (see prestige()), and a refusal is not
+                // a trade: the button still disarms and the panel still redraws
+                // for it, but nothing is reported. An event that counted clicks
+                // rather than prestiges would put the rarest act in the plugin
+                // behind a number that is not it.
+                const bool taken = StatsManager::getInstance().prestige();
+#if GAME_HAS_ANALYTICS
+                // The rarest act in the plugin, and the only one that throws a
+                // finished ladder away: worth knowing whether anybody does it,
+                // and how far they go. The LEVEL is the dimension, read after
+                // the trade so it is the one just reached.
+                if (taken) {
+                    AnalyticsManager::getInstance().trackEvent(
+                        "prestige_taken",
+                        {{"level", std::to_string(StatsManager::getInstance().getPrestige())}});
+                }
+#else
+                (void)taken;
+#endif
+                rebuildRenderData();
+            } else {
+                m_prestigeConfirmed = true;
+                m_resetProfileConfirmed = false;
+                m_resetAllConfirmed = false;
+                rebuildRenderData();
+            }
             return true;
         default:
             return false;
@@ -255,6 +305,13 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
     // only metal is bold. The task is cut to the room the numbers leave (a net:
     // the unit gate holds every shipped row under Achievements::TAB_ROW_CHARS,
     // so only a count grown far past Platinum ever reaches it).
+    // WHO is carrying a per-track or per-bike maximum row is part of the TITLE
+    // STRING -- "Local Hero (Southwick)" -- not a second string positioned after
+    // it. Two strings meant measuring the title in character cells to place the
+    // name, and the title is drawn in the STRONG face while the name was drawn in
+    // the normal one: two faces with different advance widths, so the gap between
+    // them was right in one font and wrong in every other. One string cannot
+    // drift from itself.
     auto addEntry = [&](int sprite, int badge, unsigned long tileColor, const char* title,
                         const char* tag, unsigned long tagColor, bool tagStrong,
                         float fraction, unsigned long fillColor,
@@ -265,12 +322,30 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
             // The glyph in the tile's own hue, lifted off it in luma the way the gap
             // bar's and the notices' captions are lifted off their slabs
             // (legibleOnFill): tone on tone, never the same tone.
+            //
+            // NO TILE UNDER AN UNEARNED ROW (badge 0). It used to take a flat muted
+            // square where the metal art goes, so a fresh page was a column of grey
+            // boxes with the earned rows competing against them. The BAND stays --
+            // that is what marks the entry's extent, and it is the same band on
+            // every row - but the tile arrives with the tier it is there to show.
+            // With nothing under it the glyph has nothing to lift off, so it is
+            // drawn in the hue itself: muted, which is a locked row's colour.
             const float tileCx = ctx.labelX + tileW * 0.5f;
             const float tileCy = ctx.currentY + ctx.lineHeightNormal;
             if (badge > 0) ctx.parent->addIcon(tileCx, tileCy, badge, tileColor, entryH);
-            else           ctx.addSolidQuad(ctx.labelX, top, tileW, entryH, tileColor);
             ctx.parent->addIcon(tileCx, tileCy, sprite,
-                                ctx.parent->legibleOnFill(tileColor, tileColor), entryH * 0.72f);
+                                badge > 0 ? ctx.parent->legibleOnFill(tileColor, tileColor) : tileColor,
+                                entryH * 0.72f);
+        }
+        // Cut to whatever the tag leaves, like the task line below: a title that
+        // has picked up a long track name becomes "Local Hero (Southw..." rather
+        // than running under the tier tag.
+        const int titleRoom = static_cast<int>((rowRight - textX) / cw)
+                            - (tag[0] ? static_cast<int>(std::strlen(tag)) + 1 : 0);
+        char titleCut[96];
+        if (static_cast<int>(std::strlen(title)) > titleRoom && titleRoom > 3) {
+            snprintf(titleCut, sizeof(titleCut), "%.*s...", titleRoom - 3, title);
+            title = titleCut;
         }
         ctx.parent->addString(title, textX, ctx.currentY, Justify::LEFT,
             Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
@@ -293,28 +368,20 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
         ctx.nextLine();
     };
 
-    // === PROGRESS: achievements earned, which is what a player counts (the
-    // tier total is the Completionist row's business) ===
-    const int earned = ach.earnedAchievements();
-    const int total = ach.listedAchievements();
-    const int pct = total > 0 ? (earned * 100) / total : 0;
-    ctx.addSectionHeading("Progress");
-    {
-        char pctText[16];
-        snprintf(pctText, sizeof(pctText), "%d%%", pct);
-        snprintf(buf, sizeof(buf), "%d / %d", earned, total);
-        // A hidden one earned counts on top of a total it is not in, so the text
-        // can pass 100% while the band stays full.
-        addEntry(useIcons ? assets.getIconSpriteIndex("award") : 0, badgeSprite[1], colors.getAccent(),
-                 "Unlocked", pctText, colors.getSecondary(), /*tagStrong=*/false,
-                 total > 0 ? std::min(1.0f, static_cast<float>(earned) / static_cast<float>(total)) : 0.0f,
-                 colors.getAccent(), "Achievements earned, at any tier", buf);
-    }
-
+    // WHICH PAGE, worked out BEFORE anything is drawn. It used to sit below the
+    // Progress card, which was fine while the card was the same on every page --
+    // but the Prestige button inside it is a Completion-page control, and a
+    // control cannot ask which page it is on after the page has been drawn.
+    // Nothing in here emits a quad or a string; it is vectors and an index.
     // The rows this game can move, and the groups they fall in: a page per
     // group that has one. Short vectors per rebuild: the panel rebuilds on a
     // click or the 1 Hz tick, never per frame.
-    // A hidden row is not a row until it is earned.
+    // ONE RULE: a hidden row is not a row until it is EARNED. That covers both
+    // unlisted groups (Achievements::isUnlistedGroup), and nothing else is
+    // filtered - the Completion rows are a dashboard and are always listed, at
+    // 0% if that is where you are. A second rule used to hide those until they
+    // left zero; it is gone, and this comment described it for two commits
+    // after it went.
     std::vector<AchievementManager::Row> rows;
     rows.reserve(static_cast<size_t>(ach.rowCount()));
     int groupRows[static_cast<int>(Achievements::Group::COUNT)] = {};
@@ -370,42 +437,187 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
     const size_t firstRow = static_cast<size_t>(current.first);
     const size_t lastRow = std::min(groupSorted.size(), firstRow + ENTRIES_PER_PAGE);
 
-    // === THIS PAGE'S GROUP ===
-    if (current.chunks > 1) {
-        snprintf(buf, sizeof(buf), "%s %d/%d", Achievements::groupName(current.group), current.chunk, current.chunks);
-        ctx.addSectionHeading(buf);
+    // === PROGRESS: achievements earned, which is what a player counts. NOT
+    // tiers - the tier total is the hidden Completionist row's business, and
+    // two competing "how far through" percentages on one page is why the
+    // listed one was cut. ===
+    const int earned = ach.earnedAchievements();
+    const int total = ach.listedAchievements();
+    const int pct = total > 0 ? (earned * 100) / total : 0;
+    // The prestige level rides on the HEADING rather than taking an entry of
+    // its own. An entry is two rows, and this tab sets the panel's height for
+    // every other tab (settings_fit_test) -- two rows here cost two rows of
+    // screen everywhere, and with the trade's button below them that was enough
+    // to push the whole panel off the bottom in developer mode. A heading is
+    // free, and it sits directly above the completion figure the level was
+    // traded for, which is where it reads anyway.
+    const int prestige = StatsManager::getInstance().getPrestige();
+    if (prestige > 0) {
+        char heading[32];
+        snprintf(heading, sizeof(heading), "Progress (Prestige %d)", prestige);
+        ctx.addSectionHeading(heading);
     } else {
-        ctx.addSectionHeading(Achievements::groupName(current.group));
+        ctx.addSectionHeading("Progress");
     }
+    {
+        // "47%" or "47% (+3)". The percentage is the LISTED set alone, so it
+        // cannot pass 100% and cannot read as a counting fault; the bonus is
+        // every row earned outside that set - secrets and misfortunes both -
+        // and says what the overshoot used to say, in a number that admits
+        // what it is. Nothing at all when there is none to report.
+        char pctText[16];
+        const int bonus = ach.bonusAchievements();
+        if (bonus > 0) snprintf(pctText, sizeof(pctText), "%d%% (+%d)", pct, bonus);
+        else           snprintf(pctText, sizeof(pctText), "%d%%", pct);
+        snprintf(buf, sizeof(buf), "%d / %d", earned, total);
+        addEntry(useIcons ? assets.getIconSpriteIndex("award") : 0, badgeSprite[1], colors.getAccent(),
+                 "Unlocked", pctText, colors.getSecondary(), /*tagStrong=*/false,
+                 total > 0 ? std::min(1.0f, static_cast<float>(earned) / static_cast<float>(total)) : 0.0f,
+                 colors.getAccent(), "Achievements earned, at any tier", buf);
+    }
+
+
+
+    // === THIS PAGE'S GROUP ===
+    // SPELLED OUT where the page's rows are outside the Unlocked figure and the
+    // Sweeps (Achievements::countsTowardCompletion). "(not counted)" read as
+    // something being wrong with the page; this names the thing they do not count
+    // towards, and "progress" is the card two sections up, so the reader has just
+    // seen it. Said on the page rather than in a footnote: it answers "why did
+    // that not move the bar", which is asked the moment a row lands.
+    const char* outside = Achievements::countsTowardCompletion(current.group)
+                              ? "" : " (does not count towards progress)";
+    if (current.chunks > 1) {
+        snprintf(buf, sizeof(buf), "%s %d/%d%s", Achievements::groupName(current.group),
+                 current.chunk, current.chunks, outside);
+    } else {
+        snprintf(buf, sizeof(buf), "%s%s", Achievements::groupName(current.group), outside);
+    }
+    ctx.addSectionHeading(buf);
+    // Where the page's BODY starts. Everything below is padded back out to one
+    // fixed height from here, so the panel is the same height on every page --
+    // see the pad at the foot.
+    const float pageBodyTop = ctx.currentY;
     for (size_t i = firstRow; i < lastRow; ++i) {
         const AchievementManager::Row& r = groupSorted[i];
         const Achievements::Entry& e = *r.entry;
         const bool earnedRow = r.tier > 0;
+        // A SWEEP row is coloured by the metal it MEASURES, not by what it has
+        // earned - all four carry the same glyph, and the bronze/silver/gold/
+        // platinum tint is the only thing telling them apart. Colouring them by
+        // their own tier would paint all four the same muted grey until one hit
+        // 100%, which is every day for everybody.
+        const int sweepMetal = Achievements::completionMetal(e);
         // A one-shot has no metal: earned in the accent, like the summary.
-        const unsigned long metal = Achievements::isOneShot(e)
-            ? (earnedRow ? colors.getAccent() : colors.getMuted())
-            : tierColor(r.tier, colors);
+        const unsigned long metal = sweepMetal > 0
+            ? tierColor(sweepMetal, colors)
+            : (Achievements::isOneShot(e)
+                ? (earnedRow ? colors.getAccent() : colors.getMuted())
+                : tierColor(r.tier, colors));
 
         Achievements::formatProgress(e, r.value, buf, sizeof(buf));
+        // Who is carrying a per-track / per-bike maximum row, folded into the
+        // title; "" for the rest, which then reads as the bare title.
+        char leader[64];
+        ach.leaderFor(e, leader, sizeof(leader));
+        char rowTitle[96];
+        if (leader[0]) snprintf(rowTitle, sizeof(rowTitle), "%s (%s)", e.title, leader);
+        else           snprintf(rowTitle, sizeof(rowTitle), "%s", e.title);
         // The task: the next tier's sentence, or the top tier's once complete.
         char task[64];
         Achievements::formatDescription(e, std::min(r.tier + 1, e.tierCount), task, sizeof(task));
         // A complete row's band takes its metal; every other band is the accent,
         // so the column reads as one instrument with the finished ones lit.
-        const int badgeTier = !earnedRow ? 1 : (Achievements::isOneShot(e) ? Achievements::TIER_COUNT : r.tier);
+        // Index 0 is NO badge, and that is what an unearned row gets -- a Sweep
+        // row included. The metal art is what says a tier has been taken; drawn
+        // before it is, it says the opposite of the "Locked" beside it. The four
+        // Sweeps still read apart while locked because their GLYPH takes the
+        // metal they measure (tileColor below), which is the thing that had to
+        // be true: colouring them by their own tier would paint all four the
+        // same muted grey until one hit 100%.
+        const int badgeTier = !earnedRow ? 0
+            : (sweepMetal > 0 ? sweepMetal
+                              : (Achievements::isOneShot(e) ? Achievements::TIER_COUNT : r.tier));
+        // THE TAG IS MUTED UNTIL SOMETHING IS EARNED, Sweep rows included. Their
+        // metal is forced (it is the metal they MEASURE, not one they hold), and
+        // that was reaching the tag too -- so "Locked" was written in bronze on
+        // the Bronze Sweep and in gold on the Gold Sweep while every other locked
+        // row's read muted. The metal still reaches the GLYPH, which is what
+        // keeps the four apart.
         addEntry(useIcons && e.icon ? assets.getIconSpriteIndex(e.icon) : 0, badgeSprite[badgeTier],
-                 earnedRow ? metal : colors.getMuted(),
-                 e.title, Achievements::tierLabel(e, r.tier), metal, earnedRow,
+                 (sweepMetal > 0 || earnedRow) ? metal : colors.getMuted(),
+                 rowTitle, Achievements::tierLabel(e, r.tier),
+                 earnedRow ? metal : colors.getMuted(), earnedRow,
                  Achievements::progressFraction(e, r.value),
                  r.tier >= e.tierCount ? metal : colors.getAccent(), task, buf);
+    }
+
+    // THE TRADE: under the four Sweep rows, on the Completion page, and nowhere
+    // else. It used to sit in the Progress card, which is the tab's header above
+    // every one of its pages -- so a button that empties the whole ladder
+    // followed the player around the tab. What it trades away is exactly what
+    // those four rows measure, so it belongs at the foot of them, where a player
+    // who has just read "Every listed achievement at Platinum" finds it.
+    //
+    // No heading of its own: a section heading opens a new card, and a card
+    // costs its own padding plus the junction gap above it -- which on the
+    // tallest tab in the panel pushed the whole PANEL past the screen in
+    // developer mode (settings_render_test measures exactly that, and the panel
+    // does not scroll, so the overflow is unreachable UI). On this card it is
+    // one row inside the space the short page was padding out anyway.
+    //
+    // Paging away cancels a half-made decision; that disarm lives with the pager
+    // CLICK (handleClickTabAchievements), not here -- a render pass draws state,
+    // it does not edit it.
+    const bool prestigeHere = ach.isPrestigeAvailable() &&
+                              current.group == Achievements::Group::Completion;
+    if (prestigeHere) {
+        // ONE ROW, and the same one row armed or not. This tab is the tallest in
+        // the panel, so its height IS the panel's height on every other tab
+        // (settings_fit_test), and the panel does not scroll -- a second row
+        // here put Save and Close off the bottom of the screen in developer
+        // mode, which settings_render_test measures directly. An inline note
+        // would also have made the ARMED state a row taller than the unarmed
+        // one, so the state that fit would have been the state nobody is in
+        // when they click.
+        //
+        // So the warning is a row TOOLTIP rather than a note: the same hover
+        // every other row on this tab carries, at no height. The protection was
+        // never the sentence anyway -- it is the two-click arm, and "Confirm?"
+        // on a Negative button says what the second click does.
+        const bool armed = ctx.parent->m_prestigeConfirmed;
+        // The junction every other in-tab button opens with -- the [panel] gap
+        // that belongs to the STACK, where the button's own margins belong to the
+        // box (see buttonRow). Without it this button sat tight against the last
+        // row while Copy, Check Now and Run Sweep all stood off theirs.
+        ctx.addSpacing();
+        // THE WARNING RIDES ON THE BUTTON'S OWN REGION. It used to be a row-wide
+        // TOOLTIP_ROW pushed just before, and hover resolves to the FIRST region
+        // under the pointer: the row shadowed the button, so the tooltip showed
+        // but the button never lit up, and the hover box was the whole row
+        // instead of the button. One rect now answers all three.
+        ctx.addActionButton(armed ? "Confirm?" : "Prestige", 10,
+                            SettingsHud::ClickRegion::ACHIEVEMENTS_PRESTIGE,
+                            SettingsLayoutContext::ButtonRole::Negative, true,
+                            "achievements.prestige");
     }
 
     // The pager, at the foot of a FULL page whatever this page holds: a short
     // page (a group's last chunk) would otherwise lift it, and a button that
     // moves between pages has to be chased. Only when there is more than one.
+    //
+    // PADDED TO A FIXED BODY HEIGHT, not by the rows it is short of. Counting
+    // rows assumed rows were the only thing on a page, so the Completion page --
+    // four rows plus the Prestige button -- came out taller than the rest and
+    // the whole panel changed height when you paged onto it. Padding to a target
+    // measures whatever the page actually emitted, so anything that lands here
+    // later is absorbed too, and it does so in the theme's own units: the
+    // button's height is its themed margins and insets, and the difference is
+    // taken from the same numbers rather than from an assumed row count.
     if (pageCount > 1) {
-        const int shown = static_cast<int>(lastRow - firstRow);
-        ctx.currentY += static_cast<float>(ENTRIES_PER_PAGE - shown) * ctx.lineHeightNormal * 2.0f;
+        const float fullBody = static_cast<float>(ENTRIES_PER_PAGE) * ctx.lineHeightNormal * 2.0f;
+        const float used = ctx.currentY - pageBodyTop;
+        if (used < fullBody) ctx.currentY += fullBody - used;
         ctx.addSpacing();   // the junction above a button row, like every in-tab button
     }
     ctx.addPager(page, pageCount, SettingsHud::ClickRegion::ACHIEVEMENTS_PAGE_PREV,

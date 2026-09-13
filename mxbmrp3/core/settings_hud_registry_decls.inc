@@ -51,6 +51,8 @@
     static void app_SpotterWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_ClockWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_ClockWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
+    static void cap_PrestigeWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
+    static void app_PrestigeWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_SessionHud(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_SessionHud(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_SpeedWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);

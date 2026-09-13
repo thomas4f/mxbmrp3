@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="506" viewBox="0 0 760 506" role="img"><style>
+  text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+  .grid{stroke:#d0d7de;stroke-width:1}
+  .axis{stroke:#57606a;stroke-width:1}
+  .lbl{fill:#57606a;font-size:12px}
+  .val{fill:#24292f;font-size:12px;font-weight:600}
+  .title{fill:#24292f;font-size:14px;font-weight:700}
+  .sub{fill:#57606a;font-size:11px}
+  .gap{fill:#57606a;opacity:.09}
+  .gaplbl{fill:#57606a;font-size:10px;opacity:.85}
+  .ico{fill:#57606a}
+  .t1{fill:#d4a72c}
+  .t2{fill:#bf8700}
+  .t3{fill:#9e6a03}
+  .t4{fill:#7d4e00}
+  @media (prefers-color-scheme: dark){
+    .grid{stroke:#30363d}
+    .axis{stroke:#8b949e}
+    .lbl{fill:#8b949e}
+    .val{fill:#e6edf3}
+    .title{fill:#e6edf3}
+    .sub{fill:#8b949e}
+    .gap{fill:#8b949e;opacity:.13}
+    .gaplbl{fill:#8b949e}
+    .ico{fill:#8b949e}
+    .t1{fill:#bf8700}
+    .t2{fill:#d4a72c}
+    .t3{fill:#f2cc60}
+    .t4{fill:#fbe6a4}
+  }
+</style><text x="12" y="20" class="title">Features (feat_*)</text><text x="12" y="37" class="sub">% of 14,188 MX Bikes installs</text><text x="200" y="60" class="lbl" text-anchor="end">GPU rendering (companion)</text><rect x="210" y="44" width="454" height="22" rx="3" fill="#3fb950"/><text x="670" y="60" class="val">100% (3,301 of 3,301)</text><text x="200" y="90" class="lbl" text-anchor="end">Steam friends</text><rect x="210" y="74" width="448" height="22" rx="3" fill="#58a6ff"/><text x="664" y="90" class="val">99% (14,002)</text><text x="200" y="120" class="lbl" text-anchor="end">Widgets (master)</text><rect x="210" y="104" width="440" height="22" rx="3" fill="#d29922"/><text x="656" y="120" class="val">97% (13,756)</text><text x="200" y="150" class="lbl" text-anchor="end">Update checker</text><rect x="210" y="134" width="373" height="22" rx="3" fill="#bc8cff"/><text x="589" y="150" class="val">82% (11,664)</text><text x="200" y="180" class="lbl" text-anchor="end">Achievement toasts</text><rect x="210" y="164" width="338" height="22" rx="3" fill="#f778ba"/><text x="554" y="180" class="val">75% (1,825 of 2,445)</text><text x="200" y="210" class="lbl" text-anchor="end">Helmet overlay</text><rect x="210" y="194" width="64" height="22" rx="3" fill="#39c5cf"/><text x="280" y="210" class="val">14% (2,023)</text><text x="200" y="240" class="lbl" text-anchor="end">Discord presence</text><rect x="210" y="224" width="24" height="22" rx="3" fill="#ff7b72"/><text x="240" y="240" class="val">5% (758)</text><text x="200" y="270" class="lbl" text-anchor="end">Auto-director</text><rect x="210" y="254" width="17" height="22" rx="3" fill="#a5d6ff"/><text x="233" y="270" class="val">4% (478)</text><text x="200" y="300" class="lbl" text-anchor="end">Controller rumble</text><rect x="210" y="284" width="14" height="22" rx="3" fill="#7ee787"/><text x="230" y="300" class="val">3% (463)</text><text x="200" y="330" class="lbl" text-anchor="end">Direct GL (in-game HUD)</text><rect x="210" y="314" width="10" height="22" rx="3" fill="#ffa657"/><text x="226" y="330" class="val">2% (75 of 3,301)</text><text x="200" y="360" class="lbl" text-anchor="end">Profile auto-switch</text><rect x="210" y="344" width="5" height="22" rx="3" fill="#3fb950"/><text x="221" y="360" class="val">1% (151)</text><text x="200" y="390" class="lbl" text-anchor="end">Companion window</text><rect x="210" y="374" width="3" height="22" rx="3" fill="#58a6ff"/><text x="219" y="390" class="val">&lt;1% (109)</text><text x="200" y="420" class="lbl" text-anchor="end">Web overlay (OBS)</text><rect x="210" y="404" width="3" height="22" rx="3" fill="#d29922"/><text x="219" y="420" class="val">&lt;1% (94)</text><text x="200" y="450" class="lbl" text-anchor="end">Developer mode</text><rect x="210" y="434" width="1" height="22" rx="3" fill="#bc8cff"/><text x="217" y="450" class="val">&lt;1% (13)</text><text x="200" y="480" class="lbl" text-anchor="end">Worker thread</text><rect x="210" y="464" width="1" height="22" rx="3" fill="#f778ba"/><text x="217" y="480" class="val">0% (0)</text></svg>

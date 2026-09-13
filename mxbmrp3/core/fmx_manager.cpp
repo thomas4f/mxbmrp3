@@ -46,6 +46,7 @@ void FmxManager::reset() {
     m_airToGroundTime = 0.0f;
     m_continuousAirborneTime = 0.0f;
     m_stuckTime = 0.0f;
+    abortFlight();
     DEBUG_INFO("FmxManager: Reset");
 }
 

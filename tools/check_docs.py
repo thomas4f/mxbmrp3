@@ -83,22 +83,35 @@ DOCS_EXCLUDED = {
     "THIRD_PARTY_LICENSES.md",
     # GENERATED wholesale from data the repo does not keep (Aptabase exports,
     # known_game_crashes.json). Their generators own what goes in them.
-    "analytics/REPORT.md", "crash_analysis/KNOWN_GAME_CRASHES.md",
+    "usage_survey/REPORT.md", "crash_analysis/KNOWN_GAME_CRASHES.md",
 }
 
 
-def tracked_docs():
+def _tracked_md():
+    """Tracked .md files that are actually ON DISK.
+
+    git still lists a file deleted from the worktree but not yet staged, and every
+    check here then opens it: the gate died with a FileNotFoundError naming the doc,
+    instead of reporting whatever was actually wrong. A missing tracked doc is a real
+    condition, but it is git's to report, not this tool's to crash on.
+    """
     out = subprocess.run(["git", "ls-files", "*.md"], cwd=REPO,
                          capture_output=True, text=True).stdout.split()
     return [f for f in out
-            if not f.startswith("mxbmrp3/vendor/") and f not in DOCS_EXCLUDED]
+            if not f.startswith("mxbmrp3/vendor/")
+            and os.path.exists(os.path.join(REPO, f))]
+
+
+def tracked_docs():
+    return [f for f in _tracked_md() if f not in DOCS_EXCLUDED]
 
 
 DOCS = tracked_docs()
 
 # Directories a bare filename (`map_hud.h`) may be resolved against, so docs can
 # name a file without repeating its full path.
-SEARCH_ROOTS = ["mxbmrp3", "tests", "tools", "packaging", "mxbmrp3_data", ".github", "analytics"]
+SEARCH_ROOTS = ["mxbmrp3", "tests", "tools", "packaging", "mxbmrp3_data", ".github",
+                "usage_survey"]
 
 # Tokens that are path-SHAPED but aren't paths. Checked as exact matches.
 NOT_PATHS = {
@@ -247,7 +260,7 @@ COMMENT_EXCLUDED = ("mxbmrp3/vendor/", "tests/integration/harness/doctest.h")
 #   written on a player's machine. Including them was measured: it turned a check
 #   with no false positives into one that was mostly false positives, which is
 #   the failure mode that teaches people to ignore a gate.
-COMMENT_ROOTS = r"(?:mxbmrp3|mxbmrp3_data|tools|tests|packaging|cmake|analytics|docs|\.github)"
+COMMENT_ROOTS = r"(?:mxbmrp3|mxbmrp3_data|tools|tests|packaging|cmake|usage_survey|docs|\.github)"
 # CODE_EXTS minus its `\*` alternative: a glob is a family, not a file to check.
 COMMENT_EXTS = "|".join(e for e in CODE_EXTS.split("|") if e != r"\*")
 COMMENT_PATH = re.compile(
@@ -698,6 +711,135 @@ def check_tooltip_ids_resolve(failures):
             "(the control renders, the hover shows nothing)")
 
 
+# A file that MOVED but whose old path is baked into something already shipped, so
+# the old path has to keep resolving forever. Key is the stub, value is a string it
+# must still contain -- its redirect target, so the stub cannot be silently emptied
+# or repurposed while still existing.
+LEGACY_REDIRECT_STUBS = {
+    "analytics/REPORT.md": "usage_survey/",
+}
+
+
+def check_legacy_redirect_stubs(failures):
+    """The stubs that outlive the rename that created them.
+
+    The installer's Privacy page opens blob/main/analytics/REPORT.md. packaging/
+    mxbmrp3.nsi now sends NEW builds to usage_survey/, but every installer already
+    in the wild opens the old path and always will, so the stub outlives every
+    argument for deleting it -- including the strongest one, "the rename is
+    finished". That is exactly the kind of fact a tidy-up pass destroys, because
+    the reason lives in a commit message nobody re-reads, so it lives here instead.
+    """
+    for rel, target in LEGACY_REDIRECT_STUBS.items():
+        path = os.path.join(REPO, rel)
+        if not os.path.exists(path):
+            failures.append(
+                f"check_legacy_redirect_stubs: {rel} is gone. It is a PERMANENT "
+                f"redirect - installers already shipped open that path from their "
+                f"Privacy page - so restore it, pointing at {target}.")
+            continue
+        if target not in open(path, encoding="utf-8").read():
+            failures.append(
+                f"check_legacy_redirect_stubs: {rel} no longer names {target}. It "
+                f"exists only to send old links somewhere, so it has to say where.")
+
+
+# The tint every icon SVG carries, so the generated docs draw it in the same
+# grey on GitHub's light and dark pages alike. Not a colour the PLUGIN reads -
+# icon_gen.py takes only the alpha and paints its own flat tint - which is
+# exactly why this needs a gate: a missing fill is invisible to every other
+# check and to the shipped .tga, and shows up only as a black glyph on a docs
+# page nobody diffs.
+ICON_SVG_FILL = 'fill="#808080"'
+
+
+def check_icon_svgs_carry_the_fill(failures):
+    """Every assets/icons/*.svg states its own fill.
+
+    docs/achievements.md embeds these files directly (<img src="../assets/
+    icons/X.svg">), so an SVG with no fill renders black instead of grey. Six
+    icons added straight from a Font Awesome download shipped that way in
+    1.30.3 and were caught by eye, after the unit gate, the docs gate and a
+    full CTest run had all passed on them - none of them looks at the file's
+    contents, and the .tga built from it is correct either way.
+    """
+    icons = sorted(glob.glob(os.path.join(REPO, "assets", "icons", "*.svg")))
+    # A glob that matches nothing passes every check in it vacuously; the tree
+    # has ~200 icons, so a fraction of that means the folder moved.
+    if len(icons) < 50:
+        failures.append(
+            f"check_icon_svgs_carry_the_fill: found only {len(icons)} icon SVGs under "
+            f"assets/icons (expected 50+) - the folder moved and this gate is "
+            f"checking nothing.")
+        return
+    for path in icons:
+        if ICON_SVG_FILL not in open(path, encoding="utf-8").read():
+            rel = os.path.relpath(path, REPO)
+            failures.append(
+                f"{rel}: no {ICON_SVG_FILL}. The docs embed this file directly, so "
+                f"without it the icon draws BLACK in docs/achievements.md. Add it to "
+                f"the <svg> tag; the shipped .tga is unaffected either way "
+                f"(icon_gen.py reads only the alpha).")
+
+
+# Every page in the repo that a tool writes. The note each one carries is the
+# only thing a reader has to tell a generated page from a hand-written one, and
+# it used to come in four shapes: a <sub> line, a full-size paragraph, an
+# invisible HTML comment, and a comment plus a duplicate footer.
+GENERATED_DOCS = (
+    "docs/achievements.md",
+    "docs/tricks.md",
+    "docs/spotter-reference.md",
+    "docs/spotter-pack-render.md",
+    "crash_analysis/KNOWN_GAME_CRASHES.md",
+    "usage_survey/REPORT.md",
+)
+
+
+def check_generated_doc_notes(failures):
+    """One shape for the note, on every generated page.
+
+    Title, intro, then ONE `<sub>Generated ... - do not edit. ...</sub>` line.
+    After the intro because a reader wants to know what the page is before how
+    it is made, and VISIBLE because the reader it addresses is someone about to
+    hand-edit it on GitHub - which is exactly who an HTML comment hides it from.
+
+    Fix a failure in the GENERATOR, never in the .md: the next run overwrites
+    the file. Each note names its own generator.
+    """
+    for rel in GENERATED_DOCS:
+        path = os.path.join(REPO, rel)
+        if not os.path.exists(path):
+            failures.append(
+                f"check_generated_doc_notes: {rel} is listed as generated but is missing. "
+                f"Remove it from GENERATED_DOCS, or restore it.")
+            continue
+        lines = open(path, encoding="utf-8").read().splitlines()
+        notes = [i for i, ln in enumerate(lines) if ln.startswith("<sub>Generated ")]
+        if len(notes) != 1:
+            failures.append(
+                f"{rel}: has {len(notes)} generated-doc notes, expected exactly 1. Every "
+                f'generated page carries one line starting "<sub>Generated " - see '
+                f"docs/achievements.md. Fix it in the generator, not here.")
+            continue
+        at = notes[0]
+        if "do not edit" not in lines[at]:
+            failures.append(
+                f'{rel}: its generated-doc note does not say "do not edit", which is the '
+                f"half a reader acts on.")
+        # After the intro: something that is not the title and not blank comes first.
+        if not any(ln.strip() and not ln.startswith("#") for ln in lines[:at]):
+            failures.append(
+                f"{rel}: the generated-doc note sits above the intro (line {at + 1}). It goes "
+                f"AFTER it - a reader wants to know what the page is before how it is made.")
+        for i, ln in enumerate(lines):
+            if "<!-- GENERATED" in ln.upper():
+                failures.append(
+                    f"{rel}:{i + 1}: a generated-doc note in an HTML comment, which renders "
+                    f"invisibly - so the one reader it is for, someone about to edit the page "
+                    f"on GitHub, is the one reader who cannot see it. Use the <sub> line.")
+
+
 def check_no_legacy_data_filenames(failures):
     """No user-visible text may name a data file the plugin migrated away from.
 
@@ -833,9 +975,7 @@ def check_documented_settings_paths(failures):
 def tracked_docs_all():
     """Every tracked .md outside vendor -- house-style and link checks want the
     changelog and licence file too, which DOCS deliberately excludes."""
-    out = subprocess.run(["git", "ls-files", "*.md"], cwd=REPO,
-                         capture_output=True, text=True).stdout.split()
-    return [f for f in out if not f.startswith("mxbmrp3/vendor/")]
+    return _tracked_md()
 
 
 def check_anchor_links(failures):
@@ -1142,6 +1282,19 @@ def check_shipped_theme_keys(failures):
     with open(assets, encoding="utf-8") as f:
         src = f.read()
     accepted = set(re.findall(r'std::strcmp\(key, "([^"]+)"\)', src))
+    # ...plus the keys reached through a PackIni constant rather than spelled
+    # inline. `[pack]`'s two keys are named once in pack_ini_path.h so the one
+    # section every pack type shares has a single spelling, which is exactly what
+    # makes them invisible to the literal scan above: without this the check
+    # reports the theme applier as having DROPPED pack.name, and the fix it
+    # suggests is to delete a documented line that works perfectly.
+    with open(os.path.join(REPO, "mxbmrp3", "core", "pack_ini_path.h"),
+              encoding="utf-8") as f:
+        pack_consts = dict(re.findall(
+            r'constexpr\s+const\s+char\*\s+(\w+)\s*=\s*"([^"]*)"', f.read()))
+    accepted |= {pack_consts[name]
+                 for name in re.findall(r'std::strcmp\(key, PackIni::(\w+)\)', src)
+                 if name in pack_consts}
     # The per-family overrides ([card] widget-content and friends) are a TABLE rather
     # than a run of strcmps, because six near-identical branches is what a table is
     # for. Read them too: this check exists so a documented key is a real one, and it
@@ -1377,6 +1530,9 @@ def main():
     check_build_sharing_gates_are_locked(failures)
     check_readme_toc(failures)
     check_no_legacy_data_filenames(failures)
+    check_legacy_redirect_stubs(failures)
+    check_icon_svgs_carry_the_fill(failures)
+    check_generated_doc_notes(failures)
     check_tooltip_ids_resolve(failures)
     check_documented_settings_paths(failures)
     check_anchor_links(failures)
@@ -1399,7 +1555,9 @@ def main():
     print(f"Docs clean: paths resolve (docs and source comments), invariants labelled, "
           f"named singletons exist, "
           f"symbols where docs say, build-sharing gates locked, gate tools installable, "
-          f"shipped themes share one geometry, CI and the gate list agree both "
+          f"shipped themes share one geometry, legacy redirects intact, "
+          f"icon SVGs tinted, generated docs noted alike, "
+          f"CI and the gate list agree both "
           f"ways, {sizes} bytes.")
     return 0
 

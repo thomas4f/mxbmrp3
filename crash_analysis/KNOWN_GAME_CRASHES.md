@@ -1,5 +1,3 @@
-<!-- GENERATED from known_game_crashes.json by tools/gen_known_crashes.py -- DO NOT EDIT BY HAND.
-     Edit known_game_crashes.json, then run: python3 tools/gen_known_crashes.py -->
 # Known MX Bikes crashes
 
 A quick reference for working out which MX Bikes crash you hit and whether there's a
@@ -7,6 +5,8 @@ workaround. These are crashes in the game itself, caught by the MXBMRP3 plugin's
 handler. They are not plugin bugs, and only PiBoSo (the game's developer) can fix them.
 (A few fault inside a shared component such as the Visual C++ runtime, but the bad input
 still comes from the game.)
+
+<sub>Generated from `crash_analysis/known_game_crashes.json` by `tools/gen_known_crashes.py` - do not edit. Edit the JSON, then run `python3 tools/gen_known_crashes.py`.</sub>
 
 
 ## Which crash did you hit?

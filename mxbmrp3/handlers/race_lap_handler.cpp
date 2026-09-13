@@ -220,12 +220,16 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
     if (raceNum == data.getPlayerRaceNum()) {
         bool isFastestLapForStats = (psRaceLap->bestFlag == 2);
         bool isRace = data.isRaceSession();
-        if (isRace) {
+        // Riding, not watching: a replay reports the player's own laps back, and
+        // the race rows must not be fed from one (see the classification
+        // handler's finish gate).
+        if (isRace && data.isPlayerRunning()) {
             // Where the player sits after this lap: Charger and Wire to Wire.
             const auto& order = data.getClassificationOrder();
             for (int i = 0; i < static_cast<int>(order.size()); ++i) {
                 if (order[i] == raceNum) {
-                    StatsManager::getInstance().exploration().onRaceLapPosition(completedLapNumZeroIndexed + 1, i + 1);
+                    StatsManager::getInstance().exploration().onRaceLapPosition(
+                        i + 1, completedLapNumZeroIndexed + 1);
                     break;
                 }
             }

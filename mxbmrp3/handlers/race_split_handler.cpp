@@ -3,6 +3,7 @@
 // Processes race split timing data for current lap tracking
 // ============================================================================
 #include "race_split_handler.h"
+#include "opening_line.h"
 #include "../core/handler_singleton.h"
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
@@ -55,6 +56,14 @@ void Handlers::handleRaceSplit(Unified::RaceSplitData* psRaceSplit) {
     // Update current lap split data (used by IdealLapHud for real-time tracking)
     // splitIndex is 0-indexed (0 = split 1, 1 = split 2, 2 = split 3/finish line)
     data.updateCurrentLapSplit(raceNum, lapNum, splitIndex, splitTime);
+
+    // The first split after the gate is the opening line (handlers/opening_line.h).
+    // Every split reports here, not only index 0: the splits are numbered from
+    // the start/finish line and a grid need not sit behind it, so on MXB Test
+    // Track the first line off the gate is split 2 - and with an index-0 test
+    // the row could never be earned there by anyone. The claim keeps its own
+    // arms, so every later split costs a couple of bool tests inside.
+    Handlers::claimOpeningLine(raceNum, splitIndex);
 
     // Spotter: every rider's split is a timing point for the pace tracker (it
     // may resolve a pending behind-gap report), and the focused rider's is

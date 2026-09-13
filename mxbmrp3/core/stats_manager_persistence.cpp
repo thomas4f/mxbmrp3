@@ -72,6 +72,8 @@ void StatsManager::load(const char* savePath) {
     m_personalBests.clear();
     m_bikeOdometers.clear();
     m_bikeCategories.clear();   // a reload must not keep stale bike->category mappings
+    m_trackNames.clear();
+    m_prestige = 0;
     m_globalStats = GlobalStats();
     m_fmx = FmxLifetimeStats();
     m_exploration.clear();
@@ -87,7 +89,7 @@ void StatsManager::load(const char* savePath) {
     if (!file.is_open()) {
         DEBUG_INFO_F("[StatsManager] No stats file found at %s", filePath.c_str());
         migrateOldFiles();
-        m_exploration.onStartup(m_savePath, PluginConstants::PLUGIN_VERSION);
+        m_exploration.onStartup(m_savePath);
         // Imported legacy odometers count toward Long Hauler like any other km.
         achievements.onStatsLoaded();
         return;
@@ -113,6 +115,12 @@ void StatsManager::load(const char* savePath) {
                          version, FILE_VERSION);
         }
 
+        // Prestige levels taken. Outside "global" deliberately: everything in
+        // that block is a counter the trade resets, and this is what the trade
+        // produces. Read FIRST -- the pbCount floor below asks whether this file
+        // has been prestiged.
+        m_prestige = (std::max)(j.value("prestige", 0), 0);
+
         // Parse global stats
         if (j.contains("global") && j["global"].is_object()) {
             const auto& g = j["global"];
@@ -129,7 +137,6 @@ void StatsManager::load(const char* savePath) {
             m_globalStats.rainRaceCount = (std::max)(g.value("rainRaceCount", 0), 0);
             m_globalStats.bigGridRaceCount = (std::max)(g.value("bigGridRaceCount", 0), 0);
             m_globalStats.maxSessionLaps = (std::max)(g.value("maxSessionLaps", 0), 0);
-            m_globalStats.maxSessionTimeMs = (std::max)(g.value("maxSessionTimeMs", static_cast<int64_t>(0)), static_cast<int64_t>(0));
             m_globalStats.penaltyFreeStreak = (std::max)(g.value("penaltyFreeStreak", 0), 0);
             m_globalStats.bestPenaltyFreeStreak = (std::max)(g.value("bestPenaltyFreeStreak", 0), m_globalStats.penaltyFreeStreak);
             m_globalStats.pbLeaps = (std::max)(g.value("pbLeaps", 0), 0);
@@ -146,8 +153,9 @@ void StatsManager::load(const char* savePath) {
             m_fmx.scrubs = (std::max)(f.value("scrubs", 0), 0);
             m_fmx.oppos = (std::max)(f.value("oppos", 0), 0);
             m_fmx.turnDowns = (std::max)(f.value("turnDowns", 0), 0);
-            m_fmx.longestAirtimeSec = static_cast<float>((std::max)(finiteOrZero(f.value("longestAirtimeSec", 0.0)), 0.0));
+            m_fmx.endos = (std::max)(f.value("endos", 0), 0);
             m_fmx.longestWheelieSec = static_cast<float>((std::max)(finiteOrZero(f.value("longestWheelieSec", 0.0)), 0.0));
+            m_fmx.longestEndoSec = static_cast<float>((std::max)(finiteOrZero(f.value("longestEndoSec", 0.0)), 0.0));
             m_fmx.wheelieDistanceM = (std::max)(finiteOrZero(f.value("wheelieDistanceM", 0.0)), 0.0);
             m_fmx.bestChainScore = (std::max)(f.value("bestChainScore", 0), 0);
             if (f.contains("kinds") && f["kinds"].is_array()) {
@@ -211,7 +219,24 @@ void StatsManager::load(const char* savePath) {
         // pbCount arrived after the personal bests did: a file written before it
         // existed has PBs and a zero counter, and Personal Best would sit at
         // "0 / 1" under a list of them. The stored PBs are a floor for the count.
-        m_globalStats.pbCount = (std::max)(m_globalStats.pbCount, static_cast<int>(m_personalBests.size()));
+        //
+        // NOT ON A PRESTIGED FILE. Prestige keeps the personal bests and zeroes
+        // every counter, so such a file legitimately holds a shelf of PBs beside
+        // a pbCount of 0. The counter is written sparsely (zero is absent), so
+        // there is no "was the key there" to test -- the prestige level is the
+        // only thing that tells the two zeroes apart, and without this the trade
+        // would hand Personal Best straight back on the next load.
+        if (m_prestige == 0) {
+            m_globalStats.pbCount = (std::max)(m_globalStats.pbCount, static_cast<int>(m_personalBests.size()));
+        }
+
+        // Track display names, by track id. Purely for showing a name where the
+        // records only carry an id; a missing entry degrades to the id itself.
+        if (j.contains("trackNames") && j["trackNames"].is_object()) {
+            for (auto& [trackId, nameJson] : j["trackNames"].items()) {
+                if (nameJson.is_string()) m_trackNames[trackId] = nameJson.get<std::string>();
+            }
+        }
 
         // Parse bike-to-category mapping
         if (j.contains("bikeCategories") && j["bikeCategories"].is_object()) {
@@ -256,7 +281,9 @@ void StatsManager::load(const char* savePath) {
                 }
             }
             m_exploration.restoreScalars(ex.value("firstRunDate", ""), ex.value("lastDay", 0),
-                                         ex.value("crashDumpsSeen", 0), (std::max)(ex.value("dayStreak", 0), 0));
+                                         ex.value("crashDumpsSeen", 0), (std::max)(ex.value("dayStreak", 0), 0),
+                                         ex.value("rideDay", 0),
+                                         finiteOrZero(ex.value("todayRideSec", 0.0)));
         }
 
         DEBUG_INFO_F("[StatsManager] Loaded stats: %zu track/bike combos, %zu bikes, %zu PBs from %s",
@@ -286,7 +313,7 @@ void StatsManager::load(const char* savePath) {
     // What this startup itself says (days, versions, packs, the build), then:
     // whatever was loaded (or not), the achievements now reflect it -- silent
     // grants for anything already met, one summary toast if there were any.
-    m_exploration.onStartup(m_savePath, PluginConstants::PLUGIN_VERSION);
+    m_exploration.onStartup(m_savePath);
     achievements.onStatsLoaded();
 }
 
@@ -345,9 +372,6 @@ void StatsManager::save() {
         if (m_globalStats.maxSessionLaps > 0) {
             global["maxSessionLaps"] = m_globalStats.maxSessionLaps;
         }
-        if (m_globalStats.maxSessionTimeMs > 0) {
-            global["maxSessionTimeMs"] = m_globalStats.maxSessionTimeMs;
-        }
         if (m_globalStats.penaltyFreeStreak > 0) {
             global["penaltyFreeStreak"] = m_globalStats.penaltyFreeStreak;
         }
@@ -371,8 +395,9 @@ void StatsManager::save() {
             fmx["scrubs"] = m_fmx.scrubs;
             fmx["oppos"] = m_fmx.oppos;
             fmx["turnDowns"] = m_fmx.turnDowns;
-            fmx["longestAirtimeSec"] = m_fmx.longestAirtimeSec;
+            fmx["endos"] = m_fmx.endos;
             fmx["longestWheelieSec"] = m_fmx.longestWheelieSec;
+            fmx["longestEndoSec"] = m_fmx.longestEndoSec;
             fmx["wheelieDistanceM"] = m_fmx.wheelieDistanceM;
             fmx["bestChainScore"] = m_fmx.bestChainScore;
             nlohmann::json kinds = nlohmann::json::array();
@@ -431,6 +456,17 @@ void StatsManager::save() {
 
         j["trackBike"] = trackBike;
 
+        // Track display names (only for tracks we have learned a name for).
+        if (!m_trackNames.empty()) {
+            nlohmann::json trackNames = nlohmann::json::object();
+            for (const auto& [trackId, name] : m_trackNames) {
+                trackNames[trackId] = name;
+            }
+            j["trackNames"] = trackNames;
+        }
+
+        if (m_prestige > 0) j["prestige"] = m_prestige;
+
         // Bike-to-category mapping
         if (!m_bikeCategories.empty()) {
             nlohmann::json bikeCategories = nlohmann::json::object();
@@ -474,6 +510,12 @@ void StatsManager::save() {
             if (m_exploration.lastDay() != 0) ex["lastDay"] = m_exploration.lastDay();
             if (m_exploration.crashDumpsSeen() > 0) ex["crashDumpsSeen"] = m_exploration.crashDumpsSeen();
             if (m_exploration.dayStreak() > 0) ex["dayStreak"] = m_exploration.dayStreak();
+            // Iron Butt's running day total, so a crash costs at most the
+            // stint since the last save rather than the whole day.
+            if (m_exploration.rideDay() != 0) {
+                ex["rideDay"] = m_exploration.rideDay();
+                ex["todayRideSec"] = finiteOrZero(m_exploration.todayRideSec());
+            }
             if (!ex.empty()) j["exploration"] = ex;
         }
 

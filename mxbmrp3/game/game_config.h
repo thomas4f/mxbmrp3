@@ -182,6 +182,18 @@
     #define GAME_SECTOR_COUNT 3
 #endif
 
+// Achievements, the Prestige trade and the badge widget (MX Bikes only). The
+// catalogue is written against MX Bikes: two thirds of its rows are that game's
+// racing, conduct and freestyle, and the ones that survive elsewhere are the
+// generic mileage counters -- a page of those alone is not the feature. Off, the
+// manager registers no rows, so nothing evaluates, nothing is earned and nothing
+// is written; the two widgets and the settings tab go with it.
+#if defined(GAME_MXBIKES)
+    #define GAME_HAS_ACHIEVEMENTS 1
+#else
+    #define GAME_HAS_ACHIEVEMENTS 0
+#endif
+
 // External lap records providers (CBR, MXB-Ranked - MX Bikes only)
 #if defined(GAME_MXBIKES)
     #define GAME_HAS_RECORDS_PROVIDER 1

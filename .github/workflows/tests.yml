@@ -210,7 +210,7 @@ jobs:
       - name: Theme slicer (mxbmrp3_themeslice) round trip
         run: python3 ./tools/themeslice/themeslice.py --selftest
 
-      # The analytics report generator (Aptabase export -> analytics/REPORT.md)
+      # The usage-survey report generator (Aptabase export -> usage_survey/REPORT.md)
       # ships a synthetic-data self-test covering install_id dedup, coverage,
       # dev exclusions, the known-crash join and per-game adoption. Guards edits
       # to analytics_report.py / analytics_svg.py.

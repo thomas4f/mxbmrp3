@@ -4,6 +4,7 @@
 // ============================================================================
 #pragma once
 
+#include <cctype>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -117,6 +118,19 @@ public:
     // caller that forwards the result into a UTF-8-validating sink (e.g. the
     // web overlay JSON via nlohmann) must still guard that boundary.
     static std::string sanitizeUntrusted(const char* s, size_t maxChars = 256);
+
+    // ASCII-lowercase in place, for the case-insensitive matches the parsers do
+    // (an ini section header, a release asset's filename). Header-inline because
+    // it is three lines and every caller is a parse loop.
+    //
+    // THE CAST IS THE POINT. std::tolower takes an int that must be EOF or
+    // representable as unsigned char, and char is signed on MSVC - so any byte
+    // from 0x80 up (an accented letter in a pack name) arrives negative and the
+    // call is undefined behaviour. Written out by hand it compiles clean and
+    // works until someone names a folder "Cafe" with the accent on.
+    static void toLowerAscii(std::string& s) {
+        for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
 
     // Truncate a display string to maxChars visible code points, appending "..."
     // when cut (the ellipsis is folded *into* the budget, so for maxChars > 3 the

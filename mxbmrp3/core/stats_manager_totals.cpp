@@ -54,6 +54,8 @@ void StatsManager::recomputeGlobalTotals() const {
     m_cachedTotalOdometer = 0.0;
     m_cachedMaxTrackLaps = 0;
     m_cachedMaxBikeOdometer = 0.0;
+    m_cachedMaxTrackId.clear();
+    m_cachedMaxBikeName.clear();
     // Laps per track across its bikes, for the max: keys are "trackId|bikeName".
     std::unordered_map<std::string, int> trackLaps;
     for (const auto& [key, stats] : m_trackBikeStats) {
@@ -66,12 +68,21 @@ void StatsManager::recomputeGlobalTotals() const {
         m_cachedTotalPenalties += stats.penaltyCount;
         m_cachedTotalPenaltyTimeMs += stats.penaltyTimeMs;
     }
-    for (const auto& [_, distance] : m_bikeOdometers) {
+    // The holder is recorded with the maximum, not looked up afterwards: a
+    // second pass would have to re-derive the same comparison and could pick a
+    // different tie.
+    for (const auto& [bike, distance] : m_bikeOdometers) {
         m_cachedTotalOdometer += distance;
-        if (distance > m_cachedMaxBikeOdometer) m_cachedMaxBikeOdometer = distance;
+        if (distance > m_cachedMaxBikeOdometer) {
+            m_cachedMaxBikeOdometer = distance;
+            m_cachedMaxBikeName = bike;
+        }
     }
-    for (const auto& [_, laps] : trackLaps) {
-        if (laps > m_cachedMaxTrackLaps) m_cachedMaxTrackLaps = laps;
+    for (const auto& [track, laps] : trackLaps) {
+        if (laps > m_cachedMaxTrackLaps) {
+            m_cachedMaxTrackLaps = laps;
+            m_cachedMaxTrackId = track;
+        }
     }
     m_globalTotalsDirty = false;
 }
@@ -84,6 +95,26 @@ int StatsManager::getMaxLapsAtOneTrack() const {
 double StatsManager::getMaxOdometerOnOneBike() const {
     if (m_globalTotalsDirty) recomputeGlobalTotals();
     return m_cachedMaxBikeOdometer;
+}
+
+const std::string& StatsManager::getMaxLapsTrackId() const {
+    if (m_globalTotalsDirty) recomputeGlobalTotals();
+    return m_cachedMaxTrackId;
+}
+
+const std::string& StatsManager::getMaxOdometerBikeName() const {
+    if (m_globalTotalsDirty) recomputeGlobalTotals();
+    return m_cachedMaxBikeName;
+}
+
+// BY VALUE, not by reference. The fallback is the ARGUMENT, so a reference
+// return handed back whatever the caller passed - fine for today's two call
+// sites, which both pass a member, and a dangle the first time someone passes
+// a temporary. A track name is read once per settings rebuild, never per frame,
+// so the copy costs nothing worth the trap.
+std::string StatsManager::getTrackDisplayName(const std::string& trackId) const {
+    const auto it = m_trackNames.find(trackId);
+    return it != m_trackNames.end() && !it->second.empty() ? it->second : trackId;
 }
 
 int StatsManager::getGlobalTotalLaps() const {
@@ -132,21 +163,27 @@ void StatsManager::recomputeDistinctCounts() const {
     // Keys are "trackId|bikeName"; a track counts once however many bikes were
     // ridden on it, and a bike counts once from its odometer entry (created on
     // the first context set, like the track+bike record).
+    // A LAP, not a load. The entry below is created the moment a track and bike
+    // are selected, so counting keys counted every track ever opened - which is
+    // how "apparently I've ridden 328 different tracks" happened on stream. One
+    // valid lap is the smallest thing that means you actually rode it.
     std::unordered_map<std::string, bool> tracks;
-    for (const auto& [key, _] : m_trackBikeStats) {
+    std::unordered_map<std::string, bool> lappedBikes;
+    for (const auto& [key, st] : m_trackBikeStats) {
+        if (st.validLaps <= 0) continue;
         const size_t bar = key.find('|');
         tracks[bar == std::string::npos ? key : key.substr(0, bar)] = true;
+        if (bar != std::string::npos) lappedBikes[key.substr(bar + 1)] = true;
     }
     tracks.erase("");
     m_cachedDistinctTracks = static_cast<int>(tracks.size());
-    int bikes = 0;
-    for (const auto& [name, _] : m_bikeOdometers) {
-        if (!name.empty()) ++bikes;
-    }
-    m_cachedDistinctBikes = bikes;
+    lappedBikes.erase("");
+    m_cachedDistinctBikes = static_cast<int>(lappedBikes.size());
+    // A class counts once one of its bikes has been round, for the same reason.
     std::unordered_map<std::string, bool> classes;
-    for (const auto& [_, category] : m_bikeCategories) {
-        if (!category.empty()) classes[category] = true;
+    for (const auto& [name, category] : m_bikeCategories) {
+        if (category.empty() || !lappedBikes.count(name)) continue;
+        classes[category] = true;
     }
     m_cachedDistinctBikeClasses = static_cast<int>(classes.size());
     m_distinctDirty = false;

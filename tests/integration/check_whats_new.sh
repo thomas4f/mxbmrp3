@@ -44,6 +44,10 @@ fi
 current="${major}.${minor}"
 
 # The version string of every marker row: the third field of each { ... } entry.
+# A Gate::Unlocked row writes `nullptr` there rather than a version -- it is live
+# from the moment a player earns the row it bands, on any release, so there is no
+# line for it to fall behind. The pattern needs a quoted third field, so those
+# rows are skipped here by construction rather than by a special case.
 mapfile -t versions < <(grep -oP '\{\s*SettingsHud::TAB_\w+\s*,\s*"[^"]*"\s*,\s*"\K[^"]+' "${TABLE}")
 
 fail=0

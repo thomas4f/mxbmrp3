@@ -74,11 +74,23 @@ void SpotterWidget::rebuildRenderData() {
 
     // Subtitles off, or nothing recent to show: render nothing. Bounds are
     // cleared too, so an invisible widget never eats drag clicks.
-    if (m_text.empty() ||
-        !SpotterManager::getInstance().isSubtitlesEnabled()) {
+    //
+    // UNLESS THE SPOTTER TAB IS OPEN (isPreviewing), in which case a sample cue
+    // stands in so the widget can be dragged into place -- most of a session it
+    // has nothing to say, which is exactly when a player wants to position it.
+    // Subtitles being OFF is still off: that switch says the player does not want
+    // this widget's content at all, and a preview would argue with it.
+    const bool subtitlesOn = SpotterManager::getInstance().isSubtitlesEnabled();
+    if (!subtitlesOn || (m_text.empty() && !isPreviewing())) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
+    // A real cue's SHAPE, so the bar is the width one will actually be, with the
+    // word that says why it is on screen at all. Never routed through
+    // SpotterManager -- nothing is spoken, logged or sent to the overlay.
+    static constexpr char kSampleCue[] = "Preview - rider on your inside";
+    const char* text = m_text.empty() ? kSampleCue : m_text.c_str();
+    const size_t textLen = m_text.empty() ? sizeof(kSampleCue) - 1 : m_text.size();
 
     const auto dim = getScaledDimensions();
     const unsigned long textColor = getColor(ColorSlot::PRIMARY);
@@ -87,7 +99,7 @@ void SpotterWidget::rebuildRenderData() {
     // Monospace estimate over a proportional font: slightly generous card,
     // never a clipped one.
     want.contentW = PluginUtils::calculateMonospaceTextWidth(
-        static_cast<int>(m_text.size()), dim.fontSize);
+        static_cast<int>(textLen), dim.fontSize);
     want.sectionH = { dim.lineHeightNormal };
     want.captionW = planTitleWidth(dim, "Spotter");
     PanelPlan& p = planPanel(dim, want);
@@ -95,7 +107,7 @@ void SpotterWidget::rebuildRenderData() {
     addPlanBackground(p, 0.0f, 0.0f);
     addPlanTitle(p, "Spotter", getFont(FontCategory::TITLE), textColor);
 
-    addString(m_text.c_str(), p.contentX(),
+    addString(text, p.contentX(),
               inkCenteredY(p.contentY(), dim.lineHeightNormal, dim.fontSize),
               Justify::LEFT, getFont(FontCategory::NORMAL), textColor,
               dim.fontSize);

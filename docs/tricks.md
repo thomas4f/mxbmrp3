@@ -1,8 +1,8 @@
 # FMX tricks
 
-GENERATED from `mxbmrp3/core/fmx_types.h` and `mxbmrp3/core/fmx_scoring.h` by `tests/unit/test_fmx_scoring.cpp` - do not edit. When a trick or a number changes, run the unit gate and copy `/tmp/tricks.new.md` over this file.
-
 What the FMX HUD recognises, what each trick is worth and how a score is built, at the defaults. Left and right variants are one trick here, as in the settings: `trickEnabled_<INI key>=0` under `[FmxHud]` in the settings file turns one off, both directions at once. *Base* is the score before the multipliers below; *Scored on* is the axis whose rotation scales it; *Full progress* is what fills the HUD's bar.
+
+<sub>Generated from `mxbmrp3/core/fmx_types.h` and `mxbmrp3/core/fmx_scoring.h` by `tests/unit/test_fmx_scoring.cpp` - do not edit. Run the unit gate and copy `/tmp/tricks.new.md` over this file.</sub>
 
 ## Ground tricks
 
@@ -32,8 +32,8 @@ An air trick classifies once the bike has been off the ground 0.3 s; before that
 | Scrub (L/R) | `Scrub` | 30 | roll | 90 deg of roll | Rolled, or took off leaned, past 30 deg, short of a barrel roll |
 | Whip (L/R) | `Whip` | 25 | yaw | 90 deg of yaw | Yawed past 30 deg with the nose level, short of a spin |
 | Spin (L/R) | `Spin` | 120 | yaw | 360 deg of yaw | Yawed through 270 deg |
-| Oppo (L/R) | `Oppo` | 60 | yaw | 90 deg of yaw | Yawed past 67.5 deg with the nose up past 67.5 deg |
-| Turn Down (L/R) | `TurnDown` | 60 | yaw | 90 deg of yaw | Yawed past 67.5 deg with the nose down past 67.5 deg |
+| Oppo (L/R) | `Oppo` | 60 | yaw | 90 deg of yaw | Yawed past 67.5 deg with the nose up past 55 deg |
+| Turn Down (L/R) | `TurnDown` | 60 | yaw | 90 deg of yaw | Yawed past 67.5 deg with the nose down past 55 deg |
 | Flat 360 (L/R) | `Flat360` | 180 | pitch | 360 deg of pitch or roll | A flip rolled between 80 deg and 180 deg |
 
 ## Scoring

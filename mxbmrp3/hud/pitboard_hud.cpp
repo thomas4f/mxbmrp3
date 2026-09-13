@@ -283,8 +283,13 @@ void PitboardHud::rebuildRenderData() {
     clearStrings();
     m_quads.clear();
 
-    // Check visibility based on display mode
-    if (!shouldBeVisible()) {
+    // Check visibility based on display mode.
+    //
+    // ...unless the Pitboard tab is open (isPreviewing): At-Splits and In-Pit both
+    // show the board for a few seconds at a point on the lap, which is no time to
+    // drag it anywhere. The board below already fills every row it has no data for
+    // with a placeholder, so there is nothing to fake -- it just has to draw.
+    if (!shouldBeVisible() && !isPreviewing()) {
         // Not visible - set empty bounds
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
@@ -354,7 +359,13 @@ void PitboardHud::rebuildRenderData() {
     // Row 1: Rider ID (race number + truncated name) - centered
     if (m_enabledRows & ROW_RIDER_ID) {
         char riderIdStr[32];
-        if (raceEntry) {
+        if (isPreviewing()) {
+            // WHOSE BOARD THIS IS, is what this row answers -- so while the board
+            // is only here because its tab is open, it answers that instead. Every
+            // other row is the player's real data and stays that way; nothing on
+            // this board is invented except this word.
+            snprintf(riderIdStr, sizeof(riderIdStr), "%s", "PREVIEW");
+        } else if (raceEntry) {
             snprintf(riderIdStr, sizeof(riderIdStr), "%s %s",
                      raceEntry->formattedRaceNum, raceEntry->truncatedName);
         } else if (displayRaceNum > 0) {

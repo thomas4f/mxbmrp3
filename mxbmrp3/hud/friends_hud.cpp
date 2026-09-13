@@ -153,6 +153,9 @@ void FriendsHud::rebuildRenderData() {
             kEmptyMsg  = "No friends in-game";
         }
     }
+    // The panel is here because its tab is open, not because anything happened --
+    // say so where the empty card already speaks, rather than inventing a friend.
+    if (empty && isPreviewing()) { kEmptyMsg = "Preview - friends appear here"; kEmptyHint = nullptr; }
     const int emptyLines = kEmptyHint ? 2 : 1;
 
     // Show-mode gate: the Visible toggle is the master on/off; this decides
@@ -166,7 +169,11 @@ void FriendsHud::rebuildRenderData() {
         case ShowMode::ON_JOIN:      display = m_activityShowing; break;
         default:                     display = true;            break;
     }
-    if (!display) {
+    // ...unless the Friends tab is open (isPreviewing): "With friends" and "On
+    // join" both leave the panel off screen most of the time, which is when it has
+    // to be positioned. The empty-state card below is what it stands in with, so
+    // there is no fake friend anywhere.
+    if (!display && !isPreviewing()) {
         setBounds(START_X, START_Y, START_X, START_Y);
         return;
     }

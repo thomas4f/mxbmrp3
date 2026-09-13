@@ -5,6 +5,7 @@
 #include "fmx_hud.h"
 
 #include <cstdio>
+#include <cstring>
 #include <cmath>
 #include <algorithm>
 
@@ -13,6 +14,8 @@
 #include "../core/color_config.h"
 #include "../core/plugin_data.h"
 #include "../core/fmx_manager.h"
+#include "../core/asset_manager.h"
+#include "../core/ui_config.h"
 
 using namespace PluginConstants;
 using namespace PluginConstants::Math;
@@ -68,7 +71,7 @@ SmallVec<float, 8> FmxHud::sectionHeights(const ScaledDimensions& dim) const {
         const float activeTrickAdvance = dim.fontSizeLarge + (dim.lineHeightLarge - dim.fontSizeExtraLarge);
         float h = head + (m_maxChainDisplayRows - 1) * dim.lineHeightNormal + activeTrickAdvance;
         if (m_enabledRows & ROW_TRICK_STATS) {
-            h += dim.lineHeightNormal;  // Trick stats row (duration + distance + rotation)
+            h += dim.lineHeightNormal;  // Trick stats row (duration + distance + height + rotation)
         }
         out.push_back(h);
     }
@@ -139,16 +142,45 @@ void FmxHud::rebuildRenderData() {
     // Chain tricks list — used by both trick stack and combo arc sections
     const auto& chainTricks = fmx.getChainTricks();
 
+    // THE ENDED CHAIN HOLDS THROUGH A CRASH. FmxManager's ChainEndAnimation
+    // lingers a finished chain for chainPeriod and then clears it; the rotation
+    // arcs already hold their snapshot and their red for the whole crashed state,
+    // past that timer, until recovery. The stack, multiplier and scores follow:
+    // while the animation runs its numbers are copied here, and while the rider
+    // is still down after it ends the copy stays on screen in the same colour.
+    const RiderTrackState* playerPos = PluginData::getInstance().getPlayerTrackPosition();
+    const bool isCrashed = playerPos && playerPos->crashed;
+    const auto& endAnim = fmx.getChainEndAnimation();
+    if (endAnim.active) {
+        m_comboHold.held = true;
+        m_comboHold.success = endAnim.success;
+        m_comboHold.hasTricks = !endAnim.chainTricks.empty();
+        m_comboHold.multiplier = fmx.calculateChainMultiplier(endAnim.chainTricks);
+        m_comboHold.trickScore = m_comboHold.hasTricks ? endAnim.chainTricks.back().finalScore : 0;
+        m_comboHold.chainScore = endAnim.chainScore;
+    } else if (!isCrashed) {
+        m_comboHold.held = false;
+    }
+    // What the combo block shows: the ended chain (animating, or held down), or
+    // the live one.
+    const bool lingering = m_comboHold.held;
+    const unsigned long lingerColor = m_comboHold.success
+        ? this->getColor(ColorSlot::POSITIVE)
+        : this->getColor(ColorSlot::NEGATIVE);
+
     // === Rows: Trick Stack (shows chain of tricks) — above the combo arc ===
     if (isTrickStackEnabled()) {
         currentY = plan.contentY(section++);
         addSectionHeading("Trick Stack", contentStartX, currentY, dim);
         currentY += sectionHeadingRowHeight(dim);
 
-        const auto& endAnimStack = fmx.getChainEndAnimation();
+        const auto& endAnimStack = endAnim;
 
-        // Build list of tricks to display (oldest first, newest at bottom)
-        m_trickStack.clear();
+        // Build list of tricks to display (oldest first, newest at bottom). Held
+        // past the animation (crashed), the stack keeps what it last built: the
+        // manager has cleared its snapshot by then.
+        const bool holdStack = lingering && !endAnimStack.active;
+        if (!holdStack) m_trickStack.clear();
 
         // Helper: append a trick entry to the stack (formats name into fixed buffer)
         auto pushTrick = [this](Fmx::TrickType type, int multiplier, unsigned long color) {
@@ -158,16 +190,13 @@ void FmxHud::rebuildRenderData() {
             m_trickStack.push_back(entry);
         };
 
-        // Check if chain-end animation is active (success or failure)
-        if (endAnimStack.active) {
+        if (holdStack) {
+            // kept as built
+        } else if (endAnimStack.active) {
             // Linger the ended chain — green if completed, red if failed
-            unsigned long endColor = endAnimStack.success
-                ? this->getColor(ColorSlot::POSITIVE)
-                : this->getColor(ColorSlot::NEGATIVE);
-
             for (size_t i = 0; i < endAnimStack.chainTricks.size(); ++i) {
                 const auto& endedTrick = endAnimStack.chainTricks[i];
-                pushTrick(endedTrick.type, endedTrick.multiplier, endColor);
+                pushTrick(endedTrick.type, endedTrick.multiplier, lingerColor);
             }
         } else {
             // Normal display logic
@@ -242,7 +271,7 @@ void FmxHud::rebuildRenderData() {
         }
     }
 
-    // === Row: Trick Stats (duration + distance + rotation) ===
+    // === Row: Trick Stats (duration + distance + height + rotation) ===
     if (isTrickStackEnabled() && (m_enabledRows & ROW_TRICK_STATS)) {
         // Same visibility gate as trick name: must be past progress threshold
         bool pastThreshold = trick.progress >= Fmx::getMinProgress(trick.type);
@@ -253,6 +282,7 @@ void FmxHud::rebuildRenderData() {
         if (hasActiveTrick) {
             m_statsSnapshot.duration = trick.duration;
             m_statsSnapshot.distance = trick.distance;
+            m_statsSnapshot.height = trick.peakHeight;
             // Peak rotation on the trick's primary axis (pitch for flips, yaw for spins, etc.)
             switch (Fmx::getPrimaryAxis(trick.type)) {
                 case Fmx::RotationAxis::PITCH: m_statsSnapshot.rotation = std::abs(rotation.peakPitch); break;
@@ -262,21 +292,15 @@ void FmxHud::rebuildRenderData() {
             }
             m_statsSnapshot.hasData = true;
         } else if (trick.state == Fmx::TrickState::IDLE && score.chainCount == 0 &&
-                   !fmx.getChainEndAnimation().active) {
+                   !endAnim.active && !isCrashed) {
+            // Truly idle and recovered. While the rider is still down the row
+            // holds, like the arcs and the combo block - in plain text, since
+            // a trick's measurements are not the thing that was lost.
             m_statsSnapshot = StatsSnapshot();
         }
 
         if (m_statsSnapshot.hasData) {
-            char statsBuffer[64];
-            if (m_statsSnapshot.rotation >= 1.0f) {
-                snprintf(statsBuffer, sizeof(statsBuffer), "%.1fs  %.1fm  %.0fd",
-                    m_statsSnapshot.duration, m_statsSnapshot.distance, m_statsSnapshot.rotation);
-            } else {
-                snprintf(statsBuffer, sizeof(statsBuffer), "%.1fs  %.1fm",
-                    m_statsSnapshot.duration, m_statsSnapshot.distance);
-            }
-            addString(statsBuffer, contentStartX, currentY, Justify::LEFT,
-                this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
+            addTrickStatsRow(contentStartX, currentY, contentWidth, dim, textColor);
         }
         currentY += dim.lineHeightNormal;
     }
@@ -305,7 +329,6 @@ void FmxHud::rebuildRenderData() {
         // Fill arc
         unsigned long comboFillColor = this->getColor(ColorSlot::NEUTRAL);
 
-        const auto& endAnim = fmx.getChainEndAnimation();
         bool inChain = trick.state == Fmx::TrickState::CHAIN ||
                        (trick.state == Fmx::TrickState::ACTIVE && score.chainCount > 0);
 
@@ -355,8 +378,7 @@ void FmxHud::rebuildRenderData() {
                           0.0f, fillEndRad, comboFillColor, fillSegments);
         }
 
-        // Center text — chain multiplier (title font, always visible)
-        const auto& endAnimArc = fmx.getChainEndAnimation();
+        // Center text — chain multiplier (always visible)
         bool hasCommittedTrick =
             (trick.state == Fmx::TrickState::ACTIVE || trick.state == Fmx::TrickState::GRACE) &&
             trick.type != Fmx::TrickType::NONE &&
@@ -364,11 +386,24 @@ void FmxHud::rebuildRenderData() {
 
         // Calculate chain multiplier, including the active trick to show "potential"
         // multiplier — gives immediate feedback as the player starts a new trick.
-        Fmx::TrickType extraType = hasCommittedTrick ? trick.type : Fmx::TrickType::NONE;
-        float chainMultiplier = fmx.calculateChainMultiplier(chainTricks, extraType);
+        //
+        // FOR THE ENDED CHAIN IT IS THE HELD ONE, like the Score and Chain values
+        // and the trick stack: the manager has moved the live chain out by then,
+        // so read live it snapped to 1.0 in plain text the instant a chain broke,
+        // and the one number a player wants to see is the one they lost. The
+        // snapshot already carries the trick that failed (failTrick appends it),
+        // so the value freezes at what was on screen the frame before.
+        float chainMultiplier;
+        unsigned long multColor = textColor;
+        if (lingering) {
+            chainMultiplier = m_comboHold.multiplier;
+            multColor = lingerColor;
+        } else {
+            Fmx::TrickType extraType = hasCommittedTrick ? trick.type : Fmx::TrickType::NONE;
+            chainMultiplier = fmx.calculateChainMultiplier(chainTricks, extraType);
+        }
         char multiplierText[16];
         snprintf(multiplierText, sizeof(multiplierText), "%.1f", chainMultiplier);
-        unsigned long multColor = textColor;
         // THE PAIR IS ONE BLOCK, centred as one. This centred the FIRST ROW on the
         // arc's middle (centre - fontSize/2, the single-row formula) and then hung
         // the "x" a small line below it, which put the visible pair half a small line
@@ -379,9 +414,9 @@ void FmxHud::rebuildRenderData() {
         float multValueY = arcCenterY - multBlockH * 0.5f;
         float multXY = multValueY + dim.lineHeightSmall;
         addString(multiplierText, arcCenterX, multValueY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE), multColor, dim.fontSize);
+            this->getFont(FontCategory::DIGITS), multColor, dim.fontSize);
         addString("x", arcCenterX, multXY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
+            this->getFont(FontCategory::TITLE), multColor, dim.fontSize);   // one block, one colour
 
         // Score lines — to the right of the arc (title font, three rows)
         // Line 2 (chain score) aligns with the multiplier text inside the arc
@@ -404,12 +439,10 @@ void FmxHud::rebuildRenderData() {
             int displayTrickScore = 0;
             unsigned long trickScoreColor = textColor;
 
-            if (endAnimArc.active && !endAnimArc.chainTricks.empty()) {
+            if (lingering && m_comboHold.hasTricks) {
                 // Linger the final trick's score — green on completion, red on failure
-                displayTrickScore = endAnimArc.chainTricks.back().finalScore;
-                trickScoreColor = endAnimArc.success
-                    ? this->getColor(ColorSlot::POSITIVE)
-                    : this->getColor(ColorSlot::NEGATIVE);
+                displayTrickScore = m_comboHold.trickScore;
+                trickScoreColor = lingerColor;
             } else if (hasCommittedTrick && trick.finalScore > 0) {
                 displayTrickScore = trick.finalScore;
                 // Orange throughout ACTIVE+GRACE — only safe once banked into chain
@@ -420,7 +453,7 @@ void FmxHud::rebuildRenderData() {
                 this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
             PluginUtils::formatScore(displayTrickScore, trickScoreText, sizeof(trickScoreText));
             addString(trickScoreText, valueX, scoreLine1Y, Justify::LEFT,
-                this->getFont(FontCategory::TITLE), trickScoreColor, dim.fontSize);
+                this->getFont(FontCategory::DIGITS), trickScoreColor, dim.fontSize);
         }
 
         // Line 2: Chain score (always visible, accumulates as tricks are banked)
@@ -429,11 +462,9 @@ void FmxHud::rebuildRenderData() {
             int displayChainScore = score.chainScore;
             unsigned long chainScoreColor = textColor;
 
-            if (endAnimArc.active) {
-                displayChainScore = endAnimArc.chainScore;
-                chainScoreColor = endAnimArc.success
-                    ? this->getColor(ColorSlot::POSITIVE)
-                    : this->getColor(ColorSlot::NEGATIVE);
+            if (lingering) {
+                displayChainScore = m_comboHold.chainScore;
+                chainScoreColor = lingerColor;
             } else if (displayChainScore > 0) {
                 chainScoreColor = this->getColor(ColorSlot::NEUTRAL);
             }
@@ -442,7 +473,7 @@ void FmxHud::rebuildRenderData() {
                 this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
             PluginUtils::formatScore(displayChainScore, chainScoreText, sizeof(chainScoreText));
             addString(chainScoreText, valueX, scoreLine2Y, Justify::LEFT,
-                this->getFont(FontCategory::TITLE), chainScoreColor, dim.fontSize);
+                this->getFont(FontCategory::DIGITS), chainScoreColor, dim.fontSize);
         }
 
         // Line 3: Session total (always visible)
@@ -452,7 +483,7 @@ void FmxHud::rebuildRenderData() {
             addString("Total", labelX, scoreLine3Y, Justify::LEFT,
                 this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
             addString(sessionScoreText, valueX, scoreLine3Y, Justify::LEFT,
-                this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
+                this->getFont(FontCategory::DIGITS), textColor, dim.fontSize);
         }
 
         currentY += outerRadius * 2.0f;   // the arc is the block; see sectionHeights
@@ -480,13 +511,12 @@ void FmxHud::rebuildRenderData() {
         bool airborneActive = trick.state == Fmx::TrickState::ACTIVE &&
                               trick.isCurrentlyAirborne;
 
-        // Crash state: while the rider is crashed, freeze the arc snapshot and turn
-        // the markers red, holding both for the entire crashed state (until recovery)
-        // — matching the bars/g-force widgets. Without the !isCrashed guard on the
-        // IDLE branch below, the failure animation's timer would expire mid-crash and
-        // reset the arcs to live tracking while the rider is still down.
-        const RiderTrackState* playerPos = PluginData::getInstance().getPlayerTrackPosition();
-        bool isCrashed = playerPos && playerPos->crashed;
+        // Crash state (isCrashed, read once above): while the rider is crashed,
+        // freeze the arc snapshot and turn the markers red, holding both for the
+        // entire crashed state (until recovery) — matching the bars/g-force widgets.
+        // Without the !isCrashed guard on the IDLE branch below, the failure
+        // animation's timer would expire mid-crash and reset the arcs to live
+        // tracking while the rider is still down.
 
         if (hasClassifiedTrick || freshUnclassified || airborneActive) {
             // Live data from rotation tracker
@@ -628,6 +658,94 @@ void FmxHud::rebuildRenderData() {
 }
 
 
+// ============================================================================
+// Trick stats strip
+// ============================================================================
+// Four measurements of the same trick - how long, how far across the ground,
+// how high above where it left it, how far round - each with its unit letter
+// (s, m, m, d: the font has no degree sign) and, with title icons on, a glyph
+// that tells the two metre values apart.
+//
+// THE METRES ARE WHOLE, and the tenth of a second goes when it must. The panel
+// is 27 characters; a big air trick's "4.2s 58.3m 12.4m 1440d" ran past the
+// content edge in the software-renderer capture this row was checked in, and
+// a tenth of a metre on a 58 m jump was never a reading anyone used. The gaps
+// are sized so triple-digit values do not touch their neighbours, which leaves
+// no room for four such values AND the tenth of a second: the row is measured
+// with it, and rebuilt without it when the four would overrun the content
+// width - the one place the strip changes shape, and only at the extreme.
+// With icons off height takes an "H" prefix, since two bare metre values are
+// the ambiguity the glyphs otherwise remove. Pinned by fmx_test.cpp.
+void FmxHud::CachedIcons::ensureInitialized() {
+    if (initialized) return;
+    const AssetManager& assets = AssetManager::getInstance();
+    stopwatch = assets.getIconSpriteIndex("stopwatch");
+    rulerH    = assets.getIconSpriteIndex("ruler-horizontal");
+    rulerV    = assets.getIconSpriteIndex("ruler-vertical");
+    corner    = assets.getIconSpriteIndex("border-top-left");
+    initialized = true;
+}
+
+void FmxHud::addTrickStatsRow(float x, float y, float maxWidth, const ScaledDimensions& dim, unsigned long color) {
+    const bool useIcons = UiConfig::getInstance().getTitleIcons();
+    if (useIcons) m_icons.ensureInitialized();
+
+    const float cw = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+    const float iconSize = dim.fontSize * layout().titleIconSize;
+    const float iconW = iconSize / UI_ASPECT_RATIO;
+    const float iconGap = cw * 0.5f;    // glyph to its value
+    const float itemGap = cw * 1.5f;    // one measurement to the next
+    const float centerY = y + dim.fontSize * 0.5f;
+
+    struct Item { int sprite; char text[16]; };
+    Item items[4];
+    int count = 0;
+
+    // Formats the strip and returns the width it would take, so the caller can
+    // try it with the tenth of a second and fall back without it.
+    auto build = [&](bool tenths) {
+        count = 0;
+        auto push = [&](int sprite, const char* fmt, float value) {
+            Item& it = items[count++];
+            it.sprite = sprite;
+            snprintf(it.text, sizeof(it.text), fmt, value);
+        };
+        push(m_icons.stopwatch, tenths ? "%.1fs" : "%.0fs", m_statsSnapshot.duration);
+        push(m_icons.rulerH, "%.0fm", m_statsSnapshot.distance);
+        // Applicable only to a trick that actually flew; a wheelie has no height.
+        if (m_statsSnapshot.height >= 1.0f) {
+            push(m_icons.rulerV, useIcons ? "%.0fm" : "H%.0fm", m_statsSnapshot.height);
+        }
+        if (m_statsSnapshot.rotation >= 1.0f) {
+            push(m_icons.corner, "%.0fd", m_statsSnapshot.rotation);
+        }
+        float width = 0.0f;
+        for (int i = 0; i < count; ++i) {
+            if (i > 0) width += itemGap;
+            if (useIcons && items[i].sprite > 0) width += iconW + iconGap;
+            width += PluginUtils::calculateMonospaceTextWidth(
+                static_cast<int>(strlen(items[i].text)), dim.fontSize);
+        }
+        return width;
+    };
+    if (build(true) > maxWidth) build(false);
+
+    float cursorX = x;
+    for (int i = 0; i < count; ++i) {
+        if (i > 0) cursorX += itemGap;
+        // A missing glyph degrades to the value alone rather than a blank gap -
+        // the number is the point, the icon is the label.
+        if (useIcons && items[i].sprite > 0) {
+            addIcon(cursorX + iconW * 0.5f, centerY, items[i].sprite, color, iconSize);
+            cursorX += iconW + iconGap;
+        }
+        addString(items[i].text, cursorX, y, Justify::LEFT,
+            this->getFont(FontCategory::DIGITS), color, dim.fontSize);
+        cursorX += PluginUtils::calculateMonospaceTextWidth(
+            static_cast<int>(strlen(items[i].text)), dim.fontSize);
+    }
+}
+
 void FmxHud::addRotationArc(float centerX, float centerY, float radius, float thickness,
                              float startAngle, float accumulatedAngle, float peakAngle,
                              unsigned long bgColor, unsigned long fillColor, unsigned long markerColor) {
@@ -705,6 +823,7 @@ void FmxHud::resetToDefaults() {
     m_fScale = 1.0f;
     setPosition(cellsX(133), cellsY(50));
     m_comboArcFill = 0.0f;
+    m_comboHold = ComboHold();
     m_comboArcGraceStartFill = -1.0f;
     m_comboArcEndStartFill = -1.0f;
 

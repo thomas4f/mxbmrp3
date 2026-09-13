@@ -59,12 +59,14 @@ file(GLOB_RECURSE MXB_SOURCES CONFIGURE_DEPENDS
      ${MXB_SRC}/diagnostics/*.cpp)
 file(GLOB MXB_MINIZ CONFIGURE_DEPENDS ${MXB_SRC}/vendor/miniz/*.c)
 
-# core/test_hooks.cpp exposes MXBMRP3_Test_* exports for the integration
-# harness. It was kept out of the vcxproj by hand so it could not reach a
-# shipping DLL; a glob would have quietly pulled it back in, so the exclusion is
-# now a rule rather than an omission.
+# core/test_hooks*.cpp expose MXBMRP3_Test_* exports for the integration
+# harness. They were kept out of the vcxproj by hand so they could not reach a
+# shipping DLL; a glob would have quietly pulled them back in, so the exclusion
+# is now a rule rather than an omission. Every test_hooks TU is named here: the
+# file split by family (test_hooks_achievements.cpp) is no less test-only.
 if(NOT MXBMRP3_TEST_BUILD)
     list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks.cpp)
+    list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks_achievements.cpp)
     list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_gl_render_probe.cpp)
 else()
     # GAME_HAS_DISCORD is 0 under MXBMRP3_TEST_BUILD, so every call compiles out

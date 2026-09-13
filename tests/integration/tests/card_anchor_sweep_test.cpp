@@ -125,6 +125,7 @@ TEST_CASE("right-only [content]/[title] margins: content keeps its own box") {
         {PluginHost::HUD_GL_CONFIRM, "glconfirm"},
         {PluginHost::HUD_COMPASS, "compass"},
         {PluginHost::HUD_LEAN, "lean"},
+        {PluginHost::HUD_PRESTIGE, "prestige"},
     };
 
     // The Direct GL prompt builds nothing unless it is armed, and `present`
@@ -132,6 +133,12 @@ TEST_CASE("right-only [content]/[title] margins: content keeps its own box") {
     // by never being looked at, which is exactly the shape of green this suite
     // has been fooled by before.
     host.glConfirmArm(true);
+    // The prestige badge is the second panel with that shape: it draws nothing
+    // until a prestige level exists, so without this its row would be the same
+    // silent pass. The LEVEL alone is enough - the trade itself is not what is
+    // under test here.
+    REQUIRE(host.hasPrestige());
+    host.setPrestige(1);
     host.draw();
 
     std::vector<Snapshot> before(std::size(targets));

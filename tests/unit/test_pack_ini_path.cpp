@@ -153,3 +153,16 @@ TEST_CASE("resolve: each pack type has its own stem") {
     CHECK(std::string(PackIni::kSpotter) == "spotter");
     CHECK(std::string(PackIni::kGauges) == "gauge");
 }
+
+TEST_CASE("the [pack] keys stay scoped to the [pack] section") {
+    // kSection exists so the one section every pack type shares has a single
+    // spelling; the scoped keys the READERS match ("<section>.<key>") have to
+    // follow it, or the constant only holds the writing side. Renaming the
+    // section without renaming these is the exact silent failure kSection's
+    // comment describes -- a pack's `base` line read under a section nobody
+    // looks up, so the pack loses its base and vanishes -- and it cannot be a
+    // static_assert, because these are `const char*`.
+    const std::string section(PackIni::kSection);
+    CHECK(std::string(PackIni::kKeyName) == section + ".name");
+    CHECK(std::string(PackIni::kKeyBase) == section + ".base");
+}

@@ -115,9 +115,14 @@ void DrawHandler::updateFrameMetrics(long long totalFrameTimeUs) {
 #if GAME_HAS_HTTP_SERVER
             overlayTotal = HttpServer::getInstance().sseConnectsTotal();
 #endif
-            StatsManager::getInstance().exploration().tick(
+            StatsManager& sm = StatsManager::getInstance();
+            // consumeMoved() CLEARS the flag, so it must be read exactly once
+            // per tick and nowhere else - a second reader would silently starve
+            // this one and Iron Butt would stop counting.
+            const bool moved = sm.consumeMoved();
+            sm.exploration().tick(
                 pd.getSpectatedRaceNum() >= 0, XInputReader::getInstance().rumbleLive(),
-                pd.isPlayerRunning(), m_framesThisSecond, overlayTotal);
+                pd.isPlayerRunning(), moved, m_framesThisSecond, overlayTotal);
         }
         m_lastExplorationTickUs = currentTimeUs;
         m_framesThisSecond = 0;

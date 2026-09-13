@@ -236,10 +236,16 @@ struct SettingsLayoutContext {
     // One spelling for all five, so they cannot drift (one dimming to 0.3 alpha
     // where another uses 64/255); why the glyph colour is DERIVED is explained at
     // the implementation.
+    // `tooltipId` hangs a hover description on the BUTTON'S OWN region, which is
+    // the only way it reads correctly: hover resolves to the first region under
+    // the pointer, so a separate row-wide TOOLTIP_ROW pushed alongside a button
+    // shadows it -- the tooltip shows, the button never lights up, and the hover
+    // box is the whole row rather than the button.
     void addActionButton(const char* label, int labelChars,
                          SettingsHud::ClickRegion::Type type,
                          ButtonRole role = ButtonRole::Accent,
-                         bool enabled = true);
+                         bool enabled = true,
+                         const char* tooltipId = nullptr);
 
     // TWO buttons side by side on one row, centred as a pair with the [button] gap
     // between them -- for a choice between two acts rather than one act with a
@@ -276,9 +282,6 @@ struct SettingsLayoutContext {
                              int labelChars);
     // The [button] terms, resolved once at construction (planButtonTerms).
     BaseHud::PlanButtonTerms bt{};
-    // Column (in characters, from labelX) where a section heading's muted hint starts.
-    // 16 = the widest heading that carries one ("Tracked Riders") plus a gap.
-    static constexpr int SECTION_HINT_COLUMN = 16;
     // Close the final section's card; earlier ones close at the next header.
     void finishSections();
 

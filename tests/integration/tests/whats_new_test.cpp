@@ -35,6 +35,22 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
     host.startup(saveWin);
     REQUIRE_MESSAGE(host.hasWhatsNew(), "MXBMRP3_Test_WhatsNew* not exported (test build?)");
 
+    // A CONDITIONAL ROW has to have its condition met first, or its marker is
+    // not live and the count below does not match the table. The Prestige row
+    // is the table's Gate::Unlocked marker: the Widgets tab does not draw it
+    // until a prestige level exists, and the marker is not live until then
+    // either. The panel refreshes that gate as it rebuilds, so a draw with the
+    // settings open is what publishes it -- which is also the only moment
+    // anything in the plugin reads a marker.
+    REQUIRE(host.hasPrestige());
+    host.setPrestige(1);
+    host.showSettings(true);
+    host.draw();
+    // ...and back to hidden, which is the state every subcase below starts from
+    // (one of them asserts that hiding an ALREADY-hidden panel dismisses
+    // nothing, and a panel left open here makes that hide a real one).
+    host.showSettings(false);
+
     // A FRESH PLAYER: nothing dismissed, so every marker in the table is live.
     host.whatsNewReset();
     const int total = host.whatsNewLiveCount();
@@ -58,7 +74,8 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // (A marker on a CONDITIONAL row - 1.29's panel-theme picker, which the
         // Appearance tab hides with no themes installed - needs that condition
         // met here first, or it reads as unresolved for a reason that has nothing
-        // to do with the table. installTheme() is how; none of 1.30's rows need it.)
+        // to do with the table. installTheme() was how; 1.30's Prestige row needs
+        // a prestige level, which the setup above grants.)
         REQUIRE(host.whatsNewMarkerCount() == total);
         for (int i = 0; i < host.whatsNewMarkerCount(); ++i) {
             INFO("marker " << i << ": " << host.whatsNewMarkerName(i));

@@ -297,7 +297,7 @@ void PluginManager::shutdown() {
     RumbleProfileManager::getInstance().save();
 
     // Record race finish if player quit mid-race (ALT-F4, etc.) and save stats
-    StatsManager::getInstance().tryRecordRaceFinish(PluginData::getInstance());
+    StatsManager::getInstance().tryRecordRaceFinish(PluginData::getInstance(), /*final=*/true);
     StatsManager::getInstance().recordSessionEnd();
     // The setup as it stands, before the stats file is written below: the
     // settings save inside HudManager::shutdown() observes too, but it runs
@@ -672,11 +672,11 @@ void PluginManager::handleRaceSpeed(Unified::RaceSpeedData* /*psRaceSpeed*/) {
 }
 
 // NOTE: RaceHoleshot callback (MX Bikes API)
-// The API defines SPluginsRaceHoleshot_t and a RaceHoleshot export, but in practice
-// the game never fires this callback. The plugin takes NO gameplay action on it, so
-// there is no handleRaceHoleshot here. mxb_api.cpp DOES export RaceHoleshot, but only
-// to RECORD it (so a captured tape stays complete if PiBoSo ever starts firing it);
-// if real holeshot handling is ever added, it goes in that export next to the tap.
+// The API defines SPluginsRaceHoleshot_t and a RaceHoleshot export, and the game
+// never fires it (measured: marker set, crossed, no call). The Holeshot row reads
+// the first split event instead - handlers/opening_line.h - so there is no
+// handleRaceHoleshot here. mxb_api.cpp exports RaceHoleshot to log and RECORD it,
+// so the day PiBoSo starts sending it is visible and a captured tape stays complete.
 
 void PluginManager::handleRaceCommunication(Unified::RaceCommunicationData* psRaceCommunication) {
     if (psRaceCommunication && PluginThread::getInstance().offload(this, &PluginManager::handleRaceCommunication, *psRaceCommunication)) return;

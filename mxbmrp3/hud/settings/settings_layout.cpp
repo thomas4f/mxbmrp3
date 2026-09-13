@@ -2,7 +2,7 @@
 // hud/settings/settings_layout.cpp
 // Implementation of shared layout context and helper methods
 // ============================================================================
-// file-budget: 1600 the settings panel's geometry in one place; split with the next tab rework
+// file-budget: 1610 the settings panel's geometry in one place; split with the next tab rework
 #include "settings_layout.h"
 #include "../settings_hud.h"
 #include "../../core/plugin_utils.h"
@@ -150,12 +150,18 @@ float SettingsLayoutContext::addSectionHeading(const char* title, const char* hi
     m_hadSection = true;
 
     const float headingY = currentY;
-    parent->addString(title, labelX, headingY, Justify::LEFT,
+    // THE HINT IS PART OF THE HEADING STRING, not a second string placed after
+    // it. It was drawn in the normal face at a fixed column counted in normal
+    // cells, while the heading is drawn in STRONG and the layout has one cell
+    // width for every face (PluginUtils::charWidthRatio) -- so the gap between
+    // them was whatever the user's Strong font happened to measure: right under
+    // the shipped one, a hole or an overlap under another. One string cannot
+    // drift from itself; the callers already parenthesise their own text.
+    char heading[160];
+    if (hint && hint[0] != '\0') snprintf(heading, sizeof(heading), "%s %s", title, hint);
+    else                         snprintf(heading, sizeof(heading), "%s", title);
+    parent->addString(heading, labelX, headingY, Justify::LEFT,
         Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), fontSize);
-    if (hint && hint[0] != '\0') {
-        parent->addString(hint, labelX + charWidth() * SECTION_HINT_COLUMN, headingY, Justify::LEFT,
-            Fonts::getNormal(), ColorConfig::getInstance().getMuted(), fontSize * 0.9f);
-    }
     currentY = headingY + lineHeightNormal;
     return headingY;
 }
@@ -359,7 +365,8 @@ void SettingsLayoutContext::addActionButton(
     int labelChars,
     SettingsHud::ClickRegion::Type type,
     ButtonRole role,
-    bool enabled
+    bool enabled,
+    const char* tooltipId
 ) {
     ColorConfig& colors = ColorConfig::getInstance();
     const ButtonRowGeom bg = buttonRow(labelChars);
@@ -372,6 +379,9 @@ void SettingsLayoutContext::addActionButton(
     if (enabled) {
         parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
             bg.x, bg.y, bg.w, bg.h, type, nullptr));
+        // On the region itself, so the same rect answers the hover highlight, the
+        // click and the description. See the declaration.
+        if (tooltipId) parent->m_clickRegions.back().tooltipId = tooltipId;
     }
 
     // Colour carries state; the shape and the label come from BaseHud's one button

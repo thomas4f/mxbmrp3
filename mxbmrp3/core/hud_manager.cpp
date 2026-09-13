@@ -59,6 +59,7 @@
 #include "../hud/gforce_widget.h"
 #include "../hud/compass_widget.h"
 #include "../hud/clock_widget.h"
+#include "../hud/prestige_widget.h"
 #if GAME_HAS_TYRE_TEMP
 #include "../hud/tyre_temp_widget.h"
 #endif
@@ -192,12 +193,21 @@ void HudManager::initialize() {
     createHud(m_pFuel, "fuel_widget");
     createHud(m_pRumble, "rumble_hud");
     createHud(m_pDirector, "director_widget");
+#if GAME_HAS_ACHIEVEMENTS
     createHud(m_pAchievement, "achievement_widget");  // toasts; content-gated on [Achievements] visible
+#endif
     createHud(m_pGamepad, "gamepad_widget");
     createHud(m_pLean, "lean_widget");
     createHud(m_pGforce, "gforce_widget");
     createHud(m_pCompass, "compass_widget");
     createHud(m_pClock, "clock_widget");
+    // The badge draws nothing until a prestige level is taken (prestige_widget.h),
+    // so on a game that HAS achievements it is registered like every other widget
+    // -- the lock is a question the widget asks, not a slot that is sometimes
+    // empty. On one that does not, there is no ladder to finish and no slot.
+#if GAME_HAS_ACHIEVEMENTS
+    createHud(m_pPrestige, "prestige_widget");
+#endif
 #if GAME_HAS_TYRE_TEMP
     createHud(m_pTyreTemp, "tyre_temp_widget");
 #endif
@@ -329,6 +339,17 @@ void HudManager::shutdownInternal(bool allowSave) {
     m_bInitialized = false;
     m_bResourcesInitialized = false;
     DEBUG_INFO("HudManager shutdown complete");
+}
+
+void HudManager::setPreviewHud(const BaseHud* target) {
+    // A DISABLED HUD IS NEVER PREVIEWED. Opening its tab is how you find the
+    // switch, not a request to see it: forcing it on screen would put a HUD there
+    // that the player has deliberately turned off. Read once, outside the loop --
+    // it is the only thing here that is not a pointer compare.
+    const bool on = target && target->isVisibleAnySurface();
+    for (const auto& hud : m_huds) {
+        if (hud) hud->setPreviewing(on && hud.get() == target);
+    }
 }
 
 void HudManager::clear(bool allowCrossSingleton) {

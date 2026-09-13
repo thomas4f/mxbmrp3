@@ -112,12 +112,20 @@ void winRace(PluginHost& host, const RaceSpec& spec) {
     for (int lap = 1; lap <= spec.laps; ++lap) {
         host.raceLap(RACE1, 10, lap, 90000 + lap * 1000);
     }
+    // A penalty is a live race event (cutting, a jump start), so it lands while
+    // the race is RUNNING, before the flag. It needs a standing to attach to,
+    // so a mid-race classification comes first - one nobody has finished on,
+    // else the race is recorded there and the penalty belongs to no race. That
+    // is the real ordering: the finish is recorded the moment the field settles.
+    if (spec.penaltySeconds > 0) {
+        std::vector<ClassRow> midRace = rows;
+        for (ClassRow& row : midRace) row.laps = 0;
+        host.classify(RACE1, 1000, midRace);
+        host.communication(10, 0, /*communication=*/2, spec.penaltySeconds);
+    }
     // A classification with the player over the lap count: PluginData marks the
-    // rider finished, and RunDeinit records the race with that position.
+    // rider finished and, with the whole field in, the race is recorded here.
     host.classify(RACE1, 300000, rows);
-    // A penalty needs a standing to attach to, so it follows the classification;
-    // the finish is recorded at RunDeinit, after it.
-    if (spec.penaltySeconds > 0) host.communication(10, 0, /*communication=*/2, spec.penaltySeconds);
     host.runDeinit();
     // Leave the track, as the game does between events: without it the next
     // race of the same session type is a continuation of this one (its laps
@@ -239,7 +247,7 @@ TEST_CASE("achievements: Tinkerer fires on a config reload and the widget shows 
     CHECK(host.achievementTier("config_reloads") == 1);
     CHECK(host.achievementValue("config_reloads") == doctest::Approx(1.0));
     CHECK(host.achievementToastsQueued() == 1u);
-    CHECK(host.achievementLastToast() == "Tinkerer - Bronze|Reload the config");
+    CHECK(host.achievementLastToast() == "Tinkerer|Reload the config");   // a one-shot toasts with no metal
 
     // The widget takes the toast on the next draw and keeps it up (5 s default).
     host.eventInit("TestTrack", "Alice");
@@ -316,18 +324,23 @@ TEST_CASE("achievements: [Achievements] devScale multiplies every number for a t
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup(kSaveWin);
-    // One reload counts as ten: Tinkerer lands on Silver (10), and the row
-    // reads ten. The stored counter is still one.
-    host.configReloaded();
-    CHECK(host.achievementValue("config_reloads") == doctest::Approx(10.0));
-    CHECK(host.achievementTier("config_reloads") == 2);
+    // Each switch counts as ten, so ten of them earn Profile Hopper (a one-shot
+    // at a hundred) and the row reads a hundred. The stored counter is still
+    // ten. Tinkerer cannot show this - it is a one-shot at ONE, and a scale has
+    // nothing to reach past a bar already cleared by the first event.
+    REQUIRE(host.hasExplorationSet());
+    host.explorationSet("profileSwitches", 10.0);
+    CHECK(host.achievementValue("profile_hopper") == doctest::Approx(100.0));
+    CHECK(host.achievementTier("profile_hopper") == 1);
     // Written back while it is on, so an auto-save does not drop it mid-test.
     host.save();
     CHECK(ini::readFile(kIniPath).find("devScale=10") != std::string::npos);
     host.runDeinit();
     auto j = readStats(kStatsPath);
     REQUIRE(j.is_object());
-    CHECK(j["achievements"]["counters"].value("configReloads", 0) == 1);   // the file holds the truth
+    // The file holds the truth: ten switches, not a hundred. devScale
+    // multiplies what the ROW reads, never what is stored.
+    CHECK(j["exploration"].value("profileSwitches", 0.0) == doctest::Approx(10.0));
     host.shutdown();
 }
 
@@ -377,9 +390,14 @@ TEST_CASE("achievements: a landed backflip feeds the FMX lifetime totals and toa
     groundTicks(20);
     airTicks(150, -300.0f);          // the backflip, 1.5 s in the air
     groundTicks(80);                 // land, hold through the grace: banked into the chain
-    // Landed but not yet COMPLETE: nothing lifetime, nothing toasted.
+    // Landed but not yet COMPLETE: nothing lifetime, and no TRICK toast. The
+    // jump itself is now measured as a flight (height, distance, airtime)
+    // whether or not a trick comes off it, so the queue may already hold a card
+    // for that - anchor the counts below to it instead of to zero, or every
+    // future row that a jump can move breaks this test rather than the thing it
+    // guards.
     CHECK(host.achievementValue("fmx_tricks") == doctest::Approx(0.0));
-    CHECK(host.achievementToastsQueued() == 0u);
+    const unsigned flightCards = host.achievementToastsQueued();
 
     groundTicks(210);                // the chain window expires: the chain completes
     CHECK(host.achievementValue("fmx_tricks") == doctest::Approx(1.0));
@@ -390,7 +408,7 @@ TEST_CASE("achievements: a landed backflip feeds the FMX lifetime totals and toa
     CHECK(host.achievementValue("fmx_points") > 0.0);
     CHECK(host.achievementTier("fmx_backflips") == 1);      // Flipper Bronze
     CHECK(host.achievementTier("fmx_airtime") == 0);
-    CHECK(host.achievementToastsQueued() == 1u);
+    CHECK(host.achievementToastsQueued() == flightCards + 1);
     CHECK(host.achievementLastToast() == "Flipper - Bronze|Land a backflip (@Lynds)");
     const double flipChain = host.achievementValue("fmx_chain");
     CHECK(flipChain > 0.0);
@@ -424,8 +442,8 @@ TEST_CASE("achievements: a landed backflip feeds the FMX lifetime totals and toa
     CHECK(bestChain >= flipChain);
     CHECK(host.achievementValue("fmx_points") > flipChain);
     CHECK(host.achievementValue("fmx_points") >= bestChain);
-    CHECK(host.achievementToastsQueued() == 2u);
-    CHECK(host.achievementLastToast() == "Wheelie King - Bronze|Hold a wheelie for 5.0s");
+    CHECK(host.achievementToastsQueued() == flightCards + 2);
+    CHECK(host.achievementLastToast() == "Wheelie King - Bronze|Land a 5.0s wheelie");
 
     // A frontflip: the same jump the other way round. Its own row, and a third
     // kind for the collector.
@@ -437,7 +455,15 @@ TEST_CASE("achievements: a landed backflip feeds the FMX lifetime totals and toa
     CHECK(host.achievementValue("fmx_tricks") == doctest::Approx(3.0));
     CHECK(host.achievementValue("fmx_kinds") == doctest::Approx(3.0));
     CHECK(host.achievementTier("fmx_frontflips") == 1);   // Somersault Bronze
-    CHECK(host.achievementToastsQueued() == 3u);
+    // TWO toasts here, not one: this flip takes the best chain past 250 as well
+    // (Chain Reaction Bronze). An air trick's duration and distance are the
+    // FLIGHT's now rather than the part after it classified, so the air bonus
+    // sees the whole jump and a chain scores a little higher than it used to.
+    CHECK(host.achievementTier("fmx_chain") == 1);
+    CHECK(host.achievementToastsQueued() == flightCards + 4);
+    // "- Bronze" in the title, which a one-shot's toast does not carry: the row
+    // is a ladder now (1 / 3 / 13 / 25, a quarter of Flipper's), so its first
+    // flip earns a metal rather than simply Earned.
     CHECK(host.achievementLastToast() == "Somersault - Bronze|Land a frontflip");
 
     // The leave-track flush writes the block, by name.
@@ -462,7 +488,7 @@ TEST_CASE("achievements: a landed backflip feeds the FMX lifetime totals and toa
 
 // The named air tricks each keep a lifetime count of their own: a yaw in the
 // air with the nose level is a whip, a roll is a scrub. Both persist by name
-// beside the flips. (An oppo or a turn down needs the nose past 67 degrees in world
+// beside the flips. (An oppo or a turn down needs the nose past 55 degrees in world
 // space on top of the yaw, which this flat telemetry cannot pose; its count
 // rides the same sample field and is pinned by the persistence read below.)
 TEST_CASE("achievements: whips and scrubs count by kind, and Somersault is a hidden row") {
@@ -513,9 +539,10 @@ TEST_CASE("achievements: whips and scrubs count by kind, and Somersault is a hid
     CHECK(host.achievementValue("fmx_whips") == doctest::Approx(1.0));
     CHECK(host.achievementValue("fmx_tricks") == doctest::Approx(2.0));
     CHECK(host.achievementValue("fmx_kinds") == doctest::Approx(2.0));
-    // Bronze asks ten of either; the rows moved, not the tier.
+    // Bronze asks ten of either; the rows moved, not the tier. No TRICK card is
+    // queued - any card here is the flight the jump was (see the backflip case).
     CHECK(host.achievementTier("fmx_whips") == 0);
-    CHECK(host.achievementToastsQueued() == 0u);
+    CHECK(host.achievementTier("fmx_scrubs") == 0);
 
     host.runStop();
     host.runDeinit();
@@ -547,21 +574,52 @@ TEST_CASE("achievements: whips and scrubs count by kind, and Somersault is a hid
     }
 }
 
-TEST_CASE("achievements: Class Act counts the classes the ridden bikes span") {
+TEST_CASE("achievements: a bike counts once it has been round, not once it is loaded") {
+    // SELECTING a bike used to be enough: the per-track-and-bike record is
+    // created the moment a context is set, and these rows counted the records.
+    // So every bike ever loaded counted as ridden, and every track ever opened
+    // counted as visited - which is how a streamer arrived at "apparently I've
+    // ridden 328 different tracks". One valid lap is the smallest thing that
+    // means you actually rode it, and it is what all three rows want now.
     cleanSaveDir();
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup(kSaveWin);
-    host.eventInit("TestTrack", "Alice", 1600.0f, 2, "Test 450", "MX1");
+
+    // Load a bike, ride nothing: no row moves.
+    host.eventInit("TestTrack", "Alice", 1600.0f, 2, "Test 450", "MX1", "TestTrack");
+    CHECK(host.achievementValue("bikes") == doctest::Approx(0.0));
+    CHECK(host.achievementValue("tracks") == doctest::Approx(0.0));
+    CHECK(host.achievementValue("bike_classes") == doctest::Approx(0.0));
+
+    // One lap on it, and all three count it.
+    auto lapOn = [&](const char* bike, const char* cls) {
+        host.eventInit("TestTrack", "Alice", 1600.0f, 2, bike, cls, "TestTrack");
+        host.raceEvent("TestTrack");
+        host.session(RACE1, 1, 0);
+        host.addEntry(10, "Alice", bike);
+        host.runInit(RACE1);
+        host.raceLap(RACE1, 10, 1, 90000);
+        host.runDeinit();
+        host.eventDeinit();
+    };
+    lapOn("Test 450", "MX1");
+    CHECK(host.achievementValue("bikes") == doctest::Approx(1.0));
+    CHECK(host.achievementValue("tracks") == doctest::Approx(1.0));
     CHECK(host.achievementValue("bike_classes") == doctest::Approx(1.0));
-    host.eventInit("TestTrack", "Alice", 1600.0f, 2, "Test 250", "MX2");
+
+    // A second class, ridden: Class Act's Bronze.
+    lapOn("Test 250", "MX2");
     CHECK(host.achievementValue("bike_classes") == doctest::Approx(2.0));
     CHECK(host.achievementTier("bike_classes") == 1);
     CHECK(host.achievementLastToast() == "Class Act - Bronze|Ride bikes from 2 classes (@Aiden)");
+
     // A third bike in a class already ridden is a bike, not a class.
-    host.eventInit("TestTrack", "Alice", 1600.0f, 2, "Test 125", "MX2");
+    lapOn("Test 125", "MX2");
     CHECK(host.achievementValue("bikes") == doctest::Approx(3.0));
     CHECK(host.achievementValue("bike_classes") == doctest::Approx(2.0));
+    // ...and all three were on one track, which is still one track.
+    CHECK(host.achievementValue("tracks") == doctest::Approx(1.0));
     host.shutdown();
 }
 
@@ -603,7 +661,7 @@ TEST_CASE("achievements: rain, a big grid, the longest session, and distinct tra
     host.shutdown();
 }
 
-// The totals behind Shift Happens, Frequent Flyer and Long Hauler are a cache
+// The totals behind Shift Happens, Skill Issue and Long Hauler are a cache
 // that a gear shift, a crash edge and the odometer bump IN PLACE while it is
 // clean (so a shift never walks every record), and a lap dirties for a full
 // recompute. Both roads must give the same numbers.
@@ -773,7 +831,7 @@ TEST_CASE("achievements: Clean Sheet is the best penalty-free run, Leap Forward 
     host.shutdown();
 }
 
-TEST_CASE("achievements: Iron Butt reads the longest session from the file and keeps it") {
+TEST_CASE("achievements: Iron Butt reads the longest DAY from the file and keeps it") {
     cleanSaveDir();
     {
         PluginHost seed(dllPath());
@@ -781,70 +839,89 @@ TEST_CASE("achievements: Iron Butt reads the longest session from the file and k
         seed.startup(kSaveWin);
         seed.shutdown();
     }
-    // Ninety minutes in one sitting, as a previous run recorded it.
+    // Ninety minutes in a day, as a previous run recorded it. The row moved off
+    // the per-SESSION figure precisely because a session ends at a crash, a pit
+    // visit or a track exit - so the marathon it means to reward was the thing
+    // most likely to reset it.
     ini::writeFile(kStatsPath,
-        "{ \"version\": 1, \"global\": { \"maxSessionTimeMs\": 5400000 } }\n");
+        "{ \"version\": 1, \"exploration\": { \"dayRideHours\": 1.5 } }\n");
 
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup(kSaveWin);
     CHECK(host.achievementValue("session_time") == doctest::Approx(1.5));
     CHECK(host.achievementTier("session_time") == 1);   // Iron Butt Bronze, one hour
-    // A short session now does not lower the record.
+    // A short ride now does not lower the record: the row is a high-water mark.
     host.eventInit("TestTrack", "Alice");
     host.session(1, 0, 480000);
     host.runInit(1);
+    for (int s = 0; s < 30; ++s) {
+        host.explorationTick(/*spectating=*/false, /*rumbleLive=*/false, /*onTrack=*/true, 60, 0);
+    }
+    CHECK(host.achievementValue("session_time") == doctest::Approx(1.5));
     host.runDeinit();
     auto j = readStats(kStatsPath);
     REQUIRE(j.is_object());
-    CHECK(j["global"].value("maxSessionTimeMs", 0) == 5400000);
+    CHECK(j["exploration"].value("dayRideHours", 0.0) == doctest::Approx(1.5));
     host.shutdown();
 }
 
 TEST_CASE("achievements: halfway to Gold and Platinum gets one milestone toast, once, not on load") {
     cleanSaveDir();
-    // Tinkerer: 1, 10, 100, 500. Silver at ten reloads; halfway to Gold at
-    // fifty-five; halfway to Platinum at three hundred.
+    // Regular: 7, 30, 100, 365. Silver at thirty; halfway to Gold at
+    // sixty-five. Driven by setting the signal outright, because the machinery
+    // under test is what the manager does with a value once it moves - the feed
+    // itself is exploration_test's business, and no cheap event hook drives a
+    // four-tier row.
+    //
+    // This was Profile Hopper until the mxbmrp3 page went all-one-shot: a row
+    // on that page cannot demonstrate a halfway card any more, because it has
+    // no Gold to be halfway to. Regular is a four-tier Exploration row that
+    // survives that change, which is the only property this case needs.
     {
         PluginHost host(dllPath());
         REQUIRE(host.loaded());
         host.startup(kSaveWin);
-        for (int i = 0; i < 54; ++i) host.configReloaded();
-        CHECK(host.achievementTier("config_reloads") == 2);
+        REQUIRE(host.hasExplorationSet());
+        host.explorationSet("daysUsed", 7.0);                 // Bronze
+        host.explorationSet("daysUsed", 30.0);                // Silver
+        host.explorationSet("daysUsed", 64.0);                // just under the midpoint
+        CHECK(host.achievementTier("regular") == 2);
         const unsigned before = host.achievementToastsQueued();   // Bronze, Silver
         CHECK(before == 2u);
-        host.configReloaded();                                    // the fifty-fifth
+        host.explorationSet("daysUsed", 65.0);                // the midpoint
         CHECK(host.achievementToastsQueued() == before + 1);
-        CHECK(host.achievementLastToast() == "Tinkerer - halfway to Gold|55 / 100");
-        host.configReloaded();                                    // no repeat
+        CHECK(host.achievementLastToast() == "Regular - halfway to Gold|65 / 100");
+        host.explorationSet("daysUsed", 66.0);                // no repeat
         CHECK(host.achievementToastsQueued() == before + 1);
         host.statsSave();
         auto j = readStats(kStatsPath);
         REQUIRE(j.is_object());
-        CHECK(j["achievements"]["unlocked"]["config_reloads"].value("halfway", 0) == 3);
+        CHECK(j["achievements"]["unlocked"]["regular"].value("halfway", 0) == 3);
         host.shutdown();
     }
     // The next startup finds a rider past the midpoint and says nothing; the
-    // next reload does not repeat it either.
+    // next move does not repeat it either.
     {
         PluginHost host(dllPath());
         REQUIRE(host.loaded());
         host.startup(kSaveWin);
         CHECK(host.achievementToastsQueued() == 0u);
-        host.configReloaded();
+        host.explorationSet("daysUsed", 70.0);
         CHECK(host.achievementToastsQueued() == 0u);
         host.shutdown();
     }
-    // No halfway card on the way to Bronze or Silver: six reloads from a
-    // fresh file is past half of ten, and only Bronze is toasted.
+    // No halfway card on the way to Bronze or Silver: twenty from a fresh file
+    // is past half of thirty, and only Bronze is toasted.
     cleanSaveDir();
     {
         PluginHost host(dllPath());
         REQUIRE(host.loaded());
         host.startup(kSaveWin);
-        for (int i = 0; i < 6; ++i) host.configReloaded();
+        REQUIRE(host.hasExplorationSet());
+        host.explorationSet("daysUsed", 20.0);
         CHECK(host.achievementToastsQueued() == 1u);
-        CHECK(host.achievementLastToast() == "Tinkerer - Bronze|Reload the config");
+        CHECK(host.achievementLastToast() == "Regular - Bronze|Show up on 7 different days");
         host.shutdown();
     }
 }
@@ -852,7 +929,14 @@ TEST_CASE("achievements: halfway to Gold and Platinum gets one milestone toast, 
 TEST_CASE("achievements: a stored tier above a row's own count is clamped to the row") {
     // A row cut down to a one-shot (Rage Quit was, mid-development) leaves a
     // stored 4 behind; evaluate() only raises, so the load is the one place to
-    // pull it back, else Completionist counts three tiers that do not exist.
+    // pull it back, else the row's tag reads Platinum on a row whose only tier
+    // is Earned.
+    //
+    // The earned-units check below used to corroborate that by reading 1
+    // instead of 4. Rage Quit is a MISFORTUNE row now, so it counts toward no
+    // summary at all and that figure reads 0 whatever the clamp did - which
+    // makes it a check on the exclusion rather than on the clamp. Both are
+    // worth having, so both are here, each saying which it is.
     cleanSaveDir();
     {
         PluginHost seed(dllPath());
@@ -865,8 +949,41 @@ TEST_CASE("achievements: a stored tier above a row's own count is clamped to the
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup(kSaveWin);
-    CHECK(host.achievementTier("rage_quit") == 1);
-    CHECK(host.achievementUnits().first == 1);
+    CHECK(host.achievementTier("rage_quit") == 1);   // the clamp
+    CHECK(host.achievementUnits().first == 0);       // and a misfortune is not progress
+    host.shutdown();
+}
+
+// ONE SET BEHIND BOTH FIGURES. The tab counts achievements over the counted
+// rows; the analytics ach_pct counts TIERS, and used to count them over every
+// non-hidden row - so the plugin's own pages and the Tinkering rows sat in a
+// completion figure the tab said they were outside of, and the two numbers told
+// different stories about the same install. The resolution differs on purpose,
+// the set may not.
+TEST_CASE("achievements: the tier figure counts the same rows the tab does") {
+    cleanSaveDir();
+    {
+        PluginHost seed(dllPath());
+        REQUIRE(seed.loaded());
+        seed.startup(kSaveWin);
+        seed.shutdown();
+    }
+    // A row from each page that is listed but does not count: the plugin's own
+    // and the Tinkering one. Both are ordinary rows a player can see.
+    ini::writeFile(kStatsPath,
+        "{ \"version\": 1, \"achievements\": { \"unlocked\": {"
+        " \"grand_tour\": { \"tier\": 1, \"halfway\": 0 },"
+        " \"decorator\": { \"tier\": 1, \"halfway\": 0 } } } }\n");
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSaveWin);
+    REQUIRE(host.achievementTier("grand_tour") == 1);
+    REQUIRE(host.achievementTier("decorator") == 1);
+    // Earned by the tab (rows) and by the analytics (tiers): both say none.
+    CHECK(host.achievementRows().first == 0);
+    CHECK(host.achievementUnits().first == 0);
+    // They are not lost, they are the "(+n)" beside the percentage.
+    CHECK(host.achievementBonus() == 2);
     host.shutdown();
 }
 
@@ -896,7 +1013,11 @@ TEST_CASE("achievements: a click on a toast opens the menu on the Achievements t
     CHECK_FALSE(host.achievementToastShowing());
     std::string group;
     CHECK(host.achievementLastToast() == "Racer - Silver|Finish 10 races");
-    CHECK(host.achievementsPage(&group) == 1);           // the card's own page
+    // The card's own page, by the GROUP it landed on rather than by its index:
+    // pages are ENTRIES_PER_PAGE-row chunks of the catalogue, so pinning an absolute number
+    // here makes every future row addition a failure in this test instead of
+    // in the thing it guards.
+    const int cardPage = host.achievementsPage(&group);
     CHECK(group == "Racing");
 
     // A row's toast opens the page holding that row, wherever the list was
@@ -905,7 +1026,7 @@ TEST_CASE("achievements: a click on a toast opens the menu on the Achievements t
     REQUIRE(host.settingsRegionCenter("pager.next", &nx, &ny));
     host.clickAt(nx, ny);
     host.clickAt(nx, ny);
-    CHECK(host.achievementsPage(&group) == 3);          // two on from Racing's
+    CHECK(host.achievementsPage(&group) == cardPage + 2);   // two on from Racing's
     host.showSettings(false);
     host.injectMouse(false);
     // The menu's clicks counted the default setup as they happened (Tyre
@@ -926,7 +1047,7 @@ TEST_CASE("achievements: a click on a toast opens the menu on the Achievements t
     host.clickAt(static_cast<float>(t.l + t.r) * 0.5e-6f, static_cast<float>(t.t + t.b) * 0.5e-6f);
     CHECK(host.settingsVisible());
     host.draw();                                          // the menu lays its page out
-    CHECK(host.achievementsPage(&group) > 3);
+    CHECK(host.achievementsPage(&group) > cardPage);
     CHECK(group == "Tinkering");
     host.injectMouse(false);
     host.shutdown();
@@ -963,15 +1084,16 @@ TEST_CASE("achievements: the toast defaults to the right corner above Speed and 
     CHECK(a.b <= gear.t - cellH + 2);
     CHECK(a.b > speed.t - 2 * cellH);   // and not floating: within a cell of the gap
 
-    // A wider toast keeps the right edge and grows LEFT: Silver's detail line
-    // ("Reload the config 10 times") is longer than Bronze's. The card up is ended
-    // by its click (which opens the menu), so the next queued one is taken.
-    if (host.hasInjectedMouse()) {
+    // A wider toast keeps the right edge and grows LEFT: Profile Hopper's
+    // line ("Switch profiles 100 times") is longer than Tinkerer's
+    // ("Reload the config"). The card up is ended by its click (which opens the
+    // menu), so the next queued one is taken.
+    if (host.hasInjectedMouse() && host.hasExplorationSet()) {
         host.clickAt(static_cast<float>(a.l + a.r) * 0.5e-6f, static_cast<float>(a.t + a.b) * 0.5e-6f);
         host.injectMouse(false);
         REQUIRE_FALSE(host.achievementToastShowing());
-        for (int i = 0; i < 9; ++i) host.configReloaded();
-        CHECK(host.achievementTier("config_reloads") == 2);
+        host.explorationSet("profileSwitches", 100.0);
+        CHECK(host.achievementTier("profile_hopper") == 1);
         host.draw();
         REQUIRE(host.achievementToastShowing());
         const PluginHost::ScreenEdges b = host.hudScreenEdges("achievement_widget");
@@ -1031,30 +1153,113 @@ TEST_CASE("achievements: the pager's buttons page through, and an end you cannot
     host.shutdown();
 }
 
-TEST_CASE("achievements: hidden tiers count on top of a total they are not in") {
+TEST_CASE("achievements: a hidden row is the (+n), not a total it is not in") {
     cleanSaveDir();
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup(kSaveWin);
     const auto fresh = host.achievementUnits();
+    const auto freshRows = host.achievementRows();
     CHECK(fresh.first == 0);
     CHECK(fresh.second > 0);
-    // Night Owl is hidden: a session at three in the morning earns it, the
-    // earned count rises, the total does not move.
+    CHECK(host.achievementBonus() == 0);
+    // Night Owl is hidden: a session at three in the morning earns it, and
+    // NEITHER figure moves - it is reported as the bonus instead. This used to
+    // count in the earned half of a total it was not in, so the tab read past
+    // 100% ("50 / 45"); the overshoot was meant as the reward for finding a
+    // secret and read as a counting fault instead.
     host.setLocalTime(2026, 6, 16, 3);
     host.eventInit("TestTrack", "Alice");
     host.session(1, 0, 480000);
     host.runInit(1);
     CHECK(host.achievementTier("night_owl") == 1);
     const auto after = host.achievementUnits();
-    CHECK(after.first == 1);
+    CHECK(after.first == fresh.first);              // tiers: unmoved
     CHECK(after.second == fresh.second);
-    // The summary counts achievements the same way: one earned, on top of a
-    // listed total the hidden row is not in.
     const auto rows = host.achievementRows();
-    CHECK(rows.first == 1);
-    CHECK(rows.second > 0);
+    CHECK(rows.first == freshRows.first);           // achievements: unmoved
+    CHECK(rows.second == freshRows.second);
     CHECK(rows.second < after.second);              // achievements, not tiers
+    // ...and it is here instead, which is what the tab draws as "(+1)".
+    CHECK(host.achievementBonus() == 1);
     host.runDeinit();
+    host.shutdown();
+}
+
+TEST_CASE("achievements: a misfortune moves neither half of the summary") {
+    // THE OTHER UNLISTED GROUP, and the one place it parts company with Hidden.
+    // Both are out of the TOTAL. A hidden row's earned tier still counts, on
+    // top, so finding a secret pushes the figure past 100% - the case above
+    // pins that. A Misfortune row counts nowhere: crashing ninety-nine times
+    // is not progress, and a figure it could move would let a bad session
+    // flatter the same number a good one moves.
+    //
+    // Driven through Rule Bender, which needs no crash state, so this reads the
+    // same on every game that runs the suite. Its bar is a hundred penalties,
+    // and a communication each is the cheapest way to the row -- five seconds
+    // apiece leaves Time Served (ten minutes) short, so the "(+n)" below is
+    // this row alone.
+    cleanSaveDir();
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSaveWin);
+    const auto fresh = host.achievementUnits();
+    const auto freshRows = host.achievementRows();
+
+    host.eventInit("TestTrack", "Alice");
+    host.raceEvent("TestTrack");
+    host.session(RACE1, 2, 0, 16, 0);
+    host.addEntry(10, "Alice");
+    host.runInit(RACE1);
+    std::vector<ClassRow> mid;
+    mid.push_back({ .num = 10, .best = 90000, .laps = 0, .gap = 0 });
+    host.classify(RACE1, 1000, mid);
+    for (int i = 0; i < 100; ++i) host.communication(10, 0, /*communication=*/2, /*seconds=*/5);
+
+    // Earned, shown, toasted - and invisible to every summary figure.
+    CHECK(host.achievementValue("penalties") == doctest::Approx(100.0));
+    CHECK(host.achievementTier("penalties") == 1);
+    const auto after = host.achievementUnits();
+    const auto afterRows = host.achievementRows();
+    CHECK(after.first == fresh.first);
+    CHECK(after.second == fresh.second);
+    CHECK(afterRows.first == freshRows.first);
+    CHECK(afterRows.second == freshRows.second);
+    // It is in the "(+n)" though - out of the percentage, not out of sight.
+    CHECK(host.achievementBonus() == 1);
+
+    host.runDeinit();
+    host.shutdown();
+}
+
+// A SWEEP'S NUMBER IS THE OTHER ROWS' TIERS, so every row it counts has to have
+// been evaluated before it. evaluate() walked the catalogue once in order, and
+// four counted rows sit AFTER the Completion block - so finishing the ladder on
+// one of those four left the Sweep, and with it the Prestige button, waiting for
+// whatever moved a number next. `steady_hands` is one of the four.
+TEST_CASE("achievements: a Sweep sees the row that finishes the ladder, in the same pass") {
+    cleanSaveDir();
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSaveWin);
+    REQUIRE(host.hasAchForceTiers());
+    REQUIRE(host.hasExplorationSet());
+
+    // A ladder one row short of finished. Forced straight into the states, which
+    // is the only part of this a test may fake: the row left out has to arrive
+    // through the real evaluation or there is nothing here to test.
+    host.achievementForceTiers(4, "steady_hands");
+    REQUIRE(host.achievementTier("steady_hands") == 0);
+    REQUIRE(host.achievementTier("all_platinum") == 0);
+
+    // ...and it arrives. ONE evaluation: half an hour without crashing is all
+    // that row has, and every Sweep has to see it before it is asked.
+    host.explorationSet("steadyHands", 1800.0);
+    CHECK(host.achievementTier("steady_hands") == 1);
+    CHECK(host.achievementTier("all_bronze") == 1);
+    CHECK(host.achievementTier("all_silver") == 1);
+    CHECK(host.achievementTier("all_gold") == 1);
+    CHECK(host.achievementTier("all_platinum") == 1);
+
     host.shutdown();
 }

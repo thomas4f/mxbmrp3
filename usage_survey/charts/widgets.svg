@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="656" viewBox="0 0 760 656" role="img"><style>
+  text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+  .grid{stroke:#d0d7de;stroke-width:1}
+  .axis{stroke:#57606a;stroke-width:1}
+  .lbl{fill:#57606a;font-size:12px}
+  .val{fill:#24292f;font-size:12px;font-weight:600}
+  .title{fill:#24292f;font-size:14px;font-weight:700}
+  .sub{fill:#57606a;font-size:11px}
+  .gap{fill:#57606a;opacity:.09}
+  .gaplbl{fill:#57606a;font-size:10px;opacity:.85}
+  .ico{fill:#57606a}
+  .t1{fill:#d4a72c}
+  .t2{fill:#bf8700}
+  .t3{fill:#9e6a03}
+  .t4{fill:#7d4e00}
+  @media (prefers-color-scheme: dark){
+    .grid{stroke:#30363d}
+    .axis{stroke:#8b949e}
+    .lbl{fill:#8b949e}
+    .val{fill:#e6edf3}
+    .title{fill:#e6edf3}
+    .sub{fill:#8b949e}
+    .gap{fill:#8b949e;opacity:.13}
+    .gaplbl{fill:#8b949e}
+    .ico{fill:#8b949e}
+    .t1{fill:#bf8700}
+    .t2{fill:#d4a72c}
+    .t3{fill:#f2cc60}
+    .t4{fill:#fbe6a4}
+  }
+</style><text x="12" y="20" class="title">Widget adoption (widget_*)</text><text x="12" y="37" class="sub">% of 14,188 MX Bikes installs</text><text x="200" y="60" class="lbl" text-anchor="end">Pointer</text><rect x="210" y="44" width="454" height="22" rx="3" fill="#3fb950"/><text x="670" y="60" class="val">100% (14,188)</text><text x="200" y="90" class="lbl" text-anchor="end">Spotter</text><rect x="210" y="74" width="453" height="22" rx="3" fill="#58a6ff"/><text x="669" y="90" class="val">&gt;99% (4,718 of 4,719)</text><text x="200" y="120" class="lbl" text-anchor="end">Settings Button</text><rect x="210" y="104" width="416" height="22" rx="3" fill="#d29922"/><text x="632" y="120" class="val">92% (13,004)</text><text x="200" y="150" class="lbl" text-anchor="end">Lap</text><rect x="210" y="134" width="409" height="22" rx="3" fill="#bc8cff"/><text x="625" y="150" class="val">90% (12,790)</text><text x="200" y="180" class="lbl" text-anchor="end">Speed</text><rect x="210" y="164" width="406" height="22" rx="3" fill="#f778ba"/><text x="622" y="180" class="val">89% (12,693)</text><text x="200" y="210" class="lbl" text-anchor="end">Position</text><rect x="210" y="194" width="404" height="22" rx="3" fill="#39c5cf"/><text x="620" y="210" class="val">89% (12,633)</text><text x="200" y="240" class="lbl" text-anchor="end">Gear</text><rect x="210" y="224" width="400" height="22" rx="3" fill="#ff7b72"/><text x="616" y="240" class="val">88% (12,508)</text><text x="200" y="270" class="lbl" text-anchor="end">Time</text><rect x="210" y="254" width="116" height="22" rx="3" fill="#a5d6ff"/><text x="332" y="270" class="val">26% (3,642)</text><text x="200" y="300" class="lbl" text-anchor="end">Fuel</text><rect x="210" y="284" width="72" height="22" rx="3" fill="#7ee787"/><text x="288" y="300" class="val">16% (2,257)</text><text x="200" y="330" class="lbl" text-anchor="end">Version</text><rect x="210" y="314" width="55" height="22" rx="3" fill="#ffa657"/><text x="271" y="330" class="val">12% (1,728)</text><text x="200" y="360" class="lbl" text-anchor="end">Gamepad</text><rect x="210" y="344" width="44" height="22" rx="3" fill="#3fb950"/><text x="260" y="360" class="val">10% (1,395)</text><text x="200" y="390" class="lbl" text-anchor="end">Clock</text><rect x="210" y="374" width="21" height="22" rx="3" fill="#58a6ff"/><text x="237" y="390" class="val">5% (681)</text><text x="200" y="420" class="lbl" text-anchor="end">Bars</text><rect x="210" y="404" width="12" height="22" rx="3" fill="#d29922"/><text x="228" y="420" class="val">3% (396)</text><text x="200" y="450" class="lbl" text-anchor="end">Tacho</text><rect x="210" y="434" width="8" height="22" rx="3" fill="#bc8cff"/><text x="224" y="450" class="val">2% (273)</text><text x="200" y="480" class="lbl" text-anchor="end">Crash</text><rect x="210" y="464" width="4" height="22" rx="3" fill="#f778ba"/><text x="220" y="480" class="val">&lt;1% (44 of 4,719)</text><text x="200" y="510" class="lbl" text-anchor="end">Lean</text><rect x="210" y="494" width="4" height="22" rx="3" fill="#39c5cf"/><text x="220" y="510" class="val">&lt;1% (131)</text><text x="200" y="540" class="lbl" text-anchor="end">Speedo</text><rect x="210" y="524" width="2" height="22" rx="3" fill="#ff7b72"/><text x="218" y="540" class="val">&lt;1% (82)</text><text x="200" y="570" class="lbl" text-anchor="end">G-Force</text><rect x="210" y="554" width="1" height="22" rx="3" fill="#a5d6ff"/><text x="217" y="570" class="val">&lt;1% (44)</text><text x="200" y="600" class="lbl" text-anchor="end">Compass</text><rect x="210" y="584" width="1" height="22" rx="3" fill="#7ee787"/><text x="217" y="600" class="val">&lt;1% (6)</text><text x="200" y="630" class="lbl" text-anchor="end">Benchmark</text><rect x="210" y="614" width="1" height="22" rx="3" fill="#ffa657"/><text x="217" y="630" class="val">0% (0)</text></svg>

@@ -35,12 +35,6 @@ Callouts follow whoever you're watching, so the spotter works while spectating a
 
 The Spotter tab carries the distances that decide when a proximity call fires, including how far behind counts as behind. If a call still comes too early or too often for your taste, the rest - the repeat timings and cooldowns behind the proximity and hazard calls - are in the `[Spotter]` section of the [INI file](../README.md#advanced-settings).
 
-## Changing the words
-
-The wording is a file you can edit. `mxbmrp3_data\spotters\default\spotter.ini` holds every line the spotter says - and it *is* the wording, not an override on something built in, so commenting a row out silences that callout outright. Copy the folder into your [Documents plugin folder](../README.md#modding) and your version survives updates.
-
-The full authoring guide, including recording your own voice, is below.
-
 ## Writing a voice pack
 
 A spotter voice is a **pack**: a folder holding a `spotter.ini` that names every callout, and optionally the audio to play for them. Add an optional `[pack]` section with `name = Your Voice` to give it a title in the picker; without one it shows as its folder name. That section is spelled the same in every pack type, so it is the one line you already know from writing a theme or a pit board. Two kinds are possible and they use the same keys.
@@ -49,12 +43,12 @@ A spotter voice is a **pack**: a folder holding a `spotter.ini` that names every
 
 **Text only.** This is what ships - `spotters\default\spotter.ini`, every line the spotter says, read by Windows text-to-speech. Rewording a callout, muting one (`key =` with nothing after it), or adding alternates needs no audio tools at all. Copy the folder into `spotters\` under your [Documents plugin folder](../README.md#modding), rename the folder, edit, and pick it in Settings > Spotter. The ini is called `spotter.ini` in every pack, so the folder name is the only thing to change. It's grouped under the same five headings as the Callouts switches there - **General**, **Timing**, **Opponents**, **Proximity**, **Hazards** - so silencing a whole group is a switch, not an edit; editing is for the finer cut.
 
-**Recorded.** Packs with real audio are a separate download rather than part of the installer - tens of megabytes that most installs never need. They add `_wav` and `_mix` rows pointing at their clips:
+**Recorded.** The packs with real audio (the separate download above) add `_wav` and `_mix` rows pointing at their clips:
 
 ```
 spotters\
-  default\      default.ini
-  am_michael\   am_michael.ini   blue_flag.wav  clear.wav  rider_behind.wav  num_0.wav ...
+  default\      spotter.ini
+  am_michael\   spotter.ini      blue_flag.wav  clear.wav  rider_behind.wav  num_0.wav ...
 ```
 
 The `.ini` is the whole format. One rule before the example: **inside `[Cues]`, a

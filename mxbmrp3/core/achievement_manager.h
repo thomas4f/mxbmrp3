@@ -37,6 +37,7 @@
 
 #include "achievements.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 
@@ -100,12 +101,25 @@ public:
     };
     int rowCount() const { return m_rowCount; }
     Row row(int i) const;
+    // WHO is carrying a row whose metric is a per-track or per-bike maximum
+    // (Local Hero, Loyal): the track's display name or the bike's, for the tab
+    // to show beside the title. A number like "742 laps at one track" does not
+    // say WHICH of forty tracks, and the player picking a track to grind on is
+    // exactly the question the row raises.
+    //
+    // Writes "" for every other row and while nothing has been ridden.
+    //
+    // INTO A CALLER BUFFER rather than returning a pointer: a track's display
+    // name is BUILT (it falls back to the id when no name was ever learned), so
+    // there is no long-lived string to hand back, and a const char* into a
+    // temporary is the kind of dangle that works until the day it does not.
+    void leaderFor(const Achievements::Entry& e, char* out, size_t cap) const;
     // A catalogue entry's current value, in its unit (the headless tests).
     double valueOf(int catalogueIndex) const;
-    // Earned tiers over LISTED tiers, for the header bar and Completionist. A
-    // hidden row is never in the total and its earned tiers count on top, so
-    // the figure passes 100% (ten listed and one hidden: 110% at eleven). A
-    // one-shot counts one.
+    // Earned tiers over the COUNTED tiers (countsTowardCompletion, the same set
+    // the tab's own figures use), so the pair is 0-100 and cannot pass it. The
+    // analytics ach_pct, in tiers where ach_unlocked is in rows. A one-shot
+    // counts one.
     // True until onStatsLoaded(): the states are not this install's yet.
     bool isLoading() const { return m_loading; }
     int earnedUnits() const;
@@ -114,6 +128,25 @@ public:
     // ones: the tab's summary, since a player counts achievements, not tiers.
     int earnedAchievements() const;
     int listedAchievements() const;
+#if defined(MXBMRP3_TEST_BUILD)
+    // Force every COUNTED row to `tier` (clamped to the row's own tierCount),
+    // leaving one id alone. A Sweep's value is the other rows' tiers, so this is
+    // how a headless test stands a ladder one row short of finished; the row left
+    // out then has to arrive through the real evaluation, which is the part worth
+    // testing. Writes state and evaluates nothing. Never in a shipping build -
+    // mxbmrp3/CMakeLists.txt drops core/test_hooks.cpp, its only caller.
+    void testForceTiers(int tier, const char* exceptId);
+#endif
+    // Earned rows that are NOT in the listed total -- the tab's "(+n)". See
+    // the definition for why secrets and misfortunes share one number.
+    int bonusAchievements() const;
+
+    // THE ONE GATE on the prestige trade: the Platinum Sweep earned, or
+    // developer mode on. Read by the button that offers it AND by
+    // StatsManager::prestige() itself, so the two cannot disagree about when it
+    // is allowed -- and so the developer-mode key opens both rather than
+    // leaving a visible button that silently refuses.
+    bool isPrestigeAvailable() const;
 
     // ---- toasts (AchievementWidget) ----------------------------------------
     bool hasPendingToast() const { return !m_toasts.empty(); }
@@ -157,8 +190,11 @@ private:
     // The lifetime number behind a row, in the catalogue's display unit.
     double metricValue(const Achievements::Entry& e) const;   // the number, times the dev scale
     double metricValueRaw(const Achievements::Entry& e) const;
-    // Completionist: tiers earned over tiers listed, every row but its own.
-    double completionPercent() const;
+    // The Sweep rows: the share of LISTED rows standing at `metal` or better,
+    // 0-100. One per metal, so each moves on its own and a player can see how
+    // far along each is - which a single floor could not say. See
+    // completion_floor.h for what is counted and what is deliberately not.
+    double completionPercentAt(int metal) const;
     // Walk the available rows; award newly reached tiers. Every row, every time:
     // ~32 compares over numbers StatsManager already caches, cheaper than
     // keeping a per-call-site "which metrics moved" mask correct forever.
@@ -168,6 +204,7 @@ private:
         int lastRow = -1;            // the catalogue index of the last row moved (the card, when rows == 1)
     };
     Granted evaluate(bool toastEach);
+    void evaluateRow(int idx, bool toastEach, Granted& granted);
     void enqueue(const Toast& toast);
     void queueTierToast(const Achievements::Entry& entry, int tier);
     void queueHalfwayToast(const Achievements::Entry& entry, int targetTier, double value);

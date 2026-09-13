@@ -12,7 +12,7 @@
 // target, so only the test build compiles it at all. See tests/integration/ and
 // DEVELOPMENT.md.
 // ============================================================================
-// file-budget: 3300 one export per MXBMRP3_Test_* hook, so it grows a hook at a time; excluded from every shipping DLL
+// file-budget: 3200 one export per MXBMRP3_Test_* hook, so it grows a hook at a time - a little headroom, not a licence; split by family when it runs out (test_hooks_achievements.cpp)
 #include "steam_friends_manager.h"
 #include "../game/game_config.h"
 
@@ -21,6 +21,7 @@
 #include "settings_manager.h"
 #include "ui_config.h"
 #include "render_probe_sweep.h"
+#include "hotkey_manager.h"
 #include "hud_manager.h"
 #include "../hud/gl_confirm_hud.h"
 #include "../hud/settings/whats_new.h"
@@ -128,7 +129,6 @@ __declspec(dllexport) void MXBMRP3_Test_StartHttp() {
     HttpServer::getInstance().start();
 }
 
-
 // Build the /api/state snapshot directly (game thread) and return it, WITHOUT
 // starting the server or going through the socket + rebuild-gating. This is how
 // plugin-logic tests observe computed state in isolation — no HTTP machinery.
@@ -148,7 +148,6 @@ __declspec(dllexport) unsigned long long MXBMRP3_Test_SnapshotSeq() {
     return HttpServer::getInstance().testSnapshotSeq();
 }
 #endif
-
 
 // ---- Spotter -----------------------------------------------------------
 // The spotter's cue DECISIONS are what tests assert — the cue log records
@@ -649,7 +648,6 @@ __declspec(dllexport) int MXBMRP3_Test_HudCardRect(const char* name, int* out) {
     }
     return 1;
 }
-
 
 // A HUD's rendered panel rect and quad count, quantised x1e6 so a headless test can
 // compare exactly. `name` is the panel's registration name (testHudByName above).
@@ -1214,6 +1212,12 @@ __declspec(dllexport) int MXBMRP3_Test_SettingsClickStepped(int index, int up, i
     return HudManager::getInstance().getSettingsHud().testClickStepped(index, up != 0, holdRepeats) ? 1 : 0;
 }
 
+// Whether holding a profile arrow auto-repeats. It must not - see
+// isRepeatableRegionType in settings_hud.cpp.
+__declspec(dllexport) int MXBMRP3_Test_SettingsProfileArrowRepeats() {
+    return HudManager::getInstance().getSettingsHud().testProfileArrowRepeats() ? 1 : 0;
+}
+
 // Cycle-control twin of the stepped seam: count / click the shared
 // CYCLE_UP/CYCLE_DOWN regions on the ACTIVE settings tab through the real click
 // path (hit-test -> dispatchRegion -> applyCycleControl). No hold tier - cycles
@@ -1298,6 +1302,21 @@ __declspec(dllexport) int MXBMRP3_Test_SettingsVisible() {
 __declspec(dllexport) void MXBMRP3_Test_ShowSettings(int visible) {
     SettingsHud& s = HudManager::getInstance().getSettingsHud();
     if (visible) s.show(); else s.hide();
+}
+
+// A hotkey capture, armed and read. The lockout it guards is not reachable by
+// clicking in a headless test -- the bind rows build their click regions from a
+// live layout -- so the two states the invariant is about are driven directly:
+// arm one, close the menu, and the capture must be gone. Reading it back is the
+// only way to see that from a test, since an armed capture is invisible except
+// by every hotkey in the plugin silently doing nothing.
+__declspec(dllexport) void MXBMRP3_Test_HotkeyStartCapture(int action) {
+    HotkeyManager::getInstance().startCapture(static_cast<HotkeyAction>(action),
+                                              CaptureType::KEYBOARD);
+}
+
+__declspec(dllexport) int MXBMRP3_Test_HotkeyCapturing() {
+    return HotkeyManager::getInstance().isCapturing() ? 1 : 0;
 }
 
 // Open/close the standalone companion window (renders the HUD off-game). Lets a
@@ -2956,6 +2975,17 @@ __declspec(dllexport) void MXBMRP3_Test_FmxSetNowUs(long long us) {
 // lastTrickType is the most recent trick banked into the chain — or, once the
 // chain has completed/failed (which moves the chain into the end animation),
 // the final type snapshotted there. Any out-pointer may be null.
+// The active trick's own measurements, the three the FMX HUD prints beside its
+// name. distance and peakHeight are read off the flight for a jump, so a test
+// can hold them against what the jump achievements were granted.
+__declspec(dllexport) void MXBMRP3_Test_FmxTrickStats(float* duration, float* distance,
+                                                      float* peakHeight) {
+    const Fmx::TrickInstance& t = FmxManager::getInstance().getActiveTrick();
+    if (duration)   *duration   = t.duration;
+    if (distance)   *distance   = t.distance;
+    if (peakHeight) *peakHeight = t.peakHeight;
+}
+
 __declspec(dllexport) void MXBMRP3_Test_FmxState(int* sessionScore, int* tricksCompleted,
         int* tricksFailed, int* chainCount, int* chainScore,
         int* activeState, int* activeType, int* lastTrickType) {
@@ -3008,100 +3038,6 @@ __declspec(dllexport) void MXBMRP3_Test_StatsOdometerState(double* bikeOdometer,
 __declspec(dllexport) int MXBMRP3_Test_CrashTally(int doReset) {
     if (doReset) HudManager::getInstance().getCrashWidget().resetCounter();
     return StatsManager::getInstance().getCrashTally();
-}
-
-// --- Achievements. Tier and value by catalogue ID (achievements.h), the
-// toast ledger (every toast ever queued this run, and the last one's text),
-// and the RELOAD_CONFIG feed -- which HudManager reaches through the input
-// path a headless run cannot drive, so the same entry point is exported here.
-__declspec(dllexport) int MXBMRP3_Test_AchievementTier(const char* id) {
-    const Achievements::Entry* e = Achievements::findById(id);
-    if (!e) return -1;
-    return AchievementManager::getInstance().stateOf(static_cast<int>(e - Achievements::kCatalogue)).tier;
-}
-__declspec(dllexport) double MXBMRP3_Test_AchievementValue(const char* id) {
-    const Achievements::Entry* e = Achievements::findById(id);
-    if (!e) return -1.0;
-    return AchievementManager::getInstance().valueOf(static_cast<int>(e - Achievements::kCatalogue));
-}
-// The Progress summary's numbers: earned tiers (hidden ones included) over
-// listed tiers (hidden ones excluded), so the pair can read past 100%.
-__declspec(dllexport) void MXBMRP3_Test_AchievementUnits(int* earned, int* total) {
-    const AchievementManager& a = AchievementManager::getInstance();
-    if (earned) *earned = a.earnedUnits();
-    if (total) *total = a.totalUnits();
-}
-// Achievements earned at any tier, and the listed total (the tab's summary).
-__declspec(dllexport) void MXBMRP3_Test_AchievementRows(int* earned, int* total) {
-    const AchievementManager& a = AchievementManager::getInstance();
-    if (earned) *earned = a.earnedAchievements();
-    if (total) *total = a.listedAchievements();
-}
-__declspec(dllexport) unsigned int MXBMRP3_Test_AchievementToastsQueued() {
-    return AchievementManager::getInstance().toastsQueued();
-}
-// "title|detail" of the most recently queued toast.
-__declspec(dllexport) void MXBMRP3_Test_AchievementLastToast(char* out, int cap) {
-    if (!out || cap <= 0) return;
-    const AchievementManager::Toast& t = AchievementManager::getInstance().lastToast();
-    snprintf(out, static_cast<size_t>(cap), "%s|%s", t.title, t.detail);
-}
-__declspec(dllexport) void MXBMRP3_Test_ConfigReloaded() {
-    AchievementManager::getInstance().onConfigReloaded();
-}
-// 1 while the toast widget has a toast on screen (after a draw()).
-__declspec(dllexport) int MXBMRP3_Test_AchievementToastShowing() {
-    const AchievementWidget* w = HudManager::getInstance().getAchievementWidget();
-    return (w && w->isShowing()) ? 1 : 0;
-}
-// The hide-all-HUDs hotkey's state, set directly: the widget must not take a
-// toast while it cannot be drawn.
-__declspec(dllexport) void MXBMRP3_Test_SetHudsEnabled(int enabled) {
-    HudManager::getInstance().setHudsEnabled(enabled != 0);
-}
-// The Widgets master toggle, the same way.
-__declspec(dllexport) void MXBMRP3_Test_SetWidgetsEnabled(int enabled) {
-    HudManager::getInstance().setWidgetsEnabled(enabled != 0);
-}
-// One HUD's game-surface visibility, by harness id (testHudByName). 0 = no
-// such HUD. With SetEveryHudVisible(0) first, a test can put exactly the HUDs
-// it drives on screen, so none sits on top of another at the default layout.
-__declspec(dllexport) int MXBMRP3_Test_SetHudVisible(const char* name, int visible) {
-    for (const auto& hud : HudManager::getInstance().getHuds()) {
-        if (hud && name && std::strcmp(hud->getHarnessId(), name) == 0) {
-            hud->setVisible(visible != 0);
-            // As the checkbox would: the setup is observed at the switch.
-            StatsManager::getInstance().exploration().observeSettings(HudManager::getInstance());
-            return 1;
-        }
-    }
-    return 0;
-}
-// Every registered HUD's game-surface visibility at once (Tyre Kicker counts
-// the ones ever seen on at a settings save).
-__declspec(dllexport) void MXBMRP3_Test_SetEveryHudVisible(int visible) {
-    for (const auto& hud : HudManager::getInstance().getHuds()) {
-        if (hud) hud->setVisible(visible != 0);
-    }
-    StatsManager::getInstance().exploration().observeSettings(HudManager::getInstance());   // as the checkboxes would
-}
-// Put a rider on the tracked list, as the Riders tab does (Stalker).
-__declspec(dllexport) int MXBMRP3_Test_TrackRider(const char* name) {
-    return TrackedRidersManager::getInstance().addTrackedRider(name ? name : "") ? 1 : 0;
-}
-// The local clock the date-based exploration signals read (fixed in a test
-// build until set here), and the once-a-second tick DrawHandler would fire.
-__declspec(dllexport) void MXBMRP3_Test_SetLocalTime(int year, int month, int day, int hour) {
-    ExplorationStats::setLocalTimeOverride(year, month, day, hour);
-}
-__declspec(dllexport) void MXBMRP3_Test_ExplorationTick(int spectating, int rumbleLive, int onTrack,
-                                                        int frames, unsigned int overlayTotal) {
-    StatsManager::getInstance().exploration().tick(spectating != 0, rumbleLive != 0, onTrack != 0,
-                                                   frames, overlayTotal);
-}
-
-__declspec(dllexport) void MXBMRP3_Test_StatsSave() {
-    StatsManager::getInstance().save();
 }
 
 #if GAME_HAS_RECORDS_PROVIDER

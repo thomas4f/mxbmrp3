@@ -12,6 +12,7 @@
 #include <cmath>
 
 #include "settings_hud.h"
+#include "prestige_widget.h"
 #include "ideal_lap_hud.h"
 #include "lap_log_hud.h"
 #include "friends_hud.h"
@@ -27,6 +28,9 @@
 #include "event_log_hud.h"
 #include "map_hud.h"
 #include "radar_hud.h"
+#include "achievement_widget.h"
+#include "spotter_widget.h"
+#include "../core/stats_manager.h"
 #include "settings/settings_layout.h"
 #include "settings/text_wrap.h"
 #include "telemetry_hud.h"
@@ -102,10 +106,14 @@ const SettingsHud::TabDescriptor SettingsHud::s_tabRegistry[] = {
     { TAB_RUMBLE,       "Rumble",     "rumble",        nullptr,                                                              false, &SettingsHud::renderTabRumble,          &SettingsHud::handleClickTabRumble,       nullptr,            &SettingsHud::resetTabRumble,           nullptr, nullptr },
     { TAB_HELMET,       "Helmet",     "helmet",        nullptr,                                                              false, &SettingsHud::renderTabHelmet,          &SettingsHud::handleClickTabHelmet,       nullptr,            &SettingsHud::resetTabHelmet,           nullptr, nullptr },
     { TAB_DIRECTOR,     "Director",   "director",      nullptr,                                                              false, &SettingsHud::renderTabDirector,        nullptr,                                  nullptr,            &SettingsHud::resetTabDirector,         nullptr, nullptr },
-    { TAB_SPOTTER,      "Spotter",    "spotter",       nullptr,                                                              false, &SettingsHud::renderTabSpotter,         &SettingsHud::handleClickTabSpotter,      nullptr,            &SettingsHud::resetTabSpotter,          nullptr, "Beta" },
+    // The trailing pair: not hidden, and the subtitle widget is what this tab
+    // positions (see TabDescriptor::previewHud).
+    { TAB_SPOTTER,      "Spotter",    "spotter",       nullptr,                                                              false, &SettingsHud::renderTabSpotter,         &SettingsHud::handleClickTabSpotter,      nullptr,            &SettingsHud::resetTabSpotter,          nullptr, "Beta", false,
+      [](const SettingsHud&) -> BaseHud* { return &HudManager::getInstance().getSpotterWidget(); } },
     // NO badge, ever: "Achievements" is 12 of the sidebar's 13 label cells, so a
     // Small "New" (2.25 cells) would collide with it -- see settingsSidebarWidth.
-    { TAB_ACHIEVEMENTS, "Achievements", "achievements", nullptr,                                                            false, &SettingsHud::renderTabAchievements,    &SettingsHud::handleClickTabAchievements, nullptr,            &SettingsHud::resetTabAchievements,     nullptr, nullptr },
+    { TAB_ACHIEVEMENTS, "Achievements", "achievements", nullptr,                                                            true,  &SettingsHud::renderTabAchievements,    &SettingsHud::handleClickTabAchievements, nullptr,            &SettingsHud::resetTabAchievements,     nullptr, nullptr, false,
+      [](const SettingsHud&) -> BaseHud* { return HudManager::getInstance().getAchievementWidget(); } },
     { TAB_UPDATES,      "Updates",    "updates",       nullptr,                                                              false, &SettingsHud::renderTabUpdates,         &SettingsHud::handleClickTabUpdates,      nullptr,            &SettingsHud::resetTabUpdates,          nullptr, nullptr },
     // HIDDEN (the trailing true): reached from the footer's About button, never
     // drawn in the sidebar. Its POSITION still matters even so -- it is in the GLOBAL
@@ -876,6 +884,39 @@ float SettingsHud::measureTallestBodyH(const ScaledDimensions& dim,
     return tallest;
 }
 
+bool SettingsHud::isTabAvailable(int tabId) const {
+    if (tabId < 0 || tabId >= TAB_COUNT) return false;
+    const TabDescriptor* tabDesc = findTabDescriptor(tabId);
+    if (!tabDesc) return false;
+    // Game-gated tabs (Records/FMX/Friends): selectable only when their backing HUD is
+    // registered on this build. The tab-list render loop and the persisted-tab restore
+    // both route through here, so they can't drift.
+    // `hud` names the tab's HUD where the sidebar draws a checkbox for it,
+    // `previewHud` where it does not (Achievements owns the toast widget).
+    auto* backing = tabDesc->hud ? tabDesc->hud : tabDesc->previewHud;
+    if (tabDesc->gameGated && !(backing && backing(*this))) return false;
+    return true;
+}
+
+void SettingsHud::recordTabOpened(int tabId) const {
+    if (!isTabListed(tabId)) return;   // About is available but not in the list
+    const char* listed[TAB_COUNT];
+    int count = 0;
+    for (int t = 0; t < TAB_COUNT; ++t) {
+        if (isTabListed(t)) listed[count++] = getTabName(t);
+    }
+    StatsManager::getInstance().exploration().onTabOpened(getTabName(tabId), listed, count);
+}
+
+BaseHud* SettingsHud::activeTabHud() const {
+    const TabDescriptor* tabDesc = findTabDescriptor(m_activeTab);
+    if (!tabDesc) return nullptr;
+    // previewHud first: it exists for the two tabs whose HUD is not the one the
+    // sidebar checkbox names. See TabDescriptor.
+    if (tabDesc->previewHud) return tabDesc->previewHud(*this);
+    return tabDesc->hud ? tabDesc->hud(*this) : nullptr;
+}
+
 void SettingsHud::rebuildRenderData() {
     if (!m_bVisible) return;  // vis-gate: menu is active-surface-only (see show())
 
@@ -884,6 +925,15 @@ void SettingsHud::rebuildRenderData() {
     m_clickRegions.clear();
     m_steppedControls.clear();  // rebuilt in lockstep with the click regions
     m_cycleControls.clear();    // rebuilt in lockstep with the click regions
+
+    // The Gate::Unlocked markers' state, refreshed HERE because this is the one
+    // place that runs before both readers -- the sidebar's "New" tag and the
+    // tab body's row band -- and because whats_new.cpp deliberately knows about
+    // no manager it could ask itself.
+    // ...and never on a game without achievements: the widget is not created
+    // there, so developer mode - the second key on that lock - would otherwise
+    // tag the Widgets tab for a row it has no way to show.
+    WhatsNew::setUnlocked(GAME_HAS_ACHIEVEMENTS && PrestigeWidget::isUnlocked());
 
     // Update cached window size (use actual pixel dimensions)
     const InputManager& input = InputManager::getInstance();

@@ -71,6 +71,15 @@ public:
     // whole set, and a per-HUD id on the panel-rect hook does not scale to that.
     const std::vector<std::unique_ptr<BaseHud>>& getHuds() const { return m_huds; }
 
+    // POSITIONING PREVIEW: exactly one HUD at a time draws placeholder content so
+    // it can be dragged into place -- the one whose settings tab is open. Walks
+    // every HUD rather than remembering the last target, so clear() cannot leave a
+    // dangling pointer behind; setPreviewing() is a no-op for the ones already
+    // right, so this costs a comparison each and dirties only what changed.
+    // nullptr turns the preview off everywhere (the panel closed, or a tab with no
+    // HUD behind it). See BaseHud::isPreviewing.
+    void setPreviewHud(const BaseHud* target);
+
     // HUD registration. `harnessId` is REQUIRED and stamps BaseHud::getHarnessId
     // -- the one stable name for this element, read by the benchmark report and
     // the test harness alike (see setHarnessId).
@@ -295,6 +304,9 @@ public:
     class GForceWidget& getGForceWidget() const { assert(m_pGforce && "HudManager not initialized"); return *m_pGforce; }
     class CompassWidget& getCompassWidget() const { assert(m_pCompass && "HudManager not initialized"); return *m_pCompass; }
     class ClockWidget& getClockWidget() const { assert(m_pClock && "HudManager not initialized"); return *m_pClock; }
+    // Nullable, like the achievement widget: the Widgets tab and the serializer
+    // both null-check rather than assert, so a build without it is not a crash.
+    class PrestigeWidget* getPrestigeWidget() const { return m_pPrestige; }
 #if GAME_HAS_TYRE_TEMP
     class TyreTempWidget& getTyreTempWidget() const { assert(m_pTyreTemp && "HudManager not initialized"); return *m_pTyreTemp; }
 #endif
@@ -463,6 +475,7 @@ private:
     class GForceWidget* m_pGforce;
     class CompassWidget* m_pCompass;
     class ClockWidget* m_pClock;
+    class PrestigeWidget* m_pPrestige = nullptr;
 #if GAME_HAS_TYRE_TEMP
     class TyreTempWidget* m_pTyreTemp;
 #endif

@@ -21,7 +21,7 @@ capstone>=5.0.9
 Pillow>=12.3.0
 cairosvg==2.9.0
 
-# tools/analytics_report.py (Aptabase export -> analytics/REPORT.md + SVG charts):
+# tools/analytics_report.py (Aptabase export -> usage_survey/REPORT.md + SVG charts):
 #   - pyarrow: only needed for PARQUET exports; CSV exports need pandas alone.
 #   - pandas:  REQUIRED for the aggregations.
 #   The SVG charting (tools/analytics_svg.py) is pure-stdlib, no extra dep.

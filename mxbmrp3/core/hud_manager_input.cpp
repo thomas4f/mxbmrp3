@@ -128,6 +128,15 @@ void HudManager::processKeyboardInput() {
     // Skip hotkey processing if in capture mode or if capture just completed this frame
     // Use didCaptureCompleteThisFrame() to avoid consuming the flag (settings UI needs it)
     HotkeyManager& hotkeyMgr = HotkeyManager::getInstance();
+    // Belt to SettingsHud::hide()'s braces. A capture armed with the panel gone
+    // is a total hotkey lockout (see the comment there), so rather than trust
+    // every present and future close path to disarm it, treat "capturing while
+    // the menu is not open" as impossible and end it here. Costs one bool test
+    // on a path that already reads this manager.
+    if (hotkeyMgr.isCapturing() && (!m_pSettingsHud || !m_pSettingsHud->isVisible())) {
+        DEBUG_WARN("HotkeyManager: capture was armed with the settings menu closed - cancelled");
+        hotkeyMgr.cancelCapture();
+    }
     if (hotkeyMgr.isCapturing() || hotkeyMgr.didCaptureCompleteThisFrame()) {
         return;
     }

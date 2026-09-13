@@ -694,7 +694,7 @@ void RecordsHud::rebuildRenderData() {
             else if (position == 2) posColor = PodiumColors::SILVER;
             else if (position == 3) posColor = PodiumColors::BRONZE;
             else posColor = this->getColor(ColorSlot::PRIMARY);
-            addString(posStr, m_columns.pos, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), posColor, dim.fontSize);
+            addString(posStr, m_columns.pos, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), posColor, dim.fontSize);
         }
 
         // Rider (truncate if too long; shared ellipsis truncation)

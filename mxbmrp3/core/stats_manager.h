@@ -6,6 +6,7 @@
 #pragma once
 
 #include "exploration_stats.h"
+#include "roost_detect.h"
 
 #include <set>
 #include <string>
@@ -85,7 +86,6 @@ struct GlobalStats {
     int rainRaceCount = 0;      // finished with the session's weather reported Rainy
     int bigGridRaceCount = 0;   // finished on a grid of BIG_GRID_ENTRIES or more
     int maxSessionLaps = 0;     // most valid laps in one session
-    int64_t maxSessionTimeMs = 0;   // longest single session on track
     int penaltyFreeStreak = 0;      // races finished in a row without a penalty (resets)
     int bestPenaltyFreeStreak = 0;  // the longest such run ever
     int pbLeaps = 0;                // personal bests beaten by a full second or more
@@ -112,8 +112,12 @@ struct FmxLifetimeStats {
     int scrubs = 0;
     int oppos = 0;
     int turnDowns = 0;
-    float longestAirtimeSec = 0.0f;
+    // Still counted though no achievement row reads it: the tally is already in
+    // every player's stats file, it is the kind of number a later row or the
+    // usage survey would want, and dropping it would throw that history away.
+    int endos = 0;                 // endos and stoppies landed
     float longestWheelieSec = 0.0f;
+    float longestEndoSec = 0.0f;   // ...and the longest one HELD, which is the row
     double wheelieDistanceM = 0.0;
     int bestChainScore = 0;
     // Trick KINDS landed at least once, by Fmx::getTrickIniKey name (a left and a
@@ -131,6 +135,7 @@ struct FmxTrickSample {
     bool scrub = false;
     bool oppo = false;
     bool turnDown = false;
+    bool endo = false;       // nose-down: an ENDO, and a STOPPIE, which is one held to a stop
     bool airborne = false;
     bool wheelie = false;
     bool shred = false;      // burnout, donut or drift: rear tyre time (Tyre Shredder)
@@ -167,25 +172,85 @@ public:
     void recordLap(int lapTime, int sector1, int sector2, int sector3, int sector4,
                    bool isValid, bool isFastestLap, bool isRace);
     void recordSessionStart(int sessionType);
+    // The gate physically dropping: a race is STARTING. The only signal that
+    // separates a restart from a pit stop, both of which re-enter the same
+    // session type - so the per-race latches are cleared here rather than in
+    // recordSessionStart(), which must keep them across a pit visit. Without it
+    // a restarted race recorded NOTHING: the finish latch from the abandoned
+    // attempt was still set, so no race count, no win, no podium, no clean race.
+    void onRaceStart(int starters);   // riders that took the start, per the classification that dropped the gate
     void recordSessionEnd();
     void notifyPause();
     void notifyResume();
-    void tryRecordRaceFinish(const class PluginData& pd);
+    // `final` = this is the last chance (RunDeinit / shutdown). The race itself is
+    // latched by whichever call first sees a classified finish, normally the
+    // classification path; what that path can miss is the finishing MARGIN (the
+    // lap logs may still be filling) and the last-lap pass (the player's final
+    // RaceLap may not have arrived). Those two are owed, remembered, and settled
+    // by the `final` pass - the race is never held back for them.
+    void tryRecordRaceFinish(const class PluginData& pd, bool final = false);
+    // Photo Finish / So Close, retried once when the lap logs they are read from
+    // were still filling as the classification settled. Called by the `final`
+    // pass above, beside ExplorationStats::retryLastGasp(); see its definition.
+    void retryFinishMargin(const class PluginData& pd);
     void clearPlayerFastestLap();   // Called when another rider sets a faster lap
     void recordPenalty(int penaltyTimeMs, bool isRace);
     // FMX: every trick of a completed chain, then the chain's banked score.
     void recordFmxTrick(const FmxTrickSample& trick);
     void recordFmxChainBanked(int chainScore);
 
-    // Combined per-frame telemetry update — handles distance, top speed, crash and gear shift detection.
-    // isCrashed uses edge detection (only counts transitions).
-    void updateTelemetry(float speedMs, bool isCrashed, int currentGear);
+    // Combined per-frame telemetry update — handles distance, top speed, crash,
+    // gear shift and fuel-burn detection.
+    // isCrashed uses edge detection (only counts transitions), and so does the
+    // tank emptying; fuelLitres is the raw tank level, integrated the way the
+    // odometer integrates speed.
+    //
+    // rearWheelSpeedMs is the DRIVEN wheel's surface speed WHILE IT IS ON THE
+    // GROUND, or < 0 when it is in the air or this vehicle has no rear wheel the
+    // plugin can name (the caller knows the layout and the contact, this does
+    // not): Digging a Hole is the gap between it and the speed the bike is
+    // actually making, and a wheel spinning in mid-air is not digging. trackPos is the player's place on the
+    // centreline, 0-1, which Favorite Spot reads at the crash edge.
+    void updateTelemetry(float speedMs, bool isCrashed, int currentGear, float fuelLitres,
+                         float rearWheelSpeedMs, float trackPos);
+
+    // The bike's tank capacity, from EventInit (event_handler) — what "almost
+    // empty" is measured against. 0 while unknown, which reads as "cannot be
+    // known" rather than "empty".
+    void setTankCapacity(float litres);
+
+    // Roost / Side by Side, one classified contact per position batch
+    // (PluginData::updateProximity does the geometry). measuring=false ends the
+    // interval instead of crediting it — off track, crashed, or nobody to race.
+    // Seconds accrue against the same injectable clock the odometer integrates
+    // on, and are flushed to the exploration sums about once a second so the
+    // achievement evaluation never lands on the ~30Hz position path.
+    void recordProximity(Roost::Contact contact, bool measuring);
+
+    // Pile-Up: how many OTHER riders are down within a few metres while the
+    // player is down too (PluginData::updateProximity counts them, on the one
+    // pass it already walks). Only called while the player is crashed, so it
+    // needs no edge of its own -- the row is a lifetime worst, and a worst can
+    // only be set while you are on the floor.
+    void recordRidersDown(int down);
+
+    // Peace Out: the same count, taken while the player is UPRIGHT and riding
+    // past it. Two guards this side, both stated at their constants: a REAL
+    // riding speed (not the roost rows' "not parked" floor, which a rider
+    // paddling through a heap clears), and a spell after the player's own crash
+    // ends, so climbing out of your own pile-up is not riding through one.
+    void recordRodeThrough(int down);
 
     // ========================================================================
     // Context (set once per event, avoids lookups at telemetry rate)
     // ========================================================================
+    // trackName is the game's DISPLAY name for trackId (SPluginsBikeEvent_t's
+    // m_szTrackName). The records are keyed by ID, which is what the game gives
+    // the PB store, so the name is learned here and kept in its own table -- see
+    // getTrackDisplayName().
     void setCurrentContext(const std::string& trackId, const std::string& bikeName,
-                           const std::string& category = "");
+                           const std::string& category = "",
+                           const std::string& trackName = "");
     void clearCurrentContext();
 
     // ========================================================================
@@ -249,6 +314,10 @@ public:
     double getTotalOdometer() const;
     int getGlobalTotalLaps() const;
     int64_t getGlobalTotalTimeMs() const;      // Includes live session time
+    // True if the bike moved at any point since the last call, and clears the
+    // flag. The exploration tick's gate for the rows that say RIDE: parked on
+    // track is time on track, which Seat Time counts, but it is not riding.
+    bool consumeMoved() { const bool m = m_movedSinceTick; m_movedSinceTick = false; return m; }
     int getGlobalTotalCrashes() const;
     // The resettable tally (see GlobalStats::crashTally) -- distinct from
     // getGlobalTotalCrashes(), which sums the per-track+bike history.
@@ -268,6 +337,19 @@ public:
     int getDistinctTrackCount() const;
     int getDistinctBikeCount() const;
     int getDistinctBikeClassCount() const;   // categories the ridden bikes span (Class Act)
+
+    // WHICH track and bike the "at one track" / "one bike" rows are currently
+    // being carried by (Local Hero, Loyal): the row asks for a number, and the
+    // number alone does not say which of forty tracks it came from. Empty when
+    // nothing has been ridden. Recomputed with the maxima they belong to, so
+    // reading them costs a cached lookup, not a walk.
+    const std::string& getMaxLapsTrackId() const;
+    const std::string& getMaxOdometerBikeName() const;
+
+    // A track's display name, or the id itself when no name has been learned --
+    // a record written before names were kept, or by a build that never saw the
+    // track. Never empty for a track that has records.
+    std::string getTrackDisplayName(const std::string& trackId) const;
     const FmxLifetimeStats& getFmxLifetime() const { return m_fmx; }
 
     // ========================================================================
@@ -275,6 +357,26 @@ public:
     // ========================================================================
     bool clearEntry(const std::string& trackId, const std::string& bikeName);
     void clearAll();
+
+    // ========================================================================
+    // Prestige
+    // ========================================================================
+    // How many times the ladder has been traded in. Survives the trade (it is
+    // what the trade produces) and survives clearAll(), which is a support
+    // action -- "wipe my stats" is not "I never did this".
+    int getPrestige() const { return m_prestige; }
+    void setPrestige(int n) { m_prestige = n < 0 ? 0 : n; }
+
+    // Trade every achievement and the lifetime counters they read for one
+    // prestige level. PERSONAL BESTS SURVIVE: a lap time is a record of what
+    // the player did on a track, not a rung on the ladder, and burning those
+    // would make the trade cost more than it says. Everything an achievement
+    // can read goes -- see the metric list in achievement_manager.cpp.
+    //
+    // Refuses (returns false, changes nothing) unless the Platinum Sweep is
+    // earned: the button that calls this is only drawn then, and a second gate
+    // here is what makes that a rule rather than a UI detail.
+    bool prestige();
 
     // Current context accessors (for settings tab display)
     std::string getCurrentTrackId() const;
@@ -300,6 +402,17 @@ private:
     StatsManager& operator=(const StatsManager&) = delete;
 
     static std::string makeKey(const std::string& trackId, const std::string& bikeName);
+
+    // Everything clearAll() and prestige() have in common: the records, the
+    // counters, the achievements and every transient, with NO save. The caller
+    // owns the write, so a partial wipe is never on disk. keepLapRecords spares
+    // the personal bests, the track-name table and the bike->class map -- the
+    // one difference between the two, and the reason this is a parameter
+    // rather than two copies. Those three are FACTS (a lap time, a track's
+    // name, which class a bike is in), not progress; the map is in that set
+    // because the PB store is keyed per bike and the default scope needs it to
+    // read a class best back out. See prestige().
+    void wipe(bool keepLapRecords);
     const std::string& getFilePath() const;
     void migrateOldFiles();
 
@@ -334,6 +447,14 @@ private:
     // Bike-to-category mapping (persisted for category-scoped PB lookups)
     std::unordered_map<std::string, std::string> m_bikeCategories;
 
+    // trackId -> the game's display name for it. Learned at setCurrentContext
+    // and kept for good: it is the only way a row can name a track the player
+    // is not currently on. Survives prestige (it is not progress).
+    std::unordered_map<std::string, std::string> m_trackNames;
+
+    // Prestige levels taken. See prestige().
+    int m_prestige = 0;
+
     // Cached category PB (needed because getPersonalBest returns a pointer to synthesized data)
     mutable StatsPersonalBestData m_cachedCategoryPB;
 
@@ -354,8 +475,12 @@ private:
     int m_lastSessionType = -1;           // Track session type to avoid resetting on pit stops
     bool m_sessionActive = false;
     bool m_wasCrashed = false;
+    bool m_movedSinceTick = false;   // see consumeMoved(): the RIDE rows' gate
     int m_lastGear = -1;              // Previous gear for shift edge detection (-1 = uninitialized)
     bool m_raceFinishRecorded = false;
+    // 0, or the finishing position whose MARGIN could not be read at the flag --
+    // see retryFinishMargin. Reset wherever m_raceFinishRecorded is.
+    int m_pendingMarginPosition = 0;
     bool m_raceLeftArmed = false;
     void consumeRaceLeft();
     ExplorationStats m_exploration;
@@ -385,6 +510,51 @@ private:
     std::chrono::steady_clock::time_point m_lastOdometerUpdateTime;
     bool m_hasLastOdometerUpdateTime = false;
     double m_unsavedDistance = 0.0;           // Accumulated distance since last dirty mark
+    // Fuel. m_lastFuel is the previous tick's tank level, so the burn is its
+    // fall; m_unflushedFuelL rides the odometer's ~100m coalescing rather than
+    // feeding the exploration sum (and with it an evaluation) at 100Hz. The
+    // reference is dropped at every track entry and every new bike, because the
+    // level either side of a pit stop is two different tanks.
+    // Proximity. The pending pair is what has been measured since the last
+    // flush; m_proximitySinceFlushSec is the wall time it covers.
+    double m_roostPendingSec = 0.0;
+    double m_proximitySinceFlushSec = 0.0;
+    std::chrono::steady_clock::time_point m_lastProximityTime{};
+    bool m_hasLastProximityTime = false;
+
+    // The last speed telemetry reported. Roost reads it: the row says RIDE, and
+    // nothing on the position path knows whether the bike is moving (the other
+    // riders' speeds are not in a position batch at all - only the player's is
+    // knowable, and it is the half that matters).
+    float m_lastSpeedMs = 0.0f;
+
+    // Digging a Hole: an UNBROKEN run of rear wheelspin standing still, and the
+    // whole seconds of it already reported. The run is its own clock rather
+    // than the odometer's, which only ticks while the bike is moving -- the
+    // opposite of what this measures.
+    std::chrono::steady_clock::time_point m_lastDigTime{};
+    bool m_hasLastDigTime = false;
+    double m_digSec = 0.0;
+    double m_digReportedSec = 0.0;
+
+    // Favorite Spot: where on the centreline the last crash happened, and how
+    // many in a ROW have now happened there. Dropped at every session start,
+    // because 0.5 of one track is not 0.5 of the next.
+    float m_lastCrashTrackPos = -1.0f;
+    int m_sameSpotCrashRun = 0;
+
+    // Peace Out: when the player was last seen DOWN, stamped on the position
+    // path (recordRidersDown) rather than off the telemetry crash edge, which
+    // trails it by a batch. The row is about riding through someone else's
+    // incident, and without this a remount inside your own credits it alongside
+    // Pile-Up, which is the pair's whole distinction.
+    std::chrono::steady_clock::time_point m_lastSeenDownTime{};
+    bool m_hasSeenDownTime = false;
+
+    float m_tankCapacityL = 0.0f;
+    float m_lastFuel = 0.0f;
+    bool m_hasLastFuel = false;
+    double m_unflushedFuelL = 0.0;
 
     // Cached global totals. Rare mutations (a lap, a penalty, a session end,
     // load/clear) set the dirty flag and the next read recomputes over every
@@ -402,6 +572,11 @@ private:
     mutable double m_cachedTotalOdometer = 0.0;
     mutable int m_cachedMaxTrackLaps = 0;
     mutable double m_cachedMaxBikeOdometer = 0.0;
+    // Who holds those two maxima. Ties go to the first key the unordered walk
+    // reaches, which is arbitrary but stable for a given map -- the number is
+    // the same either way, and a row naming either holder is telling the truth.
+    mutable std::string m_cachedMaxTrackId;
+    mutable std::string m_cachedMaxBikeName;
     mutable bool m_globalTotalsDirty = true;
 
     void recomputeGlobalTotals() const;

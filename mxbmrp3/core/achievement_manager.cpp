@@ -5,7 +5,10 @@
 // converted here from the stored unit (m, ms) to the catalogue's (km, h, s).
 // ============================================================================
 #include "achievement_manager.h"
+#include "achievement_text.h"
+#include "completion_floor.h"
 #include "exploration_stats.h"
+#include "settings_manager.h"
 #include "stats_manager.h"
 #include "../game/game_config.h"
 #include "../diagnostics/logger.h"
@@ -23,8 +26,14 @@ AchievementManager& AchievementManager::getInstance() {
 }
 
 AchievementManager::AchievementManager() {
+    // NO ROWS AT ALL on a game without the feature (GAME_HAS_ACHIEVEMENTS). Every
+    // path through this manager walks m_rows, so an empty set is the whole thing
+    // off: evaluate() grants nothing, no toast is queued, the summary figures are
+    // zero and the persistence seam has nothing to write. The widgets and the
+    // settings tab are gated where they are registered.
+    if (!GAME_HAS_ACHIEVEMENTS) return;
     // The rows this game can move. A crash-state entry on a game that never
-    // reports one would sit at "0 / 1" forever (Frequent Flyer) or count every
+    // reports one would sit at "0 / 1" forever (Skill Issue) or count every
     // race as clean (Rubber Side Down) -- neither is an achievement, so neither
     // is a row.
     for (int i = 0; i < COUNT; ++i) {
@@ -57,15 +66,15 @@ void AchievementManager::clearStates() {
 
 void AchievementManager::onStatsLoaded() {
     m_loading = false;
-    // An earned one-shot whose number sits below its threshold (a flag of 1.0
-    // stored before the row became a number) reads as earned, so it shows so.
-    for (int r = 0; r < m_rowCount; ++r) {
-        const Entry& e = kCatalogue[m_rows[r]];
-        if (e.metric != Metric::Exploration || !isOneShot(e) || m_state[m_rows[r]].tier < 1) continue;
-        if (metricValue(e) < e.thresholds[0]) {
-            StatsManager::getInstance().exploration().restoreAtLeast(e.signal, e.thresholds[0]);
-        }
-    }
+    // NOTHING IS WRITTEN BACK HERE. An earned one-shot whose number sits below
+    // its threshold used to have the number raised to meet it, so the row would
+    // not read "Earned" beside "1 / 100". That was a rewrite of a LIFETIME
+    // COUNTER on the strength of a display mismatch: every row whose threshold
+    // was raised (Director's Cut 10 -> 500, Brick Breaker 100 -> 5,000, and the
+    // rest) would have had a player's real tally inflated to the new bar on the
+    // next load, permanently, and the usage survey reads those tallies. A tier
+    // once earned is kept by restore() being raise-only; the count beside it is
+    // what the player has actually done, and it catches up or it does not.
     const Granted granted = evaluate(/*toastEach=*/false);
     if (granted.rows <= 0) return;
     DEBUG_INFO_F("[Achievements] %d tier(s) across %d achievement(s) granted on load",
@@ -112,12 +121,46 @@ void AchievementManager::clearAll() {
     m_dirty = true;
 }
 
+void AchievementManager::leaderFor(const Entry& e, char* out, size_t cap) const {
+    if (!out || cap == 0) return;
+    out[0] = '\0';
+    const StatsManager& sm = StatsManager::getInstance();
+    switch (e.metric) {
+        // The bike's SHOWROOM name, not its abbreviation: the row has the whole
+        // width between the title and the tier tag, and "FACTORY CRF450R" is
+        // what the player picked in the game's own menu.
+        case Metric::MaxBikeKm:
+            snprintf(out, cap, "%s", sm.getMaxOdometerBikeName().c_str());
+            return;
+        case Metric::MaxTrackLaps:
+            snprintf(out, cap, "%s", sm.getTrackDisplayName(sm.getMaxLapsTrackId()).c_str());
+            return;
+        default:
+            return;
+    }
+}
+
+bool AchievementManager::isPrestigeAvailable() const {
+    // Developer mode is a second key on the same lock (see the header, and
+    // PrestigeWidget::isUnlocked, which carries the same clause for the widget):
+    // the trade and everything it unlocks have to be reachable for testing
+    // without earning a hundred Platinums first.
+    if (SettingsManager::getInstance().isDeveloperMode()) return true;
+    for (int i = 0; i < Achievements::COUNT; ++i) {
+        if (Achievements::completionMetal(Achievements::kCatalogue[i]) != Achievements::TIER_COUNT) continue;
+        return m_state[i].tier > 0;
+    }
+    return false;
+}
+
 // ---- evaluation ---------------------------------------------------------------
 
 double AchievementManager::metricValue(const Entry& e) const {
     // Completion is a share of tiers, already the product of every other row.
     const double v = metricValueRaw(e);
-    return e.metric == Metric::Completion ? v : v * m_devValueScale;
+    // The completion rows are already percentages of the catalogue; scaling
+    // them by the dev multiplier would push them past 100 and read as finished.
+    return isCompletionRow(e) ? v : v * m_devValueScale;
 }
 
 double AchievementManager::metricValueRaw(const Entry& e) const {
@@ -149,12 +192,10 @@ double AchievementManager::metricValueRaw(const Entry& e) const {
         case Metric::FmxTricks:      return sm.getFmxLifetime().tricksLanded;
         case Metric::FmxScore:       return static_cast<double>(sm.getFmxLifetime().totalScore);
         case Metric::FmxBackflips:   return sm.getFmxLifetime().backflips;
-        case Metric::FmxAirtimeSec:  return sm.getFmxLifetime().longestAirtimeSec;
         case Metric::FmxWheelieSec:  return sm.getFmxLifetime().longestWheelieSec;
         case Metric::FmxWheelieKm:   return sm.getFmxLifetime().wheelieDistanceM / 1000.0;
         case Metric::FmxChainScore:  return sm.getFmxLifetime().bestChainScore;
         case Metric::FmxKinds:       return static_cast<double>(sm.getFmxLifetime().kinds.size());
-        case Metric::MaxSessionHours: return static_cast<double>(sm.getGlobalStats().maxSessionTimeMs) / 3600000.0;
         case Metric::PenaltyFreeStreak: return sm.getGlobalStats().bestPenaltyFreeStreak;
         case Metric::PbLeaps:        return sm.getGlobalStats().pbLeaps;
         case Metric::FmxFrontflips:  return sm.getFmxLifetime().frontflips;
@@ -165,58 +206,80 @@ double AchievementManager::metricValueRaw(const Entry& e) const {
         case Metric::FmxScrubs:      return sm.getFmxLifetime().scrubs;
         case Metric::FmxOppos:     return sm.getFmxLifetime().oppos;
         case Metric::FmxTurnDowns:   return sm.getFmxLifetime().turnDowns;
+        case Metric::FmxEndoSec:     return sm.getFmxLifetime().longestEndoSec;
         case Metric::Exploration:    return sm.exploration().get(e.signal);
-        case Metric::Completion:     return completionPercent();
+        case Metric::CompletionBronze:   return completionPercentAt(1);
+        case Metric::CompletionSilver:   return completionPercentAt(2);
+        case Metric::CompletionGold:     return completionPercentAt(3);
+        case Metric::CompletionPlatinum: return completionPercentAt(TIER_COUNT);
         case Metric::COUNT:          break;
     }
     return 0.0;
 }
 
-double AchievementManager::completionPercent() const {
-    int earned = 0, total = 0;
-    for (int r = 0; r < m_rowCount; ++r) {
-        const int idx = m_rows[r];
-        const Entry& e = kCatalogue[idx];
-        if (e.metric == Metric::Completion) continue;
-        earned += m_state[idx].tier;             // hidden ones count on top...
-        if (!e.hidden) total += e.tierCount;      // ...of a total they are not in
-    }
-    return total > 0 ? 100.0 * earned / total : 0.0;
+// THE FOUR SWEEPS' NUMBER: the share of the counted rows standing at this metal
+// or better, 0-100. One per metal, so each moves on its own and the page can say
+// how far along each is - which the single "lowest metal held" row this replaced
+// could not, because one un-earned row pinned the whole thing at zero.
+//
+// What is counted, and what is deliberately not, is countsTowardCompletion()
+// (completion_floor.h holds the arithmetic). A one-shot's single tier counts as
+// all four: it has no Silver to reach, so holding it must not hold a Sweep down.
+//
+double AchievementManager::completionPercentAt(int metal) const {
+    return static_cast<double>(Achievements::completionPercentAt(
+        m_rows, m_rowCount, metal, [this](int idx) { return m_state[idx].tier; }));
 }
 
+// TWO PASSES, AND THE ORDER IS THE POINT: a Sweep's value is read off the other
+// rows' tiers (completionPercentAt), so every row it counts has to have been
+// evaluated before it. Catalogue order nearly does that and not quite - four
+// counted rows sit after the Completion block - which left the Sweeps one
+// evaluation behind, and with them the Prestige gate: finish the ladder on one
+// of those four and the Platinum Sweep waited for whatever moved a number next.
+// A filter rather than a re-order, because an array order nobody may change is
+// not a thing a reader can see.
 AchievementManager::Granted AchievementManager::evaluate(bool toastEach) {
     Granted granted;
     for (int r = 0; r < m_rowCount; ++r) {
-        const int idx = m_rows[r];
-        const Entry& e = kCatalogue[idx];
-        const double value = metricValue(e);
-        const int reached = tierFor(e, value);
-        State& s = m_state[idx];
-        // Halfway to Gold or Platinum: the two long steps get one milestone
-        // card at their midpoint (Steam's IndicateAchievementProgress, in
-        // spirit). Recorded either way; toasted only for a live change, so a
-        // load that finds a rider past a midpoint says nothing.
-        if (reached >= 2 && reached < e.tierCount && s.halfway <= reached) {
-            const double lo = e.thresholds[reached - 1];
-            const double hi = e.thresholds[reached];
-            if (value >= (lo + hi) * 0.5) {
-                s.halfway = reached + 1;
-                m_dirty = true;
-                if (toastEach && reached == s.tier) queueHalfwayToast(e, reached + 1, value);
-            }
-        }
-        if (reached <= s.tier) continue;
-        // Several tiers at once (a big retro-grant, or a lowered threshold): the
-        // toast is for the HIGHEST, the count is for all of them.
-        granted.tiers += reached - s.tier;
-        ++granted.rows;
-        granted.lastRow = idx;
-        s.tier = reached;
-        m_dirty = true;
-        if (toastEach) queueTierToast(e, reached);
-        DEBUG_INFO_F("[Achievements] %s reached %s", e.id, tierName(reached));
+        if (isCompletionRow(kCatalogue[m_rows[r]])) continue;
+        evaluateRow(m_rows[r], toastEach, granted);
+    }
+    for (int r = 0; r < m_rowCount; ++r) {
+        if (!isCompletionRow(kCatalogue[m_rows[r]])) continue;
+        evaluateRow(m_rows[r], toastEach, granted);
     }
     return granted;
+}
+
+void AchievementManager::evaluateRow(int idx, bool toastEach, Granted& granted) {
+    const Entry& e = kCatalogue[idx];
+    const double value = metricValue(e);
+    const int reached = tierFor(e, value);
+    State& s = m_state[idx];
+    // Halfway to Gold or Platinum: the two long steps get one milestone card at
+    // their midpoint (Steam's IndicateAchievementProgress, in spirit). Recorded
+    // either way; toasted only for a live change, so a load that finds a rider
+    // past a midpoint says nothing.
+    if (reached >= 2 && reached < e.tierCount && s.halfway <= reached) {
+        const double lo = e.thresholds[reached - 1];
+        const double hi = e.thresholds[reached];
+        if (value >= (lo + hi) * 0.5) {
+            s.halfway = reached + 1;
+            m_dirty = true;
+            if (toastEach && reached == s.tier) queueHalfwayToast(e, reached + 1, value);
+        }
+    }
+    if (reached <= s.tier) return;
+    // Several tiers at once (a big retro-grant, or a lowered threshold): the
+    // toast is for the HIGHEST, the count is for all of them.
+    granted.tiers += reached - s.tier;
+    ++granted.rows;
+    granted.lastRow = idx;
+    s.tier = reached;
+    m_dirty = true;
+    if (toastEach) queueTierToast(e, reached);
+    DEBUG_INFO_F("[Achievements] %s reached %s", e.id, tierName(reached));
 }
 
 void AchievementManager::queueTierToast(const Entry& entry, int tier) {
@@ -280,29 +343,75 @@ double AchievementManager::valueOf(int catalogueIndex) const {
     return metricValue(kCatalogue[catalogueIndex]);
 }
 
+// THE SUMMARY FIGURES, and the one rule behind all of them: an UNLISTED row
+// (Entry::hidden, which both Hidden and Misfortune set) is in neither half of
+// any of them. It is counted separately instead -- see bonusAchievements.
+//
+// This used to let a hidden row's tiers count in the earned half of a total
+// they were not in, so the figure read past 100% ("50 / 45", 111%) and the
+// overshoot was the reward for finding a secret. It also read as a counting
+// fault to anyone who did not know the rule, and it left no room to say
+// anything about the Misfortune rows, which should not flatter a completion
+// figure at all. Both are answered by reporting the bonus as its own number.
 int AchievementManager::earnedUnits() const {
     int earned = 0;
-    for (int r = 0; r < m_rowCount; ++r) earned += m_state[m_rows[r]].tier;
+    for (int r = 0; r < m_rowCount; ++r) {
+        if (!countsTowardCompletion(kCatalogue[m_rows[r]].group)) continue;
+        earned += m_state[m_rows[r]].tier;
+    }
     return earned;
 }
 
 int AchievementManager::earnedAchievements() const {
     int earned = 0;
-    for (int r = 0; r < m_rowCount; ++r) earned += m_state[m_rows[r]].tier > 0 ? 1 : 0;
+    for (int r = 0; r < m_rowCount; ++r) {
+        if (!countsTowardCompletion(kCatalogue[m_rows[r]].group)) continue;
+        earned += m_state[m_rows[r]].tier > 0 ? 1 : 0;
+    }
     return earned;
+}
+
+// The "(+n)": rows earned OUTSIDE the listed set, secrets and misfortunes
+// alike. One number rather than two, because the tab's summary is one row and
+// the question it answers is "what else have you got", not "of which kind".
+int AchievementManager::bonusAchievements() const {
+    int bonus = 0;
+    for (int r = 0; r < m_rowCount; ++r) {
+        const Entry& e = kCatalogue[m_rows[r]];
+        // Everything outside the counted set EXCEPT the Sweeps: those measure the
+        // set rather than adding to it, so one reading 100% would add itself to
+        // the figure it is reporting.
+        if (countsTowardCompletion(e.group) || e.group == Group::Completion) continue;
+        bonus += m_state[m_rows[r]].tier > 0 ? 1 : 0;
+    }
+    return bonus;
 }
 
 int AchievementManager::listedAchievements() const {
     int listed = 0;
-    for (int r = 0; r < m_rowCount; ++r) listed += kCatalogue[m_rows[r]].hidden ? 0 : 1;
+    for (int r = 0; r < m_rowCount; ++r) {
+        listed += countsTowardCompletion(kCatalogue[m_rows[r]].group) ? 1 : 0;
+    }
     return listed;
 }
+
+#if defined(MXBMRP3_TEST_BUILD)
+void AchievementManager::testForceTiers(int tier, const char* exceptId) {
+    for (int r = 0; r < m_rowCount; ++r) {
+        const Entry& e = kCatalogue[m_rows[r]];
+        if (!countsTowardCompletion(e.group)) continue;
+        if (exceptId && std::strcmp(e.id, exceptId) == 0) continue;
+        m_state[m_rows[r]].tier = std::min(tier, e.tierCount);
+    }
+    m_dirty = true;
+}
+#endif
 
 int AchievementManager::totalUnits() const {
     int total = 0;
     for (int r = 0; r < m_rowCount; ++r) {
         const Entry& e = kCatalogue[m_rows[r]];
-        if (!e.hidden) total += e.tierCount;
+        if (countsTowardCompletion(e.group)) total += e.tierCount;
     }
     return total;
 }

@@ -69,6 +69,13 @@ constexpr const char* kGauges   = "gauge";
 // Anything that EMITS a pack ini builds the header from this.
 constexpr const char* kSection = "pack";
 
+// The two keys that section carries, SCOPED the way the readers see them
+// ("<section>.<key>"), so the section name has one spelling on the reading side
+// too and not one per reader. test_pack_ini_path.cpp pins that both stay
+// kSection-scoped, which is the half a constant alone cannot hold.
+constexpr const char* kKeyName = "pack.name";
+constexpr const char* kKeyBase = "pack.base";
+
 // What resolve() found. `path` is always the file to read -- when NEITHER
 // candidate exists it is the canonical one, so a caller's "cannot read" warning
 // names the file the author should create rather than the one they no longer

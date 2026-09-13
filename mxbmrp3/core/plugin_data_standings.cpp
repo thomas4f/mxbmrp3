@@ -294,6 +294,20 @@ void PluginData::resetStandingsFinishState() {
     }
 }
 
+bool PluginData::isRaceFieldSettled() const {
+    if (m_classificationOrder.empty()) return false;
+    for (int raceNum : m_classificationOrder) {
+        auto it = m_standings.find(raceNum);
+        if (it == m_standings.end()) continue;
+        const StandingsData& standing = it->second;
+        // A rider who did not start, retired or was disqualified is never going
+        // to cross the line, so waiting on one would wait forever.
+        if (standing.state != static_cast<int>(Unified::EntryState::Racing)) continue;
+        if (standing.finishTime < 0) return false;
+    }
+    return true;
+}
+
 const StandingsData* PluginData::getStanding(int raceNum) const {
     auto it = m_standings.find(raceNum);
     return (it != m_standings.end()) ? &it->second : nullptr;

@@ -25,9 +25,17 @@ namespace {
 // (tabCanTag below) - and being a new tab is its own announcement. The 1.29 markers - panel themes, the Crashes widget, the
 // pack pickers, the Timing readouts, the spotter hotkey, Direct GL - are gone:
 // each had its release, and a tag still lit a release later says nothing.
+//
+// Prestige is the table's one Gate::Unlocked row: it is not new in a release,
+// it is new the moment a player trades their ladder for it, and the row it
+// bands does not exist on the Widgets tab until then.
 const Marker kMarkers[] = {
     { SettingsHud::TAB_ACHIEVEMENTS, "achievements.toasts", "1.30" },
+    { SettingsHud::TAB_WIDGETS,      "widgets.prestige",         nullptr, Gate::Unlocked },
 };
+
+// See setUnlocked().
+bool g_unlocked = false;
 
 // The dismissed keys. A std::set of strings rather than flags on the table:
 // the stored file may name markers this build has never heard of (written by a
@@ -42,7 +50,18 @@ std::string rowKey(int tabId, const char* rowTooltipId) {
     return std::to_string(tabId) + ":" + (rowTooltipId ? rowTooltipId : "");
 }
 std::string tabKey(int tabId) {
-    return "T" + std::to_string(tabId);
+    // SCOPED TO THE RELEASE LINE, like the markers themselves. It was "T<tab>"
+    // and kept for good, so opening a tab once killed its "New" tag in every
+    // future version too -- and since a marker is only live in the release that
+    // added it, a new one on a tab anybody had ever opened could never tag it.
+    // Old unscoped keys stay in the file and are simply never looked up again,
+    // which costs one thing worth stating: a player upgrading from 1.30.1 sees
+    // the Achievements tab's dot ONCE more, because their dismissal was stored
+    // under the old spelling. Not migrated - the old key says nothing about
+    // WHICH line it dismissed, so folding it into the current one would hide a
+    // genuinely new marker from anyone who last opened that tab a line ago. A
+    // dot shown twice is the cheaper mistake.
+    return "T" + std::to_string(tabId) + ":" + currentLine();
 }
 
 }  // namespace
@@ -63,11 +82,21 @@ const char* currentLine() {
     return line.c_str();
 }
 
+void setUnlocked(bool on) { g_unlocked = on; }
+
 bool isLive(const Marker& m) {
-    // BELONGS TO THIS RELEASE. The comparison is on MAJOR.MINOR, not the full
-    // version, so a patch release (1.29.1 -> 1.29.2) does not re-arm markers the
-    // player already dismissed, and does not need the table touched either.
-    if (std::strcmp(m.sinceVersion, currentLine()) != 0) return false;
+    if (m.gate == Gate::Unlocked) {
+        // No version to compare: the unlock is the event. Dismissal is still
+        // for good -- a second prestige does not make the row new again.
+        if (!g_unlocked) return false;
+    } else if (std::strcmp(m.sinceVersion, currentLine()) != 0) {
+        // BELONGS TO THIS RELEASE. The comparison is on MAJOR.MINOR, not the
+        // full version, so a patch release (1.29.1 -> 1.29.2) does not re-arm
+        // markers the player already dismissed, and does not need the table
+        // touched either. (The sidebar DOT is keyed separately - see tabKey,
+        // which names the one upgrade that shows it again.)
+        return false;
+    }
     const auto& d = dismissed();
     return d.find(rowKey(m.tabId, m.rowTooltipId)) == d.end();
 }

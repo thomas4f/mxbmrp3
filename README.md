@@ -32,8 +32,6 @@ An [open-source](https://github.com/thomas4f/mxbmrp3) plugin for MX Bikes, GP Bi
 >
 > The installer isn't signed yet, so Windows will warn about an "unknown publisher" - [why & how to proceed](#windows-warns-me-when-downloading-or-installing).
 
-See [Installation](#installation) for detailed setup instructions, or [Configuration](#configuration) to fine-tune everything.
-
 ## Contents
 
 - [Installation](#installation)
@@ -61,11 +59,7 @@ See [Installation](#installation) for detailed setup instructions, or [Configura
 ### Automatic Installation
 
 1. Download the latest installer [`mxbmrp3-Setup.exe`](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3-Setup.exe)
-2. Run the installer - it will:
-   - Auto-detect your MX Bikes, GP Bikes, and Kart Racing Pro installations (Steam or standalone)
-   - Let you choose which games to install for
-   - Install to the correct plugins folder for each game
-   - Handle upgrades automatically (preserves your settings)
+2. Run the installer - it finds your MX Bikes, GP Bikes and Kart Racing Pro installations (Steam or standalone), lets you pick which to install for, puts the files in each one's `plugins\` folder, and keeps your settings on an upgrade
 
 ### Manual Installation
 
@@ -101,7 +95,7 @@ See [Installation](#installation) for detailed setup instructions, or [Configura
 
 ### After Installation
 
-Launch the game and load into a track. A few elements are enabled by default, so the HUD shows up right away - from there, open the settings menu to configure everything (see [Configuration](#configuration)). If nothing appears, see [Troubleshooting](#troubleshooting).
+Launch the game and load a track - a few elements are on by default, so the HUD appears right away. If nothing does, see [Troubleshooting](#troubleshooting).
 
 ## Controls
 
@@ -121,7 +115,7 @@ Keyboard and controller hotkeys can be customized in Settings > Hotkeys. By defa
 
 The plugin is active in-game only - it does nothing in the main menus, so all configuration happens on track.
 
-Hover over any setting in the menu to see its description - every control has an in-game tooltip explaining what it does.
+Hover over any setting for a tooltip explaining what it does.
 
 **Auto-Save** (Settings > General) writes your changes when you leave the track. To save sooner, use the **Save** button at the bottom of the menu - it lights up whenever you have unsaved changes.
 
@@ -129,22 +123,22 @@ The settings menu provides global settings that apply to all profiles, followed 
 
 | Icon | Tab | Description |
 |:----:|-----|-------------|
-| <img src="assets/icons/hud-general.svg" width="20" height="20" alt=""> | **General** | Profiles, preferences, web overlay, presence integrations, usage analytics ([see privacy](#privacy)) |
-| <img src="assets/icons/hud-appearance.svg" width="20" height="20" alt=""> | **Appearance** | Display units/format, fonts, panel theme, colors, HUD placement (grid snap, clamp), and which [display](#second-monitor-hud-companion-window) it draws on |
+| <img src="assets/icons/hud-general.svg" width="20" height="20" alt=""> | **General** | Profiles, preferences, web overlay, presence integrations, usage survey |
+| <img src="assets/icons/hud-appearance.svg" width="20" height="20" alt=""> | **Appearance** | Units, fonts, panel theme, colors, HUD placement, and which display it draws on |
 | <img src="assets/icons/hud-hotkeys.svg" width="20" height="20" alt=""> | **Hotkeys** | Keyboard and controller bindings |
 | <img src="assets/icons/hud-riders.svg" width="20" height="20" alt=""> | **Riders** | Track specific riders with custom colors and icons |
 | <img src="assets/icons/hud-rumble.svg" width="20" height="20" alt=""> | **Rumble** | Controller vibration feedback effects |
 | <img src="assets/icons/hud-helmet-mx.svg" width="20" height="20" alt=""> | **Helmet** | First-person helmet overlay configuration |
 | <img src="assets/icons/hud-video.svg" width="20" height="20" alt=""> | **Director** | Auto-director for spectating and replays - automatically follows the most interesting rider |
 | <img src="assets/icons/hud-spotter.svg" width="20" height="20" alt=""> | **Spotter** | Spoken race callouts and their subtitles - voice, categories, and proximity distances |
-| <img src="assets/icons/hud-achievements.svg" width="20" height="20" alt=""> | **Achievements** | Tiered achievements for riding, racing and exploring the plugin, and their toasts |
+| <img src="assets/icons/hud-achievements.svg" width="20" height="20" alt=""> | **Achievements** | Tiered achievements for riding, racing and exploring the plugin, and their toasts (MX Bikes only) |
 | <img src="assets/icons/hud-updates.svg" width="20" height="20" alt=""> | **Updates** | Check for new versions and install updates in-game |
 
 <!-- Deliberately NO row for the About screen: it is not a tab (it opens from
      the About button, bottom right) and does not belong in the tab list.
      check_docs.py fails if a row for it reappears here. -->
 
-Plus a tab for each individual [HUD](#huds), and one shared **Widgets** tab covering every [widget](#widgets) - visibility, title, texture, opacity and scale for each.
+Plus a tab for each individual [HUD](#huds), and one shared **Widgets** tab covering every [widget](#widgets).
 
 ### Profiles
 
@@ -204,19 +198,22 @@ Four separate profiles store complete HUD layout configurations:
 | **Tacho** | Analog tachometer |
 | **Compass** | Heading dial (classic needle or modern rotating card) |
 | **Gamepad** | Controller visualization |
-| **Pointer** | The mouse cursor. On = shown while racing, Off = only in the settings menu (helps pads seen as a mouse) |
+| **Pointer** | The mouse cursor. Off = settings menu only, which helps if a pad reads as a mouse |
 | **Settings** | The button that opens this menu. Hide it if you prefer the Tilde hotkey |
 | **Version** | The plugin's version number |
+| **Prestige** | A badge earned by trading in a completed achievement ladder (MX Bikes only) |
 
 ## More Features
 
-A few larger features live beyond the HUDs and widgets above, each behind its own switch in the settings menu.
+Each of these has its own switch in the settings menu.
 
 ### Web Overlay
 Turn on **Web Server** (Settings > General) and the plugin serves a live browser overlay: a standings tower, event log, rider focus card, and periodic broadcast panels (fastest-lap boards, a "down the order" rundown, and on-track battles). Point an OBS **Browser Source** at `http://localhost:8080` (the port is shown beside the setting), or just open it in a browser. Colors and fonts follow your in-game settings, and a gear icon on the overlay sets tower size, filters and the rest per browser. Full guide: [Web overlay](docs/web-overlay.md).
 
-### Achievements
-Open **Settings > Achievements** for tiered achievements, Bronze to Platinum, for riding, racing, conduct, freestyle and for trying out what the plugin itself can do. A toast appears when a tier is earned, and a halfway card on the long steps to Gold and Platinum (**Show toasts** turns them off; tracking continues either way). Everything is stored with your stats, so an existing install starts with what its numbers already earn. A few are hidden until you stumble on them.
+### Achievements (MX Bikes only)
+**Settings > Achievements**: a hundred-odd milestones, Bronze to Platinum, for riding, racing, freestyle, jumping and for trying out the plugin itself. A toast marks each tier earned, and a halfway card the long steps to Gold and Platinum (**Show toasts** turns the cards off; tracking continues either way). They read your existing stats, so an install starts with whatever its numbers already earn. A few are hidden until you stumble on them, and the ones about things going wrong have their own page, outside the completion figures.
+
+Take every counted one to Platinum and a **Prestige** button appears, trading the whole ladder back - achievements and their counters to zero - for a level and the Prestige badge widget. Personal bests are untouched; there is no way back, so it asks twice. Full list: [Achievements](docs/achievements.md).
 
 ### Spotter (voice callouts)
 Turn on **Spoken audio** (Settings > Spotter, or the checkbox beside the tab) and the plugin talks to you while you ride: riders behind or alongside you, blue flags, a rider down, and - each time you cross the line - your position and the gaps ahead and behind. Windows text-to-speech reads it out of the box, with **TTS voice**, **Speed** and **Volume** to choose how; recorded voice packs are a separate download. Five **Callouts** switches decide what gets announced, and **Subtitles** puts every call on screen so you can run it silent. It follows whoever you're watching, so it works while spectating and in replays. Full guide: [Spotter voice](docs/spotter.md).
@@ -242,7 +239,7 @@ Bind the **Segment Add** and **Segment Remove** hotkeys (Settings > Hotkeys) to 
 Turn on the **Session** HUD (Settings > Session) to show the server name, track, and session format on screen for your viewers. The Pitboard and Gamepad widgets also work well on stream - both have [fully customizable textures](docs/modding.md#custom-textures), and the Gamepad widget shows your live controller inputs. Pair with **Discord Rich Presence** (Settings > General) to show your current session and track in your Discord profile. For a broadcast-style overlay, see [Web Overlay](#web-overlay).
 
 ### Power-user INI tweaks
-Many additional options are available by editing the [INI file](#advanced-settings) directly. The file is well-commented and organized by HUD section. Each HUD section also supports per-element color and font overrides. Colors use ABGR hex values; fonts use the font filename (without `.fnt`) of any file in the `fonts/` folder. For example:
+More options are available by editing the [INI file](#advanced-settings) directly. It is organized by HUD section, and each section takes per-element color and font overrides. Colors use ABGR hex values; fonts use the font filename (without `.fnt`) of any file in the `fonts/` folder. For example:
 ```ini
 [StandingsHud]
 classicLayout=1            ; remove number plates and brand color strips
@@ -284,10 +281,7 @@ Turn off **Show HUD** (Simulation) if you'd rather use the plugin's **Gear** wid
 
 All plugin settings are stored in `mxbmrp3_settings.ini` in your [user data folder](#modding).
 
-**In-game vs INI-only settings:**
-- Most settings are configurable via the in-game settings menu
-- Some power-user options are only accessible by editing the INI file directly
-- INI-only settings are documented with inline comments
+Most settings are in the in-game menu; the power-user ones are INI-only, and carry inline comments there.
 
 **INI structure:**
 - `[HudName]` - Base/default settings for a HUD
@@ -309,9 +303,9 @@ If Auto-Save is enabled, your in-game state is written back when you leave the t
 
 ## Modding
 
-To customize MXBMRP3, place your files in `Documents\PiBoSo\[Game]\mxbmrp3\`. This is separate from the plugin install folder (`[Game]\plugins\mxbmrp3_data\`), so your customizations are preserved across plugin updates. Do not edit the bundled files in `[Game]\plugins\mxbmrp3_data\` directly - they will be overwritten on update. The one exception is `custom.css`, a file you create yourself for web overlay styling.
+Put your files in `Documents\PiBoSo\[Game]\mxbmrp3\`, never in the install folder (`[Game]\plugins\mxbmrp3_data\`): bundled files there are overwritten on update, while anything in Documents survives it. The web overlay's `custom.css` goes there too - you create that one yourself.
 
-Fonts, textures and icons are loose files in their own subfolders. Themes, gamepad packs, pit boards, gauges and spotter voices are **packs** - a folder holding that pack's art or audio plus a `<type>.ini` describing it (`theme.ini`, `gamepad.ini`, `pitboard.ini`, `gauge.ini`, `spotter.ini` - a fixed name, so copying a pack and renaming the folder is the whole job). Every pack's ini opens with the same `[pack]` section, and `base = <pack>` layers yours over a shipped one so a reskin is one or two files. Both kinds sync to the plugin on startup, and your choice is stored **by name**, so adding or removing other packs never reassigns it.
+Fonts, textures and icons are loose files in their own subfolders. Themes, gamepad packs, pit boards, gauges and spotter voices are **packs** - a folder holding that pack's art or audio plus a `<type>.ini` describing it (`theme.ini`, `gamepad.ini`, `pitboard.ini`, `gauge.ini`, `spotter.ini` - a fixed name, so copying a pack and renaming the folder is the whole job). Every pack's ini opens with the same `[pack]` section, and `base = <pack>` layers yours over a shipped one so a reskin is one or two files. Both kinds sync to the plugin on startup, and your choice is stored by **folder** name, so adding or removing other packs never reassigns it.
 
 - [Modding guide](docs/modding.md) - the folder layout, panel themes, textures, gamepad, pit board and gauges packs, fonts, icons, and the web overlay's HTML/CSS/JS.
 - [Spotter voice](docs/spotter.md) - what it calls, how to set it up, and how to reword it or record your own voice.
@@ -326,7 +320,7 @@ Fonts, textures and icons are loose files in their own subfolders. Themes, gamep
 | `mxbmrp3_tracked_riders.json` | Tracked riders with colors and icons |
 | `mxbmrp3_rumble_profiles.json` | Per-bike rumble effect profiles |
 | `mxbmrp3_stats.json` | Unified stats, personal bests, odometer data, and earned achievements |
-| `mxbmrp3_analytics.json` | Anonymous random install ID for usage analytics (see [Privacy](#privacy)) |
+| `mxbmrp3_analytics.json` | Anonymous random install ID for the usage survey (see [Privacy](#privacy)) |
 | `mxbmrp3_log.txt` | The plugin's log for the current session - worth attaching to a bug report |
 
 ## Troubleshooting
@@ -344,8 +338,7 @@ The long-term fix is a code-signing certificate (a paid yearly cost, and one of 
 
 ### Make Sure You're on the Latest Version
 - Many issues are already fixed in a newer release, so update before troubleshooting further
-- Check your version in Settings > Updates (or the Version widget). The plugin notifies you on startup when a new stable release is available
-- To update in-game, go to Settings > Updates and install directly - no manual download or reinstall needed
+- Check your version in Settings > Updates (or the Version widget) and install a newer one from there - no manual download or reinstall needed. The plugin also notifies you on startup when a stable release is out
 - If the in-game updater is set to **Off** or unavailable, download the latest release manually from [GitHub Releases](https://github.com/thomas4f/mxbmrp3/releases) and reinstall
 
 ### HUD Not Appearing
@@ -357,9 +350,8 @@ The long-term fix is a code-signing certificate (a paid yearly cost, and one of 
 - If you have multiple installations (e.g., standalone and Steam), the installer may pick the wrong one. Verify the plugin ended up in the `plugins\` folder next to the game `.exe` you actually launch. If not, run the installer again and select the correct path, or install manually.
 
 ### Text or Icons Not Appearing
-- Ensure `mxbmrp3_data\` folder is in the `plugins\` folder alongside the DLO file (see [directory structure](#manual-installation))
-- The `mxbmrp3_data\` folder contains fonts, textures, and icons required for rendering
-- If you moved or renamed this folder, restore it from the release archive
+- `mxbmrp3_data\` holds the fonts, textures and icons, and must sit in `plugins\` beside the DLO (see [directory structure](#manual-installation))
+- If you moved or renamed it, restore it from the release archive
 
 ### Gamepad Widget Appears Cut Off
 - Click **Reset Widgets** (Settings > Widgets) to correct the button positions
@@ -389,7 +381,7 @@ The long-term fix is a code-signing certificate (a paid yearly cost, and one of 
 
 The plugin sends a small anonymous ping per game launch, so the developer can see how many people use it, which features are worth keeping, and what needs fixing. It is on by default. The installer asks before anything is sent: untick **Participate in the anonymous usage survey** on its Privacy page and the plugin starts with it off. You can change it at any time with the **Usage survey** toggle (Settings > General). Turning it off sends one final anonymous opt-out ping, then nothing more.
 
-Turning it off doesn't disable anything else; the plugin works exactly the same. The one difference: the plugin catches crashes in the game itself, which is what the [known-crash list](crash_analysis/KNOWN_GAME_CRASHES.md) is built from, and with analytics off yours stop being reported automatically. The crash files are still written to `Documents\PiBoSo\[Game]\mxbmrp3\crashes\`, so you can still attach them to a bug report.
+Turning it off doesn't disable anything else; the plugin works exactly the same. The one difference: the plugin catches crashes in the game itself, which is what the [known-crash list](crash_analysis/KNOWN_GAME_CRASHES.md) is built from, and with the usage survey off yours stop being reported automatically. The crash files are still written to `Documents\PiBoSo\[Game]\mxbmrp3\crashes\`, so you can still attach them to a bug report.
 
 What it sends:
 
@@ -406,14 +398,15 @@ What it sends:
 | Session length | How long a play session lasted (start to clean exit), so the developer can gauge typical usage |
 | Crashes | If the game crashed last session: which module faulted and where, the error code and access type (read/write/execute), the plugin and game versions at the time, and a short backtrace of the faulting call stack (the top several module-and-offset frames, so a plugin fault can be told apart from a bystander to a game or driver crash) - enough to group similar crashes, but never the memory dump or its contents. Reported on the next launch |
 | Link clicks | Which in-plugin link you click (docs, community, or support/donate) - nothing else |
+| Prestige | That you traded a finished achievement ladder for a prestige level, and which level it reached |
 
 What it does not send: no names, no in-game/online activity, no telemetry, no lap times, no server or rider data, and no crash dump or log (those stay on your machine) - nothing identifying. The pings are fire-and-forget and never affect performance.
 
-Analytics are processed by two open-source services: [Aptabase](https://aptabase.com) handles the detailed events above, and [GoatCounter](https://www.goatcounter.com) receives a single per-launch hit as an aggregate headcount. Both are covered by the one Usage survey toggle.
+Usage-survey data is processed by two open-source services: [Aptabase](https://aptabase.com) handles the detailed events above, and [GoatCounter](https://www.goatcounter.com) receives a single per-launch hit as an aggregate headcount. Both are covered by the one Usage survey toggle.
 
-When analytics is on, the plugin may also fetch a small config file from this repository that can only ever reduce what's sent, never add to it. Turning the Usage survey toggle off stops this too.
+When the usage survey is on, the plugin may also fetch a small config file from this repository that can only ever reduce what's sent, never add to it. Turning the Usage survey toggle off stops this too.
 
-**What the data actually adds up to:** the aggregate results are published in [`analytics/REPORT.md`](analytics/REPORT.md) - installs, activity over time per game, version adoption, geography, feature/HUD popularity, and crash trends (grouped by which module faulted). It's generated straight from the anonymous pings described above, so you can see exactly what they amount to.
+**What the data actually adds up to:** the aggregate results are published in [`usage_survey/REPORT.md`](usage_survey/REPORT.md) - installs, activity over time per game, version adoption, geography, feature/HUD popularity, and crash trends (grouped by which module faulted). It's generated straight from the anonymous pings described above, so you can see exactly what they amount to.
 
 ## Feedback & Issues
 
@@ -421,14 +414,12 @@ Bug reports, feature requests, and questions are all welcome. Open an issue on [
 
 A short description of what you were doing when the issue happened (track, session type, bike, and any reproduction steps) helps a lot.
 
-**For crashes**, please attach both files from `Documents\PiBoSo\[Game]\mxbmrp3\crashes\` - the plugin writes them automatically whenever it catches an unhandled fault. (The plugin catches any crash in the game, so these are usually faults in the game itself, not plugin bugs.)
-
-Before reporting, check [Known MX Bikes Crashes](crash_analysis/KNOWN_GAME_CRASHES.md) - it lists game-engine crashes the plugin's crash handler has caught, with Event Viewer fault offsets you can match against yours. If your crash is listed, it's a known game bug with no plugin fix possible.
+**For crashes**, attach the matching pair - same timestamp and pid - written to `Documents\PiBoSo\[Game]\mxbmrp3\crashes\` whenever the plugin catches an unhandled fault:
 
 - `mxbmrp3_crash_<timestamp>_<pid>.dmp` - the minidump (state at the moment of crash)
 - `mxbmrp3_crash_<timestamp>_<pid>.log` - a snapshot of the plugin log captured at crash time
 
-Grab the matching pair (same timestamp/pid) for the crash you want to report.
+The plugin catches any crash in the game, so these are usually faults in the game itself rather than plugin bugs. Check [Known MX Bikes Crashes](crash_analysis/KNOWN_GAME_CRASHES.md) first - it lists the game-engine crashes the handler has caught, with Event Viewer fault offsets you can match against yours. A crash listed there is a known game bug with no plugin fix possible.
 
 ## Uninstallation
 
@@ -443,7 +434,7 @@ If you installed from the ZIP, delete the files you added from each game's `plug
 - the plugin DLO (`mxbmrp3.dlo`, `mxbmrp3_gpb.dlo`, or `mxbmrp3_krp.dlo`)
 - the `mxbmrp3_data\` folder
 
-**Leave the native game files in place** (`proxy64.dlo`, `proxy_udp64.dlo`, `xinput64.dli`, and `telemetry64.dlo` for GP Bikes). These are native game files, not part of the plugin.
+**Leave the game's own files in place** - `proxy64.dlo`, `proxy_udp64.dlo`, `xinput64.dli`, and `telemetry64.dlo` (GP Bikes). They are not part of the plugin.
 
 ### Settings & Data
 

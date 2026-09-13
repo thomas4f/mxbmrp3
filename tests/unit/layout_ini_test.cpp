@@ -97,3 +97,38 @@ TEST_CASE("ini: a CRLF file parses identically") {
     CHECK(p.key == "panel.padding-x");
     CHECK(p.value == doctest::Approx(2.0f));
 }
+
+TEST_CASE("ini: a section header is matched whatever its capitalisation") {
+    // Every section any reader knows is lowercase, so a `[Pack]` used to be
+    // carried through verbatim and then matched nothing -- silently, which for
+    // the [pack] section is expensive: a skin whose `base` sat under it lost its
+    // base, failed its completeness check and vanished from the picker with
+    // nothing said about the capital. Lowering the name here is what makes the
+    // five pack types agree, and it is why the spotter's own parser (which does
+    // not share this code) lowers its sections too.
+    CHECK(feed("[Pack]").section == "pack");
+    CHECK(feed("[PACK]").section == "pack");
+    CHECK(feed("[pack]").section == "pack");
+    CHECK(feed("[Offset]").section == "offset");
+    CHECK(feed("[ Art ]").section == "art");
+
+    // ...and the scoping still works, which is the point of matching at all: the
+    // key handed over is what a reader compares, so a capitalised header must
+    // produce the same scoped key a lowercase one does.
+    CHECK(feed("width = 1920", "art").key == "art.width");
+    Parsed p;
+    p.section = "";
+    layoutParseIniLine("[Art]", p.section, p.key, p.value);
+    CHECK(feed("width = 1920", p.section.c_str()).key == "art.width");
+
+    // The VALUE side is untouched -- only the section name is lowered, so a
+    // pack name or a font name keeps every capital it was written with.
+    std::string section = "pack";
+    std::string key, raw;
+    float value = 0.0f;
+    bool numeric = false;
+    CHECK(layoutParseIniLineRaw("name = DualShock 4", section, key, value, raw, numeric)
+          == LayoutIniLine::Pair);
+    CHECK(key == "pack.name");
+    CHECK(raw == "DualShock 4");
+}

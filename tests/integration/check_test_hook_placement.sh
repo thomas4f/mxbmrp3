@@ -4,14 +4,14 @@
 # Test-hook placement lint (no compiler needed, pure grep/awk).
 #
 # THE INVARIANT (CLAUDE.md "Maintenance Invariants" / "Non-obvious placements"):
-# every MXBMRP3_Test_* hook lives in core/test_hooks.cpp, which is (a) gated on
+# every MXBMRP3_Test_* hook lives in a core/test_hooks*.cpp, which is (a) gated on
 # MXBMRP3_TEST_BUILD and (b) removed from the source list of every shipping
 # target by mxbmrp3/CMakeLists.txt — the two fences that keep test exports out
 # of a released DLL. A hook defined in any other file has neither fence by
 # default: it compiles into the shipping targets and SHIPS, silently. Nothing
 # caught that before this lint; the convention was review-only.
 #
-# So: any code (non-comment) mention of MXBMRP3_Test_ outside core/test_hooks.cpp
+# So: any code (non-comment) mention of MXBMRP3_Test_ outside core/test_hooks*.cpp
 # fails, with two deliberate exemptions:
 #   - a `friend` declaration (performance_hud.h grants a hook access to
 #     privates; a declaration exports nothing and defines nothing);
@@ -88,16 +88,17 @@ while IFS= read -r f; do
         echo "$out"
         fail=1
     fi
-done < <(find mxbmrp3 -name '*.cpp' -o -name '*.h' | grep -v '^mxbmrp3/core/test_hooks.cpp$' | sort)
+done < <(find mxbmrp3 -name '*.cpp' -o -name '*.h' | grep -vE '^mxbmrp3/core/test_hooks(_[a-z_]+)?\.cpp$' | sort)
 
 if [[ $fail -ne 0 ]]; then
     cat <<'EOF'
 
 TEST-HOOK PLACEMENT LINT FAILED.
-Each line above references MXBMRP3_Test_ in code outside core/test_hooks.cpp.
-Hooks belong in test_hooks.cpp — the one file that is both gated on
+Each line above references MXBMRP3_Test_ in code outside core/test_hooks*.cpp.
+Hooks belong in a test_hooks TU — the files that are both gated on
 MXBMRP3_TEST_BUILD and excluded from every shipping target, so a hook there
-cannot reach a released DLL. A hook anywhere else ships. Move the definition;
+cannot reach a released DLL. A hook anywhere else ships. A new TU in that family
+is core/test_hooks_<topic>.cpp, and mxbmrp3/CMakeLists.txt must name it too. Move the definition;
 if a non-hook reference is genuinely needed (a friend declaration already is
 exempt), annotate it:
 

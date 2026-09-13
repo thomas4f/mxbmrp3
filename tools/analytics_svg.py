@@ -29,6 +29,17 @@ PALETTE = [
     "#ffa657",  # orange
 ]
 
+# TIER RAMP (.t1-.t4 in the stylesheet). A tier is ORDINAL - swapping Bronze and
+# Platinum would change the meaning - so it takes one hue stepped light-to-dark
+# rather than four categorical hues, and the reader sees the order in the colour.
+# Literal metal colours were the obvious first idea and do not survive this report:
+# silver and platinum land within a few percent of each other, and platinum is very
+# nearly the light GitHub background. The dark steps are SELECTED for the dark
+# surface with the anchor flipped (dark->light), not an automatic inversion, so
+# "further along" stays the more prominent end in both themes. Both ramps pass the
+# ordinal checks - monotone lightness, adjacent dL >= 0.06, light end >= 2:1 against
+# its own surface, one hue - which is why .t1 differs between the two blocks.
+
 # Stable colours for the supported games, so a game keeps its colour everywhere.
 GAME_COLORS = {
     "MX Bikes": "#3fb950",
@@ -47,6 +58,11 @@ _STYLE = """<style>
   .sub{fill:#57606a;font-size:11px}
   .gap{fill:#57606a;opacity:.09}
   .gaplbl{fill:#57606a;font-size:10px;opacity:.85}
+  .ico{fill:#57606a}
+  .t1{fill:#d4a72c}
+  .t2{fill:#bf8700}
+  .t3{fill:#9e6a03}
+  .t4{fill:#7d4e00}
   @media (prefers-color-scheme: dark){
     .grid{stroke:#30363d}
     .axis{stroke:#8b949e}
@@ -56,6 +72,11 @@ _STYLE = """<style>
     .sub{fill:#8b949e}
     .gap{fill:#8b949e;opacity:.13}
     .gaplbl{fill:#8b949e}
+    .ico{fill:#8b949e}
+    .t1{fill:#bf8700}
+    .t2{fill:#d4a72c}
+    .t3{fill:#f2cc60}
+    .t4{fill:#fbe6a4}
   }
 </style>"""
 
@@ -112,6 +133,76 @@ def hbar(title, rows, subtitle="", value_fmt=_fmt, width=760, label_w=210):
                 x=pad_l + bw + 6, ty=y + row_h - 6, v=escape(annot)
             )
         )
+    return _svg(width, h, "".join(parts))
+
+
+def stacked_hbar(title, rows, legend, subtitle="", width=760, label_w=210,
+                 icon_size=15):
+    """Horizontal bars split into ordered segments, one row per category.
+
+    rows:   (label, icon, segments, annotation), where `segments` is
+            [(css_class, value)] in tier order and `icon` is an (viewbox, path)
+            pair or None. Row length is the segment TOTAL, so the bars still
+            compare like an ordinary hbar; the split adds where inside that total
+            each row sits.
+    legend: [(css_class, name)] - always drawn, because identity must never rest
+            on colour alone, and a static SVG has no hover to fall back on.
+
+    Segments are separated by a 2px gap of surface rather than butted together,
+    and the whole bar is clipped to one rounded rect so only the outer end is
+    round - a rounded rect per segment reads as separate bars.
+    """
+    pad_l, pad_r = label_w, 96
+    pad_t = (44 if subtitle else 34) + 22          # + legend row
+    row_h, gap = 20, 8
+    h = pad_t + len(rows) * (row_h + gap) + 12
+    plot_w = width - pad_l - pad_r
+    vmax = max([sum(v for _c, v in r[2]) for r in rows], default=0) or 1
+    parts = ['<text x="12" y="20" class="title">{}</text>'.format(escape(title))]
+    if subtitle:
+        parts.append('<text x="12" y="37" class="sub">{}</text>'.format(escape(subtitle)))
+    ly = (52 if subtitle else 42)
+    lx = 12
+    for cls, name in legend:
+        parts.append('<rect x="{x}" y="{y}" width="11" height="11" rx="2" class="{c}"/>'.format(
+            x=lx, y=ly - 9, c=cls))
+        parts.append('<text x="{x}" y="{y}" class="lbl">{n}</text>'.format(
+            x=lx + 16, y=ly, n=escape(name)))
+        lx += 30 + 7.2 * len(name)
+    for i, (label, icon, segments, annot) in enumerate(rows):
+        y = pad_t + i * (row_h + gap)
+        total = sum(v for _c, v in segments)
+        # Icon and label LEFT-aligned as one unit, unlike the right-aligned labels on
+        # the plain hbars. An icon pinned to the left margin beside a right-aligned
+        # label leaves a gap the width of the longest name, and the pairing stops
+        # reading; left-aligned, the row scans icon -> name -> bar.
+        if icon:
+            mx, my, box, path = icon
+            sc = icon_size / float(box)
+            parts.append(
+                '<g transform="translate({x:.2f},{y:.2f}) scale({s:.5f})">'
+                '<path d="{d}" class="ico"/></g>'.format(
+                    x=12 - mx * sc, y=y + (row_h - icon_size) / 2.0 - my * sc, s=sc, d=path))
+        parts.append(
+            '<text x="{x}" y="{ty}" class="lbl">{lab}</text>'.format(
+                x=12 + icon_size + 7, ty=y + row_h - 5, lab=escape(str(label))))
+        bw = max(1, plot_w * (total / vmax))
+        parts.append(
+            '<clipPath id="b{i}"><rect x="{x}" y="{y}" width="{w:.1f}" height="{h}" '
+            'rx="4"/></clipPath>'.format(i=i, x=pad_l, y=y, w=bw, h=row_h))
+        parts.append('<g clip-path="url(#b{i})">'.format(i=i))
+        sx = float(pad_l)
+        for cls, val in segments:
+            if val <= 0:
+                continue
+            sw = plot_w * (val / vmax)
+            parts.append(
+                '<rect x="{x:.1f}" y="{y}" width="{w:.1f}" height="{h}" class="{c}"/>'.format(
+                    x=sx, y=y, w=max(0.0, sw - 2), h=row_h, c=cls))
+            sx += sw
+        parts.append("</g>")
+        parts.append('<text x="{x:.1f}" y="{ty}" class="val">{v}</text>'.format(
+            x=pad_l + bw + 6, ty=y + row_h - 5, v=escape(annot)))
     return _svg(width, h, "".join(parts))
 
 

@@ -11,8 +11,11 @@
 // ============================================================================
 #pragma once
 
+#include <cctype>
 #include <cstdlib>
 #include <string>
+
+#include "plugin_utils.h"
 
 enum class LayoutIniLine { Blank, Section, Pair };
 
@@ -65,6 +68,19 @@ inline LayoutIniLine layoutParseIniLineRaw(const std::string& line, std::string&
         const size_t close = head.find(']');
         if (close == std::string::npos) return LayoutIniLine::Blank;
         section = trimmed(head.substr(1, close - 1));
+        // LOWERED, so section names match case-insensitively while every reader's
+        // comparison stays a plain lowercase literal.
+        //
+        // These files are hand-written, and every section any reader knows is
+        // lowercase -- so `[Pack]` used to be ignored in silence, and silence is
+        // expensive here: a skin whose `base` line sat under it lost its base,
+        // failed the completeness check and vanished from the picker with nothing
+        // said about the capital letter (see PackIni::kSection for that bug).
+        // The spotter's own parser lowers its sections for the same reason.
+        //
+        // Purely permissive: no reader compares against a section name carrying a
+        // capital, so nothing that parsed before parses differently now.
+        PluginUtils::toLowerAscii(section);
         return LayoutIniLine::Section;
     }
 

@@ -18,6 +18,7 @@
 #include "../core/plugin_utils.h"
 #include "../diagnostics/logger.h"
 
+#include <cstdio>
 #include <cstring>
 
 using namespace PluginConstants;
@@ -123,20 +124,38 @@ void AchievementWidget::rebuildRenderData() {
 
     // Nothing live (or toasts switched off, which empties the queue): render
     // nothing, and clear the bounds so an invisible widget never eats a click.
-    if (!m_showing || !AchievementManager::getInstance().isToastsEnabled()) {
+    //
+    // UNLESS THE ACHIEVEMENTS TAB IS OPEN (isPreviewing): a card is up for a few
+    // seconds a session, which is no time at all to drag it somewhere, so a sample
+    // one stands in. Toasts switched OFF stays off -- that switch is the player
+    // saying they do not want these, and a preview would argue with it.
+    const bool toastsOn = AchievementManager::getInstance().isToastsEnabled();
+    if (!toastsOn || (!m_showing && !isPreviewing())) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
+    // A real card's shape at its widest tier. Built here, never queued: nothing is
+    // earned, nothing is logged, and a click on it opens no page (catalogueIndex
+    // stays -1).
+    static const AchievementManager::Toast kSampleToast = [] {
+        AchievementManager::Toast t;
+        std::snprintf(t.title, sizeof(t.title), "%s", "Preview");
+        std::snprintf(t.detail, sizeof(t.detail), "%s", "Achievement toasts appear here");
+        std::snprintf(t.icon, sizeof(t.icon), "%s", "trophy");
+        t.tier = Achievements::TIER_COUNT;
+        return t;
+    }();
+    const AchievementManager::Toast& toast = m_showing ? m_toast : kSampleToast;
 
     const auto dim = getScaledDimensions();
     const unsigned long primary = getColor(ColorSlot::PRIMARY);
     const unsigned long secondary = getColor(ColorSlot::SECONDARY);
-    const unsigned long accent = tierColor(m_toast.tier, primary);
+    const unsigned long accent = tierColor(toast.tier, primary);
 
     // The marker sprite, if the icon set has it; a missing asset just drops the
     // icon column rather than drawing a coloured square in its place.
-    const int sprite = m_toast.icon[0]
-        ? AssetManager::getInstance().getIconSpriteIndex(m_toast.icon) : 0;
+    const int sprite = toast.icon[0]
+        ? AssetManager::getInstance().getIconSpriteIndex(toast.icon) : 0;
     const float rowH = dim.lineHeightNormal;
     const float iconSize = sprite > 0 ? rowH * 1.6f : 0.0f;
     // Aspect-corrected width of the icon column (addIcon draws a square in
@@ -147,8 +166,8 @@ void AchievementWidget::rebuildRenderData() {
 
     // Monospace estimate over a proportional font: slightly generous card,
     // never a clipped one.
-    const int titleChars = static_cast<int>(std::strlen(m_toast.title));
-    const int detailChars = static_cast<int>(std::strlen(m_toast.detail));
+    const int titleChars = static_cast<int>(std::strlen(toast.title));
+    const int detailChars = static_cast<int>(std::strlen(toast.detail));
     const int textChars = titleChars > detailChars ? titleChars : detailChars;
 
     BaseHud::PanelWant want;
@@ -169,9 +188,9 @@ void AchievementWidget::rebuildRenderData() {
         addIcon(x + (iconSize / UI_ASPECT_RATIO) * 0.5f, y + rowH, sprite, accent, iconSize);
     }
     const float textX = x + iconColW;
-    addString(m_toast.title, textX, inkCenteredY(y, rowH, dim.fontSize),
+    addString(toast.title, textX, inkCenteredY(y, rowH, dim.fontSize),
               Justify::LEFT, getFont(FontCategory::STRONG), accent, dim.fontSize);
-    addString(m_toast.detail, textX, inkCenteredY(y + rowH, rowH, dim.fontSize),
+    addString(toast.detail, textX, inkCenteredY(y + rowH, rowH, dim.fontSize),
               Justify::LEFT, getFont(FontCategory::NORMAL), secondary, dim.fontSize);
 
     setBounds(panelX, 0.0f, panelX + p.width(), p.height());

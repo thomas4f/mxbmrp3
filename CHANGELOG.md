@@ -4,21 +4,93 @@ All notable user-facing changes to MXBMRP3 are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-**Versioning.** The version lives in `mxbmrp3/resource.h` as `MAJOR.MINOR.PATCH`;
-a fourth component is stamped automatically at build time from the git commit
-count, so the DLL reports `1.28.0.1234` while the release is tagged `v1.28.0`.
-This is *not* strict semantic versioning: the plugin has no API consumers, so
-MINOR carries feature releases and PATCH carries everything else. Tags before
-`v1.27.3` carry the full four components (`v1.26.0.0`), and some PATCH numbers
-never shipped publicly, so gaps in this list are expected.
+**Versioning.** `MAJOR.MINOR.PATCH`, plus a fourth component stamped at build
+time from the git commit count - so the DLL reports `1.28.0.1234` while the
+release is tagged `v1.28.0`. Not semantic versioning: MINOR carries features and
+PATCH everything else. Tags before `v1.27.3` carry all four components, and some
+PATCH numbers never shipped, so gaps in this list are expected.
 
-Entries up to and including `v1.27.7` were compiled retroactively from the
-[GitHub Releases](https://github.com/thomas4f/mxbmrp3/releases) of the public
-repository, which were the project's release notes before this file existed.
-Their wording is preserved; only the section headings are normalised to Keep a
-Changelog's categories.
+A released section IS the GitHub Release body for that version, published from
+this file word for word, so it is never edited afterwards - only `[Unreleased]`
+is. Entries up to and including `v1.27.7` came the other way, compiled from the
+[GitHub Releases](https://github.com/thomas4f/mxbmrp3/releases) that predate this
+file; their wording is preserved too.
 
 ## [Unreleased]
+
+## [1.30.3] - 2026-09-13
+
+Prestige, 28 new achievements, a rebalanced catalogue, and a positioning
+preview for the HUDs that hide themselves.
+
+### Added
+- 28 achievements on three new pages - Air, Completion and Misfortune - twelve
+  of them unlisted until earned, and **Perfect Race**: the holeshot, every lap
+  led, the fastest lap and the win in one race
+- **Prestige** (Settings > Achievements): with every counted achievement at
+  Platinum, trade the ladder back to zero for a prestige level and the Prestige
+  widget. Personal bests are untouched, and it cannot be undone, so it asks twice
+- Jump height on the FMX trick stats row, each measurement marked with its own
+  icon
+- Spotter cue `holeshot_you`, shipped commented out in the default pack
+- A HUD that hides itself draws a **PREVIEW** while its own settings tab is
+  open, so it can be positioned
+
+### Changed
+- Achievements are MX Bikes only: the tab, the toasts and the badge are gone on
+  GP Bikes and Kart Racing Pro
+- Achievements rebalanced: top tiers lowered, the rows that counted button
+  presses ask once, seven rows folded into others. No tier already earned is
+  taken back
+- Achievement rows reworded, every number against its unit ("150km", "1h
+  30min"). Rows that say RIDE require the bike to be moving; trick rows require
+  the trick to be landed
+- Holeshot-ish, Wire to Wire and Perfect Race need at least one other rider on
+  the grid
+- Achievement pages reorganised: Conduct is Consistency, Progress is Variety,
+  Moments is gone, the pages that do not count towards completion follow the
+  ones that do, and the completion figure says what it counts ("47% (+3)")
+- The FMX HUD's values, the Rumble HUD's legend and the Records position column
+  use the Digits font; the trick stats row rounds its metres to whole numbers
+- The usage survey reports the prestige trade and the level it reached, and its
+  achievement percentage now measures only the rows that count towards
+  completion, the rest reported separately
+- Holding a profile arrow in the settings sidebar no longer cycles profiles
+  repeatedly
+- Shipped asset packs no longer state a `name` the folder already derives
+
+### Fixed
+- Two FMX tricks were near-impossible to register: the nose angle was sampled
+  too late in the rotation, once the front wheel was back down
+- The post-update donation nudge, and the achievement it feeds, never fired: the
+  version the installer recorded never matched the one running
+- Photo Finish measured a gap cached across the flag rather than the finishing
+  margin
+- Lapped the Field was vetoed by any rider who did not start or who retired
+- Holeshot went to the first rider over split 1, which is not always the first
+  split off the gate; it goes to whichever split comes first. The game does not
+  report its holeshot marker, so the row is now called **Holeshot-ish**
+- A race finish is recorded at the flag rather than on leaving the track, so its
+  toast appears in the session it belongs to
+- A restarted race counted for nothing, and the abandoned attempt's start place
+  and lead carried into it
+- Charger measured from the wrong corner when you were not yet classified at the
+  start
+- Watching a replay of your own race credited it again
+- The FMX HUD measured a jump from where it recognised the trick rather than from
+  takeoff, so distance and time read short; scores come out slightly higher
+- The FMX chain multiplier snapped back to 1.0 when a chain ended, instead of
+  freezing and colouring with the Score and Chain values beside it - and, like
+  the rotation arcs, the whole panel now holds while you are down, until you
+  are back on the bike
+- The hide-widgets hotkey left the Crashes tally on screen
+- A hotkey capture left armed when the settings menu closed disabled every hotkey
+  until the game was restarted
+- A settings section's hint drifted from, or overlapped, its heading under a
+  non-default Strong font
+- Pack `.ini` section headers are matched case-insensitively
+- The spotter authoring guide showed the pre-1.29.2 pack layout
+
 
 ## [1.30.1] - 2026-09-06
 
@@ -908,7 +980,8 @@ Pre-release. Its contents shipped in 1.26.0.0, minus the analytics addition.
 
 Initial public release.
 
-[Unreleased]: https://github.com/thomas4f/mxbmrp3/compare/v1.30.1...HEAD
+[Unreleased]: https://github.com/thomas4f/mxbmrp3/compare/v1.30.3...HEAD
+[1.30.3]: https://github.com/thomas4f/mxbmrp3/compare/v1.30.1...v1.30.3
 [1.30.1]: https://github.com/thomas4f/mxbmrp3/compare/v1.30.0...v1.30.1
 [1.30.0]: https://github.com/thomas4f/mxbmrp3/compare/v1.29.5...v1.30.0
 [1.29.5]: https://github.com/thomas4f/mxbmrp3/compare/v1.29.3...v1.29.5

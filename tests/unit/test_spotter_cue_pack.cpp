@@ -472,3 +472,41 @@ TEST_CASE("cue pack: [pack] name tolerates whitespace around the '='") {
         "[pack]\n   name   =    Spaced Out   \n[Cues]\ngate_drop = go\n");
     CHECK(p.displayName == "Spaced Out");
 }
+
+TEST_CASE("cue pack: section headers are matched whatever their capitalisation") {
+    // The documented spellings are [Cues], [Mix] and [pack] -- note that the
+    // shipped file itself mixes the two styles -- and every OTHER pack type
+    // (theme, gamepad, pit board, gauges) matches its sections case-insensitively
+    // through layoutParseIniLineRaw. This parser is the spotter's own, so it has
+    // to carry the same rule separately; without it an author who wrote [cues]
+    // lost every word in the pack, and got a silent, wordless spotter for it.
+    SUBCASE("[cues] lowercase") {
+        const SpotterCuePack::Pack p = SpotterCuePack::parse("[cues]\ngate_drop = go\n");
+        CHECK(p.phrases.size() == 1);
+        CHECK(p.phrases.at("gate_drop") == "go");
+    }
+    SUBCASE("[CUES] shouted") {
+        const SpotterCuePack::Pack p = SpotterCuePack::parse("[CUES]\ngate_drop = go\n");
+        CHECK(p.phrases.at("gate_drop") == "go");
+    }
+    SUBCASE("[Pack] capitalised still titles the pack") {
+        const SpotterCuePack::Pack p =
+            SpotterCuePack::parse("[Pack]\nname = Bill\n[Cues]\ngate_drop = go\n");
+        CHECK(p.displayName == "Bill");
+        CHECK(p.phrases.size() == 1);
+    }
+    SUBCASE("[mix] lowercase still carries gap_ms") {
+        const SpotterCuePack::Pack p =
+            SpotterCuePack::parse("[mix]\ngap_ms = -40\n[Cues]\nx = y\n");
+        CHECK(p.hasGapMs);
+        CHECK(p.gapMs == -40);
+    }
+    SUBCASE("a section nobody knows is still ignored, in any case") {
+        // The permissiveness is about CAPITALISATION, not about accepting
+        // anything: [Other] was ignored before and must stay ignored.
+        const SpotterCuePack::Pack p =
+            SpotterCuePack::parse("[other]\nleader_you = no\n[Cues]\nx = y\n");
+        CHECK(p.phrases.size() == 1);
+        CHECK(p.phrases.count("leader_you") == 0);
+    }
+}

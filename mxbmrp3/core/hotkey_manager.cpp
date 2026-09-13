@@ -189,9 +189,14 @@ void HotkeyManager::startCapture(HotkeyAction action, CaptureType type) {
 }
 
 void HotkeyManager::cancelCapture() {
+    // Callers cancel unconditionally - closing the settings panel does it
+    // whether or not a binding was being captured - so there is nothing to say
+    // unless a capture was actually running. Said every time, the line just
+    // buried the ones that mean something.
+    const bool wasCapturing = m_captureType != CaptureType::NONE;
     m_captureType = CaptureType::NONE;
     m_captureCompleted = false;
-    DEBUG_INFO("HotkeyManager: Capture cancelled");
+    if (wasCapturing) DEBUG_INFO("HotkeyManager: Capture cancelled");
 }
 
 bool HotkeyManager::wasCaptureCompleted() {

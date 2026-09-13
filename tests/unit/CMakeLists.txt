@@ -45,6 +45,7 @@ set(MXB_UNIT_SOURCES
     test_font_metrics.cpp
     test_tooltip_length.cpp
     test_update_asset_select.cpp
+    test_update_version_match.cpp
     test_ui_config.cpp
     test_render_frame_buffer.cpp
     test_crash_stack_format.cpp
@@ -88,6 +89,9 @@ set(MXB_UNIT_SOURCES
     test_spotter_vars.cpp
     test_spotter_pack_census.cpp
     test_fuel_estimate.cpp
+    test_completion_floor.cpp
+    test_finish_margin.cpp
+    test_roost_detect.cpp
     test_spotter_mix.cpp
     grid_snap_test.cpp
     layout_metrics_test.cpp

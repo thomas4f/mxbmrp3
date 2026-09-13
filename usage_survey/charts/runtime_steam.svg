@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="110" viewBox="0 0 760 110" role="img"><style>
+  text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+  .grid{stroke:#d0d7de;stroke-width:1}
+  .axis{stroke:#57606a;stroke-width:1}
+  .lbl{fill:#57606a;font-size:12px}
+  .val{fill:#24292f;font-size:12px;font-weight:600}
+  .title{fill:#24292f;font-size:14px;font-weight:700}
+  .sub{fill:#57606a;font-size:11px}
+  .gap{fill:#57606a;opacity:.09}
+  .gaplbl{fill:#57606a;font-size:10px;opacity:.85}
+  .ico{fill:#57606a}
+  .t1{fill:#d4a72c}
+  .t2{fill:#bf8700}
+  .t3{fill:#9e6a03}
+  .t4{fill:#7d4e00}
+  @media (prefers-color-scheme: dark){
+    .grid{stroke:#30363d}
+    .axis{stroke:#8b949e}
+    .lbl{fill:#8b949e}
+    .val{fill:#e6edf3}
+    .title{fill:#e6edf3}
+    .sub{fill:#8b949e}
+    .gap{fill:#8b949e;opacity:.13}
+    .gaplbl{fill:#8b949e}
+    .ico{fill:#8b949e}
+    .t1{fill:#bf8700}
+    .t2{fill:#d4a72c}
+    .t3{fill:#f2cc60}
+    .t4{fill:#fbe6a4}
+  }
+</style><text x="12" y="20" class="title">Steam vs. standalone</text><text x="12" y="37" class="sub">14,355 installs reporting</text><rect x="12.0" y="44" width="728.9" height="30" fill="#3fb950"/><text x="376.4" y="64" class="val" text-anchor="middle" style="fill:#0d1117">99%</text><rect x="12" y="88" width="11" height="11" rx="2" fill="#3fb950"/><text x="28" y="98" class="lbl">Steam (14,216)</text><rect x="740.9" y="44" width="7.1" height="30" fill="#d29922"/><rect x="142.8" y="88" width="11" height="11" rx="2" fill="#d29922"/><text x="158.8" y="98" class="lbl">Standalone (139)</text></svg>

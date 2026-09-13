@@ -177,7 +177,17 @@ inline const char* getTrickName(TrickType type) {
 // ============================================================================
 constexpr float PARTIAL_ROTATION_MIN = 30.0f;   // Minimum rotation for scrub/whip
 constexpr float FULL_ROTATION_MIN = 270.0f;    // 3/4 rotation — ensures commitment before classifying as full trick
-constexpr float TURN_PITCH_THRESHOLD = 67.5f;   // World-space pitch angle for oppo/turn down classification
+// Oppo / Turn Down: yaw past TURN_YAW_THRESHOLD with the nose past
+// TURN_PITCH_THRESHOLD in WORLD space. The two fight each other by geometry:
+// yaw is the game's body-frame yaw rate integrated per axis, and with the nose
+// pitched up by θ only cos θ of a swing about the vertical lands in that
+// channel (38% at 67.5°, 57% at 55°). At 67.5°/67.5° a session of 165 air
+// tricks with 21 nose-up whips scored zero oppos; the nose peak came at 5–38°
+// of booked yaw every time, and by 67.5° the bike was level again for the
+// landing. 55° is a front wheel clearly above the rear while the whip still
+// books most of its yaw. Where the peak is sampled is the other half — see
+// updateRotation().
+constexpr float TURN_PITCH_THRESHOLD = 55.0f;   // World-space pitch angle for oppo/turn down classification
 constexpr float TURN_YAW_THRESHOLD = 67.5f;     // Minimum yaw rotation for oppo/turn down classification
 
 // ============================================================================
@@ -457,6 +467,13 @@ struct TrickInstance {
 
     // Distance traveled (horizontal, accumulated frame-by-frame)
     float distance = 0.0f;        // meters
+
+    // Highest this trick got above the altitude it left the ground at, metres;
+    // 0 for a trick that never flew. A high-water mark, so it holds through the
+    // landing and the grace period the way the peak rotations do. Read off the
+    // flight tracker (FmxManager::updateFlight runs first each frame), so the
+    // number the HUD shows is the one the Sent It achievement measures.
+    float peakHeight = 0.0f;      // meters
 
     // Cumulative seconds where clutch input was above the coaster threshold.
     // Used by wheelie classification (promote to Coaster Wheelie at 0.5s) and

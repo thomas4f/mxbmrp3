@@ -325,15 +325,21 @@ __declspec(dllexport) void RaceSplit(void* _pData, int _iDataSize)
 }
 
 /*
-This function is optional. The game does not currently fire RaceHoleshot (see the
-note in plugin_manager.cpp) and the plugin takes NO gameplay action on it — but we
-export + record it so a captured tape stays complete if PiBoSo ever starts sending
-it, and so replay can feed it back. If holeshot handling is ever added, it goes here
-alongside the recorder tap.
+This function is optional. The game never fires RaceHoleshot - measured across four
+tracks with the marker set and crossed - so the Holeshot row reads the first split
+event instead (handlers/opening_line.h) and the plugin takes NO action here. It is
+exported, LOGGED and recorded so the day PiBoSo starts sending it shows up in a log
+and a captured tape stays complete; wiring it into the row is then a call to
+Handlers::claimOpeningLine from here.
 */
 __declspec(dllexport) void RaceHoleshot(void* _pData, int _iDataSize)
 {
 	try {
+		// Logged FIRST and unconditionally, before any guard can drop the call: the
+		// question is whether this fires at all, so a callback rejected for a null
+		// pointer or a zero size still has to show up in the log.
+		DEBUG_INFO_F("RaceHoleshot fired: dataSize=%d ptr=%s (expected struct %d bytes)",
+			_iDataSize, _pData ? "set" : "null", static_cast<int>(sizeof(SPluginsRaceHoleshot_t)));
 		// Version-skew-safe copy into a zero-initialized local (see EventInit): never
 		// over-read if a future build sends a shorter/longer struct.
 		SPluginsRaceHoleshot_t safeData{};
@@ -342,6 +348,8 @@ __declspec(dllexport) void RaceHoleshot(void* _pData, int _iDataSize)
 			: 0;
 		if (_pData && copySize > 0) {
 			memcpy(&safeData, _pData, copySize);
+			DEBUG_INFO_F("  RaceHoleshot: session=%d raceNum=%d time=%d ms",
+				safeData.m_iSession, safeData.m_iRaceNum, safeData.m_iTime);
 			EventRecorder::getInstance().recordRaceHoleshot(&safeData);
 		}
 	} API_GUARD_CATCH("RaceHoleshot")

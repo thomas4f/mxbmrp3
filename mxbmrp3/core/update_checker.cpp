@@ -271,46 +271,6 @@ void UpdateChecker::workerThread() {
     }
 }
 
-bool UpdateChecker::parseVersion(const std::string& version, int& major, int& minor, int& patch, int& build) {
-    // Handle versions with or without 'v' prefix
-    std::string ver = version;
-    if (!ver.empty() && (ver[0] == 'v' || ver[0] == 'V')) {
-        ver = ver.substr(1);
-    }
-
-    // Strip suffix after hyphen (e.g., "1.11.0.0-beta1" -> "1.11.0.0")
-    size_t hyphen = ver.find('-');
-    if (hyphen != std::string::npos) {
-        ver = ver.substr(0, hyphen);
-    }
-
-    major = minor = patch = build = 0;
-
-    std::istringstream iss(ver);
-    char dot;
-
-    if (!(iss >> major)) return false;
-    if (iss.peek() == '.') {
-        iss >> dot;
-        if (!(iss >> minor)) return false;
-    }
-    if (iss.peek() == '.') {
-        iss >> dot;
-        if (!(iss >> patch)) return false;
-    }
-    if (iss.peek() == '.') {
-        iss >> dot;
-        if (!(iss >> build)) return false;
-    }
-
-    return true;
-}
-
-bool UpdateChecker::isValidVersion(const std::string& v) {
-    int major, minor, patch, build;
-    return parseVersion(v, major, minor, patch, build);
-}
-
 int UpdateChecker::compareVersions(const std::string& a, const std::string& b) {
     int aMajor, aMinor, aPatch, aBuild;
     int bMajor, bMinor, bPatch, bBuild;

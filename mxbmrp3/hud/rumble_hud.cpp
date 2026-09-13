@@ -338,7 +338,7 @@ void RumbleHud::rebuildRenderData() {
         float suspVal = std::max(xinput.getLastSuspensionRumble(), xinput.getLastSuspensionRumbleRear());
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(suspVal * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+            this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
@@ -348,7 +348,7 @@ void RumbleHud::rebuildRenderData() {
             this->getFont(FontCategory::STRONG), wheelColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastWheelspinRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+            this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
@@ -360,7 +360,7 @@ void RumbleHud::rebuildRenderData() {
         float lockVal = std::max(xinput.getLastLockupRumble(), xinput.getLastLockupRumbleRear());
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(lockVal * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+            this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
@@ -370,7 +370,7 @@ void RumbleHud::rebuildRenderData() {
             this->getFont(FontCategory::STRONG), wheelieColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastWheelieRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+            this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
@@ -380,7 +380,7 @@ void RumbleHud::rebuildRenderData() {
             this->getFont(FontCategory::STRONG), rpmColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastRpmRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+            this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
@@ -390,7 +390,7 @@ void RumbleHud::rebuildRenderData() {
             this->getFont(FontCategory::STRONG), slideColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastSlideRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+            this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
@@ -400,7 +400,7 @@ void RumbleHud::rebuildRenderData() {
             this->getFont(FontCategory::STRONG), terrainColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastSurfaceRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+            this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
@@ -410,7 +410,7 @@ void RumbleHud::rebuildRenderData() {
             this->getFont(FontCategory::STRONG), steerColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastSteerRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+            this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
@@ -420,7 +420,7 @@ void RumbleHud::rebuildRenderData() {
             this->getFont(FontCategory::STRONG), revLimColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastRevLimiterRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+            this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
         legendY += dims.lineHeightNormal;
     }
 
@@ -430,6 +430,6 @@ void RumbleHud::rebuildRenderData() {
             this->getFont(FontCategory::STRONG), pitLimColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastPitLimiterRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
+            this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
     }
 }

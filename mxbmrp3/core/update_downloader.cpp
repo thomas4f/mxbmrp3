@@ -309,14 +309,12 @@ bool UpdateDownloader::checkAndClearDonationNudge() {
         DeleteFileA(nudgePath.c_str());
 
         // Only show the nudge if the running DLL matches the installed version.
-        // Use compareVersions (strips "v" prefix, tolerates 3-vs-4 components) rather
-        // than == because getLatestVersion() returns the raw tag ("v1.25.0.0") while
-        // PLUGIN_VERSION has no prefix ("1.25.0.0").
-        // isValidVersion guards the corrupt-sentinel case: compareVersions returns 0
-        // for "equal" AND for "unparseable", so a garbled (non-empty) sentinel would
-        // otherwise alias to a match and fire a spurious nudge.
-        if (UpdateChecker::isValidVersion(installedVersion) &&
-            UpdateChecker::compareVersions(installedVersion, PluginConstants::PLUGIN_VERSION) == 0) {
+        // isSameRelease, NOT compareVersions() == 0: the sentinel holds the raw
+        // release tag (vX.Y.Z, so build 0) while PLUGIN_VERSION carries a nonzero
+        // VER_BUILD, and comparing all four components can therefore never call
+        // them equal. It returns false on a garbled sentinel too, so a corrupt
+        // one cannot alias to a match and fire a spurious nudge.
+        if (UpdateChecker::isSameRelease(installedVersion, PluginConstants::PLUGIN_VERSION)) {
             DEBUG_INFO_F("UpdateDownloader: Donation nudge confirmed for v%s", PluginConstants::PLUGIN_VERSION);
             return true;
         }

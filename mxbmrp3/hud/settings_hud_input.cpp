@@ -877,7 +877,7 @@ void SettingsHud::handleScaleClick(const ClickRegion& region, bool increase) {
 
 void SettingsHud::handleTabClick(const ClickRegion& region) {
     m_activeTab = region.tabIndex;
-    StatsManager::getInstance().exploration().onTabOpened(getTabName(m_activeTab));   // Grand Tour
+    recordTabOpened(m_activeTab);   // Grand Tour
     // OPENING a marked tab clears its "New" tag -- the tag's only claim is that
     // there is something here you have not looked at, and now you have. The rows
     // keep their bands until hovered; finding the row is a separate thing from
@@ -975,6 +975,9 @@ static bool isPerturbSafe(SettingsHud::ClickRegion::Type t) {
         case CR::RESET_BUTTON:
         case CR::RESET_PROFILE_CHECKBOX:
         case CR::RESET_ALL_CHECKBOX:
+        // Not a setting at all: it trades the whole achievement ladder and the
+        // lifetime counters under it for a prestige level.
+        case CR::ACHIEVEMENTS_PRESTIGE:
         // Navigation and file I/O: they change no setting, and leaving the tab would
         // perturb one page while resetting another.
         case CR::TAB:

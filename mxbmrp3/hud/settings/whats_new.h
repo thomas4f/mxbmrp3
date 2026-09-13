@@ -44,10 +44,24 @@ namespace WhatsNew {
 // pack row registers "common.texture", the same id every HUD's Texture row uses,
 // and "common.theme" belongs to the per-HUD theme override on all twenty-odd HUD
 // tabs. Keying on the id alone would light up every one of them.
+// WHAT MAKES A MARKER LIVE. Almost every one is a RELEASE: new in 1.30, dark
+// from 1.31, which is the self-expiry above and what check_whats_new.sh gates.
+//
+// One kind is not. A row that a player UNLOCKS appears whenever they earn it,
+// and a highlight tied to our release schedule would light for the players who
+// happened to earn it that month and nobody else -- which is backwards, since
+// the row is new to them at the moment it appears. Those markers are live from
+// the unlock until they are dismissed, on any release.
+enum class Gate {
+    Release,    // sinceVersion names the line this is new in
+    Unlocked,   // sinceVersion is nullptr; live while setUnlocked(true)
+};
+
 struct Marker {
     int tabId;                  // SettingsHud::Tab value
     const char* rowTooltipId;   // the row's own tooltip id
-    const char* sinceVersion;   // "MAJOR.MINOR" -- see liveness above
+    const char* sinceVersion;   // "MAJOR.MINOR", or nullptr for Gate::Unlocked
+    Gate gate = Gate::Release;
 };
 
 // THE TABLE lives in whats_new.cpp, not here: it names tabs by their Tab enum
@@ -55,6 +69,13 @@ struct Marker {
 // comment would be a second copy of the enum, wrong the first time a tab moves.
 extern const Marker* const MARKERS;
 extern const int MARKER_COUNT;
+
+// The Gate::Unlocked state, set by the one place that draws the panel (see
+// SettingsHud::rebuildRenderData) right before anything reads a marker. Kept
+// as a plain flag rather than a callback so this translation unit stays free
+// of the managers that know -- the same reason dismissTab() below returns a
+// bool instead of marking the settings dirty itself.
+void setUnlocked(bool on);
 
 // The running plugin's "MAJOR.MINOR", which is what a marker's version is
 // compared against. Defined in the .cpp so this header does not drag in

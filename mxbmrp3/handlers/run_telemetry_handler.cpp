@@ -26,7 +26,31 @@ void Handlers::handleRunTelemetry(Unified::TelemetryData* psTelemetryData) {
         {
             const RiderTrackState* playerPos = PluginData::getInstance().getPlayerTrackPosition();
             bool isCrashed = playerPos && playerPos->crashed;
-            StatsManager::getInstance().updateTelemetry(psTelemetryData->speedometer, isCrashed, psTelemetryData->gear);
+            // WHICH WHEEL IS THE REAR is the caller's knowledge, not the stats':
+            // a bike reports two (0 front, 1 rear), a kart four (2 and 3 driven).
+            // Anything else says "cannot be known" with a negative, and the row
+            // that reads it simply never fires rather than reading a front wheel.
+            //
+            // ONLY WHILE IT IS ON THE GROUND (wheelMaterial 0 = no contact). A
+            // wheel spinning in the air is not digging anything - hung up on an
+            // obstacle, nose-down on an endo, or on a stand - and the slip test
+            // downstream cannot tell that from a rear tyre buried in dirt. It is
+            // the same guard FmxManager puts on a burnout, which wants
+            // rearWheelContact, and on a drift, which wants both.
+            float rearWheelMs = -1.0f;
+            if (psTelemetryData->vehicleType == Unified::VehicleType::Bike) {
+                if (psTelemetryData->wheelMaterial[1] != 0) {
+                    rearWheelMs = psTelemetryData->wheelSpeed[1];
+                }
+            } else if (psTelemetryData->wheelCount >= 4) {
+                for (int w = 2; w <= 3; ++w) {
+                    if (psTelemetryData->wheelMaterial[w] == 0) continue;
+                    rearWheelMs = std::max(rearWheelMs, psTelemetryData->wheelSpeed[w]);
+                }
+            }
+            StatsManager::getInstance().updateTelemetry(psTelemetryData->speedometer, isCrashed,
+                                                       psTelemetryData->gear, psTelemetryData->fuel,
+                                                       rearWheelMs, psTelemetryData->trackPos);
         }
 
         // Update input telemetry data (bike-specific uses front/rear brake)
@@ -62,6 +86,18 @@ void Handlers::handleRunTelemetry(Unified::TelemetryData* psTelemetryData) {
             psTelemetryData->accelY,
             psTelemetryData->accelZ
         );
+
+        // The hardest hit taken: the magnitude of that same vector, which the
+        // engine has already averaged, so a single-sample spike cannot set it.
+        // Gravity is in there, so a bike at rest reads about 1g - which is why
+        // the row's first tier is well clear of it.
+        {
+            const float gx = psTelemetryData->accelX;
+            const float gy = psTelemetryData->accelY;
+            const float gz = psTelemetryData->accelZ;
+            StatsManager::getInstance().exploration().onGForce(
+                std::sqrt(gx * gx + gy * gy + gz * gz));
+        }
 
 #if GAME_HAS_FMX
         // Update FMX trick detection (bikes only - assumes 2 wheels, lean angles)

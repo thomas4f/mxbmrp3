@@ -362,7 +362,11 @@ void RadarHud::rebuildRenderData() {
     // Pre-calculate max rider opacity for background fade (only if auto-hide is enabled).
     // The fade math is pure — unit-tested in tests/unit/test_radar_fade.cpp.
     float maxRiderOpacity = 1.0f;  // Default: fully visible
-    if (m_radarMode == RadarMode::AUTO_HIDE && localPlayer) {
+    // NOT WHILE THE RADAR TAB IS OPEN (isPreviewing): auto-hide fades the panel out
+    // whenever nobody is near, which is most of a lap and exactly when a player is
+    // trying to put it somewhere. Mode OFF is untouched above -- that is the switch
+    // saying they do not want it at all.
+    if (m_radarMode == RadarMode::AUTO_HIDE && localPlayer && !isPreviewing()) {
         maxRiderOpacity = RadarFade::maxRiderOpacity(
             m_riderPositions.empty() ? nullptr : m_riderPositions.data(),
             static_cast<int>(m_riderPositions.size()), displayRaceNum,

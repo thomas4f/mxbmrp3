@@ -137,7 +137,7 @@ int countTooltipRows(const std::vector<std::string>& regions, const char* toolti
 // nothing was reordered -- what a control added to the end of an existing
 // section should look like, and what made the diff readable instead of a wall
 // of shifted ordinals.
-constexpr int kClickRegionTypeCount = 204;
+constexpr int kClickRegionTypeCount = 205;
 
 }  // namespace
 
@@ -265,7 +265,10 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
     // is the Achievements row's label and its checkbox (no badge, see the registry
     // row) on top of the unchanged profile group. 130 -> 124 at 1.30: the six
     // 1.29 "New" tags retired with their release, and 1.30's one marker sits on
-    // the tab that draws no tag.
+    // the tab that draws no tag. 204 -> 205 with ACHIEVEMENTS_PRESTIGE, which
+    // shifted the three types after it (the two GL-confirm regions and the two
+    // easter-egg ones) by one -- a change that never touched this tab, which is
+    // exactly the shape the typecount guard above exists to name in one line.
     static const char* kGolden =
         "93:general;93:appearance;93:hotkeys;93:riders;95:-;93:rumble;104:-;93:helmet;150:-;93:director;161:-"
         ";93:spotter;189:-;93:achievements;81:-;93:updates;88:-;89:-;14:-;93:standings;14:-;93:map;14:-;93:ra"
@@ -273,9 +276,9 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
         "93:pitboard;14:-;93:session;14:-;93:timing;14:-;93:gap_bar;14:-;93:notices;14:-;93:event_log;14:-;93"
         ":friends;14:-;93:fmx;14:-;93:stats;14:-;93:performance;92:-;93:widgets;143:general.pb_scope;70:-;70:"
         "-;143:general.controller;97:-;96:-;143:general.auto_save;82:-;82:-;143:general.grid_snap;76:-;76:-;1"
-        "43:general.screen_clamp;77:-;77:-;143:general.direct_gl;203:-;203:-;143:general.steam_friends;143:ge"
+        "43:general.screen_clamp;77:-;77:-;143:general.direct_gl;204:-;204:-;143:general.steam_friends;143:ge"
         "neral.web_server;85:-;85:-;143:general.web_port;86:-;87:-;143:general.auto_switch;90:-;90:-;143:gene"
-        "ral.copy_profile;10:-;9:-;12:-;13:-;198:-;199:-;94:-;8:-;142:-;typecount=204;strings=124";
+        "ral.copy_profile;10:-;9:-;12:-;13:-;199:-;200:-;94:-;8:-;142:-;typecount=205;strings=124";
 
     MESSAGE("General tab signature: " << sig);
     CHECK(sig == kGolden);
