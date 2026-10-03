@@ -507,8 +507,19 @@ TEST_CASE("strip-chart HUDs: primitive parity goldens") {
     // =========================================================================
     // Rumble HUD (frame + bars + legend; effect histories empty)
     // =========================================================================
+    // Rumble off -- or on with no controller -- draws the blocked notice instead
+    // of the graph (#405), and the notice is blocked_notice_test's to pin. This
+    // golden is the GRAPH, so the phase states the working state: rumble on and a
+    // controller present. Switched on only now, after the telemetry ramp and with
+    // no telemetry fed during the phase, so the effect histories stay empty and
+    // the traces deterministic; switched back off before the next phase. The
+    // fake-controller hook also shows the Gamepad widget, which is not this
+    // phase's HUD, so it is hidden again before the frame is fingerprinted.
     {
         loadPhase({ "RumbleHud" });
+        host.fakeGamepad(true);
+        REQUIRE(host.setHudVisible("gamepad_widget", false));
+        host.rumbleSetEnabled(true);
         (void)probe.fingerprint();
         Fp f = probe.fingerprint();
         Fp f2 = probe.fingerprint();
@@ -519,6 +530,8 @@ TEST_CASE("strip-chart HUDs: primitive parity goldens") {
                           31.413556814, 20551431668.0, 0.0,
                           31.285067677, 84962886643.0, 24400.42, 13744300338.0,
                           0xac6a724b95036ec0ULL, 0xed3e3758697080b1ULL });
+        host.rumbleSetEnabled(false);
+        host.fakeGamepad(false);
     }
 
     // =========================================================================
