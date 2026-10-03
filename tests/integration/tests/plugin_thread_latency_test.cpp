@@ -17,7 +17,6 @@
 // The assertion is the demonstration: with a 60 ms injected stall, threaded Draw
 // stays far below it while sync Draw pays essentially all of it.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

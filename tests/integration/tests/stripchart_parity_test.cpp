@@ -168,7 +168,6 @@
 // unnoticed is narrower and more useful: f934907 landed mid-batch and the suite was
 // not run again before the batch was pushed.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

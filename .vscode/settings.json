@@ -1,0 +1,9 @@
+{
+  "cmake.useCMakePresets": "always",
+  "cmake.configureOnOpen": false,
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/build/msvc-ninja/compile_commands.json",
+  "files.associations": {
+    "*.dlo": "binary",
+    "*.fnt": "binary"
+  }
+}

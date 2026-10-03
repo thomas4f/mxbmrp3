@@ -6,7 +6,6 @@
 // starts) under Wine, not just that it links. The cheapest, first-to-fail check.
 // Self-contained doctest; see run_tests.sh.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

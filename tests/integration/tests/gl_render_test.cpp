@@ -22,7 +22,6 @@
 // Without a display these cases can do nothing and say so, rather than passing
 // silently. Xvfb recipe is in gl_probe_test.cpp's header.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
@@ -387,6 +386,77 @@ TEST_CASE("gl in-game: glDrewLastFrame cannot report a stale true") {
     CHECK_MESSAGE(!host.glDrewLastFrame(),
                   "glDrewLastFrame stayed true after the backend stopped drawing"
                   << (drewWhileOn ? "" : " (and it had not drawn to begin with)"));
+}
+
+TEST_CASE("gl in-game: art a HUD has not drawn yet is loaded before it first shows") {
+    // FOUND IN-GAME: a hitch the first time the pit board appeared mid-lap. The
+    // backend loads every texture and font LAZILY, on the Draw thread, the first
+    // frame something draws it - and the board (1920x1080) plus the MARKER font
+    // only it uses are two ~10 ms decodes landing on that one frame. The fix
+    // pre-warms the art of enabled-but-hidden HUDs in the quiet frames after the
+    // backend starts; this pins that the board is loaded while it is NOT drawn.
+    // The same holds for art a VISIBLE HUD draws only on an event: the radar's
+    // proximity sector (a rider alongside) and the gear limiter circle.
+    //
+    // Must-catch: without the warm list none of the three is drawn here (At-
+    // Splits with no split, no riders, no telemetry), so nothing loads them and
+    // the checks below fail.
+    //
+    // The harness ships no assets, so stage the real ones through the user-
+    // override sync, as the render-names case above stages its font.
+    const std::string save = "Z:\\\\tmp\\\\mxbmrp3-tests\\\\gl_warm\\\\";
+    CreateDirectoryA("Z:\\\\tmp\\\\mxbmrp3-tests", nullptr);
+    CreateDirectoryA(save.c_str(), nullptr);
+    CreateDirectoryA((save + "mxbmrp3").c_str(), nullptr);
+    CreateDirectoryA((save + "mxbmrp3\\\\pitboards").c_str(), nullptr);
+    CreateDirectoryA((save + "mxbmrp3\\\\pitboards\\\\classic").c_str(), nullptr);
+    for (const char* f : { "background.tga", "pitboard.ini" }) {
+        REQUIRE_MESSAGE(CopyFileA((std::string(MXB_REPO_DATA_DIR "/pitboards/classic/") + f).c_str(),
+                                  (save + "mxbmrp3\\\\pitboards\\\\classic\\\\" + f).c_str(),
+                                  FALSE) != 0,
+                        "could not stage the pit board - the case would be vacuous");
+    }
+    CreateDirectoryA((save + "mxbmrp3\\\\textures").c_str(), nullptr);
+    for (const char* f : { "radar_sector_1.tga", "gear_circle_1.tga" }) {
+        REQUIRE_MESSAGE(CopyFileA((std::string(MXB_REPO_DATA_DIR "/textures/") + f).c_str(),
+                                  (save + "mxbmrp3\\\\textures\\\\" + f).c_str(),
+                                  FALSE) != 0,
+                        "could not stage " << f << " - the case would be vacuous");
+    }
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(save.c_str());
+    if (!host.glMakeContext(true)) {
+        MESSAGE("no GL context in this environment");
+        return;
+    }
+    REQUIRE(host.setHudVisible("pitboard_hud", true));
+    REQUIRE(host.setHudVisible("radar_hud", true));
+    REQUIRE(host.setHudVisible("gear_widget", true));
+
+    host.glInGame(true);
+    host.draw();
+    if (!host.glDrewLastFrame()) {
+        MESSAGE("GL backend declined to draw here; nothing to pre-warm into");
+        return;
+    }
+    const char* board = "pitboards/classic/background";
+    REQUIRE_MESSAGE(host.glHasTexture(board) != -1, "build without the GlHasTexture hook");
+    const char* sector = "radar_sector_1";
+    const char* circle = "gear_circle_1";
+    auto allLoaded = [&] {
+        return host.glHasTexture(board) == 1 && host.glHasTexture(sector) == 1 &&
+               host.glHasTexture(circle) == 1;
+    };
+    // One load per quiet frame: a handful of fonts and backgrounds, bounded.
+    for (int i = 0; i < 40 && !allLoaded(); ++i) host.draw();
+    CHECK_MESSAGE(host.glHasTexture(board) == 1,
+                  "the hidden pit board's art was never pre-warmed - its first show "
+                  "will decode it on the Draw thread");
+    CHECK_MESSAGE(host.glHasTexture(sector) == 1,
+                  "the radar's proximity sector was never pre-warmed");
+    CHECK_MESSAGE(host.glHasTexture(circle) == 1,
+                  "the gear limiter circle was never pre-warmed");
 }
 
 TEST_CASE("gl render: a NESTED pack sprite resolves and paints") {

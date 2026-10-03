@@ -9,7 +9,6 @@
 // This pins the contract: markDirty() writes nothing; flushIfDirty() then writes exactly once;
 // and a flush with nothing dirty is a no-op (no needless disk churn on every session exit).
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

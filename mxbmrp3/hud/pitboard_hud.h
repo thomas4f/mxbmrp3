@@ -7,6 +7,9 @@
 
 #include "base_hud.h"
 #include "pitboard_geometry.h"
+#include "freeze_duration.h"
+#include "hold_timer.h"
+#include "split_crossing.h"
 #include "../core/asset_manager.h"   // PitboardAsset, PitboardSprite
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
@@ -41,15 +44,8 @@ public:
     enum DisplayMode : uint8_t {
         MODE_ALWAYS = 0,  // Always visible
         MODE_PIT    = 1,  // Show when passing pit area (80% track position)
-        MODE_SPLITS = 2,  // Show for 10 seconds when passing splits or s/f
+        MODE_SPLITS = 2,  // Show for m_freezeDurationMs when passing splits or s/f
         MODE_COUNT  = 3   // Number of display modes
-    };
-
-    // Split type for timing display
-    enum SplitType : uint8_t {
-        SPLIT_1 = 0,  // Split 1 accumulated time
-        SPLIT_2 = 1,  // Split 2 accumulated time
-        LAP     = 2   // Full lap time
     };
 
     // Gap comparison mode for ROW_GAP
@@ -115,27 +111,23 @@ private:
     static constexpr float LEFT_ALIGN_OFFSET = 0.175f;  // Position column (adjusted for 1920x1080)
     static constexpr float RIGHT_ALIGN_OFFSET = 0.825f; // Lap column (adjusted for 1920x1080)
 
-    // Display timing constants
-    static constexpr int DISPLAY_DURATION_MS = 10000;  // Show for 10 seconds in Splits mode
+    // Display timing constants (the At Splits hold's range is in freeze_duration.h)
     static constexpr float PIT_TRACK_START = 0.75f;    // Start showing at 75% track position
     static constexpr float PIT_TRACK_END = 0.95f;      // Stop showing at 95% track position
 
     uint32_t m_enabledRows = ROW_DEFAULT;  // Bitfield of enabled rows
     uint8_t m_displayMode = MODE_ALWAYS;   // Display mode setting
     uint8_t m_gapCompareMode = GAP_AUTO;   // Gap comparison target
+    int m_freezeDurationMs = FreezeDuration::PITBOARD_DEFAULT_MS;  // At Splits: how long the board shows
 
     // Tracking for split-triggered display
-    int m_cachedSplit1 = -1;
-    int m_cachedSplit2 = -1;
-    int m_cachedLastLapTime = -1;
-    int m_cachedDisplayRaceNum = -1;
-    std::chrono::steady_clock::time_point m_displayStartTime;
-    bool m_bIsDisplayingTimed = false;  // True when showing timed display (splits mode)
+    SplitCrossingDetector m_crossings;
+    HoldTimer m_splitsHold;  // At Splits: the board is up
     bool m_bWasVisibleLastFrame = false;  // Track visibility changes for PIT mode
 
     // Current timing display (split or lap time)
     int m_displayedTime = -1;      // The time to display (accumulated split or lap)
-    SplitType m_splitType = LAP;   // Type of time being displayed
+    int m_displayedSplit = -1;     // Which crossing it is: split index (0-based), -1 = the line
     bool m_isInvalidLap = false;   // True when last completed lap was invalid
 
     // Cached session time for real-time updates (like TimeWidget)

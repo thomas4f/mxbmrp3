@@ -52,6 +52,11 @@ private:
     void addMaxMarker(float x, float y, float barWidth, float barHeight, float maxValue);
     void updateMaxTracking(int barIndex, float currentValue);
 
+    // Why nothing can rumble, if anything: drawn as a notice in place of the graph.
+    enum class Notice { NONE, RUMBLE_OFF, NO_CONTROLLER, NOT_CONNECTED };
+    static Notice currentNotice();
+    int m_lastNotice = -1;  // last state built for; -1 forces the first compare to rebuild
+
     // Settings (configurable via INI)
     bool m_bShowMaxMarkers = false;  // Show peak value markers (default OFF)
     int m_maxMarkerLingerFrames = 60;  // How long max markers linger (~frames, 60 = 1 second at 60fps)

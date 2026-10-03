@@ -9,9 +9,14 @@
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
+#include "rider_flag_icons.h"
 #include <vector>
 #include <unordered_map>
 #include <chrono>
+
+// standings_gap_plan.h is kept out of this header (see the enum mirror note in
+// standings_hud_build.cpp); the build helpers only need the names.
+namespace StandingsGap { struct Table; struct Plan; }
 
 class StandingsHud : public BaseHud {
 public:
@@ -35,6 +40,7 @@ public:
         COL_PENALTY     = 1 << 7,   // Penalty seconds (last column, rare event)
         COL_POSGAIN     = 1 << 8,   // Positions gained/lost since race start (caret + count, races only)
         COL_LAST_LAP    = 1 << 9,   // Last lap time (each rider's most recent lap, cuts included)
+        COL_CATEGORY    = 1 << 10,  // Rider's class ("MX1", "MX2 OEM"); appended so saved masks keep meaning, drawn before Bike
 
         COL_REQUIRED = 0,      // No required columns
         COL_DEFAULT  = 0x4F    // Default columns: status icons, Pos, RaceNum, Name, Gap (POSGAIN + LAST_LAP off by default)
@@ -92,6 +98,7 @@ public:
     static constexpr uint8_t COL_IDX_PENALTY     = 7;
     static constexpr uint8_t COL_IDX_POSGAIN     = 8;
     static constexpr uint8_t COL_IDX_LAST_LAP    = 9;
+    static constexpr uint8_t COL_IDX_CATEGORY    = 10;
 
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
@@ -126,6 +133,7 @@ private:
         int raceNum;
         char name[32];  // Rider name (short=3 chars, long=up to 31 chars)
         char bikeShortName[16];
+        char category[8];        // pre-cut class, from RaceEntryData::categoryShort
         unsigned long bikeBrandColor;
         unsigned long trackedColor;  // Tracked-rider color (0 = not tracked); tints the number plate
         int officialGap;
@@ -171,6 +179,7 @@ private:
             isFinishedRace(false), sessionFinished(false), hasBestLap(false), hasLastLap(false), isPlaceholder(false), lastLapColorOverride(0), gapStyle(GapStyle::OFFICIAL), gapColorOverride(0) {
             name[0] = '\0';
             bikeShortName[0] = '\0';
+            category[0] = '\0';
             formattedPosition[0] = '\0';
             formattedRaceNum[0] = '\0';
             formattedGap[0] = '\0';
@@ -235,6 +244,7 @@ private:
         float posGain;
         float raceNum;
         float name;
+        float category;
         float bike;
         float bestLap;
         float lastLap;
@@ -249,7 +259,7 @@ private:
         uint8_t columnIndex;  // 0-8 for the 9 columns
         float position;
         uint8_t justify;
-        bool useEmptyForPlaceholder;  // Some columns show "" for placeholder instead of "---"
+        bool useEmptyForPlaceholder;  // Some columns show "" for placeholder instead of "-"
     };
 
     void buildColumnTable();  // Build m_columnTable based on m_enabledColumns
@@ -261,7 +271,7 @@ private:
     // row folded in so every "titleHeight + headerHeight" offset downstream
     // keeps working unchanged.
     struct HudDimensions {
-        BaseHud::PanelPlan plan;
+        PanelPlan plan;
         float backgroundWidth;
         float backgroundHeight;
         float titleHeight;        // session-info row only (the band is the plan's)
@@ -271,6 +281,29 @@ private:
     };
 
     HudDimensions calculateHudDimensions(const ScaledDimensions& dim, int rowCount = -1) const;
+
+    // rebuildRenderData() sections, in emission order (standings_hud_build.cpp).
+    void pruneIconCache(const std::vector<int>& classificationOrder);
+    uint32_t computeEffectiveColumns() const;
+    void buildDisplayEntries(const std::vector<int>& classificationOrder, int displayRaceNum,
+                             const PluginData& pluginData);
+    void formatDisplayEntries(const std::vector<int>& classificationOrder, int displayRaceNum,
+                              const PluginData& pluginData);
+    StandingsGap::Table buildGapTable(const std::vector<int>& classificationOrder, int displayRaceNum,
+                                      const PluginData& pluginData, GapReferenceMode effectiveGapRef) const;
+    void formatEntryGap(DisplayEntry& entry, const StandingsGap::Plan& gapPlan,
+                        GapReferenceMode effectiveGapRef) const;
+    void formatEntryLapColumns(DisplayEntry& entry, size_t entryIdx) const;
+    void applyNameMode();
+    void formatSessionInfo(char* buf, size_t bufSize, const std::vector<int>& classificationOrder,
+                           const PluginData& pluginData) const;
+    void addColumnHeaders(float y, const ScaledDimensions& dim);
+    void addSlideTint(const DisplayEntry& entry, int rowIndex, float rowY,
+                      const HudDimensions& hudDim, const ScaledDimensions& dim);
+    void addPlayerOrHoverHighlight(const DisplayEntry& entry, int rowIndex, float rowY,
+                                   const HudDimensions& hudDim, const ScaledDimensions& dim);
+    void addRaceNumPlate(const DisplayEntry& entry, int rowIndex, float rowY, const ScaledDimensions& dim);
+    void addRiderClickRegion(int raceNum, float rowY, const HudDimensions& hudDim, const ScaledDimensions& dim);
 
     std::vector<DisplayEntry> m_displayEntries;  // Rider entries (m_displayRowCount)
     std::vector<RiderClickRegion> m_riderClickRegions;  // Click regions for rider selection
@@ -345,9 +378,6 @@ private:
 
     // Cached icon sprite indices (avoid string-based map lookups per rider per frame)
     struct CachedIcons {
-        int circleExclamation = 0;
-        int flag = 0;
-        int flagCheckered = 0;
         int wrench = 0;
         int caretUp = 0;          // Positions-gained/lost indicator (rotated 180° for losses)
         int lock = 0;             // Director hold/lock indicator (rider pinned by the director)
@@ -356,6 +386,7 @@ private:
         void ensureInitialized();
     };
     CachedIcons m_iconCache;
+    RiderFlagIcons m_flagIcons;  // wrong way, hazard, blue, last lap, finished
 
     // Tracking for positions-gained/lost caret quads (so rebuildLayout can reposition
     // them on drag/scale without a full data rebuild). 'down' records orientation
@@ -519,6 +550,7 @@ private:
         if (m_nameMode == NameMode::LONG) return m_longNameChars + 1;  // static width + 1 spacing
         return m_shortNameChars + 1;  // chars + 1 spacing
     }
+    static constexpr int COL_CATEGORY_WIDTH = 8;   // "MX2 OEM" (7 chars + 1 spacing); longer classes are cut
     static constexpr int COL_BIKE_WIDTH = 10;      // Supports longest bike names (9 chars + 1 spacing)
     static constexpr int COL_PENALTY_WIDTH = 5;        // Supports +99s format (4 chars + 1 spacing)
     static constexpr int COL_BEST_LAP_WIDTH = 10;      // Supports M:SS.mmm format (9 chars + 1 spacing)
@@ -526,14 +558,3 @@ private:
     static constexpr int COL_GAP_WIDTH = 11;           // Supports +M:SS.mmm official or +M:SS.s live (10 chars + 1 spacing)
 };
 
-#if defined(MXBMRP3_TEST_BUILD)
-// Perf profiling (test builds only): read + reset the accumulated per-phase
-// StandingsHud::rebuildRenderData() time (microseconds) and rebuild count.
-void standingsReadProfile(double& setupUs, double& formatUs, double& nameAnimUs,
-                          double& layoutUs, double& renderUs, long long& count);
-// Sub-phase of `render`: microseconds spent resolving the TRACKED-column status
-// icon per rider (hazard / director-lock / blue-flag / pit / finished / last-lap /
-// tracked lookups). Accumulated in standings_hud_render.cpp; read + reset here.
-extern double g_standingsTrackedUs;
-double standingsReadTrackedUs();
-#endif

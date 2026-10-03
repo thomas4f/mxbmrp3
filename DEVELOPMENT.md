@@ -49,6 +49,15 @@ are gated by `MXBMRP3_TEST_BUILD` / `_MSC_VER`, so the MSVC build is unaffected.
 - **Don't edit project settings in the VS properties UI**: the `.vcxproj` files
   under `build/msvc/` are GENERATED and overwritten. Flags, defines and output
   paths live in [`mxbmrp3/CMakeLists.txt`](mxbmrp3/CMakeLists.txt).
+- **VS Code instead of Visual Studio**: install *Build Tools for Visual Studio
+  2022* (the MSVC compiler and Windows SDK, no IDE) and the CMake Tools
+  extension, which reads the same presets file; [`.vscode/`](.vscode/) preselects
+  it. Pick the `msvc-ninja` preset (`msvc-ninja-debug` for Debug): the same
+  compiler and flags through the Ninja generator, in its own `build/msvc-ninja/`
+  tree, with `compile_commands.json` for IntelliSense. From a shell it is
+  `cmake --preset msvc-ninja` then `cmake --build --preset ninja-mxb`, inside a
+  Developer Command Prompt so `cl.exe` is on PATH. The release scripts and CI
+  keep using `build/msvc`, so the two trees never meet.
 - **Deploy**: set `MXB_PLUGIN_PATH` (and/or `GPB_PLUGIN_PATH`, `KRP_PLUGIN_PATH`)
   and the post-build step copies each `.dlo` into that game's `plugins/` folder.
   One variable per game on purpose - a single shared one meant a full build
@@ -102,6 +111,7 @@ Or drive the individual layers:
 ```bash
 ctest --test-dir build/tests -R '^unit'   # Layer 1: pure-logic unit tests (doctest, ~1s, just g++)
 ./tests/unit/coverage.sh 95              # ... + gcov line coverage for that layer (gcovr)
+MXBMRP3_DLL_COVERAGE=1 ctest --test-dir build/tests -R dll-coverage  # opt-in: DLL line coverage under Layer 2 (report-only, ~1h+)
 ./tests/integration/build.sh         # cross-compile the plugin -> Windows DLL (mingw, incremental)
 ./tests/integration/run_tests.sh     # Layer 2: doctest integration tests under Wine (real callbacks)
 ./tests/integration/run_persist_test.sh   # Layer 3: settings round-trip (and run_fuzz / run_perf / ...)
@@ -120,9 +130,9 @@ on violations - run them before pushing anything they cover:
 ./tests/integration/check_card_anchor_coverage.sh # card-box anchors are swept
 ./tests/integration/check_whats_new.sh          # "New" markers name this release
 ./tests/integration/check_api_guards.sh       # DLL-export exception barriers
-./tests/integration/check_thread_safety.sh    # clang -Wthread-safety (annotated mutexes)
+./tests/integration/check_thread_safety.sh    # no raw std::mutex (the analysis cannot see it)
 ./tests/integration/check_mt_flags.sh         # plain bool in a thread-owning class
-./tests/integration/check_move_reads.sh       # std::move(x) and a read off x in one call
+./tests/integration/check_clang_tidy.sh       # clang-tidy: use-after-move + clang -Wthread-safety (minutes)
 ./tests/integration/check_title_tier.sh       # a full HUD's caption asks for the Large tier
 ./tests/integration/check_hud_raw_cache.sh    # raw Unified:: members cached in a HUD
 ./tests/integration/check_change_consumers.sh # onDataChanged consumers state their change-gate
@@ -144,7 +154,7 @@ python3 tools/check_docs.py                   # doc + source-comment paths, labe
 Separate from those, `./tests/integration/run_codeql.sh` runs **GitHub's CodeQL
 security queries** over the C++ tree (CTest gate `codeql`, label `slow`, opt-in
 via `./tools/install_deps.sh codeql`). It is the only gate that is *also* a CI job
-elsewhere, and the only one that is opt-in; TESTING.md -> *CodeQL* has why both
+elsewhere, and opt-in (as is the report-only `dll-coverage`); TESTING.md -> *CodeQL* has why both
 are true and what a local run buys you. Budget ~10-15 min: it
 rebuilds the plugin clean under the CodeQL extractor (an incremental build
 compiles nothing and yields an empty, falsely-green database), then evaluates the
@@ -218,6 +228,32 @@ shares that same npm install. `coverage`, `lint` and `analytics`
 are pip-only. `codeql` is opt-in and the odd one out - no apt/pip package exists,
 so the group fetches GitHub's ~1 GB CLI+query bundle into `/opt/codeql`; it is
 never pulled in by a default provision.
+
+### Merging a Dependabot PR
+
+`tests.yml` deliberately skips every job on a PR in the **private** repo (metered
+Actions minutes - it runs automatically only in the free public mirror, on
+`workflow_dispatch`, and as the release gate). That is the right trade for most
+PRs, because the person opening one has run the gates locally. Nobody does that
+for a bot PR that looks like a version number, so those are the ones that reach
+`main` unverified.
+
+Running the whole suite for them would spend exactly the minutes the skip exists
+to save. Run the ONE gate the bump can break instead - seconds to a couple of
+minutes, locally, no Actions minutes at all:
+
+| What the PR touches | Run |
+|---|---|
+| `tests/web/package*.json` - playwright | `ctest --test-dir build/tests -R web-overlay` |
+| `tests/web/package*.json` - eslint | `ctest --test-dir build/tests -R eslint` |
+| `tools/requirements.txt` - cairosvg/Pillow | `ctest --test-dir build/tests -R icon-repro` |
+| `mxbmrp3/vendor/**` (a vendored C++ lib) | `ctest --test-dir build/tests -R "cross-build\|integration"` |
+| `.github/workflows/**` - a pinned action | `git ls-remote --tags <action repo> '<tag>*'`, and check the PR's SHA is the one the tag resolves to |
+
+Two npm PRs open at once both rewrite `tests/web/package-lock.json`, so merging
+one leaves the other conflicted: merge, then `@dependabot rebase` the loser and
+re-run its gate against the REBASED head - the lockfile it ends up with is not
+the one you tested.
 
 ---
 
@@ -323,7 +359,7 @@ copy, so it can't half-apply.
 CodeQL gate is opt-in and skips unless you ask for it:
 
 ```bash
-ctest --test-dir build/tests                          # ~12 min, every gate but codeql
+ctest --test-dir build/tests                          # ~12 min, every gate but the opt-in two
 MXBMRP3_CODEQL=1 ctest --test-dir build/tests -R codeql   # ~15 min, opt-in
 ```
 

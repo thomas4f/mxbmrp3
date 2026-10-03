@@ -7,7 +7,6 @@
 // value is the same path fed a genuine capture: drop a recorded .rec in and
 // assert its snapshot (a real-data golden master). See TESTING.md.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

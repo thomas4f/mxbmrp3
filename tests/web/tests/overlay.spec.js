@@ -677,3 +677,49 @@ test('each chart labels its right edge with the lap that edge is actually in', a
   // ...but the pace chart ends on the last COMPLETED lap, so it must say L3.
   expect(labels.pace, 'pace chart plots whole laps, so its edge is lap 3').toBe(3);
 });
+
+// The Class column is the overlay's own choice, like +/-: off by default (the
+// span is in every row but hidden by a class on the overlay), on via
+// CONFIG.showCategory, showing the `cat` the plugin sends (the demo names one
+// per rider from the bike's displacement).
+test('the Class column is hidden by default and shows the rider class when enabled', async ({ page }) => {
+  await page.goto('/index.html?demo&speed=40');
+  await expect(page.locator('#session-type')).toContainText('Race', { timeout: 30_000 });
+  await expect(page.locator('.standings-row .col-cat').first()).toBeAttached();
+  await expect(page.locator('#overlay')).toHaveClass(/hide-cat/);
+  // How far the last column's right edge sits inside the tower: the row's own
+  // right padding, a few px. It must not change when the column appears.
+  // (Not scrollWidth: a row's decorative children put a constant few px of
+  // scrollable overflow on it whatever the columns do.)
+  const fit = () => page.evaluate(() => {
+    const ov = document.getElementById('overlay').getBoundingClientRect();
+    const row = [...document.querySelectorAll('#standings-body .standings-row')]
+      .find((r) => getComputedStyle(r).display !== 'none');
+    const gap = row.querySelector('.col-gap').getBoundingClientRect();
+    return { slack: ov.right - gap.right, tower: ov.width };
+  });
+  // The gap and badge columns auto-fit: overlay-render.js measures them once
+  // the synced fonts are in and writes --col-gap-w-measured on <html>, which
+  // narrows the tower from its 10ch fallback. Read nothing before that has
+  // happened, or "off" is the fallback width and "on" the measured one.
+  await expect.poll(() => page.evaluate(() =>
+    document.fonts.status === 'loaded' &&
+    document.documentElement.style.getPropertyValue('--col-gap-w-measured') !== '')).toBe(true);
+  await expect.poll(async () => (await fit()).slack).toBeGreaterThanOrEqual(0);
+  const off = await fit();
+  expect(off.slack).toBeLessThan(40);
+
+  await page.evaluate(() => { CONFIG.showCategory = true; applySettings(); });
+  await expect(page.locator('#overlay')).not.toHaveClass(/hide-cat/, { timeout: 10_000 });
+  const first = page.locator('.standings-row .col-cat').first();
+  await expect(first).toBeVisible();
+  await expect(first).toHaveText(/MX[12] OEM/);
+
+  // The tower grew by the column instead of the columns spilling past its edge:
+  // style.css reserves --cat-w in #overlay's width, collapsed under hide-cat.
+  // Before the reserve the gap column sat 68 px OUTSIDE the tower with Class on.
+  await expect.poll(async () => (await fit()).tower).toBeGreaterThan(off.tower + 40);
+  const on = await fit();
+  expect(on.slack).toBeGreaterThanOrEqual(0);
+  expect(Math.abs(on.slack - off.slack)).toBeLessThan(4);
+});

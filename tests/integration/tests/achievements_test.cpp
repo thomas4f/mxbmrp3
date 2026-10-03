@@ -42,7 +42,6 @@
 // Player = first active RaceAddEntry after EventInit. Self-contained doctest;
 // see run_tests.sh.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
@@ -109,6 +108,10 @@ void winRace(PluginHost& host, const RaceSpec& spec) {
         rows.push_back({ .num = num, .best = 91000, .laps = spec.laps, .gap = 1500 * i });
     }
     host.runInit(RACE1, spec.conditions);
+    // RunStart is what marks the player as out there; without it the record at
+    // the flag is gated off (a replay delivers the same classifications with no
+    // RunStart) and every race here would land at the RunDeinit backstop instead.
+    host.runStart();
     for (int lap = 1; lap <= spec.laps; ++lap) {
         host.raceLap(RACE1, 10, lap, 90000 + lap * 1000);
     }
@@ -1261,5 +1264,143 @@ TEST_CASE("achievements: a Sweep sees the row that finishes the ladder, in the s
     CHECK(host.achievementTier("all_gold") == 1);
     CHECK(host.achievementTier("all_platinum") == 1);
 
+    host.shutdown();
+}
+
+TEST_CASE("achievements: a race whose field never settles is recorded at the game's Race Over, at the flag") {
+    // A player in the video finished, won, and saw nothing until the server went
+    // back to practice. The classification-time record waits for every rider
+    // still marked Racing to get a finish time, and a rider who quit without ever
+    // being dropped from the classification never gets one - so the race landed
+    // only at RunDeinit, in the menus, where no Draw can show a toast. The game's
+    // RACE_OVER session state says nobody else is going to finish; that is when
+    // the record must land, with the player still on track to see it.
+    cleanSaveDir();
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSaveWin);
+    REQUIRE(host.hasAchievements());
+
+    host.eventInit("TestTrack", "Alice");
+    host.raceEvent("TestTrack");
+    host.session(RACE1, /*numLaps=*/3, /*lengthMs=*/0);
+    host.addEntry(10, "Alice");
+    host.addEntry(21, "Rider 21");
+    host.addEntry(22, "Ghost 22");                // will still read Racing at the end, never finishing
+    host.runInit(RACE1);
+    host.runStart();                              // out on track, as the flag path requires
+    for (int lap = 1; lap <= 3; ++lap) host.raceLap(RACE1, 10, lap, 90000 + lap * 1000);
+
+    // The flag for Alice and Rider 21; Ghost 22 is a lap down and still Racing.
+    host.classify(RACE1, 300000, {
+        { .num = 10, .best = 90000, .laps = 3, .gap = 0 },
+        { .num = 21, .best = 91000, .laps = 3, .gap = 1500 },
+        { .num = 22, .best = 95000, .laps = 2, .gap = 30000 },
+    });
+    CHECK(host.achievementTier("races") == 0);    // the field has not settled: not recorded yet
+    CHECK(host.achievementTier("wins") == 0);
+
+    // The game calls it: Race Over. Ghost 22 is never going to cross.
+    host.raceSessionState(RACE1, 512 /* RACE_OVER */);
+    CHECK(host.achievementTier("races") == 1);
+    CHECK(host.achievementTier("wins") == 1);
+    CHECK(host.achievementToastsQueued() >= 2u);
+
+    // Leaving the track afterwards records nothing twice.
+    host.runDeinit();
+    host.eventDeinit();
+    CHECK(host.achievementValue("races") == doctest::Approx(1.0));
+    CHECK(host.achievementValue("wins") == doctest::Approx(1.0));
+    host.shutdown();
+}
+
+TEST_CASE("achievements: Seat Time crosses a tier mid-session, on track, within the minute") {
+    // The hours row reads the RUNNING session into its total, but an evaluation
+    // only ran when some other stat moved (a lap, a kilometre, a crash) or at the
+    // session's end - so a lifetime milestone crossed while free riding could
+    // wait for the next track load to toast. The once-a-second tick now forces a
+    // re-evaluation every minute on track. Seeded 1.5 s short of ten hours, a
+    // session of a couple of seconds carries the row over, and the sixtieth tick
+    // is what surfaces it.
+    cleanSaveDir();
+    const char* saveWin = kSaveWin;
+    {
+        PluginHost seed(dllPath());
+        REQUIRE(seed.loaded());
+        seed.startup(saveWin);
+        seed.shutdown();
+    }
+    ini::writeFile(kStatsPath,
+        "{ \"version\": 1,\n"
+        "  \"trackBike\": { \"TestTrack|Test 450\": { \"totalTimeOnTrackMs\": 35998500 } } }\n");
+
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(saveWin);
+    REQUIRE(host.hasAchievements());
+    CHECK(host.achievementTier("ride_time") == 0);                      // 9:59:58.5 on file
+    CHECK(host.achievementValue("ride_time") == doctest::Approx(9.9996).epsilon(0.001));
+
+    constexpr int PRACTICE = 1;
+    host.eventInit("TestTrack", "Alice", 1600.0f, 2, "Test 450", "MX1", "TestTrack");   // the stats key is trackId|bike
+    host.raceEvent("TestTrack");
+    host.session(PRACTICE, 0, 480000);
+    host.addEntry(10, "Alice");
+    host.runInit(PRACTICE);
+    host.runStart();
+    Sleep(2000);                                                        // the session runs past the hour mark
+    CHECK(host.achievementTier("ride_time") == 0);                      // nothing has asked yet
+
+    // Parked ticks (not moving, no frames, nothing spectated): none of the
+    // signals move, so nothing but the minute itself can trigger an evaluation.
+    // A riding tick would move Steady Hands and evaluate every second anyway.
+    for (int s = 0; s < 59; ++s) {
+        host.explorationTick(false, false, /*onTrack=*/true, /*frames=*/0, 0, /*moving=*/false);
+    }
+    CHECK(host.achievementTier("ride_time") == 0);                      // not until the minute is up
+    host.explorationTick(false, false, true, 0, 0, false);
+    CHECK(host.achievementTier("ride_time") == 1);                      // Seat Time Bronze, on track
+    CHECK(host.achievementValue("ride_time") >= 10.0);
+
+    // Leaving the track books the same session into the file: no second count.
+    host.runStop();
+    host.runDeinit();
+    auto j = readStats(kStatsPath);
+    REQUIRE(j.is_object());
+    const auto total = j["trackBike"]["TestTrack|Test 450"].value("totalTimeOnTrackMs", 0LL);
+    CHECK(total >= 36000000LL);
+    CHECK(total < 36000000LL + 60000LL);
+    CHECK(j["achievements"]["unlocked"]["ride_time"].value("tier", 0) == 1);
+    host.shutdown();
+}
+
+// The tab's Texture row (a theme, when the widget has no texture variants) was
+// never written to [Achievements], so the choice was lost on restart and the
+// tab's Reset (which replays that section) could not restore it.
+TEST_CASE("achievements: the toast widget's theme survives a save and reload") {
+    cleanSaveDir();
+    {
+        PluginHost seed(dllPath());
+        REQUIRE(seed.loaded());
+        seed.startup(kSaveWin);
+        seed.save();
+        seed.shutdown();
+    }
+    std::string ini = ini::readFile(kIniPath);
+    const size_t section = ini.find("[Achievements]\n");
+    REQUIRE(section != std::string::npos);
+    const size_t key = ini.find("hudTheme=", section);
+    REQUIRE_MESSAGE(key != std::string::npos, "[Achievements] does not write hudTheme");
+    ini.replace(key, std::string("hudTheme=").size(), "hudTheme=none");
+    ini::writeFile(kIniPath, ini);
+
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSaveWin);
+    host.save();
+    const std::string saved = ini::readFile(kIniPath);
+    const size_t s2 = saved.find("[Achievements]\n");
+    REQUIRE(s2 != std::string::npos);
+    CHECK(saved.find("hudTheme=none", s2) < saved.find("\n[", s2 + 1));
     host.shutdown();
 }

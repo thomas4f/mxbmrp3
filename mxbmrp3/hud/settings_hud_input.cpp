@@ -98,6 +98,9 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
         if (!skipSave) markSettingsDirty();
         return;
     }
+    // Link rows (General's Docs/Discussion/overlay, About's three thanks links)
+    // open a browser and change no setting: settings/settings_links.cpp.
+    if (handleLinkClick(region)) return;
 
     // Fall through to common handlers for shared controls
     switch (region.type) {
@@ -875,6 +878,13 @@ void SettingsHud::handleScaleClick(const ClickRegion& region, bool increase) {
 // Note: handlePitboardShowModeClick moved to settings_tab_pitboard.cpp
 // Note: handleColorCycleClick moved to settings_tab_appearance.cpp
 
+// The sidebar's counterpart: a tab whose news bands its row (no room for the
+// tag) is dismissed by hovering it, like any banded row. Gated on the band so
+// hovering a TAGGED tab leaves its tag alone -- that one clears on open.
+void SettingsHud::dismissMarkedTab(int tabIndex) {
+    if (WhatsNew::tabHighlightsRow(tabIndex) && WhatsNew::dismissTab(tabIndex)) markSettingsDirty();
+}
+
 void SettingsHud::handleTabClick(const ClickRegion& region) {
     m_activeTab = region.tabIndex;
     recordTabOpened(m_activeTab);   // Grand Tour
@@ -884,6 +894,11 @@ void SettingsHud::handleTabClick(const ClickRegion& region) {
     // knowing the tab is worth opening. See settings/whats_new.h.
     WhatsNew::dismissTab(m_activeTab);
     disarmResets();
+    // A capture belongs to the tab that armed it: left armed, a chat channel
+    // field keeps swallowing the keyboard with no field on screen, and Enter
+    // commits the invisible text to a channel. Pinned by hotkey_capture_test.cpp.
+    HotkeyManager::getInstance().cancelCapture();
+    m_textField = TextField::NONE;
     // Persist the focused tab so reopening the menu lands here next session. Deferred like
     // every other setting - markSettingsDirty() only sets the flag; the write happens on the
     // next leave-track flush (or the shutdown backstop / Save button), never on-track.
@@ -999,6 +1014,7 @@ static bool isPerturbSafe(SettingsHud::ClickRegion::Type t) {
         case CR::OPEN_LINK_DOCS:
         case CR::OPEN_LINK_COMMUNITY:
         case CR::OPEN_LINK_KOFI:
+        case CR::OPEN_LINK_GITHUB:
         case CR::OPEN_LINK_OVERLAY:
         case CR::UPDATE_CHECK_NOW:
         case CR::UPDATE_INSTALL:

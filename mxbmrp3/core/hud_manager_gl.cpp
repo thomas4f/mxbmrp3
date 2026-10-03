@@ -15,6 +15,9 @@
 // ============================================================================
 
 #include "hud_manager.h"
+
+#include <algorithm>
+
 #include "../hud/gl_confirm_hud.h"
 #include "layout_config.h"
 #include "../diagnostics/logger.h"
@@ -30,6 +33,7 @@
 #include "profile_manager.h"
 #include "ui_config.h"
 #include "render_probe_sweep.h"
+#include "font_config.h"
 #include "gl_probe.h"
 #include "hud_gl_renderer.h"
 #include "ui_viewport.h"
@@ -82,6 +86,47 @@ hudsw::Frame HudManager::buildGlFrame(const SPluginQuad_t* quads, int quadCount,
     f.assetRoot = "plugins/mxbmrp3_data";
     return f;
 }
+
+bool HudManager::GlWarmList::sameAs(const GlWarmList& o) const {
+    return spriteCount == o.spriteCount && fontCount == o.fontCount &&
+           std::equal(sprites, sprites + spriteCount, o.sprites) &&
+           std::equal(fonts, fonts + fontCount, o.fonts);
+}
+
+void HudManager::publishGlWarmList() {
+    GlWarmList next;
+    // Every enabled HUD's art, drawing or not (BaseHud::glWarmSprites): one
+    // already on screen is loaded, and the backend walks past it. The GAME flag,
+    // because this backend only ever draws the game surface.
+    for (const auto& hud : m_huds) {
+        if (!hud || !hud->isVisible()) continue;
+        next.spriteCount += hud->glWarmSprites(next.sprites + next.spriteCount,
+                                               GlWarmList::kMax - next.spriteCount);
+    }
+    // Every font category: a category only one HUD uses (the pit board's MARKER)
+    // is otherwise first decoded - a 2048x2048 atlas and its mip chain - on the
+    // frame that HUD appears.
+    const FontConfig& fonts = FontConfig::getInstance();
+    for (int c = 0; c < static_cast<int>(FontCategory::COUNT); ++c) {
+        const int idx = fonts.getFont(static_cast<FontCategory>(c));
+        if (idx > 0 && next.fontCount < GlWarmList::kMax) next.fonts[next.fontCount++] = idx;
+    }
+    if (next.sameAs(m_glWarmBuilt)) return;
+    m_glWarmBuilt = next;
+    {
+        MutexLock lock(m_glWarmMutex);
+        m_glWarmShared = next;
+    }
+    m_glWarmGen.fetch_add(1, std::memory_order_release);
+}
+
+#if defined(MXBMRP3_TEST_BUILD)
+int HudManager::testGlHasTexture(const char* renderName) const {
+    const hudgl::Renderer* gl = m_glRenderer.load(std::memory_order_acquire);
+    if (!gl || !renderName) return -1;
+    return gl->hasTexture(renderName) ? 1 : 0;
+}
+#endif
 
 int HudManager::glStatusCode() const {
     if (!UiConfig::getInstance().getGlInGame()) return 0;
@@ -177,8 +222,19 @@ bool HudManager::renderInContextGl(const SPluginQuad_t* quads, int quadCount,
 
     const hudsw::Frame f = buildGlFrame(quads, quadCount, strings, stringCount);
 
+    // Pick up a changed pre-warm list; a steady frame is this one load.
+    const unsigned warmGen = m_glWarmGen.load(std::memory_order_acquire);
+    if (warmGen != m_glWarmDrawGen) {
+        MutexLock lock(m_glWarmMutex);
+        m_glWarmDraw = m_glWarmShared;
+        m_glWarmDrawGen = warmGen;
+    }
+    hudgl::Renderer::Warm warm;
+    warm.sprites = m_glWarmDraw.sprites; warm.spriteCount = m_glWarmDraw.spriteCount;
+    warm.fonts = m_glWarmDraw.fonts;     warm.fontCount = m_glWarmDraw.fontCount;
+
     if (!gl->render(f, vw, vh, static_cast<float>(ui.x), static_cast<float>(ui.y),
-                              static_cast<float>(ui.w), static_cast<float>(ui.h))) {
+                              static_cast<float>(ui.w), static_cast<float>(ui.h), &warm)) {
         DEBUG_WARN_F("hudgl: render failed (%s) - falling back to engine rendering "
                      "for the rest of this session", gl->lastError().c_str());
         m_glLatchedOff.store(true, std::memory_order_relaxed);

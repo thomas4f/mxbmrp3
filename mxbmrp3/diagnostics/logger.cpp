@@ -7,11 +7,30 @@
 #include <cstring>
 #include <ctime>
 #include <iostream>
+#include <shlobj.h>
+#include "../core/atomic_file_writer.h"
 #include "../core/plugin_constants.h"
 
 namespace {
     constexpr const char* LOG_SUBDIRECTORY = "mxbmrp3";
     constexpr const char* LOG_FILENAME = "mxbmrp3_log.txt";
+    // Reserved once for both buffers: a second of a busy session's logging, so
+    // the steady state never grows them.
+    constexpr size_t BUFFER_RESERVE = 64 * 1024;
+    // Past this much unwritten, log() writes it out itself: the writer thread
+    // should have long since, so something is holding it up, and the buffer must
+    // not grow without bound meanwhile.
+    constexpr size_t PENDING_FLUSH_BYTES = 256 * 1024;
+
+    // Set while THIS thread is inside the Logger's locked code. The crash filter
+    // runs on the faulting thread, and if that thread faulted in here, a
+    // try_lock is no protection: MSVC's std::mutex may hand a plain mutex back
+    // to the thread that already owns it, and the buffer may be mid-append.
+    thread_local bool t_inLogger = false;
+    struct InLogger {
+        InLogger() { t_inLogger = true; }
+        ~InLogger() { t_inLogger = false; }
+    };
 }
 
 Logger& Logger::getInstance() {
@@ -55,21 +74,31 @@ void Logger::initialize(const char* savePath) {
     initializeConsole();
 #endif
 
-    // Open log file (overwrite mode - fresh log each session).
+    // Open log file (overwrite mode - fresh log each session). Shared for read
+    // and write so the crash handler's CopyFileA and a user's editor can open it
+    // while we hold it.
     //
-    // Under the lock, and the scope is deliberately tight: m_mutex is NOT
+    // Under the locks, and the scope is deliberately tight: neither is
     // recursive (see the caution in log()), and every info()/warn() below takes
-    // it — holding it across them would deadlock on the startup banner. So the
-    // open happens here and the results are carried out in locals; nothing
+    // them — holding them across those would deadlock on the startup banner. So
+    // the open happens here and the results are carried out in locals; nothing
     // below this block touches the guarded members.
     bool opened = false;
     std::string logPath;
     {
-        MutexLock lock(m_mutex);
+        MutexLock fileLock(m_fileMutex);
         m_logFilePath = getLogFilePath(savePath);
-        m_logFile.open(m_logFilePath, std::ios::out | std::ios::trunc);
-        opened = m_logFile.is_open();
+        m_file = CreateFileA(m_logFilePath.c_str(), GENERIC_WRITE,
+                             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                             nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (m_file == INVALID_HANDLE_VALUE) m_file = nullptr;
+        opened = (m_file != nullptr);
         logPath = m_logFilePath;
+        m_writing.reserve(BUFFER_RESERVE);
+        MutexLock lock(m_mutex);
+        m_pending.reserve(BUFFER_RESERVE);
+        // Before the first line: the banner's "Log file:" path is scrubbed too.
+        resolveScrubFolders();
     }
 
     if (!opened) {
@@ -126,21 +155,38 @@ void Logger::initialize(const char* savePath) {
     }
 }
 
+void Logger::resolveScrubFolders() {  // MXB_REQUIRES(m_mutex)
+    char folder[MAX_PATH] = { 0 };
+    if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_PERSONAL, nullptr, SHGFP_TYPE_CURRENT, folder))) {
+        LogScrub::setPrefix(m_scrub[0], folder, "<Documents>");
+    }
+    const DWORD n = GetEnvironmentVariableA("USERPROFILE", folder, MAX_PATH);
+    if (n > 0 && n < MAX_PATH) {
+        LogScrub::setPrefix(m_scrub[1], folder, "%USERPROFILE%");
+    }
+}
+
 void Logger::shutdown() {
     if (!m_initialized) return;
 
     info("Logger shutting down...");
 
-    // Close the stream and clear the flag under the same mutex log() writes
-    // with. Today this is redundant (PluginManager joins every background
-    // thread before shutting the logger down last), but a future thread that
-    // logs past this point would otherwise race the close.
+    // Write out what is buffered, then close the file and clear the flag under
+    // both locks. Today the locking is redundant (PluginManager joins every
+    // background thread before shutting the logger down last), but a future
+    // thread that logs past this point would otherwise race the close.
     {
-        MutexLock lock(m_mutex);
-        if (m_logFile.is_open()) {
-            m_logFile.close();
+        MutexLock fileLock(m_fileMutex);
+        {
+            MutexLock lock(m_mutex);
+            m_writing.swap(m_pending);
+            m_initialized = false;
         }
-        m_initialized = false;
+        writeOut();
+        if (m_file != nullptr) {
+            CloseHandle(m_file);
+            m_file = nullptr;
+        }
     }
 
 #ifdef _DEBUG
@@ -165,48 +211,104 @@ void Logger::log(const char* level, const char* message) {
 
     // Serialize concurrent log() calls from the game thread and the
     // background threads (HttpServer, Discord, UpdateChecker, RecordsHud,
-    // UpdateDownloader). Without this, simultaneous writes to the
-    // ofstream's streambuf are UB and lines mangle in practice.
+    // UpdateDownloader). Without this, simultaneous appends to the line
+    // buffer are UB and lines mangle in practice.
     //
     // CAUTION: m_mutex is not recursive. Do not call log() (or anything
     // that may transitively call log()) from inside any code path that
     // already holds it — e.g. don't route an exception's what() through
     // a logger that itself logs. Doing so will deadlock the calling
-    // thread. The crash filter in crash_handler.cpp deliberately avoids
-    // Logger for this reason.
-    MutexLock lock(m_mutex);
+    // thread. The crash filter in crash_handler.cpp only ever TRY-locks
+    // (flushForCrash) for this reason.
+    bool writeNow = false;
+    {
+        InLogger inLogger;
+        MutexLock lock(m_mutex);
 
-    char timestamp[16];
-    getCurrentTimestamp(timestamp, sizeof(timestamp));
+        char timestamp[16];
+        getCurrentTimestamp(timestamp, sizeof(timestamp));
 
-    // Format the log line
-    char logLine[1100];  // 1024 message + timestamp + level + formatting
-    snprintf(logLine, sizeof(logLine), "[%s] [%s] %s", timestamp, level, message);
+        // The user folder never reaches the file (log_scrub.h). Wider than the
+        // 1024-char format buffer: the label can be longer than the folder it
+        // replaces, and a line naming it more than once must not lose its tail.
+        char scrubbed[1280];
+        LogScrub::scrub(message, scrubbed, sizeof(scrubbed), m_scrub, sizeof(m_scrub) / sizeof(m_scrub[0]));
 
-    // Write to file
-    if (m_logFile.is_open()) {
-        m_logFile << logLine << std::endl;
-        // Flush immediately for reliability (no buffering complexity)
-        m_logFile.flush();
-    }
+        // Format the log line. CRLF by hand: the file is written raw, and the logs
+        // users send are read in Notepad.
+        char logLine[1360];  // scrubbed message + timestamp + level + formatting
+        int len = snprintf(logLine, sizeof(logLine) - 2, "[%s] [%s] %s", timestamp, level, scrubbed);
+        if (len < 0) len = 0;
+        if (len > static_cast<int>(sizeof(logLine)) - 3) len = static_cast<int>(sizeof(logLine)) - 3;
+        logLine[len++] = '\r';
+        logLine[len++] = '\n';
+        m_pending.append(logLine, static_cast<size_t>(len));
+
+        // Inline while the writer thread is down, or when it has fallen far behind.
+        writeNow = !AtomicFileWriter::isRunning() || m_pending.size() >= PENDING_FLUSH_BYTES;
 
 #ifdef _DEBUG
-    // Also write to console in debug builds
-    if (m_consoleInitialized) {
-        // Set colors based on log level
-        if (strcmp(level, "ERROR") == 0) {
-            std::cout << "\033[31m"; // Red
-        } else if (strcmp(level, "WARN") == 0) {
-            std::cout << "\033[33m"; // Yellow
-        } else {
-            std::cout << "\033[37m"; // White
-        }
+        // Also write to console in debug builds
+        if (m_consoleInitialized) {
+            // Set colors based on log level
+            if (strcmp(level, "ERROR") == 0) {
+                std::cout << "\033[31m"; // Red
+            } else if (strcmp(level, "WARN") == 0) {
+                std::cout << "\033[33m"; // Yellow
+            } else {
+                std::cout << "\033[37m"; // White
+            }
 
-        std::cout << logLine;
-        std::cout << "\033[0m"; // Reset color
-        std::cout << std::endl;
-    }
+            std::cout.write(logLine, len - 2);   // the CRLF is the file's; endl below
+            std::cout << "\033[0m"; // Reset color
+            std::cout << std::endl;
+        }
 #endif
+    }
+
+    if (writeNow) {
+        flushPending();
+    } else if (level[0] == 'W' || level[0] == 'E') {
+        // WARN / ERROR: on disk now, not at the next tick -- the line that says
+        // what went wrong is the one a crash right after must not lose.
+        AtomicFileWriter::wakeForLog();
+    }
+}
+
+void Logger::flushPending() {
+    if (!m_initialized) return;   // shutdown() wrote out the last of it
+    InLogger inLogger;
+    MutexLock fileLock(m_fileMutex);
+    {
+        MutexLock lock(m_mutex);
+        if (m_pending.empty()) return;
+        m_writing.swap(m_pending);   // both keep their capacity
+    }
+    writeOut();
+}
+
+void Logger::writeOut() {  // MXB_REQUIRES(m_fileMutex)
+    if (m_file != nullptr && !m_writing.empty()) {
+        DWORD written = 0;
+        WriteFile(m_file, m_writing.data(), static_cast<DWORD>(m_writing.size()), &written, nullptr);
+    }
+    m_writing.clear();
+}
+
+// MXB_NO_TSA (declared in the header): TSA cannot follow capabilities taken by
+// try_lock through the branches below.
+void Logger::flushForCrash() {
+    if (t_inLogger) return;
+    if (!m_fileMutex.try_lock()) return;
+    if (m_mutex.try_lock()) {
+        if (m_file != nullptr && !m_pending.empty()) {
+            DWORD written = 0;
+            WriteFile(m_file, m_pending.data(), static_cast<DWORD>(m_pending.size()), &written, nullptr);
+            m_pending.clear();
+        }
+        m_mutex.unlock();
+    }
+    m_fileMutex.unlock();
 }
 
 void Logger::getCurrentTimestamp(char* buffer, size_t bufferSize) {  // MXB_REQUIRES(m_mutex)

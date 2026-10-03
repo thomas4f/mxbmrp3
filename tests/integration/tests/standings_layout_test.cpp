@@ -17,10 +17,11 @@
 // paths agreeing about it perfectly, and this file green throughout. An agreement
 // test needs a correctness test beside it.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
+#include "ini.h"          // the Class column case drives col_category through the file
+#include <string>
 
 #include <cmath>
 
@@ -133,5 +134,71 @@ TEST_CASE("standings: the race number is centred on its plate") {
                       "twice, near -9% that it is not being applied at all.");
     }
 
+    host.shutdown();
+}
+
+// ============================================================================
+// The Class column. A mixed-class server is the one thing the table could not
+// show: every rider's entry carries the game's category ("MX1", "MX2 OEM") and
+// nothing read it. The column is off by default, sits before Bike, and shows the
+// class pre-cut to its width. Driven through the INI (col_category) the way a
+// player's saved file would, and read back from the rendered strings, which is
+// the only place "which column is left of which" can be asserted.
+// ============================================================================
+TEST_CASE("standings: the Class column shows each rider's category before the bike") {
+    const char* saveWin = "Z:\\tmp\\mxbmrp3-tests\\standings_layout\\";
+    const std::string iniPath = "Z:\\tmp\\mxbmrp3-tests\\standings_layout\\mxbmrp3\\mxbmrp3_settings.ini";
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    REQUIRE(host.hasStringRows());
+    host.startup(saveWin);
+    REQUIRE(host.save());
+    const std::string factory = ini::readFile(iniPath);
+    REQUIRE(!factory.empty());
+    REQUIRE(ini::writeFile(iniPath, factory + "\n[StandingsHud:Practice]\ncol_category=1\ncol_bike=1\nshowHeaders=1\n"));   // headers on, so the column's label is drawn too
+    host.loadSettings(saveWin);
+
+    host.session(/*session=*/1, /*numLaps=*/10);
+    host.addEntry(10, "Alpha", "FACTORY CRF450R", "MX1 OEM");     // a catalogued bike, so the Bike column has text
+    host.addEntry(22, "Bravo", "FACTORY CRF250R", "MX2 OEM");
+    host.addEntry(7,  "Charlie", "FACTORY CRF450R", "Open Class Long");   // longer than the column: cut, not overflowed
+    host.classify(1, 60000, {
+        { .num = 10, .best = 92000, .laps = 2 },
+        { .num = 22, .best = 93000, .laps = 2, .gap = 1200 },
+        { .num = 7,  .best = 94000, .laps = 2, .gap = 2400 },
+    });
+    host.stSetVisible(true);
+    host.draw();
+
+    const auto rows = host.hudStringRows("standings_hud");
+    auto find = [&](const std::string& text) -> const PluginHost::StringRow* {
+        for (const auto& r : rows) if (r.text == text) return &r;
+        return nullptr;
+    };
+    const auto* mx1 = find("MX1 OEM");
+    const auto* mx2 = find("MX2 OEM");
+    const auto* cut = find("Open Cl");           // 7 characters of "Open Class Long"
+    REQUIRE_MESSAGE((mx1 && mx2 && cut), "the class strings were not drawn");   // parenthesised: doctest cannot decompose &&
+    CHECK(find("Open Class Long") == nullptr);
+    // Before the bike: on Alpha's row the class sits left of the bike abbreviation.
+    const PluginHost::StringRow* bike = nullptr;
+    for (const auto& r : rows) {
+        if (r.text == "CRF450R" && std::abs(r.y - mx1->y) < 1e-6) { bike = &r; break; }
+    }
+    std::string rowText;
+    for (const auto& r : rows) if (std::abs(r.y - mx1->y) < 1e-6) rowText += "[" + r.text + "] ";
+    REQUIRE_MESSAGE(bike, "Alpha's bike text is not on the same row as its class; row holds " << rowText);
+    CHECK(mx1->x < bike->x);
+    // And the header names it.
+    CHECK(find("Class") != nullptr);
+
+    // Off by default: a fresh load of the factory file draws no class.
+    REQUIRE(ini::writeFile(iniPath, factory));
+    host.loadSettings(saveWin);
+    host.draw();
+    CHECK(host.hudStringRows("standings_hud").size() < rows.size());
+    bool anyClass = false;
+    for (const auto& r : host.hudStringRows("standings_hud")) if (r.text == "MX1 OEM") anyClass = true;
+    CHECK_FALSE(anyClass);
     host.shutdown();
 }

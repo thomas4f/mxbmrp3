@@ -3,7 +3,7 @@
 // SmallVec<T, N> (core/small_vec.h): inline storage up to N, heap spill beyond.
 //
 // WHY THIS FILE EXISTS. SmallVec was written for one reason -- to keep
-// BaseHud::PanelWant::sectionH from doing a heap round-trip on every HUD rebuild,
+// PanelWant::sectionH from doing a heap round-trip on every HUD rebuild,
 // which measured 1.57us inside the game process -- and every shipped HUD but one
 // states four sections or fewer. So the SPILL PATH, the half that is actually
 // tricky, is the half nothing in the tree exercises: it is reachable today only

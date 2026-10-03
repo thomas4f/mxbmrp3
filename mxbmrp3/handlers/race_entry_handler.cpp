@@ -15,7 +15,8 @@ void Handlers::handleRaceAddEntry(Unified::RaceEntryData* psRaceAddEntry) {
     PluginData::getInstance().addRaceEntry(
         psRaceAddEntry->raceNum,
         psRaceAddEntry->name,
-        psRaceAddEntry->vehicleName
+        psRaceAddEntry->vehicleName,
+        psRaceAddEntry->category
     );
 
     // Identify local player: first RaceAddEntry with inactive=false after EventInit is the player

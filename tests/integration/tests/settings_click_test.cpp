@@ -21,7 +21,6 @@
 // GapBar stepped layout order (settings_tab_gap_bar.cpp registration order):
 //   0 = Width, 1 = Range, 2 = Freeze, 3 = Marker scale.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
@@ -166,9 +165,9 @@ TEST_CASE("settings clicks: stepped controls step, accelerate, clamp, and persis
 // ============================================================================
 // The shared CYCLE controls (CycleControl descriptors): plain mod-N enum/mode
 // cycles converted from dedicated enum pairs. Pinned through the real click
-// path on the Gap Bar tab, which carries three of them in layout order:
-//   cycle 0 = Mode (marker mode, N=3), 1 = Marker colors (N=3),
-//   2 = Marker labels (N=4).
+// path on the Gap Bar tab, which carries four of them in layout order:
+//   cycle 0 = Reference (N=3), 1 = Mode (marker mode, N=4),
+//   2 = Marker colors (N=3), 3 = Marker labels (N=4).
 // (Marker icon stays a dedicated pair - it steps through AssetManager - so it
 // must NOT be counted as a CYCLE region.) Wrap is asserted in BOTH directions,
 // and persistence goes through the real save path like the stepped test above.
@@ -192,39 +191,66 @@ TEST_CASE("settings clicks: cycle controls wrap both directions and persist") {
     host.showSettings(true);
     host.draw();
 
-    // Three cycle controls on this tab (icon is NOT one), arrows both sides.
-    REQUIRE(host.cycleCount(true) == 3);
-    REQUIRE(host.cycleCount(false) == 3);
+    // Five cycle controls on this tab (icon is NOT one), arrows both sides:
+    // Reference, Splits, Mode, Marker colors, Marker labels.
+    REQUIRE(host.cycleCount(true) == 5);
+    REQUIRE(host.cycleCount(false) == 5);
 
     host.save();
+    const int ref0    = iniInt(INI_CYCLE, "GapBarHud", "reference");
     const int marker0 = iniInt(INI_CYCLE, "GapBarHud", "markerMode");
     const int label0  = iniLabelMode(INI_CYCLE, "GapBarHud");
+    REQUIRE(ref0 >= 0);
     REQUIRE(marker0 >= 0);
     REQUIRE(label0 >= 0);
 
-    // --- Marker labels (index 2, N=4): full forward wrap ---------------------
-    REQUIRE(host.clickCycle(2, /*up=*/true));
+    // --- Marker labels (index 4, N=4): full forward wrap ---------------------
+    REQUIRE(host.clickCycle(4, /*up=*/true));
     host.save();
     CHECK(iniLabelMode(INI_CYCLE, "GapBarHud") == (label0 + 1) % 4);
-    for (int i = 0; i < 3; ++i) REQUIRE(host.clickCycle(2, true));
+    for (int i = 0; i < 3; ++i) REQUIRE(host.clickCycle(4, true));
     host.save();
     CHECK(iniLabelMode(INI_CYCLE, "GapBarHud") == label0);   // wrapped home
 
     // Backward from the base value wraps through the top end.
-    REQUIRE(host.clickCycle(2, /*up=*/false));
+    REQUIRE(host.clickCycle(4, /*up=*/false));
     host.save();
     CHECK(iniLabelMode(INI_CYCLE, "GapBarHud") == (label0 + 3) % 4);
-    REQUIRE(host.clickCycle(2, /*up=*/true));                       // back home
+    REQUIRE(host.clickCycle(4, /*up=*/true));                       // back home
     host.save();
     CHECK(iniLabelMode(INI_CYCLE, "GapBarHud") == label0);
 
-    // --- Mode (index 0, N=3): one step each way is symmetric -----------------
-    REQUIRE(host.clickCycle(0, true));
+    // --- Mode (index 2, N=4): one step each way is symmetric -----------------
+    REQUIRE(host.clickCycle(2, true));
     host.save();
-    CHECK(iniInt(INI_CYCLE, "GapBarHud", "markerMode") == (marker0 + 1) % 3);
-    REQUIRE(host.clickCycle(0, false));
+    CHECK(iniInt(INI_CYCLE, "GapBarHud", "markerMode") == (marker0 + 1) % 4);
+    REQUIRE(host.clickCycle(2, false));
     host.save();
     CHECK(iniInt(INI_CYCLE, "GapBarHud", "markerMode") == marker0);
+
+    // --- Splits (index 1, N=2): On <-> Off, either direction ----------------
+    const int splits0 = iniInt(INI_CYCLE, "GapBarHud", "showSplits");
+    REQUIRE(splits0 >= 0);
+    REQUIRE(host.clickCycle(1, true));
+    host.save();
+    CHECK(iniInt(INI_CYCLE, "GapBarHud", "showSplits") == 1 - splits0);
+    REQUIRE(host.clickCycle(1, false));
+    host.save();
+    CHECK(iniInt(INI_CYCLE, "GapBarHud", "showSplits") == splits0);
+
+    // --- Reference (index 0, N=3): Session PB / All-time / Last lap -------
+    REQUIRE(host.clickCycle(0, true));
+    host.save();
+    CHECK(iniInt(INI_CYCLE, "GapBarHud", "reference") == (ref0 + 1) % 3);
+    for (int i = 0; i < 2; ++i) REQUIRE(host.clickCycle(0, true));
+    host.save();
+    CHECK(iniInt(INI_CYCLE, "GapBarHud", "reference") == ref0);   // wrapped home
+    REQUIRE(host.clickCycle(0, false));
+    host.save();
+    CHECK(iniInt(INI_CYCLE, "GapBarHud", "reference") == (ref0 + 2) % 3);
+    REQUIRE(host.clickCycle(0, true));
+    host.save();
+    CHECK(iniInt(INI_CYCLE, "GapBarHud", "reference") == ref0);
 
     // Out-of-range index is a clean miss, not a crash.
     CHECK_FALSE(host.clickCycle(99, true));
@@ -282,6 +308,99 @@ TEST_CASE("rumble steppers: bike swap under an open menu can't edit the stale pr
     // Bike A's tune survives the whole exchange.
     host.eventInit("Guard Track", "Guard Rider", 1600.0f, 2, "Bike A");
     CHECK(host.rumbleActiveBumpsLight() == doctest::Approx(0.01f));
+
+    host.shutdown();
+}
+
+// ============================================================================
+// Gap Bar marker mode OFF draws no markers. The bar is a flat map of the lap, so
+// the rider's OWN marker slides along it; a player asked for a way to stop
+// "something sliding across the top of the screen", and Off is that: the marker
+// row gone, the bar and the gap text kept. Asserted on the rendered quads: with a
+// track position the self marker is one icon quad in Ghost mode, and Off must
+// draw exactly that one fewer. Reached the way the player reaches it, by cycling
+// the Mode control, and the value 3 round-trips through the file.
+// ============================================================================
+TEST_CASE("settings clicks: Gap Bar marker mode Off removes the marker row from the render") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(SAVE_CYCLE);
+    REQUIRE(host.hasQuadRects());
+
+    host.eventInit("TestTrack", "Alice");
+    host.raceEvent("TestTrack");
+    host.session(6, /*numLaps=*/10, /*lengthMs=*/0);
+    host.addEntry(10, "Alice");
+    host.runInit(6);
+    host.runStart();
+    host.raceTrackPosition({ { 10, 0.30f } });      // the self marker has somewhere to be
+    REQUIRE(host.setHudVisible("gap_bar_hud", true));
+
+    host.setActiveTab("Gap Bar");
+    host.showSettings(true);
+    host.draw();
+    // Start from Ghost (0): no reference lap yet, so the only marker is the rider's own.
+    host.save();
+    int mode = iniInt(INI_CYCLE, "GapBarHud", "markerMode");
+    REQUIRE(mode >= 0);
+    while (mode != 0) { REQUIRE(host.clickCycle(2, true)); host.save(); mode = iniInt(INI_CYCLE, "GapBarHud", "markerMode"); }
+    host.draw();
+    const size_t ghostQuads = host.hudQuadRects("gap_bar_hud").size();
+    REQUIRE(ghostQuads > 0);
+
+    // Ghost -> Opponents -> Both -> Off (Mode is cycle 2; Reference and Splits sit before it).
+    for (int i = 0; i < 3; ++i) REQUIRE(host.clickCycle(2, true));
+    host.save();
+    CHECK(iniInt(INI_CYCLE, "GapBarHud", "markerMode") == 3);
+    host.draw();
+    const size_t offQuads = host.hudQuadRects("gap_bar_hud").size();
+    CHECK_MESSAGE(offQuads + 1 == ghostQuads,
+                  "Off should draw exactly the self marker fewer: " << ghostQuads << " quads in Ghost, " << offQuads << " in Off");
+
+    // One more step wraps back to Ghost, and the marker returns.
+    REQUIRE(host.clickCycle(2, true));
+    host.save();
+    CHECK(iniInt(INI_CYCLE, "GapBarHud", "markerMode") == 0);
+    host.draw();
+    CHECK(host.hudQuadRects("gap_bar_hud").size() == ghostQuads);
+}
+
+// ============================================================================
+// Every "hold the time after a split or the line" setting shares one default
+// and range (hud/freeze_duration.h): Timing's Freeze, the Gap Bar's Freeze and
+// the Lap Log's Gap freeze, 5 s. They had drifted to 5 s / 3 s / 3 s. The
+// Pitboard's At Splits Freeze (a fixed 10 s until it became a setting) keeps
+// 10 s and has no Off (a zero hold would hide the board for good): it wraps
+// from 10 s to 1 s.
+// ============================================================================
+TEST_CASE("freeze settings share one default, and the Pitboard's wraps 1-10 s and persists") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(SAVE);
+
+    host.save();
+    CHECK(iniInt(INI, "TimingHud",   "displayDuration") == 5000);
+    CHECK(iniInt(INI, "GapBarHud",   "freezeDuration")  == 5000);
+    CHECK(iniInt(INI, "LapLogHud",   "freezeDuration")  == 5000);
+    CHECK(iniInt(INI, "PitboardHud", "freezeDuration")  == 10000);
+
+    // Pitboard tab: Freeze is its one stepped control (default mode At Splits,
+    // so it is live).
+    host.showSettings(true);
+    host.setActiveTab("Pitboard");
+    host.draw();
+    REQUIRE(host.steppedCount(true) == 1);
+
+    // Past 10 s it wraps to 1 s, never to 0, and back down to 10 s.
+    REQUIRE(host.clickStepped(0, /*up=*/true));
+    host.save();
+    CHECK(iniInt(INI, "PitboardHud", "freezeDuration") == 1000);
+    REQUIRE(host.clickStepped(0, /*up=*/true));
+    host.save();
+    CHECK(iniInt(INI, "PitboardHud", "freezeDuration") == 2000);
+    for (int i = 0; i < 2; ++i) REQUIRE(host.clickStepped(0, /*up=*/false));
+    host.save();
+    CHECK(iniInt(INI, "PitboardHud", "freezeDuration") == 10000);
 
     host.shutdown();
 }

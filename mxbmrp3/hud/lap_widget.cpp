@@ -22,7 +22,6 @@ LapWidget::LapWidget()
     m_panelKind = PanelKind::Widget;
     m_bContentCard = true;
     // One-time setup
-    DEBUG_INFO("LapWidget created");
     setDraggable(true);
     m_strings.reserve(2);  // label (optional), lap value
 
@@ -121,7 +120,7 @@ void LapWidget::rebuildRenderData() {
     // BOX-MODEL: the plan owns padding, chrome, the title band and the content
     // origin. The fixed 12-char column (shared with Position/Time/Clock) is the
     // content width, so the four standard widgets keep tiling with each other.
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(
         WidgetDimensions::STANDARD_WIDTH, dim.fontSize);
     want.sectionH = { bigValueRowHeight(dim) };  // Value (2 lines)
@@ -135,7 +134,7 @@ void LapWidget::rebuildRenderData() {
     // Use full opacity for text
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
 
-    addPlanTitle(p, "Lap", this->getFont(FontCategory::TITLE), textColor);
+    addPlanTitle(p, "Lap", textColor);
 
     const float contentStartX = p.contentX();
     float currentY = p.contentY();
@@ -149,7 +148,11 @@ void LapWidget::rebuildRenderData() {
 
     // Build lap value string (e.g., "2/5" or "2" or "-")
     char lapValueBuffer[32];
+    // A placeholder draws MUTED, like the Timing panel's big time and the gap bar's gap
+    // with nothing to show: in the primary colour it reads as a value.
+    unsigned long valueColor = textColor;
     if (currentLap <= 0) {
+        valueColor = this->getColor(ColorSlot::MUTED);
         snprintf(lapValueBuffer, sizeof(lapValueBuffer), "%s", Placeholders::GENERIC);
     } else if (showTotalLaps) {
         snprintf(lapValueBuffer, sizeof(lapValueBuffer), "%d/%d", currentLap, totalLaps);
@@ -159,7 +162,7 @@ void LapWidget::rebuildRenderData() {
 
     // Add lap value (extra large font - spans 2 lines)
     addString(lapValueBuffer, contentStartX, bigValueTextY(currentY, dim), Justify::LEFT,
-        this->getFont(FontCategory::TITLE), textColor, dim.fontSizeExtraLarge);
+        this->getFont(FontCategory::TITLE), valueColor, dim.fontSizeExtraLarge);
 
     // Set bounds for drag detection
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);

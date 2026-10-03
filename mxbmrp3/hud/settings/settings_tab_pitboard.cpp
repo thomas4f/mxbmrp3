@@ -9,8 +9,8 @@
 
 // Note: the Pitboard tab has no tab-specific click handler anymore - Show mode
 // and Gap compare are data-driven CYCLE controls (registered in
-// renderTabPitboard via ctx.addCycleControl) and the rest uses the common
-// handlers.
+// renderTabPitboard via ctx.addCycleControl), Freeze a STEPPED control
+// (ctx.addSteppedControl), and the rest uses the common handlers.
 
 // Static member function of SettingsHud - inherits friend access to PitboardHud
 BaseHud* SettingsHud::renderTabPitboard(SettingsLayoutContext& ctx) {
@@ -36,14 +36,19 @@ BaseHud* SettingsHud::renderTabPitboard(SettingsLayoutContext& ctx) {
     if (hud->m_displayMode == PitboardHud::MODE_ALWAYS) {
         displayModeText = "Always";
     } else if (hud->m_displayMode == PitboardHud::MODE_PIT) {
-        displayModeText = "At Pit";
+        displayModeText = "At pit";
     } else if (hud->m_displayMode == PitboardHud::MODE_SPLITS) {
-        displayModeText = "At Splits";
+        displayModeText = "At splits";
     }
-    ctx.addCycleControl("Show mode", displayModeText, 10,
+    ctx.addCycleControl("Show mode", displayModeText,
         SettingsHud::CycleControl::enumMember(hud, &PitboardHud::m_displayMode,
             PitboardHud::MODE_COUNT, hud),
         hud, true, false, "pitboard.show_mode");
+
+    // Freeze: how long At Splits shows the board (the shared freeze range, no Off)
+    ctx.addFreezeControl("Freeze", &hud->m_freezeDurationMs, false, hud,
+        hud->m_displayMode == PitboardHud::MODE_SPLITS, "pitboard.freeze");
+
     // === CONTENT SECTION ===
     ctx.addSectionHeading("Content");
 
@@ -69,20 +74,20 @@ BaseHud* SettingsHud::renderTabPitboard(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, PitboardHud::ROW_GAP, true,
         "pitboard.gap");
 
-    // Gap compare mode (Auto/Leader/Session PB/Ideal/Alltime PB/Overall/Record)
+    // Gap compare mode (Auto/Leader/Session PB/Ideal/All-time/Overall/Record)
     const char* gapModeText = "";
     switch (hud->m_gapCompareMode) {
         case PitboardHud::GAP_AUTO:       gapModeText = "Auto"; break;
         case PitboardHud::GAP_LEADER:     gapModeText = "Leader"; break;
         case PitboardHud::GAP_SESSION_PB: gapModeText = "Session PB"; break;
         case PitboardHud::GAP_IDEAL:      gapModeText = "Ideal"; break;
-        case PitboardHud::GAP_ALLTIME_PB: gapModeText = "Alltime PB"; break;
+        case PitboardHud::GAP_ALLTIME_PB: gapModeText = "All-time"; break;
         case PitboardHud::GAP_OVERALL:    gapModeText = "Overall"; break;
         case PitboardHud::GAP_RECORD:     gapModeText = "Record"; break;
         default: gapModeText = "Auto"; break;
     }
     bool gapEnabled = (hud->m_enabledRows & PitboardHud::ROW_GAP) != 0;
-    ctx.addCycleControl("Gap compare", gapModeText, 10,
+    ctx.addCycleControl("Gap compare", gapModeText,
         SettingsHud::CycleControl::enumMember(hud, &PitboardHud::m_gapCompareMode,
             PitboardHud::GAP_COUNT, hud),
         hud, gapEnabled, false, "pitboard.gap_compare");

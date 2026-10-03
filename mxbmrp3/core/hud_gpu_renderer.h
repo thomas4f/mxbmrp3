@@ -73,6 +73,8 @@
 // ============================================================================
 #pragma once
 
+#include <memory>
+
 #include "hud_sw_renderer.h"   // hudsw::Frame (the shared frame input)
 
 namespace hudgpu {
@@ -105,7 +107,7 @@ public:
 
 private:
     struct Impl;
-    Impl* m_impl = nullptr;
+    std::unique_ptr<Impl> m_impl;   // Impl is complete only in the .cpp, hence the out-of-line ~Renderer
 };
 
 }  // namespace hudgpu

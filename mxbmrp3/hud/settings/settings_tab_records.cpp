@@ -63,7 +63,7 @@ BaseHud* SettingsHud::renderTabRecords(SettingsLayoutContext& ctx) {
         case RecordsHud::DataProvider::MXB_RANKED: providerName = "MXB Ranked"; break;
         default: break;
     }
-    ctx.addCycleControl("Provider", providerName, 10,
+    ctx.addCycleControl("Provider", providerName,
         SettingsHud::CycleControl::enumMember(hud, &RecordsHud::m_provider,
             static_cast<int>(RecordsHud::DataProvider::COUNT), hud),
         hud, true, false, "records.provider", /*tooltipOnArrows=*/false);
@@ -72,7 +72,7 @@ BaseHud* SettingsHud::renderTabRecords(SettingsLayoutContext& ctx) {
     // NO hold acceleration (verbatim from the old RECORDS_COUNT handlers).
     char recordsValue[8];
     snprintf(recordsValue, sizeof(recordsValue), "%d", hud->m_recordsToShow);
-    ctx.addSteppedControl("Records to show", recordsValue, 10,
+    ctx.addSteppedControl("Records to show", recordsValue,
         SettingsHud::SteppedControl::fixedInt(&hud->m_recordsToShow, 1, 3, 30, hud),
         hud, true, false, "records.count");
 

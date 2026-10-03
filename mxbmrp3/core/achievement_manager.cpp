@@ -278,7 +278,9 @@ void AchievementManager::evaluateRow(int idx, bool toastEach, Granted& granted) 
     granted.lastRow = idx;
     s.tier = reached;
     m_dirty = true;
-    if (toastEach) queueTierToast(e, reached);
+    if (toastEach) {
+        queueTierToast(e, reached);
+    }
     DEBUG_INFO_F("[Achievements] %s reached %s", e.id, tierName(reached));
 }
 

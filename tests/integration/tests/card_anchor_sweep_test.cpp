@@ -30,7 +30,6 @@
 // tests); MAP's ribbon quads are world geometry driven by track data this
 // harness does not feed. Self-contained doctest; see run_tests.sh.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

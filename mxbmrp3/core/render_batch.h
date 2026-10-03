@@ -92,11 +92,54 @@ struct Resolver {
     virtual const void* white() = 0;
 };
 
+// Per-SPRITE-INDEX cache of resolved texture handles, owned by a backend and
+// passed to build(). Without it every textured quad pays Resolver::texture -
+// a virtual call plus a std::map<std::string> find in both GPU backends, which
+// for the GL backend is on the GAME thread every frame (~75-100ns per quad
+// measured with a realistic ~400-name table: 11-40us per frame for 150-400
+// textured quads, against ~2ns for the slot read).
+//
+// WHAT IS NEVER CACHED: a nullptr answer. A null is either a permanent decode
+// miss (the backend's own map records that, and answers it cheaply) or the GL
+// backend's per-frame decode budget DEFERRING the sprite to a later frame - and
+// caching the deferral would blank that sprite for the session. So only a
+// resolved handle fills a slot; a null is asked again next frame.
+//
+// INVALIDATION. Slots are keyed implicitly on the frame's name table, so the
+// cache re-keys itself (all slots empty) whenever the table OBJECT, its size,
+// firstIcon or assetRoot differs from the last build - each of which changes
+// what an index resolves to. What it cannot see is the backend's own texture
+// cache being dropped (an art reload, a lost GL context), so a backend MUST
+// call invalidate() at every site that clears or deletes its textures, or a
+// slot serves a dead handle. It also assumes a table is not rewritten in place
+// at the same size, which holds for both producers: HudManager rebuilds
+// m_spriteBases only in setupDefaultResources()/clear() (the latter destroys
+// the GL renderer with it), and CompanionWindow's tables are append-only.
+// Pinned by tests/unit/test_render_batch.cpp ("texture cache: ...").
+class TextureCache {
+public:
+    void invalidate() { m_names = nullptr; }
+
+private:
+    friend void build(const hudsw::Frame&, int, int, float, float, float, float,
+                      Resolver&, std::vector<Vertex>&, std::vector<Run>&, TextureCache*);
+    // Re-key to `frame` if it is not the table the slots describe. Allocates
+    // only on a re-key, never in the steady state.
+    void sync(const hudsw::Frame& frame);
+
+    const std::vector<std::string>* m_names = nullptr;
+    size_t m_size = 0;
+    int m_firstIcon = 0;
+    std::string m_root;
+    std::vector<const void*> m_slots;   // index = sprite - 1; nullptr = unresolved
+};
+
 // Build `frame` into `verts`/`runs` (both cleared first). w,h are the client
 // size in pixels; vx,vy,vw,vh are the UiViewport::compute rect the normalized
-// coordinates map through.
+// coordinates map through. `cache` is optional; null resolves every quad.
 void build(const hudsw::Frame& frame, int w, int h,
            float vx, float vy, float vw, float vh,
-           Resolver& res, std::vector<Vertex>& verts, std::vector<Run>& runs);
+           Resolver& res, std::vector<Vertex>& verts, std::vector<Run>& runs,
+           TextureCache* cache = nullptr);
 
 }  // namespace hudbatch

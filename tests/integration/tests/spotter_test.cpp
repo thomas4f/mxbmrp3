@@ -15,7 +15,6 @@
 //  - category toggles filtering their events without muting the rest;
 //  - disabled spotter costing nothing and logging nothing.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
@@ -2021,6 +2020,44 @@ TEST_CASE("spotter: muting it across a session boundary still clears the session
           std::string::npos);
 }
 
+// The settings preview walks the same audio ladder as a race cue. It skipped
+// the wav rung: a recorded pack whose voice_preview row is a whole clip (every
+// pack tools/spottergen bakes) went to the guaranteed-chunk stitch instead,
+// missed rider.wav/point.wav - a minimal pack ships neither - and previewed in
+// the TTS voice while the same pack played its recordings on track.
+TEST_CASE("spotter: the voice preview plays a pack's own voice_preview clip") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\spotter-preview-wav\\");
+    host.spotterEnable(true);
+
+    // A whole clip: played as recorded.
+    host.spotterInstallPack(
+        "[Cues]\nvoice_preview = Spotter ready.\n"
+        "voice_preview_wav = voice_preview.wav\n");
+    host.spotterPreview(false);
+    CHECK(host.spotterLastAudio() == "voice_preview|wav:voice_preview.wav");
+
+    // The TTS-voice cycler still asks for TTS, whatever the pack recorded.
+    host.spotterPreview(true);
+    CHECK(host.spotterLastAudio() == "voice_preview|tts");
+
+    // A mix outranks the clip, as it does for every cue.
+    host.spotterInstallPack(
+        "[Cues]\nvoice_preview = Spotter ready.\n"
+        "voice_preview_wav = voice_preview.wav\n"
+        "voice_preview_mix = ready.wav\n");
+    host.spotterPreview(false);
+    CHECK(host.spotterLastAudio() == "voice_preview|mix:ready.wav");
+
+    // No preview row of its own: the stitch from the chunks the format
+    // guarantees, unchanged.
+    host.spotterInstallPack(
+        "[Cues]\nsession_started = Green.\nsession_started_wav = green.wav\n");
+    host.spotterPreview(false);
+    CHECK(host.spotterLastAudio().rfind("voice_preview|mix:rider.wav+", 0) == 0);
+}
+
 // The refinement fallback reaches the AUDIO, not only the words. A pack that
 // writes the general key alone is documented to cover every kind of it
 // (spotter_cue_pack.h), and it did — for the phrase, while the wav lookup
@@ -2457,26 +2494,29 @@ TEST_CASE("spotter: a first penalty the standings already knew stays unsaid") {
 // that duplicates the wording breaks on every reword and teaches the next
 // author to skip it.
 // ============================================================================
+// The value of one row of the shipped ini, by exact key. Shared by the tests
+// that assert on what was SAID: the cue log carries spoken text, not cue ids,
+// and a test that spelled the text out would break on every reword.
+static std::string shippedRow(const std::string& key) {
+    const std::string ini = PluginHost::readShippedPack();
+    std::istringstream lines(ini);
+    std::string line;
+    while (std::getline(lines, line)) {
+        const size_t eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        size_t b = line.find_first_not_of(" \t");
+        if (b == std::string::npos || line[b] == ';') continue;
+        size_t e = line.find_last_not_of(" \t\r", eq - 1);
+        if (line.substr(b, e - b + 1) != key) continue;
+        const size_t vb = line.find_first_not_of(" \t", eq + 1);
+        if (vb == std::string::npos) return std::string();
+        const size_t ve = line.find_last_not_of(" \t\r");
+        return line.substr(vb, ve - vb + 1);
+    }
+    return std::string();
+}
+
 TEST_CASE("spotter: the shipped pack's alternates are all reachable, and roll") {
-    // The value of one row of the shipped ini, by exact key.
-    auto shippedRow = [](const std::string& key) {
-        const std::string ini = PluginHost::readShippedPack();
-        std::istringstream lines(ini);
-        std::string line;
-        while (std::getline(lines, line)) {
-            const size_t eq = line.find('=');
-            if (eq == std::string::npos) continue;
-            size_t b = line.find_first_not_of(" \t");
-            if (b == std::string::npos || line[b] == ';') continue;
-            size_t e = line.find_last_not_of(" \t\r", eq - 1);
-            if (line.substr(b, e - b + 1) != key) continue;
-            const size_t vb = line.find_first_not_of(" \t", eq + 1);
-            if (vb == std::string::npos) return std::string();
-            const size_t ve = line.find_last_not_of(" \t\r");
-            return line.substr(vb, ve - vb + 1);
-        }
-        return std::string();
-    };
     const std::vector<std::string> rows = {
         shippedRow("lap_invalidated"),
         shippedRow("lap_invalidated_2"),
@@ -2804,4 +2844,70 @@ TEST_CASE("spotter: the rider ahead's last lap is a variable") {
     // point two", not "one oh eight point two".
     CHECK(second.find("rider four seventy six ran one forty eight point two.") !=
           std::string::npos);
+}
+
+// ============================================================================
+// A pit lap is not struck out. Outside a race the game reports a lap that went
+// through the pits exactly like a cut one -- time 0, no flag -- and the spotter
+// told a rider who had just chosen to pit that their lap had been struck out (an
+// in-game capture, 2026-09-17, at the line after a pit taken from the menu, where
+// the classification's pit flag never rose). PluginData now knows the pits were
+// visited (markLapViaPits, from RunDeinit with a lap under way) and the RaceLap
+// carries it; lap_invalidated stays quiet for that lap and speaks for a cut.
+// ============================================================================
+TEST_CASE("spotter: a pit lap is not struck out; a cut lap still is") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\spotter_pitlap\\");
+    host.spotterInstallShippedPack();
+    host.eventInit("TestTrack", "Player");
+    host.raceEvent("TestTrack");
+    host.addEntry(12, "Player");
+    host.spotterEnable(true);
+    host.spotterCategoryMask(0x1F);
+
+    const int PRACTICE = 1;
+    host.session(PRACTICE, 0);
+    host.runInit(PRACTICE);
+    host.runStart();
+    host.classify(PRACTICE, 0, { { .num = 12, .laps = 0 } });
+    // The cue log holds spoken text: count the three shipped rows of lap_invalidated.
+    const std::vector<std::string> rows = {
+        shippedRow("lap_invalidated"), shippedRow("lap_invalidated_2"), shippedRow("lap_invalidated_3") };
+    for (const std::string& r : rows) REQUIRE(!r.empty());
+    auto struckOut = [&host, &rows]() {
+        const std::string log = host.spotterCueLog();
+        int n = 0;
+        for (const std::string& r : rows) {
+            for (size_t i = log.find(r); i != std::string::npos; i = log.find(r, i + r.size())) ++n;
+        }
+        return n;
+    };
+
+    // A timed lap under way: the line anchors the timer, a valid lap goes by.
+    host.raceTrackPosition({ { .num = 12, .trackPos = 0.92f } });
+    host.raceTrackPosition({ { .num = 12, .trackPos = 0.03f } });
+    host.raceLap(PRACTICE, 12, 1, 95000, /*best=*/1);
+    host.classify(PRACTICE, 95000, { { .num = 12, .laps = 1 } });
+    const int before = struckOut();
+
+    // Into the pits from the menu and back out; the out-lap ends at the line with
+    // no time and no flag, the way practice reports it.
+    host.runStop();
+    host.runDeinit();
+    host.runInit(PRACTICE);
+    host.runStart();
+    host.raceTrackPosition({ { .num = 12, .trackPos = 0.88f } });
+    host.raceLap(PRACTICE, 12, 2, 0, /*best=*/0, /*split0=*/-1, /*split1=*/-1, /*invalid=*/false);
+    host.classify(PRACTICE, 190000, { { .num = 12, .laps = 2 } });
+    CHECK_MESSAGE(struckOut() == before, "the spotter struck out a pit lap");
+
+    // A cut lap, no pit visit: the same report, and it IS struck out.
+    host.raceTrackPosition({ { .num = 12, .trackPos = 0.92f } });
+    host.raceTrackPosition({ { .num = 12, .trackPos = 0.03f } });
+    host.raceLap(PRACTICE, 12, 3, 0, /*best=*/0, /*split0=*/-1, /*split1=*/-1, /*invalid=*/false);
+    host.classify(PRACTICE, 285000, { { .num = 12, .laps = 3 } });
+    CHECK_MESSAGE(struckOut() == before + 1, "a cut lap must still be struck out (and the count must be able to move)");
+
+    host.shutdown();
 }

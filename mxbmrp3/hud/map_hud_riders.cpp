@@ -195,39 +195,26 @@ void MapHud::renderRiders(const RotationCache& rotation,
         // Hazard/flag icon overrides — skip for the local player so their
         // own icon and color always stay consistent on the map.
         if (!isLocalPlayer) {
+            // Priority: hazard, then blue flag, then finished. Markers and their
+            // fixed colours: rider_flag_icons.h
+            RiderFlagIcons::Kind flagKind = RiderFlagIcons::Kind::None;
             HazardType hazardType = pluginData.getRiderHazardType(pos.raceNum);
             if (hazardType != HazardType::None) {
-                m_iconCache.ensureInitialized();
-                if (hazardType == HazardType::WrongWay) {
-                    if (m_iconCache.circleExclamation > 0) {
-                        spriteIndex = m_iconCache.circleExclamation;
-                        riderColor = ColorPalette::RED;
-                    }
-                } else {
-                    if (m_iconCache.flag > 0) {
-                        spriteIndex = m_iconCache.flag;
-                        riderColor = ColorPalette::BRIGHT_YELLOW;
-                    }
-                }
-                shapeIndex = AssetManager::getInstance().shapeIndexForSprite(spriteIndex);
-            }
-
-            if (hazardType == HazardType::None && pluginData.isRiderBlueFlagged(pos.raceNum)) {
-                m_iconCache.ensureInitialized();
-                if (m_iconCache.flag > 0) {
-                    spriteIndex = m_iconCache.flag;
-                    shapeIndex = AssetManager::getInstance().shapeIndexForSprite(spriteIndex);
-                    riderColor = ColorPalette::BLUE;
-                }
-            } else if (hazardType == HazardType::None) {
+                flagKind = RiderFlagIcons::forHazard(hazardType);
+            } else if (pluginData.isRiderBlueFlagged(pos.raceNum)) {
+                flagKind = RiderFlagIcons::Kind::Blue;
+            } else {
                 const StandingsData* standing = pluginData.getStanding(pos.raceNum);
                 if (standing && pluginData.getSessionData().isRiderFinished(standing->numLaps, standing->numLapsAtLeaderFinish)) {
-                    m_iconCache.ensureInitialized();
-                    if (m_iconCache.flagCheckered > 0) {
-                        spriteIndex = m_iconCache.flagCheckered;
-                        shapeIndex = AssetManager::getInstance().shapeIndexForSprite(spriteIndex);
-                        riderColor = ColorPalette::WHITE;
-                    }
+                    flagKind = RiderFlagIcons::Kind::Finished;
+                }
+            }
+            if (flagKind != RiderFlagIcons::Kind::None) {
+                const RiderFlagIcons::Icon icon = m_flagIcons.get(flagKind, this->getColor(ColorSlot::NEGATIVE));
+                if (icon.sprite > 0) {
+                    spriteIndex = icon.sprite;
+                    shapeIndex = AssetManager::getInstance().shapeIndexForSprite(spriteIndex);
+                    riderColor = icon.color;
                 }
             }
         }

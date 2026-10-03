@@ -3,108 +3,51 @@
 // Gap Bar HUD - visualizes current lap progress vs best lap timing
 // Shows a horizontal bar with current position, best lap marker, and live gap
 // Can also function as a "flat map" showing opponent positions on track
+//
+// The gap, the ghost's position and the rider's own are PluginData's
+// (core/pb_gap_tracker.h, driven from the central lap timer); this HUD reads
+// them and owns only what it presents -- the freeze that holds an official
+// split/lap gap on screen -- and the opponent markers of flat-map mode.
 // ============================================================================
 #pragma once
 
 #include "base_hud.h"
 #include "marker_label.h"
+#include "official_gap_freeze.h"
+#include "freeze_duration.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../game/unified_types.h"
 #include <chrono>
-#include <array>
 #include <vector>
 #include <string>
 
-// ============================================================================
-// Timing point for best lap comparison
-// Stores when player reached each track position on their best lap
-// ============================================================================
-struct BestLapTimingPoint {
-    int elapsedTime;      // Milliseconds from lap start when this position was reached
-    bool valid;           // Is this timing point populated?
-
-    BestLapTimingPoint() : elapsedTime(0), valid(false) {}
-    BestLapTimingPoint(int time) : elapsedTime(time), valid(true) {}
-};
-
-// ============================================================================
-// Live timing anchor state - tracks when current lap started
-// Stores accumulated time and resyncs at splits for accuracy
-// ============================================================================
-struct GapBarAnchor {
-    std::chrono::steady_clock::time_point wallClockTime;  // Real time when anchor was set
-    std::chrono::steady_clock::time_point pausedAt;       // When pause started
-    int accumulatedTime;      // Known accumulated lap time at anchor (ms)
-    bool valid;               // Do we have a usable anchor?
-    bool isPaused;            // Is timer currently paused?
-
-    GapBarAnchor() : accumulatedTime(0), valid(false), isPaused(false) {}
-
-    void reset() {
-        accumulatedTime = 0;
-        valid = false;
-        isPaused = false;
-    }
-
-    void set(int accumTime = 0) {
-        wallClockTime = std::chrono::steady_clock::now();
-        accumulatedTime = accumTime;
-        valid = true;
-        isPaused = false;
-    }
-
-    void pause() {
-        if (!isPaused && valid) {
-            pausedAt = std::chrono::steady_clock::now();
-            isPaused = true;
-        }
-    }
-
-    void resume() {
-        if (isPaused && valid) {
-            auto pauseDuration = std::chrono::steady_clock::now() - pausedAt;
-            wallClockTime += pauseDuration;
-            isPaused = false;
-        }
-    }
-
-    int getElapsedMs() const {
-        if (!valid) return 0;
-        auto endTime = isPaused ? pausedAt : std::chrono::steady_clock::now();
-        int wallClockDelta = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
-            endTime - wallClockTime).count());
-        return accumulatedTime + wallClockDelta;
-    }
-};
-
-// ============================================================================
-// Track position monitoring for S/F line detection
-// ============================================================================
-struct GapBarTrackMonitor {
-    float lastTrackPos;       // Previous track position (0.0-1.0)
-    int lastLapNum;           // Previous lap number
-    bool initialized;         // Have we received first position?
-
-    static constexpr float WRAP_THRESHOLD = 0.5f;  // Position jump > 0.5 = S/F crossing
-
-    GapBarTrackMonitor() : lastTrackPos(0.0f), lastLapNum(0), initialized(false) {}
-
-    void reset() {
-        lastTrackPos = 0.0f;
-        lastLapNum = 0;
-        initialized = false;
-    }
-};
-
 class GapBarHud : public BaseHud {
 public:
-    // Marker display mode - controls what markers are shown on the bar
+    // Marker display mode - controls what markers are shown on the bar. Saved by
+    // value, so new modes are appended. OFF is the whole marker row gone: the bar
+    // is a flat map of the lap, so the rider's OWN marker slides along it too,
+    // and a player who finds the sliding distracting wants none of them, not a
+    // subset (the bar and the gap text stay).
     enum class MarkerMode {
         GHOST = 0,           // Self + ghost (best lap) only - original behavior
         OPPONENTS = 1,       // Self + all opponents (no ghost)
-        GHOST_OPPONENTS = 2  // Self + ghost + opponents (full flat map)
+        GHOST_OPPONENTS = 2, // Self + ghost + opponents (full flat map)
+        OFF = 3              // No markers at all
     };
+    static constexpr int MARKER_MODE_COUNT = 4;   // the settings cycle and the loader's range
+
+    // One split-tick slot per split the widest game has (GP Bikes' 3).
+    static constexpr int SPLIT_SLOTS = 3;
+
+    // Which lap the bar and its ghost compare against (the Lap Log has its own):
+    // PluginData's tracker holds the session PB, the persisted all-time PB and
+    // the last lap (core/pb_gap_tracker.h). Session PB by default -- what the
+    // bar always did -- because a PB set before traces were persisted has no
+    // table, and an All-time default would show nothing until it was beaten.
+    using Reference = PbGapTracker::Ref;
+    static constexpr int REFERENCE_COUNT = PbGapTracker::REF_COUNT;
+    Reference getReference() const { return m_reference; }
 
     // Label display mode - controls what labels appear above markers (like MapHud)
     // Shared with MapHud/RadarHud/GapBarHud — see hud/marker_label.h
@@ -124,7 +67,7 @@ public:
 
     // Rider color mode - controls how opponent markers are colored (like MapHud/RadarHud)
     enum class RiderColorMode {
-        UNIFORM = 0,        // Gray for all riders
+        UNIFORM = 0,        // One colour (primary) for all riders
         BRAND = 1,          // Bike brand colors
         RELATIVE_POS = 2    // Color based on position relative to player
     };
@@ -139,9 +82,12 @@ public:
 
     // Set bar width (keeps bar centered when adjusting)
     void setBarWidth(int percent);
-
-    // Track position update for lap timing (called from HudManager)
-    void updateTrackPosition(int raceNum, float trackPos, int lapNum);
+    void setShowSplits(bool on) {
+        if (m_showSplits != on) {
+            m_showSplits = on;
+            setDataDirty();
+        }
+    }
 
     // Rider positions update for flat map mode (called from HudManager)
     void updateRiderPositions(int numVehicles, const Unified::TrackPositionData* positions);
@@ -150,42 +96,11 @@ public:
     friend class SettingsHud;
     friend class SettingsManager;
 
-public:
-    // TEST ONLY (test_hooks.cpp): plant a live gap so the fill's geometry can be
-    // measured headlessly -- producing one for real needs a full lap of
-    // timing-point history the harness cannot cheaply drive.
-    //
-    // STICKY, and that is the whole point of the flag. update() recomputes
-    // m_cachedGap/Valid from live state on a steady_clock interval, so a planted
-    // gap survived only until the next tick crossed UPDATE_INTERVAL_MS -- which in
-    // a quiet run never happened between the plant and the draw, and under a loaded
-    // `ctest -j 4` did. The fill then simply was not emitted and the geometry case
-    // failed with "0 candidate(s)", passing on its own and failing in the suite.
-    // A wall-clock race is not a flake; the plant now outranks the recompute.
-    void testForceGap(int ms, bool valid) {
-        m_cachedGap = ms;
-        m_cachedGapValid = valid;
-        m_testGapForced = true;
-        setDataDirty();
-    }
-
-private:
-
 protected:
     void rebuildLayout() override;
 
 private:
     void rebuildRenderData() override;
-    void checkAndSavePreviousLap();
-    void updateCurrentLapTiming();
-    void processSplitUpdates();
-    void checkFreezeExpiration();
-    int calculateCurrentGap() const;
-    float calculateBestLapProgress() const;
-    void resetTimingState();
-
-    // Number of timing points to track (0.1% resolution)
-    static constexpr int NUM_TIMING_POINTS = 1000;
 
     // Bar dimensions
     // Width: base (100%) is 2x the Notices/Timing box width, scaled by m_barWidthPercent, so
@@ -193,12 +108,6 @@ private:
     // Height: lineHeightLarge (the large-font title band = 4 snap-grid cells) - shared with
     //         the Notices and Timing rows so all three line up on the grid
     static constexpr float BAR_PADDING_V_SCALE = 0.25f;  // Inner vertical padding for markers
-
-    // Freeze duration limits (matches TimingHud)
-    static constexpr int MIN_FREEZE_MS = 0;         // 0 = disabled
-    static constexpr int MAX_FREEZE_MS = 10000;     // 10 seconds maximum
-    static constexpr int DEFAULT_FREEZE_MS = 3000;  // 3 seconds default
-    static constexpr int FREEZE_STEP_MS = 1000;     // 1 second steps
 
     // Gap bar time range limits (how much time fits from center to edge)
     static constexpr int MIN_RANGE_MS = 1000;       // 1 second minimum
@@ -213,34 +122,19 @@ private:
     static constexpr int DEFAULT_WIDTH_PERCENT = 50;  // default: the PANEL matches Notices/Timing
     static constexpr int WIDTH_STEP_PERCENT = 1;      // 1% steps
 
-    // Best lap timing data
-    std::array<BestLapTimingPoint, NUM_TIMING_POINTS> m_bestLapTimingPoints;
-    int m_bestLapTime;                // Best lap time in ms (for reference)
-    bool m_hasBestLap;                // Do we have valid best lap data?
-
-    // Current lap timing data
-    std::array<BestLapTimingPoint, NUM_TIMING_POINTS> m_currentLapTimingPoints;
-
-    GapBarAnchor m_anchor;            // Anchor for current lap timing
-    GapBarTrackMonitor m_trackMonitor;  // For S/F line detection
-    float m_currentTrackPos;          // Current position on track (0.0-1.0)
-    int m_currentLapNum;              // Current lap number
-    bool m_observedLapStart;          // Did we see this lap start at S/F?
-
     // Cached state for change detection
     int m_cachedDisplayRaceNum;       // Track spectate target changes
     int m_cachedSessionGeneration;    // Track session changes (monotonic counter)
-    int m_cachedPitState;             // Track pit entry/exit
-    int m_cachedLastCompletedLapNum;  // Track lap completions
-    int m_cachedSplit1;               // Track split 1 changes
-    int m_cachedSplit2;               // Track split 2 changes
-    bool m_cachedPlayerRunning;       // Track pause state for anchor pause/resume
 
-    // Freeze state for official split/lap times
-    bool m_isFrozen;                  // Currently showing official time (frozen)?
-    std::chrono::steady_clock::time_point m_frozenAt;  // When freeze started
-    int m_frozenGap;                  // Gap to display during freeze
-    int m_frozenSplitIndex;           // Which split triggered freeze (-1=lap, 0=S1, 1=S2)
+    // WHERE THE SPLITS ARE, learned from the display rider's track position at each
+    // crossing -- the fallback for a game that sends no marker data with its
+    // centerline (GP Bikes, whose 3 splits then still get markers after one lap).
+    // Per track, so kept across spectate changes and dropped on a session change.
+    float m_learnedSplitPos[SPLIT_SLOTS];
+    int m_learnSplitCache[SPLIT_SLOTS];
+
+    // Holds the official split/lap gap against m_reference after each crossing
+    OfficialGapFreeze m_freeze;
 
     // Update rate limiting
     std::chrono::steady_clock::time_point m_lastUpdate;
@@ -249,6 +143,7 @@ private:
     // === Configurable settings ===
     int m_freezeDurationMs;           // How long to freeze on official times
     MarkerMode m_markerMode;          // What markers to show (ghost/opponents/both)
+    Reference m_reference = Reference::SESSION_PB;   // Which lap the gap is measured against
     LabelMode m_labelMode;            // What labels to show on markers (like MapHud)
     LabelAnchor m_labelAnchor = LabelAnchor::BELOW;  // ...and where they sit
     RiderColorMode m_riderColorMode;  // How to color opponent markers (like MapHud/RadarHud)
@@ -258,6 +153,7 @@ private:
     int m_gapRangeMs;                 // Time range for gap bar (full bar at ±range)
     int m_barWidthPercent;            // Bar width as percentage of default (50-400%)
     float m_fMarkerScale;             // Marker scale multiplier (0.5-3.0, like MapHud)
+    bool m_showSplits = true;         // Ticks where the track's splits are
 
     // Rider position storage for flat map mode (updated from HudManager)
     // Pushed whole by HudManager::updateRiderPositions; assign() replaces it each batch.
@@ -273,19 +169,19 @@ private:
     // markers, so (2) wants an in-game look before anyone commits to it.
     std::vector<Unified::TrackPositionData> m_riderPositions;
 
-    // Cached gap for publishing to PluginData (avoids calculating twice)
-    int m_cachedGap = 0;              // Last calculated gap in milliseconds
-    bool m_cachedGapValid = false;    // Is the cached gap valid?
-    // Set only by testForceGap (see it): makes a planted gap outrank update()'s
-    // rate-limited recompute. Never set in a shipping run -- nothing but the test
-    // hook writes it -- so the live path is byte-for-byte what it was.
-    bool m_testGapForced = false;
-
     // Marker scale constants (matches MapHud pattern)
     static constexpr float DEFAULT_MARKER_BASE_SIZE = 0.012f;  // Base full size (halfSize = 0.006, matches MapHud/StandingsHud)
     static constexpr float DEFAULT_MARKER_SCALE = 1.0f;        // Default 100%
     static constexpr float MIN_MARKER_SCALE = 0.5f;            // Min 50%
     static constexpr float MAX_MARKER_SCALE = 3.0f;            // Max 300%
+
+    // Split positions (0-1 along the lap, S/F excluded, ascending) into out[];
+    // returns how many. The centerline's when the game sent them, else learned.
+    int collectSplitPositions(float (&out)[SPLIT_SLOTS]) const;
+    void learnSplitPositions();
+    // Short ticks at the bar's top and bottom edges at each split, the middle --
+    // gap text and rider markers -- left clear.
+    void renderSplitTicks(float boxY, float boxH, float innerX, float innerW);
 
     // Helper methods for flat map rendering
     void renderRiderMarkers(float innerX, float innerY, float innerWidth, float innerHeight,

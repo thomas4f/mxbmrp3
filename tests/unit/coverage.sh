@@ -11,11 +11,12 @@
 # the PRODUCTION code linked into the unit-test binary — the header-only helpers
 # plus the few .cpp TUs in that build. It is explicitly NOT a whole-project
 # number, and must not be quoted as one: most of the plugin is only reachable
-# through the PiBoSo DLL boundary, where a line percentage would be both
-# expensive to obtain (mingw + Wine + gcov plumbing) and misleading (a large
-# share of those lines are render calls with no headless observable). The honest
-# coverage artifact for that surface is tests/integration/API_COVERAGE.md, which
-# tracks each export's status by hand and marks the gaps.
+# through the PiBoSo DLL boundary, where a line percentage is expensive (an
+# instrumented cross-build + the whole Wine suite: the opt-in, report-only
+# tests/integration/run_dll_coverage.sh) and easy to over-read (a large share of
+# those lines are render calls with no headless observable). The behavioral
+# artifact for that surface is tests/integration/API_COVERAGE.md, which tracks
+# each export's status by hand and marks the gaps.
 #
 # So: this closes the "no coverage instrumentation anywhere" gap for the layer
 # where the measurement is cheap and meaningful, and says nothing about the rest.

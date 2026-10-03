@@ -58,6 +58,7 @@ enum class HotkeyAction : uint8_t {
     DIRECTOR_LOCK,               // Auto-director: lock onto the current rider (pin subject)
     SPOTTER_CUE,                 // Spotter: speak the pack's `hotkey_triggered` line
     CRASH_RESET,                 // Crash widget: zero the streaming tally
+    TOGGLE_STREAM_CHAT,          // Stream chat HUD on/off (INI-only: stream_chat_key=)
     COUNT  // Must be last
 };
 
@@ -100,6 +101,7 @@ inline const char* getActionDisplayName(HotkeyAction action) {
         case HotkeyAction::SEGMENT_REMOVE:            return "Segment Remove";
         case HotkeyAction::DIRECTOR_TOGGLE:           return "Director";
         case HotkeyAction::DIRECTOR_LOCK:             return "Director Lock";
+        case HotkeyAction::TOGGLE_STREAM_CHAT:        return "Stream Chat";
         default: return "Unknown";
     }
 }
@@ -146,6 +148,7 @@ inline const char* getActionConfigName(HotkeyAction action) {
         case HotkeyAction::SEGMENT_REMOVE:            return "segment_remove";
         case HotkeyAction::DIRECTOR_TOGGLE:           return "director_toggle";
         case HotkeyAction::DIRECTOR_LOCK:             return "director_lock";
+        case HotkeyAction::TOGGLE_STREAM_CHAT:        return "stream_chat";
         default: return "unknown";
     }
 }

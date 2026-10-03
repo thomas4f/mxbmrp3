@@ -15,7 +15,6 @@
 // numbers, the panel's top edge in each state, and hudScreenEdges reports exactly that
 // (bounds PLUS the live offset, which is the quantity that must not change).
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

@@ -328,13 +328,9 @@ void TimingHud::calculateAllGaps(int splitTime, int splitIndex, bool isLapComple
 void TimingHud::resetLiveTimingState() {
     // Note: Anchor and track monitor are now managed centrally by PluginData
     // Reset local display state only
-    m_isFrozen = false;
+    m_hold.stop();
     m_officialData.reset();
-    m_cachedSplit1 = -1;
-    m_cachedSplit2 = -1;
-    m_cachedSplit3 = -1;
-    m_cachedLastCompletedLapNum = -1;
-    m_lapInterruptedByPit = false;
+    m_crossings.reset();  // adopt the new rider's or session's splits, report none
 
     // Cache current all-time PB for comparison when beating it
     cacheAllTimePB();

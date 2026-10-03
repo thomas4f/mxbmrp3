@@ -37,7 +37,6 @@ What each committed fixture can drive, since the answer is not its name:
 | `race2_mxbclub_1lap` | solo | no | session-result golden master |
 | `race_farm14_24riders` | 24 | **no** | standings, laps, penalties, gaps |
 | `spotter_demo_weekend` | 6 | 1842 | everything, incl. proximity and hazards |
-| `synthetic_positions_22riders` | 22 | 600 | map spacing, radar, position math |
 
 **Track positions are what proximity, hazards, blue flags and the director need**,
 and a fixture slimmed with `--profile min` has none - `race_farm14_24riders` is

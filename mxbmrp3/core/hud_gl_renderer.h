@@ -79,6 +79,7 @@
 // ============================================================================
 #pragma once
 
+#include <memory>
 #include <string>
 
 #include "hud_sw_renderer.h"   // hudsw::Frame - the shared frame input
@@ -110,8 +111,35 @@ public:
     // engine itself uses. Returns false on any GL error, which the caller must
     // treat as latch-off-and-fall-back: a renderer that half-draws into someone
     // else's context is worse than one that does not draw.
+    //
+    // `warm`, optional, names assets to load BEFORE anything draws them - see
+    // Warm.
+    struct Warm;
     bool render(const hudsw::Frame& frame, int w, int h,
-                float vx, float vy, float vw, float vh);
+                float vx, float vy, float vw, float vh, const Warm* warm = nullptr);
+
+    // PRE-WARM. Every texture and font is loaded LAZILY, on the game thread, the
+    // first frame something draws it: a file read, a decode and a glTexImage2D,
+    // all inside that frame. For the HUDs on screen at track entry nobody sees
+    // it. For one that first appears MID-LAP it is a hitch: the pit board's
+    // first show decoded a 1920x1080 board and a font no other HUD uses - two
+    // decodes of ~10 ms each in one frame, which kMaxDecodesPerFrame cannot split
+    // because each is a single item.
+    //
+    // So the caller names what enabled-but-hidden HUDs WILL draw, and render()
+    // loads ONE not-yet-loaded item per frame, and only on a frame that loaded
+    // nothing on demand - the load moves to the quiet frames after track entry
+    // instead of the moment the HUD appears. Indices are the frame's own 1-based
+    // tables (sprite >= firstIcon is an icon, exactly as a quad resolves it).
+    // Once everything named is loaded a frame costs one hash of the list.
+    struct Warm {
+        const int* sprites = nullptr; int spriteCount = 0;
+        const int* fonts = nullptr;   int fontCount = 0;
+    };
+
+    // Whether a sprite (by render name) is loaded. For the tests: pre-warming is
+    // invisible in any pixel, so its only observable is the cache.
+    bool hasTexture(const std::string& renderName) const;
 
     // Same live-reload contract as the other backends: drop uploaded textures
     // so the next frame re-reads them from disk; fonts are kept, because nobody
@@ -128,7 +156,7 @@ public:
 
 private:
     struct Impl;
-    Impl* m_impl = nullptr;
+    std::unique_ptr<Impl> m_impl;   // Impl is complete only in the .cpp, hence the out-of-line ~Renderer
 };
 
 }  // namespace hudgl

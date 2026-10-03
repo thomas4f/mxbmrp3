@@ -26,8 +26,6 @@
 #if GAME_HAS_ANALYTICS
 #include "../../core/analytics_manager.h"
 #endif
-#include <shellapi.h>
-#pragma comment(lib, "shell32.lib")
 #include <cstring>  // strlen (link URL width)
 
 using namespace PluginConstants;
@@ -283,38 +281,6 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
             }
             return true;
 
-        case ClickRegion::OPEN_LINK_DOCS:
-#if GAME_HAS_ANALYTICS
-            AnalyticsManager::getInstance().trackEvent("link_clicked", {{"target", "docs"}, {"source", "settings"}});
-#endif
-            ShellExecuteA(nullptr, "open", "https://thomas4f.github.io/mxbmrp3", nullptr, nullptr, SW_SHOWNORMAL);
-            return true;
-
-        case ClickRegion::OPEN_LINK_COMMUNITY:
-#if GAME_HAS_ANALYTICS
-            AnalyticsManager::getInstance().trackEvent("link_clicked", {{"target", "community"}, {"source", "settings"}});
-#endif
-            ShellExecuteA(nullptr, "open", "https://mxb-mods.com/mxbmrp3", nullptr, nullptr, SW_SHOWNORMAL);
-            return true;
-
-        case ClickRegion::OPEN_LINK_KOFI:
-#if GAME_HAS_ANALYTICS
-            AnalyticsManager::getInstance().trackEvent("link_clicked", {{"target", "donate"}, {"source", "settings"}});
-#endif
-            ShellExecuteA(nullptr, "open", "https://ko-fi.com/thomas4f", nullptr, nullptr, SW_SHOWNORMAL);
-            return true;
-
-        case ClickRegion::OPEN_LINK_OVERLAY:
-            {
-                // The server's own address, built where it is shown -- not a constant,
-                // because the port is a setting and a stale literal here would send the
-                // user to a page that is not being served.
-                const std::string url = "http://localhost:"
-                    + std::to_string(HttpServer::getInstance().getPort());
-                ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-            }
-            return true;
-
         default:
             return false;
     }
@@ -325,8 +291,6 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("general");
 
     ColorConfig& colorConfig = ColorConfig::getInstance();
-    // Standard value width for all controls (matches addToggleControl)
-    constexpr int VALUE_WIDTH = 10;  // Standard width for vertical alignment
 
     // === PREFERENCES SECTION ===
     // (Speed/fuel/temp units and clock format are on the Appearance tab; persisted
@@ -340,14 +304,14 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         // so PBScope::CATEGORY and the persisted pbScope=CATEGORY value keep the API
         // spelling while every user-facing string says Class.
         const bool isCategory = UiConfig::getInstance().getPBScope() == PBScope::CATEGORY;
-        ctx.addCycleControl("PB Scope", isCategory ? "Class" : "Bike", VALUE_WIDTH,
+        ctx.addCycleControl("PB scope", isCategory ? "Class" : "Bike",
             SettingsHud::ClickRegion::PB_SCOPE_TOGGLE,
             SettingsHud::ClickRegion::PB_SCOPE_TOGGLE,
             nullptr, true, false, "general.pb_scope");
     }
 
     // Controller selector (used by both Gamepad Widget and Rumble)
-    // Cycles: Disabled -> 1 -> 2 -> 3 -> 4 -> Disabled
+    // Cycles: Off -> 1 -> 2 -> 3 -> 4 -> Off
     {
         RumbleConfig& rumbleConfig = XInputReader::getInstance().getRumbleConfig();
         int controllerIdx = rumbleConfig.controllerIndex;
@@ -357,16 +321,15 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         bool isConnected = !isDisabled && XInputReader::getInstance().isControllerConnectedCached(controllerIdx);
         std::string controllerName = isDisabled ? "" : XInputReader::getControllerName(controllerIdx);
 
-        // Value text: "Disabled", or "<slot>: <name>" / ": OK" / ": N/C".
-        // formatValue() pads and truncates to VALUE_WIDTH, so the name is cut to
-        // fit here only to keep the slot prefix readable.
+        // Value text: "Off" (muted), or "<slot>: <name>" / ": OK" / ": N/C".
+        // formatValue() pads and cuts it to the row's value field.
         char displayStr[32];
         if (isDisabled) {
-            snprintf(displayStr, sizeof(displayStr), "%s", "Disabled");
+            snprintf(displayStr, sizeof(displayStr), "%s", "Off");
         } else {
             int slot = controllerIdx + 1;
             if (!controllerName.empty()) {
-                snprintf(displayStr, sizeof(displayStr), "%d: %.7s", slot, controllerName.c_str());
+                snprintf(displayStr, sizeof(displayStr), "%d: %s", slot, controllerName.c_str());
             } else if (isConnected) {
                 snprintf(displayStr, sizeof(displayStr), "%d: OK", slot);
             } else {
@@ -379,14 +342,14 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         const unsigned long valueColor = (!isDisabled && isConnected)
             ? colorConfig.getPositive() : colorConfig.getMuted();
 
-        ctx.addCycleControl("Controller", displayStr, VALUE_WIDTH,
+        ctx.addCycleControl("Controller", displayStr,
             SettingsHud::ClickRegion::RUMBLE_CONTROLLER_DOWN,
             SettingsHud::ClickRegion::RUMBLE_CONTROLLER_UP,
             nullptr, true, false, "general.controller", valueColor);
     }
 
     // Auto-save toggle
-    ctx.addToggleControl("Auto-Save", UiConfig::getInstance().getAutoSave(),
+    ctx.addToggleControl("Auto-save", UiConfig::getInstance().getAutoSave(),
         SettingsHud::ClickRegion::AUTOSAVE_TOGGLE, nullptr, nullptr, 0, true,
         "general.auto_save");
 
@@ -397,10 +360,10 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     // HUD placement toggles (persisted under [Display])
     // grid-snap-exempt: renders the setting's own checkbox -- it reads the gate to
     // DISPLAY it, which is the one place that legitimately does.
-    ctx.addToggleControl("Grid Snap", UiConfig::getInstance().getGridSnapping(),
+    ctx.addToggleControl("Grid snap", UiConfig::getInstance().getGridSnapping(),
         SettingsHud::ClickRegion::GRID_SNAP_TOGGLE, nullptr, nullptr, 0, true,
         "general.grid_snap");
-    ctx.addToggleControl("Screen Clamp", UiConfig::getInstance().getScreenClamping(),
+    ctx.addToggleControl("Screen clamp", UiConfig::getInstance().getScreenClamping(),
         SettingsHud::ClickRegion::SCREEN_CLAMP_TOGGLE, nullptr, nullptr, 0, true,
         "general.screen_clamp");
 
@@ -449,7 +412,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             glStatus = "On";
             glColor = colorConfig.getMuted();
         }
-        ctx.addCycleControl("Direct GL Rendering", glStatus, VALUE_WIDTH,
+        ctx.addCycleControl("Direct GL rendering", glStatus,
             SettingsHud::ClickRegion::DIRECT_GL_TOGGLE,
             SettingsHud::ClickRegion::DIRECT_GL_TOGGLE,
             nullptr, /*enabled=*/true, /*isOff=*/false,
@@ -470,22 +433,23 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         // can see the feature exists and what's needed to use it.
         const bool steamAvailable = SteamFriendsManager::isSteamRuntimeAvailable();
 
-        // Value: Off (muted) / On green when actually hooked / On muted when
-        // enabled but Steam isn't ready — a third state the primary/muted pair
-        // can't express, hence the colour override. When the runtime is absent
-        // entirely the row renders disabled (muted label + arrows, no click
-        // regions), which is what `enabled` already does.
+        // Value: Off (muted) / Connected green when actually hooked (the word the
+        // Twitch/YouTube rows use) / On muted when enabled but Steam isn't ready
+        // — a third state the primary/muted pair can't express, hence the colour
+        // override. When the runtime is absent entirely the row renders disabled
+        // (muted label + arrows, no click regions), which is what `enabled`
+        // already does.
         const char* statusText = "N/A";
         unsigned long valueColor = colorConfig.getMuted();
         if (steamAvailable) {
             const bool steamEnabled = SteamFriendsManager::getInstance().isEnabled();
             const bool hooked =
                 SteamFriendsManager::getInstance().getStatus() == SteamFriendsManager::Status::CONNECTED;
-            statusText = steamEnabled ? "On" : "Off";
+            statusText = steamEnabled ? (hooked ? "Connected" : "On") : "Off";
             if (steamEnabled && hooked) valueColor = colorConfig.getPositive();
         }
 
-        ctx.addCycleControl("Steam", statusText, VALUE_WIDTH,
+        ctx.addCycleControl("Steam", statusText,
             SettingsHud::ClickRegion::STEAM_FRIENDS_TOGGLE,
             SettingsHud::ClickRegion::STEAM_FRIENDS_TOGGLE,
             nullptr, steamAvailable, false, "general.steam_friends", valueColor);
@@ -508,7 +472,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         // The arrows go dead during CONNECTING, to prevent a freeze.
         bool isConnecting = (discordState == DiscordManager::State::CONNECTING);
 
-        // Off / On (connected) / Connecting / On (not available). The connection
+        // Off / Connected / Connecting / On (not available). The connection
         // state is exactly what addCycleControl's valueColour override is for --
         // three states where enabled/isOff can only say two.
         const char* statusText;
@@ -519,7 +483,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         } else {
             switch (discordState) {
                 case DiscordManager::State::CONNECTED:
-                    statusText = "On";
+                    statusText = "Connected";
                     statusColor = colorConfig.getPositive();
                     break;
                 case DiscordManager::State::CONNECTING:
@@ -533,7 +497,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             }
         }
 
-        ctx.addCycleControl("Discord", statusText, VALUE_WIDTH,
+        ctx.addCycleControl("Discord", statusText,
             SettingsHud::ClickRegion::DISCORD_TOGGLE,
             SettingsHud::ClickRegion::DISCORD_TOGGLE,
             nullptr, /*enabled=*/!isConnecting, /*isOff=*/false,
@@ -552,7 +516,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         // page (and Debian popcon, which both borrow from). The INI key stays
         // `analytics=` -- it is persisted, and renaming it would orphan every
         // existing setting for a cosmetic gain.
-        ctx.addCycleControl("Usage survey", analyticsEnabled ? "On" : "Off", VALUE_WIDTH,
+        ctx.addCycleControl("Usage survey", analyticsEnabled ? "On" : "Off",
             SettingsHud::ClickRegion::ANALYTICS_TOGGLE,
             SettingsHud::ClickRegion::ANALYTICS_TOGGLE,
             nullptr, true, false, "general.analytics",
@@ -581,7 +545,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             statusColor = colorConfig.getWarning();
         }
 
-        ctx.addCycleControl("Web Server", statusStr.c_str(), VALUE_WIDTH,
+        ctx.addCycleControl("Web server", statusStr.c_str(),
             SettingsHud::ClickRegion::WEB_SERVER_TOGGLE,
             SettingsHud::ClickRegion::WEB_SERVER_TOGGLE,
             nullptr, /*enabled=*/true, /*isOff=*/false,
@@ -591,7 +555,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         {
             char portBuf[8];
             snprintf(portBuf, sizeof(portBuf), "%d", HttpServer::getInstance().getPort());
-            ctx.addCycleControl("Web Server Port", portBuf, 10,
+            ctx.addCycleControl("Web server port", portBuf,
                 SettingsHud::ClickRegion::WEB_SERVER_PORT_DOWN,
                 SettingsHud::ClickRegion::WEB_SERVER_PORT_UP,
                 nullptr, true, !serverEnabled, "general.web_port");
@@ -621,7 +585,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
 
     // Auto-switch toggle - use standard helper for consistency
     bool autoSwitchEnabled = ProfileManager::getInstance().isAutoSwitchEnabled();
-    ctx.addToggleControl("Auto-Switch", autoSwitchEnabled,
+    ctx.addToggleControl("Auto-switch", autoSwitchEnabled,
         SettingsHud::ClickRegion::AUTO_SWITCH_TOGGLE, nullptr, nullptr, 0, true, "general.auto_switch");
 
     // Copy profile target cycle - use standard cycle control for consistency
@@ -636,7 +600,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         } else {
             targetName = ProfileManager::getInstance().getProfileName(static_cast<ProfileType>(copyTarget));
         }
-        ctx.addCycleControl("Copy current profile to", targetName, VALUE_WIDTH,
+        ctx.addCycleControl("Copy current profile to", targetName,
             SettingsHud::ClickRegion::COPY_TARGET_DOWN,
             SettingsHud::ClickRegion::COPY_TARGET_UP,
             nullptr, true, !hasTarget, "general.copy_profile");
@@ -644,7 +608,8 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         // [Copy] button - centered like [Close] button
         ctx.addSpacing();
         ctx.addActionButton("Copy", 6, SettingsHud::ClickRegion::COPY_BUTTON,
-                            SettingsLayoutContext::ButtonRole::Accent, hasTarget);
+                            SettingsLayoutContext::ButtonRole::Accent, hasTarget,
+                            "general.copy_button");
     }
 
     // === RESET SECTION ===
@@ -670,7 +635,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             armAll ? "Confirm?" : "Everything",
             SettingsHud::ClickRegion::RESET_ALL_CHECKBOX,
             SettingsLayoutContext::ButtonRole::Negative, true,
-            /*labelChars=*/12);
+            /*labelChars=*/12, "general.reset_profile", "general.reset_all");
         // Inline notes draw at 0.9x font with NO wrapping, and the settings
         // width fits roughly 60 characters at that size — keep all three
         // variants under that or the tail runs off the panel background.

@@ -28,7 +28,6 @@
 // Self-contained doctest, one process (singletons persist across cases). See
 // run_tests.sh; the hooks live in core/test_hooks.cpp (MXBMRP3_TEST_BUILD only).
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

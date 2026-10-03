@@ -24,7 +24,6 @@ GamepadWidget::GamepadWidget() {
 
     m_panelKind = PanelKind::Widget;
     m_bContentCard = true;
-    DEBUG_INFO("GamepadWidget created");
     setDraggable(true);
 
     // Zero the rebuild-gate snapshot INCLUDING padding: the update() gate
@@ -175,15 +174,17 @@ void GamepadWidget::rebuildRenderData() {
         // Centered disconnect message
         float centerX = ORIGIN_X + backgroundWidth / 2;
         float centerY = ORIGIN_Y + backgroundHeight / 2;
-        int ctrlNum = XInputReader::getInstance().getControllerIndex() + 1; // 0-based to 1-based
+        // Controller "Off" in Settings > General is index -1: say so, rather than
+        // "Controller 0" (the Rumble HUD's notice reads the same).
+        const int ctrlIdx = XInputReader::getInstance().getControllerIndex();
         char titleBuf[64];
-        snprintf(titleBuf, sizeof(titleBuf), "Controller %d Not Connected", ctrlNum);
-        // Minus addString's own row centring, which compounds with this explicit one.
-        addString(titleBuf, centerX, centerY - lineH * 0.5f - rowCenterOffset(fontSize),
-                  Justify::CENTER, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::NEGATIVE), fontSize);
-        addString("Check MXBMRP3 Settings > General", centerX,
-                  centerY + lineH * 0.5f - rowCenterOffset(fontSize * 0.8f),
-                  Justify::CENTER, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), fontSize * 0.8f);
+        if (ctrlIdx < 0) {
+            snprintf(titleBuf, sizeof(titleBuf), "%s", "No controller selected");
+        } else {
+            snprintf(titleBuf, sizeof(titleBuf), "Controller %d Not Connected", ctrlIdx + 1);  // 0-based to 1-based
+        }
+        addBlockedNotice(centerX, centerY, lineH, fontSize, titleBuf, ColorSlot::NEGATIVE,
+                         "Check MXBMRP3 Settings > General");
         return;
     }
 

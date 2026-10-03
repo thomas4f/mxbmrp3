@@ -164,6 +164,7 @@ public:
 
     // Lifecycle
     void load(const char* savePath);
+    // Writes the stats file and the PB gap traces together (both no-ops when unchanged).
     void save();
 
     // ========================================================================
@@ -189,9 +190,10 @@ public:
     // RaceLap may not have arrived). Those two are owed, remembered, and settled
     // by the `final` pass - the race is never held back for them.
     void tryRecordRaceFinish(const class PluginData& pd, bool final = false);
-    // Photo Finish / So Close, retried once when the lap logs they are read from
-    // were still filling as the classification settled. Called by the `final`
-    // pass above, beside ExplorationStats::retryLastGasp(); see its definition.
+    // Photo Finish / So Close, retried when the lap logs they are read from were
+    // still filling as the classification settled -- by every `final` pass until
+    // they can be read. Called beside ExplorationStats::retryLastGasp(); see its
+    // definition.
     void retryFinishMargin(const class PluginData& pd);
     void clearPlayerFastestLap();   // Called when another rider sets a faster lap
     void recordPenalty(int penaltyTimeMs, bool isRace);
@@ -396,6 +398,7 @@ public:
 #endif
 
 private:
+    void writeStatsFile();   // the stats file alone; save() pairs it with the traces
     StatsManager() = default;
     ~StatsManager() = default;
     StatsManager(const StatsManager&) = delete;
@@ -509,6 +512,7 @@ private:
     // Odometer time tracking
     std::chrono::steady_clock::time_point m_lastOdometerUpdateTime;
     bool m_hasLastOdometerUpdateTime = false;
+
     double m_unsavedDistance = 0.0;           // Accumulated distance since last dirty mark
     // Fuel. m_lastFuel is the previous tick's tank level, so the burn is its
     // fall; m_unflushedFuelL rides the odometer's ~100m coalescing rather than

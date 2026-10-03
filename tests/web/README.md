@@ -87,7 +87,9 @@ phone fill-width mode (device-emulated `pointer: coarse`: width fixed point,
 focus-card/chip suppression, touch-revealed gear); `parity.spec.js` the
 JS side of the shared C++/JS golden vectors
 (`tests/fixtures/cpp_js_parity.json`) plus the `overlayPanelName()` ↔
-`createSlotPanel` name lockstep.)
+`createSlotPanel` name lockstep; `status_lines.spec.js` the overlay's own
+connection lines in the event log - a green one expires on its own, a red one
+stays until an event pushes it out.)
 
 ## Notes / gotchas
 

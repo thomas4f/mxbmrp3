@@ -33,7 +33,6 @@
 // frame, under either composition — that is the property the key must not be able to
 // break, and it is exactly what MXBMRP3_Test_PanelPadY reports both terms for.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

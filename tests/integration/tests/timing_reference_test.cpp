@@ -12,7 +12,6 @@
 //     path left the very first sector-1 stuck on the whole-lap reference).
 // Self-contained doctest; see run_tests.sh.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
@@ -125,7 +124,7 @@ TEST_CASE("timing reference: live target tracks the lap-timer sector from the fi
 
 TEST_CASE("timing reference: the chips show the whole lap exactly while the clock shows its placeholder") {
     // The reported annoyance: out of the pits before the lap has started, the time cell
-    // reads "-:--.---" but a chip named the S1 target. The chip's target is gated on the
+    // reads its "-" placeholder but a chip named the S1 target. The chip's target is gated on the
     // same clock the cell shows now, so at every step of a pit stop on track the two agree:
     // placeholder <=> whole-lap reference, ticking <=> the sector's target.
     PluginHost host(dllPath());
@@ -265,6 +264,78 @@ TEST_CASE("timing INVALID: shown for a cut lap, suppressed for a pit out-lap") {
         host.raceLap(RACE, 4, /*lapNum=*/2, /*lapTime=*/91000, /*best=*/0,
                      /*split0=*/30500, /*split1=*/61500, /*invalid=*/true);
         CHECK(host.timingInvalidShown());
+
+        host.shutdown();
+    }
+
+    SUBCASE("pit taken from the menu, no pit flag ever seen -> INVALID suppressed") {
+        // The order an in-game capture showed (2026-09-17): RunStop, RunDeinit, RunInit,
+        // RunStart, the first position at the pit exit, then the out-lap's RaceLap at the
+        // line -- and the classification's pit flag never rose, because the sim had
+        // stopped before the rider chose the pits. The latch that keyed on that flag
+        // missed it and the panel flashed INVALID; the fact now comes from RunDeinit
+        // with a lap under way (PluginData::markLapViaPits).
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_inv_menu\\");
+        host.eventInit("TestTrack", "Thomas");
+        host.raceEvent("TestTrack", /*type=*/2);
+        host.session(RACE, /*numLaps=*/10, /*lengthMs=*/0);
+        host.addEntry(4, "Thomas");                 // the player: on track, not spectating
+        host.runInit(RACE);
+        host.runStart();
+        host.draw();
+        host.classify(RACE, 200000, { { .num = 4, .laps = 0, .gap = 0, .pit = 0 } });
+
+        host.raceTrackPosition({ { .num = 4, .trackPos = 0.92f } }); host.draw();
+        host.raceTrackPosition({ { .num = 4, .trackPos = 0.03f } }); host.draw();   // S/F -> a lap is being timed
+        host.runStop();
+        host.runDeinit();                           // into the pits, from the menu
+        host.runInit(RACE);
+        host.runStart();
+        host.raceTrackPosition({ { .num = 4, .trackPos = 0.88f } }); host.draw();   // the pit exit
+        host.raceLap(RACE, 4, /*lapNum=*/1, /*lapTime=*/95000, /*best=*/0,
+                     /*split0=*/32000, /*split1=*/64000, /*invalid=*/true);
+        host.draw();
+        CHECK_FALSE(host.timingInvalidShown());     // the rider chose the pits; nothing to tell them
+
+        // The next lap, cut with the timer running throughout, is still told.
+        host.raceTrackPosition({ { .num = 4, .trackPos = 0.92f } }); host.draw();
+        host.raceTrackPosition({ { .num = 4, .trackPos = 0.03f } }); host.draw();
+        host.raceLap(RACE, 4, /*lapNum=*/2, /*lapTime=*/91000, /*best=*/0,
+                     /*split0=*/30500, /*split1=*/61500, /*invalid=*/true);
+        host.draw();
+        CHECK(host.timingInvalidShown());
+
+        host.shutdown();
+    }
+
+    SUBCASE("pit before the first crossing of the session -> INVALID suppressed") {
+        // No lap was ever being timed: the rider left the garage, pitted before
+        // reaching the line, came back out, and the game reported the first
+        // crossing as a 0 ms lap (an in-game log, 2026-09-19). The placeholder was
+        // showing all the way to the line, so there is nothing to strike out.
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_inv_early\\");
+        host.eventInit("TestTrack", "Thomas");
+        host.raceEvent("TestTrack", /*type=*/2);
+        host.session(RACE, /*numLaps=*/10, /*lengthMs=*/0);
+        host.addEntry(4, "Thomas");
+        host.runInit(RACE);
+        host.runStart();
+        host.draw();
+        host.classify(RACE, 200000, { { .num = 4, .laps = 0, .gap = 0, .pit = 0 } });
+        host.raceTrackPosition({ { .num = 4, .trackPos = 0.40f } }); host.draw();   // out of the garage, no crossing yet
+        host.runStop();
+        host.runDeinit();                           // back to the pits before the line
+        host.runInit(RACE);
+        host.runStart();
+        host.raceTrackPosition({ { .num = 4, .trackPos = 0.88f } }); host.draw();
+        host.raceLap(RACE, 4, /*lapNum=*/1, /*lapTime=*/0, /*best=*/0,
+                     /*split0=*/0, /*split1=*/0, /*invalid=*/false);          // the re-entry's first crossing
+        host.draw();
+        CHECK_FALSE(host.timingInvalidShown());
 
         host.shutdown();
     }
@@ -739,6 +810,49 @@ TEST_CASE("timing: the server and track readouts fit the panel") {
     }
     CHECK(sawServer);
     CHECK(sawTrack);
+
+    host.shutdown();
+}
+
+// ---------------------------------------------------------------------------
+// THE LAP READOUT IN A TIME+LAPS RACE.
+//
+// In a "10:00 + 2L" race the session's lap count is the overtime laps, not the
+// race distance. The readout once printed lap/total whenever a lap count existed,
+// so lap five of that race read "5/2". LapWidget and Standings show a total only
+// for a pure lap race; this pins the Timing readout to the same rule, both ways.
+// ---------------------------------------------------------------------------
+TEST_CASE("timing: the lap readout shows a total only in a pure lap race") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_lap_total\\");
+    REQUIRE_MESSAGE(host.timingReadouts(0), "MXBMRP3_Test_TimingReadouts not exported");
+    host.showAllHuds(true);
+    host.eventInit("TestTrack", "Player");
+    host.raceEvent("TestTrack");
+    host.addEntry(12, "Player");
+
+    const unsigned READOUT_LAP_BIT = 1u << 1;
+    REQUIRE(host.timingReadouts(READOUT_LAP_BIT));
+
+    auto lapValue = [&]() {
+        const auto rows = host.hudStringRows("timing_hud");
+        for (size_t i = 0; i + 1 < rows.size(); ++i)
+            if (rows[i].text == "Lap") return rows[i + 1].text;
+        return std::string("<no Lap row>");
+    };
+
+    // Time + laps: 10 minutes plus 2 laps, four laps done.
+    host.session(6, /*numLaps=*/2, /*lengthMs=*/600000);
+    host.classify(6, 400000, { { .num = 12, .best = 108500, .laps = 4, .gap = 0 } });
+    host.draw();
+    CHECK(lapValue() == "5");
+
+    // Pure lap race: ten laps, four done.
+    host.session(6, /*numLaps=*/10, /*lengthMs=*/0);
+    host.classify(6, 400000, { { .num = 12, .best = 108500, .laps = 4, .gap = 0 } });
+    host.draw();
+    CHECK(lapValue() == "5/10");
 
     host.shutdown();
 }

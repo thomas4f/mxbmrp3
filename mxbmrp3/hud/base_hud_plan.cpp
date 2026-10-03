@@ -139,7 +139,7 @@ PanelBox::Spec BaseHud::resolvePanelSpec(const ScaledDimensions& dim,
 // The plan memo's key comparison. Written out rather than memcmp'd: ScaledDimensions
 // is a float struct with no padding guarantee, and PanelWant holds vectors.
 namespace {
-bool sameDims(const BaseHud::ScaledDimensions& a, const BaseHud::ScaledDimensions& b) {
+bool sameDims(const ScaledDimensions& a, const ScaledDimensions& b) {
     return a.fontSize == b.fontSize && a.fontSizeExtraSmall == b.fontSizeExtraSmall
         && a.fontSizeSmall == b.fontSizeSmall && a.fontSizeLarge == b.fontSizeLarge
         && a.fontSizeExtraLarge == b.fontSizeExtraLarge
@@ -150,7 +150,7 @@ bool sameDims(const BaseHud::ScaledDimensions& a, const BaseHud::ScaledDimension
         && a.lineHeightExtraLarge == b.lineHeightExtraLarge
         && a.cellW == b.cellW && a.cellH == b.cellH && a.scale == b.scale;
 }
-bool sameWant(const BaseHud::PanelWant& a, const BaseHud::PanelWant& b) {
+bool sameWant(const PanelWant& a, const PanelWant& b) {
     if (a.contentW != b.contentW || a.captionW != b.captionW || a.tier != b.tier
         || a.buttons != b.buttons || a.buttonW != b.buttonW || a.buttonH != b.buttonH
         || a.minPanelW != b.minPanelW || a.minBodyH != b.minBodyH
@@ -168,7 +168,7 @@ bool sameWant(const BaseHud::PanelWant& a, const BaseHud::PanelWant& b) {
 }
 }  // namespace
 
-BaseHud::PanelPlan& BaseHud::planPanel(const ScaledDimensions& dim,
+PanelPlan& BaseHud::planPanel(const ScaledDimensions& dim,
                                        const PanelWant& want) const {
     MXB_COUNT_CALL(PLAN_PANEL);
     auto& bmPlan = PluginData::getInstance().getBenchmarkMetrics();
@@ -294,8 +294,8 @@ void BaseHud::addPlanBackground(PanelPlan& p, float x, float y) {
     }
 }
 
-void BaseHud::addPlanTitle(const PanelPlan& p, const char* text, int fontIndex,
-                           unsigned long color) {
+void BaseHud::addPlanTitle(const PanelPlan& p, const char* text, unsigned long color) {
+    const int fontIndex = getFont(FontCategory::TITLE);
     auto& bmT = PluginData::getInstance().getBenchmarkMetrics();
     const long long tStart = bmT.active ? DrawHandler::getCurrentTimeUs() : 0;
     struct TTimer {
@@ -353,7 +353,7 @@ void BaseHud::addPlanTitle(const PanelPlan& p, const char* text, int fontIndex,
 
 // The resolved [button] terms — the same fallbacks resolvePanelSpec applies,
 // for panels that lay out their own button rows.
-BaseHud::PlanButtonTerms BaseHud::planButtonTerms(const ScaledDimensions& dim) const {
+PlanButtonTerms BaseHud::planButtonTerms(const ScaledDimensions& dim) const {
     const ThemeAsset* th = activeTheme();
     const auto term = [](const ThemeAsset::BoxTerm& t, float fb) {
         const double d = static_cast<double>(fb);

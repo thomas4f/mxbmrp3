@@ -18,7 +18,6 @@
 // hand-written one had fallen behind its tab by the time anything pressed one:
 // reset_tab_test.cpp now drives all of them.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

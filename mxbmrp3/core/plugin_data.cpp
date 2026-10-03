@@ -192,9 +192,10 @@ void PluginData::setSetupFileName(const char* setupFileName) {
     }
 }
 
-void PluginData::addRaceEntry(int raceNum, const char* name, const char* bikeName) {
+void PluginData::addRaceEntry(int raceNum, const char* name, const char* bikeName, const char* category) {
     // Validate input strings (defensive check for public API)
     if (!name || !bikeName) return;
+    if (!category) category = "";
 
     // Compute bike abbreviation, brand name, and color once when entry is added
     const char* bikeAbbr = PluginUtils::getBikeAbbreviationPtr(bikeName);
@@ -208,8 +209,9 @@ void PluginData::addRaceEntry(int raceNum, const char* name, const char* bikeNam
         // PERFORMANCE: Cache comparison results to avoid redundant strcmp calls
         bool nameChanged = (strcmp(it->second.name, name) != 0);
         bool bikeChanged = (strcmp(it->second.bikeName, bikeName) != 0);
+        bool categoryChanged = (strncmp(it->second.category, category, sizeof(it->second.category) - 1) != 0);
 
-        if (nameChanged || bikeChanged) {
+        if (nameChanged || bikeChanged || categoryChanged) {
             // Update name
             strncpy_s(it->second.name, sizeof(it->second.name), name, sizeof(it->second.name) - 1);
             it->second.name[sizeof(it->second.name) - 1] = '\0';
@@ -222,6 +224,7 @@ void PluginData::addRaceEntry(int raceNum, const char* name, const char* bikeNam
             it->second.bikeAbbr = bikeAbbr;
             it->second.brandName = brandName;
             it->second.bikeBrandColor = bikeBrandColor;
+            it->second.setCategory(category);
 
             // PERFORMANCE: Skip race number formatting - race number never changes for existing entries
             // (formattedRaceNum was already set during initial creation)
@@ -246,7 +249,7 @@ void PluginData::addRaceEntry(int raceNum, const char* name, const char* bikeNam
     }
     else {
         // New entry - pass pre-computed abbreviation and color
-        m_raceEntries.emplace(raceNum, RaceEntryData(raceNum, name, bikeName, bikeAbbr, brandName, bikeBrandColor));
+        m_raceEntries.emplace(raceNum, RaceEntryData(raceNum, name, bikeName, bikeAbbr, brandName, bikeBrandColor, category));
 
         // Player race number is cached directly in RaceAddEntry handler
         // No need to invalidate here - RaceAddEntry will call setPlayerRaceNum() if this is the player
@@ -660,8 +663,9 @@ void PluginData::clearAllLapLog() {
         pair.second.previousBestSector3 = -1;
     }
 
-    // Clear live gap so gap row doesn't show stale data
-    setLiveGap(0, false);
+    // The reference lap is gone with the logs: the live gap reads invalid until the
+    // next PB, while the lap in progress keeps being sampled as a candidate.
+    m_pbGap.forgetBestLap();
 
     DEBUG_INFO("All riders' lap log cleared");
     notifyHudManager(DataChangeType::LapLog);
@@ -707,7 +711,7 @@ void PluginData::setOverallBestLap(const LapLogEntry& entry) {
         m_previousOverallBestLap = m_overallBestLap;
     }
     m_overallBestLap = entry;
-    DEBUG_INFO_F("Overall best lap updated: lapTime=%d, S1=%d, S2=%d",
+    DEBUG_INFO_F("Session fastest lap (all riders) updated: lapTime=%d, S1=%d, S2=%d",
                  entry.lapTime, entry.sector1, entry.sector2);
 }
 
@@ -759,6 +763,7 @@ void PluginData::clear() {
         hook.clearFn(hook.container);
     }
     m_classificationOrder.clear();
+    m_classificationScratch.clear();
     m_lastLeaderRaceNum = -1;
     m_positionCache.clear();
     m_bPositionCacheDirty = true;
@@ -804,10 +809,11 @@ void PluginData::clear() {
     m_newAllTimePB = false;
     m_newDefaultSetup = false;
 
-    // Reset the player's PB live gap — otherwise a stale valid flag survives an
-    // event exit and the gap bar can briefly show the previous event's delta.
-    m_liveGapMs = 0;
-    m_liveGapValid = false;
+    // The PB live gap itself resets with the lap timer above (resetAllLapTimers);
+    // only the test plant is dropped here.
+    m_liveGapForced = false;
+    m_forcedLiveGapMs = 0;
+    m_forcedLiveGapValid = false;
 
     // Reset the segment timer (points are track-specific; drop on session change).
     // Keep m_splitPositions: they're track-specific and only re-delivered on track

@@ -26,7 +26,6 @@
 // luma601()) rather than restated here: a test carrying its own copy of either can
 // agree with itself while disagreeing with the code it is checking.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

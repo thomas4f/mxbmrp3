@@ -27,7 +27,6 @@
 //    move by the same amount — the term acting on one axis only (the other
 //    historical shape) fails it.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
@@ -206,4 +205,53 @@ TEST_CASE("theme geometry: the settings panel fits the screen") {
     // Left unasserted rather than pinned to today's overflow: a number that says
     // "still broken by exactly this much" invites being updated instead of read.
     // The contract above is the one that matters — every SHIPPED configuration fits.
+}
+
+// ============================================================================
+// Contract 4: EVERY ROW'S CLOSING ARROW ENDS ON THE ROW'S RIGHT EDGE.
+//
+// A row is label left, `< value >` right, and the value field is whatever the row
+// leaves once the label column and the two arrow cells are paid
+// (SettingsLayoutContext::valueChars) -- so the ">" of every row on every tab lands
+// in one column, the row's own right edge. The field used to be a fixed 10
+// characters that stopped mid-row: values were cut to 10 while the rest of the row
+// stood empty. Held for every tab, themed and not, so a tab that hand-rolls its own
+// width, or a layout change that moves the row edge without the field, fails here.
+// ============================================================================
+TEST_CASE("theme geometry: every settings row's closing arrow ends on the row edge") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\theme_geometry\\");
+    REQUIRE_MESSAGE(host.settingsClosingArrows().count >= 0,
+                    "MXBMRP3_Test_SettingsClosingArrowRightX not exported");
+
+    host.showSettings(true);
+    const std::vector<std::string> tabs = host.settingsTabNames();
+    REQUIRE(tabs.size() > 5u);
+
+    auto everyTab = [&](const std::string& skin) {
+        int seen = 0;
+        for (const std::string& tab : tabs) {
+            host.setActiveTab(tab.c_str());
+            host.draw();
+            const int rowRight = host.settingsContentX().rowRight;
+            const auto a = host.settingsClosingArrows();
+            if (a.count == 0) continue;
+            seen += a.count;
+            CHECK_MESSAGE(std::abs(a.minRight - rowRight) <= kPxFixed,
+                          skin << ", tab " << tab << ": a closing arrow ends at " << a.minRight
+                               << ", short of the row edge " << rowRight);
+            CHECK_MESSAGE(std::abs(a.maxRight - rowRight) <= kPxFixed,
+                          skin << ", tab " << tab << ": a closing arrow ends at " << a.maxRight
+                               << ", past the row edge " << rowRight);
+        }
+        // The sweep measured something: most tabs are built from these rows.
+        CHECK_MESSAGE(seen > 20, skin << ": only " << seen << " closing arrows across all tabs");
+    };
+
+    everyTab("unthemed");
+    host.installTheme("rows-a", /*frameBorder=*/1.0f, /*cardBorder=*/1.0f,
+                      /*titleBand=*/1, /*contentCard=*/1, /*cardSprites=*/1,
+                      /*buttonSprites=*/1);
+    everyTab("themed");
 }

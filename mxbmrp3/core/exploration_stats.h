@@ -155,8 +155,9 @@ public:
     // filling at the flag. Marks, so calling it twice costs nothing.
     bool onFinishMargin(int position, int gapToSecondMs, int gapToWinnerMs);
     // Last Gasp alone, for the same retry: the row is deferred, not skipped,
-    // when the flag beat the player's final lap here. Consumes the deferral, so
-    // a second call counts nothing.
+    // when the flag beat the player's final lap here. Consumes the deferral once
+    // that lap has landed, so a second call counts nothing; until then it stays
+    // owed for the next `final` pass.
     bool retryLastGasp();
     // Fuel (StatsManager::updateTelemetry). onFuelBurnt takes a BATCH of
     // litres, not a tick's worth: the caller accumulates and flushes on the
@@ -245,8 +246,11 @@ public:
     // only in memory would be lost with the process that crashed.
     int rideDay() const { return m_rideDay; }
     double todayRideSec() const { return m_todayRideSec; }
+    // Steady Hands' running stint: seconds ridden since the last crash, persisted
+    // so the menus, a session change or a restart pause it rather than end it.
+    double crashFreeSec() const { return m_crashFreeMs / 1000.0; }
     void restoreScalars(const std::string& firstRunDate, int lastDay, int crashDumpsSeen, int dayStreak,
-                        int rideDay, double todayRideSec);
+                        int rideDay, double todayRideSec, double crashFreeSec);
     void clear();
     bool isDirty() const { return m_dirty; }
     void clearDirty() { m_dirty = false; }
@@ -312,5 +316,6 @@ private:
     int m_lapCount = 0;                // laps in the current Metronome window; zeroed by a hit
     std::set<int> m_sessionLapTimes;
     double m_crashFreeMs = 0.0;
+    int m_liveClockTicks = 0;          // seconds on track since the last clock-driven re-evaluation
     uint32_t m_overlaySeen = 0;        // the overlay's per-process connection total already counted
 };

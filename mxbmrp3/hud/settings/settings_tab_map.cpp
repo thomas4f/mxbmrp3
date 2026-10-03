@@ -130,7 +130,7 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     } else {
         snprintf(rangeValue, sizeof(rangeValue), "Full");
     }
-    ctx.addCycleControl("Zoom range", rangeValue, 10,
+    ctx.addCycleControl("Zoom range", rangeValue,
         SettingsHud::ClickRegion::MAP_RANGE_DOWN,
         SettingsHud::ClickRegion::MAP_RANGE_UP,
         hud, true, false, "map.range");
@@ -147,7 +147,7 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     // Track line width scale: accelerated 1% step, clamped to [50%, 300%]
     char trackWidthValue[16];
     snprintf(trackWidthValue, sizeof(trackWidthValue), "%.0f%%", hud->getTrackWidthScale() * 100.0f);
-    ctx.addSteppedControl("Track width", trackWidthValue, 10,
+    ctx.addSteppedControl("Track width", trackWidthValue,
         SettingsHud::SteppedControl::stepFloat(&hud->m_fTrackWidthScale, 0.01f,
             MapHud::MIN_TRACK_WIDTH_SCALE, MapHud::MAX_TRACK_WIDTH_SCALE, hud),
         hud, true, false, "map.track_width");
@@ -156,7 +156,7 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     // Accelerated 1% step — the same feel as Track width / Marker scale.
     char detailValue[16];
     snprintf(detailValue, sizeof(detailValue), "%.0f%%", hud->getDetailScale() * 100.0f);
-    ctx.addSteppedControl("Detail", detailValue, 10,
+    ctx.addSteppedControl("Detail", detailValue,
         SettingsHud::SteppedControl::stepFloat(&hud->m_fDetailScale, 0.01f,
             MapHud::MIN_DETAIL_SCALE, MapHud::MAX_DETAIL_SCALE, hud),
         hud, true, false, "map.detail");
@@ -173,7 +173,7 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     } else {
         snprintf(outlineValue, sizeof(outlineValue), "Off");
     }
-    ctx.addCycleControl("Track outline", outlineValue, 10,
+    ctx.addCycleControl("Track outline", outlineValue,
         SettingsHud::ClickRegion::MAP_OUTLINE_DOWN,
         SettingsHud::ClickRegion::MAP_OUTLINE_UP,
         hud, true, !hud->getShowOutline(), "map.outline");
@@ -192,15 +192,15 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
         case MapHud::RiderColorMode::BRAND:        mapColorModeStr = "Brand"; break;
         case MapHud::RiderColorMode::RELATIVE_POS: mapColorModeStr = "Position"; break;
     }
-    ctx.addCycleControl("Marker colors", mapColorModeStr, 10,
+    ctx.addCycleControl("Marker colors", mapColorModeStr,
         SettingsHud::CycleControl::enumMember(hud, &MapHud::m_riderColorMode, 3, hud),
         hud, true, false, "map.colorize");
 
     // Rider shape control (0=OFF, 1-N=shapes)
     int mapShapeIndex = hud->getRiderShape();
     bool shapeIsOff = (mapShapeIndex == 0);
-    std::string shapeStr = getShapeDisplayName(mapShapeIndex, 10);
-    ctx.addCycleControl("Marker icon", shapeStr.c_str(), 10,
+    std::string shapeStr = getShapeDisplayName(mapShapeIndex);
+    ctx.addCycleControl("Marker icon", shapeStr.c_str(),
         SettingsHud::ClickRegion::MAP_RIDER_SHAPE_DOWN,
         SettingsHud::ClickRegion::MAP_RIDER_SHAPE_UP,
         hud, true, shapeIsOff, "map.rider_shape");
@@ -208,7 +208,7 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     // Marker scale control: accelerated 1% step, clamped to [50%, 300%]
     char mapMarkerScaleValue[16];
     snprintf(mapMarkerScaleValue, sizeof(mapMarkerScaleValue), "%.0f%%", hud->getMarkerScale() * 100.0f);
-    ctx.addSteppedControl("Marker scale", mapMarkerScaleValue, 10,
+    ctx.addSteppedControl("Marker scale", mapMarkerScaleValue,
         SettingsHud::SteppedControl::stepFloat(&hud->m_fMarkerScale, 0.01f,
             MapHud::MIN_MARKER_SCALE, MapHud::MAX_MARKER_SCALE, hud),
         hud, true, false, "map.marker_scale");
@@ -225,7 +225,7 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
             modeStr = "Unknown";
             break;
     }
-    ctx.addCycleControl("Marker labels", modeStr, 10,
+    ctx.addCycleControl("Marker labels", modeStr,
         SettingsHud::CycleControl::enumMember(hud, &MapHud::m_labelMode, 4, hud),
         hud, true, labelIsOff, "map.labels");
 

@@ -15,7 +15,6 @@
 // Drives it via the MXBMRP3_Test_PluginThreadAbortWorker fault-injection hook
 // (an escaping throw on the worker's next wakeup). Self-contained doctest.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

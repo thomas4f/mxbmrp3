@@ -56,7 +56,6 @@
 // DLL") — a hazard that only exists in a test comment is one the next person to
 // add a background thread will never read.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
@@ -64,6 +63,7 @@
 TEST_CASE("teardown: shutdown + unload after a busy session with the web server live is clean") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
+    host.setAsyncWrites(true);   // the disk writer's thread is live too, as in the game
     host.startup("Z:\\tmp\\mxbmrp3-tests\\teardown\\");
 
     // Web server + a registered client: HttpServer's listen/SSE threads are live
@@ -133,6 +133,9 @@ TEST_CASE("teardown: DLL unload WITHOUT Shutdown() (auto-save backstop) is clean
     {
         PluginHost host(dllPath());
         REQUIRE(host.loaded());
+        // The disk writer's worker live at unload, so its spin-then-detach backstop
+        // runs too (the harness otherwise writes inline).
+        host.setAsyncWrites(true);
         host.startup("Z:\\tmp\\mxbmrp3-tests\\teardown_noshutdown\\");
 
         // Populate real session/standings state and drive a few frames so the

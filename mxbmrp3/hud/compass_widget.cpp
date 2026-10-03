@@ -33,7 +33,6 @@ CompassWidget::CompassWidget()
 {
     m_panelKind = PanelKind::Widget;
     m_bContentCard = true;
-    DEBUG_INFO("CompassWidget created");
     setDraggable(true);
     m_quads.reserve(4);                  // bg + 2 needle halves (or the index tick)
     m_strings.reserve(6);                // optional title + 4 cardinal labels + heading number
@@ -162,7 +161,7 @@ void CompassWidget::rebuildRenderData() {
 
     // BOX-MODEL: the plan owns padding, chrome, the title band and the body card;
     // the gauge area is the single section's content.
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = contentWidth;
     want.sectionH = { gaugeAreaHeight };
     want.captionW = planTitleWidth(dim, "Compass");
@@ -179,7 +178,7 @@ void CompassWidget::rebuildRenderData() {
     const float dialRadius = gaugeAreaHeight * 0.5f;
 
     addPlanBackground(p, startX, startY);
-    addPlanTitle(p, "Compass", this->getFont(FontCategory::TITLE),
+    addPlanTitle(p, "Compass",
         this->getColor(ColorSlot::PRIMARY));
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 

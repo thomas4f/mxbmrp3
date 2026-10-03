@@ -53,7 +53,8 @@
 # Failed there is this bug again.
 #
 # ADDING A GATE: one mxb_gate() call. Labels are `fast` (runs anywhere with a
-# C++17 compiler) or `slow` (needs mingw/wine/nsis).
+# C++17 compiler) or `slow` (needs mingw/wine/nsis); `quick` marks the one gate
+# a `fast` gate fully subsumes (see `unit` below).
 # ============================================================================
 # 3.21 for CMakePresets.json support (see that file); nothing else here needs it.
 cmake_minimum_required(VERSION 3.21)
@@ -140,7 +141,7 @@ mxb_gate(style fast 120 "-" "./tests/integration/check_style.sh")
 mxb_gate(api-guards fast 120 "-" "./tests/integration/check_api_guards.sh")
 mxb_gate(visibility-gates fast 120 "-" "./tests/integration/check_visibility_gates.sh")
 mxb_gate(mt-flags fast 120 "-" "./tests/integration/check_mt_flags.sh")
-mxb_gate(move-reads fast 120 "-" "./tests/integration/check_move_reads.sh")
+mxb_gate(thread-safety fast 120 "-" "./tests/integration/check_thread_safety.sh")
 mxb_gate(hud-raw-cache fast 120 "-" "./tests/integration/check_hud_raw_cache.sh")
 mxb_gate(change-consumers fast 120 "-" "./tests/integration/check_change_consumers.sh")
 mxb_gate(test-hook-placement fast 120 "-" "./tests/integration/check_test_hook_placement.sh")
@@ -151,10 +152,13 @@ mxb_gate(card-anchor-coverage fast 120 "-" "./tests/integration/check_card_ancho
 mxb_gate(whats-new       fast 120 "-" "./tests/integration/check_whats_new.sh")
 mxb_gate(section-spacing fast 120 "-" "./tests/integration/check_section_spacing.sh")
 mxb_gate(file-budgets    fast 120 "-" "./tests/integration/check_file_budgets.sh")
+# The other half of TESTING.md's catalogue being a census: if the doc only NAMES
+# a test, the test's own header is the only place it explains itself, so that
+# header has to exist. Floor, not a style rule - see the script's own header.
+mxb_gate(test-headers    fast 120 "-" "./tests/integration/check_test_headers.sh")
 # The lint's own must-catch/must-exempt cases. Separate gate so a matcher
 # regression names the broken case instead of just going quiet on the tree.
 mxb_gate(hud-raw-cache-selftest fast 120 "-" "./tests/integration/check_hud_raw_cache.sh --self-test")
-mxb_gate(move-reads-selftest fast 120 "-" "./tests/integration/check_move_reads.sh --self-test")
 mxb_gate(change-consumers-selftest fast 120 "-" "./tests/integration/check_change_consumers.sh --self-test")
 mxb_gate(test-hook-placement-selftest fast 120 "-" "./tests/integration/check_test_hook_placement.sh --self-test")
 mxb_gate(thread-join-selftest fast 120 "-" "./tests/integration/check_thread_join.sh --self-test")
@@ -172,10 +176,19 @@ mxb_gate(vendored-manifest fast 120 "python3" "python3 tools/check_vendored_mani
 # Guarded with the subdirectory that defines them: $<TARGET_FILE:unit_tests> is
 # a generate-time error when the target does not exist, so an MSVC configure
 # would fail outright rather than just skipping these.
+#
+# -j$(nproc), never a bare -j: with Makefiles a bare -j starts EVERY compile at
+# once - 6.7 GB peak for the unit suite alone (1.7 GB at -j4) and no faster -
+# and two of these side by side under `ctest -j` is enough to OOM-kill cc1plus.
+#
+# `unit` is labelled `quick`, not `fast`: unit-asan builds the same 750 cases at
+# the same -O1 and adds ASan/UBSan, so in a `-L fast` run plain `unit` was a
+# third compile of the suite (~50s cold) that could catch nothing the sanitized
+# one misses. It stays the quickest single check: `ctest -R '^unit$'`.
 if(TARGET unit_tests)
-    mxb_gate(unit fast 600 "g++" "cmake --build '${CMAKE_BINARY_DIR}' --target unit_tests -j && '$<TARGET_FILE:unit_tests>'")
+    mxb_gate(unit quick 600 "g++" "cmake --build '${CMAKE_BINARY_DIR}' --target unit_tests -j$(nproc) && '$<TARGET_FILE:unit_tests>'")
     mxb_gate(unit-coverage fast 900 "g++ python3 gcovr" "./tests/unit/coverage.sh 95 '${CMAKE_BINARY_DIR}'")
-    mxb_gate(unit-asan fast 900 "g++" "cmake --build '${CMAKE_BINARY_DIR}' --target unit_tests_asan -j && '$<TARGET_FILE:unit_tests_asan>'")
+    mxb_gate(unit-asan fast 900 "g++" "cmake --build '${CMAKE_BINARY_DIR}' --target unit_tests_asan -j$(nproc) && '$<TARGET_FILE:unit_tests_asan>'")
 endif()
 mxb_gate(asan-harness fast 600 "g++" "./tests/asan/run.sh")
 
@@ -186,6 +199,11 @@ mxb_gate(asan-harness fast 600 "g++" "./tests/asan/run.sh")
 # because no local runner ever printed it. That asymmetry is now itself checked
 # (check_docs.py's CI->gate direction).
 mxb_gate(fontgen fast 300 "g++ python3" "./tools/fontgen/test.sh")
+# The outline-sheet importer (artwork -> .ttf -> .fnt): draws a synthetic sheet,
+# converts it, rasterises it with fontgen and asserts the atlas (hollow counters,
+# undrawn characters keep an advance, --base fills). SKIPs without pymupdf +
+# fonttools (`./tools/install_deps.sh analytics` installs tools/requirements.txt).
+mxb_gate(outlines2ttf fast 300 "g++ python3" "./tools/fontgen/test_outlines2ttf.sh")
 
 
 # The theme slicer's round trip: cut a synthetic ASYMMETRIC master into 27 slices
@@ -200,9 +218,27 @@ mxb_gate(spottergen-selftest fast 120 "python3"
 # The analytics report generator's self-test — the other orphan CI step. Its
 # prerequisite is a pip module, not a binary, so the TOOLS column cannot express
 # it; the probe below is the same shape mxb_gate generates for a binary, and
-# keeps a box without pandas at SKIPPED rather than FAILED.
+# keeps a box without pandas (or markdown-it-py, for the Pages copy) at SKIPPED
+# rather than FAILED.
 mxb_gate(analytics-selftest fast 300 "python3"
-         "python3 -c 'import pandas' >/dev/null 2>&1 || { echo 'SKIP: pandas not installed (./tools/install_deps.sh analytics)'; exit 3; }; python3 tools/analytics_report.py --selftest")
+         "python3 -c 'import pandas, markdown_it' >/dev/null 2>&1 || { echo 'SKIP: pandas/markdown-it-py not installed (./tools/install_deps.sh analytics)'; exit 3; }; python3 tools/analytics_report.py --selftest")
+
+# The Aptabase fetcher's self-test. Deliberately stdlib-only (no pandas probe):
+# every case it pins is a response the export endpoint serves with HTTP 200 — an
+# error body, a login page, a truncated stream — so a regression here would feed a
+# short export into the rollup, which REPLACES the days it covers. Silent,
+# committed data loss, so it must run everywhere rather than skip on a bare box.
+mxb_gate(analytics-fetch-selftest fast 120 "python3"
+         "python3 tools/analytics_fetch.py --selftest")
+
+# The shipped icons are generated build output that is ALSO committed, so they
+# can drift from their SVG sources. Regenerates all 208 and requires a byte
+# match. Same pip-module probe shape as analytics-selftest above: the renderer
+# is a python package, which the TOOLS column cannot express. ~25s (the render
+# fans out across cores); it is the check that replaces "do not bump cairosvg
+# without regenerating the whole set" as prose in tools/requirements.txt.
+mxb_gate(icon-repro fast 600 "python3"
+         "python3 -c 'import cairosvg, PIL' >/dev/null 2>&1 || { echo 'SKIP: cairosvg/Pillow not installed (./tools/install_deps.sh analytics)'; exit 3; }; ./tests/integration/check_icon_reproducibility.sh")
 # ci-covers-differently: the CI job runs `npm ci` + `npx playwright test` with
 # setup-node's npm cache and a keyed Playwright browser cache; run.sh exists to
 # find-or-fetch Chromium on a dev box.
@@ -234,7 +270,13 @@ mxb_gate(fuzz-config slow 900 "x86_64-w64-mingw32-g++ wine" "./tests/integration
 mxb_gate(fuzz-callbacks slow 900 "x86_64-w64-mingw32-g++ wine" "./tests/integration/run_fuzz_callbacks.sh")
 mxb_gate(perf slow 900 "x86_64-w64-mingw32-g++ wine" "./tests/integration/run_perf.sh")
 mxb_gate(shim-constants slow 300 "x86_64-w64-mingw32-g++" "./tests/unit/shim/regen_constants.sh --check")
-mxb_gate(thread-safety slow 900 "clang++ x86_64-w64-mingw32-g++" "./tests/integration/check_thread_safety.sh")
+# clang-tidy with only the checks in mxbmrp3/.clang-tidy (today: bugprone-use-after-move,
+# the MSVC argument-order bug), plus clang's -Wthread-safety on the same parse
+# (it was the separate `thread-safety` gate's second clang pass over the same
+# TUs; that gate keeps only its grep and moved to the fast label). ~10
+# CPU-minutes over the tree (~2.5 min on 4 idle cores), hence slow; the timeout
+# allows for a loaded box.
+mxb_gate(clang-tidy slow 3600 "clang-tidy clang++ x86_64-w64-mingw32-g++" "./tests/integration/check_clang_tidy.sh")
 mxb_gate(game-configs slow 1800 "x86_64-w64-mingw32-g++" "./tests/integration/check_game_configs.sh")
 mxb_gate(cppcheck slow 900 "cppcheck" "./tests/run_cppcheck.sh")
 mxb_gate(installer slow 900 "makensis wine python3" "./tests/integration/run_installer_test.sh")
@@ -261,6 +303,18 @@ mxb_gate(installer slow 900 "makensis wine python3" "./tests/integration/run_ins
 #   MXBMRP3_CODEQL=1 ctest --test-dir build/tests -R codeql
 mxb_gate(codeql slow 3600 "codeql x86_64-w64-mingw32-g++ python3"
          "test \"\${MXBMRP3_CODEQL}\" = 1 || { echo 'SKIP: opt-in gate — set MXBMRP3_CODEQL=1 (~15 min scan)'; exit 3; }; ./tests/integration/run_codeql.sh")
+
+# Report-only line coverage of the DLL under the integration suite (gcov via the
+# mingw toolchain, gcovr). Opt-in for the same reason as codeql: it is a full
+# instrumented rebuild plus the whole slow suite, and a percentage with no floor
+# is a measurement to take on purpose, not a gate to pay for on every run. Fails
+# only if the suite or gcovr does — never on the number.
+# ci-covers-differently: deliberately not in CI; the `integration` job already
+# runs the same suite, and a report nobody reads there costs ~an hour per run.
+#
+#   MXBMRP3_DLL_COVERAGE=1 ctest --test-dir build/tests -R dll-coverage
+mxb_gate(dll-coverage slow 7200 "x86_64-w64-mingw32-g++ x86_64-w64-mingw32-gcov wine gcovr"
+         "test \"\${MXBMRP3_DLL_COVERAGE}\" = 1 || { echo 'SKIP: opt-in gate — set MXBMRP3_DLL_COVERAGE=1 (instrumented build + full suite)'; exit 3; }; ./tests/integration/run_dll_coverage.sh")
 
 # CTest runs these in order within a label; the integration suite dominates, so
 # `-j` is worth using locally. CI runs them per-job instead (see tests.yml).

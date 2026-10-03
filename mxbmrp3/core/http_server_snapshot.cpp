@@ -452,6 +452,10 @@ void appendStandings(std::string& out, const SnapshotCtx& ctx) {
             appendJsonString(out, entryIt->second.name);
             out += ",\"bike\":";
             appendJsonString(out, entryIt->second.bikeName);
+            if (entryIt->second.category[0] != '\0') {
+                out += ",\"cat\":";
+                appendJsonString(out, entryIt->second.category);
+            }
 
             // Brand color as CSS hex (e.g. "#ff6600") and brand name
             // In-game colors are stored as ABGR: R=bits[0:7], G=bits[8:15], B=bits[16:23]

@@ -18,7 +18,6 @@ using namespace PluginConstants;
 SpotterWidget::SpotterWidget() {
     m_panelKind = PanelKind::Widget;
     m_bContentCard = true;
-    DEBUG_INFO("SpotterWidget created");
     setDraggable(true);
     m_strings.reserve(1);
     setTextureBaseName("spotter_widget");
@@ -95,7 +94,7 @@ void SpotterWidget::rebuildRenderData() {
     const auto dim = getScaledDimensions();
     const unsigned long textColor = getColor(ColorSlot::PRIMARY);
 
-    BaseHud::PanelWant want;
+    PanelWant want;
     // Monospace estimate over a proportional font: slightly generous card,
     // never a clipped one.
     want.contentW = PluginUtils::calculateMonospaceTextWidth(
@@ -105,7 +104,7 @@ void SpotterWidget::rebuildRenderData() {
     PanelPlan& p = planPanel(dim, want);
 
     addPlanBackground(p, 0.0f, 0.0f);
-    addPlanTitle(p, "Spotter", getFont(FontCategory::TITLE), textColor);
+    addPlanTitle(p, "Spotter", textColor);
 
     addString(text, p.contentX(),
               inkCenteredY(p.contentY(), dim.lineHeightNormal, dim.fontSize),

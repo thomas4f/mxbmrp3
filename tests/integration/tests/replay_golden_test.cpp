@@ -12,7 +12,6 @@
 // identical /api/state as the full 9 MB capture. Ground truth cross-checked
 // against the session log. See TESTING.md (Layer 2 → callback tapes).
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

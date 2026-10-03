@@ -1,7 +1,7 @@
 [![Latest release](https://img.shields.io/github/v/release/thomas4f/mxbmrp3?sort=semver&label=release)](https://github.com/thomas4f/mxbmrp3/releases)
-[![Downloads](https://img.shields.io/github/downloads/thomas4f/mxbmrp3/total?label=downloads)](https://github.com/thomas4f/mxbmrp3/releases)
+[![Unique installs](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fthomas4f%2Fmxbmrp3%2Fmain%2Fusage_survey%2Fbadge.json)](https://thomas4f.github.io/mxbmrp3/usage_survey/)
 
-An [open-source](https://github.com/thomas4f/mxbmrp3) plugin for MX Bikes, GP Bikes, and Kart Racing Pro with customizable on-screen displays, immersion features, social tools, and streaming/broadcasting overlays.
+A free, [open-source](https://github.com/thomas4f/mxbmrp3) plugin for MX Bikes, GP Bikes, and Kart Racing Pro with customizable on-screen displays, immersion features, social tools, and streaming/broadcasting overlays.
 
 ![MXBMRP3 HUD Screenshot](assets/mxbmrp3.jpg)
 *Default HUD layout. All elements are fully customizable - see [Tips & Tricks](#tips--tricks) for setup ideas.*
@@ -73,8 +73,7 @@ An [open-source](https://github.com/thomas4f/mxbmrp3) plugin for MX Bikes, GP Bi
      - `mxbmrp3_gpb.dlo` for GP Bikes
      - `mxbmrp3_krp.dlo` for Kart Racing Pro
    - Copy the `mxbmrp3_data\` folder to the `plugins\` folder
-
-   **Do NOT delete the existing game files** (`proxy64.dlo`, `proxy_udp64.dlo`, `xinput64.dli`, or `telemetry64.dlo` for GP Bikes) - these are native game files, not old plugin versions.
+   - **Do not delete the game's own files** (`proxy64.dlo`, `proxy_udp64.dlo`, `xinput64.dli`, or `telemetry64.dlo` for GP Bikes) - they are native game files, not old plugin versions
 
    Your directory should look like this after installation (files vary slightly by game):
    ```
@@ -129,9 +128,10 @@ The settings menu provides global settings that apply to all profiles, followed 
 | <img src="assets/icons/hud-riders.svg" width="20" height="20" alt=""> | **Riders** | Track specific riders with custom colors and icons |
 | <img src="assets/icons/hud-rumble.svg" width="20" height="20" alt=""> | **Rumble** | Controller vibration feedback effects |
 | <img src="assets/icons/hud-helmet-mx.svg" width="20" height="20" alt=""> | **Helmet** | First-person helmet overlay configuration |
-| <img src="assets/icons/hud-video.svg" width="20" height="20" alt=""> | **Director** | Auto-director for spectating and replays - automatically follows the most interesting rider |
-| <img src="assets/icons/hud-spotter.svg" width="20" height="20" alt=""> | **Spotter** | Spoken race callouts and their subtitles - voice, categories, and proximity distances |
-| <img src="assets/icons/hud-achievements.svg" width="20" height="20" alt=""> | **Achievements** | Tiered achievements for riding, racing and exploring the plugin, and their toasts (MX Bikes only) |
+| <img src="assets/icons/hud-video.svg" width="20" height="20" alt=""> | **Director** | Auto-director for spectating and replays - follows the most interesting rider |
+| <img src="assets/icons/hud-chat.svg" width="20" height="20" alt=""> | **Stream Chat** | Your Twitch and YouTube chat in game, with name colors, role icons and filters |
+| <img src="assets/icons/hud-spotter.svg" width="20" height="20" alt=""> | **Spotter** | Spoken race callouts and subtitles - voice, categories and proximity distances |
+| <img src="assets/icons/hud-achievements.svg" width="20" height="20" alt=""> | **Achievements** | Tiered achievements for riding, racing and the plugin itself (MX Bikes only) |
 | <img src="assets/icons/hud-updates.svg" width="20" height="20" alt=""> | **Updates** | Check for new versions and install updates in-game |
 
 <!-- Deliberately NO row for the About screen: it is not a tab (it opens from
@@ -152,7 +152,7 @@ Four separate profiles store complete HUD layout configurations:
 
 ## HUDs & Widgets
 
-**HUDs** are the larger data displays - each gets its own settings tab with options like column/row toggles, gap modes, and textures. **Widgets** are simpler, single-purpose readouts (one number, gauge, or dial); rather than a tab each, they're configured together under the shared **Widgets** tab, a row apiece for visibility, title, texture, opacity and scale (the two that belong to a feature - the Director's status button and the Spotter's subtitles - sit on that feature's own tab instead). A few carry further options in the [INI](#advanced-settings) (the Lean widget's arc and markers, for one).
+**HUDs** are the larger data displays - each gets its own settings tab with options like column/row toggles, gap modes, and textures. **Widgets** are simpler, single-purpose readouts (one number, gauge, or dial); rather than a tab each, they're configured together under the shared **Widgets** tab, a row apiece for visibility, title, texture, opacity and scale (the two that belong to a feature - the Director's status button and the Spotter's subtitles - sit on that feature's own tab instead).
 
 ### HUDs
 
@@ -169,11 +169,11 @@ Four separate profiles store complete HUD layout configurations:
 | <img src="assets/icons/hud-pitboard.svg" width="20" height="20" alt=""> | **Pitboard** | Pitboard-style lap information display |
 | <img src="assets/icons/hud-session.svg" width="20" height="20" alt=""> | **Session** | Session info (type, track, format, server, weather) |
 | <img src="assets/icons/hud-timing.svg" width="20" height="20" alt=""> | **Timing** | Split and lap times with gap comparisons |
-| <img src="assets/icons/hud-gapbar.svg" width="20" height="20" alt=""> | **Gap Bar** | Visual gap-to-PB bar with position markers |
+| <img src="assets/icons/hud-gapbar.svg" width="20" height="20" alt=""> | **Gap Bar** | Live gap to your all-time or session PB or last lap, with ghost and markers |
 | <img src="assets/icons/hud-notices.svg" width="20" height="20" alt=""> | **Notices** | Race status notices (wrong way, blue flag, PB alerts, last lap, finished) |
 | <img src="assets/icons/hud-eventlog.svg" width="20" height="20" alt=""> | **Event Log** | Timestamped feed of race events (laps, penalties, finishes, pit activity) |
 | <img src="assets/icons/hud-friends.svg" width="20" height="20" alt=""> | **Friends** | Steam friends in-game: their server/track and who's joined your session |
-| <img src="assets/icons/hud-fmx.svg" width="20" height="20" alt=""> | **FMX** | Freestyle trick detection with scoring and chain combos (MX Bikes and GP Bikes only) |
+| <img src="assets/icons/hud-fmx.svg" width="20" height="20" alt=""> | **FMX** | Freestyle trick detection, scoring and chain combos (MX Bikes and GP Bikes only) |
 | <img src="assets/icons/hud-stats.svg" width="20" height="20" alt=""> | **Stats** | Riding stats with columns for last lap, session, and all-time totals |
 | <img src="assets/icons/hud-performance.svg" width="20" height="20" alt=""> | **Performance** | FPS and the plugin's own per-frame time |
 
@@ -236,7 +236,11 @@ Bind the **Segment Add** and **Segment Remove** hotkeys (Settings > Hotkeys) to 
 ## Tips & Tricks
 
 ### Streaming setup
-Turn on the **Session** HUD (Settings > Session) to show the server name, track, and session format on screen for your viewers. The Pitboard and Gamepad widgets also work well on stream - both have [fully customizable textures](docs/modding.md#custom-textures), and the Gamepad widget shows your live controller inputs. Pair with **Discord Rich Presence** (Settings > General) to show your current session and track in your Discord profile. For a broadcast-style overlay, see [Web Overlay](#web-overlay).
+- **Session info** - turn on the **Session** HUD (Settings > Session) to show the server name, track, and session format on screen for your viewers.
+- **Pitboard and Gamepad** - both widgets have [fully customizable textures](docs/modding.md#custom-textures), and the Gamepad widget shows your live controller inputs.
+- **Discord Rich Presence** (Settings > General) - shows your current session and track in your Discord profile.
+- **Stream chat in game** (Settings > Stream Chat) - your Twitch and YouTube chat together on screen. Enter your Twitch channel and/or YouTube `@handle`, press Enter, and switch each **Status** on. Read-only, no login.
+- **Broadcast overlay** - for a browser/OBS overlay with standings and battles, see [Web Overlay](#web-overlay).
 
 ### Power-user INI tweaks
 More options are available by editing the [INI file](#advanced-settings) directly. It is organized by HUD section, and each section takes per-element color and font overrides. Colors use ABGR hex values; fonts use the font filename (without `.fnt`) of any file in the `fonts/` folder. For example:
@@ -287,19 +291,10 @@ Most settings are in the in-game menu; the power-user ones are INI-only, and car
 - `[HudName]` - Base/default settings for a HUD
 - `[HudName:Practice]`, `[HudName:Qualify]`, `[HudName:Race]`, `[HudName:Spectate]` - Profile-specific overrides (only values that differ from base)
 
-**Editing the INI file:**
-
-*With the game closed* (recommended):
-1. Exit the game completely
-2. Edit `mxbmrp3_settings.ini`
-3. Launch the game to apply changes
-
-*Hot reload* (for rapid iteration):
-1. Turn off **Auto-Save** (Settings > General)
-2. Edit the INI file while the game is running
+**Editing the INI file:** the simple way is with the game closed - edit `mxbmrp3_settings.ini`, then launch. To hot-reload while the game is running:
+1. Turn off **Auto-Save** (Settings > General), or it writes your in-game state back over the edits when you leave the track
+2. Edit the INI file
 3. Use the **Reload Config** hotkey to apply changes (bind it in Settings > Hotkeys)
-
-If Auto-Save is enabled, your in-game state is written back when you leave the track, overwriting any manual edits you made to the INI during that session - so disable Auto-Save first for hot reload.
 
 ## Modding
 
@@ -320,6 +315,7 @@ Fonts, textures and icons are loose files in their own subfolders. Themes, gamep
 | `mxbmrp3_tracked_riders.json` | Tracked riders with colors and icons |
 | `mxbmrp3_rumble_profiles.json` | Per-bike rumble effect profiles |
 | `mxbmrp3_stats.json` | Unified stats, personal bests, odometer data, and earned achievements |
+| `mxbmrp3_pb_traces.json` | Your all-time PB lap per track and bike, used by the Gap Bar and Lap Log's All-time PB gap reference |
 | `mxbmrp3_analytics.json` | Anonymous random install ID for the usage survey (see [Privacy](#privacy)) |
 | `mxbmrp3_log.txt` | The plugin's log for the current session - worth attaching to a bug report |
 
@@ -334,8 +330,6 @@ The installer isn't code-signed yet, so Windows may show one or more "unknown pu
 
 Installing manually from the [ZIP archive](#manual-installation) avoids most of these, since there's no installer to run. If you'd like to check the download anyway, you can scan it on [VirusTotal](https://www.virustotal.com/).
 
-The long-term fix is a code-signing certificate (a paid yearly cost, and one of the things [donations](#about) would go toward). Until that's in place, the steps above are all that's needed.
-
 ### Make Sure You're on the Latest Version
 - Many issues are already fixed in a newer release, so update before troubleshooting further
 - Check your version in Settings > Updates (or the Version widget) and install a newer one from there - no manual download or reinstall needed. The plugin also notifies you on startup when a stable release is out
@@ -344,7 +338,7 @@ The long-term fix is a code-signing certificate (a paid yearly cost, and one of 
 ### HUD Not Appearing
 - Check the [Installation requirements](#installation) for your game's minimum version
 - Verify the DLO file and `mxbmrp3_data\` are in the correct `plugins\` folder. Games have two directories - the game installation (contains the game .exe) and user data (`Documents\PiBoSo\[Game]\`). Plugins go in the game installation, not Documents.
-- Use the correct DLO for your game: `mxbmrp3.dlo` (MX Bikes), `mxbmrp3_gpb.dlo` (GP Bikes), or `mxbmrp3_krp.dlo` (Kart Racing Pro)
+- Use the DLO for your game: `mxbmrp3.dlo` (MX Bikes), `mxbmrp3_gpb.dlo` (GP Bikes) or `mxbmrp3_krp.dlo` (Kart Racing Pro) - see [manual installation](#manual-installation)
 
 ### Installer Detected the Wrong Game Directory
 - If you have multiple installations (e.g., standalone and Steam), the installer may pick the wrong one. Verify the plugin ended up in the `plugins\` folder next to the game `.exe` you actually launch. If not, run the installer again and select the correct path, or install manually.
@@ -357,11 +351,7 @@ The long-term fix is a code-signing certificate (a paid yearly cost, and one of 
 - Click **Reset Widgets** (Settings > Widgets) to correct the button positions
 
 ### Elements Appearing Twice (Ghost/Duplicate)
-- Check for duplicate MXBMRP3 DLO files - only one of `mxbmrp3.dlo` (MX Bikes), `mxbmrp3_gpb.dlo` (GP Bikes), or `mxbmrp3_krp.dlo` (Kart Racing Pro) should exist in your plugins folder. Other plugins' DLO files are fine.
-
-### Elements Overlapping
-- Drag elements to reposition them
-- Use the settings menu to adjust scale
+- Check for duplicate MXBMRP3 DLO files - only [the one for your game](#manual-installation) should exist in your plugins folder. Other plugins' DLO files are fine.
 
 ### Controller or Rumble Not Working
 - Verify the correct **Controller** is selected (Settings > General)
@@ -372,6 +362,10 @@ The long-term fix is a code-signing certificate (a paid yearly cost, and one of 
 - If **Web Server** reads **Error** (Settings > General), the plugin couldn't open the port - usually because another application already has it
 - Change **Web Server Port** (Settings > General) to a free one (e.g., 8081). When it's serving, the row below turns into a clickable `http://localhost:<port>` link
 - Remember to update your OBS Browser Source URL to match the new port
+
+### Stream Chat Shows Unavailable
+- YouTube chat is read through YouTube's public web chat without an API key, which is unofficial: when YouTube changes it, the **Status** reads **Unavailable** and its chat can't be read
+- Twitch chat is unaffected. The plugin is not affiliated with Twitch or YouTube
 
 ### Game Fails to Launch, Crashes, or Shows Black Screen
 - See the [MX Bikes Troubleshooting Guide](https://gist.github.com/thomas4f/1fd379fafb4ab402b48424ae1c9cf2bd) for general game issues (crashes, mods, plugins, RAM, controllers)
@@ -397,7 +391,7 @@ What it sends:
 | Achievement progress | Which achievements are unlocked and at what tier, plus two totals: the share of tiers earned, and how many are unlocked |
 | Session length | How long a play session lasted (start to clean exit), so the developer can gauge typical usage |
 | Crashes | If the game crashed last session: which module faulted and where, the error code and access type (read/write/execute), the plugin and game versions at the time, and a short backtrace of the faulting call stack (the top several module-and-offset frames, so a plugin fault can be told apart from a bystander to a game or driver crash) - enough to group similar crashes, but never the memory dump or its contents. Reported on the next launch |
-| Link clicks | Which in-plugin link you click (docs, community, or support/donate) - nothing else |
+| Link clicks | Which in-plugin link you click (documentation, community, or the thank-you link) - nothing else |
 | Prestige | That you traded a finished achievement ladder for a prestige level, and which level it reached |
 
 What it does not send: no names, no in-game/online activity, no telemetry, no lap times, no server or rider data, and no crash dump or log (those stay on your machine) - nothing identifying. The pings are fire-and-forget and never affect performance.
@@ -406,7 +400,7 @@ Usage-survey data is processed by two open-source services: [Aptabase](https://a
 
 When the usage survey is on, the plugin may also fetch a small config file from this repository that can only ever reduce what's sent, never add to it. Turning the Usage survey toggle off stops this too.
 
-**What the data actually adds up to:** the aggregate results are published in [`usage_survey/REPORT.md`](usage_survey/REPORT.md) - installs, activity over time per game, version adoption, geography, feature/HUD popularity, and crash trends (grouped by which module faulted). It's generated straight from the anonymous pings described above, so you can see exactly what they amount to.
+**What the data actually adds up to:** the aggregate results are published as an [interactive page](https://thomas4f.github.io/mxbmrp3/usage_survey/) (also [`usage_survey/REPORT.md`](usage_survey/REPORT.md) in the repo) - installs, activity over time per game, version adoption, geography, feature/HUD popularity, and crash trends (grouped by which module faulted). It's generated straight from the anonymous pings described above, so you can see exactly what they amount to.
 
 ## Feedback & Issues
 
@@ -456,7 +450,7 @@ Built with C++17, Visual Studio 2022, the PiBoSo Plugin API, and Claude Code.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) - full technical documentation with diagrams
 - [`CLAUDE.md`](CLAUDE.md) - quick-start context for developers and AI assistants
 
-Quick start: clone, run `cmake --preset msvc`, then open the generated `build/msvc/mxbmrp3.sln` in Visual Studio 2022 and build. The full configuration table, the Linux cross-build, and the unit/integration tests are documented in [`DEVELOPMENT.md`](DEVELOPMENT.md).
+Quick start: clone, run `cmake --preset msvc`, then open the generated `build/msvc/mxbmrp3.sln` in Visual Studio 2022 and build.
 
 ## License
 
@@ -472,21 +466,14 @@ Thanks to everyone in the MX Bikes community who tested, reported bugs, and shar
 
 ## About
 
-MXBMRP3 is a free, open-source community project developed by one person in their spare time.
+MXBMRP3 is a community project: one person's spare-time work, and much of what it has become comes from the people who use it - the riders who report problems, suggest features, test new ideas, and keep finding new ways to use it.
 
-It started in 2024 with **MXBMRP - MX Bikes Memory Reader Project**, a small experiment I built before I really knew what I was doing. That grew through several versions into MXBMRP3, a full plugin built on the game's plugin API.
+It started in 2024, after development of MaxHUD, the community's long-standing HUD, came to an end. The first version, **MXBMRP - MX Bikes Memory Reader Project**, was a small experiment I built before I really knew what I was doing. That grew through several versions into MXBMRP3, a full plugin built on the game's plugin API.
 
-The project was created after development of MaxHUD, the community's long-standing HUD, came to an end. MXBMRP3 has since grown through community suggestions, testing, bug reports, and experimentation.
-
-There is no company or development team behind it. I develop and fund it in my spare time, but much of what it has become comes from the people who use it - the riders who report problems, suggest features, test new ideas, and keep finding new ways to use it.
-
-Keeping MXBMRP3 open source is deliberate. It means the project can be studied, contributed to, adapted, and built upon rather than disappearing with the person who made it.
-
-If you'd like to chip in toward continued development, you can do so here:
-
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/thomas4f)
-[![GitHub Sponsors](https://img.shields.io/badge/GitHub-Sponsor-EA4AAA?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sponsors/thomas4f)
-
-No perks, no priority, no expectations. Just appreciated.
+Keeping MXBMRP3 open source is deliberate: it can be studied, changed and built on, and does not depend on me. It is free, with no paid tier, no locked features, no ads, and every release is built entirely from the public source (MIT).
 
 If MXBMRP3 makes the game a little better for you, or inspires something new, then it has done what I hoped it would.
+
+### Say thanks
+
+A comment or rating on [mxb-mods](https://mxb-mods.com/mxbmrp3) or a star on [GitHub](https://github.com/thomas4f/mxbmrp3) helps, and there is a [Ko-fi](https://ko-fi.com/thomas4f). All optional.

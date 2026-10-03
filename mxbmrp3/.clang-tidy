@@ -1,0 +1,8 @@
+# The checks tests/integration/check_clang_tidy.sh enforces (its header says
+# why each one is here). Every enabled check is an error: a check worth running
+# is worth failing on, and a warning nobody reads is how a gate goes green while
+# the bug ships. Add a check to BOTH lists.
+Checks: '-*,bugprone-use-after-move'
+WarningsAsErrors: 'bugprone-use-after-move'
+# Project headers only; vendor/ is not ours to fix.
+HeaderFilterRegex: 'mxbmrp3/(core|hud|handlers|game|diagnostics)/'

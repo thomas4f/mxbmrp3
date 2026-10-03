@@ -13,7 +13,6 @@
 // test going through the server would have to force a rebuild; the direct
 // snapshot just reads current state. Self-contained doctest; see run_tests.sh.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

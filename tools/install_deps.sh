@@ -32,7 +32,7 @@ set -euo pipefail
 DEP_GROUPS=(
     "build|cmake build-essential||cmake g++"
     "python|python3 python3-pip||python3"
-    "mingw|gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 ccache||x86_64-w64-mingw32-g++ x86_64-w64-mingw32-objdump"
+    "mingw|gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 ccache||x86_64-w64-mingw32-g++ x86_64-w64-mingw32-objdump x86_64-w64-mingw32-gcov"
     # `wine` provides the /usr/bin/wine launcher; `wine64` alone (Ubuntu's 9.0
     # repack) ships only libwine, and the Wine job silently reported "wine not
     # found" for exactly that reason.
@@ -53,7 +53,7 @@ DEP_GROUPS=(
     # The GFM parser is a separate package and both are needed; the gate SKIPs
     # rather than failing when either is missing.
     "pages|ruby ruby-kramdown ruby-kramdown-parser-gfm||ruby"
-    "clang|clang||clang++"
+    "clang|clang clang-tidy||clang++ clang-tidy"
     "node|nodejs npm||node"
     # Headless screenshots of the REAL companion window
     # (tools/hud_window/companion_demo.sh): Xvfb supplies the display the

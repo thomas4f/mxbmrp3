@@ -23,6 +23,14 @@ using namespace AnalyticsInternal;
 // DLL. Drives the payload build + the sampling gate with no network and no
 // background threads — see analytics_wiring_test.cpp.
 // ============================================================================
+std::string AnalyticsManager::testLoadIdentity(const char* savePath) {
+    loadAndUpdateIdentity(savePath);
+    const int repair = m_identityRepair == IdentityRepair::RECOVERED ? 1
+                     : m_identityRepair == IdentityRepair::NEW_ID ? 2 : 0;
+    return m_installId + "|" + std::to_string(m_launchCount) + "|" + std::to_string(repair)
+         + "|" + m_prevVersion;
+}
+
 void AnalyticsManager::testPrime() {
     // Fake just enough of what initialize() would establish (identity + session +
     // ingest host) that the event-build gates pass and buildEventBody() has an

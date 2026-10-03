@@ -14,7 +14,6 @@
 // Analytics is compiled into the test DLL but never auto-inits (GAME_HAS_ANALYTICS
 // is 0 in the test build), so only these hooks exercise it. See API_COVERAGE.md.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
@@ -40,6 +39,9 @@ TEST_CASE("analytics wiring: app_started always built; sampling gates session_en
     CHECK(has(app, "\"install_id\":\"test-install-000000000000\""));  // the primed anon id
     CHECK(has(app, "\"version_status\":\"new\""));
     CHECK(has(app, "\"feat_director\""));                             // a representative feature flag
+    CHECK(has(app, "\"feat_twitch\""));                               // 2.27.0: Twitch chat connection in use
+    CHECK(has(app, "\"feat_youtube\""));                              // 2.28.0: YouTube chat connection in use
+    CHECK(has(app, "\"hud_stream_chat\""));                           // the global chat HUD, added by hand
     CHECK(has(app, "\"feat_companion\""));                            // companion HUD window adoption flag
     CHECK(has(app, "\"feat_thread\""));                               // plugin worker thread adoption flag
     CHECK(has(app, "\"feat_hwaccel\""));                              // GPU-rendering setting for both windows

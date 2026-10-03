@@ -21,7 +21,6 @@ PerformanceHud::PerformanceHud() : m_historyIndex(0), m_fpsMin(0.0f), m_fpsMax(0
     m_fpsMinIndex(-1), m_fpsMaxIndex(-1), m_pluginMinIndex(-1), m_pluginMaxIndex(-1)
 {
     // One-time setup
-    DEBUG_INFO("PerformanceHud created");
     setDraggable(true);
     // Body cards, one PER SECTION: Frame Rate and Plugin Time are two separate graphs,
     // and one card round both of them says they are one thing. See
@@ -231,7 +230,7 @@ void PerformanceHud::rebuildRenderData() {
     float subHeadH = dims.lineHeightNormal;
     const char* title = PluginThread::getInstance().enabled()
         ? "Performance (threaded)" : "Performance";
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(widthChars, dims.fontSize);
     if (hasFps) want.sectionH.push_back(subHeadH + fpsSectionH);
     if (hasCpu) want.sectionH.push_back(subHeadH + cpuSectionH);
@@ -249,7 +248,7 @@ void PerformanceHud::rebuildRenderData() {
     // Title. In plugin-thread mode the plugin-time figure is the WORKER's build time, not the
     // game-thread cost (which is ~0) — flag it so a >100% frame-budget reading reads as
     // "off-thread build exceeds a frame", not "the game is stalled".
-    addPlanTitle(plan, title, this->getFont(FontCategory::TITLE),
+    addPlanTitle(plan, title,
                  this->getColor(ColorSlot::PRIMARY));
 
     // Side-by-side layout: graph on left (36 chars), gap (1 char), legend on right (9 chars)
@@ -274,7 +273,6 @@ void PerformanceHud::rebuildRenderData() {
     const unsigned long colBad = this->getColor(ColorSlot::NEGATIVE);
     const unsigned long colLabel = this->getColor(ColorSlot::TERTIARY);
     const unsigned long colValue = this->getColor(ColorSlot::SECONDARY);
-    const int fontLabel = this->getFont(FontCategory::STRONG);
     const int fontValue = this->getFont(FontCategory::DIGITS);
 
     // FPS Section: its OWN card, opened at the heading so the card contains the
@@ -339,32 +337,28 @@ void PerformanceHud::rebuildRenderData() {
             float valueX = legendStartX + PluginUtils::calculateMonospaceTextWidth(4, dims.fontSize);  // After "XXX "
 
             // FPS current value
-            addLabel("FPS", legendStartX, legendY, Justify::LEFT,
-                fontLabel, colLabel, dims);
+            addLabel("FPS", legendStartX, legendY, Justify::LEFT, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%4d", (int)metrics.currentFps);
             addString(buffer, valueX, legendY, Justify::LEFT,
                 fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Max
-            addLabel("Max", legendStartX, legendY, Justify::LEFT,
-                fontLabel, colLabel, dims);
+            addLabel("Max", legendStartX, legendY, Justify::LEFT, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%4d", (int)m_fpsMax);
             addString(buffer, valueX, legendY, Justify::LEFT,
                 fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Avg
-            addLabel("Avg", legendStartX, legendY, Justify::LEFT,
-                fontLabel, colLabel, dims);
+            addLabel("Avg", legendStartX, legendY, Justify::LEFT, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%4d", (int)m_fpsAvg);
             addString(buffer, valueX, legendY, Justify::LEFT,
                 fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Min
-            addLabel("Min", legendStartX, legendY, Justify::LEFT,
-                fontLabel, colLabel, dims);
+            addLabel("Min", legendStartX, legendY, Justify::LEFT, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%4d", (int)m_fpsMin);
             addString(buffer, valueX, legendY, Justify::LEFT,
                 fontValue, colValue, dims.fontSize);
@@ -447,32 +441,28 @@ void PerformanceHud::rebuildRenderData() {
             // heading above already says WHAT is measured, so the four rows can
             // all be statistics (Now/Max/Avg/Min) instead of one metric name
             // followed by three statistics.
-            addLabel("Now", legendStartX, legendY, Justify::LEFT,
-                fontLabel, colLabel, dims);
+            addLabel("Now", legendStartX, legendY, Justify::LEFT, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%5.2f", metrics.pluginTimeMs);
             addString(buffer, valueX, legendY, Justify::LEFT,
                 fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Max
-            addLabel("Max", legendStartX, legendY, Justify::LEFT,
-                fontLabel, colLabel, dims);
+            addLabel("Max", legendStartX, legendY, Justify::LEFT, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%5.2f", m_pluginTimeMsMax);
             addString(buffer, valueX, legendY, Justify::LEFT,
                 fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Avg
-            addLabel("Avg", legendStartX, legendY, Justify::LEFT,
-                fontLabel, colLabel, dims);
+            addLabel("Avg", legendStartX, legendY, Justify::LEFT, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%5.2f", m_pluginTimeMsAvg);
             addString(buffer, valueX, legendY, Justify::LEFT,
                 fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Min
-            addLabel("Min", legendStartX, legendY, Justify::LEFT,
-                fontLabel, colLabel, dims);
+            addLabel("Min", legendStartX, legendY, Justify::LEFT, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%5.2f", m_pluginTimeMsMin);
             addString(buffer, valueX, legendY, Justify::LEFT,
                 fontValue, colValue, dims.fontSize);

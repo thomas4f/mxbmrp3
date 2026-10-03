@@ -23,11 +23,8 @@
 #include "render_probe_sweep.h"
 #include "hotkey_manager.h"
 #include "hud_manager.h"
-#include "../hud/gl_confirm_hud.h"
 #include "../hud/settings/whats_new.h"
 #include "companion_window.h"
-#include "gl_probe.h"
-#include "test_gl_render_probe.h"
 #include "../hud/settings_hud.h"
 #include "../hud/friends_hud.h"
 #include "../hud/gap_bar_hud.h"
@@ -43,7 +40,6 @@
 #include "../hud/notices_hud.h"
 #include "../hud/telemetry_hud.h"
 #include "../hud/timing_hud.h"
-#include "../hud/map_hud.h"
 #include "../hud/session_hud.h"
 #include "../hud/session_charts_hud.h"
 #include "../hud/performance_hud.h"
@@ -67,7 +63,6 @@
 #include "plugin_manager.h"
 #include "plugin_thread.h"
 #include "plugin_data.h"
-#include "xinput_reader.h"
 #include "profile_manager.h"
 #include "director_manager.h"
 #include "stats_manager.h"
@@ -82,7 +77,6 @@
 #include "update_checker.h"
 #include "update_downloader.h"
 #include "http_server.h"
-#include "../game/game_config.h"
 #if GAME_HAS_RECORDER
 #include "event_recorder.h"
 #endif
@@ -118,6 +112,13 @@ extern "C" {
 // Returns 1 if a worker is running afterwards.
 __declspec(dllexport) int MXBMRP3_Test_SteamStartWorker() {
     return SteamFriendsManager::getInstance().testStartWorker() ? 1 : 0;
+}
+
+// The Steam switch in Settings > General, as its row flips it. With no Steam in a
+// test build, ON lands in "not available" -- which, with OFF, is both of the
+// states the Friends panel has a notice for (blocked_notice_test).
+__declspec(dllexport) void MXBMRP3_Test_SteamSetEnabled(int on) {
+    SteamFriendsManager::getInstance().setEnabled(on != 0);
 }
 
 __declspec(dllexport) int MXBMRP3_Test_SteamWorkerRunning() {
@@ -544,6 +545,11 @@ __declspec(dllexport) void MXBMRP3_Test_GapBarWidth(int percent) {
     HudManager::getInstance().getGapBarHud().setBarWidth(percent);
 }
 
+// The Gap Bar's split ticks on/off (gap_bar_splits_test).
+__declspec(dllexport) void MXBMRP3_Test_GapBarShowSplits(int on) {
+    HudManager::getInstance().getGapBarHud().setShowSplits(on != 0);
+}
+
 // Whether a HUD's background TEXTURE is switched on, by registration name:
 // 1 = on, 0 = off, -1 = no such HUD.
 //
@@ -630,7 +636,7 @@ static const BaseHud* testHudByName(const char* name) {
 // top to the last card's bottom. Returns 0 while the HUD has no computed plan.
 __declspec(dllexport) int MXBMRP3_Test_HudCardRect(const char* name, int* out) {
     const BaseHud* hud = testHudByName(name);
-    const BaseHud::PanelPlan* plan = hud ? hud->testPlacedPlan() : nullptr;
+    const PanelPlan* plan = hud ? hud->testPlacedPlan() : nullptr;
     if (!plan || plan->g.sections.empty()) return 0;
     auto q = [](float v) { return static_cast<int>(v * 1e6f + (v < 0 ? -0.5f : 0.5f)); };
     if (out) {
@@ -811,6 +817,17 @@ __declspec(dllexport) unsigned long MXBMRP3_Test_HudStringColor(const char* name
     const auto& strings = hud->getStrings();
     if (index < 0 || index >= static_cast<int>(strings.size())) return 0;
     return strings[static_cast<size_t>(index)].m_ulColor;
+}
+
+// THE FONT OF ONE DRAWN STRING (the engine's 1-based font index), same addressing
+// as the colour reader above. Lets a test hold a HUD to "words are not set in the
+// Digits font" -- the text hook cannot see which category a string was drawn in.
+__declspec(dllexport) int MXBMRP3_Test_HudStringFont(const char* name, int index) {
+    const BaseHud* hud = testHudByName(name);
+    if (!hud) return 0;
+    const auto& strings = hud->getStrings();
+    if (index < 0 || index >= static_cast<int>(strings.size())) return 0;
+    return strings[static_cast<size_t>(index)].m_iFont;
 }
 
 __declspec(dllexport) unsigned long MXBMRP3_Test_HudQuadColor(const char* name, int index) {
@@ -1014,12 +1031,39 @@ __declspec(dllexport) void MXBMRP3_Test_SettingsContentX(int* labelX, int* contr
     if (rowRight)   *rowRight   = q(r);
 }
 
+// The active tab's generic closing arrows (CYCLE_UP / STEPPED_UP): min and max
+// right edge in fixed point, returning the count. Compared against
+// SettingsContentX's rowRight: every row's ">" ends on the row's right edge.
+__declspec(dllexport) int MXBMRP3_Test_SettingsClosingArrowRightX(int* minRight, int* maxRight) {
+    return HudManager::getInstance().getSettingsHud().testClosingArrowRightX(minRight, maxRight);
+}
+
 // `[panel] gap` on the synthetic theme — theme_geometry_test turns it to prove
 // the settings gutter tracks the same term the vertical seams spend.
-// Plant a live gap in the Gap Bar (see GapBarHud::testForceGap) -- the fill's
-// extent is the one geometry the layout sweeps cannot reach without it.
+// Plant a live gap to PB (see PluginData::testForceLiveGap) -- the Gap Bar fill's
+// extent is the one geometry the layout sweeps cannot reach without it. Sticky:
+// the plant outranks the computed gap, so it survives however many Draws the
+// harness takes to get from the plant to the measurement.
 __declspec(dllexport) void MXBMRP3_Test_GapBarForceGap(int ms, int valid) {
-    HudManager::getInstance().getGapBarHud().testForceGap(ms, valid != 0);
+    PluginData::getInstance().testForceLiveGap(ms, valid != 0);
+    HudManager::getInstance().getGapBarHud().setDataDirty();
+}
+
+// The computed live gap to PB (pb_gap_test): returns validity, writes the gap.
+__declspec(dllexport) int MXBMRP3_Test_LiveGapToPb(int* gapMs) {
+    const PluginData& data = PluginData::getInstance();
+    if (gapMs) *gapMs = data.getLiveGap();
+    return data.hasValidLiveGap() ? 1 : 0;
+}
+
+// The same against a chosen reference (PbGapTracker::Ref by value: 0 session
+// PB, 1 all-time PB, 2 last lap) -- pb_trace_persist_test reads the all-time one.
+__declspec(dllexport) int MXBMRP3_Test_LiveGapRef(int ref, int* gapMs) {
+    if (ref < 0 || ref >= PbGapTracker::REF_COUNT) return 0;
+    const PluginData& data = PluginData::getInstance();
+    const auto r = static_cast<PbGapTracker::Ref>(ref);
+    if (gapMs) *gapMs = data.getLiveGap(r);
+    return data.hasValidLiveGap(r) ? 1 : 0;
 }
 
 __declspec(dllexport) int MXBMRP3_Test_SetThemeGap(float cells) {
@@ -1103,9 +1147,12 @@ __declspec(dllexport) int MXBMRP3_Test_GetActiveProfile() {
 }
 
 // Force a settings save (the reset/profile calls that don't persist rely on this).
-__declspec(dllexport) void MXBMRP3_Test_Save() {
-    SettingsManager::getInstance().saveSettings(
-        HudManager::getInstance(), PluginManager::getInstance().getSavePath());
+// Returns 1 when the file landed. A test that reads the file back as its oracle
+// must check this: a save whose atomic replace failed leaves the PREVIOUS file in
+// place, and "the setting did not change" is then a lost write, not a plugin bug.
+__declspec(dllexport) int MXBMRP3_Test_Save() {
+    return SettingsManager::getInstance().saveSettings(
+        HudManager::getInstance(), PluginManager::getInstance().getSavePath()) ? 1 : 0;
 }
 
 // Mark settings dirty WITHOUT writing — the deferred auto-save path (a HUD drag/toggle).
@@ -1325,112 +1372,6 @@ __declspec(dllexport) void MXBMRP3_Test_CompanionWindow(int on) {
     CompanionWindow::getInstance().setEnabled(on != 0);
 }
 
-// ---------------------------------------------------------------------------
-// Phase 0 GL feasibility probe (core/gl_probe.h). Under Wine with no GL context
-// current on the harness's Draw thread, these pin the inert path: the probe
-// runs, finds no context, and the native handoff is untouched. That is real
-// coverage of the branch a non-GL game would take, not a placeholder for the
-// in-game answer -- which no headless test can reach.
-// The GL render probe's body lives in core/test_gl_render_probe.cpp - it needs
-// a synthetic frame, a GL readback and hudgl::Renderer, which is more than this
-// registry file should carry (it is at its size budget, and the budget wants a
-// split rather than a bigger number). The EXPORT stays here, because that is
-// what check_test_hook_placement.sh requires and what keeps test hooks out of a
-// shipping DLL.
-__declspec(dllexport) void MXBMRP3_Test_GlInGame(int on) {
-    UiConfig::getInstance().setGlInGame(on != 0);
-    HudManager::getInstance().clearGlFailLatch();
-}
-
-// The Direct GL confirmation prompt (hud/gl_confirm_hud.h). arm/cancel drive it,
-// the two readers observe it. Exposed rather than driven through the settings
-// click path because what needs pinning is the TIMER and the ENGINE ROUTING, not
-// the mouse coordinates of a chip.
-__declspec(dllexport) void MXBMRP3_Test_GlConfirmArm(int on) {
-    GlConfirmHud& h = HudManager::getInstance().getGlConfirmHud();
-    if (on) h.arm(); else h.cancel();
-}
-
-// The SETTING, not the backend: what the prompt's timeout has to turn off, and
-// what must still be off after a restart.
-__declspec(dllexport) int MXBMRP3_Test_GlInGameGet() {
-    return UiConfig::getInstance().getGlInGame() ? 1 : 0;
-}
-
-__declspec(dllexport) int MXBMRP3_Test_GlConfirmActive() {
-    return HudManager::getInstance().getGlConfirmHud().isActive() ? 1 : 0;
-}
-
-// Remaining time as a percentage, so a test can watch it fall without knowing
-// the timeout. -1 when the prompt is not up.
-__declspec(dllexport) int MXBMRP3_Test_GlConfirmRemainingPct() {
-    const GlConfirmHud& h = HudManager::getInstance().getGlConfirmHud();
-    if (!h.isActive()) return -1;
-    return static_cast<int>(h.remainingFraction() * 100.0f);
-}
-
-// Advance the countdown by `ms` of DRAWN time, without needing that many real
-// frames. The production path feeds this from the interval between GL-drawn
-// frames; a test that had to render for twenty seconds to check the timeout
-// would be a test nobody runs.
-__declspec(dllexport) void MXBMRP3_Test_GlConfirmTick(int ms) {
-    HudManager::getInstance().getGlConfirmHud().tickDrawn(static_cast<float>(ms) / 1000.0f);
-}
-
-__declspec(dllexport) int MXBMRP3_Test_GlDrewLastFrame() {
-    return HudManager::getInstance().glDrewLastFrame() ? 1 : 0;
-}
-
-__declspec(dllexport) int MXBMRP3_Test_GlRenderProbe(int w, int h, int px, int py,
-                                                     int scenario) {
-    return mxbtest::glRenderProbe(w, h, px, py, scenario);
-}
-
-// kind: 0 = fonts, 1 = sprites; index is 0-based. See test_gl_render_probe.h.
-__declspec(dllexport) int MXBMRP3_Test_GlFrameAssetName(int kind, int index,
-                                                        char* out, int cap) {
-    return mxbtest::glFrameAssetName(kind, index, out, cap);
-}
-
-__declspec(dllexport) int MXBMRP3_Test_GlFrameAssetCount(int kind) {
-    return mxbtest::glFrameAssetCount(kind);
-}
-
-__declspec(dllexport) void MXBMRP3_Test_GlProbeConfig(int mode) {
-    UiConfig::getInstance().setGlProbe(mode);
-}
-
-// The Phase 1 measurement load. Exposed so the batched client-vertex-array path
-// is exercised against a real driver in CI-adjacent conditions rather than
-// first running on Thomas's machine, where a fault would cost a game launch.
-__declspec(dllexport) void MXBMRP3_Test_GlProbeLoad(int quads, int batch) {
-    UiConfig::getInstance().setGlProbeQuads(quads);
-    UiConfig::getInstance().setGlProbeBatch(batch);
-}
-
-// Packed so one hook serves every field without a struct crossing the DLL
-// boundary (where a layout change is a silent skew, per the array-callback
-// rule). Index order is fixed; unknown index -> 0.
-__declspec(dllexport) int MXBMRP3_Test_GlProbeStatus(int field) {
-    const GlProbe::Status st = GlProbe::status();
-    switch (field) {
-        case 0: return st.ran ? 1 : 0;
-        case 1: return st.moduleResident ? 1 : 0;
-        case 2: return st.entryPointsOk ? 1 : 0;
-        case 3: return st.contextCurrent ? 1 : 0;
-        case 4: return st.glVersion;
-        case 5: return st.compatProfile ? 1 : 0;
-        case 6: return st.drew ? 1 : 0;
-        case 7: return st.readbackMatched ? 1 : 0;
-        case 8: return st.stateDiffs;
-        case 9: return st.glErrors;
-        case 10: return st.drawGaps;
-        case 11: return st.lastGapMs;
-        case 12: return st.loadPainted;
-        default: return 0;
-    }
-}
-
 __declspec(dllexport) void MXBMRP3_Test_GetActiveTab(char* out, int cap) {
     if (!out || cap <= 0) return;
     const char* name = HudManager::getInstance().getSettingsHud().getActiveTabName();
@@ -1449,6 +1390,14 @@ __declspec(dllexport) void MXBMRP3_Test_AnalyticsPrime() {
 }
 __declspec(dllexport) void MXBMRP3_Test_AnalyticsSetFullLaunch(int full) {
     AnalyticsManager::getInstance().testSetFullLaunch(full != 0);
+}
+// The real identity load against a save path (analytics_identity_test): writes
+// "<installId>|<launchCount>|<repair>|<prevVersion>", see testLoadIdentity.
+__declspec(dllexport) void MXBMRP3_Test_AnalyticsLoadIdentity(const char* savePath, char* out, int cap) {
+    const std::string s = AnalyticsManager::getInstance().testLoadIdentity(savePath);
+    if (out && cap > 0) {
+        strncpy_s(out, static_cast<size_t>(cap), s.c_str(), _TRUNCATE);
+    }
 }
 __declspec(dllexport) void MXBMRP3_Test_AnalyticsAppStarted(char* out, int cap) {
     if (!out || cap <= 0) return;
@@ -1616,6 +1565,14 @@ __declspec(dllexport) void MXBMRP3_Test_DirectorSetNowMs(long long ms) {
     DirectorManager::testSetNowMs(ms);
 }
 
+// The lap timer's twin (LapTimer::now): the live lap time and the PB gap read
+// from it are wall-clock anchored, so a burst replay collapses every lap into
+// its official splits. PluginHost::replayTapeClocked feeds each recorded
+// event's timestamp here; -1 restores the real clock.
+__declspec(dllexport) void MXBMRP3_Test_LapTimerSetNowUs(long long us) {
+    LapTimer::testSetNowUs(us);
+}
+
 // Enable/disable the "Director" event-log type. This is a DISPLAY filter only — director
 // cuts/state changes are pushed to the event log unconditionally (raw-data contract), so a
 // test toggles this to check that emission is independent of the display filter.
@@ -1728,6 +1685,14 @@ __declspec(dllexport) int MXBMRP3_Test_WhatsNewTabTagged(const char* tabName) {
     return (t >= 0 && WhatsNew::tabHasLive(t)) ? 1 : 0;
 }
 
+// The tag's stand-in on a tab too long-named to carry it: is its sidebar row banded?
+__declspec(dllexport) int MXBMRP3_Test_WhatsNewTabHighlighted(const char* tabName) {
+    if (!tabName) return 0;
+    const SettingsHud& sh = HudManager::getInstance().getSettingsHud();
+    const int t = sh.testTabIndexForName(tabName);
+    return (t >= 0 && WhatsNew::tabHighlightsRow(t)) ? 1 : 0;
+}
+
 // DOES MARKER `i` POINT AT A ROW THAT ACTUALLY EXISTS? Opens the marker's tab,
 // renders it, and looks for a click region carrying the marker's tooltip id.
 //
@@ -1814,6 +1779,15 @@ __declspec(dllexport) void MXBMRP3_Test_WhatsNewHoverRow(const char* rowTooltipI
     // Through SettingsHud, NOT WhatsNew::dismissRow: the real hover path also marks
     // the settings dirty, and that is the half a persistence test has to exercise.
     HudManager::getInstance().getSettingsHud().testHoverDismissRow(rowTooltipId);
+}
+
+// The HOVER path for a sidebar tab, by name -- the same helper the pointer calls.
+__declspec(dllexport) int MXBMRP3_Test_WhatsNewHoverTab(const char* tabName) {
+    SettingsHud& sh = HudManager::getInstance().getSettingsHud();
+    const int t = sh.testTabIndexForName(tabName);
+    if (t < 0) return 0;
+    sh.testHoverDismissTab(t);
+    return 1;
 }
 
 // The Timing HUD's optional READOUT rows, as a bitmask of ReadoutFlags. They are all
@@ -2508,6 +2482,11 @@ __declspec(dllexport) void MXBMRP3_Test_MapSetRotate(int on) {
 __declspec(dllexport) void MXBMRP3_Test_MapSetZoom(int on) {
     HudManager::getInstance().getMapHud().setZoomEnabled(on != 0);
 }
+// Readback for the settings-load regression (settings_malformed_test): a key the
+// applier reaches only AFTER an earlier, malformed one.
+__declspec(dllexport) int MXBMRP3_Test_MapZoomEnabled() {
+    return HudManager::getInstance().getMapHud().getZoomEnabled() ? 1 : 0;
+}
 // Legacy preset shim, kept so older drivers/tests keep meaning the same thing:
 // 0=AUTO (adaptive, 100%), 1=HIGH (fixed, 200% = 1.0m), 2=LOW (fixed, 60% ≈
 // 3.3m). New code uses the percent/adaptive hooks below.
@@ -2809,26 +2788,6 @@ __declspec(dllexport) void MXBMRP3_Test_MaxHudSettings() {
     SettingsManager::getInstance().testMaxAllHudSettings(HudManager::getInstance());
 }
 
-// Read + reset the accumulated per-phase StandingsHud::rebuildRenderData() time
-// (microseconds): setup / format / name+anim / layout / render; return value is
-// the rebuild count. Attributes the standings rebuild cost for the perf probe.
-__declspec(dllexport) long long MXBMRP3_Test_StandingsProfile(
-        double* setupUs, double* formatUs, double* nameAnimUs, double* layoutUs, double* renderUs) {
-    double se = 0, fo = 0, na = 0, la = 0, re = 0; long long c = 0;
-    standingsReadProfile(se, fo, na, la, re, c);
-    if (setupUs) *setupUs = se;
-    if (formatUs) *formatUs = fo;
-    if (nameAnimUs) *nameAnimUs = na;
-    if (layoutUs) *layoutUs = la;
-    if (renderUs) *renderUs = re;
-    return c;
-}
-
-// Sub-phase of render: total us spent resolving the TRACKED-column status icon
-// per rider since last read (the target of option-1 status caching).
-__declspec(dllexport) double MXBMRP3_Test_StandingsTrackedUs() {
-    return standingsReadTrackedUs();
-}
 
 // Experimental plugin worker thread: turn it on AFTER Startup (the flag is normally
 // read once at init) and start the worker, so a test can drive callbacks through the
@@ -3007,31 +2966,6 @@ __declspec(dllexport) void MXBMRP3_Test_FmxState(int* sessionScore, int* tricksC
 }
 #endif
 
-// --- Stats odometer seam. Distance integrates speed over the WALL-CLOCK gap
-// between telemetry calls, so the odometer test injects the clock (µs; -1
-// restores the real one) to make each tick's dt — and the expected distance —
-// exact. ---
-__declspec(dllexport) void MXBMRP3_Test_StatsSetNowUs(long long us) {
-    StatsManager::testSetNowUs(us);
-}
-
-// Read the live odometer state: the current bike's odometer + the session trip
-// (both meters), plus the ~100m dirty-coalescing internals (distance accumulated
-// since the last dirty mark, and the dirty flag itself) — neither observable
-// through the stats file, because a save only ever happens off-track. Any
-// out-pointer may be null.
-__declspec(dllexport) void MXBMRP3_Test_StatsOdometerState(double* bikeOdometer,
-        double* sessionTrip, double* unsavedDistance, int* dirty) {
-    const StatsManager& sm = StatsManager::getInstance();
-    if (bikeOdometer)    *bikeOdometer    = sm.getOdometerForCurrentBike();
-    if (sessionTrip)     *sessionTrip     = sm.getSessionTripDistance();
-    if (unsavedDistance) *unsavedDistance = sm.testUnsavedDistance();
-    if (dirty)           *dirty           = sm.testIsDirty() ? 1 : 0;
-}
-
-// Force a stats save (the same save() the RunStop/RunDeinit leave-track flush
-// calls; a no-op when clean). Lets a test establish a known-clean baseline
-// before asserting the dirty-coalescing behaviour.
 // The crash widget's streaming tally: read it, and drive the SAME reset entry
 // point the Reset button and the hotkey both call, so a test exercises the
 // widget's path rather than reaching past it into StatsManager.

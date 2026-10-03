@@ -23,7 +23,6 @@
 // The default is OFF, so the per-lap rendering (and stripchart_parity_test's golden
 // primitive checksums) is untouched.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

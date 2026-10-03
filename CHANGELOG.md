@@ -16,7 +16,134 @@ is. Entries up to and including `v1.27.7` came the other way, compiled from the
 [GitHub Releases](https://github.com/thomas4f/mxbmrp3/releases) that predate this
 file; their wording is preserved too.
 
-## [Unreleased]
+## [1.31.0] - 2026-10-03
+
+Stream Chat for Twitch and YouTube, and a Gap Bar that races your all-time PB
+across sessions.
+
+### Added
+- **Stream Chat** in game (Settings > Stream Chat): your Twitch and YouTube chat on
+  screen together, with name colors, role icons and an optional platform icon.
+  Read-only, no login needed. YouTube's is unofficial, so it can stop working
+  at any time
+- **Split ticks** on the Gap Bar (on by default, Settings > Gap Bar > Splits):
+  a short mark at the top and bottom edge where each of the track's splits is
+- A **Gap reference** setting on the Gap Bar and Lap Log tabs (the Lap Log's
+  for its gap row): each measures against Session PB (the default),
+  All-time PB or Last lap. The all-time lap is saved beside your stats and is there from the first
+  flying lap of the next session; a PB set before this version has no saved lap
+  until you beat it. A lap that did not count is never the reference, nor a
+  saved lap that is not your PB
+- A **Gap freeze** on the Lap Log tab, like the Gap Bar's Freeze: after each
+  split and the line, the gap row holds the official gap against its Gap
+  reference for 5 seconds (Off to 10 s)
+- A **Freeze** on the Pitboard tab: how long At Splits shows the board after
+  each split and the line, 1 to 10 s. It stays at 10 seconds by default
+- A **Class** column in the standings, off by default, showing each rider's
+  category (MX1, MX2 OEM...) before the bike. The web overlay has the same as a
+  Class setting
+- The gap bar's marker **Mode** has an **Off** setting: just the bar and your gap
+
+### Removed
+- The "Support thomas4f" prompt after an automatic update, and its
+  `donationNudge` setting. The About page keeps the optional thanks links,
+  together under Say Thanks
+
+### Changed
+- **Back Marker** unlocks when you finish a race a lap down, not three
+- Settings rows use their full width: the right arrow sits at the row's edge,
+  so values get two and a half times the room and long names (controllers,
+  voices, voice packs, themes, profiles) are no longer cut short
+- The Gap Bar's **Freeze** defaults to 5 seconds (was 3), the same as the
+  Timing panel's and the Lap Log's. A saved setting is kept; Reset picks up the
+  new default
+- The Gap Bar's Freeze holds the gap against its Gap reference: on All-time PB or
+  Last lap it showed the gap to the session PB until the freeze ran out. A cut
+  or pit lap holds nothing at the line: the next lap starts over
+- A lap through the pits is no longer announced: no spotter call, no INVALID on
+  the Timing panel. The Lap Log says why a lap has no time, PIT or INVALID on
+  that lap's row in muted text, beside the splits the game counted. Its live
+  row says PIT from the moment you ride into the pits, instead of stopping on
+  the clock until the line. The Timing panel's INVALID uses the same text
+  font. A cut lap still gets every notice
+- A missing time is a plain "-" everywhere: the Lap Log, Standings, Timing,
+  Ideal Lap, Records and the web overlay no longer show -:--.---
+- **Steady Hands** counts riding since your last crash, across sessions and
+  restarts; clearing your stats or a prestige starts it over
+- The Gap Bar and the Lap Log's gap row measure the live gap to PB on the Timing
+  panel's clock: a standing start's opening lap is never the reference, and the
+  gap goes blank the moment you ride into the pits, like the Timing panel, until
+  the next line
+- **Skill Issue** and **99 Problems** count different things: crashes in total,
+  and the resettable crash counter reaching 99
+- Saving never stalls the game: stats, PB laps, settings and the log are
+  written to disk in the background. Stats and PB laps are saved together when
+  you leave the track and when you quit, never while riding
+- Updated vendored cpp-httplib to 0.58.0
+- The pit board, gauge, radar and gear-limiter textures are sized to what
+  they draw at, so they load faster
+- The log file is a fraction of its old size and no longer names your Windows
+  account, so it is safe to share
+- Numbers use your **Digits** font everywhere: the Standings position, race number
+  (classic layout), +/- and penalty columns, the Records date, the Friends clock and
+  the ECU widget's values. Stream Chat author names use the Normal font, like rider
+  names elsewhere. The Timing panel's Server and Track rows use the Normal font
+- The Fuel widget's row labels are drawn small, like the other widgets' labels
+- The Event Log's session start spells out the laps in a time-plus-laps race
+  too ("8:00 + 2 laps")
+- Settings: the Rumble tab's column labels sit on the Effects heading, like the
+  Hotkeys and Widgets tabs, and row labels on the Rumble, Widgets and Stats tabs use
+  the same colour as every other tab
+- Colours are used the same way across HUDs: placeholders are muted (including the
+  big "-" in the Speed, Gear, Lap and Position widgets), an exact zero delta is
+  white, Records positions 4 and below are grey, Map split markers are grey, and
+  the Gap Bar's Uniform markers are white like the Map and Radar. Errors such as
+  "Steam not available" are red. Flag icons always keep their real colours
+- The Friends and Rumble panels say why they are empty the way the Gamepad and
+  Stream Chat panels do: a red line and a hint, at the panel's normal size.
+  Friends keeps showing "Steam integration off" while its settings tab is open,
+  and Rumble says "Rumble off" or that the controller is not connected instead
+  of drawing flat lines. With no controller selected, the Gamepad widget says so
+  rather than "Controller 0"
+- Records reads like Standings: a "P" column with plain numbers, a "Name" header,
+  "-" for a missing sector or date, and sector times that follow Compact Times
+- Wording is consistent: "All-time" everywhere, sentence-case labels and Stream
+  Chat messages, "LEADER" on the pitboard, and matching names for the same
+  setting on different tabs ("Display order", "Gap reference", "Rows to show")
+- Settings: Gap Bar, Radar, Stats, Lap Log and Friends group their rows into Layout
+  and Content like the other tabs, greyed-out rows look the same on every tab, the
+  Achievements rows line up with other tabs, and more buttons have tooltips
+
+### Fixed
+- A recorded spotter voice previews in its own voice when you cycle to it in
+  the settings, instead of the text-to-speech voice
+- **Seat Time** milestones crossed while free riding toast within the minute
+  rather than at the next lap or the session's end
+- Race achievements land at the flag when the game declares the race over,
+  instead of after a rider who quit gets a finish time back in the menus
+- One mistyped value in the settings INI no longer resets every setting after
+  it in that section; only that value is skipped, and the log names it
+- A save that fails (a locked or read-only file) is tried again the next time
+  you leave the track, instead of only once something else changes
+- The web overlay's standings tower no longer shrinks to a few rows for a
+  moment while the field spawns onto the track
+- The web overlay's green "Connected" line fades after ten seconds and takes an
+  earlier "Connection lost" with it; other error lines stay until an event
+  pushes them out
+- The About page's Ko-fi link did nothing when clicked; it now opens the
+  browser, like the two new thanks links beside it
+- With Direct GL, no hitch the first time the Pitboard, the radar's proximity
+  sector or the gear limiter circle appears
+- Timing's Lap row no longer shows "5/2" in a time-plus-laps race
+- Tyre temperatures follow the Celsius/Fahrenheit setting
+- The Achievements toast theme is saved
+- Resetting the Director tab no longer shows or hides its status button
+- The General tab's Reset buttons show their tooltips, and the Compact Times
+  tooltip no longer says in-game gaps switch to tenths
+- Session temperatures are rounded instead of cut off
+- The Gap Bar and Lap Log all-time reference no longer shows cut off ("All-time P")
+- The Pitboard shows GP Bikes' third split, comes up for a lap that equals
+  the one before, and no longer shows a lap through the pits as INVALID
 
 ## [1.30.3] - 2026-09-13
 
@@ -980,7 +1107,8 @@ Pre-release. Its contents shipped in 1.26.0.0, minus the analytics addition.
 
 Initial public release.
 
-[Unreleased]: https://github.com/thomas4f/mxbmrp3/compare/v1.30.3...HEAD
+[Unreleased]: https://github.com/thomas4f/mxbmrp3/compare/v1.31.0...HEAD
+[1.31.0]: https://github.com/thomas4f/mxbmrp3/compare/v1.30.3...v1.31.0
 [1.30.3]: https://github.com/thomas4f/mxbmrp3/compare/v1.30.1...v1.30.3
 [1.30.1]: https://github.com/thomas4f/mxbmrp3/compare/v1.30.0...v1.30.1
 [1.30.0]: https://github.com/thomas4f/mxbmrp3/compare/v1.29.5...v1.30.0

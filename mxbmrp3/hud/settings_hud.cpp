@@ -63,6 +63,9 @@
 #include "../core/director_manager.h"
 #include "director_widget.h"
 #include "../core/hotkey_manager.h"
+#include "../core/twitch_chat_manager.h"
+#include "../core/youtube_chat_manager.h"
+#include "../core/hold_repeat.h"
 #if GAME_HAS_DISCORD
 #include "../core/discord_manager.h"
 #endif
@@ -132,8 +135,6 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::BACKGROUND_OPACITY_DOWN:
         case ClickRegion::SCALE_UP:
         case ClickRegion::SCALE_DOWN:
-        case ClickRegion::ROW_COUNT_UP:
-        case ClickRegion::ROW_COUNT_DOWN:
         case ClickRegion::MAP_RANGE_UP:
         case ClickRegion::MAP_RANGE_DOWN:
         case ClickRegion::MAP_RIDER_SHAPE_UP:
@@ -313,7 +314,6 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* f
 {
     // No caption on this panel -- see BaseHud::m_titleSupported.
     disableTitle();
-    DEBUG_INFO("SettingsHud created");
     // The one panel of this kind, and the only thing that makes a theme's
     // [card] settings-title-band / settings-content reachable. Without it this
     // panel inherits PanelKind::Hud and BOTH those keys parse, store and then
@@ -485,6 +485,14 @@ void SettingsHud::update() {
         }
     }
 
+    // Stream Chat tab: each connection's status changes on its worker thread.
+    if (m_activeTab == TAB_STREAM_CHAT) {
+        const int twitch = static_cast<int>(TwitchChatManager::getInstance().getStatus());
+        if (twitch != m_cachedTwitchStatus) { m_cachedTwitchStatus = twitch; setDataDirty(); }
+        const int youtube = static_cast<int>(YouTubeChatManager::getInstance().getStatus());
+        if (youtube != m_cachedYouTubeStatus) { m_cachedYouTubeStatus = youtube; setDataDirty(); }
+    }
+
 #if GAME_HAS_DISCORD
     // Check for Discord state changes (for live status updates in General tab)
     if (m_activeTab == TAB_GENERAL) {
@@ -528,6 +536,7 @@ void SettingsHud::update() {
                     // a dozen places, drifting.
                     //
                     dismissMarkedRow(region.tooltipId.c_str());
+                    if (region.type == ClickRegion::TAB) dismissMarkedTab(region.tabIndex);
                 } else {
                     const char* tooltipId = getTooltipIdForRegion(region.type, m_activeTab);
                     m_hoveredTooltipId = tooltipId ? tooltipId : "";
@@ -643,19 +652,11 @@ void SettingsHud::update() {
         auto now = std::chrono::steady_clock::now();
         auto holdDurationMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_holdStartTime).count();
 
-        // Initial delay before repeating starts (400ms)
-        constexpr long long HOLD_INITIAL_DELAY_MS = 400;
-        // Repeat interval starts at 200ms and accelerates down to 30ms
-        constexpr long long HOLD_REPEAT_SLOW_MS = 200;
-        const long long HOLD_REPEAT_FAST_MS = UiConfig::getInstance().getHoldRepeatFastMs();
-        // Number of repeats before reaching max speed
-        constexpr int HOLD_ACCEL_REPEATS = 15;
-
-        if (holdDurationMs >= HOLD_INITIAL_DELAY_MS) {
-            // Calculate current repeat interval (linear interpolation from slow to fast)
-            float accelFactor = std::min(static_cast<float>(m_holdRepeatCount) / HOLD_ACCEL_REPEATS, 1.0f);
-            long long repeatIntervalMs = static_cast<long long>(
-                HOLD_REPEAT_SLOW_MS + accelFactor * (HOLD_REPEAT_FAST_MS - HOLD_REPEAT_SLOW_MS));
+        // The shared hold curve (core/hold_repeat.h), also used by the text
+        // field's Backspace.
+        if (holdDurationMs >= HoldRepeat::INITIAL_DELAY_MS) {
+            const long long repeatIntervalMs = HoldRepeat::intervalMs(
+                m_holdRepeatCount, UiConfig::getInstance().getHoldRepeatFastMs());
 
             auto timeSinceLastRepeat = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_holdLastRepeat).count();
             if (timeSinceLastRepeat >= repeatIntervalMs) {
@@ -723,18 +724,27 @@ void SettingsHud::update() {
     // Handle hotkey capture mode
     HotkeyManager& hotkeyMgr = HotkeyManager::getInstance();
     if (hotkeyMgr.isCapturing()) {
-        // Check for ESC to cancel capture
+        // ESC cancels; a key binding rebuilds every frame (modifier feedback), a text field on an edit.
         if ((GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0) {
             hotkeyMgr.cancelCapture();
             rebuildAndRecord();
-        }
-        // Rebuild every frame during capture to show real-time modifier feedback
-        else {
+        } else if (hotkeyMgr.getCaptureType() != CaptureType::TEXT ||
+                   hotkeyMgr.getCaptureText() != m_shownCaptureText ||
+                   hotkeyMgr.getCaptureCursor() != m_shownCaptureCursor) {
+            m_shownCaptureText = hotkeyMgr.getCaptureText();
+            m_shownCaptureCursor = hotkeyMgr.getCaptureCursor();
             rebuildAndRecord();
         }
     }
     // Check if capture completed (must be outside isCapturing block - capture ends same frame)
     if (hotkeyMgr.wasCaptureCompleted()) {
+        // A text field (a chat channel) commits on the same edge as a binding.
+        std::string committed;
+        if (hotkeyMgr.consumeTextCommit(committed)) {
+            if (m_textField == TextField::YOUTUBE_CHANNEL) YouTubeChatManager::getInstance().setChannel(committed);
+            else TwitchChatManager::getInstance().setChannel(committed);
+        }
+        m_textField = TextField::NONE;
         rebuildAndRecord();
         // Mark dirty after a binding change (persisted on leave-track).
         markSettingsDirty();
@@ -859,9 +869,6 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
     switch (activeTab) {
         case TAB_STANDINGS:
             switch (type) {
-                case ClickRegion::ROW_COUNT_UP:
-                case ClickRegion::ROW_COUNT_DOWN:
-                    return "standings.rows";
                 case ClickRegion::GAP_REFERENCE_TOGGLE:
                 case ClickRegion::GAP_REFERENCE_BACK:
                     return "standings.gap_reference";

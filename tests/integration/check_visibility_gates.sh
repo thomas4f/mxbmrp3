@@ -40,7 +40,7 @@ fail=0
 # did: companion-only telemetry rebuilt from buffers nobody filled).
 #
 # Deliberately NOT scanned: hud_manager_input.cpp / hud_manager_render.cpp /
-# settings_manager_global.cpp / test_hooks.cpp. Their ~54 isVisible() reads are
+# settings_manager_global*.cpp / test_hooks.cpp. Their ~54 isVisible() reads are
 # hotkey toggles, per-surface render routing, persistence and test accessors —
 # all correct uses of the game flag, and annotating every one would bury the
 # signal this check exists to raise. If a new file starts gating WORK on a HUD's

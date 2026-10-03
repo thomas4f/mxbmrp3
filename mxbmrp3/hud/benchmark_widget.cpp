@@ -35,7 +35,6 @@ BenchmarkWidget::BenchmarkWidget() {
     // while every other one sits in a well. The box-model plan (addPlanBackground)
     // emits the card.
     m_bContentCard = true;
-    DEBUG_INFO("BenchmarkWidget created");
     setDraggable(true);
     m_quads.reserve(4);  // background + separators
     // Pre-allocate strings for typical display (header + ~16 callbacks + separator + ~10 HUDs + footer)
@@ -317,7 +316,7 @@ void BenchmarkWidget::rebuildRenderData() {
 
     // BOX-MODEL: the plan owns padding, the Large title band and the panel's
     // rounding; the fixed monospace table width is the content ask.
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(CONTENT_WIDTH_CHARS, dim.fontSize);
     want.sectionH = { rowCount * dim.lineHeightNormal };
     want.captionW = planTitleWidth(dim, "Benchmark", TitleTier::Large);
@@ -328,7 +327,7 @@ void BenchmarkWidget::rebuildRenderData() {
 
     setBounds(START_X, START_Y, START_X + backgroundWidth, START_Y + backgroundHeight);
     addPlanBackground(p, START_X, START_Y);
-    addPlanTitle(p, "Benchmark", this->getFont(FontCategory::TITLE),
+    addPlanTitle(p, "Benchmark",
         this->getColor(ColorSlot::PRIMARY));
 
     float contentStartX = p.contentX();
@@ -347,16 +346,14 @@ void BenchmarkWidget::rebuildRenderData() {
     float colCount = rightEdge;
     float colLast  = rightEdge - 7.0f * charW;
     float colHudTotal = rightEdge - 16.0f * charW;   // same three-column grid as CALLBACKS
-    int labelFont = this->getFont(FontCategory::STRONG);
     int valueFont = this->getFont(FontCategory::DIGITS);
     unsigned long labelColor = this->getColor(ColorSlot::TERTIARY);
 
     // === CALLBACK SECTION ===
-    addString("Callbacks", contentStartX, currentY, Justify::LEFT,
-        labelFont, this->getColor(ColorSlot::PRIMARY), dim.fontSize);
-    addLabel("Total us", colTotal, currentY, Justify::RIGHT, labelFont, labelColor, dim);
-    addLabel("Peak us", colPeak, currentY, Justify::RIGHT, labelFont, labelColor, dim);
-    addLabel("Calls", colCalls, currentY, Justify::RIGHT, labelFont, labelColor, dim);
+    addSectionHeading("Callbacks", contentStartX, currentY, dim);
+    addLabel("Total us", colTotal, currentY, Justify::RIGHT, labelColor, dim);
+    addLabel("Peak us", colPeak, currentY, Justify::RIGHT, labelColor, dim);
+    addLabel("Calls", colCalls, currentY, Justify::RIGHT, labelColor, dim);
     currentY += dim.lineHeightNormal;
 
     if (activeCallbacks == 0) {
@@ -397,14 +394,13 @@ void BenchmarkWidget::rebuildRenderData() {
     currentY += dim.lineHeightNormal;
 
     // === HUD REBUILD SECTION ===
-    addString("HUD rebuilds", contentStartX, currentY, Justify::LEFT,
-        labelFont, this->getColor(ColorSlot::PRIMARY), dim.fontSize);
+    addSectionHeading("HUD rebuilds", contentStartX, currentY, dim);
     // us/f, not the stint total: the per-frame cost is what a player feels and what
     // the exported report ranks by, and it is the only one of the three that a
     // non-rebuilding HUD can express at all.
-    addLabel("us/f", colHudTotal, currentY, Justify::RIGHT, labelFont, labelColor, dim);
-    addLabel("Avg us", colLast, currentY, Justify::RIGHT, labelFont, labelColor, dim);
-    addLabel("Builds", colCount, currentY, Justify::RIGHT, labelFont, labelColor, dim);
+    addLabel("us/f", colHudTotal, currentY, Justify::RIGHT, labelColor, dim);
+    addLabel("Avg us", colLast, currentY, Justify::RIGHT, labelColor, dim);
+    addLabel("Builds", colCount, currentY, Justify::RIGHT, labelColor, dim);
     currentY += dim.lineHeightNormal;
 
     if (activeHuds == 0) {
@@ -890,7 +886,7 @@ bool BenchmarkWidget::exportReport(const char* savePath) const {
         out += seg;
     }
 
-    if (!AtomicFileWriter::writeFileAtomic(filePath, out)) {
+    if (!AtomicFileWriter::submit(filePath, std::move(out))) {
         DEBUG_WARN_F("BenchmarkWidget: Failed to write %s", filePath.c_str());
         return false;
     }

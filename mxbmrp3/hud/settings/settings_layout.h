@@ -19,11 +19,9 @@ class BaseHud;
 // Layout context for settings panel rendering
 // An explicit context object rather than lambda captures, so tab rendering lives in
 // separate files while keeping access to shared state.
-// Width of a `< value >` control's VALUE field, in characters. One definition so a
-// hand-rolled row (the Appearance tab's colour and font rows, which need click
-// targets the helpers do not carry) lines its arrows up with every helper-built row
-// instead of picking its own number.
-constexpr int STANDARD_VALUE_WIDTH = 10;
+// Where a row's control starts, in characters from its label: the label column. The
+// longest label ("Copy current profile to") is one character shorter.
+constexpr int SETTINGS_CONTROL_COLUMN = 24;
 
 struct SettingsLayoutContext {
     // Parent reference for adding render primitives
@@ -49,7 +47,7 @@ struct SettingsLayoutContext {
     // Layout positions
     float labelX;              // Where labels start (left column)
     float controlX;            // Where control values start (toggle position)
-    float rightColumnX;        // Where right column starts (for data toggles)
+    float rightColumnX;        // Right column start (unread since the right-column helpers went)
     float contentAreaStartX;   // Start of content area (after tab bar)
     float panelWidth;          // Content area width (from contentAreaStartX to right edge)
     // The panel's own inner right boundary -- where the frame's edge slice begins, and
@@ -72,7 +70,7 @@ struct SettingsLayoutContext {
     // Constructor
     SettingsLayoutContext(
         SettingsHud* _parent,
-        const BaseHud::ScaledDimensions& dim,
+        const ScaledDimensions& dim,
         float _labelX,
         float _controlX,
         float _rightColumnX,
@@ -141,17 +139,6 @@ struct SettingsLayoutContext {
     // the tallest tabs past the screen at the themed frames.
     void addNote(const char* text);
 
-    // A RADIO row's shared half: the row-wide tooltip region, a click region
-    // `clickChars` wide (the glyph plus the label it reads with), and the
-    // "(O)"/"( )" glyph itself. Returns the x where the caller's label starts.
-    //
-    // The label stays the CALLER'S, because that is the only part that differs:
-    // the General tab's two rows are one run of text and three (it colours the
-    // active profile's name apart from the words around it). The caller ends the
-    // row with nextLine().
-    float addRadioRow(bool selected, SettingsHud::ClickRegion::Type type,
-                      int clickChars, const char* tooltipId);
-
     // A muted caption INSIDE the open section card, under the control it explains
     // (the General tab's web-server hint). Same voice as addNote -- muted, 0.9x --
     // but it belongs to its section rather than ending it, so no card is closed.
@@ -165,24 +152,18 @@ struct SettingsLayoutContext {
     // the caller's, because that is the only thing that varies between them.
     void addTextRow(const char* text, unsigned long color);
 
-    // A PROGRESS BAR inside the current row, drawn as two solid quads (a faint
-    // track, a filled span of `fraction` of it) vertically centred on the row.
-    // Does NOT advance the cursor: the Achievements tab draws text on the same
-    // row (the unlock date, right-aligned), so the row is the caller's to end.
-    // `x`/`width` are in normalized units, like every other position here.
-    void addProgressBar(float x, float width, float fraction, unsigned long fillColor);
-    // A PROGRESS BAND behind a block of rows: the same two quads as the bar, but
-    // the given rect and translucent, so text drawn after it stays legible. The
+    // A PROGRESS BAND behind a block of rows: two quads (a faint track, a filled
+    // span of `fraction` of it), translucent so text drawn after it stays legible. The
     // Achievements tab's entry is one (two rows tall) and draws its title and
     // task over it; the entry is no hover region, so this is its only band.
     void addProgressBand(float x, float y, float width, float height, float fraction,
                          unsigned long fillColor);
-    // The two quads (track, then fill) both of the above are made of. A member,
+    // The two quads (track, then fill) the band is made of. A member,
     // not a file-local helper: the quad emit needs the panel's protected offset
     // and positioning, which this context reaches as SettingsHud's friend.
     void emitFillLevel(float x, float y, float width, float height, float fraction,
                        unsigned long trackColor, unsigned long fillColor);
-    // One flat rectangle in the given colour: the bar's quads, a tile behind an
+    // One flat rectangle in the given colour: the band's quads, a tile behind an
     // icon. Solid by definition (a fill level, a swatch), not a themed control.
     void addSolidQuad(float x, float y, float width, float height, unsigned long color);
 
@@ -195,6 +176,25 @@ struct SettingsLayoutContext {
     void addLabelValueRow(const char* label, unsigned long labelColor,
                           const char* value, unsigned long valueColor,
                           int valueColumn = -1);
+
+    // An INLINE "< value >" cell at x on the current row: the arrows in the accent
+    // colour with a click region each (downType / upType, aimed at `target`), the
+    // value padded to `valueChars` between them. A disabled cell draws the arrows
+    // and value muted, with no click regions (the addCycleControl look); `muted`
+    // also mutes an enabled value (an Off toggle). Does NOT
+    // advance the row -- table rows put several side by side. Returns the index of
+    // the first region pushed, so a data-driven caller can stamp both arrows.
+    size_t addInlineCycle(float x, const char* value, int valueChars,
+                          SettingsHud::ClickRegion::Type downType,
+                          SettingsHud::ClickRegion::Type upType,
+                          BaseHud* target, bool enabled, bool muted = false);
+
+    // A BRACKETED TEXT FIELD "[text]" at x on the current row, the brackets pinned
+    // to the monospace grid (fieldChars apart) so field columns stay aligned for any
+    // Normal font. The text is cut to the field. cursorColumn >= 0 draws a '_' under
+    // that column (a running text edit). No click region: the caller owns it.
+    void addBracketField(float x, int fieldChars, const char* text, unsigned long color,
+                         int cursorColumn = -1);
 
     // Background for a button drawn INSIDE a tab's content: takes the theme's button
     // slices when there are any, a solid quad otherwise, and fills its row. `color`
@@ -279,9 +279,10 @@ struct SettingsLayoutContext {
                              ButtonRole roleA, bool enabledA,
                              const char* labelB, SettingsHud::ClickRegion::Type typeB,
                              ButtonRole roleB, bool enabledB,
-                             int labelChars);
+                             int labelChars,
+                             const char* tooltipIdA = nullptr, const char* tooltipIdB = nullptr);
     // The [button] terms, resolved once at construction (planButtonTerms).
-    BaseHud::PlanButtonTerms bt{};
+    PlanButtonTerms bt{};
     // Close the final section's card; earlier ones close at the next header.
     void finishSections();
 
@@ -300,7 +301,6 @@ struct SettingsLayoutContext {
     void addCycleControl(
         const char* label,
         const char* value,
-        int valueWidth,
         SettingsHud::ClickRegion::Type downType,
         SettingsHud::ClickRegion::Type upType,
         BaseHud* targetHud,
@@ -320,7 +320,6 @@ struct SettingsLayoutContext {
     void addCycleControl(
         const char* label,
         const char* value,
-        int valueWidth,
         SettingsHud::ClickRegion::Type downType,
         SettingsHud::ClickRegion::Type upType,
         const SettingsHud::ClickRegion::TargetPointer& payload,
@@ -338,7 +337,6 @@ struct SettingsLayoutContext {
     void addCycleControl(
         const char* label,
         const char* value,
-        int valueWidth,
         const SettingsHud::CycleControl& control,
         BaseHud* targetHud,
         bool enabled = true,
@@ -358,13 +356,24 @@ struct SettingsLayoutContext {
     void addSteppedControl(
         const char* label,
         const char* value,
-        int valueWidth,
         const SettingsHud::SteppedControl& control,
         BaseHud* targetHud,
         bool enabled = true,
         bool isOff = false,
         const char* tooltipId = nullptr,
         bool tooltipOnArrows = true
+    );
+
+    // The freeze-duration row the Timing, Gap Bar, Lap Log and Pitboard tabs
+    // share: "Off" / "N s" on FreezeDuration's range and step, wrapping.
+    // allowOff=false is the Pitboard's At Splits hold, which starts at one step.
+    void addFreezeControl(
+        const char* label,
+        int* durationMs,
+        bool allowOff,
+        BaseHud* targetHud,
+        bool enabled,
+        const char* tooltipId
     );
 
     // Add a toggle control with < On/Off > pattern
@@ -402,49 +411,9 @@ struct SettingsLayoutContext {
     void addPackControl(BaseHud* hud);
 
     // Add standard HUD controls block (Visible, Title, Texture|Theme, Opacity, Scale)
-    // Returns the Y position where the section started (for right column alignment).
     // Whether the Title row appears comes from BaseHud::m_titleSupported, not from an
     // argument here -- a bool at the call site can disagree with the HUD it describes.
-    float addStandardHudControls(BaseHud* hud);
-
-    // Add a data toggle control in the right column (for bitfield toggles)
-    // labelWidth should accommodate the longest label in the group for alignment
-    void addDataToggle(
-        const char* label,
-        uint32_t* bitfield,
-        uint32_t flag,
-        bool isRequired,
-        BaseHud* targetHud,
-        float yPos,
-        int labelWidth = 12
-    );
-
-    // Add a group toggle control in the right column (toggles multiple bits)
-    void addGroupToggle(
-        const char* label,
-        uint32_t* bitfield,
-        uint32_t groupFlags,
-        bool isRequired,
-        BaseHud* targetHud,
-        float yPos,
-        int labelWidth = 12
-    );
-
-    // Add a cycle control in the right column (label + < value > on same row)
-    // Used for Rows, Show mode, etc. in the right column area
-    // Returns the Y position after this control
-    float addRightColumnCycleControl(
-        const char* label,
-        const char* value,
-        int valueWidth,
-        SettingsHud::ClickRegion::Type downType,
-        SettingsHud::ClickRegion::Type upType,
-        BaseHud* targetHud,
-        float yPos,
-        int labelWidth = 12,
-        bool enabled = true,
-        bool isOff = false
-    );
+    void addStandardHudControls(BaseHud* hud);
 
     // Advance cursor by one line
     void nextLine();
@@ -454,6 +423,18 @@ struct SettingsLayoutContext {
     // distance, one knob. Never before addSectionHeading(), which owns its own
     // gap (check_section_spacing.sh).
     void addSpacing();
+
+    // Width of a `< value >` row's VALUE field, in characters: whatever the row has
+    // left once the label column and the two arrow cells ("< " and " >") are paid,
+    // so the closing arrow lands on the row's right edge and every row's arrows sit
+    // in the same two columns. The usual label-left / control-right layout of
+    // settings menus; a fixed 10 stopped mid-row, cut longer values and left the
+    // rest of the row empty. In CHARACTERS from the layout's own content ask, not
+    // derived from a measured width, so it is the same on every theme and scale.
+    // Every row-sized control (addCycleControl, addSteppedControl, addToggleControl,
+    // the Stream Chat channel field) takes its width from here; table cells
+    // (addInlineCycle) keep their own.
+    int valueChars() const;
 
     // Helper to format and truncate values for cycle controls
     // If value exceeds maxWidth, truncates to maxWidth-1 chars + ellipsis
@@ -520,7 +501,7 @@ private:
 
 // Utility function for icon/shape display names
 // Gets the display name for an icon shape index (0 = Off, 1-N = icon names)
-std::string getShapeDisplayName(int shapeIndex, int maxWidth = 12);
+std::string getShapeDisplayName(int shapeIndex);
 
 // Note: Tab rendering functions are declared as static members of SettingsHud
 // to inherit the friend relationships with HUD classes. See settings_hud.h.

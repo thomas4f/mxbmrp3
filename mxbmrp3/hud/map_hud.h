@@ -6,6 +6,7 @@
 
 #include "base_hud.h"
 #include "marker_label.h"
+#include "rider_flag_icons.h"
 #include "../game/unified_types.h"
 #include <array>
 #include <vector>
@@ -559,15 +560,13 @@ private:
 
     // Cached icon sprite indices (avoid string-based map lookups per rider per frame)
     struct CachedIcons {
-        int circleExclamation = 0;
-        int flag = 0;
-        int flagCheckered = 0;
         int angleUp = 0;          // the off-view track pointer (renderOffTrackPointer)
         bool initialized = false;
 
         void ensureInitialized();
     };
     CachedIcons m_iconCache;
+    RiderFlagIcons m_flagIcons;  // wrong way, hazard, blue, finished
 };
 
 #if defined(MXBMRP3_TEST_BUILD)

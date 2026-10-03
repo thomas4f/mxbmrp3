@@ -4,6 +4,7 @@
 // ============================================================================
 
 #include "event_log_hud.h"
+#include "rider_flag_icons.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../core/plugin_utils.h"
@@ -187,22 +188,25 @@ int EventLogHud::getIconForEvent(EventLogType type) const {
 
 unsigned long EventLogHud::getIconColorForEvent(EventLogType type) const {
     using namespace PluginConstants;
+    // Flag icons keep their real-world colours (FlagColors, rider_flag_icons.h)
+    // whatever the palette. Everything else follows the palette slots.
     switch (type) {
-    case EventLogType::SessionStarted:    return getColor(ColorSlot::POSITIVE);
+    case EventLogType::SessionStarted:    return FlagColors::START;
+    case EventLogType::SessionStateChange:return ColorPalette::WHITE;
     case EventLogType::SessionPreStart:   return ColorPalette::BROWN;
-    case EventLogType::FastestLap:        return ColorPalette::PINK;
+    case EventLogType::FastestLap:        return getColor(ColorSlot::POSITIVE);
     case EventLogType::Penalty:
     case EventLogType::PenaltyChange:     return getColor(ColorSlot::NEGATIVE);
-    case EventLogType::FinalLap:          return ColorPalette::WHITE;
-    case EventLogType::RiderFinished:     return ColorPalette::WHITE;
+    case EventLogType::FinalLap:          return FlagColors::LAST_LAP;
+    case EventLogType::RiderFinished:     return FlagColors::CHECKERED;
     case EventLogType::LeaderChange:      return PodiumColors::GOLD;
-    case EventLogType::SessionComplete:   return ColorPalette::WHITE;
+    case EventLogType::SessionComplete:   return FlagColors::CHECKERED;
     case EventLogType::RiderRetired:
     case EventLogType::RiderDNS:          return getColor(ColorSlot::MUTED);
     case EventLogType::RiderDSQ:          return getColor(ColorSlot::NEGATIVE);
     case EventLogType::PitEntry:
-    case EventLogType::PitExit:           return ColorPalette::GRAY;
-    case EventLogType::Director:           return ColorPalette::GRAY;
+    case EventLogType::PitExit:           return getColor(ColorSlot::TERTIARY);
+    case EventLogType::Director:           return getColor(ColorSlot::TERTIARY);
     default:                              return getColor(ColorSlot::PRIMARY);
     }
 }
@@ -253,7 +257,7 @@ void EventLogHud::rebuildRenderData() {
     // Always size the background for m_maxDisplayEvents so the HUD shows its
     // full configured size even when empty or partially filled
     m_cachedNumDataRows = m_maxDisplayEvents;
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(bgWidthChars, dim.fontSize);
     want.sectionH = { m_maxDisplayEvents * dim.lineHeightNormal };
     want.captionW = planTitleWidth(dim, "Event Log", TitleTier::Large);
@@ -265,7 +269,7 @@ void EventLogHud::rebuildRenderData() {
 
     // Title — the plan's caption row, above currentY. addPlanTitle emits an
     // empty string when hidden, keeping string index 0 stable.
-    addPlanTitle(plan, "Event Log", this->getFont(FontCategory::TITLE),
+    addPlanTitle(plan, "Event Log",
                  getColor(ColorSlot::PRIMARY));
 
     // Layout: [icon] [timestamp] message — columns are optional
@@ -472,7 +476,7 @@ void EventLogHud::rebuildLayout() {
 
     float startX = START_X;
     float startY = START_Y;
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(getBackgroundWidthChars(), dim.fontSize);
     want.sectionH = { m_cachedNumDataRows * dim.lineHeightNormal };
     want.captionW = planTitleWidth(dim, "Event Log", TitleTier::Large);

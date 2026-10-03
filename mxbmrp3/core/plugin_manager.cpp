@@ -35,7 +35,11 @@
 #include "rumble_profile_manager.h"
 #include "xinput_reader.h"
 #include "stats_manager.h"
+#include "pb_trace_store.h"
+#include "atomic_file_writer.h"
 #include "update_checker.h"
+#include "twitch_chat_manager.h"
+#include "youtube_chat_manager.h"
 #include "update_downloader.h"
 #include "spotter_manager.h"
 #if GAME_HAS_DISCORD
@@ -115,7 +119,7 @@ PluginManager::~PluginManager() {
     //
     // Nothing else is needed here: every singleton owns its own teardown
     // backstop for this path (~HudManager shutdownInternal(allowSave=false),
-    // ~PluginThread / ~XInputReader spin-then-detach, ~HttpServer /
+    // ~PluginThread / ~XInputReader / the disk writer spin-then-detach, ~HttpServer /
     // ~DiscordManager / ~AnalyticsManager / ~UpdateChecker joining their own
     // threads, ~EventRecorder finalizing the tape; ~Logger flushes after all
     // of THOSE — Logger is constructed before every singleton except us, so
@@ -153,6 +157,11 @@ void PluginManager::initialize(const char* savePath) {
     // this guard is meant to prevent. Catch + uninstall + rethrow so init
     // is transactional w.r.t. the SEH filter.
     try {
+
+    // The disk writer: every persisted file, and the log, reach the disk on its
+    // thread from here on. First, so the saves the managers below make at launch
+    // are already off the game thread.
+    AtomicFileWriter::start();
 
     // Discover assets (syncs user overrides, then scans plugin data directory)
     // Must happen before HudManager::initialize() which sets up resources
@@ -212,9 +221,11 @@ void PluginManager::initialize(const char* savePath) {
         // INVARIANT: this list must cover every background thread spawned
         // during initialize() above. Currently HttpServer + DiscordManager
         // + AnalyticsManager (its beacon + custom-event-worker threads, both
-        // joined by AnalyticsManager::shutdown()).
+        // joined by AnalyticsManager::shutdown()) + the AtomicFileWriter
+        // disk writer.
         // UpdateChecker/UpdateDownloader/RecordsHud start their threads
-        // later via user action, so they're not relevant here. If you add
+        // later via user action, and the Twitch and YouTube chat workers on
+        // the first Draw that finds their chat enabled, so they're not relevant here. If you add
         // another initialize() call that spawns a thread, add its
         // shutdown() here.
         //
@@ -240,6 +251,8 @@ void PluginManager::initialize(const char* savePath) {
         // rich presence in Steam.
         try { SteamFriendsManager::getInstance().shutdown(); } catch (...) {}
 #endif
+        // Drains whatever the steps above queued, then joins.
+        try { AtomicFileWriter::stop(); } catch (...) {}
         try { CrashHandler::uninstall(); } catch (...) {}
         throw;
     }
@@ -278,6 +291,9 @@ void PluginManager::shutdown() {
 #endif
     UpdateChecker::getInstance().shutdown();
     UpdateDownloader::getInstance().shutdown();
+    // Cancel the in-flight request and join each stream chat worker.
+    TwitchChatManager::getInstance().shutdown();
+    YouTubeChatManager::getInstance().shutdown();
 
     // Join the spotter audio worker and stop any playing cue. Interrupts a
     // speech mid-sentence (~50ms), so this never waits out a phrase.
@@ -303,7 +319,7 @@ void PluginManager::shutdown() {
     // settings save inside HudManager::shutdown() observes too, but it runs
     // after this write and anything it noticed would wait for the next run.
     StatsManager::getInstance().exploration().observeSettings(HudManager::getInstance());
-    StatsManager::getInstance().save();
+    StatsManager::getInstance().save();   // the PB gap traces flush with the stats
 
     // Shutdown HUD manager (its own settings save on the way out is synchronous) — the
     // backstop that persists any deferred settings changes not yet flushed on leave-track.
@@ -314,6 +330,11 @@ void PluginManager::shutdown() {
 
     // Clear plugin data store
     PluginData::getInstance().clear();
+
+    // Every save above (rumble, stats, PB traces, settings) was handed to the disk
+    // writer; stop() writes what is still queued and joins its thread. After the
+    // last save, before the logger: from here on the log writes inline.
+    AtomicFileWriter::stop();
 
     // Restore the previous unhandled exception filter — if our DLL is
     // about to unload, leaving a dangling filter pointing into freed
@@ -344,6 +365,8 @@ int PluginManager::handleStartup(const char* savePath) {
 
     // Load unified stats from disk (includes PB, odometer, and track/bike stats)
     StatsManager::getInstance().load(m_savePath);
+    // The all-time PB gap traces live beside the stats file (core/pb_trace_store.h).
+    PbTraceStore::getInstance().load(m_savePath);
 
 #if GAME_HAS_ANALYTICS
     // Fire the anonymous usage beacon (background thread, fire-and-forget).

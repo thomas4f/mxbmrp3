@@ -27,7 +27,7 @@ inline void mxbBumpThemeGeneration() { ++mxbThemeGenerationRef(); }
 #include <cmath>
 #include <string>
 
-// Temperature unit options (used by SessionHud weather display)
+// Temperature unit options (SessionHud weather, TyreTempWidget values)
 enum class TemperatureUnit : uint8_t {
     CELSIUS = 0,
     FAHRENHEIT = 1
@@ -82,9 +82,16 @@ public:
     bool getAutoSave() const { return m_bAutoSave; }
     void setAutoSave(bool enabled) { m_bAutoSave = enabled; }
 
-    // Temperature unit setting (used by SessionHud weather display)
+    // Temperature unit setting (SessionHud weather, TyreTempWidget values)
     TemperatureUnit getTemperatureUnit() const { return m_temperatureUnit; }
     void setTemperatureUnit(TemperatureUnit unit) { m_temperatureUnit = unit; }
+    // A Celsius reading as the whole number to show in the selected unit, rounded.
+    // Game data is always Celsius; colour thresholds compare against the raw value.
+    int toDisplayTemperature(float celsius) const {
+        const float v = (m_temperatureUnit == TemperatureUnit::FAHRENHEIT)
+                            ? celsius * 1.8f + 32.0f : celsius;
+        return static_cast<int>(std::lround(v));
+    }
 
     // Hold-to-repeat max speed (ms between repeats at full acceleration)
     int getHoldRepeatFastMs() const { return m_holdRepeatFastMs; }

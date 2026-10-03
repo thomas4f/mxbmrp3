@@ -35,7 +35,6 @@ SessionHud::SessionHud()
 {
     m_cachedServerName[0] = '\0';
     // One-time setup
-    DEBUG_INFO("SessionHud created");
     setDraggable(true);
     // Body card: this HUD draws a content BLOCK under its title, which is what the
     // themed card frames. Opt-in; see BaseHud::m_bContentCard.
@@ -145,7 +144,7 @@ void SessionHud::rebuildLayout() {
     float startY = 0.0f;
 
     // Geometry from the same plan the full rebuild uses.
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::SESSION_WIDTH, dim.fontSize);
     want.sectionH = { calculateContentHeight(dim) };
     want.captionW = planTitleWidth(dim, "Session", TitleTier::Large);
@@ -264,7 +263,7 @@ void SessionHud::rebuildRenderData() {
     float startY = 0.0f;
 
     // BOX-MODEL: the plan owns the panel box; the rows are one section.
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::SESSION_WIDTH, dim.fontSize);
     want.sectionH = { calculateContentHeight(dim) };
     want.captionW = planTitleWidth(dim, "Session", TitleTier::Large);
@@ -329,7 +328,7 @@ void SessionHud::rebuildRenderData() {
     // string index 0 stable for the layout fast path below -- and, crucially, emits
     // the BODY CARD either way. Gating the call would make switching the title off
     // also silently remove the card.
-    addPlanTitle(plan, "Session", this->getFont(FontCategory::TITLE),
+    addPlanTitle(plan, "Session",
                  this->getColor(ColorSlot::PRIMARY));
 
     // Every quad pushed from here on is a row icon; the ones before it are the
@@ -361,11 +360,14 @@ void SessionHud::rebuildRenderData() {
     // it.
     if (m_enabledRows & ROW_TRACK) {
         addIconQuad(contentStartX, currentY, iconTrack);
-        const char* trackName = sessionData.trackName[0] != '\0' ? sessionData.trackName : Placeholders::GENERIC;
+        const bool hasTrack = sessionData.trackName[0] != '\0';
+        const char* trackName = hasTrack ? sessionData.trackName : Placeholders::GENERIC;
         // Shared ellipsis truncation (ellipsis folded into the budget).
         std::string trackFit = PluginUtils::fitText(trackName, MAX_DISPLAY_CHARS);
+        // Placeholder MUTED, as in every other panel.
         addString(trackFit.c_str(), contentStartX + textOffset, currentY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), textColor, dim.fontSize);
+            this->getFont(FontCategory::NORMAL),
+            hasTrack ? textColor : this->getColor(ColorSlot::MUTED), dim.fontSize);
         currentY += trackHeight;
     }
 
@@ -397,8 +399,11 @@ void SessionHud::rebuildRenderData() {
         else if (head[0] != '\0')          snprintf(combinedBuffer, sizeof(combinedBuffer), "%s", head);
         else                               snprintf(combinedBuffer, sizeof(combinedBuffer), "%s", sessionStateString);
 
+        // Placeholder MUTED when the line is nothing but the placeholder state.
+        const bool formatIsPlaceholder = (head[0] == '\0' && !stateString);
         addString(combinedBuffer, contentStartX + textOffset, currentY, Justify::LEFT,
-            this->getFont(FontCategory::NORMAL), textColor, dim.fontSize);
+            this->getFont(FontCategory::NORMAL),
+            formatIsPlaceholder ? this->getColor(ColorSlot::MUTED) : textColor, dim.fontSize);
         currentY += formatHeight;
     }
 
@@ -412,30 +417,21 @@ void SessionHud::rebuildRenderData() {
         // Format temperature based on unit setting
         // Note: -1.0f is the sentinel for "no data" in plugin_data.h
         char weatherBuffer[64];
-        bool useFahrenheit = (UiConfig::getInstance().getTemperatureUnit() == TemperatureUnit::FAHRENHEIT);
+        const UiConfig& ui = UiConfig::getInstance();
+        const char unitChar = (ui.getTemperatureUnit() == TemperatureUnit::FAHRENHEIT) ? 'F' : 'C';
         bool hasAirTemp = (sessionData.airTemperature != -1.0f);
         bool hasTrackTemp = (sessionData.trackTemperature != -1.0f);
 
+        // Shared conversion: rounded, in the selected unit.
         if (hasAirTemp && hasTrackTemp) {
             // Show both air and track temperature (GP Bikes, WRS, KRP)
-            if (useFahrenheit) {
-                int airF = static_cast<int>(sessionData.airTemperature * 1.8f + 32.0f);
-                int trackF = static_cast<int>(sessionData.trackTemperature * 1.8f + 32.0f);
-                snprintf(weatherBuffer, sizeof(weatherBuffer), "%s, %d / %d F", conditionsStr, airF, trackF);
-            } else {
-                int airC = static_cast<int>(sessionData.airTemperature);
-                int trackC = static_cast<int>(sessionData.trackTemperature);
-                snprintf(weatherBuffer, sizeof(weatherBuffer), "%s, %d / %d C", conditionsStr, airC, trackC);
-            }
+            snprintf(weatherBuffer, sizeof(weatherBuffer), "%s, %d / %d %c", conditionsStr,
+                     ui.toDisplayTemperature(sessionData.airTemperature),
+                     ui.toDisplayTemperature(sessionData.trackTemperature), unitChar);
         } else if (hasAirTemp) {
             // Only air temperature (MX Bikes)
-            if (useFahrenheit) {
-                int tempF = static_cast<int>(sessionData.airTemperature * 1.8f + 32.0f);
-                snprintf(weatherBuffer, sizeof(weatherBuffer), "%s, %d F", conditionsStr, tempF);
-            } else {
-                int tempC = static_cast<int>(sessionData.airTemperature);
-                snprintf(weatherBuffer, sizeof(weatherBuffer), "%s, %d C", conditionsStr, tempC);
-            }
+            snprintf(weatherBuffer, sizeof(weatherBuffer), "%s, %d %c", conditionsStr,
+                     ui.toDisplayTemperature(sessionData.airTemperature), unitChar);
         } else {
             // No temperature data, just show conditions
             snprintf(weatherBuffer, sizeof(weatherBuffer), "%s", conditionsStr);

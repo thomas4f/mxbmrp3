@@ -76,7 +76,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
 
     // Field widths (characters inside brackets)
     constexpr int kbFieldWidth = 16;   // Fits "Ctrl+Shift+F12"
-    constexpr int ctrlFieldWidth = 12; // Fits "Right Shoulder"
+    constexpr int ctrlFieldWidth = 12; // Fits "D-Pad Right", the longest button name
 
 
     // Store layout info for hover detection in update()
@@ -133,6 +133,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
             case HotkeyAction::SEGMENT_REMOVE:            return "hotkeys.segment_remove";
             case HotkeyAction::DIRECTOR_TOGGLE:           return "hotkeys.director_toggle";
             case HotkeyAction::DIRECTOR_LOCK:             return "hotkeys.director_lock";
+            case HotkeyAction::TOGGLE_STREAM_CHAT:        return "hotkeys.stream_chat";
             case HotkeyAction::TOGGLE_RUMBLE:      return "hotkeys.rumble";
             case HotkeyAction::TOGGLE_WIDGETS:     return "hotkeys.widgets";
             case HotkeyAction::TOGGLE_ALL_HUDS:    return "hotkeys.all_huds";
@@ -141,21 +142,11 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
         }
     };
 
-    // Draw a bracketed binding field with the brackets pinned to the monospace
-    // grid (a fixed columnX and close-bracket x), independent of the active font's
-    // glyph advance - so the keyboard/controller columns stay aligned regardless
-    // of the chosen Normal font. The binding text is truncated to the field width
-    // and drawn between the fixed brackets. The matching click region still spans
-    // the full field (unchanged at each call site below).
+    // A bracketed binding field (SettingsLayoutContext::addBracketField: brackets
+    // pinned to the monospace grid, text cut to the field). The matching click
+    // region spans the full field at each call site below.
     auto drawField = [&](float columnX, int fieldWidth, const char* text, unsigned long color) {
-        ctx.parent->addString("[", columnX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), color, ctx.fontSize);
-        char inner[48];
-        snprintf(inner, sizeof(inner), "%.*s", fieldWidth, text);  // truncate to fieldWidth chars
-        ctx.parent->addString(inner, columnX + charWidth, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), color, ctx.fontSize);
-        ctx.parent->addString("]", columnX + charWidth * (fieldWidth + 1), ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), color, ctx.fontSize);
+        ctx.addBracketField(columnX, fieldWidth, text, color);
     };
 
     // Helper to add a hotkey row
@@ -300,7 +291,8 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     // NOTE: Several actions have no row here to keep the tab within the panel;
     // they remain bindable by hand-editing the [Hotkeys] section of the INI
     // (rumble_key=, timing_key=, notices_key=, stats_key=, friends_key=,
-    // event_log_key=, fmx_key=, helmet_key=, performance_key=, session_key=, ...).
+    // event_log_key=, fmx_key=, helmet_key=, performance_key=, session_key=,
+    // stream_chat_key=, ...).
 
     // The HUD toggles used to open their own "HUDs" section here. Merged into this
     // one: the section above it held a single row (the menu toggle) plus a heading and

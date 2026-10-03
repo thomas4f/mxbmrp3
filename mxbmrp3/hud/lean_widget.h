@@ -103,4 +103,23 @@ private:
     // The fill colour for a reading at `ratio` of full scale (0..1, sign ignored):
     // the severity ramp, or the fixed colour when that is the mode.
     unsigned long fillColorFor(float ratio) const;
+
+    // ---- rebuildRenderData() sections and the layout they share ----
+    struct GaugeCtx {
+        const ScaledDimensions& dim;
+        float centerX;           // the card's centre
+        float contentStartX;     // the steer bar's left edge
+        float contentWidth;
+        float barWidthRef;       // one character: the arc's and steer bar's thickness
+        unsigned long textColor;
+        bool isCrashed;
+    };
+    void captureCrashImpact(float currentSteer, const BikeTelemetryData& bikeData);
+    void updateSteerMarkers(float currentSteer, bool isCrashed);
+    void updateLeanTracking(const BikeTelemetryData& bikeData, bool isCrashed);
+    void addLeanValueText(const BikeTelemetryData& bikeData, float x, float y, unsigned long color,
+                          const ScaledDimensions& dim);
+    void addLeanArc(const GaugeCtx& g, const BikeTelemetryData& bikeData, float currentY);
+    void addSteerBar(const GaugeCtx& g, const PluginData& pluginData, float currentSteer,
+                     bool hasSteerData, float currentY);
 };

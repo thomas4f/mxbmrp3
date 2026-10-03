@@ -179,9 +179,19 @@ void StatsManager::updateTelemetry(float speedMs, bool isCrashed, int currentGea
     if (isCrashed && !m_wasCrashed) {
         // The TALLY first, and OUTSIDE the `stats` guard below. That guard exists
         // because the per-track+bike record needs a track and a bike to be filed
-        // under; the tally needs neither -- it is a count of crashes, full stop --
-        // and a crash landing before setCurrentContext() has run would otherwise
-        // go uncounted on the one number a viewer is watching.
+        // under; the tally needs neither -- it is a count of crashes, full stop.
+        //
+        // THE GUARD IS LOAD-BEARING, not belt-and-braces. wipe() (Clear all stats,
+        // and prestige()) re-creates the active entry only `if (m_sessionActive)`,
+        // and recordSessionStart() does not create it at all -- it only flips that
+        // flag. So a wipe taken BETWEEN runs, with a track and bike still set,
+        // leaves the map empty; the next run finds no entry and `stats` is null for
+        // its whole length. Without the guard the first crash after that would
+        // dereference it.
+        //
+        // The two crash numbers also split for a second, deliberate reason:
+        // resetCrashTally() zeroes the tally alone, so from the first reset on it
+        // sits below the per-track sum for good.
         m_globalStats.crashTally++;
         m_dirty = true;
         if (stats) {

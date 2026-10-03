@@ -28,7 +28,6 @@
 // hangs, and run_tests.sh's per-test timeout kills it. That is the honest shape
 // for a liveness bug — the pass condition is "flush() returned at all".
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

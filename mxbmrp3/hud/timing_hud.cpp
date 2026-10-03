@@ -40,13 +40,9 @@ namespace {
 }
 
 TimingHud::TimingHud()
-    : m_displayDurationMs(DEFAULT_DURATION_MS)
+    : m_displayDurationMs(FreezeDuration::DEFAULT_MS)
     , m_showTime(true)
     , m_enabledComparisons(GAP_DEFAULT_ENABLED)
-    , m_cachedSplit1(-1)
-    , m_cachedSplit2(-1)
-    , m_cachedSplit3(-1)
-    , m_cachedLastCompletedLapNum(-1)
     , m_cachedDisplayRaceNum(-1)
     , m_cachedSessionGeneration(-1)
     , m_cachedPBScope(PBScope::CATEGORY)
@@ -55,7 +51,6 @@ TimingHud::TimingHud()
     , m_previousAllTimeSector1(-1)
     , m_previousAllTimeS1PlusS2(-1)
     , m_previousAllTimeS1PlusS2PlusS3(-1)
-    , m_isFrozen(false)
 {
     // TITLE RESTORED, TEMPORARILY. This panel was one of the three the caption was taken
     // from (see BaseHud::m_titleSupported for the twelve that keep it off). It is back so
@@ -63,7 +58,6 @@ TimingHud::TimingHud()
     // else about this HUD reverted with it: the panel, its body card, the coloured
     // block's outset and the stack spacing are all as the last few commits left them.
     // One-time setup
-    DEBUG_INFO("TimingHud created");
     setDraggable(true);
     // Body cards, one PER SECTION, because this panel is two things: the lap TIME,
     // and what that time is being COMPARED against. One card around both says they
@@ -129,22 +123,11 @@ void TimingHud::update() {
     if (currentDisplayRaceNum != m_cachedDisplayRaceNum) {
         DEBUG_INFO_F("TimingHud: Spectate target changed from %d to %d", m_cachedDisplayRaceNum, currentDisplayRaceNum);
 
-        // Full reset on spectate change
+        // Full reset on spectate change (the crossings adopt the new rider's
+        // current splits without triggering a display)
         resetLiveTimingState();
         m_cachedDisplayRaceNum = currentDisplayRaceNum;
         m_cachedPitState = -1;  // Reset pit state cache for new rider
-
-        // Update cached values with new rider's current data (without triggering display)
-        const CurrentLapData* currentLap = pluginData.getCurrentLapData();
-        const IdealLapData* idealLap = pluginData.getIdealLapData();
-        if (currentLap) {
-            m_cachedSplit1 = currentLap->split1;
-            m_cachedSplit2 = currentLap->split2;
-            m_cachedSplit3 = currentLap->split3;
-        }
-        if (idealLap) {
-            m_cachedLastCompletedLapNum = idealLap->lastCompletedLapNum;
-        }
 
         setDataDirty();
     }
@@ -159,24 +142,10 @@ void TimingHud::update() {
             // Just trigger a redraw - centralized timer handles anchor reset automatically
             setDataDirty();
         }
-        // A lap during which the rider was in the pits is not a genuine timed lap: the live
-        // timer is dropped on pit exit and re-anchored at the next S/F crossing (that S/F
-        // crossing is where this lap "completes"). Remember it so the pit out-lap's completion
-        // doesn't flash INVALID - there's no timing to invalidate. Cleared when the lap
-        // completes (processTimingUpdates) or on a session/spectate reset.
-        //
-        // Only latch while a timed lap is actually underway (the lap timer is anchored). At the
-        // START of a practice/qualify session the rider sits in the garage/pit (pit==1) BEFORE
-        // ever crossing S/F, so there is no lap to interrupt yet - the out-lap from the garage
-        // produces no lap-completion event, so nothing here would consume the flag, and it would
-        // wrongly carry the pre-lap garage sit into the FIRST genuine flying lap and suppress its
-        // freeze (the reported "first lap didn't freeze" bug). A real mid-lap pit keeps the
-        // anchor valid until pit EXIT, so it still latches here. (In spectate/replay the anchor
-        // is the only gate; on track isLapTimerValid also requires the sim to be running, which
-        // it is while riding through the pits.)
-        if (currentPitState == 1 && pluginData.isLapTimerValid()) {
-            m_lapInterruptedByPit = true;
-        }
+        // Whether the lap that ends at the next S/F went through the pits is
+        // PluginData's fact now (markLapViaPits), read off the LapLogEntry when the
+        // lap completes. The latch that lived here missed a pit taken from the
+        // menu: it keyed on the pit flag while the sim ran, and the sim stops first.
         m_cachedPitState = currentPitState;
     }
 
@@ -207,20 +176,12 @@ void TimingHud::update() {
         if (seg.completionCounter != m_segCachedCompletion) {
             m_segCachedCompletion = seg.completionCounter;
             if (m_displayDurationMs > 0 && seg.lastSeg >= 0) {
-                m_segFrozen = true;
-                m_segFrozenAt = std::chrono::steady_clock::now();
+                m_segHold.start();
             }
             setDataDirty();
         }
-        if (m_segFrozen) {
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - m_segFrozenAt).count();
-            if (elapsed >= m_displayDurationMs) {
-                m_segFrozen = false;
-                setDataDirty();
-            }
-        }
-        if (seg.segmentCount() < 1) m_segFrozen = false;  // no segments -> nothing to hold
+        if (m_segHold.expire(m_displayDurationMs)) setDataDirty();
+        if (seg.segmentCount() < 1) m_segHold.stop();  // no segments -> nothing to hold
     }
 
     // Handle dirty flags using base class helper
@@ -228,119 +189,27 @@ void TimingHud::update() {
 }
 
 void TimingHud::processTimingUpdates() {
-    const PluginData& pluginData = PluginData::getInstance();
-    const CurrentLapData* currentLap = pluginData.getCurrentLapData();
-    const IdealLapData* idealLapData = pluginData.getIdealLapData();
+    const SplitCrossingDetector::Result crossing = m_crossings.poll();
+    if (crossing.adopted) return;
 
-    // Check current lap splits (CurrentLapData tracks accumulated times for current lap)
-    if (currentLap) {
-        // Check split 1 (accumulated time to S1)
-        if (currentLap->split1 > 0 && currentLap->split1 != m_cachedSplit1) {
-            int splitTime = currentLap->split1;
-
-            // Update official data cache
-            m_officialData.time = splitTime;
-            m_officialData.splitIndex = 0;
-            m_officialData.lapNum = currentLap->lapNum;
-            m_officialData.isInvalid = false;
-
-            // Calculate gaps for all enabled types
-            calculateAllGaps(splitTime, 0, false);
-
-            // Freeze display (if freeze is enabled)
-            if (m_displayDurationMs > 0) {
-                m_isFrozen = true;
-                m_frozenAt = std::chrono::steady_clock::now();
-            }
-
-            m_cachedSplit1 = currentLap->split1;
-            DEBUG_INFO_F("TimingHud: Split 1 crossed, accumulated=%d ms, lap=%d", splitTime, currentLap->lapNum);
-            setDataDirty();
-        }
-        // Check split 2 (accumulated time to S2)
-        else if (currentLap->split2 > 0 && currentLap->split2 != m_cachedSplit2) {
-            int splitTime = currentLap->split2;
-
-            // Update official data cache
-            m_officialData.time = splitTime;
-            m_officialData.splitIndex = 1;
-            m_officialData.lapNum = currentLap->lapNum;
-            m_officialData.isInvalid = false;
-
-            // Calculate gaps for all enabled types
-            calculateAllGaps(splitTime, 1, false);
-
-            // Freeze display (if freeze is enabled)
-            if (m_displayDurationMs > 0) {
-                m_isFrozen = true;
-                m_frozenAt = std::chrono::steady_clock::now();
-            }
-
-            m_cachedSplit2 = currentLap->split2;
-            DEBUG_INFO_F("TimingHud: Split 2 crossed, accumulated=%d ms, lap=%d", splitTime, currentLap->lapNum);
-            setDataDirty();
-        }
-#if GAME_SECTOR_COUNT >= 4
-        // Check split 3 (accumulated time to S3) - 4-sector games only
-        else if (currentLap->split3 > 0 && currentLap->split3 != m_cachedSplit3) {
-            int splitTime = currentLap->split3;
-
-            // Update official data cache
-            m_officialData.time = splitTime;
-            m_officialData.splitIndex = 2;
-            m_officialData.lapNum = currentLap->lapNum;
-            m_officialData.isInvalid = false;
-
-            // Calculate gaps for all enabled types
-            calculateAllGaps(splitTime, 2, false);
-
-            // Freeze display (if freeze is enabled)
-            if (m_displayDurationMs > 0) {
-                m_isFrozen = true;
-                m_frozenAt = std::chrono::steady_clock::now();
-            }
-
-            m_cachedSplit3 = currentLap->split3;
-            DEBUG_INFO_F("TimingHud: Split 3 crossed, accumulated=%d ms, lap=%d", splitTime, currentLap->lapNum);
-            setDataDirty();
-        }
-#endif
-    }
-
-    // Check for lap completion (split 3/4 / finish line)
-    if (idealLapData && idealLapData->lastCompletedLapNum >= 0 &&
-        idealLapData->lastCompletedLapNum != m_cachedLastCompletedLapNum) {
-
-        int lapTime = idealLapData->lastLapTime;
-
-        // Check if this lap was valid by looking at the lap log
-        bool isValid = true;
-        int completedLapNum = idealLapData->lastCompletedLapNum;
-        const std::deque<LapLogEntry>* lapLog = pluginData.getLapLog();
-        if (lapLog && !lapLog->empty()) {
-            const LapLogEntry& mostRecentLap = (*lapLog)[0];
-            isValid = mostRecentLap.isValid;
-            if (mostRecentLap.lapNum >= 0) {
-                completedLapNum = mostRecentLap.lapNum;
-            }
-        }
-
-        // A lap that passed through the pits isn't a genuine timed lap: the live timer was
-        // reset on pit exit and re-anchors at this very S/F crossing. There's no timing to
-        // invalidate, so don't freeze on it or flash INVALID - just let the freshly started
-        // lap tick. (A lap invalidated by cuts, with the timer running throughout, still
-        // freezes and shows INVALID.) Consume the flag: the fresh lap starts clean.
-        bool pitLap = m_lapInterruptedByPit;
-        m_lapInterruptedByPit = false;
+    // The line first (split_crossing.h): it ends the lap.
+    if (crossing.line) {
+        // A pit lap is not a timed lap: the live timer was reset on pit exit and
+        // re-anchors at this very S/F crossing, so there is no timing to
+        // invalidate and INVALID must not flash; the freshly started lap just
+        // ticks. A lap invalidated by cuts, with the timer running throughout,
+        // still freezes and shows INVALID.
+        const bool pitLap = crossing.lapViaPits;
+        const int lapTime = crossing.lapTime;
 
         // Update official data cache
         m_officialData.time = lapTime;
         m_officialData.splitIndex = -1;  // Indicates lap complete
-        m_officialData.lapNum = completedLapNum;
-        m_officialData.isInvalid = !isValid && !pitLap;
+        m_officialData.lapNum = crossing.lapNum;
+        m_officialData.isInvalid = !crossing.lapValid && !pitLap;
 
         // Calculate gaps for all enabled types (only if valid lap)
-        if (isValid && lapTime > 0) {
+        if (crossing.lapValid && lapTime > 0) {
             calculateAllGaps(lapTime, -1, true);
         } else {
             // Invalid lap - clear all gaps
@@ -352,41 +221,46 @@ void TimingHud::processTimingUpdates() {
             m_officialData.gapToLastLap.reset();
         }
 
-        // Reset split caches for next lap
-        m_cachedSplit1 = -1;
-        m_cachedSplit2 = -1;
-        m_cachedSplit3 = -1;
-
         // Freeze display (if freeze is enabled). Skip the freeze entirely for a pit-interrupted
         // lap - there's nothing meaningful to hold, so the live timer keeps counting the new lap.
         if (m_displayDurationMs > 0 && !pitLap) {
-            m_isFrozen = true;
-            m_frozenAt = std::chrono::steady_clock::now();
+            m_hold.start();
         }
 
-        m_cachedLastCompletedLapNum = idealLapData->lastCompletedLapNum;
         DEBUG_INFO_F("TimingHud: Lap %d completed, time=%d ms, valid=%d, pitLap=%d",
-            completedLapNum, lapTime, isValid, pitLap ? 1 : 0);
+            crossing.lapNum, lapTime, crossing.lapValid ? 1 : 0, pitLap ? 1 : 0);
         setDataDirty();
 
         // Cache the updated all-time PB for next lap comparison
         // This captures the new PB (if set) after race_lap_handler has updated StatsManager
         cacheAllTimePB();
     }
+
+    // Official splits (accumulated time to S1, S2 and, in 4-sector games, S3)
+    if (crossing.splitIndex >= 0) {
+        const CurrentLapData* currentLap = PluginData::getInstance().getCurrentLapData();
+
+        // Update official data cache
+        m_officialData.time = crossing.splitTime;
+        m_officialData.splitIndex = crossing.splitIndex;
+        m_officialData.lapNum = currentLap ? currentLap->lapNum : -1;
+        m_officialData.isInvalid = false;
+
+        // Calculate gaps for all enabled types
+        calculateAllGaps(crossing.splitTime, crossing.splitIndex, false);
+
+        // Freeze display (if freeze is enabled)
+        if (m_displayDurationMs > 0) {
+            m_hold.start();
+        }
+
+        DEBUG_INFO_F("TimingHud: Split %d crossed, accumulated=%d ms", crossing.splitIndex + 1, crossing.splitTime);
+        setDataDirty();
+    }
 }
 
 void TimingHud::checkFreezeExpiration() {
-    if (!m_isFrozen) return;
-
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now - m_frozenAt
-    ).count();
-
-    if (elapsed >= m_displayDurationMs) {
-        m_isFrozen = false;
-        setDataDirty();
-    }
+    if (m_hold.expire(m_displayDurationMs)) setDataDirty();
 }
 
 bool TimingHud::segmentModeActive() const {
@@ -407,7 +281,7 @@ bool TimingHud::contentVisible() const {
         case ColumnMode::SPLITS:
             // In segment mode the panel shows continuously (like ALWAYS), not just on freeze.
             if (segmentModeActive()) return true;
-            return m_isFrozen;  // Only during the split/lap freeze
+            return m_hold.active();  // Only during the split/lap freeze
         case ColumnMode::ALWAYS:
             return true;
     }
@@ -417,7 +291,7 @@ bool TimingHud::contentVisible() const {
 bool TimingHud::showingInvalid() const {
     // In segment mode the official split/lap machinery is swapped out, so INVALID never shows.
     if (segmentModeActive()) return false;
-    return m_isFrozen && m_officialData.isInvalid;
+    return m_hold.active() && m_officialData.isInvalid;
 }
 
 bool TimingHud::needsFrequentUpdates() const {
@@ -429,7 +303,7 @@ bool TimingHud::needsFrequentUpdates() const {
     if (segmentModeActive() && data.getSegmentTimer().runningSeg >= 0) return true;
 
     // Need frequent updates when the ticking time is shown (ALWAYS mode), not frozen, timer valid.
-    if (m_isFrozen) return false;
+    if (m_hold.active()) return false;
     if (m_displayMode != ColumnMode::ALWAYS || !m_showTime) return false;
 
     if (!data.isLapTimerValid()) return false;
@@ -450,6 +324,128 @@ void TimingHud::rebuildRenderData() {
 
     const PluginData& pluginData = PluginData::getInstance();
 
+    // Segment mode: what the custom segment timer shows instead of the official
+    // split/lap (see resolveSegmentView).
+    SegmentView sv = resolveSegmentView(pluginData);
+
+    // Nothing to show right now (Off, or At-Splits between freezes) -> collapse to zero size.
+    //
+    // ...unless the Timing tab is open (isPreviewing). At-Splits shows the panel
+    // for a few seconds a lap, which is no time to drag it into place; the
+    // readouts below already draw their own placeholders when they have no value.
+    // OFF is excluded deliberately: that switch is the player saying they do not
+    // want this panel, and a preview would argue with it.
+    const bool preview = isPreviewing() && m_displayMode != ColumnMode::OFF;
+    if (!contentVisible() && !preview) {
+        setBounds(0.0f, 0.0f, 0.0f, 0.0f);
+        return;
+    }
+
+    // === TIME CONTENT === (and, in segment mode, the shown segment's time + delta)
+    TimeCell timeCell;
+    formatTimeCell(pluginData, sv, timeCell);
+
+    // === COMPARISON VALUE RESOLUTION (normal, non-segment rows) ===
+    const PluginData::SegmentTimerData& seg = pluginData.getSegmentTimer();
+    // The split boundary the rider is driving toward, so the passive reference tracks the sector.
+    int targetSplit = sv.active ? -1 : currentTargetSplit();
+    // Show the +/- delta while frozen on a split/lap; otherwise the progressive reference time.
+    // (An invalid lap clears the gaps, so those cells just fall back to their reference — the
+    // "INVALID" flag is shown once, in the time cell.)
+    bool showGapData = sv.active ? (sv.frozen && seg.cum.lastHasDelta) : m_hold.active();
+
+    // === BUILD THE ROW LIST (name + value) ===
+    Row rows[GAP_TYPE_COUNT + 1];   // +1 for the segment "Best" row
+    const int rowCount = buildComparisonRows(rows, sv, showGapData, targetSplit);
+
+    // Hoisted above the readout build, which sizes its two TEXT rows from the font
+    // metrics; the layout section below reuses this rather than reading twice.
+    auto dim = getScaledDimensions();
+
+    Readout readouts[READOUT_COUNT];
+    const int readoutCount = buildReadouts(readouts);
+
+    if (!m_showTime && rowCount == 0 && readoutCount == 0) {
+        setBounds(0.0f, 0.0f, 0.0f, 0.0f);
+        return;
+    }
+
+    // === LAYOUT: a centered vertical stack (big time on top, comparison rows below) ===
+    // BOX-MODEL: two sibling section cards — the big time in one, the
+    // comparison rows in the other. The seam between them is the sum of the
+    // facing [content] margins (the model's rule), so the overlap the old
+    // sectionGapY() reservation existed to prevent cannot arise, and the panel
+    // height is the engine's ceil rather than a hand-summed stack.
+    PanelWant want;
+    // Fixed width, matching the NoticesHud, so the centered top-stack panels
+    // line up: the stack's shared width rides as the panel MINIMUM.
+    wantCenterStackWidth(want, dim);   // the stack minimum owns the width
+    if (m_showTime) want.sectionH.push_back(bigValueRowHeight(dim));
+    if (rowCount > 0) want.sectionH.push_back(rowCount * dim.lineHeightNormal);
+    if (readoutCount > 0) want.sectionH.push_back(readoutCount * dim.lineHeightNormal);
+    want.captionW = planTitleWidth(dim, "Timing", TitleTier::Large);
+    want.tier = TitleTier::Large;
+    PanelPlan& p = planPanel(dim, want);
+
+    const float backgroundWidth = p.width();
+    const float backgroundHeight = p.height();
+    // CENTRE-ANCHORED, like the rest of the centre stack: offsetX is the CENTRE
+    // (a stored delta from it until the settings v7 migration). Half this panel's
+    // own width to the left of that, so it stays centred as the width changes and
+    // keeps sharing edges with the equally wide NoticesHud above it.
+    const float bgLeftX = centerAnchoredPanelLeft(backgroundWidth);
+
+    addPlanBackground(p, bgLeftX, START_Y);
+    addPlanTitle(p, "Timing",
+                 this->getColor(ColorSlot::PRIMARY));
+
+    // Text columns: the rows' own content box, both edges read from the plan. The
+    // right one used to be the LEFT inset mirrored, on the reasoning quoted here that
+    // "the box is symmetric unless a theme sets per-side terms" -- which is true, and
+    // is exactly the case it got wrong: a theme CAN set them, and one that did pulled
+    // every right-aligned value a whole left border inward.
+    const float leftTextX = p.contentX();
+    const float rightTextX = p.contentRight();
+    // Centred text anchors at the CARD's centre (PanelPlan::sectionBoxCenterX),
+    // the horizontal half of the sectionBox centring the big time gets below.
+    const float centerX = p.sectionBoxCenterX();
+
+    size_t section = 0;
+    if (m_showTime) {
+        addTimeSection(p, section, timeCell, centerX, dim);
+        section++;
+    }
+
+    if (rowCount > 0) {
+        addComparisonRows(rows, rowCount, p.contentY(section), leftTextX, rightTextX, dim);
+        section++;
+    }
+
+
+    // Same label-left / value-right shape as the comparison rows above, in the
+    // neutral colour: these are readings, not deltas, so there is nothing for the
+    // faster/slower colouring to say about them.
+    if (readoutCount > 0) {
+        addReadoutRows(readouts, readoutCount, p.contentY(section), leftTextX, rightTextX, dim);
+    }
+
+
+    // What the box plan actually spent, for timing_reference_test. The panel is
+    // on the box model, so its chrome is boxPanelPadding — NOT the legacy
+    // ScaledDimensions::paddingV, which still reports panelPaddingYCells for
+    // the panels that have not moved. Reporting the plan's own numbers is what
+    // keeps that test an assertion about this panel rather than about which
+    // padding vocabulary it happens to be written in.
+    // MINUS the ceil slack, which the last section absorbs: that remainder is the
+    // panel rounding itself to a whole cell, not a cost the rows asked for, and
+    // leaving it in makes "what does a row cost" unanswerable.
+    m_fTestContentTop = p.Y(p.g.sections.front().top) - START_Y;
+    m_fTestContentBot = p.Y(p.g.sections.back().bot - p.g.slackY) - START_Y;
+
+    setBounds(bgLeftX, START_Y, bgLeftX + backgroundWidth, START_Y + backgroundHeight);
+}
+
+TimingHud::SegmentView TimingHud::resolveSegmentView(const PluginData& pluginData) const {
     // Segment mode: when at least one segment is armed (two boundary points), this
     // timing line shows the custom segment timer instead of the official split/lap.
     // Like the official timer it AGGREGATES: the shown time is the running total
@@ -468,7 +464,7 @@ void TimingHud::rebuildRenderData() {
     int segShownIndex = -1;
     bool segShowFrozen = false;
     if (segmentMode) {
-        if (m_segFrozen && seg.lastSeg >= 0 && seg.lastSeg < seg.segmentCount()) {
+        if (m_segHold.active() && seg.lastSeg >= 0 && seg.lastSeg < seg.segmentCount()) {
             segShownIndex = seg.lastSeg;
             segShowFrozen = true;
         } else if (seg.runningSeg >= 0 && seg.runningSeg < seg.segmentCount()) {
@@ -505,23 +501,26 @@ void TimingHud::rebuildRenderData() {
         // PB on the out-lap. -1 (→ "-") until every segment has a best this session.
         segRefBestMs = cumBestMsThrough(seg.segmentCount() - 1);
     }
-    GapData segGap;  // cumulative delta-to-best, used only in segment mode
 
-    // Nothing to show right now (Off, or At-Splits between freezes) -> collapse to zero size.
-    //
-    // ...unless the Timing tab is open (isPreviewing). At-Splits shows the panel
-    // for a few seconds a lap, which is no time to drag it into place; the
-    // readouts below already draw their own placeholders when they have no value.
-    // OFF is excluded deliberately: that switch is the player saying they do not
-    // want this panel, and a preview would argue with it.
-    const bool preview = isPreviewing() && m_displayMode != ColumnMode::OFF;
-    if (!contentVisible() && !preview) {
-        setBounds(0.0f, 0.0f, 0.0f, 0.0f);
-        return;
-    }
+    SegmentView sv;
+    sv.active = segmentMode;
+    sv.frozen = segShowFrozen;
+    sv.refBestMs = segRefBestMs;
+    return sv;
+}
+
+// The big time cell. Stages segment mode's delta-to-best into sv.gap.
+void TimingHud::formatTimeCell(const PluginData& pluginData, SegmentView& sv, TimeCell& cell) const {
+    const PluginData::SegmentTimerData& seg = pluginData.getSegmentTimer();
+    const bool segmentMode = sv.active;
+    const bool segShowFrozen = sv.frozen;
+    GapData& segGap = sv.gap;
+    char (&timeBuffer)[32] = cell.text;
+    bool& timePlaceholder = cell.placeholder;
+    bool& timeInvalid = cell.invalid;
 
     // Rider finished -> hold the total race time (regular timing only; the segment timer
-    // keeps running through the finish, see above).
+    // keeps running through the finish, see resolveSegmentView).
     bool riderFinished = pluginData.isDisplayRiderFinished();
     int riderFinishTime = -1;
     if (riderFinished) {
@@ -532,16 +531,14 @@ void TimingHud::rebuildRenderData() {
     // === TIME CONTENT ===
     // Invalid lap -> "INVALID" in the time cell (comparisons just fall back to their reference).
     // Otherwise: frozen official split/lap time -> finish time -> live elapsed time -> placeholder.
-    char timeBuffer[32];
-    bool timePlaceholder = false;
-    bool timeInvalid = showingInvalid();  // (segmentMode already excluded inside)
+    timeInvalid = showingInvalid();  // (segmentMode already excluded inside)
     if (timeInvalid) {
-        strcpy_s(timeBuffer, sizeof(timeBuffer), "INVALID");
-    } else if (m_isFrozen) {
+        strcpy_s(timeBuffer, sizeof(timeBuffer), Placeholders::INVALID_LAP);
+    } else if (m_hold.active()) {
         if (m_officialData.time > 0) {
             PluginUtils::formatLapTime(m_officialData.time, timeBuffer, sizeof(timeBuffer));
         } else {
-            strcpy_s(timeBuffer, sizeof(timeBuffer), Placeholders::LAP_TIME);
+            strcpy_s(timeBuffer, sizeof(timeBuffer), Placeholders::GENERIC);
             timePlaceholder = true;
         }
     } else if (riderFinished && riderFinishTime > 0) {
@@ -551,7 +548,7 @@ void TimingHud::rebuildRenderData() {
         if (elapsed >= 0) {
             PluginUtils::formatLapTime(elapsed, timeBuffer, sizeof(timeBuffer));
         } else {
-            strcpy_s(timeBuffer, sizeof(timeBuffer), Placeholders::LAP_TIME);
+            strcpy_s(timeBuffer, sizeof(timeBuffer), Placeholders::GENERIC);
             timePlaceholder = true;
         }
     }
@@ -587,13 +584,20 @@ void TimingHud::rebuildRenderData() {
             timePlaceholder = false;
             segGap.reset();
         } else {
-            strcpy_s(timeBuffer, sizeof(timeBuffer), Placeholders::LAP_TIME);
+            strcpy_s(timeBuffer, sizeof(timeBuffer), Placeholders::GENERIC);
             timePlaceholder = true;
             segGap.reset();
         }
     }
+}
 
-    // === COMPARISON VALUE RESOLUTION (normal, non-segment rows) ===
+// The comparison rows (name + value): one "Best" row in segment mode, else one per
+// enabled comparison. Returns the row count.
+int TimingHud::buildComparisonRows(Row* rows, const SegmentView& sv, bool showGapData, int targetSplit) const {
+    const bool segmentMode = sv.active;
+    const int segRefBestMs = sv.refBestMs;
+    const GapData& segGap = sv.gap;
+
     auto getGapDataForType = [&](GapTypeFlags type) -> const GapData* {
         switch (type) {
             case GAP_TO_PB: return &m_officialData.gapToPB;
@@ -607,28 +611,13 @@ void TimingHud::rebuildRenderData() {
             default: return nullptr;
         }
     };
-    // The split boundary the rider is driving toward, so the passive reference tracks the sector.
-    int targetSplit = segmentMode ? -1 : currentTargetSplit();
-    // Show the +/- delta while frozen on a split/lap; otherwise the progressive reference time.
-    // (An invalid lap clears the gaps, so those cells just fall back to their reference — the
-    // "INVALID" flag is shown once, in the time cell.)
-    bool showGapData = segmentMode ? (segShowFrozen && seg.cum.lastHasDelta) : m_isFrozen;
-
-    // One rendered comparison value: the +/- delta (active), the target time (passive), or a
-    // "-"/"N/A" placeholder. isFaster/isSlower drive the semantic text colour.
-    struct RowValue {
-        char value[16] = "";
-        bool isFaster = false;
-        bool isSlower = false;
-        bool isReference = false;   // a target time (neutral) vs a delta (green/red) / placeholder (muted)
-    };
     auto buildComparison = [&](GapTypeFlags type) -> RowValue {
         RowValue out;
         const GapData* gapData = getGapDataForType(type);
         if (showGapData && gapData && gapData->hasGap) {
             PluginUtils::formatTimeDiff(out.value, sizeof(out.value), gapData->gap);
-            out.isFaster = gapData->isFaster;
-            out.isSlower = gapData->isSlower;
+            out.delta = gapData->gap;
+            out.isDelta = true;
         } else {
             int refTime = cumulativeReferenceMs(type, targetSplit);
             if (refTime > 0) {
@@ -646,24 +635,15 @@ void TimingHud::rebuildRenderData() {
         }
         return out;
     };
-    auto valueColor = [&](const RowValue& g) -> unsigned long {
-        if (g.isFaster) return this->getColor(ColorSlot::POSITIVE);
-        if (g.isSlower) return this->getColor(ColorSlot::NEGATIVE);
-        if (g.isReference) return this->getColor(ColorSlot::SECONDARY);
-        return this->getColor(ColorSlot::MUTED);
-    };
 
-    // === BUILD THE ROW LIST (name + value) ===
-    struct Row { const char* name; RowValue val; };
-    Row rows[GAP_TYPE_COUNT + 1];   // +1 for the segment "Best" row
     int rowCount = 0;
     if (segmentMode) {
         // A custom segment has only its own session best, shown as a single "Best" row.
         RowValue segRow;
         if (showGapData && segGap.hasGap) {
             PluginUtils::formatTimeDiff(segRow.value, sizeof(segRow.value), segGap.gap);
-            segRow.isFaster = segGap.isFaster;
-            segRow.isSlower = segGap.isSlower;
+            segRow.delta = segGap.gap;
+            segRow.isDelta = true;
         } else if (segRefBestMs > 0) {
             PluginUtils::formatLapTime(segRefBestMs, segRow.value, sizeof(segRow.value));
             segRow.isReference = true;
@@ -678,27 +658,17 @@ void TimingHud::rebuildRenderData() {
             rows[rowCount++] = { GAP_TYPE_INFO[i].name, buildComparison(flag) };
         }
     }
+    return rowCount;
+}
 
-    // Hoisted above the readout build, which sizes its two TEXT rows from the font
-    // metrics; the layout section below reuses this rather than reading twice.
-    auto dim = getScaledDimensions();
-
-    // === BUILD THE READOUT ROWS (the second, non-comparison section) ===
+// The readout rows (the second, non-comparison section). Returns the row count.
+int TimingHud::buildReadouts(Readout* readouts) const {
     //
     // Every value here is READ from the source that already owns it, never
     // re-derived: the session clock through formatSessionClock (the one source
     // in-game and the web overlay share, overtime labels and all), the fuel
     // estimate through FuelWidget, which accumulates the per-lap history the
     // estimate needs. A second accumulation would be a second answer.
-    // 24, not the 16 a lap time needs: the session format is the long one here
-    // ("20 min + 2 laps"), and a value that silently truncates is worse than a
-    // row that costs eight bytes more on the stack.
-    // 48, not 24: a server or track name is free text, and a buffer shorter than the
-    // panel is a SECOND, invisible truncation -- it silently cut the value before the
-    // row's own budget could, which is what made an earlier test look like it passed.
-    // The row's width is the only thing that should decide what fits.
-    struct Readout { const char* name; char value[48]; };
-    Readout readouts[READOUT_COUNT];
     int readoutCount = 0;
     if (m_enabledReadouts != READOUT_NONE) {
         const PluginData& pd = PluginData::getInstance();
@@ -719,7 +689,11 @@ void TimingHud::rebuildRenderData() {
         const StandingsData* mine = pd.getStanding(me);
         const int lap = mine ? mine->numLaps + 1 : 0;   // numLaps counts COMPLETED laps
         if (lap <= 0)                 add(READOUT_LAP, "%s", Placeholders::GENERIC);
-        else if (sd.sessionNumLaps > 0) add(READOUT_LAP, "%d/%d", lap, sd.sessionNumLaps);
+        // A total only for a pure lap race, the rule LapWidget and Standings use: in
+        // a time+laps race sessionNumLaps is the overtime laps, so "5/2" would read
+        // as lap five of two.
+        else if (sd.sessionNumLaps > 0 && sd.sessionLength <= 0)
+                                        add(READOUT_LAP, "%d/%d", lap, sd.sessionNumLaps);
         else                            add(READOUT_LAP, "%d", lap);
 
         if (m_enabledReadouts & READOUT_TIME) {
@@ -732,7 +706,7 @@ void TimingHud::rebuildRenderData() {
         if (m_enabledReadouts & READOUT_SESSION) {
             Readout& r = readouts[readoutCount++];
             r.name = READOUT_INFO[readoutIndexOf(READOUT_SESSION)].name;
-            // The same helper SessionHud prints, so "20 min + 2 laps" reads
+            // The same helper SessionHud prints, so "10:00 + 2L" reads
             // identically in both places and a format change lands in one.
             PluginUtils::formatSessionFormat(sd.sessionLength, sd.sessionNumLaps,
                                              r.value, sizeof(r.value));
@@ -750,7 +724,7 @@ void TimingHud::rebuildRenderData() {
             // THE UNIT IS IN THE VALUE, not the label. A bare "3.2" beside "Fuel"
             // reads as litres as easily as laps, and the label column is the one
             // that cannot grow -- it is sized by "Last Lap" above. The value column
-            // already carries "20 min + 2 laps", so "3.2 laps" costs nothing.
+            // already carries "10:00 + 2L", so "3.2 laps" costs nothing.
             if (laps >= 0.0f) snprintf(r.value, sizeof(r.value), "%.1f laps", laps);
             else strcpy_s(r.value, sizeof(r.value), Placeholders::GENERIC);
         }
@@ -763,6 +737,7 @@ void TimingHud::rebuildRenderData() {
             if (!(m_enabledReadouts & flag)) return;
             Readout& r = readouts[readoutCount++];
             r.name = READOUT_INFO[readoutIndexOf(flag)].name;
+            r.isText = true;
             const char* src = (text && text[0] != '\0') ? text : Placeholders::GENERIC;
             // Stored WHOLE. What fits is a property of the drawn row -- its label, the
             // fonts, the panel's content width -- and none of that is known until the
@@ -774,152 +749,97 @@ void TimingHud::rebuildRenderData() {
                                          static_cast<int>(pd.getRaceEntries().size())));
         addText(READOUT_TRACK, sd.trackName);
     }
+    return readoutCount;
+}
 
-    if (!m_showTime && rowCount == 0 && readoutCount == 0) {
-        setBounds(0.0f, 0.0f, 0.0f, 0.0f);
-        return;
+void TimingHud::addTimeSection(const PanelPlan& p, size_t section, const TimeCell& cell, float centerX,
+                               const ScaledDimensions& dim) {
+    const bool timeInvalid = cell.invalid;
+    const bool timePlaceholder = cell.placeholder;
+    const char* timeBuffer = cell.text;
+    unsigned long timeColor = timeInvalid   ? this->getColor(ColorSlot::NEGATIVE)
+                            : timePlaceholder ? this->getColor(ColorSlot::MUTED)
+                                              : this->getColor(ColorSlot::PRIMARY);
+    // INK-centred in the section's box. Card or not, sections[].top/bot is
+    // the drawn extent — cardless it degenerates to the content rows, and
+    // the last section carries the panel's ceil remainder either way, so
+    // centring here keeps the digits centred in what the player sees.
+    // The section's DRAWN box, via the shared accessor -- this HUD spelled it by
+    // hand and was the only panel getting it right; see PanelPlan::sectionBoxY.
+    float timeY = inkCenteredY(p.sectionBoxY(section), p.sectionBoxH(section),
+                               dim.fontSizeLarge);
+    // INVALID is a word, so it takes the text font, not Digits.
+    addString(timeBuffer, centerX, timeY, Justify::CENTER,
+        this->getFont(timeInvalid ? FontCategory::NORMAL : FontCategory::DIGITS), timeColor, dim.fontSizeLarge);
+}
+
+void TimingHud::addComparisonRows(const Row* rows, int rowCount, float y, float leftTextX, float rightTextX,
+                                  const ScaledDimensions& dim) {
+    auto valueColor = [&](const RowValue& g) -> unsigned long {
+        if (g.isDelta) return this->deltaColor(g.delta);
+        if (g.isReference) return this->getColor(ColorSlot::SECONDARY);
+        return this->getColor(ColorSlot::MUTED);
+    };
+    for (int i = 0; i < rowCount; i++) {
+        const Row& r = rows[i];
+        addLabel(r.name, leftTextX, y, Justify::LEFT, this->getColor(ColorSlot::TERTIARY), dim);
+        addString(r.val.value, rightTextX, y, Justify::RIGHT,
+            this->getFont(FontCategory::DIGITS), valueColor(r.val), dim.fontSize);
+        y += dim.lineHeightNormal;
     }
+}
 
-    // === LAYOUT: a centered vertical stack (big time on top, comparison rows below) ===
-    // BOX-MODEL: two sibling section cards — the big time in one, the
-    // comparison rows in the other. The seam between them is the sum of the
-    // facing [content] margins (the model's rule), so the overlap the old
-    // sectionGapY() reservation existed to prevent cannot arise, and the panel
-    // height is the engine's ceil rather than a hand-summed stack.
-    BaseHud::PanelWant want;
-    // Fixed width, matching the NoticesHud, so the centered top-stack panels
-    // line up: the stack's shared width rides as the panel MINIMUM.
-    wantCenterStackWidth(want, dim);   // the stack minimum owns the width
-    if (m_showTime) want.sectionH.push_back(bigValueRowHeight(dim));
-    if (rowCount > 0) want.sectionH.push_back(rowCount * dim.lineHeightNormal);
-    if (readoutCount > 0) want.sectionH.push_back(readoutCount * dim.lineHeightNormal);
-    want.captionW = planTitleWidth(dim, "Timing", TitleTier::Large);
-    want.tier = TitleTier::Large;
-    PanelPlan& p = planPanel(dim, want);
+void TimingHud::addReadoutRows(Readout* readouts, int readoutCount, float y, float leftTextX, float rightTextX,
+                               const ScaledDimensions& dim) {
+    // WHAT ACTUALLY FITS, measured against the row rather than assumed.
+    //
+    // The value is right-justified at contentRight() and the label left-justified
+    // at contentX(), so a value may use the row MINUS its own label and a space.
+    // Per row, because the label is what it competes with: "Position" costs the
+    // Position row two characters and costs Server nothing.
+    //
+    // THE FIRST VERSION OF THIS GOT IT BADLY WRONG, and the arithmetic is worth
+    // stating so it is not repeated. It derived the budget from
+    // CENTER_STACK_WIDTH_CHARS, treating that 14 as normal-size characters -- but
+    // CenterStack::boxWidth measures those 14 at fontSizeLARGE, the size the big
+    // time above is drawn in. The panel is therefore half again wider in
+    // normal-size characters than the constant suggests, and the budget came out
+    // at 8 when the row had room for far more. Reported from a screenshot with
+    // "Demo Ser" cut short beside an obviously empty column.
+    const float rowW      = rightTextX - leftTextX;
+    const float valueChar = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
 
-    const float backgroundWidth = p.width();
-    const float backgroundHeight = p.height();
-    // CENTRE-ANCHORED, like the rest of the centre stack: offsetX is the CENTRE
-    // (a stored delta from it until the settings v7 migration). Half this panel's
-    // own width to the left of that, so it stays centred as the width changes and
-    // keeps sharing edges with the equally wide NoticesHud above it.
-    const float bgLeftX = centerAnchoredPanelLeft(backgroundWidth);
-
-    addPlanBackground(p, bgLeftX, START_Y);
-    addPlanTitle(p, "Timing", this->getFont(FontCategory::TITLE),
-                 this->getColor(ColorSlot::PRIMARY));
-
-    // Text columns: the rows' own content box, both edges read from the plan. The
-    // right one used to be the LEFT inset mirrored, on the reasoning quoted here that
-    // "the box is symmetric unless a theme sets per-side terms" -- which is true, and
-    // is exactly the case it got wrong: a theme CAN set them, and one that did pulled
-    // every right-aligned value a whole left border inward.
-    const float leftTextX = p.contentX();
-    const float rightTextX = p.contentRight();
-    // Centred text anchors at the CARD's centre (PanelPlan::sectionBoxCenterX),
-    // the horizontal half of the sectionBox centring the big time gets below.
-    const float centerX = p.sectionBoxCenterX();
-
-    size_t section = 0;
-    if (m_showTime) {
-        unsigned long timeColor = timeInvalid   ? this->getColor(ColorSlot::NEGATIVE)
-                                : timePlaceholder ? this->getColor(ColorSlot::MUTED)
-                                                  : this->getColor(ColorSlot::PRIMARY);
-        // INK-centred in the section's box. Card or not, sections[].top/bot is
-        // the drawn extent — cardless it degenerates to the content rows, and
-        // the last section carries the panel's ceil remainder either way, so
-        // centring here keeps the digits centred in what the player sees.
-        // The section's DRAWN box, via the shared accessor -- this HUD spelled it by
-        // hand and was the only panel getting it right; see PanelPlan::sectionBoxY.
-        float timeY = inkCenteredY(p.sectionBoxY(section), p.sectionBoxH(section),
-                                   dim.fontSizeLarge);
-        addString(timeBuffer, centerX, timeY, Justify::CENTER,
-            this->getFont(FontCategory::DIGITS), timeColor, dim.fontSizeLarge);
-        section++;
+    // ONE budget for the section, sized by the LONGEST label in it rather than
+    // per row. Per-row was the first attempt and it is worse in two ways: the
+    // column appears to change width from row to row for no reason a reader can
+    // see, and it gives a test no single number to assert against. The cost is a
+    // character or two on the short-labelled rows, and only Server and Track are
+    // ever long enough to notice.
+    float widestLabel = 0.0f;
+    for (int i = 0; i < readoutCount; i++) {
+        widestLabel = (std::max)(widestLabel, PluginUtils::calculateMonospaceTextWidth(
+            static_cast<int>(std::strlen(readouts[i].name)), dim.fontSizeSmall));
     }
+    // One value-character of air between the columns, so a full-width value
+    // cannot touch its label.
+    m_lastReadoutBudget = (std::max)(1, static_cast<int>(
+        (rowW - widestLabel - valueChar) / valueChar));
 
-    if (rowCount > 0) {
-        float y = p.contentY(section);
-        for (int i = 0; i < rowCount; i++) {
-            const Row& r = rows[i];
-            addLabel(r.name, leftTextX, y, Justify::LEFT,
-                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim);
-            addString(r.val.value, rightTextX, y, Justify::RIGHT,
-                this->getFont(FontCategory::DIGITS), valueColor(r.val), dim.fontSize);
-            y += dim.lineHeightNormal;
-        }
-        section++;
-    }
+    for (int i = 0; i < readoutCount; i++) {
+        addLabel(readouts[i].name, leftTextX, y, Justify::LEFT, this->getColor(ColorSlot::TERTIARY), dim);
 
-    // Same label-left / value-right shape as the comparison rows above, in the
-    // neutral colour: these are readings, not deltas, so there is nothing for the
-    // faster/slower colouring to say about them.
-    if (readoutCount > 0) {
-        float y = p.contentY(section);
-        // WHAT ACTUALLY FITS, measured against the row rather than assumed.
-        //
-        // The value is right-justified at contentRight() and the label left-justified
-        // at contentX(), so a value may use the row MINUS its own label and a space.
-        // Per row, because the label is what it competes with: "Position" costs the
-        // Position row two characters and costs Server nothing.
-        //
-        // THE FIRST VERSION OF THIS GOT IT BADLY WRONG, and the arithmetic is worth
-        // stating so it is not repeated. It derived the budget from
-        // CENTER_STACK_WIDTH_CHARS, treating that 14 as normal-size characters -- but
-        // CenterStack::boxWidth measures those 14 at fontSizeLARGE, the size the big
-        // time above is drawn in. The panel is therefore half again wider in
-        // normal-size characters than the constant suggests, and the budget came out
-        // at 8 when the row had room for far more. Reported from a screenshot with
-        // "Demo Ser" cut short beside an obviously empty column.
-        const float rowW      = rightTextX - leftTextX;
-        const float valueChar = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
-
-        // ONE budget for the section, sized by the LONGEST label in it rather than
-        // per row. Per-row was the first attempt and it is worse in two ways: the
-        // column appears to change width from row to row for no reason a reader can
-        // see, and it gives a test no single number to assert against. The cost is a
-        // character or two on the short-labelled rows, and only Server and Track are
-        // ever long enough to notice.
-        float widestLabel = 0.0f;
-        for (int i = 0; i < readoutCount; i++) {
-            widestLabel = (std::max)(widestLabel, PluginUtils::calculateMonospaceTextWidth(
-                static_cast<int>(std::strlen(readouts[i].name)), dim.fontSizeSmall));
-        }
-        // One value-character of air between the columns, so a full-width value
-        // cannot touch its label.
-        m_lastReadoutBudget = (std::max)(1, static_cast<int>(
-            (rowW - widestLabel - valueChar) / valueChar));
-
-        for (int i = 0; i < readoutCount; i++) {
-            addLabel(readouts[i].name, leftTextX, y, Justify::LEFT,
-                this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim);
-
-            const char* value = readouts[i].value;
-            std::string fitted;
-            if (static_cast<int>(std::strlen(value)) > m_lastReadoutBudget) {
-                fitted = PluginUtils::fitText(value, m_lastReadoutBudget);
-                value = fitted.c_str();
+            // Cut in place (PluginUtils::fitTextInPlace): no per-row std::string.
+            const size_t len = std::strlen(readouts[i].value);
+            if (static_cast<int>(len) > m_lastReadoutBudget) {
+                PluginUtils::fitTextInPlace(readouts[i].value, len, m_lastReadoutBudget);
             }
+            const char* value = readouts[i].value;
 
-            addString(value, rightTextX, y, Justify::RIGHT,
-                this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
-            y += dim.lineHeightNormal;
-        }
+        addString(value, rightTextX, y, Justify::RIGHT,
+            this->getFont(readouts[i].isText ? FontCategory::NORMAL : FontCategory::DIGITS),
+            this->getColor(ColorSlot::SECONDARY), dim.fontSize);
+        y += dim.lineHeightNormal;
     }
-
-    // What the box plan actually spent, for timing_reference_test. The panel is
-    // on the box model, so its chrome is boxPanelPadding — NOT the legacy
-    // ScaledDimensions::paddingV, which still reports panelPaddingYCells for
-    // the panels that have not moved. Reporting the plan's own numbers is what
-    // keeps that test an assertion about this panel rather than about which
-    // padding vocabulary it happens to be written in.
-    // MINUS the ceil slack, which the last section absorbs: that remainder is the
-    // panel rounding itself to a whole cell, not a cost the rows asked for, and
-    // leaving it in makes "what does a row cost" unanswerable.
-    m_fTestContentTop = p.Y(p.g.sections.front().top) - START_Y;
-    m_fTestContentBot = p.Y(p.g.sections.back().bot - p.g.slackY) - START_Y;
-
-    setBounds(bgLeftX, START_Y, bgLeftX + backgroundWidth, START_Y + backgroundHeight);
 }
 
 
@@ -942,7 +862,7 @@ void TimingHud::resetToDefaults() {
     // Show mode: Always show by default (content shows continuously, references passive)
     m_displayMode = ColumnMode::ALWAYS;
     m_showTime = true;                           // big time row on by default
-    m_displayDurationMs = DEFAULT_DURATION_MS;   // 5 seconds freeze
+    m_displayDurationMs = FreezeDuration::DEFAULT_MS;
 
     // Comparison rows: Session PB + All-Time PB by default
     m_enabledComparisons = GAP_DEFAULT_ENABLED;

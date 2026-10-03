@@ -25,7 +25,6 @@
 // MXBMRP3_Test_FakeGamepad. The unit suite pins the arithmetic underneath, in
 // tests/unit/test_gamepad_geometry.cpp.)
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

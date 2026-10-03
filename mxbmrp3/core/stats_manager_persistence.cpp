@@ -9,6 +9,7 @@
 #include "achievement_manager.h"
 #include "plugin_constants.h"
 #include "atomic_file_writer.h"
+#include "pb_trace_store.h"
 #include "plugin_data.h"
 #include "plugin_utils.h"
 #include "ui_config.h"
@@ -283,7 +284,8 @@ void StatsManager::load(const char* savePath) {
             m_exploration.restoreScalars(ex.value("firstRunDate", ""), ex.value("lastDay", 0),
                                          ex.value("crashDumpsSeen", 0), (std::max)(ex.value("dayStreak", 0), 0),
                                          ex.value("rideDay", 0),
-                                         finiteOrZero(ex.value("todayRideSec", 0.0)));
+                                         finiteOrZero(ex.value("todayRideSec", 0.0)),
+                                         finiteOrZero(ex.value("crashFreeSec", 0.0)));
         }
 
         DEBUG_INFO_F("[StatsManager] Loaded stats: %zu track/bike combos, %zu bikes, %zu PBs from %s",
@@ -330,14 +332,25 @@ static nlohmann::json serializePersonalBest(const StatsPersonalBestData& pb) {
     return pbJson;
 }
 
+// The stats and the PB gap traces are written TOGETHER, every time: a PB on disk
+// without its trace is the inconsistency to avoid (see pb_trace_store.h). Every
+// save point -- leave-track, RunDeinit, Shutdown() and the in-place saves of a
+// crash-tally reset, a breakout score or a prestige -- goes through here, and the
+// writer's FIFO keeps the two files' writes adjacent. Pinned by on_track_save_test.
 void StatsManager::save() {
+    writeStatsFile();
+    PbTraceStore::getInstance().save();
+}
+
+void StatsManager::writeStatsFile() {
     // A tier earned outside a stats mutation (the config-reload counter) has
     // nowhere else to be written from.
     AchievementManager& achievements = AchievementManager::getInstance();
     if (achievements.isDirty() || m_exploration.isDirty()) m_dirty = true;
-    if (!m_dirty) return;
-
     std::string filePath = getFilePath();
+    // m_dirty cleared when the last write was handed over; if the writer then failed it,
+    // write again now.
+    if (!m_dirty && !AtomicFileWriter::needsRetry(filePath)) return;
 
     try {
         nlohmann::json j;
@@ -516,14 +529,18 @@ void StatsManager::save() {
                 ex["rideDay"] = m_exploration.rideDay();
                 ex["todayRideSec"] = finiteOrZero(m_exploration.todayRideSec());
             }
+            // Steady Hands' running stint, so a session change or a restart pauses
+            // it and only a crash ends it.
+            if (m_exploration.crashFreeSec() > 0.0) {
+                ex["crashFreeSec"] = finiteOrZero(m_exploration.crashFreeSec());
+            }
             if (!ex.empty()) j["exploration"] = ex;
         }
 
-        // Write via the shared atomic writer (temp file + MoveFileExA replace). Synchronous:
-        // stats are saved on discrete, infrequent events (lap completion, session end,
-        // shutdown), not the per-frame path, and callers/tests read the file right after —
-        // so this keeps immediate durability while sharing the one atomic-write helper. Only
-        // clear m_dirty on success, so a failed write is retried on the next save().
+        // Through the shared writer (atomic replace, off the game thread). Saved only off
+        // track -- leaving for the pits, leaving the run, shutdown -- together with the PB
+        // traces, so the two files never disagree. m_dirty clears when the write is handed
+        // over; a failure on the writer thread is logged there.
         // The file's own fingerprint: the hash of everything else, so a later
         // load can tell a hand edit from its own writing (exploration_stats.h).
         {
@@ -532,7 +549,7 @@ void StatsManager::save() {
                      static_cast<unsigned long long>(ExplorationStats::fnv1a(j.dump(2))));
             j["fingerprint"] = hex;
         }
-        if (AtomicFileWriter::writeFileAtomic(filePath, j.dump(2))) {
+        if (AtomicFileWriter::submit(filePath, j.dump(2))) {
             m_dirty = false;
             achievements.clearDirty();
             m_exploration.clearDirty();
@@ -632,9 +649,12 @@ void StatsManager::migrateOldFiles() {
 
     if (migrated) {
         m_dirty = true;
+        // The old files go only once the new one is ON DISK, so wait for the writer and
+        // check that nothing it wrote in between failed.
+        const unsigned failuresBefore = AtomicFileWriter::failureCount();
         save();
-        // Only delete old files if save succeeded (m_dirty cleared on success)
-        if (!m_dirty) {
+        AtomicFileWriter::flush();
+        if (!m_dirty && AtomicFileWriter::failureCount() == failuresBefore) {
             DeleteFileA(pbPath.c_str());
             DeleteFileA(odomPath.c_str());
             DEBUG_INFO("[StatsManager] Migration complete, old files deleted");

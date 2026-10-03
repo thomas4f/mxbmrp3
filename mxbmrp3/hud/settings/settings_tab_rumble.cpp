@@ -116,7 +116,6 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
     const RumbleConfig& globalConfig = XInputReader::getInstance().getGlobalRumbleConfig();
     // Active config for effect settings (global or per-bike based on mode)
     RumbleConfig& rumbleConfig = XInputReader::getInstance().getRumbleConfig();
-    float cw = PluginUtils::calculateMonospaceTextWidth(1, ctx.fontSize);
     ColorConfig& colors = ColorConfig::getInstance();
     // panelWidth is actually contentAreaWidth (from contentAreaStartX to right edge)
     float rowWidth = ctx.rowSpanWidth();
@@ -129,23 +128,25 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::RUMBLE_TOGGLE, hud, nullptr, 0, true, "rumble.enabled");
 
     // Stack mode (always from global config)
-    ctx.addToggleControl("Stack Forces", globalConfig.additiveBlend,
+    ctx.addToggleControl("Stack forces", globalConfig.additiveBlend,
         SettingsHud::ClickRegion::RUMBLE_BLEND_TOGGLE, hud, nullptr, 0, true, "rumble.stack");
 
     // Rumble when crashed (always from global config)
-    ctx.addToggleControl("When Crashed", globalConfig.rumbleWhenCrashed,
+    ctx.addToggleControl("When crashed", globalConfig.rumbleWhenCrashed,
         SettingsHud::ClickRegion::RUMBLE_CRASH_TOGGLE, hud, nullptr, 0, true, "rumble.crashed");
 
     // Effect profile (per-bike vs global) - uses global config to determine mode
     // Pass true for isOn since both options are valid active states (not on/off)
-    ctx.addToggleControl("Effect Profile", true,
+    ctx.addToggleControl("Effect profile", true,
         SettingsHud::ClickRegion::RUMBLE_EFFECT_PROFILE_TOGGLE, hud, nullptr, 0, true, "rumble.effect_profile",
         globalConfig.usePerBikeEffects ? "Per-Bike" : "Global");
 
     // === EFFECTS SECTION ===
-    ctx.addSectionHeading("Effects");
+    const float headingY = ctx.addSectionHeading("Effects");
 
-    // Table header - columns: [gutter] Effect | Light | Heavy | Min | Max
+    // Table columns: [gutter] Effect | Light | Heavy | Min | Max. The column labels
+    // ride on the "Effects" heading row, as on the Hotkeys and Widgets tabs; the
+    // heading itself captions the effect-name column, so it has no label of its own.
     // The gutter holds the [+]/[-] split disclosure on splittable effects (Bumps, Lockup).
     // We shift the whole table right rather than adding a column on the right edge, which
     // would overflow the panel.
@@ -157,17 +158,14 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
     float minX = heavyX + PluginUtils::calculateMonospaceTextWidth(9, ctx.fontSize);
     float maxX = minX + PluginUtils::calculateMonospaceTextWidth(10, ctx.fontSize);
 
-    ctx.parent->addString("Effect", effectX, ctx.currentY, PluginConstants::Justify::LEFT,
+    ctx.parent->addString("Light", lightX, headingY, PluginConstants::Justify::LEFT,
         PluginConstants::Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
-    ctx.parent->addString("Light", lightX, ctx.currentY, PluginConstants::Justify::LEFT,
+    ctx.parent->addString("Heavy", heavyX, headingY, PluginConstants::Justify::LEFT,
         PluginConstants::Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
-    ctx.parent->addString("Heavy", heavyX, ctx.currentY, PluginConstants::Justify::LEFT,
+    ctx.parent->addString("Min", minX, headingY, PluginConstants::Justify::LEFT,
         PluginConstants::Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
-    ctx.parent->addString("Min", minX, ctx.currentY, PluginConstants::Justify::LEFT,
+    ctx.parent->addString("Max", maxX, headingY, PluginConstants::Justify::LEFT,
         PluginConstants::Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
-    ctx.parent->addString("Max", maxX, ctx.currentY, PluginConstants::Justify::LEFT,
-        PluginConstants::Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
-    ctx.currentY += ctx.lineHeightNormal;
 
     // The stepped descriptors below bind raw pointers into the ACTIVE rumble
     // config resolved above. In per-bike profile mode that object changes when
@@ -198,14 +196,16 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
         return static_cast<int>(ctx.parent->m_steppedControls.size()) - 1;
     };
 
-    // Push one stepper arrow click region tied to a registered descriptor.
-    auto addArrowRegion = [&](float x, bool up, int steppedIndex) {
-        SettingsHud::ClickRegion region(x, ctx.currentY, cw * 2, ctx.lineHeightNormal,
-            up ? SettingsHud::ClickRegion::STEPPED_UP
-               : SettingsHud::ClickRegion::STEPPED_DOWN,
-            nullptr);
-        region.steppedIndex = steppedIndex;
-        ctx.parent->m_clickRegions.push_back(region);
+    // One "< value >" stepper cell (the shared inline cell), with its registered
+    // descriptor's index stamped on both arrow regions -- the Achievements pattern.
+    auto addStepperCell = [&](float x, const char* value, int valueChars,
+                              int steppedIndex, bool muted) {
+        const size_t first = ctx.addInlineCycle(x, value, valueChars,
+            SettingsHud::ClickRegion::STEPPED_DOWN, SettingsHud::ClickRegion::STEPPED_UP,
+            nullptr, /*enabled=*/true, muted);
+        for (size_t r = first; r < ctx.parent->m_clickRegions.size(); ++r) {
+            ctx.parent->m_clickRegions[r].steppedIndex = steppedIndex;
+        }
     };
 
     // Lambda for rumble effect rows. The arrows are shared STEPPED_UP/STEPPED_DOWN
@@ -241,7 +241,7 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
 
         // Effect name
         ctx.parent->addString(name, effectX, ctx.currentY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::getNormal(), colors.getPrimary(), ctx.fontSize);
+            PluginConstants::Fonts::getNormal(), colors.getSecondary(), ctx.fontSize);
 
         // Light motor strength control
         {
@@ -250,24 +250,12 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
             char valueStr[8];
             int percent = static_cast<int>(std::round(effect.lightStrength * 100.0f));
             if (percent <= 0) {
-                snprintf(valueStr, sizeof(valueStr), "%-4s", "Off");
+                snprintf(valueStr, sizeof(valueStr), "Off");
             } else {
-                char tempStr[8];
-                snprintf(tempStr, sizeof(tempStr), "%d%%", percent);
-                snprintf(valueStr, sizeof(valueStr), "%-4s", tempStr);
+                snprintf(valueStr, sizeof(valueStr), "%d%%", percent);
             }
-            float currentX = lightX;
-            ctx.parent->addString("<", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
-            addArrowRegion(currentX, false, lightIndex);
-            currentX += cw * 2;
-            // Use percent for color to match display logic (avoids floating point precision issues)
-            ctx.parent->addString(valueStr, currentX, ctx.currentY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), percent > 0 ? colors.getPrimary() : colors.getMuted(), ctx.fontSize);
-            currentX += cw * 4;
-            ctx.parent->addString(" >", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
-            addArrowRegion(currentX, true, lightIndex);
+            // Muted from percent, not the float, to match the text (no FP edge).
+            addStepperCell(lightX, valueStr, 4, lightIndex, percent <= 0);
         }
 
         // Heavy motor strength control
@@ -277,24 +265,12 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
             char valueStr[8];
             int percent = static_cast<int>(std::round(effect.heavyStrength * 100.0f));
             if (percent <= 0) {
-                snprintf(valueStr, sizeof(valueStr), "%-4s", "Off");
+                snprintf(valueStr, sizeof(valueStr), "Off");
             } else {
-                char tempStr[8];
-                snprintf(tempStr, sizeof(tempStr), "%d%%", percent);
-                snprintf(valueStr, sizeof(valueStr), "%-4s", tempStr);
+                snprintf(valueStr, sizeof(valueStr), "%d%%", percent);
             }
-            float currentX = heavyX;
-            ctx.parent->addString("<", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
-            addArrowRegion(currentX, false, heavyIndex);
-            currentX += cw * 2;
-            // Use percent for color to match display logic (avoids floating point precision issues)
-            ctx.parent->addString(valueStr, currentX, ctx.currentY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), percent > 0 ? colors.getPrimary() : colors.getMuted(), ctx.fontSize);
-            currentX += cw * 4;
-            ctx.parent->addString(" >", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
-            addArrowRegion(currentX, true, heavyIndex);
+            // Muted from percent, not the float, to match the text (no FP edge).
+            addStepperCell(heavyX, valueStr, 4, heavyIndex, percent <= 0);
         }
 
         // Min input control (fixed step, clamped to [0, inputLimit])
@@ -312,17 +288,7 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
             } else {
                 snprintf(valueStr, sizeof(valueStr), "%.1f", displayValue);
             }
-            float currentX = minX;
-            ctx.parent->addString("<", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
-            addArrowRegion(currentX, false, minIndex);
-            currentX += cw * 2;
-            ctx.parent->addString(valueStr, currentX, ctx.currentY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), effect.isEnabled() ? colors.getPrimary() : colors.getMuted(), ctx.fontSize);
-            currentX += cw * 6;
-            ctx.parent->addString(">", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
-            addArrowRegion(currentX, true, minIndex);
+            addStepperCell(minX, valueStr, 5, minIndex, !effect.isEnabled());
         }
 
         // Max input control (fixed step, up to inputLimit; down clamps at live Min)
@@ -340,17 +306,7 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
             } else {
                 snprintf(valueStr, sizeof(valueStr), "%.1f", displayValue);
             }
-            float currentX = maxX;
-            ctx.parent->addString("<", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
-            addArrowRegion(currentX, false, maxIndex);
-            currentX += cw * 2;
-            ctx.parent->addString(valueStr, currentX, ctx.currentY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), effect.isEnabled() ? colors.getPrimary() : colors.getMuted(), ctx.fontSize);
-            currentX += cw * 6;
-            ctx.parent->addString(">", currentX, ctx.currentY, PluginConstants::Justify::LEFT,
-                PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
-            addArrowRegion(currentX, true, maxIndex);
+            addStepperCell(maxX, valueStr, 5, maxIndex, !effect.isEnabled());
             // Unit is now described in tooltip instead of displayed inline
         }
 
@@ -372,7 +328,7 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
                 ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, tooltipId));
         }
         ctx.parent->addString(name, effectX, ctx.currentY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::getNormal(), colors.getPrimary(), ctx.fontSize);
+            PluginConstants::Fonts::getNormal(), colors.getSecondary(), ctx.fontSize);
         ctx.currentY += ctx.lineHeightNormal;
     };
 

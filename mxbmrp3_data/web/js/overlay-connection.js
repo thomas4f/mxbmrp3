@@ -37,6 +37,17 @@ function clockNowFull() {
 // to starve real events out of the maxEvents budget.
 var MAX_STATUS_LINES = 3;
 
+// A green "Connected" (or a "Trying ...") is a confirmation, not news, so it
+// expires on its own. Status lines share the maxEvents budget with real events
+// and a newer event pushes them out — but before a race nothing the default
+// filters let through happens for minutes (pit exits are off), and on a
+// broadcaster's stream the line just sat there with no setting to remove it.
+// Error lines are the opposite: they stay until an event pushes them out,
+// because "Connection lost" is the one thing a streamer must see -- until a
+// green line answers them: then they expire with it, else "Connection lost"
+// outlived its "Connected" and a resolved outage read as ongoing.
+var STATUS_LINE_TTL_MS = 10000;
+
 // Status lines (connection history) are kept in memory so they survive
 // re-renders and toggling maxEvents to 0 and back. They are rendered
 // through renderEventLog() like regular events.
@@ -65,16 +76,46 @@ function debugLogBattles(data) {
 
 // status: "info" (default), "ok", "error"
 function appendStatusLine(message, status) {
+    var isError = status === "error";
+    var expiresMs = isError ? 0 : Date.now() + STATUS_LINE_TTL_MS;   // 0 = until pushed out
+    if (status === "ok") {
+        // An ok line answers the errors before it, so they go when it goes.
+        // Left to their own rule they outlived it: "Connection lost" stayed
+        // after its "Connected" expired, and a resolved outage read as ongoing
+        // until an unrelated event pushed it out (minutes, before a race).
+        for (var i = 0; i < statusLines.length; i++) {
+            if (statusLines[i].status === "error" && !statusLines[i].expiresMs) {
+                statusLines[i].expiresMs = expiresMs;
+            }
+        }
+    }
     statusLines.push({
         time: clockNow(),
         ms: Date.now(),   // monotonic epoch-ms key for chronological merge with events
         message: message,
-        status: status || "info"
+        status: status || "info",
+        expiresMs: expiresMs
     });
     while (statusLines.length > MAX_STATUS_LINES) {
         statusLines.shift();
     }
     renderEventLog(lastEvents);
+    // Nothing else re-renders a quiet log, so the expiry needs its own tick.
+    if (!isError) {
+        setTimeout(function () { renderEventLog(lastEvents); }, STATUS_LINE_TTL_MS + 50);
+    }
+}
+
+// Drop the status lines whose time is up (see STATUS_LINE_TTL_MS). Called by
+// renderEventLog, so an expiry takes effect on the next render or on the tick
+// appendStatusLine schedules, whichever comes first.
+function pruneStatusLines() {
+    var nowMs = Date.now();
+    for (var i = statusLines.length - 1; i >= 0; i--) {
+        if (statusLines[i].expiresMs && statusLines[i].expiresMs <= nowMs) {
+            statusLines.splice(i, 1);
+        }
+    }
 }
 
 var RETRY_INTERVAL = 3000; // ms between manual reconnection attempts

@@ -24,7 +24,6 @@
 // term wired to nothing, which "did not move at all" catches and a golden would
 // bury among the retunes.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

@@ -175,13 +175,14 @@ void ExplorationStats::restoreName(int which, const std::string& name) {
 }
 
 void ExplorationStats::restoreScalars(const std::string& firstRunDate, int lastDay, int crashDumpsSeen, int dayStreak,
-                                      int rideDay, double todayRideSec) {
+                                      int rideDay, double todayRideSec, double crashFreeSec) {
     m_firstRunDate = firstRunDate;
     m_lastDay = lastDay;
     m_crashDumpsSeen = crashDumpsSeen;
     m_dayStreak = dayStreak;
     m_rideDay = rideDay;
     m_todayRideSec = (std::isfinite(todayRideSec) && todayRideSec > 0.0) ? todayRideSec : 0.0;
+    m_crashFreeMs = (std::isfinite(crashFreeSec) && crashFreeSec > 0.0) ? crashFreeSec * 1000.0 : 0.0;
 }
 
 void ExplorationStats::clear() {
@@ -195,6 +196,10 @@ void ExplorationStats::clear() {
     m_crashDumpsSeen = -1;
     m_rideDay = 0;
     m_todayRideSec = 0.0;
+    // The stint goes with the ladder. It persists and only a crash ends it, so
+    // a wipe that kept it re-earned Steady Hands on the first riding second
+    // after a prestige (prestige_test).
+    m_crashFreeMs = 0.0;
     m_dirty = false;
 }
 
@@ -403,7 +408,11 @@ void ExplorationStats::onSessionStart() {
     m_cleanLapRun = 0;
     m_lapCount = 0;
     m_sessionLapTimes.clear();
-    m_crashFreeMs = 0.0;
+    // NOT m_crashFreeMs: Steady Hands counts riding since the last CRASH, and a
+    // session change is not one. Fifteen minutes in testing, a spell in the menus
+    // or a restart, fifteen more online -- that is half an hour without crashing,
+    // which is what the row says. Only onCrash() zeroes it, and clear() with the
+    // rest of the ladder; it is persisted.
     if (checkClock(/*riding=*/true)) changed();
 }
 
@@ -427,8 +436,8 @@ void ExplorationStats::observeSettings(const HudManager& hudManager) {
         // Not user-facing switches: the menu, its button, the pointer, the
         // developer's benchmark, the achievement toast itself -- and the two
         // that show themselves: the Direct GL confirmation (armed by that
-        // setting's prompt) and the version widget (an update notice, the
-        // donation nudge). Counted, 100% would need both events, not every HUD.
+        // setting's prompt) and the version widget (an update notice).
+        // Counted, 100% would need both events, not every HUD.
         //
         // The PRESTIGE BADGE is here for a different reason: it is EARNED, not
         // switched on, so it is a row nobody has until they trade for it. It
@@ -618,12 +627,15 @@ bool ExplorationStats::creditLastLap(int position) {
 bool ExplorationStats::retryLastGasp() {
     const int position = m_pendingLastGaspPosition;
     const int laps = m_pendingLastGaspLaps;
+    // Only once the lap it was waiting for has actually arrived -- and the debt
+    // stands until then: the retry runs at the game's Race Over and again at
+    // RunDeinit, and the lap can land between the two. One that never arrives
+    // leaves the pair exactly as stale as it was at the flag, and a row that
+    // quietly does not count beats one credited on a guess; the deferral goes
+    // with the session's scratch (onSessionStart).
+    if (position <= 0 || m_lastPositionLap < laps) return false;
     m_pendingLastGaspPosition = 0;
     m_pendingLastGaspLaps = 0;
-    // Only once the lap it was waiting for has actually arrived. One that never
-    // does leaves the pair exactly as stale as it was at the flag, and a row
-    // that quietly does not count beats one credited on a guess.
-    if (position <= 0 || m_lastPositionLap < laps) return false;
     if (!creditLastLap(position)) return false;
     changed();
     return true;
@@ -696,7 +708,7 @@ void ExplorationStats::onRaceFinished(const RaceFinish& race) {
     // Nobody else on the grid. Not a feat, just a moment worth noticing - the
     // server emptied out, or you lined up alone and raced yourself.
     if (race.starters == 1) moved |= mark(Signal::SoloRace);
-    if (race.ownGapLaps > 0) moved |= raise(Signal::BackMarker, race.ownGapLaps);   // the most laps down, on the way to three
+    if (race.ownGapLaps > 0) moved |= raise(Signal::BackMarker, race.ownGapLaps);   // the most laps down; one earns the row
     if (moved) changed();
 }
 
@@ -851,11 +863,12 @@ void ExplorationStats::tick(bool spectating, bool rumbleLive, bool onTrack, bool
         moved |= checkClock(moving);
     }
     if (moving) {
-        // RIDING time since the last crash (or the session's start). Parking
-        // pauses this clock exactly as a trip to the pits does - it does not
-        // restart it - so the row reads as it says: half an hour of riding
-        // without a crash, not half an hour of it in one unbroken go, and not
-        // half an hour of sitting still, which is not riding and not a feat.
+        // RIDING time since the last crash. Parking, the pits, the menus, a
+        // session change and a restart all PAUSE this clock (it is persisted with
+        // the stats) - none restarts it - so the row reads as it says: half an
+        // hour of riding without a crash, not half an hour of it in one unbroken
+        // go, and not half an hour of sitting still, which is not riding and not
+        // a feat. Only a crash zeroes it (onCrash).
         m_crashFreeMs += 1000.0;
         moved |= raise(Signal::SteadyHands, m_crashFreeMs / 1000.0);   // the longest run, in seconds
         // Iron Butt: hours ridden within one local DAY, not one session. A
@@ -877,4 +890,15 @@ void ExplorationStats::tick(bool spectating, bool rumbleLive, bool onTrack, bool
         moved = true;
     }
     if (moved) changed();
+
+    // Once a minute out on track, re-evaluate even when nothing here moved: Seat
+    // Time reads the RUNNING session into its hours (getGlobalTotalTimeMs), so
+    // its value climbs with the clock alone, and an evaluation otherwise waits
+    // for the next lap, kilometre or crash to trigger one. A lifetime milestone
+    // crossed while free riding now toasts within the minute, on track. Not
+    // changed(): nothing needs persisting, this is a read.
+    if (onTrack && ++m_liveClockTicks >= 60) {
+        m_liveClockTicks = 0;
+        AchievementManager::getInstance().onStatsChanged();
+    }
 }

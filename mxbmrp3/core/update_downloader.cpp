@@ -290,11 +290,14 @@ void UpdateDownloader::cleanupOldFiles() {
     }
 }
 
-bool UpdateDownloader::checkAndClearDonationNudge() {
+bool UpdateDownloader::checkAndClearUpdateInstalled() {
     try {
         const char* savePath = PluginManager::getInstance().getSavePath();
         if (!savePath || strlen(savePath) == 0) return false;
-        std::string nudgePath = std::string(savePath) + "\\mxbmrp3\\donation_nudge_pending";
+        // The name the sentinel had while it opened a donation prompt: a build
+        // from before the rename may have left one. Removed, never honoured.
+        DeleteFileA((std::string(savePath) + "\\mxbmrp3\\donation_nudge_pending").c_str());
+        std::string nudgePath = std::string(savePath) + "\\mxbmrp3\\update_installed_pending";
 
         // Read the version the installer wrote, then delete the sentinel regardless.
         std::string installedVersion;
@@ -308,17 +311,17 @@ bool UpdateDownloader::checkAndClearDonationNudge() {
         installedVersion = std::string(buf, read);
         DeleteFileA(nudgePath.c_str());
 
-        // Only show the nudge if the running DLL matches the installed version.
+        // Only confirmed when the running DLL matches the installed version.
         // isSameRelease, NOT compareVersions() == 0: the sentinel holds the raw
         // release tag (vX.Y.Z, so build 0) while PLUGIN_VERSION carries a nonzero
         // VER_BUILD, and comparing all four components can therefore never call
         // them equal. It returns false on a garbled sentinel too, so a corrupt
-        // one cannot alias to a match and fire a spurious nudge.
+        // one cannot alias to a match and count a spurious install.
         if (UpdateChecker::isSameRelease(installedVersion, PluginConstants::PLUGIN_VERSION)) {
-            DEBUG_INFO_F("UpdateDownloader: Donation nudge confirmed for v%s", PluginConstants::PLUGIN_VERSION);
+            DEBUG_INFO_F("UpdateDownloader: Installed update confirmed for v%s", PluginConstants::PLUGIN_VERSION);
             return true;
         }
-        DEBUG_INFO_F("UpdateDownloader: Donation nudge skipped (sentinel v%s, running v%s)",
+        DEBUG_INFO_F("UpdateDownloader: Installed update not confirmed (sentinel v%s, running v%s)",
                      installedVersion.c_str(), PluginConstants::PLUGIN_VERSION);
     } catch (...) {}
     return false;
@@ -504,16 +507,22 @@ void UpdateDownloader::workerThread() {
         DEBUG_INFO("UpdateDownloader: Update ready, restart required");
 
         // Write sentinel containing the installed version so the next launch
-        // can confirm the new DLL is actually running before showing the nudge.
+        // can confirm the new DLL is actually running (checkAndClearUpdateInstalled).
         try {
             const char* savePath = PluginManager::getInstance().getSavePath();
             std::string version = UpdateChecker::getInstance().getLatestVersion();
             if (savePath && strlen(savePath) > 0 && !version.empty()) {
-                std::string nudgePath = std::string(savePath) + "\\mxbmrp3\\donation_nudge_pending";
+                std::string nudgePath = std::string(savePath) + "\\mxbmrp3\\update_installed_pending";
                 // Route through the shared atomic writer, like every other persisted file.
-                AtomicFileWriter::writeFileAtomic(nudgePath, version);
+                AtomicFileWriter::submit(nudgePath, version);
             }
-        } catch (...) {}
+        } catch (const std::exception& e) {
+            // Non-fatal - the update is ready either way - but without the
+            // sentinel the next launch cannot confirm the new DLL is running.
+            DEBUG_WARN_F("UpdateDownloader: failed to write update_installed_pending: %s", e.what());
+        } catch (...) {
+            DEBUG_WARN("UpdateDownloader: failed to write update_installed_pending (non-std exception)");
+        }
 
         notifyStateChange();
 

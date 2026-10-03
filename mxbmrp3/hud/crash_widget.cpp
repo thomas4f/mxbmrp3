@@ -18,7 +18,6 @@ using namespace PluginConstants;
 CrashWidget::CrashWidget() {
     m_panelKind = PanelKind::Widget;
     m_bContentCard = true;
-    DEBUG_INFO("CrashWidget created");
     setDraggable(true);
     m_quads.reserve(2);    // background + the reset chip
     m_strings.reserve(3);  // title (optional) + count + button label
@@ -87,7 +86,7 @@ void CrashWidget::rebuildRenderData() {
     const float buttonHeight = dim.lineHeightNormal;
     const bool withButton = m_bShowResetButton;
 
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::CRASH_WIDTH, dim.fontSize);
     // NO junction gap above the chip, unlike VersionWidget's hand-laid button row:
     // this is not a row appended below the content, it is the SAME second row Speed
@@ -104,7 +103,7 @@ void CrashWidget::rebuildRenderData() {
     const unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
 
     addPlanBackground(p, 0.0f, 0.0f);
-    addPlanTitle(p, "Crashes", this->getFont(FontCategory::TITLE), textColor);
+    addPlanTitle(p, "Crashes", textColor);
     const float currentY = p.contentY();
     // The CARD's centre, not the panel's (PanelPlan::sectionBoxCenterX): the two
     // agree only while the [content] terms are left/right symmetric.
@@ -113,8 +112,8 @@ void CrashWidget::rebuildRenderData() {
     char countBuffer[12];
     snprintf(countBuffer, sizeof(countBuffer), "%d", m_cachedCount < 0 ? 0 : m_cachedCount);
 
-    // TITLE at fontSizeExtraLarge, matching Speed / Lap / Position / Gear rather than
-    // the DIGITS category the name would suggest: those five are the plugin's big-value
+    // TITLE at fontSizeExtraLarge, matching Speed / Lap / Position / Gear / Time / Clock
+    // rather than the DIGITS category the name would suggest: those seven are the plugin's big-value
     // widgets and they are meant to read as one family when tiled. A FIXED size, not one
     // driven by the box the way Gear's is -- Gear draws exactly one character, this draws
     // one to three, and a number that shrank as it crossed 9 would be the one thing on

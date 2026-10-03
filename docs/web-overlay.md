@@ -24,8 +24,9 @@ Move the mouse over the overlay and a gear icon appears in the top-right
 corner; click it for the settings panel. In OBS you need mouse access first:
 right-click the Browser Source and choose **Interact**.
 
-The panel sets compact times, tower size, event and chip filters, the focus
-card and font size. The header bar drags the tower around the screen.
+The panel sets compact times, tower size, the Class column (each rider's
+category, off by default), event and chip filters, the focus card and font
+size. The header bar drags the tower around the screen.
 
 Everything you set there is saved in the browser's `localStorage`, so it
 belongs to that browser (or that OBS source) rather than to the plugin - a

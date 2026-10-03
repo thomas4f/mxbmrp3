@@ -42,6 +42,30 @@ private:
     void rebuildRenderData() override;
     void rebuildLayout() override;
 
+    // rebuildRenderData() sections, in emission order. BuildCtx is the per-rebuild
+    // layout and colour state they share (FMX state is re-read from FmxManager's
+    // const getters, which return references).
+    struct BuildCtx {
+        const ScaledDimensions& dim;
+        const FmxManager& fmx;
+        float contentStartX;
+        float contentWidth;
+        unsigned long textColor;
+        unsigned long mutedColor;
+        unsigned long lingerColor;
+        bool lingering;
+        bool isCrashed;
+    };
+    float buildTrickStack(const BuildCtx& ctx, float currentY);
+    float buildTrickStatsRow(const BuildCtx& ctx, float currentY);
+    void buildComboSection(const BuildCtx& ctx, float currentY);
+    unsigned long updateComboArcFill(const FmxManager& fmx);
+    void addComboScoreLines(const BuildCtx& ctx, float arcCenterX, float arcCenterY,
+                            float outerRadius, bool hasCommittedTrick);
+    void buildRotationArcs(const BuildCtx& ctx, float currentY);
+    void updateArcSnapshot(const FmxManager& fmx, bool isCrashed);
+    void buildDebugValues(const BuildCtx& ctx, float currentY);
+
     // The stats strip under the trick stack: up to four measurements, each an
     // icon and a value, laid left to right and skipping the ones this trick has
     // nothing to say about. Returns nothing - it emits straight into m_strings

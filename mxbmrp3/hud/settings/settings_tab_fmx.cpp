@@ -54,7 +54,7 @@ BaseHud* SettingsHud::renderTabFmx(SettingsLayoutContext& ctx) {
     }
     // Accelerated 1-step clamp over [0, 10]; 0 = Off (verbatim from the old
     // FMX_CHAIN_ROWS handler). Arrows never had a per-type tooltip.
-    ctx.addSteppedControl("Trick stack", rowsValue, 10,
+    ctx.addSteppedControl("Trick stack", rowsValue,
         SettingsHud::SteppedControl::clampInt(&hud->m_maxChainDisplayRows, 1, 0, 10, hud),
         hud, true, trickRows == 0, "fmx.chain_rows", /*tooltipOnArrows=*/false);
 

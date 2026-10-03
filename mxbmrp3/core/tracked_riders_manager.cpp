@@ -378,12 +378,12 @@ void TrackedRidersManager::load(const char* savePath) {
 }
 
 void TrackedRidersManager::save() {
-    // Only save if data has changed since last save/load
-    if (!m_needsSave) {
+    // Only save if data has changed since last save/load, or the last write failed on the
+    // writer thread (m_needsSave cleared at hand-over).
+    std::string filePath = getFilePath();
+    if (!m_needsSave && !AtomicFileWriter::needsRetry(filePath)) {
         return;
     }
-
-    std::string filePath = getFilePath();
 
     try {
         nlohmann::json j;
@@ -413,11 +413,8 @@ void TrackedRidersManager::save() {
         }
         j["riders"] = riders;
 
-        // Write via the shared atomic writer (temp file + MoveFileExA replace). Synchronous:
-        // tracked riders are saved on discrete user edits, not the per-frame path, and the
-        // file is read back right after — so keep immediate durability while sharing the one
-        // atomic-write helper. Only clear the dirty flag on a successful write.
-        if (AtomicFileWriter::writeFileAtomic(filePath, j.dump(2))) {
+        // Through the shared writer (atomic replace, off the game thread).
+        if (AtomicFileWriter::submit(filePath, j.dump(2))) {
             m_needsSave = false;
             DEBUG_INFO_F("[TrackedRidersManager] Saved %zu tracked riders to %s",
                          m_trackedRiders.size(), filePath.c_str());

@@ -56,6 +56,10 @@ public:
     // no-op, so a test build can never phone home). The event-build paths still push their
     // JSON onto m_eventQueue exactly as in production; testDrainPending() reads it back.
     void testPrime();                          // fake identity/session/host + capture mode on
+    // Run the REAL identity load against a save path and report what it decided:
+    // "<installId>|<launchCount>|<repair>|<prevVersion>", repair 0 none, 1 the id
+    // was recovered from a damaged file, 2 a new id was minted (analytics_identity_test).
+    std::string testLoadIdentity(const char* savePath);
     void testSetFullLaunch(bool full);         // simulate the remote-sampling decision
     std::string testBuildAppStarted();         // buildEventBody() output (always-sent tier)
     void testQueueSessionEnd();                // run queueSessionEnd() (gated on full launch)
@@ -197,6 +201,10 @@ private:
     std::string m_versionStatus;          // "new" | "update" | "same"
     unsigned long long m_firstSeenUnix = 0;  // first-run timestamp (epoch seconds)
     unsigned long long m_launchCount = 0;    // this install's lifetime launch count
+    // What this launch did to a corrupt analytics file (core/analytics_identity.h);
+    // reported once in app_started as identity_repair.
+    enum class IdentityRepair : uint8_t { NONE, RECOVERED, NEW_ID };
+    IdentityRepair m_identityRepair = IdentityRepair::NONE;
     std::wstring m_wAppKey;               // Aptabase App-Key header value
     std::wstring m_host;                  // Aptabase ingest host (region-derived)
     std::wstring m_gcHost;                // GoatCounter host (<code>.goatcounter.com)

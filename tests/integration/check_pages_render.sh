@@ -17,8 +17,9 @@
 # WHY KRAMDOWN RATHER THAN A LINT. It is the renderer being modelled - the
 # same gem Jekyll runs, with the same GFM input Pages configures - so this
 # gate cannot drift from the thing it is protecting the way a hand-written
-# rule about blank lines would. `check_docs.py` keeps a text version of the
-# one rule we know, for the machine with no Ruby; this is the general case.
+# rule about blank lines would. (check_docs.py used to carry such a text rule
+# for the table case; it was deleted as a duplicate of the `<p>|` assertion
+# below, which catches both a trailing comment and a trailing text line.)
 #
 # WHAT IT ASSERTS, per file:
 #   - kramdown parses it without raising.

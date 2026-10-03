@@ -33,8 +33,10 @@
 #include "../diagnostics/logger.h"
 #include "../hud/base_hud.h"
 #include "../game/game_config.h"
+#include <climits>
 #include <cmath>
 #include <cstdint>
+#include <optional>
 #include <ostream>
 #include <string>
 
@@ -103,6 +105,99 @@ namespace Settings {
     inline float parseFiniteFloat(const std::string& value, float fallback = 0.0f) {
         float parsed = std::stof(value, nullptr);
         return std::isfinite(parsed) ? parsed : fallback;
+    }
+
+    // ------------------------------------------------------------------------
+    // Per-key readers for the HUD appliers (settings_hud_registry*.cpp, the
+    // widget file included -- a bare std::sto* there is the same bug).
+    //
+    // ONE KEY FAILS ALONE. Each returns the parsed value when the key is present
+    // and well-formed, and nullopt/nullptr otherwise -- absent and malformed look
+    // the same to the caller, which leaves that setting AS IT WAS: the factory
+    // default on a fresh load, the previous profile's value on a profile switch.
+    // A setter that used to fall back to an explicit default on a bad value keeps
+    // doing so through the readFloat(settings, key, fallback) overload below.
+    // A malformed value is logged with the key so the INI line can be found.
+    //
+    // Why per key and not one try/catch around the applier: the INI is hand-
+    // editable (CLAUDE.md), and a `std::stoi("yes")` throwing out of the middle
+    // of an applier used to abandon EVERY key after it for that HUD -- a single
+    // typo silently reset half a panel, with one log line to say so. Resetting
+    // more than the bad key is worse, not safer: with auto_save on, the next
+    // save would persist the collateral defaults over the user's file.
+    //
+    // Numbers parse strictly (the whole value must be a number; "12abc" fails),
+    // so a value that was never a number cannot be read as a plausible one.
+    // ------------------------------------------------------------------------
+    inline const std::string* readStr(const SettingsManager::HudSettings& settings, const std::string& key) {
+        auto it = settings.find(key);
+        return it != settings.end() ? &it->second : nullptr;
+    }
+
+    // long long, not long: long is 32-bit on MSVC (the shipping compiler), so a
+    // stol-based reader called every value above INT32_MAX malformed there while
+    // the Linux unit build, with a 64-bit long, took them -- readUInt's whole
+    // upper half. Range-checked by each caller against its own type.
+    inline std::optional<long long> parseWholeNumber(const std::string& value) {
+        try {
+            size_t consumed = 0;
+            const long long parsed = std::stoll(value, &consumed);
+            if (consumed == value.size()) return parsed;
+        } catch (const std::exception&) {
+        }
+        return std::nullopt;
+    }
+
+    inline std::optional<int> readInt(const SettingsManager::HudSettings& settings, const std::string& key) {
+        const std::string* raw = readStr(settings, key);
+        if (!raw) return std::nullopt;
+        const std::optional<long long> parsed = parseWholeNumber(*raw);
+        if (!parsed || *parsed < INT_MIN || *parsed > INT_MAX) {
+            DEBUG_WARN_F("Settings: '%s = %s' is not a whole number, keeping default", key.c_str(), raw->c_str());
+            return std::nullopt;
+        }
+        return static_cast<int>(*parsed);
+    }
+
+    inline std::optional<bool> readBool(const SettingsManager::HudSettings& settings, const std::string& key) {
+        const std::optional<int> parsed = readInt(settings, key);
+        if (!parsed) return std::nullopt;
+        return *parsed != 0;
+    }
+
+    inline std::optional<uint32_t> readUInt(const SettingsManager::HudSettings& settings, const std::string& key) {
+        const std::string* raw = readStr(settings, key);
+        if (!raw) return std::nullopt;
+        const std::optional<long long> parsed = parseWholeNumber(*raw);
+        if (!parsed || *parsed < 0 || *parsed > static_cast<long long>(UINT32_MAX)) {
+            DEBUG_WARN_F("Settings: '%s = %s' is not an unsigned number, keeping default", key.c_str(), raw->c_str());
+            return std::nullopt;
+        }
+        return static_cast<uint32_t>(*parsed);
+    }
+
+    // Finite only: "nan"/"inf" parse but would slip past every range check (see
+    // parseFiniteFloat), so they are treated as malformed and skipped.
+    inline std::optional<float> readFloat(const SettingsManager::HudSettings& settings, const std::string& key) {
+        const std::string* raw = readStr(settings, key);
+        if (!raw) return std::nullopt;
+        try {
+            size_t consumed = 0;
+            const float parsed = std::stof(*raw, &consumed);
+            if (consumed == raw->size() && std::isfinite(parsed)) return parsed;
+        } catch (const std::exception&) {
+        }
+        DEBUG_WARN_F("Settings: '%s = %s' is not a finite number, keeping default", key.c_str(), raw->c_str());
+        return std::nullopt;
+    }
+
+    // Present but malformed reads as `fallback` instead of nothing: for the
+    // settings whose applier stated an explicit default for a bad value before
+    // the readers existed, so a profile carrying a bad value still lands on that
+    // default rather than on whatever the previous profile left in the HUD.
+    inline std::optional<float> readFloat(const SettingsManager::HudSettings& settings, const std::string& key, float fallback) {
+        if (!readStr(settings, key)) return std::nullopt;
+        return readFloat(settings, key).value_or(fallback);
     }
 
     // Validation helper functions

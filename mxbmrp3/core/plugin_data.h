@@ -13,6 +13,7 @@
 #include "plugin_utils.h"
 #include "live_gap_engine.h"
 #include "lap_timer.h"
+#include "pb_gap_tracker.h"
 
 class PluginData {
 public:
@@ -47,7 +48,7 @@ public:
     void setSetupFileName(const char* setupFileName);
 
     // Race entry management
-    void addRaceEntry(int raceNum, const char* name, const char* bikeName);
+    void addRaceEntry(int raceNum, const char* name, const char* bikeName, const char* category = "");
     void removeRaceEntry(int raceNum);  // Also cleans up all per-rider data for this race number
     const std::unordered_map<int, RaceEntryData>& getRaceEntries() const { return m_raceEntries; }  // Collection (never null)
     const RaceEntryData* getRaceEntry(int raceNum) const;  // Per-rider (nullable)
@@ -138,8 +139,17 @@ public:
     // grid qualifying); pit-start sessions never reach that transition.
     void startLapTimerAtRaceStart(int raceNum);
 
-    // Reset timer on new lap (called when lap completes)
-    void resetLapTimerForNewLap(int raceNum, int lapNum);
+    // Reset timer on new lap (called when lap completes). lapValid is the game's
+    // verdict on the lap just ended (race_lap_handler's isLapValid): an invalid
+    // lap -- a cut, or one through the pits -- is no gap reference at all, not
+    // even the Last Lap one, so it is committed as a lap without a time. The two
+    // PB flags are the stats file's verdict on it (PersonalBestUpdate): whether
+    // it was stored as this track+bike's PB, and whether it beat the best in
+    // the active PB scope. They decide which gap references the lap becomes
+    // and whether its table goes to the PB trace store; false for any rider but
+    // the player, whose laps are the only ones the stats file records.
+    void resetLapTimerForNewLap(int raceNum, int lapNum, bool lapValid,
+                                bool bikePbStored = false, bool beatsAllTimePb = false);
 
     // Reset timer completely (for session change, spectate target change, pit entry)
     void resetLapTimer(int raceNum);
@@ -170,9 +180,33 @@ public:
         return false;
     }
 
-    // Invalidate the anchor (live time -> placeholder until next S/F) without losing track
-    // monitoring. Called on the display rider's pit exit. No-op if raceNum isn't the tracked rider.
-    void invalidateLapTimerAnchor(int raceNum);
+    // Invalidate the anchor (live time -> placeholder until next S/F). Called on the display
+    // rider's pit exit. rejoinedTrack says the rider is being placed back on the track
+    // (RunInit) rather than seen leaving the pit lane in the classification: the position
+    // baseline is dropped too, so the first sample from the pit box is not read as a wrap
+    // from where they left (LapTimer::forgetTrackPosition). No-op if raceNum isn't the
+    // tracked rider.
+    void invalidateLapTimerAnchor(int raceNum, bool rejoinedTrack);
+
+    // Whether the live timer holds an anchor for this rider, paused or not: a lap is
+    // being timed. isLapTimerValid() additionally asks the sim to be running, which at
+    // RunDeinit (the player leaving for the pits) it never is.
+    bool hasLapTimerAnchor(int raceNum) const;
+
+    // THE PIT LAP. The game reports a lap that went through the pits exactly like a
+    // cut one (time 0 outside a race, the invalid flag in one), so every reader used
+    // to announce it -- the spotter's "struck out", the Timing panel's INVALID -- to a
+    // rider who had just chosen to pit. What the plugin knows and the game does not
+    // say is that the pits were visited: RunDeinit for the player (the
+    // classification's pit flag may never rise for a pit taken from the menu, the
+    // sim having stopped first), the pit flag rising for anyone else.
+    // Marked there, consumed by the RaceLap that ends the lap, and carried on its
+    // LapLogEntry::viaPits so each reader decides once; a cut lap keeps every notice.
+    // Marking notifies LapLog for the display rider: the Lap Log's live row says
+    // PIT from the moment the pits are entered, not from the line that closes it.
+    void markLapViaPits(int raceNum);
+    bool consumeLapViaPits(int raceNum);
+    bool isLapViaPits(int raceNum) const;   // marked, not yet consumed: the lap in progress is a pit lap
 
     // Get elapsed times (returns -1 if no valid anchor or different rider)
     int getElapsedLapTime(int raceNum) const;
@@ -553,12 +587,27 @@ public:
     void notifyTrackedRidersChanged();
 
     // ========================================================================
-    // Live Gap (published by GapBarHud for use by LapLogHud and other HUDs)
+    // Live gap to personal best (display rider). Computed HERE from the central
+    // lap timer and the PbGapTracker it drives (plugin_data_lap_timer.cpp), read
+    // by GapBarHud (bar, ghost marker) and LapLogHud (gap row). Positive = behind
+    // the PB, negative = ahead. Valid while a reference lap exists and the lap
+    // timer has an anchor -- a paused game keeps its anchor, so the gap holds
+    // still rather than dropping to the placeholder.
     // ========================================================================
-    // Positive = behind PB, Negative = ahead of PB
-    void setLiveGap(int gapMs, bool valid) { m_liveGapMs = gapMs; m_liveGapValid = valid; }
-    int getLiveGap() const { return m_liveGapMs; }
-    bool hasValidLiveGap() const { return m_liveGapValid; }
+    // `ref` picks the reference lap (the Gap Bar's and the Lap Log's own Reference
+    // settings): the session PB, the persisted all-time PB, or the last lap.
+    using GapRef = PbGapTracker::Ref;
+    bool hasValidLiveGap(GapRef ref = GapRef::SESSION_PB) const;
+    int getLiveGap(GapRef ref = GapRef::SESSION_PB) const;
+    // Where the reference lap was at the current elapsed time (0..1), -1 when
+    // there is no reference: the Gap Bar's ghost marker.
+    float getPbGhostProgress(GapRef ref = GapRef::SESSION_PB) const;
+    // The display rider's last sampled track position (0..1): the self marker.
+    float getDisplayRiderTrackPos() const;
+    // TEST ONLY (test_hooks.cpp): plant a sticky live gap so the bar's fill can be
+    // measured headlessly; a real one needs a full lap of samples. Outranks the
+    // computed gap until clear().
+    void testForceLiveGap(int gapMs, bool valid);
 
     // ========================================================================
     // Timed Notice Flags (set by RaceLapHandler, consumed by NoticesHud)
@@ -660,6 +709,9 @@ public:
     // Official split positions (centerline 0-1), set from the track centerline handler.
     // Used to snap newly-placed segment boundaries onto a nearby real split.
     void setSplitPositions(const std::vector<float>& positions) { m_splitPositions = positions; }
+    // S/F first (0), then each split the game reported, in lap order. Empty when the
+    // game sends no marker data (GP Bikes: see gpb_api.cpp TrackCenterline).
+    const std::vector<float>& getSplitPositions() const { return m_splitPositions; }
 
     // Hotkeys: drop a boundary point at the player's current position / remove the last point.
     void addSegmentPoint();
@@ -785,6 +837,11 @@ private:
     PerRider<std::unordered_map<int, StandingsData>> m_standings{*this};
     PerRider<std::unordered_map<int, int>> m_lastValidOfficialGap{*this};  // Cache of last valid official gap per rider (prevents flicker)
     std::vector<int> m_classificationOrder;  // Official race position order from game
+    // batchUpdateStandings() fills THIS and swaps it in whole once the loop is
+    // done: the loop logs pit events, and an event-log notification builds the
+    // overlay snapshot synchronously, which walked a half-filled order and
+    // served a tower cut off at that rider (http_test.cpp pins it).
+    std::vector<int> m_classificationScratch;
     int m_lastLeaderRaceNum = -1;  // Previous race leader (for leader change detection, race sessions only)
     mutable std::unordered_map<int, int> m_positionCache;  // Cached position lookup (race number -> position), rebuilt when classification changes
     mutable bool m_bPositionCacheDirty;  // Flag to rebuild position cache
@@ -806,6 +863,7 @@ private:
     // no batches arrive while the player sits in menus, so a departed rider's
     // stale "active" bit would never refresh out on its own (hence PerRider).
     PerRider<std::unordered_set<int>> m_activeTrackPosRiders{*this};
+    PerRider<std::unordered_set<int>> m_lapViaPits{*this};   // riders whose lap in progress visited the pits (see markLapViaPits)
     mutable bool m_cachedPlayerBlueFlagged = false;        // Cached: is the display rider blue-flagged?
     mutable bool m_cachedPlayerLapping = false;            // Cached: is the display rider lapping a backmarker ahead?
     mutable std::unordered_set<int> m_cachedBlueFlaggedSet;  // Cached per-rider blue flag lookup (recomputed when dirty)
@@ -881,9 +939,15 @@ private:
     int m_drawState;                       // Current draw state (ON_TRACK=0, SPECTATE=1, REPLAY=2)
     int m_spectatedRaceNum;                // Race number of rider being spectated (-1 if none)
 
-    // Live gap tracking (published by GapBarHud)
-    int m_liveGapMs = 0;                   // Current gap in milliseconds (positive = behind PB, negative = ahead)
-    bool m_liveGapValid = false;           // Is the live gap valid?
+    // Live gap to PB: the reference-lap engine, driven from the lap-timer transitions.
+    PbGapTracker m_pbGap;
+    // Plant the player's persisted all-time PB table (core/pb_trace_store.h)
+    // as the tracker's ALLTIME_PB reference, for the bike the stats file's PB
+    // scope resolves to. Called wherever the tracker is (re)bound to the player.
+    void plantAllTimeGapReference();
+    bool m_liveGapForced = false;          // test plant (testForceLiveGap) outranks the computed gap
+    int m_forcedLiveGapMs = 0;
+    bool m_forcedLiveGapValid = false;
 
     // Timed notice flags (set by RaceLapHandler, consumed by NoticesHud)
     // Uses steady_clock timestamps so NoticesHud can show timed notices.

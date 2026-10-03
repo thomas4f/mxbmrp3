@@ -6,7 +6,7 @@ Two shipped crashes on 1.27.4.39 -
 
 | fault | resolves to |
 |---|---|
-| `mxbmrp3.dlo+0x378d8` | `std::_Tree::_Erase_tree` freeing `PluginData::m_leaderTimingPoints` |
+| `mxbmrp3.dlo+0x378d8` | `std::_Tree::_Erase_tree` freeing `PluginData::m_leaderTimingPoints` (the name at the time; that state now lives in `LiveGap::Engine`) |
 | `mxbmrp3.dlo+0xeaab4` | `StatsManager::save()` iterating `m_bikeOdometers` |
 
 - were access violations in **innocent heap walks** (a `std::map` teardown; a
@@ -64,6 +64,11 @@ graph:
   NaN/Inf/huge/negative/denormal floats and 500 K random bit patterns, with the
   clamped result used to index a **real `std::array<LeaderTimingPoint, NUM_TIMING_POINTS>`**.
   If the clamp ever fails to bound the index, ASan faults on the out-of-bounds write.
+- **The PB gap tracker's position input** (`core/pb_gap_tracker.h`): the same float
+  domain through the real `onTrackPosition` / `gapAt` / `bestLapProgressAt`, with
+  random elapsed times (including `INT_MIN`/`INT_MAX`), re-anchor flags and lap
+  completions - non-finite input is rejected before any cast, and the gap math is
+  64-bit so no sample difference can overflow under UBSan.
 - **Churn of the two crash-site container types** (`map<int, array<…,100>>` and
   `map<string,double>`): build / mutate / prune / clear, mirroring the erase
   pattern in `updateRealTimeGaps`.

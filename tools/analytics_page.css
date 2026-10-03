@@ -1,0 +1,133 @@
+/* tools/analytics_page.css - the usage-survey page (inlined by analytics_page.py).
+   The charts' own neutrals are #808080, which reads on either surface, so the
+   page is free to follow the reader's light/dark preference. */
+:root {
+  --bg: #ffffff;
+  --panel: #f6f8fa;
+  --text: #1f2328;
+  --muted: #59636e;
+  --line: #d1d9e0;
+  --accent: #0969da;
+  --tip-bg: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --panel: #151b23;
+    --text: #e6edf3;
+    --muted: #9198a1;
+    --line: #30363d;
+    --accent: #4493f8;
+    --tip-bg: #1c2128;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-padding-top: 12px; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.55 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+.wrap { max-width: 860px; margin: 0 auto; padding: 0 16px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.top {
+  z-index: 2;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+/* The section links wrap rather than scroll sideways (a scrollbar under a row
+   of links read as a stray frame). Wrapped, they take two lines on a desktop
+   and five on a phone, so the header only sticks where it stays that short. */
+@media (min-width: 720px) {
+  html { scroll-padding-top: 140px; }
+  .top { position: sticky; top: 0; }
+}
+.top h1 { font-size: 22px; margin: 14px 0 2px; }
+.top .alt { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+.top nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  padding-bottom: 10px;
+  font-size: 13px;
+}
+.top nav a { white-space: nowrap; }
+
+main { padding-top: 12px; padding-bottom: 48px; }
+h2 { font-size: 19px; margin: 36px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+h3 { font-size: 16px; margin: 24px 0 8px; }
+ul { padding-left: 22px; }
+code {
+  font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: var(--panel);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+sub { color: var(--muted); font-size: 12px; }
+blockquote { margin: 12px 0; padding: 2px 14px; border-left: 3px solid var(--line); color: var(--muted); }
+
+table { border-collapse: collapse; margin: 10px 0 16px; display: block; overflow-x: auto; max-width: 100%; }
+th, td { border: 1px solid var(--line); padding: 5px 12px; }
+th { background: var(--panel); font-weight: 600; }
+
+/* The headline figures as cards (the report's "At a glance" table). */
+.glance {
+  display: grid;
+  /* Three across, two on a phone: six figures fill whole rows either way, where
+     auto-fit left one orphan card on a row of its own. */
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 16px 0 8px;
+}
+@media (max-width: 560px) {
+  .glance { grid-template-columns: repeat(2, 1fr); }
+}
+.glance .card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.glance .num { font-size: 26px; font-weight: 650; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.glance .name { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.glance + p { color: var(--muted); font-size: 13px; }
+
+figure.chart {
+  margin: 12px 0 20px;
+  padding: 10px 6px 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+figure.chart svg { display: block; width: 100%; height: auto; }
+details { margin: 12px 0; }
+summary { cursor: pointer; }
+
+/* Cursor readouts (analytics_page.js). */
+svg [data-tip] { transition: opacity .1s; }
+svg [data-tip].hot { opacity: .75; }
+.cursor line { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.cursor circle { stroke: var(--bg); stroke-width: 1.5; }
+.tip {
+  position: fixed;
+  z-index: 5;
+  pointer-events: none;
+  min-width: 120px;
+  max-width: 320px;
+  padding: 6px 9px;
+  background: var(--tip-bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .25);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.tip .head { font-weight: 600; margin-bottom: 2px; }
+.tip .row { display: flex; align-items: center; gap: 6px; }
+.tip .sw { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.tip .name { flex: 1; white-space: pre-line; }
+.tip .val { font-weight: 600; font-variant-numeric: tabular-nums; }

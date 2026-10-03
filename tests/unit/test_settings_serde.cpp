@@ -314,3 +314,71 @@ TEST_CASE("toString never returns null or empty, including for out-of-range inpu
     CHECK(stringToRadarMode(radarModeToString(static_cast<RadarHud::RadarMode>(99)),
                             RadarHud::RadarMode::OFF) == RadarHud::RadarMode::ON);
 }
+
+// ---------------------------------------------------------------------------
+// Per-key readers (readStr/readInt/readBool/readUInt/readFloat).
+//
+// THE PROPERTY: a malformed value fails ALONE. Absent and malformed both read
+// as "nothing" (nullopt / nullptr) so the applier leaves that one setting at
+// its default and carries on; the reader itself never throws. Before these
+// existed, `std::stoi` threw out of the middle of a HUD's applier and every
+// key after it was silently abandoned (see settings_malformed_test.cpp for
+// the through-the-DLL half). Strictness is part of the contract: "12abc" is
+// not a number, and neither is "inf" for a float.
+// ---------------------------------------------------------------------------
+TEST_CASE("per-key readers: absent and malformed both read as nothing, never throw") {
+    SettingsManager::HudSettings s = {
+        {"i", "42"}, {"neg", "-7"}, {"b1", "1"}, {"b0", "0"}, {"b2", "2"},
+        {"f", "1.5"}, {"fneg", "-0.25"},
+        {"junk", "yes"}, {"trail", "12abc"}, {"empty", ""}, {"space", " 3"},
+        {"nan", "nan"}, {"inf", "inf"}, {"huge", "99999999999999999999"},
+        {"u", "4294967295"}, {"uneg", "-1"},
+    };
+
+    SUBCASE("present and well-formed") {
+        CHECK(*readInt(s, "i") == 42);
+        CHECK(*readInt(s, "neg") == -7);
+        CHECK(*readBool(s, "b1") == true);
+        CHECK(*readBool(s, "b0") == false);
+        CHECK(*readBool(s, "b2") == true);          // stoi semantics: any non-zero is on
+        CHECK(*readFloat(s, "f") == doctest::Approx(1.5f));
+        CHECK(*readFloat(s, "fneg") == doctest::Approx(-0.25f));
+        CHECK(*readUInt(s, "u") == 4294967295u);
+        REQUIRE(readStr(s, "junk") != nullptr);
+        CHECK(*readStr(s, "junk") == "yes");
+    }
+
+    SUBCASE("absent") {
+        CHECK_FALSE(readInt(s, "missing").has_value());
+        CHECK_FALSE(readBool(s, "missing").has_value());
+        CHECK_FALSE(readUInt(s, "missing").has_value());
+        CHECK_FALSE(readFloat(s, "missing").has_value());
+        CHECK(readStr(s, "missing") == nullptr);
+    }
+
+    SUBCASE("malformed reads as nothing and does not throw") {
+        for (const char* k : {"junk", "trail", "empty", "nan", "inf", "huge"}) {
+            INFO("key " << k);
+            CHECK_NOTHROW(readInt(s, k));
+            CHECK_FALSE(readInt(s, k).has_value());
+            CHECK_FALSE(readBool(s, k).has_value());
+        }
+        for (const char* k : {"junk", "trail", "empty", "nan", "inf"}) {
+            INFO("key " << k);
+            CHECK_NOTHROW(readFloat(s, k));
+            CHECK_FALSE(readFloat(s, k).has_value());
+        }
+        CHECK_FALSE(readUInt(s, "uneg").has_value());     // negative is not unsigned
+        CHECK_FALSE(readUInt(s, "huge").has_value());
+        // Leading whitespace is what strtol accepts and stoi tolerated; keep that.
+        CHECK(*readInt(s, "space") == 3);
+    }
+}
+
+TEST_CASE("readFloat with a fallback: absent reads as nothing, malformed reads as the fallback") {
+    SettingsManager::HudSettings s = { {"f", "1.5"}, {"bad", "nan"}, {"junk", "wide"} };
+    CHECK(*readFloat(s, "f", 9.0f) == doctest::Approx(1.5f));
+    CHECK(*readFloat(s, "bad", 9.0f) == doctest::Approx(9.0f));
+    CHECK(*readFloat(s, "junk", 9.0f) == doctest::Approx(9.0f));
+    CHECK_FALSE(readFloat(s, "missing", 9.0f).has_value());
+}

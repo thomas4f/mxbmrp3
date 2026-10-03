@@ -2,13 +2,14 @@
 // hud/settings_hud_render.cpp
 // SettingsHud::rebuildRenderData() — the settings menu's full render build: it
 // lays out every tab's controls, labels, click regions and tooltips into the
-// HUD's quad/string vectors. Companion to settings_hud_input.cpp.
+// HUD's quad/string vectors (the footer button row is settings_hud_footer.cpp).
+// Companion to settings_hud_input.cpp.
 //
 // The tab bar and its two icon helpers are member functions below, not lambdas
 // (each needs 2 parameters beyond its original arguments, 5 for the bar); the
 // per-tab CONTROL code lives in SettingsLayoutContext.
 // ============================================================================
-// file-budget: 1450 the tab registry and shared render scaffolding; per-tab code is already split
+// file-budget: 1350 the tab registry and shared render scaffolding; per-tab code is already split
 #include <cmath>
 
 #include "settings_hud.h"
@@ -46,6 +47,7 @@
 #include "../core/plugin_manager.h"
 #include "../core/settings_manager.h"
 #include "../core/hud_manager.h"
+#include "stream_chat_hud.h"
 #include "../core/profile_manager.h"
 #include "../core/update_checker.h"
 #include "../core/update_downloader.h"
@@ -106,12 +108,23 @@ const SettingsHud::TabDescriptor SettingsHud::s_tabRegistry[] = {
     { TAB_RUMBLE,       "Rumble",     "rumble",        nullptr,                                                              false, &SettingsHud::renderTabRumble,          &SettingsHud::handleClickTabRumble,       nullptr,            &SettingsHud::resetTabRumble,           nullptr, nullptr },
     { TAB_HELMET,       "Helmet",     "helmet",        nullptr,                                                              false, &SettingsHud::renderTabHelmet,          &SettingsHud::handleClickTabHelmet,       nullptr,            &SettingsHud::resetTabHelmet,           nullptr, nullptr },
     { TAB_DIRECTOR,     "Director",   "director",      nullptr,                                                              false, &SettingsHud::renderTabDirector,        nullptr,                                  nullptr,            &SettingsHud::resetTabDirector,         nullptr, nullptr },
+    // A GLOBAL tab with a backing HUD: the sidebar checkbox is the chat HUD's own
+    // HUD_TOGGLE (visibility only -- each platform's connection has its own
+    // switch on the tab), and its settings persist in [Twitch]/[YouTube], not the
+    // per-profile cache, so there is no resetHud: resetTabStreamChat replays the
+    // sections instead. NO badge: "Stream Chat" is 11 of the sidebar's 13 label
+    // cells, so a "New" tag (2.25 cells) would overflow them (see the badge
+    // comment in the tab-list loop); its rows still band, and so does its sidebar
+    // row instead of the tag (WhatsNew::tabCanTag / tabHighlightsRow).
+    { TAB_STREAM_CHAT,       "Stream Chat", "stream_chat",   [](const SettingsHud&) -> BaseHud* { return &HudManager::getInstance().getStreamChatHud(); },
+                                                                                                                                      false, &SettingsHud::renderTabStreamChat,          &SettingsHud::handleClickTabStreamChat,       nullptr,            &SettingsHud::resetTabStreamChat,           nullptr, nullptr },
     // The trailing pair: not hidden, and the subtitle widget is what this tab
     // positions (see TabDescriptor::previewHud).
     { TAB_SPOTTER,      "Spotter",    "spotter",       nullptr,                                                              false, &SettingsHud::renderTabSpotter,         &SettingsHud::handleClickTabSpotter,      nullptr,            &SettingsHud::resetTabSpotter,          nullptr, "Beta", false,
       [](const SettingsHud&) -> BaseHud* { return &HudManager::getInstance().getSpotterWidget(); } },
     // NO badge, ever: "Achievements" is 12 of the sidebar's 13 label cells, so a
     // Small "New" (2.25 cells) would collide with it -- see settingsSidebarWidth.
+    // Its news bands the row instead (WhatsNew::tabHighlightsRow).
     { TAB_ACHIEVEMENTS, "Achievements", "achievements", nullptr,                                                            true,  &SettingsHud::renderTabAchievements,    &SettingsHud::handleClickTabAchievements, nullptr,            &SettingsHud::resetTabAchievements,     nullptr, nullptr, false,
       [](const SettingsHud&) -> BaseHud* { return HudManager::getInstance().getAchievementWidget(); } },
     { TAB_UPDATES,      "Updates",    "updates",       nullptr,                                                              false, &SettingsHud::renderTabUpdates,         &SettingsHud::handleClickTabUpdates,      nullptr,            &SettingsHud::resetTabUpdates,          nullptr, nullptr },
@@ -406,6 +419,15 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
                 addRowHighlight(plan.rowBandX(col), tabStartY, plan.rowBandW(col),
                                 dim.lineHeightNormal,
                                 PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(),
+                                                          ROW_HOVER_ALPHA));
+            } else if (WhatsNew::tabHighlightsRow(i)) {
+                // A tab with news but no room for the "New" tag gets the what's-new
+                // ROW band instead (addWhatsNewRowBands): same colour, same alpha,
+                // same span as the hover band that replaces it -- and hovering is
+                // what dismisses it (dismissMarkedTab).
+                addRowHighlight(plan.rowBandX(col), tabStartY, plan.rowBandW(col),
+                                dim.lineHeightNormal,
+                                PluginUtils::applyOpacity(ColorConfig::getInstance().getPositive(),
                                                           ROW_HOVER_ALPHA));
             }
         }
@@ -845,6 +867,7 @@ float SettingsHud::measureTallestBodyH(const ScaledDimensions& dim,
     if (m_tallestContentRows >= 0.0f && key == m_tallestKey) return m_tallestContentRows;
 
     float tallest = 0.0f;
+    int tallestTab = -1;
     for (const TabDescriptor& row : s_tabRegistry) {
         if (row.tabId < 0 || !row.render) continue;      // a section header, not a tab
         // NO `hidden` skip here, and the asymmetry is the load-bearing part: a hidden
@@ -871,13 +894,17 @@ float SettingsHud::measureTallestBodyH(const ScaledDimensions& dim,
         w.buttonH = dim.lineHeightNormal;
 
         const float bodyH = planBodyHeight(dim, w);
-        // One line per tab per measure (a measure is per key, not per frame): the
-        // number a tab must stay under is whichever tab binds, and nothing else
-        // reports it -- theme_geometry_test says only that the panel overflows.
-        DEBUG_INFO_F("Settings tab %d measures %.2f body rows", row.tabId,
-                     bodyH / dim.lineHeightNormal);
-        tallest = std::max(tallest, bodyH);
+        if (bodyH > tallest) {
+            tallest = bodyH;
+            tallestTab = row.tabId;
+        }
     }
+
+    // One line per measure (a measure is per key, not per frame): the number a tab
+    // must stay under is whichever tab binds, and nothing else reports it --
+    // theme_geometry_test says only that the panel overflows.
+    DEBUG_INFO_F("Settings panel measures %.2f body rows (tallest: tab %d)",
+                 tallest / dim.lineHeightNormal, tallestTab);
 
     m_tallestContentRows = tallest;
     m_tallestKey = key;
@@ -942,12 +969,102 @@ void SettingsHud::rebuildRenderData() {
 
     auto dim = getScaledDimensions();
 
+    constexpr float sectionSpacing = 0.0150f;
+
+    // DECLARE (the asks and the plan -- see planSettingsPanel), THEN DRAW.
+    float sidebarAsk = 0.0f, contentAsk = 0.0f, labelToControl = 0.0f, labelToRight = 0.0f;
+    PanelPlan& plan = planSettingsPanel(dim, sidebarAsk, contentAsk, labelToControl, labelToRight);
+    const PanelBox::ColumnGeom& sideCol = plan.col(0, 0);
+    const PanelBox::ColumnGeom& mainCol = plan.col(0, 1);
+
+    // CENTRED ON THE CONTENT, which is this panel's one layout privilege: it
+    // cannot be dragged, so it places itself -- and what it centres is the
+    // character lattice (sidebar + content asks), NOT the panel box. Centring
+    // the box splits every theme-dependent term in half and pushes that half
+    // into the content, which walks the row controls sideways as themes are
+    // cycled (theme_geometry_test contract 1). The theme's air and borders hang
+    // off the anchored content, so only the panel's outer edges may move.
+    // startX is then derived: where the panel's left edge must be for the
+    // content column's rows to land on the anchor. It stays on the lattice
+    // because every term in between is whole cells (see the sidebar ask).
+    const float panelWidth = plan.width();
+    const float backgroundHeight = plan.height();
+    const float contentAnchorX =
+        snapEdgeX(0.5f + (sidebarAsk - contentAsk) / 2.0f);
+    const float startX = contentAnchorX - plan.W(mainCol.rowsLeft);
+    const float startY = snapEdgeY((1.0f - backgroundHeight) / 2.0f);
+
+    // The frame, the caption's band and one card per section of BOTH columns.
+    addPlanBackground(plan, startX, startY);
+    setBounds(startX, startY, startX + panelWidth, startY + backgroundHeight);
+    addPlanTitle(plan, "MXBMRP3 SETTINGS",
+                 ColorConfig::getInstance().getPrimary());
+
+    // ---- the columns, in the engine's coordinates ------------------------
+    const float tabStartX = plan.colContentX(sideCol);
+    const float tabWidth = sidebarAsk;
+    const float contentAreaStartX = plan.colContentX(mainCol);
+    const float leftColumnX = contentAreaStartX;
+    const float rightColumnX = contentAreaStartX + labelToRight;
+    const float controlX = leftColumnX + labelToControl;
+    const float contentAreaWidth = plan.colContentW(mainCol);
+    // A row ends where its own column ends: the card is the column's own box, so
+    // there is no inset for the row to give back.
+    const float panelContentRightX = contentAreaStartX + contentAreaWidth;
+    float currentY = plan.colContentY(mainCol, 0);
+    float checkboxWidth = PluginUtils::calculateMonospaceTextWidth(4, dim.fontSize);  // "[X] " or "    "
+
+    // The sidebar draws into its OWN column's sections -- one per tab-list group,
+    // at the origins the engine placed them.
+    buildTabBar(dim, plan, sideCol, tabStartX, tabWidth, checkboxWidth);
+
+    SettingsLayoutContext layoutCtx(this, dim, leftColumnX, controlX, rightColumnX,
+                                     contentAreaStartX, contentAreaWidth,
+                                     panelContentRightX, currentY);
+    // WHERE THE ENGINE PUT THIS TAB'S SECTIONS. Handing them over is what turns the
+    // draw from "lay them out again and hope it matches the measure" into "put them
+    // where they were planned" -- the two passes cannot disagree about a seam
+    // neither of them spends.
+    for (const PanelBox::SectionGeom& sec : mainCol.sections)
+        layoutCtx.planSectionY.push_back(plan.Y(sec.rowsTop));
+    layoutCtx.planCardLeftX = plan.X(mainCol.cardLeft);
+
+#if defined(MXBMRP3_TEST_BUILD)
+    recordTestAnchors(plan, sideCol, mainCol, leftColumnX, controlX, layoutCtx);
+#endif
+
+    currentY = renderActiveTab(layoutCtx, plan, mainCol, dim, currentY);
+
+    currentY += sectionSpacing;
+
+    // Draw hover highlight for TOOLTIP_ROW regions
+    addHoveredRowHighlight(plan, mainCol);
+
+    // Render description or tooltip at the reserved position (replaces each other).
+    renderTooltipText(layoutCtx, dim);
+
+    // Bottom button row: [Reset <Tab>] ... [Save/Saved] [Close] ... [About]
+    // (settings_hud_footer.cpp).
+    buildFooterButtons(dim, plan, sideCol, mainCol, startX, panelWidth);
+
+    // This panel rebuilds DIRECTLY from its ~30 interaction sites rather than
+    // through processDirtyFlags, which is where every other HUD's fill gets cut
+    // -- so without this the sweep never runs here, the centre slice keeps covering
+    // the whole interior, and every card (and the title band) sits on it at double
+    // opacity, reading darker than the panel. Consumes m_fillFirst, so the
+    // dirty-flag path finalizing again is a no-op, not a double cut.
+    finalizeThemedFill();
+}
+
+// The panel's plan: both columns' asks, the active tab's measured sections and
+// the tallest tab's body as the floor, plus the footer's three buttons.
+PanelPlan& SettingsHud::planSettingsPanel(const ScaledDimensions& dim, float& sidebarAsk, float& contentAsk,
+                                          float& labelToControl, float& labelToRight) {
     // The panel's columns, COMPOSED: sidebar ask + trough (the seam read,
     // sectionGap + gap — see troughCells) + content ask, in characters —
     // fractional once the terms enter, so the width is built from one
     // character's width rather than the int-only helper.
     const float charW = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
-    constexpr float sectionSpacing = 0.0150f;
 
     // ======================================================================
     // DECLARE, THEN DRAW -- the two steps every HUD and widget takes.
@@ -975,18 +1092,19 @@ void SettingsHud::rebuildRenderData() {
     // borders, the gap) is whole cells, so with this one quantized too the
     // content-anchored startX below still lands the panel's edge on the
     // lattice. The rounding is at most one cell of air on the sidebar's right.
-    const float sidebarAsk = std::ceil(
+    sidebarAsk = std::ceil(
         charW * static_cast<float>(layout().settingsSidebarWidth) / dim.cellW - 1e-4f)
         * dim.cellW;
-    const float contentAsk = charW * static_cast<float>(layout().settingsContentAreaChars());
+    contentAsk = charW * static_cast<float>(layout().settingsContentAreaChars());
 
     // MEASURED AT THE ORIGIN, with the same RELATIVE columns the draw will use.
     // A section's height depends on its rows and on how far prose wraps, and
     // wrapping is a character count -- never on where the column sits. Measuring
     // at 0 says so, and needs no provisional-origin pass.
-    const float labelToControl = PluginUtils::calculateMonospaceTextWidth(24, dim.fontSize);
-    const float labelToRight = PluginUtils::calculateMonospaceTextWidth(
+    labelToControl = PluginUtils::calculateMonospaceTextWidth(SETTINGS_CONTROL_COLUMN, dim.fontSize);
+    labelToRight = PluginUtils::calculateMonospaceTextWidth(
         layout().settingsControlColumn - layout().settingsLabelColumn, dim.fontSize);
+
     const TabMeasure active = measureTab(m_activeTab, dim, /*labelX=*/0.0f,
                                          /*controlX=*/labelToControl,
                                          /*rightColumnX=*/labelToRight,
@@ -1022,167 +1140,87 @@ void SettingsHud::rebuildRenderData() {
     want.buttonH = dim.lineHeightNormal;
 
     PanelPlan& plan = planPanel(dim, want);
-    const PanelBox::ColumnGeom& sideCol = plan.col(0, 0);
-    const PanelBox::ColumnGeom& mainCol = plan.col(0, 1);
+    return plan;
+}
 
-    // CENTRED ON THE CONTENT, which is this panel's one layout privilege: it
-    // cannot be dragged, so it places itself -- and what it centres is the
-    // character lattice (sidebar + content asks), NOT the panel box. Centring
-    // the box splits every theme-dependent term in half and pushes that half
-    // into the content, which walks the row controls sideways as themes are
-    // cycled (theme_geometry_test contract 1). The theme's air and borders hang
-    // off the anchored content, so only the panel's outer edges may move.
-    // startX is then derived: where the panel's left edge must be for the
-    // content column's rows to land on the anchor. It stays on the lattice
-    // because every term in between is whole cells (see the sidebar ask).
-    const float panelWidth = plan.width();
-    const float backgroundHeight = plan.height();
-    const float contentAnchorX =
-        snapEdgeX(0.5f + (sidebarAsk - contentAsk) / 2.0f);
-    const float startX = contentAnchorX - plan.W(mainCol.rowsLeft);
-    const float startY = snapEdgeY((1.0f - backgroundHeight) / 2.0f);
+void SettingsHud::addWhatsNewRowBands(const PanelPlan& plan, const PanelBox::ColumnGeom& mainCol) {
+    // THE WHAT'S-NEW ROW BANDS, in one pass over what the tab just registered.
+    //
+    // Here rather than inside every row helper because a row's identity is its
+    // row-wide tooltip region, and by now they all exist -- one loop marks any
+    // row on any tab, and no helper needs to know this feature exists.
+    //
+    // Drawn AFTER the rows and still behind them: the plugin API takes quads and
+    // strings as two arrays, so every quad draws before every string whatever
+    // order they were pushed in (see HudManager::draw). The band cannot cover the
+    // label it is pointing at.
+    //
+    // The POSITIVE colour, matching the "New" tag on the tab that led the player
+    // here -- one colour for the whole trail, tag to row. Not WARNING, which this
+    // plugin spends everywhere else on "careful": a band in it reads as a problem
+    // with the row rather than as the thing worth looking at, and is
+    // indistinguishable from the Beta caveat two tabs down.
+    //
+    // At the same alpha the hover band uses, so it reads as "look here" rather
+    // than as a selection -- and so it disappears under the hover band the moment
+    // the pointer arrives, which is also when it is dismissed.
+    // SPANNED FROM THE PLAN (rowBandX/W), not from the region's own rect. A
+    // highlight is a property of the COLUMN, not of the control in it: a row that
+    // builds its tooltip region by hand gets a different rect from one that went
+    // through the layout helpers, so a band spanned from the region changes
+    // width by tab and does not line up with the accent band that replaces it on
+    // hover.
+    for (const ClickRegion& r : m_clickRegions) {
+        if (r.tooltipId.empty()) continue;
+        if (!WhatsNew::liveForRow(m_activeTab, r.tooltipId.c_str())) continue;
+        addRowHighlight(plan.rowBandX(mainCol), r.y, plan.rowBandW(mainCol), r.height,
+                        PluginUtils::applyOpacity(
+                            ColorConfig::getInstance().getPositive(), ROW_HOVER_ALPHA));
+    }
+}
 
-    // The frame, the caption's band and one card per section of BOTH columns.
-    addPlanBackground(plan, startX, startY);
-    setBounds(startX, startY, startX + panelWidth, startY + backgroundHeight);
-    addPlanTitle(plan, "MXBMRP3 SETTINGS", Fonts::getTitle(),
-                 ColorConfig::getInstance().getPrimary());
-
-    // ---- the columns, in the engine's coordinates ------------------------
-    const float tabStartX = plan.colContentX(sideCol);
-    const float tabWidth = sidebarAsk;
-    const float contentAreaStartX = plan.colContentX(mainCol);
-    const float leftColumnX = contentAreaStartX;
-    const float rightColumnX = contentAreaStartX + labelToRight;
-    const float controlX = leftColumnX + labelToControl;
-    const float contentAreaWidth = plan.colContentW(mainCol);
-    // A row ends where its own column ends: the card is the column's own box, so
-    // there is no inset for the row to give back.
-    const float panelContentRightX = contentAreaStartX + contentAreaWidth;
-    float currentY = plan.colContentY(mainCol, 0);
-    float checkboxWidth = PluginUtils::calculateMonospaceTextWidth(4, dim.fontSize);  // "[X] " or "    "
-
-    // The sidebar draws into its OWN column's sections -- one per tab-list group,
-    // at the origins the engine placed them.
-    buildTabBar(dim, plan, sideCol, tabStartX, tabWidth, checkboxWidth);
-
-    SettingsLayoutContext layoutCtx(this, dim, leftColumnX, controlX, rightColumnX,
-                                     contentAreaStartX, contentAreaWidth,
-                                     panelContentRightX, currentY);
-    // WHERE THE ENGINE PUT THIS TAB'S SECTIONS. Handing them over is what turns the
-    // draw from "lay them out again and hope it matches the measure" into "put them
-    // where they were planned" -- the two passes cannot disagree about a seam
-    // neither of them spends.
-    for (const PanelBox::SectionGeom& sec : mainCol.sections)
-        layoutCtx.planSectionY.push_back(plan.Y(sec.rowsTop));
-    layoutCtx.planCardLeftX = plan.X(mainCol.cardLeft);
-
+void SettingsHud::checkTabOverflow(const PanelPlan& plan, const PanelBox::ColumnGeom& mainCol,
+                                   const ScaledDimensions& dim, float currentY) {
+    // HOW FAR THE TAB OVERRAN THE SPACE RESERVED FOR IT, in rows -- negative is
+    // slack, and it should ALWAYS be negative: the height is measured from the
+    // tallest tab, so this one had room by construction.
+    //
+    // Plus the last card's bottom pad, which finishSections() drew BELOW
+    // currentY: the cursor stops on the last row, the card does not, and it is
+    // the CARD the footer buttons collide with.
+    //
+    // It is kept because "by construction" has one failure mode left: a renderer
+    // that lays out differently between the measure pass and this one -- reading
+    // the panel's own height, say. The warning is for a player's log, the number
+    // for CI (settings_fit_test reads it for every tab).
+    // WHERE THE COLUMN'S LAST SECTION ENDS, straight off the engine -- what the
+    // tab was given.
+    const float contentLimit = mainCol.sections.empty()
+        ? plan.Y(plan.g.btnTop)
+        : plan.Y(mainCol.sections.back().bot);
+    const float overflow = (currentY + cardPadBotY() - contentLimit)
+                         / dim.lineHeightNormal;
 #if defined(MXBMRP3_TEST_BUILD)
-    // The two column edges the symmetry test reads; see SettingsHud::testColumnEdgesX.
-    // Themed these are the two columns' CARD edges (a card overhangs its column by one
-    // inner border at each end); unthemed the border is 0 and they are the tab
-    // highlight's left and the row highlight's right.
-    // The CARD edges, straight off the engine -- the outer edge of the sidebar's
-    // card and of the content column's, which is what the symmetry test compares.
-    m_testColumnLeftX  = plan.X(sideCol.cardLeft);
-    m_testColumnRightX = plan.X(mainCol.cardLeft + mainCol.cardW);
-
-    // The three anchors the theme-invariance test reads; see testContentColumnX().
-    // The row's RIGHT EDGE, not the panel's inner edge: right-aligned glyphs are
-    // placed against the row, and it is the row that has to stand still.
-    m_testLabelX    = leftColumnX;
-    m_testControlX  = controlX;
-    m_testRowRightX = leftColumnX + layoutCtx.rowSpanWidth();
-
-    // The two card edges bounding the GUTTER, straight off the engine's boxes --
-    // what testCardEdgesX() reports for the gutter==seam contract. The content
-    // side is re-stamped per section by closeSectionCard from the same plan.
-    m_testSidebarCardRightX = plan.X(sideCol.cardLeft + sideCol.cardW);
+    m_testOverflowRows = overflow;
 #endif
-
-    if (const TabDescriptor* tabDesc = findTabDescriptor(m_activeTab); tabDesc && tabDesc->render) {
-#if defined(MXBMRP3_TEST_BUILD)
-        // Where the TAB'S OWN controls start. Everything emitted before this point is
-        // the sidebar - the tab list carries a checkbox per row, so the master toggle
-        // of every other tab is a click region on this one, and a sweep that treated
-        // them as this tab's controls would demand its Reset restore them.
-        // See SettingsHud::testPerturbActiveTab.
-        m_testContentRegionBegin = static_cast<int>(m_clickRegions.size());
-#endif
-        // Route to the extracted per-tab renderer (settings_tab_*.cpp) via the registry.
-        layoutCtx.currentY = currentY;   // Sync context cursor
-        tabDesc->render(layoutCtx);
-        layoutCtx.finishSections();
-        currentY = layoutCtx.currentY;   // Sync local cursor back
-
-        // THE WHAT'S-NEW ROW BANDS, in one pass over what the tab just registered.
-        //
-        // Here rather than inside every row helper because a row's identity is its
-        // row-wide tooltip region, and by now they all exist -- one loop marks any
-        // row on any tab, and no helper needs to know this feature exists.
-        //
-        // Drawn AFTER the rows and still behind them: the plugin API takes quads and
-        // strings as two arrays, so every quad draws before every string whatever
-        // order they were pushed in (see HudManager::draw). The band cannot cover the
-        // label it is pointing at.
-        //
-        // The POSITIVE colour, matching the "New" tag on the tab that led the player
-        // here -- one colour for the whole trail, tag to row. Not WARNING, which this
-        // plugin spends everywhere else on "careful": a band in it reads as a problem
-        // with the row rather than as the thing worth looking at, and is
-        // indistinguishable from the Beta caveat two tabs down.
-        //
-        // At the same alpha the hover band uses, so it reads as "look here" rather
-        // than as a selection -- and so it disappears under the hover band the moment
-        // the pointer arrives, which is also when it is dismissed.
-        // SPANNED FROM THE PLAN (rowBandX/W), not from the region's own rect. A
-        // highlight is a property of the COLUMN, not of the control in it: a row that
-        // builds its tooltip region by hand gets a different rect from one that went
-        // through the layout helpers, so a band spanned from the region changes
-        // width by tab and does not line up with the accent band that replaces it on
-        // hover.
-        for (const ClickRegion& r : m_clickRegions) {
-            if (r.tooltipId.empty()) continue;
-            if (!WhatsNew::liveForRow(m_activeTab, r.tooltipId.c_str())) continue;
-            addRowHighlight(plan.rowBandX(mainCol), r.y, plan.rowBandW(mainCol), r.height,
-                            PluginUtils::applyOpacity(
-                                ColorConfig::getInstance().getPositive(), ROW_HOVER_ALPHA));
-        }
-
-        // HOW FAR THE TAB OVERRAN THE SPACE RESERVED FOR IT, in rows -- negative is
-        // slack, and it should ALWAYS be negative: the height is measured from the
-        // tallest tab, so this one had room by construction.
-        //
-        // Plus the last card's bottom pad, which finishSections() drew BELOW
-        // currentY: the cursor stops on the last row, the card does not, and it is
-        // the CARD the footer buttons collide with.
-        //
-        // It is kept because "by construction" has one failure mode left: a renderer
-        // that lays out differently between the measure pass and this one -- reading
-        // the panel's own height, say. The warning is for a player's log, the number
-        // for CI (settings_fit_test reads it for every tab).
-        // WHERE THE COLUMN'S LAST SECTION ENDS, straight off the engine -- what the
-        // tab was given.
-        const float contentLimit = mainCol.sections.empty()
-            ? plan.Y(plan.g.btnTop)
-            : plan.Y(mainCol.sections.back().bot);
-        const float overflow = (currentY + cardPadBotY() - contentLimit)
-                             / dim.lineHeightNormal;
-#if defined(MXBMRP3_TEST_BUILD)
-        m_testOverflowRows = overflow;
-#endif
-        if (overflow > 0.0f) {
+    // A HUNDREDTH OF A ROW OF TOLERANCE, because the measure pass runs at the
+    // origin and this one at the panel's real Y: the tallest tab has no slack by
+    // construction, so float rounding alone left it "overflowing by 0.0 rows"
+    // on every frame (2,339 log lines in 40 seconds on the Stream Chat tab). A real
+    // overrun is at least a row. And ONCE per tab, not per rebuild.
+    if (overflow > 0.01f) {
+        if (m_overflowWarnedTab != m_activeTab) {
+            m_overflowWarnedTab = m_activeTab;
             DEBUG_WARN_F("Settings tab %d overflows the panel by %.1f rows -- it "
                          "measured shorter than it drew, so a tab renderer is not "
                          "reproducible", m_activeTab, overflow);
         }
-    } else {
-        DEBUG_WARN_F("Invalid tab index: %d, defaulting to TAB_STANDINGS", m_activeTab);
+    } else if (m_overflowWarnedTab == m_activeTab) {
+        m_overflowWarnedTab = -1;
     }
+}
 
-    currentY += sectionSpacing;
-
-    // Draw hover highlight for TOOLTIP_ROW regions
+void SettingsHud::addHoveredRowHighlight(const PanelPlan& plan, const PanelBox::ColumnGeom& mainCol) {
     if (m_hoveredRegionIndex >= 0 && m_hoveredRegionIndex < static_cast<int>(m_clickRegions.size())) {
         const ClickRegion& hoveredRegion = m_clickRegions[m_hoveredRegionIndex];
         if (hoveredRegion.type == ClickRegion::TOOLTIP_ROW) {
@@ -1203,9 +1241,10 @@ void SettingsHud::rebuildRenderData() {
                                                       ROW_HOVER_ALPHA));
         }
     }
+}
 
-    // Render description or tooltip at the reserved position (replaces each other).
-    // The box spans from the label column to the content edge — a whole number of
+void SettingsHud::renderTooltipText(const SettingsLayoutContext& layoutCtx, const ScaledDimensions& dim) {
+    // The description/tooltip box spans from the label column to the content edge — a whole number of
     // character cells, so take it from SettingsMetrics rather than dividing the
     // emitted float span by one character's width. That round-trip returns one
     // char FEWER at HUD scale 0.70 (float rounding), silently narrowing the box at
@@ -1253,155 +1292,59 @@ void SettingsHud::rebuildRenderData() {
             renderWrappedText(std::string(tabTooltip), ColorConfig::getInstance().getMuted());
         }
     }
-
-    // Bottom button row - always [Save/Saved] [Close]. The Save button reflects unsaved changes:
-    // lit + clickable ("Save") when there are pending changes, grayed-out ("Saved") when
-    // everything is persisted. It lets the player save manually without leaving the track,
-    // regardless of the Auto-Save setting (which only controls the automatic leave-track flush).
-    // THE ENGINE'S BUTTON ROW. Its y, its height and each button's box come from
-    // the plan, which placed them under the body with the same margins and gap any
-    // other child gets -- no reserve-and-spend pair composed here that has to agree
-    // with the plan.
-    const PlanButtonTerms bt = planButtonTerms(dim);
-    const float buttonBoxH = plan.H(plan.g.btnH);
-    const float buttonRowY = plan.Y(plan.g.btnTop);
-    const float buttonAreaCenterX = startX + panelWidth / 2.0f;
-    bool settingsDirty = SettingsManager::getInstance().isDirty();
-
-    // Size both buttons for the widest label they can show (Saved / Close =
-    // 5 chars), plus the [button] border+padding each side — the box-model
-    // terms, resolved with the same fallbacks the plan applies. The gap
-    // between the two is the SUM of the facing [button] margins. At the
-    // shipped defaults the gap is one character; the WIDTHS follow the terms
-    // — 6 unthemed (padding 0.5/side), 8 themed (border 1 + padding 0.5/side)
-    // — and [Advanced] buttonPadding retunes them.
-    float saveButtonWidth = PluginUtils::calculateMonospaceTextWidth(5, dim.fontSize)
-        + bt.insetL + bt.insetR;
-    float closeButtonWidth = saveButtonWidth;
-    float buttonGap = bt.gap;
-    float totalWidth = saveButtonWidth + buttonGap + closeButtonWidth;
-    float startButtonX = buttonAreaCenterX - totalWidth / 2.0f;
-
-    // [Save] / [Saved] button
-    float saveButtonX = startButtonX;
-    if (settingsDirty) {
-        // Unsaved changes: lit and clickable.
-        size_t saveRegionIndex = m_clickRegions.size();
-        m_clickRegions.push_back(ClickRegion(
-            saveButtonX, buttonRowY, saveButtonWidth, buttonBoxH,
-            ClickRegion::SAVE_BUTTON, nullptr, 0, false, 0
-        ));
-        addStateButton(saveButtonX, buttonRowY, saveButtonWidth, buttonBoxH,
-            "Save", buttonRowY + bt.insetT, dim.fontSize,
-            ColorConfig::getInstance().getPositive(),
-            (m_hoveredRegionIndex == static_cast<int>(saveRegionIndex))
-                ? ButtonState::Hovered : ButtonState::Idle);
-    } else {
-        // Nothing to save: grayed out, not clickable (no click region -> no hover/click).
-        addStateButton(saveButtonX, buttonRowY, saveButtonWidth, buttonBoxH,
-            "Saved", buttonRowY + bt.insetT, dim.fontSize,
-            ColorConfig::getInstance().getPositive(), ButtonState::Disabled);
-    }
-
-    // [Close] button
-    float closeButtonX = saveButtonX + saveButtonWidth + buttonGap;
-    size_t closeRegionIndex = m_clickRegions.size();
-    m_clickRegions.push_back(ClickRegion(
-        closeButtonX, buttonRowY, closeButtonWidth, buttonBoxH,
-        ClickRegion::CLOSE_BUTTON, nullptr, 0, false, 0
-    ));
-    addStateButton(closeButtonX, buttonRowY, closeButtonWidth, buttonBoxH,
-        "Close", buttonRowY + bt.insetT, dim.fontSize,
-        ColorConfig::getInstance().getAccent(),
-        (m_hoveredRegionIndex == static_cast<int>(closeRegionIndex))
-            ? ButtonState::Hovered : ButtonState::Idle);
-
-    // [Reset <TabName>] button - bottom left corner.
-    //
-    // ONLY WHERE THERE IS SOMETHING TO RESET. A tab's reset is its registry row's
-    // resetHud / resetExtra, and a row with neither has nothing the button could do
-    // -- About is prose and links, so "Reset About" would be a live-looking control
-    // that does nothing at all when clicked. Read off the registry rather than a list of
-    // exceptions, so a future page of pure text gets the same treatment for free.
-    const TabDescriptor* activeDesc = findTabDescriptor(m_activeTab);
-    const bool tabHasReset = activeDesc && (activeDesc->resetHud || activeDesc->resetExtra);
-    if (tabHasReset) {
-    float resetTabButtonY = buttonRowY;
-    char resetTabButtonText[32];
-    snprintf(resetTabButtonText, sizeof(resetTabButtonText), "Reset %s", getTabName(m_activeTab));
-    int resetTabButtonChars = static_cast<int>(strlen(resetTabButtonText));
-    // The [button] insets pad the label.
-    float resetTabButtonWidth = PluginUtils::calculateMonospaceTextWidth(resetTabButtonChars, dim.fontSize)
-        + bt.insetL + bt.insetR;
-    // LEFT-ALIGNED ON THE SIDEBAR'S CARD, which is the panel's leftmost surface --
-    // the same line every other left edge in this panel comes from.
-    const float resetTabButtonX = plan.X(sideCol.cardLeft);
-
-    // Add click region first for hover check
-    size_t resetTabRegionIndex = m_clickRegions.size();
-    m_clickRegions.push_back(ClickRegion(
-        resetTabButtonX, resetTabButtonY, resetTabButtonWidth, buttonBoxH,
-        ClickRegion::RESET_TAB_BUTTON, nullptr
-    ));
-
-    // NEGATIVE, like the Reset button in General's Reset section: both destroy
-    // settings, and a destructive control that reads as an ordinary accent action
-    // is the one place in this panel where colour should carry the warning.
-    addStateButton(resetTabButtonX, resetTabButtonY, resetTabButtonWidth, buttonBoxH,
-        resetTabButtonText, resetTabButtonY + bt.insetT, dim.fontSize,
-        ColorConfig::getInstance().getNegative(),
-        (m_hoveredRegionIndex == static_cast<int>(resetTabRegionIndex))
-            ? ButtonState::Hovered : ButtonState::Idle);
-    }   // tabHasReset
-
-    // [About] button - bottom right corner.
-    //
-    // Neither the version nor the update notice lives on this button; each is where
-    // its owner is: the update notice is a tag on the Updates row in the sidebar
-    // (see updateTagLive, which is dismissible and re-arms for a newer version),
-    // and the version is the first line of the About page this opens.
-    //
-    // A REAL BUTTON rather than muted text, because it is the ONLY way to reach
-    // About -- the page is not in the tab list (TabDescriptor::hidden), so an
-    // affordance that does not look clickable would make it unreachable in
-    // practice. Secondary rather than Close's accent: it is a quieter action than
-    // the one that shuts the panel.
-    //
-    // The five-click easter egg works from here, and still works after the first
-    // click has navigated: the footer is drawn on every tab, so clicks two through
-    // five land while About is already open.
-    {
-        // The content column's right edge -- the same line a row ends on, so the
-        // button sits flush with the settings above it.
-        const float rightEdgeX = plan.X(mainCol.cardLeft + mainCol.cardW);
-        const char* aboutLabel = "About";
-        const float aboutWidth =
-            PluginUtils::calculateMonospaceTextWidth(
-                static_cast<int>(strlen(aboutLabel)), dim.fontSize) + bt.insetL + bt.insetR;
-        const float aboutX = rightEdgeX - aboutWidth;
-
-        const size_t aboutRegionIndex = m_clickRegions.size();
-        ClickRegion aboutRegion;
-        aboutRegion.type = ClickRegion::VERSION_CLICK;
-        aboutRegion.x = aboutX;
-        aboutRegion.y = buttonRowY;
-        aboutRegion.width = aboutWidth;
-        aboutRegion.height = buttonBoxH;
-        m_clickRegions.push_back(aboutRegion);
-
-        addStateButton(aboutX, buttonRowY, aboutWidth, buttonBoxH,
-            aboutLabel, buttonRowY + bt.insetT, dim.fontSize,
-            ColorConfig::getInstance().getSecondary(),
-            (m_hoveredRegionIndex == static_cast<int>(aboutRegionIndex))
-                ? ButtonState::Hovered : ButtonState::Idle);
-    }
-
-    // This panel rebuilds DIRECTLY from its ~30 interaction sites rather than
-    // through processDirtyFlags, which is where every other HUD's fill gets cut
-    // -- so without this the sweep never runs here, the centre slice keeps covering
-    // the whole interior, and every card (and the title band) sits on it at double
-    // opacity, reading darker than the panel. Consumes m_fillFirst, so the
-    // dirty-flag path finalizing again is a no-op, not a double cut.
-    finalizeThemedFill();
 }
 
+// The active tab's own rows (via the registry), then the what's-new bands and the
+// overflow check over what it drew. Returns the cursor after the tab.
+float SettingsHud::renderActiveTab(SettingsLayoutContext& layoutCtx, const PanelPlan& plan,
+                                   const PanelBox::ColumnGeom& mainCol, const ScaledDimensions& dim,
+                                   float currentY) {
+    if (const TabDescriptor* tabDesc = findTabDescriptor(m_activeTab); tabDesc && tabDesc->render) {
+#if defined(MXBMRP3_TEST_BUILD)
+        // Where the TAB'S OWN controls start. Everything emitted before this point is
+        // the sidebar - the tab list carries a checkbox per row, so the master toggle
+        // of every other tab is a click region on this one, and a sweep that treated
+        // them as this tab's controls would demand its Reset restore them.
+        // See SettingsHud::testPerturbActiveTab.
+        m_testContentRegionBegin = static_cast<int>(m_clickRegions.size());
+#endif
+        // Route to the extracted per-tab renderer (settings_tab_*.cpp) via the registry.
+        layoutCtx.currentY = currentY;   // Sync context cursor
+        tabDesc->render(layoutCtx);
+        layoutCtx.finishSections();
+        currentY = layoutCtx.currentY;   // Sync local cursor back
+
+        addWhatsNewRowBands(plan, mainCol);
+        checkTabOverflow(plan, mainCol, dim, currentY);
+    } else {
+        DEBUG_WARN_F("Invalid tab index: %d, defaulting to TAB_STANDINGS", m_activeTab);
+    }
+    return currentY;
+}
+
+#if defined(MXBMRP3_TEST_BUILD)
+void SettingsHud::recordTestAnchors(const PanelPlan& plan, const PanelBox::ColumnGeom& sideCol,
+                                    const PanelBox::ColumnGeom& mainCol, float leftColumnX, float controlX,
+                                    const SettingsLayoutContext& layoutCtx) {
+    // The two column edges the symmetry test reads; see SettingsHud::testColumnEdgesX.
+    // Themed these are the two columns' CARD edges (a card overhangs its column by one
+    // inner border at each end); unthemed the border is 0 and they are the tab
+    // highlight's left and the row highlight's right.
+    // The CARD edges, straight off the engine -- the outer edge of the sidebar's
+    // card and of the content column's, which is what the symmetry test compares.
+    m_testColumnLeftX  = plan.X(sideCol.cardLeft);
+    m_testColumnRightX = plan.X(mainCol.cardLeft + mainCol.cardW);
+
+    // The three anchors the theme-invariance test reads; see testContentColumnX().
+    // The row's RIGHT EDGE, not the panel's inner edge: right-aligned glyphs are
+    // placed against the row, and it is the row that has to stand still.
+    m_testLabelX    = leftColumnX;
+    m_testControlX  = controlX;
+    m_testRowRightX = leftColumnX + layoutCtx.rowSpanWidth();
+
+    // The two card edges bounding the GUTTER, straight off the engine's boxes --
+    // what testCardEdgesX() reports for the gutter==seam contract. The content
+    // side is re-stamped per section by closeSectionCard from the same plan.
+    m_testSidebarCardRightX = plan.X(sideCol.cardLeft + sideCol.cardW);
+}
+#endif

@@ -27,7 +27,6 @@
 //
 // Self-contained doctest; see run_tests.sh.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
@@ -164,6 +163,38 @@ TEST_CASE("prestige: developer mode is the second key, and it takes the ladder b
     CHECK(after["trackNames"].value("sw", std::string()) == "Southwick");
     // The counter is honestly zero beside a shelf of stored bests.
     CHECK(after["global"].value("pbCount", 0) == 0);
+}
+
+TEST_CASE("prestige: Steady Hands' stint goes with the ladder, not just its tier") {
+    // The crash-free stint persists and only a crash ends it (a session change
+    // pauses it), so it is the one signal whose SOURCE outlives its value: a wipe
+    // that zeroed the value and kept the stint re-raised Steady Hands to the old
+    // total on the first riding second after the trade -- and saved it back.
+    cleanSaveDir();
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSaveWin);
+    REQUIRE(host.hasPrestige());
+
+    host.eventInit("Southwick", "Alice", 1600.0f, 2, "Test 450", "MX1", /*trackId=*/"sw");
+    host.raceEvent("Southwick");
+    host.session(RACE1, 3, /*lengthMs=*/0, /*state=*/16, /*conditions=*/0);
+    host.addEntry(10, "Alice", "Test 450");
+    host.runInit(RACE1, 0);
+    host.runStart();
+    for (int s = 0; s < 20; ++s) {
+        host.explorationTick(/*spectating=*/false, /*rumbleLive=*/false, /*onTrack=*/true, 480);
+    }
+    CHECK(host.achievementValue("steady_hands") == doctest::Approx(20.0));
+
+    host.setDeveloperMode(true);
+    REQUIRE(host.takePrestige());
+    CHECK(host.achievementValue("steady_hands") == doctest::Approx(0.0));
+    // The first second on the new ladder is one second, not twenty-one.
+    host.explorationTick(false, false, /*onTrack=*/true, 480);
+    CHECK(host.achievementValue("steady_hands") == doctest::Approx(1.0));
+    host.runDeinit();
+    host.eventDeinit();
 }
 
 TEST_CASE("prestige: the level and the empty counter survive the next load") {

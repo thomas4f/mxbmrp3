@@ -8,7 +8,7 @@
 // inside the game process: ONE std::vector alloc+free round-trip costs 1.57us.
 // (Headless under Wine the same probe reads 0.22us, which is why this was
 // invisible in the harness for three sessions -- a game's process heap is
-// contended and fragmented in a way the test driver's is not.) BaseHud::PanelWant
+// contended and fragmented in a way the test driver's is not.) PanelWant
 // is built and destroyed once per HUD per rebuild, six HUDs a frame, so a single
 // vector member in it cost ~9us/frame of a 2083us budget -- more than the layout
 // it describes. The probe that measured it was scratch and has been removed; its

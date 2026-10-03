@@ -25,7 +25,6 @@
 // produced nothing" -- the same false-green shape pack_texture_variant_test's
 // header describes paying for once already.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

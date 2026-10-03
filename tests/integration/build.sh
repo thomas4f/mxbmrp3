@@ -19,6 +19,15 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${HERE}/../.." && pwd)"
 BUILD_DIR="${ROOT}/build/cross"
+# MXBMRP3_COVERAGE=1 (set by run_dll_coverage.sh): a separate gcov-instrumented
+# tree. It links to the SAME DLL path the harness loads, so that script deletes
+# the DLL before and after its run to force the next build to relink.
+COV=()
+if [ "${MXBMRP3_COVERAGE:-}" = 1 ]; then
+    BUILD_DIR="${ROOT}/build/cross-cov"
+    COV=(-B "${BUILD_DIR}" -DCMAKE_CXX_FLAGS=--coverage
+         -DCMAKE_SHARED_LINKER_FLAGS=--coverage)
+fi
 
 # Require the posix-threads mingw variant (std::thread/std::mutex). Exit 1 with a
 # readable message, as before: mxb_gate's TOOLS column is what turns a missing
@@ -45,7 +54,7 @@ esac
 if [ ! -f "${BUILD_DIR}/CMakeCache.txt" ]; then
     # --preset, so the toolchain file and MXBMRP3_TEST_BUILD live in exactly one
     # place (CMakePresets.json) rather than here as well.
-    ( cd "${ROOT}" && cmake --preset cross >/dev/null )
+    ( cd "${ROOT}" && cmake --preset cross "${COV[@]}" >/dev/null )
 fi
 
 cmake --build "${BUILD_DIR}" --target mxbmrp3_test -j"$(nproc)" "${EXTRA[@]}"

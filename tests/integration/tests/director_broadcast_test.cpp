@@ -32,7 +32,6 @@
 // pacing (the median shot) is representative. The upper bounds asserted here are
 // deliberately loose to tolerate that artifact.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

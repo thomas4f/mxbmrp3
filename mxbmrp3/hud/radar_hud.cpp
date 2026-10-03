@@ -20,8 +20,9 @@ using namespace PluginConstants::Math;
 static constexpr const char* DEFAULT_RIDER_ICON = "circle";
 static constexpr const char* DEFAULT_PROXIMITY_ARROW_ICON = "angle-up";
 
-// SPRITE indices, and turning one back into a shape index goes through
-// AssetManager::shapeIndexForSprite() -- never `sprite - firstIcon + 1`.
+// The flag markers (rider_flag_icons.h) are SPRITE indices, and turning one back
+// into a shape index goes through AssetManager::shapeIndexForSprite() -- never
+// `sprite - firstIcon + 1`.
 //
 // getIconSpriteIndex() returns the active THEME's override when it has one, and an
 // override sprite is registered PAST the base icon block, so the subtraction returns
@@ -31,14 +32,6 @@ static constexpr const char* DEFAULT_PROXIMITY_ARROW_ICON = "angle-up";
 // blue and keep a circle instead of the flag. (The base-only lookup is
 // getBaseIconSpriteIndex().) asset_manager.h documents it as "THE TRAP THIS EXISTS
 // FOR"; MapHud makes the same call.
-void RadarHud::CachedIcons::ensureInitialized() {
-    if (initialized) return;
-    const AssetManager& assets = AssetManager::getInstance();
-    circleExclamation = assets.getIconSpriteIndex("circle-exclamation");
-    flag = assets.getIconSpriteIndex("flag");
-    flagCheckered = assets.getIconSpriteIndex("flag-checkered");
-    initialized = true;
-}
 
 // Helper to get shape index from filename (returns 1 if not found)
 static int getShapeIndexByFilename(const char* filename) {
@@ -66,7 +59,6 @@ RadarHud::RadarHud()
     // One-time setup
     // The dial artwork IS this HUD -- see BaseHud::m_textureRequired.
     m_textureRequired = true;
-    DEBUG_INFO("RadarHud created");
     setDraggable(true);
     // Body card: this HUD draws a content BLOCK under its title, which is what the
     // themed card frames. Opt-in; see BaseHud::m_bContentCard.
@@ -292,6 +284,7 @@ ProximityGradient RadarHud::buildProximityGradient() const {
 void RadarHud::rebuildRenderData() {
     m_quads.clear();
     clearStrings();
+    m_sectorSprite = AssetManager::getInstance().getSpriteIndex("radar_sector", 1);
 
     // Calculate dimensions
     auto dim = getScaledDimensions();
@@ -325,25 +318,7 @@ void RadarHud::rebuildRenderData() {
 
     // Get plugin data and find local player (needed for opacity calculation)
     const PluginData& pluginData = PluginData::getInstance();
-    int displayRaceNum = pluginData.getDisplayRaceNum();
-
-    const Unified::TrackPositionData* localPlayer = nullptr;
-    for (const auto& pos : m_riderPositions) {
-        if (pos.raceNum == displayRaceNum) {
-            localPlayer = &pos;
-            break;
-        }
-    }
-
-    // Pre-calculate player position for proximity arrows (needed even when radar is off)
-    float playerX = localPlayer ? localPlayer->posX : 0.0f;
-    float playerZ = localPlayer ? localPlayer->posZ : 0.0f;
-    float cosYaw = 1.0f, sinYaw = 0.0f;
-    if (localPlayer) {
-        float yawRad = localPlayer->yaw * DEG_TO_RAD;
-        cosYaw = std::cos(yawRad);
-        sinYaw = std::sin(yawRad);
-    }
+    const PlayerFrame pf = findPlayerFrame(pluginData.getDisplayRaceNum());
 
     // Build proximity gradient once (shared by sector overlay and proximity arrows)
     const ProximityGradient gradient = buildProximityGradient();
@@ -355,7 +330,7 @@ void RadarHud::rebuildRenderData() {
         // last rebuild's indices -- which then hold proximity arrows -- and stretches one
         // across the old panel. NoticesHud is the other such caller.
         invalidatePanelRect();
-        renderProximityArrows(localPlayer, playerX, playerZ, cosYaw, sinYaw, gradient);
+        renderProximityArrows(pf.localPlayer, pf.playerX, pf.playerZ, pf.cosYaw, pf.sinYaw, gradient);
         return;
     }
 
@@ -366,11 +341,11 @@ void RadarHud::rebuildRenderData() {
     // whenever nobody is near, which is most of a lap and exactly when a player is
     // trying to put it somewhere. Mode OFF is untouched above -- that is the switch
     // saying they do not want it at all.
-    if (m_radarMode == RadarMode::AUTO_HIDE && localPlayer && !isPreviewing()) {
+    if (m_radarMode == RadarMode::AUTO_HIDE && pf.localPlayer && !isPreviewing()) {
         maxRiderOpacity = RadarFade::maxRiderOpacity(
             m_riderPositions.empty() ? nullptr : m_riderPositions.data(),
-            static_cast<int>(m_riderPositions.size()), displayRaceNum,
-            playerX, playerZ, localPlayer->trackPos,
+            static_cast<int>(m_riderPositions.size()), pf.displayRaceNum,
+            pf.playerX, pf.playerZ, pf.localPlayer->trackPos,
             m_fRadarRangeMeters, pluginData.getSessionData().trackLength);
     }
 
@@ -394,24 +369,54 @@ void RadarHud::rebuildRenderData() {
     float centerX = x + width * 0.5f;
     float centerY = y + titleHeight + dim.paddingV + radarRadius;
 
-    // Number of sectors for proximity highlighting (4 = front, right, back, left)
-    constexpr int NUM_SECTORS = 4;
+    // Proximity highlight sectors: the closest rider (and lapper) per 90-degree sector.
+    SectorProximity prox;
+    computeSectorProximity(pf, prox);
+    addProximitySectors(prox, gradient, centerX, centerY, radarRadius);
 
-    // Track closest rider distance per section (for intensity-based highlighting)
-    // Section angles (in radar space where 0° = forward/up, 90° each):
-    // Section 0: 315°-45° (front)
-    // Section 1: 45°-135° (right)
-    // Section 2: 135°-225° (back)
-    // Section 3: 225°-315° (left)
-    float sectionClosestDist[NUM_SECTORS] = { -1.0f, -1.0f, -1.0f, -1.0f };
+    // If no local player found, just show the radar background
+    if (!pf.localPlayer) {
+        return;
+    }
 
-    // Track if any section has a rider about to lap the player (race mode only)
-    // These riders are +1 lap ahead and approaching from behind
-    bool sectionHasLapper[NUM_SECTORS] = { false, false, false, false };
-    float sectionLapperDist[NUM_SECTORS] = { -1.0f, -1.0f, -1.0f, -1.0f };
+    // Render other riders first (player rendered last to appear on top)
+    addRiderMarkers(pf, centerX, centerY, radarRadius);
+
+    // Render proximity arrows at screen edges (independent of radar position)
+    renderProximityArrows(pf.localPlayer, pf.playerX, pf.playerZ, pf.cosYaw, pf.sinYaw, gradient);
+}
+
+// The display rider and the rotation into radar space (needed even when radar is off).
+RadarHud::PlayerFrame RadarHud::findPlayerFrame(int displayRaceNum) const {
+    const Unified::TrackPositionData* localPlayer = nullptr;
+    for (const auto& pos : m_riderPositions) {
+        if (pos.raceNum == displayRaceNum) {
+            localPlayer = &pos;
+            break;
+        }
+    }
+
+    // Pre-calculate player position for proximity arrows (needed even when radar is off)
+    float playerX = localPlayer ? localPlayer->posX : 0.0f;
+    float playerZ = localPlayer ? localPlayer->posZ : 0.0f;
+    float cosYaw = 1.0f, sinYaw = 0.0f;
+    if (localPlayer) {
+        float yawRad = localPlayer->yaw * DEG_TO_RAD;
+        cosYaw = std::cos(yawRad);
+        sinYaw = std::sin(yawRad);
+    }
+    return { localPlayer, displayRaceNum, playerX, playerZ, cosYaw, sinYaw };
+}
+
+void RadarHud::computeSectorProximity(const PlayerFrame& pf, SectorProximity& out) const {
+    const PluginData& pluginData = PluginData::getInstance();
+    const auto [localPlayer, displayRaceNum, playerX, playerZ, cosYaw, sinYaw] = pf;
+    float (&sectionClosestDist)[NUM_SECTORS] = out.closestDist;
+    bool (&sectionHasLapper)[NUM_SECTORS] = out.hasLapper;
+    float (&sectionLapperDist)[NUM_SECTORS] = out.lapperDist;
     bool isRace = pluginData.isRaceSession();
 
-    // Player position and rotation already calculated at start of function
+    // Player position and rotation already calculated (findPlayerFrame)
     if (localPlayer) {
         // Hoist player standing lookup outside loop (same value every iteration)
         const StandingsData* playerStanding = isRace ? pluginData.getStanding(displayRaceNum) : nullptr;
@@ -494,6 +499,13 @@ void RadarHud::rebuildRenderData() {
             }
         }
     }
+}
+
+void RadarHud::addProximitySectors(const SectorProximity& prox, const ProximityGradient& gradient,
+                                   float centerX, float centerY, float radarRadius) {
+    const float (&sectionClosestDist)[NUM_SECTORS] = prox.closestDist;
+    const bool (&sectionHasLapper)[NUM_SECTORS] = prox.hasLapper;
+    const float (&sectionLapperDist)[NUM_SECTORS] = prox.lapperDist;
 
     // Draw proximity highlight sectors using rotated sprite
     // The sprite points up (0°/front), rotate for each sector direction
@@ -569,17 +581,18 @@ void RadarHud::rebuildRenderData() {
             sector.m_aafPos[j][1] = py;
         }
 
-        sector.m_iSprite = AssetManager::getInstance().getSpriteIndex("radar_sector", 1);
+        sector.m_iSprite = m_sectorSprite;
         sector.m_ulColor = sectorColor;
         m_quads.push_back(sector);
     }
+}
 
-    // If no local player found, just show the radar background
-    if (!localPlayer) {
-        return;
-    }
+// Every other rider in range: sprite (tracked colour / relative position / brand /
+// uniform, overridden by a flag marker) and label, faded by track separation.
+void RadarHud::addRiderMarkers(const PlayerFrame& pf, float centerX, float centerY, float radarRadius) {
+    const PluginData& pluginData = PluginData::getInstance();
+    const auto [localPlayer, displayRaceNum, playerX, playerZ, cosYaw, sinYaw] = pf;
 
-    // Render other riders first (player rendered last to appear on top)
     for (const auto& pos : m_riderPositions) {
         if (pos.raceNum == displayRaceNum) continue;
 
@@ -623,101 +636,29 @@ void RadarHud::rebuildRenderData() {
         while (relativeYaw > 180.0f) relativeYaw -= 360.0f;
         while (relativeYaw < -180.0f) relativeYaw += 360.0f;
 
-        unsigned long riderColor;
         int trackedShape = -1;  // -1 = use global shape, 1-3 = tracked rider's shape
+        unsigned long riderColor = resolveRiderColor(pos, entry, displayRaceNum, trackFadeOpacity, trackedShape);
 
-        // Check if rider is tracked - tracked riders use their configured color with position modulation
-        const TrackedRidersManager& trackedMgr = TrackedRidersManager::getInstance();
-        const TrackedRiderConfig* trackedConfig = trackedMgr.getTrackedRider(entry->name);
 
-        if (trackedConfig) {
-            // Tracked rider - use their configured color with position-based modulation
-            unsigned long baseColor = trackedConfig->color;
-            trackedShape = trackedConfig->shapeIndex;
-
-            // Apply position-based color modulation (lighten if ahead by laps, darken if behind by laps)
-            // Only in race sessions where lap position matters
-            if (pluginData.isRaceSession()) {
-                const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
-                const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
-                int playerLaps = playerStanding ? playerStanding->numLaps : 0;
-                int riderLaps = riderStanding ? riderStanding->numLaps : 0;
-                int lapDiff = riderLaps - playerLaps;
-
-                if (lapDiff >= 1) {
-                    // Rider is ahead by laps - lighten color
-                    baseColor = PluginUtils::lightenColor(baseColor, 0.4f);
-                } else if (lapDiff <= -1) {
-                    // Rider is behind by laps - darken color
-                    baseColor = PluginUtils::darkenColor(baseColor, 0.6f);
-                }
-            }
-
-            riderColor = PluginUtils::applyOpacity(baseColor, trackFadeOpacity);
-        } else if (m_riderColorMode == RiderColorMode::RELATIVE_POS) {
-            // Relative position coloring - only meaningful in race sessions
-            unsigned long baseColor;
-            if (pluginData.isRaceSession()) {
-                const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
-                const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
-                int playerPosition = pluginData.getDisplayPositionForRaceNum(displayRaceNum);
-                int riderPosition = pluginData.getDisplayPositionForRaceNum(pos.raceNum);
-                int playerLaps = playerStanding ? playerStanding->numLaps : 0;
-                int riderLaps = riderStanding ? riderStanding->numLaps : 0;
-
-                baseColor = PluginUtils::getRelativePositionColor(
-                    playerPosition, riderPosition, playerLaps, riderLaps,
-                    this->getColor(ColorSlot::NEUTRAL),
-                    this->getColor(ColorSlot::WARNING),
-                    this->getColor(ColorSlot::TERTIARY));
-            } else {
-                // Non-race: positions are meaningless, use uniform color
-                baseColor = this->getColor(ColorSlot::NEUTRAL);
-            }
-            riderColor = PluginUtils::applyOpacity(baseColor, trackFadeOpacity);
-        } else if (m_riderColorMode == RiderColorMode::BRAND) {
-            riderColor = PluginUtils::applyOpacity(entry->bikeBrandColor, 0.75f * trackFadeOpacity);
-        } else {
-            // Uniform: riders use the primary color (matching their name color in the
-            // standings); accent is reserved for the player, who isn't drawn on the radar
-            // but is marked with accent on the Map HUD.
-            riderColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::PRIMARY), trackFadeOpacity);
-        }
-
-        // Hazard icon override: circle-exclamation for wrong-way, flag for stationary
+        // Flag markers override the rider shape. Priority: hazard, then blue flag,
+        // then finished. Markers and their fixed colours: rider_flag_icons.h
+        RiderFlagIcons::Kind flagKind = RiderFlagIcons::Kind::None;
         HazardType hazardType = pluginData.getRiderHazardType(pos.raceNum);
         if (hazardType != HazardType::None) {
-            m_iconCache.ensureInitialized();
-            if (hazardType == HazardType::WrongWay) {
-                if (m_iconCache.circleExclamation > 0) {
-                    trackedShape = AssetManager::getInstance().shapeIndexForSprite(m_iconCache.circleExclamation);
-                    riderColor = PluginUtils::applyOpacity(ColorPalette::RED, trackFadeOpacity);
-                }
-            } else {
-                if (m_iconCache.flag > 0) {
-                    trackedShape = AssetManager::getInstance().shapeIndexForSprite(m_iconCache.flag);
-                    riderColor = PluginUtils::applyOpacity(ColorPalette::BRIGHT_YELLOW, trackFadeOpacity);
-                }
-            }
-        }
-
-        // Blue flag icon override (lower priority than hazard)
-        if (hazardType == HazardType::None && pluginData.isRiderBlueFlagged(pos.raceNum)) {
-            m_iconCache.ensureInitialized();
-            if (m_iconCache.flag > 0) {
-                trackedShape = AssetManager::getInstance().shapeIndexForSprite(m_iconCache.flag);
-                riderColor = PluginUtils::applyOpacity(ColorPalette::BLUE, trackFadeOpacity);
-            }
-        }
-        // Checkered flag for finished riders (lower priority than hazard and blue flag)
-        else if (hazardType == HazardType::None) {
+            flagKind = RiderFlagIcons::forHazard(hazardType);
+        } else if (pluginData.isRiderBlueFlagged(pos.raceNum)) {
+            flagKind = RiderFlagIcons::Kind::Blue;
+        } else {
             const StandingsData* standing = pluginData.getStanding(pos.raceNum);
             if (standing && pluginData.getSessionData().isRiderFinished(standing->numLaps, standing->numLapsAtLeaderFinish)) {
-                m_iconCache.ensureInitialized();
-                if (m_iconCache.flagCheckered > 0) {
-                    trackedShape = AssetManager::getInstance().shapeIndexForSprite(m_iconCache.flagCheckered);
-                    riderColor = PluginUtils::applyOpacity(ColorPalette::WHITE, trackFadeOpacity);
-                }
+                flagKind = RiderFlagIcons::Kind::Finished;
+            }
+        }
+        if (flagKind != RiderFlagIcons::Kind::None) {
+            const RiderFlagIcons::Icon icon = m_flagIcons.get(flagKind, this->getColor(ColorSlot::NEGATIVE));
+            if (icon.sprite > 0) {
+                trackedShape = AssetManager::getInstance().shapeIndexForSprite(icon.sprite);
+                riderColor = PluginUtils::applyOpacity(icon.color, trackFadeOpacity);
             }
         }
 
@@ -730,9 +671,72 @@ void RadarHud::rebuildRenderData() {
         renderRiderLabel(radarX, radarY, pos.raceNum, position,
                         centerX, centerY, radarRadius, trackFadeOpacity);
     }
+}
 
-    // Render proximity arrows at screen edges (independent of radar position)
-    renderProximityArrows(localPlayer, playerX, playerZ, cosYaw, sinYaw, gradient);
+// A rider's marker colour; a tracked rider also sets trackedShape.
+unsigned long RadarHud::resolveRiderColor(const Unified::TrackPositionData& pos, const RaceEntryData* entry,
+                                          int displayRaceNum, float trackFadeOpacity, int& trackedShape) const {
+    const PluginData& pluginData = PluginData::getInstance();
+    unsigned long riderColor;
+
+    // Check if rider is tracked - tracked riders use their configured color with position modulation
+    const TrackedRidersManager& trackedMgr = TrackedRidersManager::getInstance();
+    const TrackedRiderConfig* trackedConfig = trackedMgr.getTrackedRider(entry->name);
+
+    if (trackedConfig) {
+        // Tracked rider - use their configured color with position-based modulation
+        unsigned long baseColor = trackedConfig->color;
+        trackedShape = trackedConfig->shapeIndex;
+
+        // Apply position-based color modulation (lighten if ahead by laps, darken if behind by laps)
+        // Only in race sessions where lap position matters
+        if (pluginData.isRaceSession()) {
+            const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
+            const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
+            int playerLaps = playerStanding ? playerStanding->numLaps : 0;
+            int riderLaps = riderStanding ? riderStanding->numLaps : 0;
+            int lapDiff = riderLaps - playerLaps;
+
+            if (lapDiff >= 1) {
+                // Rider is ahead by laps - lighten color
+                baseColor = PluginUtils::lightenColor(baseColor, 0.4f);
+            } else if (lapDiff <= -1) {
+                // Rider is behind by laps - darken color
+                baseColor = PluginUtils::darkenColor(baseColor, 0.6f);
+            }
+        }
+
+        riderColor = PluginUtils::applyOpacity(baseColor, trackFadeOpacity);
+    } else if (m_riderColorMode == RiderColorMode::RELATIVE_POS) {
+        // Relative position coloring - only meaningful in race sessions
+        unsigned long baseColor;
+        if (pluginData.isRaceSession()) {
+            const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
+            const StandingsData* riderStanding = pluginData.getStanding(pos.raceNum);
+            int playerPosition = pluginData.getDisplayPositionForRaceNum(displayRaceNum);
+            int riderPosition = pluginData.getDisplayPositionForRaceNum(pos.raceNum);
+            int playerLaps = playerStanding ? playerStanding->numLaps : 0;
+            int riderLaps = riderStanding ? riderStanding->numLaps : 0;
+
+            baseColor = PluginUtils::getRelativePositionColor(
+                playerPosition, riderPosition, playerLaps, riderLaps,
+                this->getColor(ColorSlot::NEUTRAL),
+                this->getColor(ColorSlot::WARNING),
+                this->getColor(ColorSlot::TERTIARY));
+        } else {
+            // Non-race: positions are meaningless, use uniform color
+            baseColor = this->getColor(ColorSlot::NEUTRAL);
+        }
+        riderColor = PluginUtils::applyOpacity(baseColor, trackFadeOpacity);
+    } else if (m_riderColorMode == RiderColorMode::BRAND) {
+        riderColor = PluginUtils::applyOpacity(entry->bikeBrandColor, 0.75f * trackFadeOpacity);
+    } else {
+        // Uniform: riders use the primary color (matching their name color in the
+        // standings); accent is reserved for the player, who isn't drawn on the radar
+        // but is marked with accent on the Map HUD.
+        riderColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::PRIMARY), trackFadeOpacity);
+    }
+    return riderColor;
 }
 
 // The dial's own width, without a theme; see the declaration for who else needs it.

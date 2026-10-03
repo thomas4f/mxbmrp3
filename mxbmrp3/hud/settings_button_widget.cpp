@@ -23,7 +23,6 @@ SettingsButtonWidget::SettingsButtonWidget()
     disableTitle();
     m_panelKind = PanelKind::Widget;
     // One-time setup
-    DEBUG_INFO("SettingsButtonWidget created");
     setDraggable(true);
     m_strings.reserve(1);  // One string: button text
     m_quads.reserve(2);    // Two quads: HUD background + button background

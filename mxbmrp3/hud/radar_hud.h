@@ -7,8 +7,11 @@
 #include "base_hud.h"
 #include "marker_label.h"
 #include "radar_fade.h"
+#include "rider_flag_icons.h"
 #include "../game/unified_types.h"
 #include <vector>
+
+struct RaceEntryData;
 
 // Proximity gradient colors for sector overlays and distance-mode arrows.
 // Uses NEGATIVE/NEUTRAL/POSITIVE color slots (configurable in Appearance tab and per-HUD INI overrides).
@@ -174,10 +177,19 @@ public:
     friend class SettingsHud;
     friend class SettingsManager;
 
+    // The proximity sector first draws MID-RACE, when a rider comes alongside.
+    int glWarmSprites(int* out, int cap) const override {
+        int n = BaseHud::glWarmSprites(out, cap);
+        if (m_sectorSprite > 0 && n < cap) out[n++] = m_sectorSprite;
+        return n;
+    }
+
 protected:
     void rebuildRenderData() override;
 
 private:
+    int m_sectorSprite = 0;  // "radar_sector", resolved once per rebuild
+
     // Rider position storage (updated frequently)
     // Pushed whole by HudManager::updateRiderPositions; assign() replaces it each batch.
     // raw-cache: proximity works in world space (posX/posZ/yaw), which
@@ -244,14 +256,37 @@ private:
     // Helper: Build proximity gradient from NEGATIVE/NEUTRAL/POSITIVE color slots
     ProximityGradient buildProximityGradient() const;
 
-    // Cached icon sprite indices (avoid string-based map lookups per rider per frame)
-    struct CachedIcons {
-        int circleExclamation = 0;
-        int flag = 0;
-        int flagCheckered = 0;
-        bool initialized = false;
-
-        void ensureInitialized();
+    // ---- rebuildRenderData() sections and the state they share ----
+    // The display rider and the rotation into radar space.
+    struct PlayerFrame {
+        // raw-cache: a per-rebuild pointer into m_riderPositions, never kept past it
+        const Unified::TrackPositionData* localPlayer;  // null when not in the batch
+        int displayRaceNum;
+        float playerX, playerZ;
+        float cosYaw, sinYaw;
     };
-    CachedIcons m_iconCache;
+    // Number of sectors for proximity highlighting (4 = front, right, back, left)
+    static constexpr int NUM_SECTORS = 4;
+    // Track closest rider distance per section (for intensity-based highlighting)
+    // Section angles (in radar space where 0° = forward/up, 90° each):
+    // Section 0: 315°-45° (front)
+    // Section 1: 45°-135° (right)
+    // Section 2: 135°-225° (back)
+    // Section 3: 225°-315° (left)
+    struct SectorProximity {
+        float closestDist[NUM_SECTORS] = { -1.0f, -1.0f, -1.0f, -1.0f };
+        // Track if any section has a rider about to lap the player (race mode only)
+        // These riders are +1 lap ahead and approaching from behind
+        bool hasLapper[NUM_SECTORS] = { false, false, false, false };
+        float lapperDist[NUM_SECTORS] = { -1.0f, -1.0f, -1.0f, -1.0f };
+    };
+    PlayerFrame findPlayerFrame(int displayRaceNum) const;
+    void computeSectorProximity(const PlayerFrame& pf, SectorProximity& out) const;
+    void addProximitySectors(const SectorProximity& prox, const ProximityGradient& gradient,
+                             float centerX, float centerY, float radarRadius);
+    void addRiderMarkers(const PlayerFrame& pf, float centerX, float centerY, float radarRadius);
+    unsigned long resolveRiderColor(const Unified::TrackPositionData& pos, const RaceEntryData* entry,
+                                    int displayRaceNum, float trackFadeOpacity, int& trackedShape) const;
+
+    RiderFlagIcons m_flagIcons;  // wrong way, hazard, blue, finished
 };

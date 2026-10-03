@@ -84,7 +84,9 @@ Requires the headless toolchain (mingw-w64 posix + wine64) plus Xvfb + ImageMagi
   10508 the bitmap header (`w`, `h`, payload size, compression=2) and a raw-DEFLATE
   8-bit grayscale atlas. Decompressed once with miniz (`tinfl`) and cached. Because
   the atlas cell height maps 1:1 to a string's normalized size, the on-screen metrics
-  are exact - no calibration constant needed (the `.ttf` fallback still uses `FONT_PX`).
+  are exact - no calibration constant needed. There is no `.ttf` fallback: every
+  font the game registers is a `.fnt`, and a missing or corrupt one renders no
+  text rather than substituting.
 - The vertical position of a glyph inside its cell is baked into the atlas, and there
   is **no** per-glyph y-offset field in `.fnt` to correct it at render time. This used
   to say Tiny5 was an outlier that "can look vertically off on the number plate" - no

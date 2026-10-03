@@ -21,14 +21,14 @@ BaseHud* SettingsHud::renderTabIdealLap(SettingsLayoutContext& ctx) {
 
     // Sector rows (S1, S2, S3)
     bool sectorsOn = (hud->m_enabledRows & IdealLapHud::ROW_SECTORS) != 0;
-    ctx.addToggleControl("Show sector times", sectorsOn,
+    ctx.addToggleControl("Sector times", sectorsOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledRows, IdealLapHud::ROW_SECTORS, true,
         "ideal_lap.sectors");
 
     // Lap rows (Last, Best, Ideal)
     bool lapsOn = (hud->m_enabledRows & IdealLapHud::ROW_LAPS) != 0;
-    ctx.addToggleControl("Show lap times", lapsOn,
+    ctx.addToggleControl("Lap times", lapsOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledRows, IdealLapHud::ROW_LAPS, true,
         "ideal_lap.laps");

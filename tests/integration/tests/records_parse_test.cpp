@@ -26,7 +26,6 @@
 // GAME_HAS_RECORDS_PROVIDER is MXB-only; on a build without the hooks the tests
 // no-op (hasRecords() false).
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

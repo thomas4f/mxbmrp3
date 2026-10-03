@@ -19,9 +19,6 @@
 #include <algorithm>
 #include <cstring>
 #include <cstdio>
-#if defined(MXBMRP3_TEST_BUILD)
-#include <chrono>
-#endif
 
 using namespace PluginConstants;
 
@@ -38,9 +35,6 @@ using namespace PluginConstants;
 void StandingsHud::CachedIcons::ensureInitialized() {
     if (initialized) return;
     const AssetManager& assets = AssetManager::getInstance();
-    circleExclamation = assets.getIconSpriteIndex("circle-exclamation");
-    flag = assets.getIconSpriteIndex("flag");
-    flagCheckered = assets.getIconSpriteIndex("flag-checkered");
     wrench = assets.getIconSpriteIndex("wrench");
     caretUp = assets.getIconSpriteIndex("caret-up");
     lock = assets.getIconSpriteIndex("lock");
@@ -58,6 +52,7 @@ StandingsHud::ColumnPositions::ColumnPositions(float contentStartX, float scale,
     PluginUtils::setColumnPosition(enabledColumns, COL_POSGAIN, COL_POSGAIN_WIDTH, scaledFontSize, current, posGain);
     PluginUtils::setColumnPosition(enabledColumns, COL_RACENUM, raceNumWidth, scaledFontSize, current, raceNum);
     PluginUtils::setColumnPosition(enabledColumns, COL_NAME, nameWidth, scaledFontSize, current, name);
+    PluginUtils::setColumnPosition(enabledColumns, COL_CATEGORY, COL_CATEGORY_WIDTH, scaledFontSize, current, category);
     PluginUtils::setColumnPosition(enabledColumns, COL_BIKE, COL_BIKE_WIDTH, scaledFontSize, current, bike);
     PluginUtils::setColumnPosition(enabledColumns, COL_BEST_LAP, COL_BEST_LAP_WIDTH, scaledFontSize, current, bestLap);
     PluginUtils::setColumnPosition(enabledColumns, COL_LAST_LAP, COL_LAST_LAP_WIDTH, scaledFontSize, current, lastLap);
@@ -91,6 +86,8 @@ StandingsHud::DisplayEntry StandingsHud::DisplayEntry::fromRaceEntry(const RaceE
     strncpy_s(result.bikeShortName, sizeof(result.bikeShortName),
         entry.bikeAbbr, sizeof(result.bikeShortName) - 1);
     result.bikeShortName[sizeof(result.bikeShortName) - 1] = '\0';
+    strncpy_s(result.category, sizeof(result.category), entry.categoryShort, sizeof(result.category) - 1);
+    result.category[sizeof(result.category) - 1] = '\0';
 
     // Copy pre-computed bike brand color
     result.bikeBrandColor = entry.bikeBrandColor;
@@ -231,6 +228,7 @@ const char* StandingsHud::getColumnHeaderLabel(uint8_t columnIndex) {
         case COL_IDX_POSGAIN:  return "+/-";
         case COL_IDX_RACENUM:  return "#";
         case COL_IDX_NAME:     return "Name";
+        case COL_IDX_CATEGORY: return "Class";
         case COL_IDX_BIKE:     return "Bike";
         case COL_IDX_BEST_LAP: return "Best";
         case COL_IDX_LAST_LAP: return "Last";
@@ -264,7 +262,6 @@ float StandingsHud::getColumnHeaderTextX(uint8_t columnIndex, float columnPositi
 void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder, float currentY, const ScaledDimensions& dim, int rowIndex) {
 
     const char* placeholder = Placeholders::GENERIC;
-    const char* lapTimePlaceholder = Placeholders::LAP_TIME;
 
     // Determine text color
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
@@ -287,9 +284,6 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
         if (col.columnIndex == COL_IDX_TRACKED) {
             // Only render tracked/hazard indicator for non-placeholder rows with valid race number
             if (!isPlaceholder && entry.raceNum > 0) {
-#if defined(MXBMRP3_TEST_BUILD)
-                auto _trkStart = std::chrono::steady_clock::now();
-#endif
                 const PluginData& pluginData = PluginData::getInstance();
 
                 // No status icons for non-participating riders (DNS/Retired/DSQ)
@@ -303,6 +297,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
 
                 int spriteIndex = -1;
                 unsigned long spriteColor = 0;
+                RiderFlagIcons::Kind flagKind = RiderFlagIcons::Kind::None;
 
                 if (!isNonParticipant && DirectorManager::getInstance().isLocked()
                            && DirectorManager::getInstance().getCurrentSubject() == entry.raceNum) {
@@ -313,31 +308,24 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
                     m_iconCache.ensureInitialized();
                     if (m_iconCache.lock > 0) { spriteIndex = m_iconCache.lock; spriteColor = this->getColor(ColorSlot::WARNING); }
                 } else if (showHazardIcon) {
-                    m_iconCache.ensureInitialized();
-                    if (hazardType == HazardType::WrongWay) {
-                        if (m_iconCache.circleExclamation > 0) { spriteIndex = m_iconCache.circleExclamation; spriteColor = ColorPalette::RED; }
-                    } else {
-                        if (m_iconCache.flag > 0) { spriteIndex = m_iconCache.flag; spriteColor = ColorPalette::BRIGHT_YELLOW; }
-                    }
+                    // Flag markers and their fixed colours: rider_flag_icons.h
+                    flagKind = RiderFlagIcons::forHazard(hazardType);
                 } else if (!isNonParticipant && pluginData.isRiderBlueFlagged(entry.raceNum)) {
                     // Blue flag icon (lower priority than hazard, higher than tracked)
-                    m_iconCache.ensureInitialized();
-                    if (m_iconCache.flag > 0) { spriteIndex = m_iconCache.flag; spriteColor = ColorPalette::BLUE; }
+                    flagKind = RiderFlagIcons::Kind::Blue;
                 } else if (!isNonParticipant) {
                     const StandingsData* sd = pluginData.getStanding(entry.raceNum);
                     const SessionData& session = pluginData.getSessionData();
                     if (sd && sd->pit == 1) {
                         // Wrench icon for riders in pits (higher priority than checkered/last lap)
                         m_iconCache.ensureInitialized();
-                        if (m_iconCache.wrench > 0) { spriteIndex = m_iconCache.wrench; spriteColor = ColorPalette::GRAY; }
+                        if (m_iconCache.wrench > 0) { spriteIndex = m_iconCache.wrench; spriteColor = this->getColor(ColorSlot::TERTIARY); }
                     } else if (entry.isFinishedRace || entry.sessionFinished) {
                         // Checkered flag for finished riders (race finish or non-race session finish)
-                        m_iconCache.ensureInitialized();
-                        if (m_iconCache.flagCheckered > 0) { spriteIndex = m_iconCache.flagCheckered; spriteColor = ColorPalette::WHITE; }
+                        flagKind = RiderFlagIcons::Kind::Finished;
                     } else if (sd && pluginData.isRaceSession() && session.isRiderOnLastLap(sd->numLaps, sd->numLapsAtLeaderFinish)) {
                         // White flag for riders on last lap
-                        m_iconCache.ensureInitialized();
-                        if (m_iconCache.flag > 0) { spriteIndex = m_iconCache.flag; spriteColor = ColorPalette::WHITE; }
+                        flagKind = RiderFlagIcons::Kind::LastLap;
                     } else {
                         // Fall back to tracked rider icon
                         const RaceEntryData* raceEntry = pluginData.getRaceEntry(entry.raceNum);
@@ -351,11 +339,11 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
                         }
                     }
                 }
-
-#if defined(MXBMRP3_TEST_BUILD)
-                g_standingsTrackedUs += std::chrono::duration<double, std::micro>(
-                    std::chrono::steady_clock::now() - _trkStart).count();
-#endif
+                if (flagKind != RiderFlagIcons::Kind::None) {
+                    const RiderFlagIcons::Icon icon = m_flagIcons.get(flagKind, this->getColor(ColorSlot::NEGATIVE));
+                    spriteIndex = icon.sprite;
+                    spriteColor = icon.color;
+                }
 
                 if (spriteIndex > 0) {
                     // Render icon sprite (tracked or hazard), sized as a FRACTION OF
@@ -441,6 +429,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
                 case COL_IDX_POSGAIN:     text = isMutedRider ? "" : entry.formattedPosDelta; break;
                 case COL_IDX_RACENUM:     text = entry.formattedRaceNum; break;
                 case COL_IDX_NAME:        text = entry.name; break;
+                case COL_IDX_CATEGORY:    text = entry.category; break;
                 case COL_IDX_BIKE:        text = entry.bikeShortName; break;
                 case COL_IDX_PENALTY:     text = entry.formattedPenalty; break;
                 case COL_IDX_BEST_LAP:    text = entry.formattedLapTime; break;
@@ -492,7 +481,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
             } else if (!isMutedRider) {
                 columnColor = this->getColor(ColorSlot::SECONDARY);
             }
-        } else if (col.columnIndex == COL_IDX_BIKE && !isPlaceholder && !isMutedRider) {
+        } else if ((col.columnIndex == COL_IDX_BIKE || col.columnIndex == COL_IDX_CATEGORY) && !isPlaceholder && !isMutedRider) {
             columnColor = this->getColor(ColorSlot::SECONDARY);
         } else if (col.columnIndex == COL_IDX_PENALTY && !isPlaceholder && entry.penalty > 0) {
             columnColor = this->getColor(ColorSlot::WARNING);
@@ -504,8 +493,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
         }
 
         // Use muted color for placeholder values
-        if (strcmp(text, placeholder) == 0 || strcmp(text, lapTimePlaceholder) == 0 ||
-            strcmp(text, Placeholders::NOT_AVAILABLE) == 0) {
+        if (strcmp(text, placeholder) == 0 || strcmp(text, Placeholders::NOT_AVAILABLE) == 0) {
             columnColor = mutedColor;
         }
 
@@ -532,17 +520,21 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
             columnColor = entry.lastLapColorOverride;
         }
 
-        // Use Digits font for numeric columns (BEST_LAP, LAST_LAP, GAP), except text gap labels use normal font
+        // Digits font for numeric columns (position, race number, gain/loss count, penalty, best/last lap,
+        // gap), matching how every other HUD draws these values; text gap labels use normal font
         bool isTextGapLabel = (col.columnIndex == COL_IDX_GAP && !isPlaceholder && entry.gapStyle == DisplayEntry::GapStyle::LABEL && text[0] != '\0' && !isdigit(static_cast<unsigned char>(text[0])));
         // The plate number uses TITLE, matching how real broadcast graphics set a
         // number plate (the shipped title face is italic, like the plates themselves).
         // Only in the modern layout: classic has no plate, so the number is just
-        // another column and stays in the body font.
+        // another numeric column and takes the digits font.
         bool isPlateNumber = (col.columnIndex == COL_IDX_RACENUM && !isPlaceholder && !m_bClassicLayout);
         int font;
         if (isPlateNumber) {
             font = this->getFont(FontCategory::TITLE);
-        } else if (col.columnIndex == COL_IDX_BEST_LAP || col.columnIndex == COL_IDX_LAST_LAP
+        } else if (col.columnIndex == COL_IDX_POS || col.columnIndex == COL_IDX_RACENUM
+                   || col.columnIndex == COL_IDX_POSGAIN
+                   || col.columnIndex == COL_IDX_PENALTY
+                   || col.columnIndex == COL_IDX_BEST_LAP || col.columnIndex == COL_IDX_LAST_LAP
                    || (col.columnIndex == COL_IDX_GAP && !isTextGapLabel)) {
             font = this->getFont(FontCategory::DIGITS);
         } else {
@@ -682,6 +674,7 @@ void StandingsHud::buildColumnTable() {
         {COL_POSGAIN, COL_IDX_POSGAIN, m_columns.posGain, Justify::LEFT, true, COL_POSGAIN_WIDTH},
         {COL_RACENUM, COL_IDX_RACENUM, m_columns.raceNum, Justify::LEFT, true, getRaceNumColumnWidth()},
         {COL_NAME, COL_IDX_NAME, m_columns.name, Justify::LEFT, true, getNameColumnWidth()},
+        {COL_CATEGORY, COL_IDX_CATEGORY, m_columns.category, Justify::LEFT, true, COL_CATEGORY_WIDTH},
         {COL_BIKE, COL_IDX_BIKE, m_columns.bike, Justify::LEFT, true, COL_BIKE_WIDTH},
         {COL_BEST_LAP, COL_IDX_BEST_LAP, m_columns.bestLap, Justify::LEFT, true, COL_BEST_LAP_WIDTH},
         {COL_LAST_LAP, COL_IDX_LAST_LAP, m_columns.lastLap, Justify::LEFT, true, COL_LAST_LAP_WIDTH},
@@ -708,7 +701,7 @@ StandingsHud::HudDimensions StandingsHud::calculateHudDimensions(const ScaledDim
     int actualRowCount = (rowCount >= 0) ? rowCount : m_displayRowCount;
     float totalRowsHeight = actualRowCount * dim.lineHeightNormal;
 
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(getBackgroundWidthChars(), dim.fontSize);
     want.sectionH = { result.titleHeight + result.headerHeight + totalRowsHeight };
     want.captionW = planTitleWidth(dim, "Standings", TitleTier::Large);
@@ -730,7 +723,6 @@ StandingsHud::StandingsHud()
     : m_columns(START_X + layoutDefaults().panelPaddingX, m_fScale, m_enabledColumns)
 {
     // One-time setup
-    DEBUG_INFO("StandingsHud created");
     setDraggable(true);
     // Body card: this HUD's content is a block the theme can frame -- exactly what
     // a themed body card is for. Opt-in; see BaseHud::m_bContentCard.

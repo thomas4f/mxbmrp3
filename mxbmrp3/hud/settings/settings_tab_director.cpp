@@ -43,12 +43,12 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
         nullptr, 0, true, "director.hud_visible");
     if (hud) {
         snprintf(buf, sizeof(buf), "%d%%", static_cast<int>(hud->getBackgroundOpacity() * 100.0f + 0.5f));
-        ctx.addCycleControl("Opacity", buf, 10,
+        ctx.addCycleControl("Opacity", buf,
             SettingsHud::ClickRegion::BACKGROUND_OPACITY_DOWN,
             SettingsHud::ClickRegion::BACKGROUND_OPACITY_UP,
             hud, shown, false, "common.opacity");
         snprintf(buf, sizeof(buf), "%d%%", static_cast<int>(hud->getScale() * 100.0f + 0.5f));
-        ctx.addCycleControl("Scale", buf, 10,
+        ctx.addCycleControl("Scale", buf,
             SettingsHud::ClickRegion::SCALE_DOWN,
             SettingsHud::ClickRegion::SCALE_UP,
             hud, shown, false, "common.scale");
@@ -62,7 +62,7 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
         nullptr, 0, true, "director.enabled");
 
     snprintf(buf, sizeof(buf), "%ds", director.getMinShotSec());
-    ctx.addCycleControl("Min shot", buf, 10,
+    ctx.addCycleControl("Min shot", buf,
         SettingsHud::ClickRegion::DIRECTOR_MINSHOT_DOWN,
         SettingsHud::ClickRegion::DIRECTOR_MINSHOT_UP,
         nullptr, on, false, "director.min_shot");
@@ -75,7 +75,7 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     const int maxShot = director.getMaxShotSec();
     if (maxShot <= 0) snprintf(buf, sizeof(buf), "Off");
     else snprintf(buf, sizeof(buf), "%ds", maxShot);
-    ctx.addCycleControl("Max shot", buf, 10,
+    ctx.addCycleControl("Max shot", buf,
         SettingsHud::ClickRegion::DIRECTOR_MAXSHOT_DOWN,
         SettingsHud::ClickRegion::DIRECTOR_MAXSHOT_UP,
         nullptr, on, maxShot <= 0, "director.max_shot");
@@ -83,7 +83,7 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     // Story hold: how long a story shot (crash / fastest lap / hot lap) lingers - a
     // shot-duration knob, so it sits with Min/Max shot here rather than under Stories.
     snprintf(buf, sizeof(buf), "%ds", director.getHoldSec());
-    ctx.addCycleControl("Story hold", buf, 10,
+    ctx.addCycleControl("Story hold", buf,
         SettingsHud::ClickRegion::DIRECTOR_HOLD_DOWN,
         SettingsHud::ClickRegion::DIRECTOR_HOLD_UP,
         nullptr, on, false, "director.hold");
@@ -91,7 +91,7 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     const int bmp = director.getBattleMaxPos();
     if (bmp <= 0) snprintf(buf, sizeof(buf), "Off");
     else snprintf(buf, sizeof(buf), "P%d", bmp);
-    ctx.addCycleControl("Field cutoff", buf, 10,
+    ctx.addCycleControl("Field cutoff", buf,
         SettingsHud::ClickRegion::DIRECTOR_BATTLEMAXPOS_DOWN,
         SettingsHud::ClickRegion::DIRECTOR_BATTLEMAXPOS_UP,
         nullptr, on, bmp <= 0, "director.battle_max_pos");
@@ -99,7 +99,7 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     // Battle gap sits with Field cutoff (both are the shared battle *definition* that
     // also drives the overlay panel); the on/off "Follow battles" story is under Stories.
     snprintf(buf, sizeof(buf), "%.1fs", director.getBattleGapMs() / 1000.0);
-    ctx.addCycleControl("Battle gap", buf, 10,
+    ctx.addCycleControl("Battle gap", buf,
         SettingsHud::ClickRegion::DIRECTOR_BATTLEGAP_DOWN,
         SettingsHud::ClickRegion::DIRECTOR_BATTLEGAP_UP,
         nullptr, on, false, "director.battle_gap");
@@ -159,13 +159,13 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     // tooltip instead ("Needs Max shot on") - the same place every other explanation in
     // this tab lives.
     const bool rotationOn = director.forcedRotation();
-    ctx.addSectionHeading("Onboard variety");
+    ctx.addSectionHeading("Onboard Variety");
 
     const int ve = director.getVarietyEvery();
     const bool varietyOn = (ve > 0);
     if (!varietyOn) snprintf(buf, sizeof(buf), "Off");
     else snprintf(buf, sizeof(buf), "%d", ve);
-    ctx.addCycleControl("Onboard every", buf, 10,
+    ctx.addCycleControl("Onboard every", buf,
         SettingsHud::ClickRegion::DIRECTOR_VARIETY_DOWN,
         SettingsHud::ClickRegion::DIRECTOR_VARIETY_UP,
         nullptr, on && rotationOn, !varietyOn, "director.variety_every");
@@ -179,7 +179,7 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
                           : ( cf && !cr) ? "Front"
                           : (!cf &&  cr) ? "Rear"
                           :                "Both";
-    ctx.addCycleControl("Fender", fenderVal, 10,
+    ctx.addCycleControl("Fender", fenderVal,
         SettingsHud::ClickRegion::DIRECTOR_CAM_FENDER_DOWN,
         SettingsHud::ClickRegion::DIRECTOR_CAM_FENDER_UP,
         nullptr, camsOn, (!cf && !cr), "director.cam_fender");
@@ -190,14 +190,14 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
                           : ( h1 && !h2) ? "Helmet 1"
                           : (!h1 &&  h2) ? "Helmet 2"
                           :                "Both";
-    ctx.addCycleControl("Helmet", helmetVal, 10,
+    ctx.addCycleControl("Helmet", helmetVal,
         SettingsHud::ClickRegion::DIRECTOR_CAM_HELMET_DOWN,
         SettingsHud::ClickRegion::DIRECTOR_CAM_HELMET_UP,
         nullptr, camsOn, (!h1 && !h2), "director.cam_helmet");
 
     // --- Manual control: how the caster takes over and hands back (takeover first).
     // Last, below the cameras - it's the least-touched section. ---
-    ctx.addSectionHeading("Manual control");
+    ctx.addSectionHeading("Manual Control");
 
     ctx.addToggleControl("Gamepad takeover", director.getGamepadTakeover(),
         SettingsHud::ClickRegion::DIRECTOR_GAMEPAD_TAKEOVER, nullptr,
@@ -206,7 +206,7 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     const int resume = director.getManualResumeSec();
     if (resume <= 0) snprintf(buf, sizeof(buf), "Off");
     else snprintf(buf, sizeof(buf), "%ds", resume);
-    ctx.addCycleControl("Resume after", buf, 10,
+    ctx.addCycleControl("Resume after", buf,
         SettingsHud::ClickRegion::DIRECTOR_RESUME_DOWN,
         SettingsHud::ClickRegion::DIRECTOR_RESUME_UP,
         nullptr, on, resume <= 0, "director.resume_after");

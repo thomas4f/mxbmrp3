@@ -12,11 +12,26 @@
 
 namespace hudbatch {
 
+void TextureCache::sync(const hudsw::Frame& frame) {
+    const std::vector<std::string>* names = frame.spriteNames;
+    const size_t size = names ? names->size() : 0;
+    if (names == m_names && size == m_size && frame.firstIcon == m_firstIcon &&
+        frame.assetRoot == m_root)
+        return;
+    m_names = names;
+    m_size = size;
+    m_firstIcon = frame.firstIcon;
+    m_root = frame.assetRoot;
+    m_slots.assign(size, nullptr);
+}
+
 void build(const hudsw::Frame& frame, int w, int h,
            float vx, float vy, float vw, float vh,
-           Resolver& res, std::vector<Vertex>& verts, std::vector<Run>& runs) {
+           Resolver& res, std::vector<Vertex>& verts, std::vector<Run>& runs,
+           TextureCache* cache) {
     verts.clear();
     runs.clear();
+    if (cache) cache->sync(frame);
     const float sw = 2.0f / w, sh = 2.0f / h;
     auto ndcX = [&](float px) { return px * sw - 1.0f; };
     auto ndcY = [&](float py) { return 1.0f - py * sh; };
@@ -52,8 +67,14 @@ void build(const hudsw::Frame& frame, int w, int h,
         const auto& names = *frame.spriteNames;
         int idx = q.m_iSprite - 1;
         if (idx < 0 || idx >= static_cast<int>(names.size())) continue;
-        const void* t = res.texture(names[idx], q.m_iSprite >= frame.firstIcon, frame.assetRoot);
-        if (!t) continue;
+        // Slot first (see TextureCache); a null answer is never stored, so a
+        // budget-deferred decode is asked again next frame.
+        const void* t = cache ? cache->m_slots[static_cast<size_t>(idx)] : nullptr;
+        if (!t) {
+            t = res.texture(names[idx], q.m_iSprite >= frame.firstIcon, frame.assetRoot);
+            if (!t) continue;
+            if (cache) cache->m_slots[static_cast<size_t>(idx)] = t;
+        }
         // U runs TL->TR, V runs TL->BL — the same basis the software affine
         // blit derives; the GPU interpolates it (and bilinear-samples, which
         // the point-sampled software blit does not).

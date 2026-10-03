@@ -1,14 +1,26 @@
 // ============================================================================
 // diagnostics/logger.h
 // Unified logging system - file logging in all builds, console in debug builds
+//
+// BUFFERED. log() formats the line into an in-memory buffer and returns; the
+// disk writer's thread (AtomicFileWriter) writes the buffer out about once a
+// second, and at once after a WARN or ERROR. So a DEBUG_* call on the game
+// thread costs a format and a copy, never a disk write. While that thread is
+// not running (launch, shutdown, the test harness) every line is written
+// inline, as before. The crash handler writes out whatever is still buffered
+// before it copies the log beside the dump (flushForCrash()).
+//
+// The log stays OUT of AtomicFileWriter's atomic replace: it is append-only,
+// and rewriting the whole file per flush would cost more the longer the
+// session ran.
 // ============================================================================
 #pragma once
 
 #include <windows.h>
 #include <string>
-#include <fstream>
 #include <mutex>
 #include "../core/thread_safety.h"
+#include "log_scrub.h"
 #include <atomic>
 #include <cstdio>
 
@@ -22,6 +34,17 @@ public:
     void info(const char* message);
     void warn(const char* message);
     void error(const char* message);
+
+    // Write the buffered lines to the file. The disk writer's thread calls it on
+    // every pass; log() calls it inline while that thread is not running.
+    void flushPending();
+
+    // From the SEH crash filter only: write the buffered lines out if both locks
+    // can be TAKEN WITHOUT WAITING (the faulting thread, or one ExitProcess is
+    // about to kill, may hold either), else give up. The dump is the
+    // load-bearing artifact; this is what makes the log copied beside it end at
+    // the crash rather than up to a second earlier.
+    void flushForCrash() MXB_NO_TSA;
 
     // Template for formatted logging
     template<typename... Args>
@@ -40,7 +63,7 @@ public:
     }
 
 private:
-    Logger() : m_initialized(false), m_lastTimestampMs(0) {
+    Logger() : m_initialized(false), m_file(nullptr), m_lastTimestampMs(0) {
         m_cachedTimestamp[0] = '\0';
 #ifdef _DEBUG
         m_consoleInitialized = false;
@@ -55,6 +78,8 @@ private:
     // Reads/refreshes the cached timestamp — called from log() under m_mutex.
     void getCurrentTimestamp(char* buffer, size_t bufferSize) MXB_REQUIRES(m_mutex);
     std::string getLogFilePath(const char* savePath) const;
+    // Resolve the Documents and user-profile folders into m_scrub. Under m_mutex.
+    void resolveScrubFolders() MXB_REQUIRES(m_mutex);
 
 #ifdef _DEBUG
     void initializeConsole();
@@ -68,22 +93,32 @@ private:
         log(level, buffer);
     }
 
-    // Atomic: written under m_logMutex in initialize()/shutdown() but read lock-free
+    // Write `m_writing` to the file and empty it. Under the file lock.
+    void writeOut() MXB_REQUIRES(m_fileMutex);
+
+    // Atomic: written under the locks in initialize()/shutdown() but read lock-free
     // at the top of log() (called from the game thread and background threads).
     std::atomic<bool> m_initialized;
-    // The members the mutex actually exists for — concurrent writes to an
-    // ofstream's streambuf are the race it serializes. Annotated rather than
-    // described in prose: initialize() opens the file under the lock, so the
-    // analysis checks them like everything else.
-    std::ofstream m_logFile MXB_GUARDED_BY(m_mutex);
-    std::string m_logFilePath MXB_GUARDED_BY(m_mutex);
 
-    // Serializes log() so concurrent calls from the game thread and
-    // background threads (HttpServer, Discord, UpdateChecker, RecordsHud,
-    // UpdateDownloader) don't race on the ofstream's streambuf — which
-    // is UB under the C++ standard and tends to mangle output lines in
-    // practice. Also protects m_lastTimestampMs / m_cachedTimestamp.
+    // THE FILE SIDE, under m_fileMutex: the handle, and the buffer being written
+    // out. LOCK ORDER: m_fileMutex before m_mutex, never the reverse -- a flush
+    // holds the file lock while it takes the line lock to swap the buffers.
+    Mutex m_fileMutex;
+    HANDLE m_file MXB_GUARDED_BY(m_fileMutex);   // nullptr while not open
+    std::string m_logFilePath MXB_GUARDED_BY(m_fileMutex);
+    std::string m_writing MXB_GUARDED_BY(m_fileMutex);
+
+    // THE LINE SIDE, under m_mutex: the buffer log() appends to. Swapped with
+    // m_writing on a flush, not copied, so both keep their capacity and a
+    // steady-state log() allocates nothing. Serializes concurrent log() calls
+    // from the game thread and the background threads, so lines never
+    // interleave. Also protects m_lastTimestampMs / m_cachedTimestamp.
     Mutex m_mutex;
+    std::string m_pending MXB_GUARDED_BY(m_mutex);
+
+    // The folders every line is scrubbed of (log_scrub.h), Documents first: it
+    // is the more specific of the two, and usually inside the profile.
+    LogScrub::Prefix m_scrub[2] MXB_GUARDED_BY(m_mutex);
 
     // Timestamp caching for performance
     int64_t m_lastTimestampMs MXB_GUARDED_BY(m_mutex);

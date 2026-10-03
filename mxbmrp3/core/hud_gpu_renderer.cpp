@@ -94,6 +94,9 @@ struct Renderer::Impl {
     Com<ID3D11ShaderResourceView> white;
     struct CachedTex { Com<ID3D11ShaderResourceView> srv; int w = 0, h = 0; bool ok = false; };
     std::map<std::string, CachedTex> texs;   // dropTextureCache clears (live art reload)
+    // Sprite-index -> SRV slots over `texs`; invalidated wherever texs is
+    // cleared (hudbatch::TextureCache says why that is mandatory).
+    hudbatch::TextureCache texCache;
     struct CachedFont { Com<ID3D11ShaderResourceView> srv; hudassets::FntFont font; };
     std::map<std::string, CachedFont> fonts; // kept — nobody iterates on a .fnt
 
@@ -111,20 +114,18 @@ struct Renderer::Impl {
 
 Renderer::Renderer() = default;
 
-Renderer::~Renderer() {
-    if (!m_impl) return;
-    // COM members release in Impl's destructor; the DLLs stay loaded (freeing
-    // d3d11 while its objects just died is asking for teardown ordering bugs,
-    // and the game process almost certainly holds them anyway).
-    delete m_impl;
-}
+// COM members release in Impl's destructor (run by m_impl's unique_ptr); the
+// DLLs stay loaded (freeing d3d11 while its objects just died is asking for
+// teardown ordering bugs, and the game process almost certainly holds them
+// anyway). Out of line because Impl is complete only here.
+Renderer::~Renderer() = default;
 
 bool Renderer::ok() const { return m_impl && !m_impl->dead; }
 
 bool Renderer::init(void* hwndRaw) {
     if (m_impl) return ok();
-    Impl* im = new Impl();
-    m_impl = im;
+    m_impl = std::make_unique<Impl>();
+    Impl* im = m_impl.get();
     im->hwnd = static_cast<HWND>(hwndRaw);
     im->dead = true;   // cleared only on full success
 
@@ -393,7 +394,7 @@ void Renderer::Impl::buildBatch(const hudsw::Frame& frame, int w, int h,
         const void* white() override { return im->white.p; }
     } resolver(this);
 
-    hudbatch::build(frame, w, h, vx, vy, vw, vh, resolver, verts, runs);
+    hudbatch::build(frame, w, h, vx, vy, vw, vh, resolver, verts, runs, &texCache);
 }
 
 bool Renderer::Impl::drawBatch(uint8_t bgR, uint8_t bgG, uint8_t bgB, uint8_t bgA) {
@@ -447,7 +448,7 @@ bool Renderer::Impl::drawBatch(uint8_t bgR, uint8_t bgG, uint8_t bgB, uint8_t bg
 bool Renderer::renderSwapchain(const hudsw::Frame& frame, int w, int h,
                                float vx, float vy, float vw, float vh,
                                uint8_t bgR, uint8_t bgG, uint8_t bgB, bool vsync) {
-    Impl* im = m_impl;
+    Impl* im = m_impl.get();
     if (!im || im->dead || !im->swap) return false;
     if (w < 1 || h < 1) return true;   // minimized: nothing to do, not an error
     if (w != im->rtW || h != im->rtH) {
@@ -473,7 +474,7 @@ bool Renderer::renderSwapchain(const hudsw::Frame& frame, int w, int h,
 }
 
 void Renderer::dropTextureCache() {
-    if (m_impl) m_impl->texs.clear();
+    if (m_impl) { m_impl->texs.clear(); m_impl->texCache.invalidate(); }
 }
 
 }  // namespace hudgpu
@@ -482,7 +483,7 @@ void Renderer::dropTextureCache() {
 namespace hudgpu {
 struct Renderer::Impl {};
 Renderer::Renderer() = default;
-Renderer::~Renderer() { delete m_impl; }
+Renderer::~Renderer() = default;
 bool Renderer::init(void*) { return false; }
 bool Renderer::ok() const { return false; }
 bool Renderer::renderSwapchain(const hudsw::Frame&, int, int, float, float, float, float,

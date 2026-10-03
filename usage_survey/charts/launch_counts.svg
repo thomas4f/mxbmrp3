@@ -1,31 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="300" viewBox="0 0 760 300" role="img"><style>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="300" viewBox="0 0 760 300" role="img" aria-label="Lifetime launches per install"><title>Lifetime launches per install</title><style>
   text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
-  .grid{stroke:#d0d7de;stroke-width:1}
-  .axis{stroke:#57606a;stroke-width:1}
-  .lbl{fill:#57606a;font-size:12px}
-  .val{fill:#24292f;font-size:12px;font-weight:600}
-  .title{fill:#24292f;font-size:14px;font-weight:700}
-  .sub{fill:#57606a;font-size:11px}
-  .gap{fill:#57606a;opacity:.09}
-  .gaplbl{fill:#57606a;font-size:10px;opacity:.85}
-  .ico{fill:#57606a}
-  .t1{fill:#d4a72c}
-  .t2{fill:#bf8700}
-  .t3{fill:#9e6a03}
-  .t4{fill:#7d4e00}
-  @media (prefers-color-scheme: dark){
-    .grid{stroke:#30363d}
-    .axis{stroke:#8b949e}
-    .lbl{fill:#8b949e}
-    .val{fill:#e6edf3}
-    .title{fill:#e6edf3}
-    .sub{fill:#8b949e}
-    .gap{fill:#8b949e;opacity:.13}
-    .gaplbl{fill:#8b949e}
-    .ico{fill:#8b949e}
-    .t1{fill:#bf8700}
-    .t2{fill:#d4a72c}
-    .t3{fill:#f2cc60}
-    .t4{fill:#fbe6a4}
-  }
-</style><text x="12" y="20" class="title">Lifetime launches per install</text><text x="12" y="37" class="sub">14,355 installs reporting</text><line x1="46" y1="260" x2="744" y2="260" class="axis"/><line x1="46" y1="152.0" x2="744" y2="152.0" class="grid" stroke-dasharray="3 3"/><text x="40" y="156.0" class="sub" text-anchor="end">2,108</text><line x1="46" y1="44.0" x2="744" y2="44.0" class="grid" stroke-dasharray="3 3"/><text x="40" y="48.0" class="sub" text-anchor="end">4,216</text><rect x="65.5" y="192.9" width="100.5" height="67.1" rx="2" fill="#3fb950"/><text x="115.8" y="274" class="sub" text-anchor="middle">1</text><rect x="205.1" y="184.2" width="100.5" height="75.8" rx="2" fill="#3fb950"/><text x="255.4" y="274" class="sub" text-anchor="middle">2–5</text><rect x="344.7" y="125.9" width="100.5" height="134.1" rx="2" fill="#3fb950"/><text x="395.0" y="274" class="sub" text-anchor="middle">6–20</text><rect x="484.3" y="44.0" width="100.5" height="216.0" rx="2" fill="#3fb950"/><text x="534.6" y="274" class="sub" text-anchor="middle">21–100</text><rect x="623.9" y="170.1" width="100.5" height="89.9" rx="2" fill="#3fb950"/><text x="674.2" y="274" class="sub" text-anchor="middle">100+</text></svg>
+  .grid{stroke:#808080;stroke-opacity:.3;stroke-width:1}
+  .axis{stroke:#808080;stroke-width:1}
+  .lbl{fill:#808080;font-size:12px}
+  .val{fill:#808080;font-size:12px;font-weight:600}
+  .title{fill:#808080;font-size:14px;font-weight:700}
+  .sub{fill:#808080;font-size:11px}
+  .gap{fill:#808080;opacity:.12}
+  .gaplbl{fill:#808080;font-size:10px;opacity:.85}
+  .ico{fill:#808080}
+  .t1{fill:#e3b341}
+  .t2{fill:#d29922}
+  .t3{fill:#b7860b}
+  .t4{fill:#946f0f}
+</style><text x="12" y="20" class="title">Lifetime launches per install</text><text x="12" y="37" class="sub">installs reporting a launch count; median 23</text><line x1="47" y1="260" x2="744" y2="260" class="axis"/><line x1="47" y1="209.5" x2="744" y2="209.5" class="grid" stroke-dasharray="3 3"/><text x="41" y="213.5" class="sub" text-anchor="end">1,500</text><line x1="47" y1="159.0" x2="744" y2="159.0" class="grid" stroke-dasharray="3 3"/><text x="41" y="163.0" class="sub" text-anchor="end">3,000</text><line x1="47" y1="108.5" x2="744" y2="108.5" class="grid" stroke-dasharray="3 3"/><text x="41" y="112.5" class="sub" text-anchor="end">4,500</text><line x1="47" y1="58.0" x2="744" y2="58.0" class="grid" stroke-dasharray="3 3"/><text x="41" y="62.0" class="sub" text-anchor="end">6,000</text><rect x="63.3" y="193.5" width="83.6" height="66.5" rx="2" fill="#3fb950" data-tip="1: 1,976"/><text x="105.1" y="274" class="sub" text-anchor="middle">1</text><rect x="179.4" y="192.9" width="83.6" height="67.1" rx="2" fill="#3fb950" data-tip="2–5: 1,994"/><text x="221.2" y="274" class="sub" text-anchor="middle">2–5</text><rect x="295.6" y="151.1" width="83.6" height="108.9" rx="2" fill="#3fb950" data-tip="6–20: 3,236"/><text x="337.4" y="274" class="sub" text-anchor="middle">6–20</text><rect x="411.8" y="74.9" width="83.6" height="185.1" rx="2" fill="#3fb950" data-tip="21–100: 5,498"/><text x="453.6" y="274" class="sub" text-anchor="middle">21–100</text><rect x="527.9" y="180.7" width="83.6" height="79.3" rx="2" fill="#3fb950" data-tip="101–500: 2,356"/><text x="569.8" y="274" class="sub" text-anchor="middle">101–500</text><rect x="644.1" y="257.7" width="83.6" height="2.3" rx="2" fill="#3fb950" data-tip="500+: 67"/><text x="685.9" y="274" class="sub" text-anchor="middle">500+</text></svg>

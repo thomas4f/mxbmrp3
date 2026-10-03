@@ -22,7 +22,6 @@
 // Deliberately asserts through RESET and through a PROFILE SWITCH, because those are
 // two different callers of the same applier and either could have been patched alone.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

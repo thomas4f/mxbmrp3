@@ -27,7 +27,7 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
     // Duration cycle control: 1s -> 2s -> ... -> 30s (wraps)
     char durationValue[16];
     snprintf(durationValue, sizeof(durationValue), "%ds", hud->m_noticeDurationMs / 1000);
-    ctx.addSteppedControl("Duration", durationValue, 10,
+    ctx.addSteppedControl("Duration", durationValue,
         SettingsHud::SteppedControl::wrapInt(&hud->m_noticeDurationMs,
             NoticesHud::DURATION_STEP_MS, NoticesHud::MIN_NOTICE_DURATION_MS,
             NoticesHud::MAX_NOTICE_DURATION_MS, hud),
@@ -92,7 +92,7 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
     ctx.addSectionHeading("Personal Bests");
 
     bool allTimePBOn = (hud->m_enabledNotices & NoticesHud::NOTICE_ALLTIME_PB) != 0;
-    ctx.addToggleControl("Alltime PB", allTimePBOn,
+    ctx.addToggleControl("All-time PB", allTimePBOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_ALLTIME_PB, true,
         "notices.alltime_pb");

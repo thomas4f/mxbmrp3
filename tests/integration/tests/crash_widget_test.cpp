@@ -21,7 +21,6 @@
 //
 // Self-contained doctest; see run_tests.sh.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
@@ -144,6 +143,52 @@ TEST_CASE("crash widget: the tally survives a track+bike change and a plugin res
         host.runDeinit();
         host.shutdown();
     }
+}
+
+// Reset clears the TALLY and nothing else. The two crash achievements read two
+// different numbers -- Skill Issue the lifetime per-track+bike sum, 99 Problems
+// this tally as a max-ever -- and the only thing that separates them is this
+// button. Nothing pinned that, so "tidying" resetCrashTally() into zeroing the
+// per-track counts as well would have walked Skill Issue's lifetime total
+// backwards with the whole suite still green.
+TEST_CASE("crash widget: Reset zeroes the tally without touching the lifetime total") {
+    std::remove(kStatsPath);   // the lifetime sum below is this case's own
+
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSaveWin);
+    REQUIRE(host.hasCrashTally());
+    REQUIRE(host.hasAchievements());
+
+    openSession(host, "TrackA", "BikeOne");
+    crashOnce(host, 1.0f);
+    crashOnce(host, 3.0f);
+    crashOnce(host, 5.0f);
+
+    // All three agree before a reset -- which is precisely why the two rows read
+    // as duplicates until one happens.
+    CHECK(host.crashTally() == 3);
+    CHECK(host.achievementValue("crashes") == doctest::Approx(3.0));
+    CHECK(host.achievementValue("ninety_nine") == doctest::Approx(3.0));
+
+    CHECK(host.crashTallyReset() == 0);
+
+    // The streamer's counter starts over; the lifetime total does not, or every
+    // reset would quietly walk Skill Issue backwards. 99 Problems keeps its
+    // high-water mark (raise()), so a reset costs no progress either.
+    CHECK(host.achievementValue("crashes") == doctest::Approx(3.0));
+    CHECK(host.achievementValue("ninety_nine") == doctest::Approx(3.0));
+
+    // Counting on: the tally restarts at one and the lifetime sum carries on at
+    // four, while 99 Problems stays at three -- it does not ADD across a reset,
+    // so 50, reset, 50 more never reaches 99.
+    crashOnce(host, 8.0f);
+    CHECK(host.crashTally() == 1);
+    CHECK(host.achievementValue("crashes") == doctest::Approx(4.0));
+    CHECK(host.achievementValue("ninety_nine") == doctest::Approx(3.0));
+
+    host.runDeinit();
+    host.shutdown();
 }
 
 TEST_CASE("crash widget: the count on screen is the count it holds") {

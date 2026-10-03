@@ -3,13 +3,13 @@
 // RaceSessionState transitions and the derived behaviour they drive:
 //   - green flag (pre-start -> in-progress) snapshots the START GRID, so the
 //     positions-gained column (posDeltaStart) is measured from it;
-//   - state changes log "started" / "ended" events.
+//   - state changes log "started" / "ended" events; "started" carries the
+//     session format in formatSessionFormatWords's text ("10 laps").
 //
 // This is a plugin-logic test, so it observes state via the DIRECT snapshot
 // (host.snapshot()) — no HTTP server, no socket, no rebuild-gating. See the
 // layering note in TESTING.md. Self-contained doctest; see run_tests.sh.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
@@ -47,6 +47,14 @@ TEST_CASE("race session state: green snapshots the grid; started/ended events") 
         auto d = host.snapshot();
         REQUIRE(d.is_object());
         CHECK(hasEvent(d, "started"));
+        // The format detail is the Session and Timing panels' format with the laps
+        // spelled out (formatSessionFormatWords): the panels' "10L" suits a cell,
+        // but "Race 1 started: 10L" read as a code in the Event Log.
+        std::string detail;
+        for (const auto& e : d.value("events", nlohmann::json::array()))
+            if (e.value("message", std::string()).find("started") != std::string::npos)
+                detail = e.value("detail", std::string());
+        CHECK(detail == "10 laps");
     }
 
     // Bob passes Alice for the lead; Carol holds P3. posDeltaStart is measured

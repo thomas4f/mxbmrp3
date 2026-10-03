@@ -32,7 +32,6 @@
 //     Without a display there is no GL and the test says so rather than
 //     pretending; the headless branch still covers (1) and (2) in full.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

@@ -161,10 +161,10 @@ void GlConfirmHud::rebuildRenderData() {
     // row at first, copied from CrashWidget, and that is the one place the squeeze
     // is deliberate: it exists so the widget tiles at the same height as Speed and
     // Gear beside it, and its comment says so. Nothing here tiles with anything.
-    const BaseHud::PlanButtonTerms bt = planButtonTerms(dim);
+    const PlanButtonTerms bt = planButtonTerms(dim);
     const float buttonH = bt.insetT + dim.lineHeightNormal + bt.insetB;
 
-    BaseHud::PanelWant want;
+    PanelWant want;
     // Sized from the LONGEST message row plus a character of air each side. The
     // buttons sit inside that, so nothing here is sized from a label the way a
     // chip usually is - the text is what must be readable, so the text wins.
@@ -196,7 +196,7 @@ void GlConfirmHud::rebuildRenderData() {
     m_fOffsetY = 0.0f;
 
     addPlanBackground(p, originX, originY);
-    addPlanTitle(p, "Confirm", this->getFont(FontCategory::TITLE),
+    addPlanTitle(p, "Confirm",
                  this->getColor(ColorSlot::PRIMARY));
 
     const float centerX = p.sectionBoxCenterX();

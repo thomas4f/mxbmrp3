@@ -15,6 +15,7 @@
 #include "../game/unified_types.h"
 #include "../hud/base_hud.h"
 #include "hud_sw_renderer.h"   // hudsw::Frame, returned by buildGlFrame
+#include "thread_safety.h"     // Mutex, for the GL pre-warm list handoff
 
 // Forward declarations to avoid circular dependency with plugin_data.h
 enum class DataChangeType;
@@ -109,6 +110,9 @@ public:
     hudsw::Frame buildGlFrame(const SPluginQuad_t* quads, int quadCount,
                               const SPluginString_t* strings, int stringCount) const;
     void clearGlFailLatch();
+    // BUILD thread, once per frame while glInGame is on: publish what the GL
+    // backend should pre-warm - see m_glWarmBuilt.
+    void publishGlWarmList();
     // RELOAD_CONFIG: make edited art visible without a restart, same contract
     // as CompanionWindow::requestArtReload.
     void requestGlArtReload();
@@ -138,6 +142,10 @@ public:
     const std::vector<std::string>& testGlFrameSpriteNames() const {
         return *buildGlFrame(nullptr, 0, nullptr, 0).spriteNames;
     }
+    // Whether the live GL backend has loaded a sprite (by render name): 1/0, or
+    // -1 with no backend. Pre-warming draws nothing, so the cache is all a test
+    // can see of it.
+    int testGlHasTexture(const char* renderName) const;
 #endif
 
     // The sprite table as DrawInit registered it, for the benchmark report's render
@@ -320,6 +328,7 @@ public:
 #endif
     class StatsHud& getStatsHud() const { assert(m_pStatsHud && "HudManager not initialized"); return *m_pStatsHud; }
     class EventLogHud& getEventLogHud() const { assert(m_pEventLog && "HudManager not initialized"); return *m_pEventLog; }
+    class StreamChatHud& getStreamChatHud() const { assert(m_pStreamChat && "HudManager not initialized"); return *m_pStreamChat; }
     class BenchmarkWidget* getBenchmarkWidget() const { return m_pBenchmark; }  // May be null if developer mode is off
     class SettingsHud& getSettingsHud() const { assert(m_pSettingsHud && "HudManager not initialized"); return *m_pSettingsHud; }
 
@@ -487,6 +496,7 @@ private:
     class StatsHud* m_pStatsHud;
     class FmxHud* m_pFmxHud;
     class EventLogHud* m_pEventLog;
+    class StreamChatHud* m_pStreamChat = nullptr;
     class BenchmarkWidget* m_pBenchmark;
 
     // Temporary HUD visibility toggle (doesn't modify actual visibility state)
@@ -532,6 +542,30 @@ private:
     int m_glStatusLastShown = -1;
     // Game thread only (renderInContextGl is its sole toucher) - log-once latch.
     bool m_glProbeConflictLogged = false;
+    // THE GL PRE-WARM LIST (hudgl::Renderer::Warm): the background art of every
+    // enabled HUD and every font category, so the backend loads them in the
+    // quiet frames after track entry rather than on the frame a HUD first
+    // appears - the pit board's mid-lap first show was a ~20 ms hitch. Built on
+    // the BUILD thread, because it reads HUD state the worker owns in
+    // pluginThread mode; drawn from on the Draw thread. The shared copy changes
+    // only when the list does, so a steady frame costs the Draw side one atomic
+    // load and no lock.
+    struct GlWarmList {
+        // Every HUD enabled at once lists ~50 sprites today; a list past the
+        // cap is not pre-warmed, never overrun. Room for the HUDs still to come.
+        static constexpr int kMax = 128;
+        int sprites[kMax] = {};
+        int spriteCount = 0;
+        int fonts[kMax] = {};
+        int fontCount = 0;
+        bool sameAs(const GlWarmList& o) const;
+    };
+    GlWarmList m_glWarmBuilt;             // build thread only
+    Mutex m_glWarmMutex;
+    GlWarmList m_glWarmShared MXB_GUARDED_BY(m_glWarmMutex);
+    std::atomic<unsigned> m_glWarmGen{ 0 };
+    GlWarmList m_glWarmDraw;              // Draw thread only
+    unsigned m_glWarmDrawGen = 0;         // Draw thread only
     // Full paths with extensions - the shape the game's DrawInit wants.
     std::vector<std::string> m_spriteNames;
     std::vector<std::string> m_fontNames;

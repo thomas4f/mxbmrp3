@@ -25,8 +25,11 @@ inline std::string readFile(const std::string& path) {
     std::ifstream f(path, std::ios::binary);
     std::stringstream ss; ss << f.rdbuf(); return ss.str();
 }
-inline void writeFile(const std::string& path, const std::string& s) {
-    std::ofstream f(path, std::ios::binary); f << s;
+// False when the file could not be opened or written; a test that then reads
+// the file back must check it, or it asserts against whatever was there before.
+inline bool writeFile(const std::string& path, const std::string& s) {
+    std::ofstream f(path, std::ios::binary); f << s; f.close();
+    return !f.fail();
 }
 
 inline std::string trim(const std::string& s) {

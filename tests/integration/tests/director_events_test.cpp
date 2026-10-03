@@ -9,7 +9,6 @@
 // snapshot carries them even with the in-game display filter OFF. Uses the
 // injectable director clock so cuts fire deterministically. Self-contained doctest.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

@@ -19,9 +19,9 @@
   },
   "events": [
     {
-      "clockMs": 1785507377343,
-      "clockTime": "14:16:17",
-      "detail": "8 laps",
+      "clockMs": 1789898876248,
+      "clockTime": "10:07:56",
+      "detail": "8L",
       "message": "Race 1 started",
       "sessionTime": "00:00",
       "sessionTimeMs": 0,
@@ -161,7 +161,7 @@
       "tertiary": "#8c8c8c",
       "warning": "#ffa500"
     },
-    "pluginVersion": "1.28.0.109",
+    "pluginVersion": "1.30.3.72",
     "sessionLength": 0,
     "state": "In Progress",
     "time": "02:40",
@@ -177,6 +177,7 @@
       "bike": "FACTORY CRF450R",
       "brand": "Honda",
       "brandColor": "#de1c21",
+      "cat": "MX1",
       "chips": [],
       "finished": false,
       "fullName": "Alice",
@@ -206,6 +207,7 @@
       "bestLapMs": 0,
       "bike": "Test 450",
       "brandColor": "#808080",
+      "cat": "MX1",
       "chips": [
         "camera"
       ],
@@ -238,6 +240,7 @@
       "bestLapMs": 0,
       "bike": "Test 450",
       "brandColor": "#808080",
+      "cat": "MX1",
       "chips": [],
       "finished": false,
       "fullName": "Carol",
@@ -267,6 +270,7 @@
       "bestLapMs": 0,
       "bike": "Test 450",
       "brandColor": "#808080",
+      "cat": "MX1",
       "chips": [],
       "finished": false,
       "fullName": "Dave",

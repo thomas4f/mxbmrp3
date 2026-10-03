@@ -174,13 +174,13 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
         nullptr, 0, true, "spotter.subtitles");
     snprintf(buf, sizeof(buf), "%d%%",
              static_cast<int>(widget.getBackgroundOpacity() * 100.0f + 0.5f));
-    ctx.addCycleControl("Opacity", buf, 10,
+    ctx.addCycleControl("Opacity", buf,
         SettingsHud::ClickRegion::BACKGROUND_OPACITY_DOWN,
         SettingsHud::ClickRegion::BACKGROUND_OPACITY_UP,
         &widget, spotter.isSubtitlesEnabled(), false, "common.opacity");
     snprintf(buf, sizeof(buf), "%d%%",
              static_cast<int>(widget.getScale() * 100.0f + 0.5f));
-    ctx.addCycleControl("Scale", buf, 10,
+    ctx.addCycleControl("Scale", buf,
         SettingsHud::ClickRegion::SCALE_DOWN,
         SettingsHud::ClickRegion::SCALE_UP,
         &widget, spotter.isSubtitlesEnabled(), false, "common.scale");
@@ -196,7 +196,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
         auto sc = SettingsHud::SteppedControl::clampInt(
             spotter.volumePtr(), 5, 0, 100, nullptr);
         sc.postStep = []() { SpotterManager::getInstance().publishAudioSettings(); };
-        ctx.addSteppedControl("Volume", buf, 10, sc, nullptr, on, false,
+        ctx.addSteppedControl("Volume", buf, sc, nullptr, on, false,
                               "spotter.volume");
     }
 
@@ -210,7 +210,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
             spotter.speedPtr(), 0.05f, SpotterStretch::kMinSpeed,
             SpotterStretch::kMaxSpeed, nullptr);
         sc.postStep = []() { SpotterManager::getInstance().publishAudioSettings(); };
-        ctx.addSteppedControl("Speed", buf, 10, sc, nullptr, on, false,
+        ctx.addSteppedControl("Speed", buf, sc, nullptr, on, false,
                               "spotter.speed");
     }
 
@@ -221,7 +221,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     // Shown by its title, cycled and stored by its folder name -- see
     // SpotterManager::getPackDisplayName.
     const std::string& packName = spotter.getPackName();
-    ctx.addCycleControl("Voice pack", spotter.getPackDisplayName().c_str(), 10,
+    ctx.addCycleControl("Voice pack", spotter.getPackDisplayName().c_str(),
         SettingsHud::ClickRegion::SPOTTER_PACK_PREV,
         SettingsHud::ClickRegion::SPOTTER_PACK_NEXT,
         nullptr, true, packName == "default", "spotter.pack");
@@ -236,7 +236,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     const std::string ttsShown = ttsVoice.empty()
         ? std::string("System default")
         : SpotterTtsVoice::displayName(ttsVoice);
-    ctx.addCycleControl("TTS voice", ttsShown.c_str(), 10,
+    ctx.addCycleControl("TTS voice", ttsShown.c_str(),
         SettingsHud::ClickRegion::SPOTTER_TTSVOICE_PREV,
         SettingsHud::ClickRegion::SPOTTER_TTSVOICE_NEXT,
         nullptr, on, ttsVoice.empty(), "spotter.tts_voice");
@@ -300,7 +300,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
             SpotterManager& s = SpotterManager::getInstance();
             s.setBehindOnMeters(s.hazardConfig().behindOnMeters);
         };
-        ctx.addSteppedControl("Behind distance", buf, 10, sc, nullptr,
+        ctx.addSteppedControl("Behind distance", buf, sc, nullptr,
                               proxLive, false, "spotter.behind_on_m");
     }
 
@@ -317,7 +317,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
             SpotterManager& s = SpotterManager::getInstance();
             s.setAlongsideOnMeters(s.hazardConfig().alongsideOnMeters);
         };
-        ctx.addSteppedControl("Alongside back", buf, 10, sc, nullptr,
+        ctx.addSteppedControl("Alongside back", buf, sc, nullptr,
                               proxLive, false, "spotter.alongside_on_m");
     }
 
@@ -326,7 +326,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     {
         auto sc = SettingsHud::SteppedControl::fixedFloat(
             spotter.alongsideAheadMetersPtr(), 1.0f, 0.0f, 20.0f, nullptr);
-        ctx.addSteppedControl("Alongside front", buf, 10, sc, nullptr,
+        ctx.addSteppedControl("Alongside front", buf, sc, nullptr,
                               proxLive, false, "spotter.alongside_ahead_m");
     }
 
@@ -341,7 +341,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     {
         auto sc = SettingsHud::SteppedControl::fixedFloat(
             spotter.lateralMetersPtr(), 1.0f, 3.0f, 60.0f, nullptr);
-        ctx.addSteppedControl("Width", buf, 10, sc, nullptr, proxLive, false,
+        ctx.addSteppedControl("Width", buf, sc, nullptr, proxLive, false,
                               "spotter.lateral_m");
     }
 

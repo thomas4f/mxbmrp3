@@ -23,8 +23,17 @@
 // THE ONE MAINTAINED LIST is preservedByDesign() below: what a per-tab Reset is
 // supposed to leave alone (visibility, master switches, the analytics opt-out).
 // It is small, it is about intent rather than inventory, and every entry says why.
+//
+// THE ORACLE IS THE FILE, so every write it depends on is REQUIRED to have landed:
+// the plugin's save (an atomic temp-and-replace that can fail) and this test's
+// own rewrite of the factory text. Without that, a write that never landed reads
+// as the previous file -- which is exactly what a Reset that did nothing would
+// read as, key for key. Seen once, under `ctest -j 4`: "Reset FMX left a key the
+// factory file does not have: enabledRows = 1", the perturbed value unchanged,
+// then the next tab's baseline dirty with the same key; never reproduced in
+// isolation or under artificial load. The REQUIREs below are what tell a lost
+// write from a real leak the next time.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
@@ -57,7 +66,9 @@ bool preservedByDesign(const std::string& tab, const ini::Key& k) {
     // positioning (resetHudsToFactoryDefaults' keepVisibility). The Widgets tab is
     // the deliberate exception — its rows expose per-widget "Visible" toggles, so
     // Reset restores those too, and it is NOT excused here.
-    if (tab != "Widgets" && (key == "visible" || key == "companionVisible")) return true;
+    // The Director status button's is hudVisible, in the global [Director] section.
+    if (tab != "Widgets" &&
+        (key == "visible" || key == "companionVisible" || key == "hudVisible")) return true;
 
     // Master switches. Each tab's reset restores that tab's tuning while leaving
     // the on/off alone; the full "Reset all settings" turns them off instead.
@@ -66,6 +77,11 @@ bool preservedByDesign(const std::string& tab, const ini::Key& k) {
     if (tab == "Spotter"  && section == "Spotter"  &&
         (key == "enabled" || key == "subtitles")) return true;
     if (tab == "Updates"  && section == "Updates"  && key == "updateMode") return true;
+    // The channel is who the streamer IS, not layout: Reset Chat keeps each
+    // platform's channel and switch (SettingsHud::resetTabStreamChat), like the
+    // chat HUD's visibility above.
+    if (tab == "Stream Chat" && (section == "Twitch" || section == "YouTube") &&
+        (key == "channel" || key == "enabled")) return true;
     if (tab == "Widgets"  && key == "widgetsEnabled") return true;
     // Consent, not tuning: replaying the factory value would turn a player's
     // opt-out back ON from a button that says "Reset General". See resetTabGeneral.
@@ -120,7 +136,7 @@ TEST_CASE("reset tab: a tab's Reset restores everything that tab can change") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup(saveWin);
-    host.save();
+    REQUIRE(host.save());
 
     const std::string factoryText = ini::readFile(iniPath);
     REQUIRE_MESSAGE(!factoryText.empty(), "no settings.ini written at " << iniPath);
@@ -138,10 +154,10 @@ TEST_CASE("reset tab: a tab's Reset restores everything that tab can change") {
         // AND per-profile) so anything the previous tab left pinned but absent from
         // the file — a colour override, say — is cleared rather than inherited.
         host.resetEverything();
-        ini::writeFile(iniPath, factoryText);
+        REQUIRE_MESSAGE(ini::writeFile(iniPath, factoryText), "could not rewrite the factory file before tab " << tab);
         host.loadSettings(saveWin);
         host.setActiveTab(tab.c_str());
-        host.save();
+        REQUIRE_MESSAGE(host.save(), "settings save failed before tab " << tab << ": the file is stale, not the plugin");
         const ini::Map baseline = ini::parse(ini::readFile(iniPath));
         // Plain bool, not the comparison: doctest would otherwise stringify both
         // maps (hundreds of keys) into the failure message. diffText says it in one line.
@@ -151,7 +167,7 @@ TEST_CASE("reset tab: a tab's Reset restores everything that tab can change") {
 
         const int clicked = host.perturbActiveTab();
         REQUIRE(clicked >= 0);       // hook present
-        host.save();
+        REQUIRE_MESSAGE(host.save(), "settings save failed after perturbing tab " << tab);
         const ini::Map perturbed = ini::parse(ini::readFile(iniPath));
         // Nothing this tab changes reaches the INI (the About page, or a tab whose
         // controls are all pagination).
@@ -160,7 +176,7 @@ TEST_CASE("reset tab: a tab's Reset restores everything that tab can change") {
 
         REQUIRE_MESSAGE(host.clickResetTab(),
                         "tab " << tab << " changes settings but has no Reset button");
-        host.save();
+        REQUIRE_MESSAGE(host.save(), "settings save failed after Reset " << tab << ": a stale file, not an unreset key");
         const ini::Map after = ini::parse(ini::readFile(iniPath));
 
         for (const auto& entry : after) {
@@ -188,5 +204,39 @@ TEST_CASE("reset tab: a tab's Reset restores everything that tab can change") {
     // without the number needing a touch every time a tab is added.
     CHECK(tabsWithSomethingToReset >= 20);
 
+    host.shutdown();
+}
+
+// The sweep above excuses visibility, so it cannot see a Reset that changes it.
+// Reset Director replayed all of [Director], status button's hudVisible included,
+// while every other tab's Reset keeps its element's visibility.
+TEST_CASE("reset tab: Reset Director keeps the status button's visibility") {
+    const char* saveWin = "Z:\\tmp\\mxbmrp3-tests\\reset_tab\\";
+    const std::string iniPath =
+        "Z:\\tmp\\mxbmrp3-tests\\reset_tab\\mxbmrp3\\mxbmrp3_settings.ini";
+
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(saveWin);
+    REQUIRE(host.save());
+
+    std::string text = ini::readFile(iniPath);
+    const ini::Key key{"Director", "hudVisible"};
+    const ini::Map factory = ini::parse(text);
+    REQUIRE_MESSAGE(factory.count(key) == 1, "[Director] hudVisible not written");
+    const std::string flipped = factory.at(key) == "1" ? "0" : "1";
+    const size_t section = text.find("[Director]");
+    REQUIRE(section != std::string::npos);
+    const size_t at = text.find("hudVisible=", section);
+    REQUIRE(at != std::string::npos);
+    text.replace(at, std::string("hudVisible=").size() + 1, "hudVisible=" + flipped);
+    REQUIRE(ini::writeFile(iniPath, text));
+    host.loadSettings(saveWin);
+
+    host.showSettings(true);
+    host.setActiveTab("Director");
+    REQUIRE(host.clickResetTab());
+    REQUIRE(host.save());
+    CHECK(ini::parse(ini::readFile(iniPath)).at(key) == flipped);
     host.shutdown();
 }

@@ -27,8 +27,6 @@ InputManager& InputManager::getInstance() {
 void InputManager::initialize() {
     if (m_bInitialized) return;
 
-    DEBUG_INFO("InputManager initializing");
-
     m_gameWindow = nullptr;
     m_processId = GetCurrentProcessId();  // Cache once - never changes
     m_windowWidth = 0;
@@ -109,11 +107,9 @@ void InputManager::updateFrame() {
 
     // Step 3: Refresh window information when cursor is first enabled
     if (m_bCursorEnabled && !m_bWasCursorEnabled) {
-        DEBUG_INFO("Cursor enabled - refreshing window information");
         refreshWindowInformation();
 
         // Validate all HUD positions to ensure they fit within current window bounds
-        DEBUG_INFO("Validating HUD positions after window refresh");
         HudManager::getInstance().validateAllHudPositions();
     }
 
@@ -147,11 +143,9 @@ void InputManager::updateFrame() {
     // This catches window resizes that happen while the game is running
     // Only do this when the actual game window is focused (not console or dialogs)
     if (m_bShouldShowCursor && !m_bWasCursorVisible && GetForegroundWindow() == m_gameWindow) {
-        DEBUG_INFO("Cursor became visible - checking for window changes");
         refreshWindowInformation();
 
         // Validate all HUD positions to ensure they fit within current window bounds
-        DEBUG_INFO("Validating HUD positions after cursor became visible");
         HudManager::getInstance().validateAllHudPositions();
     }
 
@@ -404,6 +398,12 @@ void InputManager::refreshWindowInformation() {
         return;
     }
 
+    // The size is what these refreshes exist to catch, so it is the one thing
+    // logged -- and only when it moved (they run on every focus/cursor change).
+    if (width != m_windowWidth || height != m_windowHeight) {
+        DEBUG_INFO_F("Game window client area: %dx%d", width, height);
+    }
+
     // Update cached window information
     m_gameWindow = gameWindow;
     m_windowWidth = width;
@@ -499,13 +499,11 @@ void InputManager::updateCursorVisibility() {
 }
 
 void InputManager::forceWindowRefresh() {
-    DEBUG_INFO("Force window refresh requested");
     refreshWindowInformation();
 
     // Validate all HUD positions after window refresh
     if (HudManager::getInstance().isInitialized()) {
         HudManager::getInstance().validateAllHudPositions();
-        DEBUG_INFO("HUD positions validated after forced window refresh");
     }
 }
 

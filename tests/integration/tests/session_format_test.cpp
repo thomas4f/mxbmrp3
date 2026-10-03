@@ -30,7 +30,6 @@
 // One lifecycle (singletons persist across TEST_CASEs). The non-arming formats run
 // first; overtime (a sticky flag) is driven last. Self-contained doctest.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

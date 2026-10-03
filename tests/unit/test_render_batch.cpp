@@ -22,6 +22,7 @@
 #include "doctest.h"
 #include "core/render_batch.h"
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -282,4 +283,150 @@ TEST_CASE("render batch: the viewport rect offsets and scales, not the client") 
     REQUIRE(verts.size() == 6);
     CHECK(verts[0].x == doctest::Approx(20.0f * 2.0f / 200.0f - 1.0f));
     CHECK(verts[2].x == doctest::Approx(180.0f * 2.0f / 200.0f - 1.0f));
+}
+
+// ---------------------------------------------------------------------------
+// TextureCache: the per-sprite-index handle cache that takes the per-quad
+// name -> texture lookup (a std::map<std::string> find in the GL backend, on
+// the game thread) off the steady-state path. What these pin is when it must
+// NOT serve: after an art reload, after the name table changes, and for a
+// sprite whose decode was deferred by the per-frame budget - a deferral looks
+// like a miss (nullptr) but must be retried next frame, not remembered.
+// ---------------------------------------------------------------------------
+namespace {
+
+// A resolver whose answer per name can be flipped between frames, modelling a
+// decode that is deferred (nullptr) on one frame and lands on the next.
+struct DeferringResolver : FakeResolver {
+    std::vector<std::string> deferred;   // names that answer nullptr this frame
+    const void* texture(const std::string& base, bool icon, const std::string& r) override {
+        for (const auto& d : deferred)
+            if (d == base) { textureAsks.push_back(base); iconAsks.push_back(icon); return nullptr; }
+        return FakeResolver::texture(base, icon, r);
+    }
+};
+
+struct CachedFrame {
+    std::vector<std::string> fonts{ "font" };
+    std::vector<std::string> sprites{ "a", "b" };
+    std::vector<SPluginQuad_t> quads{ makeQuad(1, 0.0f, 0.0f, 0.5f, 0.5f),
+                                      makeQuad(2, 0.5f, 0.0f, 1.0f, 0.5f),
+                                      makeQuad(1, 0.0f, 0.5f, 0.5f, 1.0f) };
+    hudsw::Frame frame() {
+        hudsw::Frame f;
+        f.quads = quads.data(); f.quadCount = static_cast<int>(quads.size());
+        f.fontNames = &fonts; f.spriteNames = &sprites;
+        f.firstIcon = 1 << 30; f.assetRoot = "root";
+        return f;
+    }
+};
+
+size_t buildCached(FakeResolver& res, const hudsw::Frame& f, hudbatch::TextureCache& cache,
+                   std::vector<hudbatch::Run>* outRuns = nullptr) {
+    std::vector<hudbatch::Vertex> verts; std::vector<hudbatch::Run> runs;
+    hudbatch::build(f, 200, 100, 0, 0, 200, 100, res, verts, runs, &cache);
+    if (outRuns) *outRuns = runs;
+    return verts.size();
+}
+
+long asks(const FakeResolver& res, const char* name) {
+    return static_cast<long>(std::count(res.textureAsks.begin(), res.textureAsks.end(), name));
+}
+
+}  // namespace
+
+TEST_CASE("texture cache: steady state asks the resolver once per sprite, ever") {
+    DeferringResolver res;
+    CachedFrame cf;
+    hudbatch::TextureCache cache;
+    std::vector<hudbatch::Run> runs;
+    CHECK(buildCached(res, cf.frame(), cache) == 18);
+    // Sprite "a" is used twice in frame 1 but resolved once: the second quad
+    // already hits the slot the first one filled.
+    CHECK(res.textureAsks == std::vector<std::string>{ "a", "b" });
+    for (int i = 0; i < 5; ++i) CHECK(buildCached(res, cf.frame(), cache, &runs) == 18);
+    CHECK(res.textureAsks.size() == 2);            // no new lookups
+    // And the cached handles are the right ones, in the right order.
+    REQUIRE(runs.size() == 3);
+    CHECK(runs[0].tex == kTexA);
+    CHECK(runs[1].tex == kTexB);
+    CHECK(runs[2].tex == kTexA);
+}
+
+TEST_CASE("texture cache: invalidate() (art reload / context loss) re-resolves") {
+    DeferringResolver res;
+    CachedFrame cf;
+    hudbatch::TextureCache cache;
+    buildCached(res, cf.frame(), cache);
+    REQUIRE(res.textureAsks.size() == 2);
+    cache.invalidate();
+    buildCached(res, cf.frame(), cache);
+    CHECK(res.textureAsks.size() == 4);            // both asked again
+    buildCached(res, cf.frame(), cache);
+    CHECK(res.textureAsks.size() == 4);            // and cached again afterwards
+}
+
+TEST_CASE("texture cache: a changed name table re-resolves, never serves a stale slot") {
+    DeferringResolver res;
+    CachedFrame cf;
+    hudbatch::TextureCache cache;
+    buildCached(res, cf.frame(), cache);
+    REQUIRE(res.textureAsks.size() == 2);
+
+    SUBCASE("table grows") {
+        cf.sprites.push_back("c");
+        buildCached(res, cf.frame(), cache);
+        CHECK(res.textureAsks.size() == 4);
+    }
+    SUBCASE("a different table object") {
+        std::vector<std::string> other{ "b", "a" };   // same size, swapped
+        hudsw::Frame f = cf.frame();
+        f.spriteNames = &other;
+        std::vector<hudbatch::Run> runs;
+        buildCached(res, f, cache, &runs);
+        CHECK(res.textureAsks.size() == 4);
+        REQUIRE(runs.size() == 3);
+        CHECK(runs[0].tex == kTexB);               // sprite 1 is now "b"
+    }
+    SUBCASE("firstIcon moves (texture vs icon resolves differently)") {
+        hudsw::Frame f = cf.frame();
+        f.firstIcon = 2;
+        buildCached(res, f, cache);
+        CHECK(res.textureAsks.size() == 4);
+        CHECK(res.iconAsks.back() == true);
+    }
+    SUBCASE("asset root changes") {
+        hudsw::Frame f = cf.frame();
+        f.assetRoot = "elsewhere";
+        buildCached(res, f, cache);
+        CHECK(res.textureAsks.size() == 4);
+    }
+}
+
+TEST_CASE("texture cache: a deferred decode is retried next frame, not cached as a miss") {
+    // The GL backend's per-frame decode budget answers nullptr for a sprite it
+    // has not got to yet. Caching that would blank the sprite for the session.
+    DeferringResolver res;
+    CachedFrame cf;
+    hudbatch::TextureCache cache;
+    res.deferred = { "b" };
+    CHECK(buildCached(res, cf.frame(), cache) == 12);   // "b" skipped this frame
+    CHECK(buildCached(res, cf.frame(), cache) == 12);   // still deferred: asked again
+    CHECK(asks(res, "b") == 2);
+    res.deferred.clear();                               // the decode lands
+    CHECK(buildCached(res, cf.frame(), cache) == 18);
+    CHECK(asks(res, "b") == 3);
+    buildCached(res, cf.frame(), cache);                // now cached
+    CHECK(asks(res, "b") == 3);
+    CHECK(asks(res, "a") == 1);
+}
+
+TEST_CASE("texture cache: without a cache every quad still resolves (the old contract)") {
+    DeferringResolver res;
+    CachedFrame cf;
+    std::vector<hudbatch::Vertex> verts; std::vector<hudbatch::Run> runs;
+    hudsw::Frame f = cf.frame();
+    hudbatch::build(f, 200, 100, 0, 0, 200, 100, res, verts, runs);
+    hudbatch::build(f, 200, 100, 0, 0, 200, 100, res, verts, runs);
+    CHECK(res.textureAsks.size() == 6);
 }

@@ -523,7 +523,7 @@ void BaseHud::applyTextureAspectCorrection(float& x, float& y, float& width, flo
     }
 }
 
-BaseHud::ScaledDimensions BaseHud::getScaledDimensions() const {
+ScaledDimensions BaseHud::getScaledDimensions() const {
     MXB_COUNT_CALL(GET_SCALED_DIMENSIONS);
     // THE migration point. Nearly every HUD lays out through this struct rather
     // than reaching for the constants itself, so pointing it at layout() is what
@@ -588,89 +588,4 @@ bool BaseHud::positionString(size_t stringIndex, float x, float y) {
     // so a caller cannot pass one that disagrees with what is on screen.
     m_strings[stringIndex].m_afPos[1] = y + rowCenterOffset(m_strings[stringIndex].m_fSize);
     return true;
-}
-
-// ============================================================================
-// Styled String Rendering (per-string padding and backgrounds)
-// ============================================================================
-
-void BaseHud::addStyledString(const HudStringConfig& config) {
-    m_styledStringConfigs.push_back(config);
-}
-
-void BaseHud::renderStyledStrings() {
-    using namespace PluginConstants;
-
-    for (const auto& config : m_styledStringConfigs) {
-        // Use cached text width if available (PERFORMANCE OPTIMIZATION)
-        float textWidth = (config.cachedTextWidth > 0.0f)
-            ? config.cachedTextWidth
-            : PluginUtils::calculateMonospaceTextWidth(static_cast<int>(config.text.length()), config.fontSize);
-        float lineHeight = floatEquals(config.fontSize, layoutDefaults().fontSizeLarge * m_fScale)
-                          ? layoutDefaults().lineHeightLarge * m_fScale
-                          : layoutDefaults().lineHeightNormal * m_fScale;
-
-        // Add background quad if requested
-        if (config.hasBackground) {
-            float bgX = config.x - config.bgPaddingLeft;
-            float bgY = config.y - config.bgPaddingTop;
-            float bgWidth = textWidth + config.bgPaddingLeft + config.bgPaddingRight;
-            float bgHeight = lineHeight + config.bgPaddingTop + config.bgPaddingBottom;
-
-            SPluginQuad_t quadEntry;
-            applyOffset(bgX, bgY);
-            setQuadPositions(quadEntry, bgX, bgY, bgWidth, bgHeight);
-            quadEntry.m_iSprite = SpriteIndex::SOLID_COLOR;
-
-            // Use the per-string background color and opacity
-            uint8_t alpha = static_cast<uint8_t>(config.backgroundOpacity * 255.0f);
-            uint8_t r = (config.backgroundColor >> 16) & 0xFF;
-            uint8_t g = (config.backgroundColor >> 8) & 0xFF;
-            uint8_t b = config.backgroundColor & 0xFF;
-            quadEntry.m_ulColor = PluginUtils::makeColor(r, g, b, alpha);
-
-            m_quads.push_back(quadEntry);
-        }
-
-        // Add the text string
-        addString(config.text.c_str(), config.x, config.y, config.justify,
-                 config.fontIndex, config.color, config.fontSize);
-    }
-}
-
-BaseHud::StyledStringBounds BaseHud::calculateStyledStringBounds() const {
-    using namespace PluginConstants;
-
-    if (m_styledStringConfigs.empty()) {
-        return {0.0f, 0.0f, 0.0f, 0.0f};
-    }
-
-    float minX = 1e10f;  // Large positive value
-    float minY = 1e10f;
-    float maxX = -1e10f; // Large negative value
-    float maxY = -1e10f;
-
-    for (const auto& config : m_styledStringConfigs) {
-        // Use cached text width if available (PERFORMANCE OPTIMIZATION)
-        float textWidth = (config.cachedTextWidth > 0.0f)
-            ? config.cachedTextWidth
-            : PluginUtils::calculateMonospaceTextWidth(static_cast<int>(config.text.length()), config.fontSize);
-        float lineHeight = floatEquals(config.fontSize, layoutDefaults().fontSizeLarge * m_fScale)
-                          ? layoutDefaults().lineHeightLarge * m_fScale
-                          : layoutDefaults().lineHeightNormal * m_fScale;
-
-        // Calculate bounds including layout padding
-        float left = config.x - config.paddingLeft;
-        float right = config.x + textWidth + config.paddingRight;
-        float top = config.y - config.paddingTop;
-        float bottom = config.y + lineHeight + config.paddingBottom;
-
-        // Update min/max using ternary operators (avoids Windows macro conflicts)
-        minX = (left < minX) ? left : minX;
-        maxX = (right > maxX) ? right : maxX;
-        minY = (top < minY) ? top : minY;
-        maxY = (bottom > maxY) ? bottom : maxY;
-    }
-
-    return {minX, minY, maxX, maxY};
 }

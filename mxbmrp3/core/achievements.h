@@ -450,7 +450,7 @@ inline constexpr Entry kCatalogue[] = {
       Metric::Exploration,  Unit::Count,   { 5, 15, 30, 50 },                 true, false,
       Exploration::Signal::CleanLapStreak },
     { "crashes",        "Skill Issue",      Group::Misfortune, nullptr,
-      "Crash %s times",                        "user-injured",
+      "Crash %s times in total",               "user-injured",
       Metric::Crashes,    Unit::Count,   { 1000, 0, 0, 0 },                  true, false,
       Exploration::Signal::None, 1, true },
     { "penalties",      "Rule Bender",      Group::Misfortune, nullptr,
@@ -575,6 +575,9 @@ inline constexpr Entry kCatalogue[] = {
     // the same tally - and it says LAND because that was always true and never
     // stated: recordFmxTrick is only reached from a BANKED chain, so a trick
     // crashed out of has never counted, here or on any other trick row.
+    // CHEESABLE ON PURPOSE -- it measures the front wheel carrying the bike, so a
+    // rear wheel parked on a wall holds it forever, and that is fine: a HUD's
+    // list is not a ranked competition. Police at classification if ever needed.
     { "fmx_endos",      "Endo",             Group::Tricks, nullptr,
       "Land a %s endo or stoppie",             "endo",
       Metric::FmxEndoSec, Unit::SecondsTenths, { 3, 0, 0, 0 },                   false, true,
@@ -611,9 +614,9 @@ inline constexpr Entry kCatalogue[] = {
       nullptr,                                 "poo",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::SoClose, 1, true },
-    { "back_marker",    "Back Marker",      Group::Misfortune, "Finish a race three or more laps down",
+    { "back_marker",    "Back Marker",      Group::Misfortune, "Finish a race at least a lap down",
       nullptr,                                 "road-barrier",
-      Metric::Exploration, Unit::Count, { 3, 0, 0, 0 }, false, false,
+      Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::BackMarker, 1, true },
     { "metronome",      "Metronome",        Group::Consistency, "Five laps in a row, all within a tenth",
       nullptr,                                 "equals",
@@ -766,7 +769,13 @@ inline constexpr Entry kCatalogue[] = {
       nullptr,                                 "fire-flame-curved",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::Phoenix, 1, true },
-    { "ninety_nine",    "99 Problems",      Group::Misfortune, "Crash 99 times in total",
+    // NOT a second Skill Issue, though the two sit on the same page. Skill
+    // Issue reads the lifetime total (Metric::Crashes, the Stats tab's
+    // "Crashes"); this reads the CrashWidget's tally, which a streamer can
+    // zero mid-run - so the sentence has to say counter, not total. Held as a
+    // max-ever by raise(), so a reset keeps the progress already made but
+    // never adds across one: 50, reset, 50 more stands at 50, not 100.
+    { "ninety_nine",    "99 Problems",      Group::Misfortune, "Crash counter hits 99",
       nullptr,                                 "skull-crossbones",
       Metric::Exploration, Unit::Count, { 99, 0, 0, 0 }, true, false,
       Exploration::Signal::CrashTally99, 1, true, "@TheRealSliX" },

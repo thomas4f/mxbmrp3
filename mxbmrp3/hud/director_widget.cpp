@@ -82,7 +82,6 @@ DirectorWidget::DirectorWidget() {
     // No caption on this panel -- see BaseHud::m_titleSupported.
     disableTitle();
     m_panelKind = PanelKind::Widget;
-    DEBUG_INFO("DirectorWidget created");
     setDraggable(true);
     m_strings.reserve(1);   // text fallback only
     m_quads.reserve(6);     // background + chip + camera (+ shadow); dot for text fallback

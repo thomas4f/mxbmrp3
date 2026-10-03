@@ -603,6 +603,7 @@ void HudManager::collectRenderData() {
     // is open, build its frame from each HUD's companion instance (own on/off +
     // position; mirrors the game until diverged).
     collectSurface(m_quads, m_strings, /*companion=*/false);
+    if (UiConfig::getInstance().getGlInGame()) publishGlWarmList();
     if (CompanionWindow::getInstance().isEnabled()) {
         // Decouple from the start: the first frame the companion is on, snapshot each
         // HUD's game state into its companion instance so the two are independent

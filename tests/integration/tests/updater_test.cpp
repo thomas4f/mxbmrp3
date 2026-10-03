@@ -19,7 +19,6 @@
 // source yields ERROR_SHARING_VIOLATION — so the lock is real under the harness.
 // Self-contained doctest; see run_tests.sh.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

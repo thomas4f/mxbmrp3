@@ -28,7 +28,6 @@
 // theme_geometry_test.cpp uses and for the same reason -- staging real assets
 // into the build dir corrupts an unrelated golden.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

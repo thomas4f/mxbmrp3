@@ -13,22 +13,37 @@
 #include <string_view>
 #include <unordered_map>
 
-void PluginUtils::formatSessionFormat(int sessionLengthMs, int numLaps, char* buffer, size_t bufferSize) {
+// One body for both forms, so they can only differ in how the laps read.
+static void formatSessionFormatImpl(int sessionLengthMs, int numLaps, bool words,
+                                    char* buffer, size_t bufferSize) {
     if (bufferSize < 1) return;
     const bool hasTime = sessionLengthMs > 0;
     const bool hasLaps = numLaps > 0;
+    char laps[16] = "";
+    if (hasLaps) {
+        if (words) snprintf(laps, sizeof(laps), "%d %s", numLaps, numLaps == 1 ? "lap" : "laps");
+        else       snprintf(laps, sizeof(laps), "%dL", numLaps);
+    }
     if (hasTime) {
         // "8:00" (no leading zero on minutes), matching the established Discord/
         // Steam style - not formatTimeMinutesSeconds, which zero-pads to "08:00".
         const int mins = sessionLengthMs / 60000;
         const int secs = (sessionLengthMs / 1000) % 60;
-        if (hasLaps) snprintf(buffer, bufferSize, "%d:%02d + %dL", mins, secs, numLaps);
+        if (hasLaps) snprintf(buffer, bufferSize, "%d:%02d + %s", mins, secs, laps);
         else         snprintf(buffer, bufferSize, "%d:%02d", mins, secs);
     } else if (hasLaps) {
-        snprintf(buffer, bufferSize, "%dL", numLaps);
+        snprintf(buffer, bufferSize, "%s", laps);
     } else {
         buffer[0] = '\0';
     }
+}
+
+void PluginUtils::formatSessionFormat(int sessionLengthMs, int numLaps, char* buffer, size_t bufferSize) {
+    formatSessionFormatImpl(sessionLengthMs, numLaps, false, buffer, bufferSize);
+}
+
+void PluginUtils::formatSessionFormatWords(int sessionLengthMs, int numLaps, char* buffer, size_t bufferSize) {
+    formatSessionFormatImpl(sessionLengthMs, numLaps, true, buffer, bufferSize);
 }
 
 void PluginUtils::formatTimeMinutesSeconds(int milliseconds, char* buffer, size_t bufferSize) {
@@ -61,10 +76,11 @@ void PluginUtils::formatSessionClock(int lapsToGo, int sessionTimeMs, char* buff
     }
     // Overtime: leader-relative final-laps label (shared by the in-game session
     // clock and the web overlay so they always read identically).
+    namespace Str = PluginConstants::DisplayStrings::SessionClock;
     if (lapsToGo == 0) {
-        strcpy_s(buffer, bufferSize, "CHECKERED");
+        strcpy_s(buffer, bufferSize, Str::CHECKERED);
     } else if (lapsToGo == 1) {
-        strcpy_s(buffer, bufferSize, "FINAL LAP");
+        strcpy_s(buffer, bufferSize, Str::FINAL_LAP);
     } else {
         snprintf(buffer, bufferSize, "%d TO GO", lapsToGo);
     }
@@ -155,27 +171,6 @@ void PluginUtils::formatGapCompact(char* buffer, size_t bufferSize, int diffMs) 
     } else {
         // < 1 minute: show "+13.3" (compact format)
         snprintf(buffer, bufferSize, "%c%d.%d", sign, seconds, tenths);
-    }
-}
-
-void PluginUtils::formatSectorTime(int sectorTimeMs, char* buffer, size_t bufferSize) {
-    if (sectorTimeMs >= 0) {
-        using namespace PluginConstants::TimeConversion;
-
-        if (sectorTimeMs >= MS_PER_MINUTE) {
-            // M:SS.mmm format for sectors >= 1 minute
-            int minutes = sectorTimeMs / MS_PER_MINUTE;
-            int seconds = (sectorTimeMs % MS_PER_MINUTE) / MS_PER_SECOND;
-            int ms = sectorTimeMs % MS_PER_SECOND;
-            snprintf(buffer, bufferSize, "%d:%02d.%03d", minutes, seconds, ms);
-        } else {
-            // SS.mmm format for sectors < 1 minute
-            int seconds = sectorTimeMs / MS_PER_SECOND;
-            int ms = sectorTimeMs % MS_PER_SECOND;
-            snprintf(buffer, bufferSize, "%02d.%03d", seconds, ms);
-        }
-    } else {
-        buffer[0] = '\0';
     }
 }
 
@@ -791,29 +786,14 @@ std::string PluginUtils::sanitizeUntrusted(const char* s, size_t maxChars) {
 std::string PluginUtils::fitText(const std::string& s, int maxChars) {
     if (maxChars <= 0) return std::string();
 
-    // Count visible code points (skip UTF-8 continuation bytes 10xxxxxx).
-    int cps = 0;
-    for (unsigned char c : s) if ((c & 0xC0) != 0x80) ++cps;
-    if (cps <= maxChars) return s;
-
     // CUT, not ellipsised. The three cells an ellipsis costs are three characters of
     // the thing the reader was trying to make out, and a clipped word already reads
     // as clipped -- the marker adds nothing a narrow column has room for. It was also
     // applied inconsistently across the settings tabs, so two truncations of the same
     // length looked like two different states; one behaviour everywhere is the point.
-    const int keep = maxChars;
-    std::string out;
-    int seen = 0;
-    for (size_t i = 0; i < s.size();) {
-        const unsigned char c = static_cast<unsigned char>(s[i]);
-        if ((c & 0xC0) == 0x80) { ++i; continue; }  // stray continuation byte
-        if (seen >= keep) break;
-        out += static_cast<char>(c);
-        ++i; ++seen;
-        // Carry the trailing continuation bytes of this code point.
-        while (i < s.size() && (static_cast<unsigned char>(s[i]) & 0xC0) == 0x80) {
-            out += s[i]; ++i;
-        }
-    }
+    // The cut itself is fitTextInPlace (plugin_utils.h), shared with the
+    // allocation-free callers.
+    std::string out = s;
+    out.resize(fitTextInPlace(&out[0], out.size(), maxChars));
     return out;
 }

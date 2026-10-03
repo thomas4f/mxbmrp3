@@ -91,7 +91,6 @@ RecordsHud::RecordsHud()
     , m_wasOnCooldown(false)
 {
     // One-time setup
-    DEBUG_INFO("RecordsHud created");
     setDraggable(true);
     // Body card: this HUD draws a content BLOCK under its title, which is what the
     // themed card frames. Opt-in; see BaseHud::m_bContentCard.
@@ -472,7 +471,6 @@ void RecordsHud::rebuildRenderData() {
         lastError = m_lastError;
         recordsProvider = m_recordsProvider;  // Written by the fetch worker under this lock
     }
-    int totalRecords = static_cast<int>(allRecords.size());
     // The table section's rows: the optional column-header row, the records,
     // and the footer note as a real last row.
     const int tableRows = (m_bShowHeaders ? 1 : 0) + m_recordsToShow
@@ -498,7 +496,7 @@ void RecordsHud::rebuildRenderData() {
     // old reserved empty row), the table is the second, and Compare is the
     // plan's footer BUTTON row rather than an inline chip on the selector row
     // -- the first HUD on the plan's button machinery.
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(bgWidthChars, dim.fontSize);
     want.sectionH = { sectionHeadingRowHeight(dim) + dim.lineHeightNormal,
                       static_cast<float>(tableRows) * dim.lineHeightNormal };
@@ -521,11 +519,60 @@ void RecordsHud::rebuildRenderData() {
     m_columns = ColumnPositions(contentStartX, m_fScale, m_enabledColumns);
 
     // === Title Row === (the plan's caption row, above currentY)
-    addPlanTitle(plan, "Records", this->getFont(FontCategory::TITLE),
+    addPlanTitle(plan, "Records",
                  this->getColor(ColorSlot::PRIMARY));
 
     // === Filter section: heading row + the provider/category selectors ===
     // Note: Click regions store positions WITHOUT offset - offset is added during hit testing
+    addFilterRow(contentStartX, currentY, dim);
+
+    // The Compare button: the plan's footer button row.
+    addCompareButton(plan, dim);
+
+    // === Table section ===
+    currentY = plan.contentY(1);
+
+    // === Column header row (optional) ===
+    if (m_bShowHeaders) {
+        currentY = addColumnHeaders(currentY, dim);
+    }
+
+    // === Record Rows (with Personal Best integration) ===
+    RowCursor cur{plan, dim, currentY, 0};
+    buildRecordRows(cur, allRecords, lastError, contentStartX);
+    currentY = cur.y;
+    int rowsRendered = cur.rowsRendered;
+
+
+    // === Placeholder rows to fill up to configured size ===
+    while (rowsRendered < m_recordsToShow) {
+        // Empty row — background quad defines HUD extent
+        if (isColumnEnabled(COL_POS)) {
+            addString("", m_columns.pos, currentY, Justify::LEFT,
+                      this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
+        }
+        currentY += dim.lineHeightNormal;
+        rowsRendered++;
+    }
+
+    // === Footer Note: the table section's last row ===
+    if (m_bShowFooter) {
+        // "Submit by playing on <provider> servers" (small font, row height unchanged).
+        // Rendered as ONE string so it can't misalign: a separately-positioned,
+        // differently-colored provider segment placed by the monospace width estimate
+        // breaks with a proportional NORMAL font (gap after "on", suffix jammed into
+        // the provider name). A single left-justified string spaces correctly in any
+        // font (the whole line is muted; the provider is not color-highlighted).
+        char footer[128];
+        snprintf(footer, sizeof(footer), "Submit by playing on %s servers",
+                 RecordsFetcher::getProviderDisplayName(recordsProvider));
+        addString(footer, contentStartX, currentY,
+                  Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSizeSmall);
+    }
+}
+
+// The provider/category selectors under the Filter heading.
+void RecordsHud::addFilterRow(float contentStartX, float currentY, const ScaledDimensions& dim) {
     addSectionHeading("Filter", contentStartX, currentY, dim);
     currentY += sectionHeadingRowHeight(dim);
     float rowX = contentStartX;
@@ -563,7 +610,9 @@ void RecordsHud::rebuildRenderData() {
     addString(" >", rowX, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::ACCENT), dim.fontSize);
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::CATEGORY_RIGHT});
     rowX += charWidth * 4;  // " > " + gap
+}
 
+void RecordsHud::addCompareButton(const PanelPlan& plan, const ScaledDimensions& dim) {
     // Compare button - fixed width (widest label "Compare" + 1ch padding each side); label centered
     // Button is disabled when trackName is unavailable or on cooldown
     const SessionData& sessionForButton = PluginData::getInstance().getSessionData();
@@ -621,38 +670,39 @@ void RecordsHud::rebuildRenderData() {
                    : (m_fetchButtonHovered && state != FetchState::FETCHING)
                        ? ButtonState::Hovered : ButtonState::Idle,
                    compareColor);
+}
 
-    // === Table section ===
-    currentY = plan.contentY(1);
-
-    // === Column header row (optional) ===
-    if (m_bShowHeaders) {
-        unsigned long headerColor = this->getColor(ColorSlot::TERTIARY);
-        int headerFont = this->getFont(FontCategory::STRONG);
-        if (isColumnEnabled(COL_POS))
-            addLabel("Pos", m_columns.pos, currentY, Justify::LEFT, headerFont, headerColor, dim);
-        if (isColumnEnabled(COL_RIDER))
-            addLabel("Rider", m_columns.rider, currentY, Justify::LEFT, headerFont, headerColor, dim);
-        if (isColumnEnabled(COL_BIKE))
-            addLabel("Bike", m_columns.bike, currentY, Justify::LEFT, headerFont, headerColor, dim);
-        if (isColumnEnabled(COL_SECTORS)) {
-            addLabel("S1", m_columns.sector1, currentY, Justify::LEFT, headerFont, headerColor, dim);
-            addLabel("S2", m_columns.sector2, currentY, Justify::LEFT, headerFont, headerColor, dim);
-            addLabel("S3", m_columns.sector3, currentY, Justify::LEFT, headerFont, headerColor, dim);
+float RecordsHud::addColumnHeaders(float currentY, const ScaledDimensions& dim) {
+    unsigned long headerColor = this->getColor(ColorSlot::TERTIARY);
+    if (isColumnEnabled(COL_POS))
+        addLabel("P", m_columns.pos, currentY, Justify::LEFT, headerColor, dim);
+    if (isColumnEnabled(COL_RIDER))
+        addLabel("Name", m_columns.rider, currentY, Justify::LEFT, headerColor, dim);
+    if (isColumnEnabled(COL_BIKE))
+        addLabel("Bike", m_columns.bike, currentY, Justify::LEFT, headerColor, dim);
+    if (isColumnEnabled(COL_SECTORS)) {
+        addLabel("S1", m_columns.sector1, currentY, Justify::LEFT, headerColor, dim);
+        addLabel("S2", m_columns.sector2, currentY, Justify::LEFT, headerColor, dim);
+        addLabel("S3", m_columns.sector3, currentY, Justify::LEFT, headerColor, dim);
 #if GAME_SECTOR_COUNT >= 4
-            addLabel("S4", m_columns.sector4, currentY, Justify::LEFT, headerFont, headerColor, dim);
+        addLabel("S4", m_columns.sector4, currentY, Justify::LEFT, headerColor, dim);
 #endif
-        }
-        if (isColumnEnabled(COL_LAPTIME))
-            addLabel("Time", m_columns.laptime, currentY, Justify::LEFT, headerFont, headerColor, dim);
-        if (isColumnEnabled(COL_DATE))
-            addLabel("Date", m_columns.date, currentY, Justify::LEFT, headerFont, headerColor, dim);
-        currentY += dim.lineHeightNormal;
     }
+    if (isColumnEnabled(COL_LAPTIME))
+        addLabel("Time", m_columns.laptime, currentY, Justify::LEFT, headerColor, dim);
+    if (isColumnEnabled(COL_DATE))
+        addLabel("Date", m_columns.date, currentY, Justify::LEFT, headerColor, dim);
+    currentY += dim.lineHeightNormal;
+    return currentY;
+}
 
-    // === Record Rows (with Personal Best integration) ===
-    // Track how many rows we render so we can fill with placeholders
-    int rowsRendered = 0;
+// The record rows: the player's PB and/or a status line before a fetch (or when
+// it found nothing), else the paginated server records with the PB inserted.
+void RecordsHud::buildRecordRows(RowCursor& cur, const std::vector<RecordEntry>& allRecords,
+                                 const std::string& lastError, float contentStartX) {
+    const ScaledDimensions& dim = cur.dim;
+    float& currentY = cur.y;
+    int& rowsRendered = cur.rowsRendered;
 
     // Get player's all-time PB for this track+bike (or category, depending on scope)
     const SessionData& session = PluginData::getInstance().getSessionData();
@@ -668,121 +718,9 @@ void RecordsHud::rebuildRenderData() {
     }
     const char* playerPBBike = pbBikeName.empty() ? session.bikeName : pbBikeName.c_str();
 
-    // Lambda to render a single record row
-    // isPlayerRow: add highlight background, skip position column
-    // sector1/2/3/4: -1 if not available (CBR or player PB)
-    auto renderRecordRow = [&](int position, const char* rider, const char* bike, int laptime,
-                               int sector1, int sector2, int sector3, int sector4, const char* date, bool isPlayerRow) {
-        // Add highlight background quad for player row
-        if (isPlayerRow) {
-            // THE CONTENT COLUMN, like StandingsHud's row highlight -- one owner
-            // (plan.rowBandX/W) for every row band in the plugin. Spanning the raw
-            // backgroundWidth would run it out over the frame's edge slice; spanning
-            // the card's INTERIOR runs it out over the card's own padding.
-            addRowHighlight(plan.rowBandX(), currentY,
-                            plan.rowBandW(), dim.lineHeightNormal,
-                            PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT),
-                                                      ROW_SELECT_ALPHA));
-        }
+    // One record row (see addRecordRow); advances the cursor.
+    auto renderRecordRow = [&](auto... args) { addRecordRow(cur, args...); };
 
-        // Position (P1, P2, etc.) - skip for player row
-        if (isColumnEnabled(COL_POS) && !isPlayerRow) {
-            char posStr[8];
-            snprintf(posStr, sizeof(posStr), "P%d", position);
-            unsigned long posColor;
-            if (position == 1) posColor = PodiumColors::GOLD;
-            else if (position == 2) posColor = PodiumColors::SILVER;
-            else if (position == 3) posColor = PodiumColors::BRONZE;
-            else posColor = this->getColor(ColorSlot::PRIMARY);
-            addString(posStr, m_columns.pos, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), posColor, dim.fontSize);
-        }
-
-        // Rider (truncate if too long; shared ellipsis truncation)
-        if (isColumnEnabled(COL_RIDER)) {
-            std::string riderStr = PluginUtils::fitText(rider, COL_RIDER_WIDTH - 1);
-            // Player row keeps same column alignment (skip position but stay in rider column)
-            addString(riderStr.c_str(), m_columns.rider, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL),
-                      this->getColor(ColorSlot::PRIMARY), dim.fontSize);
-        }
-
-        // Bike (truncate if too long; shared ellipsis truncation)
-        if (isColumnEnabled(COL_BIKE)) {
-            std::string bikeStr = PluginUtils::fitText(bike, COL_BIKE_WIDTH - 1);
-            addString(bikeStr.c_str(), m_columns.bike, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL),
-                      this->getColor(ColorSlot::SECONDARY), dim.fontSize);
-        }
-
-        // Sector times (S1, S2, S3, and S4 for 4-sector games - always toggled together)
-        if (isColumnEnabled(COL_SECTORS)) {
-            char sectorStr[12];
-
-            // S1
-            if (sector1 > 0) {
-                PluginUtils::formatSectorTime(sector1, sectorStr, sizeof(sectorStr));
-                addString(sectorStr, m_columns.sector1, currentY, Justify::LEFT,
-                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
-            } else {
-                addString("---.---", m_columns.sector1, currentY, Justify::LEFT,
-                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            }
-
-            // S2
-            if (sector2 > 0) {
-                PluginUtils::formatSectorTime(sector2, sectorStr, sizeof(sectorStr));
-                addString(sectorStr, m_columns.sector2, currentY, Justify::LEFT,
-                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
-            } else {
-                addString("---.---", m_columns.sector2, currentY, Justify::LEFT,
-                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            }
-
-            // S3
-            if (sector3 > 0) {
-                PluginUtils::formatSectorTime(sector3, sectorStr, sizeof(sectorStr));
-                addString(sectorStr, m_columns.sector3, currentY, Justify::LEFT,
-                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
-            } else {
-                addString("---.---", m_columns.sector3, currentY, Justify::LEFT,
-                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            }
-
-#if GAME_SECTOR_COUNT >= 4
-            // S4 (4-sector games only)
-            if (sector4 > 0) {
-                PluginUtils::formatSectorTime(sector4, sectorStr, sizeof(sectorStr));
-                addString(sectorStr, m_columns.sector4, currentY, Justify::LEFT,
-                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
-            } else {
-                addString("---.---", m_columns.sector4, currentY, Justify::LEFT,
-                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            }
-#else
-            (void)sector4;  // Suppress unused warning for 3-sector games
-#endif
-        }
-
-        // Laptime
-        if (isColumnEnabled(COL_LAPTIME)) {
-            char laptimeStr[16];
-            if (laptime > 0) {
-                PluginUtils::formatLapTime(laptime, laptimeStr, sizeof(laptimeStr));
-                addString(laptimeStr, m_columns.laptime, currentY, Justify::LEFT,
-                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
-            } else {
-                addString(Placeholders::LAP_TIME, m_columns.laptime, currentY, Justify::LEFT,
-                          this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
-            }
-        }
-
-        // Date
-        if (isColumnEnabled(COL_DATE)) {
-            addString(date && date[0] != '\0' ? date : "---", m_columns.date, currentY,
-                      Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
-        }
-
-        currentY += dim.lineHeightNormal;
-        rowsRendered++;
-    };
 
     FetchState currentState = m_fetchState.load();
     bool hasFetched = (currentState == FetchState::SUCCESS || !allRecords.empty());
@@ -812,15 +750,19 @@ void RecordsHud::rebuildRenderData() {
             if (!lastError.empty()) {
                 snprintf(errorMessage, sizeof(errorMessage), "Compare failed: %s", lastError.c_str());
             } else {
-                strncpy_s(errorMessage, sizeof(errorMessage), "Compare failed. Try again.", sizeof(errorMessage) - 1);
+                strncpy_s(errorMessage, sizeof(errorMessage), "Compare failed - try again", sizeof(errorMessage) - 1);
             }
             statusMessage = errorMessage;
         } else if (!hasPlayerPB) {
-            statusMessage = "Click Compare to load records.";
+            statusMessage = "Click Compare to load records";
         }
         if (statusMessage) {
+            // A failed fetch reads NEGATIVE (as the Compare button does in that state);
+            // the prompt to compare stays MUTED.
+            const ColorSlot statusSlot = (currentState == FetchState::FETCH_ERROR)
+                ? ColorSlot::NEGATIVE : ColorSlot::MUTED;
             addString(statusMessage, contentStartX, currentY,
-                      Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
+                      Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(statusSlot), dim.fontSize);
             currentY += dim.lineHeightNormal;
             rowsRendered++;
         }
@@ -831,101 +773,214 @@ void RecordsHud::rebuildRenderData() {
                             playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
         }
         // Show "no records" message - counts as a row to maintain layout
-        addString("No records found for this track/category.", contentStartX, currentY,
+        addString("No records found for this track/category", contentStartX, currentY,
                   Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
         currentY += dim.lineHeightNormal;
         rowsRendered++;
     } else {
-        // Has records - show with StandingsHud-style pagination
-        // Strategy (like StandingsHud):
-        // - If player is in top 3 (or no PB): show first N records with player inserted
-        // - If player is beyond top 3: show top 3, then context around player position
-
-        static constexpr int TOP_POSITIONS = 3;
-
-        // Helper lambda to render a range of server records, optionally inserting player
-        auto renderRecordRange = [&](int startIdx, int endIdx, bool insertPlayer) {
-            for (int i = startIdx; i <= endIdx && i < totalRecords; i++) {
-                // Insert player row before this record if player position matches
-                if (insertPlayer && hasPlayerPB && playerPosition == i) {
-                    renderRecordRow(0, playerName, playerPBBike, playerPB->lapTime,
-                                    playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
-                }
-                // Render the server record
-                const auto& record = allRecords[i];
-                renderRecordRow(record.position, record.rider, record.bike, record.laptime,
-                                record.sector1, record.sector2, record.sector3, record.sector4, record.date, false);
-            }
-            // Insert player at end if they're after the last record in range
-            if (insertPlayer && hasPlayerPB && playerPosition > endIdx && playerPosition <= endIdx + 1) {
-                renderRecordRow(0, playerName, playerPBBike, playerPB->lapTime,
-                                playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
-            }
-        };
-
-        if (!hasPlayerPB || playerPosition < TOP_POSITIONS) {
-            // Player is in top 3 (or no PB) - show first N records with player inserted
-            int recordsToShow = std::min(totalRecords, m_recordsToShow - (hasPlayerPB ? 1 : 0));
-            renderRecordRange(0, recordsToShow - 1, true);
-        } else {
-            // Player is beyond top 3 - show top 3, then context around player
-            // 1. Show top 3 records
-            int topToShow = std::min(totalRecords, TOP_POSITIONS);
-            renderRecordRange(0, topToShow - 1, false);
-
-            // 2. Calculate context window around player — pure arithmetic,
-            //    unit-tested in tests/unit/test_records_window.cpp.
-            const RecordsWindow::Range context =
-                RecordsWindow::computeContext(totalRecords, playerPosition,
-                                              m_recordsToShow, TOP_POSITIONS);
-            const int contextStart = context.start;
-            const int contextEnd = context.end;
-
-            // 3. Render context around player
-            for (int i = contextStart; i <= contextEnd && i < totalRecords; i++) {
-                // Insert player row at correct position
-                if (hasPlayerPB && playerPosition == i) {
-                    renderRecordRow(0, playerName, playerPBBike, playerPB->lapTime,
-                                    playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
-                }
-                const auto& record = allRecords[i];
-                renderRecordRow(record.position, record.rider, record.bike, record.laptime,
-                                record.sector1, record.sector2, record.sector3, record.sector4, record.date, false);
-            }
-            // Insert player at end if they're after the last context record
-            if (hasPlayerPB && playerPosition > contextEnd) {
-                renderRecordRow(0, playerName, playerPBBike, playerPB->lapTime,
-                                playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
-            }
-        }
-    }
-
-    // === Placeholder rows to fill up to configured size ===
-    while (rowsRendered < m_recordsToShow) {
-        // Empty row — background quad defines HUD extent
-        if (isColumnEnabled(COL_POS)) {
-            addString("", m_columns.pos, currentY, Justify::LEFT,
-                      this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
-        }
-        currentY += dim.lineHeightNormal;
-        rowsRendered++;
-    }
-
-    // === Footer Note: the table section's last row ===
-    if (m_bShowFooter) {
-        // "Submit by playing on <provider> servers" (small font, row height unchanged).
-        // Rendered as ONE string so it can't misalign: a separately-positioned,
-        // differently-colored provider segment placed by the monospace width estimate
-        // breaks with a proportional NORMAL font (gap after "on", suffix jammed into
-        // the provider name). A single left-justified string spaces correctly in any
-        // font (the whole line is muted; the provider is not color-highlighted).
-        char footer[128];
-        snprintf(footer, sizeof(footer), "Submit by playing on %s servers",
-                 RecordsFetcher::getProviderDisplayName(recordsProvider));
-        addString(footer, contentStartX, currentY,
-                  Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSizeSmall);
+        const PlayerPbRow player{hasPlayerPB, playerName, playerPBBike, playerPB, playerDateStr, playerPosition};
+        addPaginatedRecords(cur, allRecords, player);
     }
 }
+
+// Has records - show with StandingsHud-style pagination.
+void RecordsHud::addPaginatedRecords(RowCursor& cur, const std::vector<RecordEntry>& allRecords,
+                                     const PlayerPbRow& player) {
+    const bool hasPlayerPB = player.has;
+    const char* playerName = player.name;
+    const char* playerPBBike = player.bike;
+    const StatsPersonalBestData* playerPB = player.pb;
+    const char* playerDateStr = player.date;
+    const int playerPosition = player.position;
+    const int totalRecords = static_cast<int>(allRecords.size());
+    auto renderRecordRow = [&](auto... args) { addRecordRow(cur, args...); };
+
+    // Strategy (like StandingsHud):
+    // - If player is in top 3 (or no PB): show first N records with player inserted
+    // - If player is beyond top 3: show top 3, then context around player position
+
+    static constexpr int TOP_POSITIONS = 3;
+
+    // Helper lambda to render a range of server records, optionally inserting player
+    auto renderRecordRange = [&](int startIdx, int endIdx, bool insertPlayer) {
+        for (int i = startIdx; i <= endIdx && i < totalRecords; i++) {
+            // Insert player row before this record if player position matches
+            if (insertPlayer && hasPlayerPB && playerPosition == i) {
+                renderRecordRow(0, playerName, playerPBBike, playerPB->lapTime,
+                                playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
+            }
+            // Render the server record
+            const auto& record = allRecords[i];
+            renderRecordRow(record.position, record.rider, record.bike, record.laptime,
+                            record.sector1, record.sector2, record.sector3, record.sector4, record.date, false);
+        }
+        // Insert player at end if they're after the last record in range
+        if (insertPlayer && hasPlayerPB && playerPosition > endIdx && playerPosition <= endIdx + 1) {
+            renderRecordRow(0, playerName, playerPBBike, playerPB->lapTime,
+                            playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
+        }
+    };
+
+    if (!hasPlayerPB || playerPosition < TOP_POSITIONS) {
+        // Player is in top 3 (or no PB) - show first N records with player inserted
+        int recordsToShow = std::min(totalRecords, m_recordsToShow - (hasPlayerPB ? 1 : 0));
+        renderRecordRange(0, recordsToShow - 1, true);
+    } else {
+        // Player is beyond top 3 - show top 3, then context around player
+        // 1. Show top 3 records
+        int topToShow = std::min(totalRecords, TOP_POSITIONS);
+        renderRecordRange(0, topToShow - 1, false);
+
+        // 2. Calculate context window around player — pure arithmetic,
+        //    unit-tested in tests/unit/test_records_window.cpp.
+        const RecordsWindow::Range context =
+            RecordsWindow::computeContext(totalRecords, playerPosition,
+                                          m_recordsToShow, TOP_POSITIONS);
+        const int contextStart = context.start;
+        const int contextEnd = context.end;
+
+        // 3. Render context around player
+        for (int i = contextStart; i <= contextEnd && i < totalRecords; i++) {
+            // Insert player row at correct position
+            if (hasPlayerPB && playerPosition == i) {
+                renderRecordRow(0, playerName, playerPBBike, playerPB->lapTime,
+                                playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
+            }
+            const auto& record = allRecords[i];
+            renderRecordRow(record.position, record.rider, record.bike, record.laptime,
+                            record.sector1, record.sector2, record.sector3, record.sector4, record.date, false);
+        }
+        // Insert player at end if they're after the last context record
+        if (hasPlayerPB && playerPosition > contextEnd) {
+            renderRecordRow(0, playerName, playerPBBike, playerPB->lapTime,
+                            playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
+        }
+    }
+}
+
+// A single record row.
+// isPlayerRow: add highlight background, skip position column
+// sector1/2/3/4: -1 if not available (CBR or player PB)
+void RecordsHud::addRecordRow(RowCursor& cur, int position, const char* rider, const char* bike, int laptime,
+                              int sector1, int sector2, int sector3, int sector4, const char* date, bool isPlayerRow) {
+    const PanelPlan& plan = cur.plan;
+    const ScaledDimensions& dim = cur.dim;
+    float& currentY = cur.y;
+    int& rowsRendered = cur.rowsRendered;
+
+    // Add highlight background quad for player row
+    if (isPlayerRow) {
+        // THE CONTENT COLUMN, like StandingsHud's row highlight -- one owner
+        // (plan.rowBandX/W) for every row band in the plugin. Spanning the raw
+        // backgroundWidth would run it out over the frame's edge slice; spanning
+        // the card's INTERIOR runs it out over the card's own padding.
+        addRowHighlight(plan.rowBandX(), currentY,
+                        plan.rowBandW(), dim.lineHeightNormal,
+                        PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT),
+                                                  ROW_SELECT_ALPHA));
+    }
+
+    // Position ("1", "2", ... under a "P" header, as StandingsHud) - skip for player row
+    if (isColumnEnabled(COL_POS) && !isPlayerRow) {
+        char posStr[8];
+        snprintf(posStr, sizeof(posStr), "%d", position);
+        unsigned long posColor;
+        if (position == 1) posColor = PodiumColors::GOLD;
+        else if (position == 2) posColor = PodiumColors::SILVER;
+        else if (position == 3) posColor = PodiumColors::BRONZE;
+        else posColor = this->getColor(ColorSlot::TERTIARY);  // P4+ as in StandingsHud
+        addString(posStr, m_columns.pos, currentY, Justify::LEFT, this->getFont(FontCategory::DIGITS), posColor, dim.fontSize);
+    }
+
+    // Rider (truncate if too long; shared ellipsis truncation)
+    if (isColumnEnabled(COL_RIDER)) {
+        std::string riderStr = PluginUtils::fitText(rider, COL_RIDER_WIDTH - 1);
+        // Player row keeps same column alignment (skip position but stay in rider column)
+        addString(riderStr.c_str(), m_columns.rider, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL),
+                  this->getColor(ColorSlot::PRIMARY), dim.fontSize);
+    }
+
+    // Bike (truncate if too long; shared ellipsis truncation)
+    if (isColumnEnabled(COL_BIKE)) {
+        std::string bikeStr = PluginUtils::fitText(bike, COL_BIKE_WIDTH - 1);
+        addString(bikeStr.c_str(), m_columns.bike, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL),
+                  this->getColor(ColorSlot::SECONDARY), dim.fontSize);
+    }
+
+    // Sector times (S1, S2, S3, and S4 for 4-sector games - always toggled together)
+    if (isColumnEnabled(COL_SECTORS)) {
+        char sectorStr[12];
+
+        // S1
+        if (sector1 > 0) {
+            PluginUtils::formatLapTime(sector1, sectorStr, sizeof(sectorStr));
+            addString(sectorStr, m_columns.sector1, currentY, Justify::LEFT,
+                      this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
+        } else {
+            addString(Placeholders::GENERIC, m_columns.sector1, currentY, Justify::LEFT,
+                      this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+        }
+
+        // S2
+        if (sector2 > 0) {
+            PluginUtils::formatLapTime(sector2, sectorStr, sizeof(sectorStr));
+            addString(sectorStr, m_columns.sector2, currentY, Justify::LEFT,
+                      this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
+        } else {
+            addString(Placeholders::GENERIC, m_columns.sector2, currentY, Justify::LEFT,
+                      this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+        }
+
+        // S3
+        if (sector3 > 0) {
+            PluginUtils::formatLapTime(sector3, sectorStr, sizeof(sectorStr));
+            addString(sectorStr, m_columns.sector3, currentY, Justify::LEFT,
+                      this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
+        } else {
+            addString(Placeholders::GENERIC, m_columns.sector3, currentY, Justify::LEFT,
+                      this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+        }
+
+#if GAME_SECTOR_COUNT >= 4
+        // S4 (4-sector games only)
+        if (sector4 > 0) {
+            PluginUtils::formatLapTime(sector4, sectorStr, sizeof(sectorStr));
+            addString(sectorStr, m_columns.sector4, currentY, Justify::LEFT,
+                      this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
+        } else {
+            addString(Placeholders::GENERIC, m_columns.sector4, currentY, Justify::LEFT,
+                      this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+        }
+#else
+        (void)sector4;  // Suppress unused warning for 3-sector games
+#endif
+    }
+
+    // Laptime
+    if (isColumnEnabled(COL_LAPTIME)) {
+        char laptimeStr[16];
+        if (laptime > 0) {
+            PluginUtils::formatLapTime(laptime, laptimeStr, sizeof(laptimeStr));
+            addString(laptimeStr, m_columns.laptime, currentY, Justify::LEFT,
+                      this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
+        } else {
+            addString(Placeholders::GENERIC, m_columns.laptime, currentY, Justify::LEFT,
+                      this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
+        }
+    }
+
+    // Date
+    if (isColumnEnabled(COL_DATE)) {
+        const bool hasDate = date && date[0] != '\0';
+        addString(hasDate ? date : Placeholders::GENERIC, m_columns.date, currentY,
+                  Justify::LEFT, this->getFont(FontCategory::DIGITS),
+                  this->getColor(hasDate ? ColorSlot::SECONDARY : ColorSlot::MUTED), dim.fontSize);
+    }
+
+    currentY += dim.lineHeightNormal;
+    rowsRendered++;
+}
+
 
 // ============================================================================
 // Public API for TimingHud Integration

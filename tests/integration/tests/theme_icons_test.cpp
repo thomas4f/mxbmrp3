@@ -15,7 +15,6 @@
 // one would renumber every sprite index the parity goldens hash. Reading
 // themes/<name>/icons/ off disk stays a manual check.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

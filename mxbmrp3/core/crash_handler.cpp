@@ -200,15 +200,17 @@ LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
 
     // Best-effort: copy the current log file alongside the dump, so users
     // (and devs) browsing the crashes folder can see what the plugin was
-    // doing in the moments before the fault. CopyFileA is safe to call
-    // from this filter:
-    // - We don't touch the Logger mutex, so no deadlock risk if another
-    //   thread was mid-log or the faulting thread itself held the lock.
-    // - Logger's std::ofstream opens with _SH_DENYNO (MSVC default), so
-    //   our read handle doesn't conflict with its write handle.
-    // - Logger flushes after every line, so the snapshot is current.
+    // doing in the moments before the fault. Safe to do from this filter:
+    // - The Logger buffers lines and its writer thread flushes about once a
+    //   second, so first write out what is buffered. flushForCrash() only
+    //   TRY-locks: if another thread was mid-log, or the faulting thread
+    //   itself held a Logger lock, it gives up rather than deadlock, and the
+    //   copy is simply up to a second short.
+    // - The Logger opens its file shared for read and write, so our read
+    //   handle doesn't conflict with its write handle.
     // - Failure is silent and harmless — the .dmp is the load-bearing
     //   artifact, the .log copy is a convenience.
+    Logger::getInstance().flushForCrash();
     char logSrc[MAX_PATH];
     char logDst[MAX_PATH];
     int wSrc = snprintf(logSrc, sizeof(logSrc), "%s\\mxbmrp3\\mxbmrp3_log.txt", root);

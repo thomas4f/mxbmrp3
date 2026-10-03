@@ -75,7 +75,6 @@ bool chartIsRaceOnly(SessionChartsHud::ChartType t) {
 using SessionChartsMath::formatSecs;
 
 SessionChartsHud::SessionChartsHud() {
-    DEBUG_INFO("SessionChartsHud created");
     setDraggable(true);
     // Body cards, one PER CHART. See BaseHud::m_bContentSections -- four charts under
     // one card would read as a single four-panel graph rather than four views.
@@ -464,7 +463,7 @@ void SessionChartsHud::rebuildRenderData() {
     // between two is the sum of the facing [content] margins, and the panel's
     // height is the engine's — the beginContentSection/sectionGapY/finish dance
     // is gone.
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = graphWidth;
     if (nCharts > 0) {
         for (int i = 0; i < nCharts; ++i) want.sectionH.push_back(subHeadH + perChartH);
@@ -481,7 +480,7 @@ void SessionChartsHud::rebuildRenderData() {
     float contentStartX = plan.contentX();
     float currentY = plan.contentY(0);
 
-    addPlanTitle(plan, "Charts", this->getFont(FontCategory::TITLE),
+    addPlanTitle(plan, "Charts",
                  this->getColor(ColorSlot::PRIMARY));
 
     if (charts.empty()) {

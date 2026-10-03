@@ -23,7 +23,6 @@
 // See tools/probetheme/README.md for the run matrix these knobs serve.
 // Self-contained doctest; see run_tests.sh.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

@@ -34,7 +34,6 @@ namespace {
 namespace {
 }  // namespace
 
-static constexpr const char* KOFI_URL = "https://ko-fi.com/thomas4f";
 
 
 VersionWidget::VersionWidget() {
@@ -46,7 +45,6 @@ VersionWidget::VersionWidget() {
     // them sits on a card.
     m_bContentCard = true;
     // One-time setup
-    DEBUG_INFO("VersionWidget created");
     setDraggable(true);
     m_strings.reserve(1);
 
@@ -184,54 +182,6 @@ void VersionWidget::handleClickDetection() {
         return;  // Don't process game input while notification is showing
     }
 
-    // Handle donation nudge button hover and clicks (not during game)
-    if (m_showingDonationNudge && !m_gameActive) {
-        CursorPosition cursor = input.getCursorPosition();
-        mapCursorToHudSpace(cursor.x, cursor.y);
-
-        NotificationButton oldHover = m_hoveredButton;
-        m_hoveredButton = NotificationButton::NONE;
-
-        if (cursor.isValid) {
-            float kofiLeft = m_viewButtonLeft + m_fOffsetX;
-            float kofiTop = m_viewButtonTop + m_fOffsetY;
-            if (cursor.x >= kofiLeft && cursor.x <= kofiLeft + m_viewButtonWidth &&
-                cursor.y >= kofiTop && cursor.y <= kofiTop + m_viewButtonHeight) {
-                m_hoveredButton = NotificationButton::KOFI;
-            }
-
-            float dismissLeft = m_dismissButtonLeft + m_fOffsetX;
-            float dismissTop = m_dismissButtonTop + m_fOffsetY;
-            if (cursor.x >= dismissLeft && cursor.x <= dismissLeft + m_dismissButtonWidth &&
-                cursor.y >= dismissTop && cursor.y <= dismissTop + m_dismissButtonHeight) {
-                m_hoveredButton = NotificationButton::NUDGE_DISMISS;
-            }
-        }
-
-        if (m_hoveredButton != oldHover) {
-            setDataDirty();
-        }
-
-        if (isLeftClick) {
-            if (m_hoveredButton == NotificationButton::KOFI) {
-#if GAME_HAS_ANALYTICS
-                AnalyticsManager::getInstance().trackEvent("link_clicked", {{"target", "donate"}, {"source", "update_nudge"}});
-#endif
-                ShellExecuteA(nullptr, "open", KOFI_URL, nullptr, nullptr, SW_SHOWNORMAL);
-            }
-            // Both buttons dismiss the nudge
-            if (m_hoveredButton == NotificationButton::KOFI ||
-                m_hoveredButton == NotificationButton::NUDGE_DISMISS) {
-                m_showingDonationNudge = false;
-                m_bVisible = false;
-                m_hoveredButton = NotificationButton::NONE;
-                setDataDirty();
-                return;
-            }
-        }
-        return;  // Don't process game input while nudge is showing
-    }
-
     // Only handle left clicks when game is active (for ball launch / exit)
     if (!m_gameActive) return;
     if (!isLeftClick) return;
@@ -261,12 +211,6 @@ void VersionWidget::showUpdateNotification() {
     setDataDirty();
 }
 
-void VersionWidget::showDonationNudge() {
-    if (m_showingDonationNudge || m_showingUpdateNotification) return;
-    m_showingDonationNudge = true;
-    m_bVisible = true;
-    setDataDirty();
-}
 
 void VersionWidget::rebuildLayout() {
     if (m_gameActive) return;   // game handles its own layout
@@ -276,7 +220,7 @@ void VersionWidget::rebuildLayout() {
     rebuildRenderData();
 }
 
-BaseHud::PanelPlan VersionWidget::notifyPlan(const ScaledDimensions& dim,
+PanelPlan VersionWidget::notifyPlan(const ScaledDimensions& dim,
                                              float contentWidth, int rows,
                                              float extraH, bool stackMember) const {
     PanelWant want;
@@ -366,7 +310,7 @@ void VersionWidget::rebuildRenderData() {
 
         PanelPlan placed = p;
         addPlanBackground(placed, startX, startY);
-        addPlanTitle(placed, "Version", this->getFont(FontCategory::TITLE),
+        addPlanTitle(placed, "Version",
                      this->getColor(ColorSlot::PRIMARY));
         float currentY = placed.contentY();
 
@@ -419,76 +363,6 @@ void VersionWidget::rebuildRenderData() {
         // Set bounds for the whole widget
         setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 
-    } else if (m_showingDonationNudge) {
-        // ===== DONATION NUDGE: shown once after a successful auto-update install =====
-        const char* nudgeText = "MXBMRP3 updated successfully!";
-        const int nudgeTextLen = static_cast<int>(strlen(nudgeText));
-        const float nudgeTextWidth = PluginUtils::calculateMonospaceTextWidth(nudgeTextLen, dim.fontSize);
-
-        const float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
-        const PlanButtonTerms bt = planButtonTerms(dim);
-        const float buttonGap = bt.gap;
-        const float kofiButtonWidth = charWidth * KOFI_BUTTON_CHARS + bt.insetL + bt.insetR;
-        const float nudgeDismissButtonWidth = charWidth * NUDGE_DISMISS_BUTTON_CHARS + bt.insetL + bt.insetR;
-        const float buttonHeight = bt.insetT + dim.lineHeightNormal + bt.insetB;
-        const float buttonRowWidth = kofiButtonWidth + buttonGap + nudgeDismissButtonWidth;
-        const float contentWidth = std::fmax(nudgeTextWidth, buttonRowWidth);
-        // The junction, then the box's own terms -- same seam as the update
-        // notification above; the reasoning is written out there.
-        const float junctionY = panelGapY(dim);
-        const PanelPlan p = notifyPlan(dim, contentWidth, /*rows=*/2,
-                                       junctionY + bt.marginT + bt.insetT + bt.insetB);
-        const float backgroundWidth = p.width();
-        const float backgroundHeight = p.height();
-
-        float startX = centerAnchoredPanelLeft(backgroundWidth);
-        float startY = 0.01f;
-
-        PanelPlan placed = p;
-        addPlanBackground(placed, startX, startY);
-        addPlanTitle(placed, "Version", this->getFont(FontCategory::TITLE),
-                     this->getColor(ColorSlot::PRIMARY));
-        float currentY = placed.contentY();
-
-        float row1Y = currentY;
-        // The CARD's centre, not the panel's (PanelPlan::sectionBoxCenterX).
-        float centerX = placed.sectionBoxCenterX();
-        addString(nudgeText, centerX, row1Y, Justify::CENTER,
-                  this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::SECONDARY), dim.fontSize);
-
-        float row2Y = row1Y + dim.lineHeightNormal + junctionY + bt.marginT;
-        float buttonsStartX = centerX - buttonRowWidth / 2.0f;
-
-        // Ko-fi button (accent color)
-        float kofiBtnX = buttonsStartX;
-        float kofiBtnY = row2Y;
-        m_viewButtonLeft = kofiBtnX;
-        m_viewButtonTop = kofiBtnY;
-        m_viewButtonWidth = kofiButtonWidth;
-        m_viewButtonHeight = buttonHeight;
-
-        bool isKofiHovered = (m_hoveredButton == NotificationButton::KOFI);
-        addStateButton(kofiBtnX, kofiBtnY, kofiButtonWidth, buttonHeight,
-                       "Support thomas4f", kofiBtnY + bt.insetT, dim.fontSize,
-                       this->getColor(ColorSlot::ACCENT),
-                       isKofiHovered ? ButtonState::Hovered : ButtonState::Idle);
-
-        // Dismiss button (muted)
-        float nudgeDismissBtnX = kofiBtnX + kofiButtonWidth + buttonGap;
-        float nudgeDismissBtnY = row2Y;
-        m_dismissButtonLeft = nudgeDismissBtnX;
-        m_dismissButtonTop = nudgeDismissBtnY;
-        m_dismissButtonWidth = nudgeDismissButtonWidth;
-        m_dismissButtonHeight = buttonHeight;
-
-        bool isNudgeDismissHovered = (m_hoveredButton == NotificationButton::NUDGE_DISMISS);
-        addStateButton(nudgeDismissBtnX, nudgeDismissBtnY, nudgeDismissButtonWidth, buttonHeight,
-                       "Dismiss", nudgeDismissBtnY + bt.insetT, dim.fontSize,
-                       this->getColor(ColorSlot::NEGATIVE),
-                       isNudgeDismissHovered ? ButtonState::Hovered : ButtonState::Idle);
-
-        setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
-
     } else {
         // ===== NORMAL MODE: Show plugin version =====
 
@@ -515,7 +389,7 @@ void VersionWidget::rebuildRenderData() {
 
         PanelPlan placed = p;
         addPlanBackground(placed, startX, startY);
-        addPlanTitle(placed, "Version", this->getFont(FontCategory::TITLE),
+        addPlanTitle(placed, "Version",
                      this->getColor(ColorSlot::PRIMARY));
         // Add main text
         // INK-centred in the section's DRAWN BOX, like Timing's time. Centring in the
@@ -571,7 +445,6 @@ void VersionWidget::resetToDefaults() {
 
     // Reset notification state
     m_showingUpdateNotification = false;
-    m_showingDonationNudge = false;
     m_hoveredButton = NotificationButton::NONE;
 
     setDataDirty();

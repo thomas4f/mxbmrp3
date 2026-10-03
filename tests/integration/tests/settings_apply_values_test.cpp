@@ -19,7 +19,6 @@
 // validateX / std::stoi) that no other test exercises with non-default data.
 // Practice (index 0) is the default active profile. Self-contained doctest.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
@@ -45,6 +44,8 @@ const std::vector<Anchor> kAnchors = {
     { "GapBarHud",    "labelMode",        "RACE_NUM"  },  // enum, base NONE -- see below
     { "MapHud",       "trackWidthScale",  "2.000000"  },  // float,base 1.0  (range 0.5..3.0)
     { "LapLogHud",    "maxDisplayLaps",   "8"         },  // int,  base 5    (range 1..30)
+    { "LapLogHud",    "reference",        "1"         },  // enum, base 0 SESSION_PB (ALLTIME_PB)
+    { "LapLogHud",    "freezeDuration",   "7000"      },  // int,  base 5000 (range 0..10000)
 };
 } // namespace
 

@@ -188,16 +188,32 @@ struct RaceEntryData {
     unsigned long bikeBrandColor; // Cached bike brand color
     char formattedRaceNum[8];    // Pre-formatted race number "#999"
     char truncatedName[4];       // Pre-truncated rider name (max 3 chars)
+    // The rider's class as the game names it ("MX1", "MX2 OEM"): whole for the
+    // overlay, and pre-cut to the standings column's width so the draw loop
+    // copies rather than shortens. Mixed-class servers are what the column is for.
+    char category[32];
+    char categoryShort[8];
 
     RaceEntryData() : raceNum(-1), bikeAbbr(nullptr), brandName(""), bikeBrandColor(0) {
         name[0] = '\0';
         bikeName[0] = '\0';
         formattedRaceNum[0] = '\0';
         truncatedName[0] = '\0';
+        category[0] = '\0';
+        categoryShort[0] = '\0';
     }
 
-    RaceEntryData(int num, const char* riderName, const char* bike, const char* abbr, const char* brand, unsigned long brandColor)
+    void setCategory(const char* cat) {
+        strncpy_s(category, sizeof(category), cat ? cat : "", sizeof(category) - 1);
+        category[sizeof(category) - 1] = '\0';
+        strncpy_s(categoryShort, sizeof(categoryShort), category, sizeof(categoryShort) - 1);
+        categoryShort[sizeof(categoryShort) - 1] = '\0';
+    }
+
+    RaceEntryData(int num, const char* riderName, const char* bike, const char* abbr, const char* brand, unsigned long brandColor,
+                  const char* cat = "")
         : raceNum(num), bikeAbbr(abbr), brandName(brand), bikeBrandColor(brandColor) {
+        setCategory(cat);
         // Copy name
         strncpy_s(name, sizeof(name), riderName, sizeof(name) - 1);
         name[sizeof(name) - 1] = '\0';
@@ -759,13 +775,15 @@ struct LapLogEntry {
     int lapTime;      // milliseconds - total lap time
     bool isValid;     // false if lap was invalid
     bool isComplete;  // true if lap is completed, false if in progress
+    bool viaPits;     // an INVALID lap that went through the pits: a pit lap, not a struck
+                      // one, so no reader announces it (PluginData::markLapViaPits)
 
     LapLogEntry() : lapNum(-1), sector1(-1), sector2(-1), sector3(-1), sector4(-1),
-                    lapTime(-1), isValid(true), isComplete(false) {}
+                    lapTime(-1), isValid(true), isComplete(false), viaPits(false) {}
 
     LapLogEntry(int lap, int s1, int s2, int s3, int s4, int total, bool valid, bool complete)
         : lapNum(lap), sector1(s1), sector2(s2), sector3(s3), sector4(s4),
-          lapTime(total), isValid(valid), isComplete(complete) {}
+          lapTime(total), isValid(valid), isComplete(complete), viaPits(false) {}
 };
 
 // (LapTimer lives in its own header — see core/lap_timer.h.)

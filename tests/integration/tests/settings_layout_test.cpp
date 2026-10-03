@@ -42,12 +42,13 @@
 // which is itself the interesting case, since `enabled=false` is the path that
 // must emit the tooltip row but no arrows.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -137,7 +138,14 @@ int countTooltipRows(const std::vector<std::string>& regions, const char* toolti
 // nothing was reordered -- what a control added to the end of an existing
 // section should look like, and what made the diff readable instead of a wall
 // of shifted ordinals.
-constexpr int kClickRegionTypeCount = 205;
+//
+// 210 -> 206: Standings' "Rows to show" / "Top positions" became data-driven
+// addSteppedControl rows (as on the Charts tab), so their dedicated pairs
+// ROW_COUNT_UP/DOWN and STANDINGS_TOP_COUNT_UP/DOWN left the enum. Every one of
+// the 72 golden entries at or past them shifted by exactly -4, every label is
+// unchanged and `strings` did not move -- a pure renumbering, re-blessed on
+// that basis.
+constexpr int kClickRegionTypeCount = 206;
 
 }  // namespace
 
@@ -168,6 +176,10 @@ TEST_CASE("settings General tab: click regions survive the layout-helper convers
     // help; one that passes it twice double-registers the hover target.
     CHECK(countTooltipRows(regions, "general.pb_scope") == 1);
     CHECK(countTooltipRows(regions, "general.controller") == 1);
+    // The Profile/Everything reset pair: their tooltips existed but the pair
+    // helper took no id, so neither was ever shown.
+    CHECK(sig.find("general.reset_profile") != std::string::npos);
+    CHECK(sig.find("general.reset_all") != std::string::npos);
 
     // The tab's own tooltip and at least one control row must be present, i.e.
     // the tab actually rendered its content and not just a frame.
@@ -269,16 +281,36 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
     // shifted the three types after it (the two GL-confirm regions and the two
     // easter-egg ones) by one -- a change that never touched this tab, which is
     // exactly the shape the typecount guard above exists to name in one line.
+    // 205 -> 206 with OPEN_LINK_GITHUB, APPENDED for the About page's thanks
+    // links: no ordinal before it moved, so only the count changes here.
+    // 206 -> 207 with TWITCH_CHANNEL_EDIT, APPENDED (no ordinal moved), and a
+    // Twitch row joined the global group after Director: "14:-;93:twitch" -- a
+    // plain HUD_TOGGLE checkbox (its backing HUD is the chat), then the tab
+    // region. strings 124 -> 126 is that row's label and checkbox icon.
+    // 207 -> 208 with TWITCH_ENABLED_TOGGLE, APPENDED: only the count moves.
+    // 208 -> 210 with YOUTUBE_CHANNEL_EDIT/YOUTUBE_ENABLED_TOGGLE, APPENDED: only the count moves.
+    // The chat tab's region token follows its tooltip id: "93:twitch" became
+    // "93:stream_chat" when the tab became Stream Chat for YouTube (only the
+    // name moved).
+    // strings 126 -> 127: the Twitch tab's "New" tag (its 1.30 What's New
+    // marker), drawn on the sidebar row until the tab is opened.
+    // strings 127 -> 129 at 1.31: the tab became "Stream Chat", whose name fills
+    // the sidebar and so draws no tag (-1), and the Standings, Lap Log and Gap
+    // Bar rows gained one each for their new rows' markers (+3).
+    // strings 129 -> 130: the Pitboard row's tag, for its new Freeze row.
+    // The reset pair's two regions (12, 13) now carry their tooltip ids:
+    // "12:-;13:-" became "12:general.reset_profile;13:general.reset_all".
     static const char* kGolden =
-        "93:general;93:appearance;93:hotkeys;93:riders;95:-;93:rumble;104:-;93:helmet;150:-;93:director;161:-"
-        ";93:spotter;189:-;93:achievements;81:-;93:updates;88:-;89:-;14:-;93:standings;14:-;93:map;14:-;93:ra"
-        "dar;14:-;93:lap_log;14:-;93:ideal_lap;14:-;93:session_charts;14:-;93:telemetry;14:-;93:records;14:-;"
-        "93:pitboard;14:-;93:session;14:-;93:timing;14:-;93:gap_bar;14:-;93:notices;14:-;93:event_log;14:-;93"
-        ":friends;14:-;93:fmx;14:-;93:stats;14:-;93:performance;92:-;93:widgets;143:general.pb_scope;70:-;70:"
-        "-;143:general.controller;97:-;96:-;143:general.auto_save;82:-;82:-;143:general.grid_snap;76:-;76:-;1"
-        "43:general.screen_clamp;77:-;77:-;143:general.direct_gl;204:-;204:-;143:general.steam_friends;143:ge"
-        "neral.web_server;85:-;85:-;143:general.web_port;86:-;87:-;143:general.auto_switch;90:-;90:-;143:gene"
-        "ral.copy_profile;10:-;9:-;12:-;13:-;199:-;200:-;94:-;8:-;142:-;typecount=205;strings=124";
+        "89:general;89:appearance;89:hotkeys;89:riders;91:-;89:rumble;100:-;89:helmet;146:-;89:director;14:-;"
+        "89:stream_chat;157:-;89:spotter;185:-;89:achievements;77:-;89:updates;84:-;85:-;14:-;89:standings;14"
+        ":-;89:map;14:-;89:radar;14:-;89:lap_log;14:-;89:ideal_lap;14:-;89:session_charts;14:-;89:telemetry;1"
+        "4:-;89:records;14:-;89:pitboard;14:-;89:session;14:-;89:timing;14:-;89:gap_bar;14:-;89:notices;14:-;"
+        "89:event_log;14:-;89:friends;14:-;89:fmx;14:-;89:stats;14:-;89:performance;88:-;89:widgets;139:gener"
+        "al.pb_scope;66:-;66:-;139:general.controller;93:-;92:-;139:general.auto_save;78:-;78:-;139:general.g"
+        "rid_snap;72:-;72:-;139:general.screen_clamp;73:-;73:-;139:general.direct_gl;200:-;200:-;139:general."
+        "steam_friends;139:general.web_server;81:-;81:-;139:general.web_port;82:-;83:-;139:general.auto_switc"
+        "h;86:-;86:-;139:general.copy_profile;10:-;9:-;12:general.reset_profile;13:general.reset_all;195:-;19"
+        "6:-;90:-;8:-;138:-;typecount=206;strings=130";
 
     MESSAGE("General tab signature: " << sig);
     CHECK(sig == kGolden);
@@ -289,4 +321,44 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
     // while the test's own scope is still intact rather than during
     // destruction, which keeps a teardown failure attributable to this case.
     host.shutdown();
+}
+
+// A row whose setting is moot is DISABLED, not drawn with an "Off" value: no
+// arrows, and the same grey label and value every tab uses. The Helmet tab's
+// Tint opacity and Tint color passed enabled=true with the "Off" styling while
+// the visor was off, so they kept a white label and pink arrows that changed a
+// setting with no effect - the one tab whose greyed-out rows looked different.
+// The tint rows are the last two on the tab, so their arrows are the only
+// regions the visor mode can add or remove.
+TEST_CASE("settings Helmet tab: the tint rows lose their arrows while the visor is off") {
+    const char* saveWin = "Z:\\tmp\\mxbmrp3-tests\\settings_layout_helmet\\";
+    auto tokens = [](const std::string& sig) {
+        return static_cast<int>(std::count(sig.begin(), sig.end(), ';'));
+    };
+    auto helmetSig = [&](int visorMode) {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        host.startup(saveWin);
+        {
+            std::filesystem::create_directories(std::string(saveWin) + "mxbmrp3");
+            std::ofstream ini(std::string(saveWin) + "mxbmrp3\\mxbmrp3_settings.ini", std::ios::trunc);
+            REQUIRE(ini.is_open());
+            ini << "[Settings]\nversion=6\n\n[HelmetOverlay]\nvisorMode=" << visorMode << "\n";
+        }
+        host.loadSettings(saveWin);
+        host.showSettings(true);
+        host.setActiveTab("Helmet");
+        host.draw();
+        std::string sig = host.regionSignature();
+        host.shutdown();
+        return sig;
+    };
+
+    const std::string off = helmetSig(0);
+    const std::string goggles = helmetSig(1);
+    REQUIRE(!off.empty());
+    REQUIRE(!goggles.empty());
+    // Two rows, two arrows each.
+    CHECK_MESSAGE(tokens(goggles) - tokens(off) == 4,
+                  "visor off should drop exactly the tint rows' four arrow regions");
 }

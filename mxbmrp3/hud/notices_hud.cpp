@@ -4,6 +4,7 @@
 // Shows centered notices above the timing HUD area
 // ============================================================================
 #include "notices_hud.h"
+#include "rider_flag_icons.h"
 
 #include <cstdio>
 #include <cmath>
@@ -75,7 +76,6 @@ NoticesHud::NoticesHud()
     // already states. The slab moves inside the card instead of being the box.
     m_bContentCard = true;
     // One-time setup
-    DEBUG_INFO("NoticesHud created");
     setDraggable(true);
     m_quads.reserve(1);
     m_strings.reserve(1);
@@ -448,7 +448,7 @@ void NoticesHud::rebuildRenderData() {
     //
     // The centre-stack width rides as the panel MINIMUM (see CenterStack::boxWidth);
     // its own stack line is measured DOWN and snapped, as before.
-    BaseHud::PanelWant want;
+    PanelWant want;
     wantCenterStackWidth(want, dim);   // stack width as the minimum, nothing competing
     want.sectionH = { bigValueRowHeight(dim) };
     want.captionW = planTitleWidth(dim, "Notices", TitleTier::Large);
@@ -471,7 +471,7 @@ void NoticesHud::rebuildRenderData() {
     // while the three had different defaults, and wrong the moment they share one.
     const float panelY = snapEdgeY(0.0f);
     addPlanBackground(plan, panelX, panelY);
-    addPlanTitle(plan, "Notices", this->getFont(FontCategory::TITLE),
+    addPlanTitle(plan, "Notices",
                  this->getColor(ColorSlot::PRIMARY));
 
     // The SLAB (the card's drawn box; = the row unthemed), via the shared
@@ -514,11 +514,11 @@ void NoticesHud::rebuildRenderData() {
     }
     else if (showBlueFlag) {
         // Add notice background (blue for blue flag)
-        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(ColorPalette::BLUE, m_fBackgroundOpacity));
+        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(FlagColors::BLUE, m_fBackgroundOpacity));
 
         addString("BLUE FLAG", noticeCenterX, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE),
-            captionOnSlabColor(ColorPalette::BLUE, m_fBackgroundOpacity), dim.fontSizeLarge);
+            captionOnSlabColor(FlagColors::BLUE, m_fBackgroundOpacity), dim.fontSizeLarge);
     }
     else if (showLapping) {
         // Add notice background (neutral/yellow — informational caution; distinct from
@@ -599,7 +599,7 @@ void NoticesHud::rebuildRenderData() {
         addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(ColorSlot::BACKGROUND), m_fBackgroundOpacity));
 
         // Add notice text (white)
-        addString("FINAL LAP", noticeCenterX, noticeY, Justify::CENTER,
+        addString(PluginConstants::DisplayStrings::SessionClock::FINAL_LAP, noticeCenterX, noticeY, Justify::CENTER,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
     }
     else if (showDefaultSetup) {

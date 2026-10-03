@@ -20,7 +20,6 @@
 // implementation that cleared everything on the first click, which is the
 // behaviour the split exists to avoid.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
@@ -87,34 +86,51 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         host.whatsNewReset();
     }
 
-    SUBCASE("a tab whose name fills the sidebar carries no tag; opening it clears no row") {
-        // 1.30's one marker sits on the Achievements tab, whose 12-character name
-        // leaves no room for a Small "New" beside it (WhatsNew::tabCanTag), so the
-        // tag is withheld while the row band stays. The tag-dismissal path itself
-        // last ran against 1.29's Widgets markers; a future taggable marker puts
-        // it back under test.
-        REQUIRE_FALSE(host.whatsNewTabTagged("Achievements"));
+    SUBCASE("opening a tagged tab clears its tag and no row") {
+        // The Gap Bar tab has room for the tag (unlike Achievements and Stream
+        // Chat, whose names fill the sidebar: WhatsNew::tabCanTag).
+        REQUIRE(host.whatsNewTabTagged("Gap Bar"));
 
-        REQUIRE(host.openSettingsTab("Achievements"));
+        REQUIRE(host.openSettingsTab("Gap Bar"));
+        CHECK_FALSE(host.whatsNewTabTagged("Gap Bar"));
         // The rows on it are untouched: opening the tab says you know something
         // is here, not that you found it.
         CHECK(host.whatsNewLiveCount() == total);
     }
 
+    SUBCASE("a tab whose name fills the sidebar bands its sidebar row instead of the tag, and its rows band") {
+        // "Stream Chat" is 11 of the sidebar's 13 label cells; the tag would
+        // overflow them. Its Status rows are still marked.
+        CHECK_FALSE(host.whatsNewTabTagged("Stream Chat"));
+        // Its sidebar row is banded instead, until hovered like any banded row.
+        // A tab that has room keeps the tag, unbanded, and hovering it leaves the
+        // tag alone (that one clears on open).
+        CHECK(host.whatsNewTabHighlighted("Stream Chat"));
+        CHECK_FALSE(host.whatsNewTabHighlighted("Gap Bar"));
+        REQUIRE(host.hoverSettingsTab("Gap Bar"));
+        CHECK(host.whatsNewTabTagged("Gap Bar"));
+        REQUIRE(host.hoverSettingsTab("Stream Chat"));
+        CHECK_FALSE(host.whatsNewTabHighlighted("Stream Chat"));
+        REQUIRE(host.openSettingsTab("Stream Chat"));
+        const int before = host.whatsNewLiveCount();
+        host.hoverSettingsRow("twitch.status");
+        CHECK(host.whatsNewLiveCount() == before - 1);
+    }
+
     SUBCASE("hovering a marked row clears that row and no other") {
-        REQUIRE(host.openSettingsTab("Achievements"));
+        REQUIRE(host.openSettingsTab("Gap Bar"));
         const int before = host.whatsNewLiveCount();
         REQUIRE(before >= 1);
 
-        host.hoverSettingsRow("achievements.toasts");
+        host.hoverSettingsRow("gap_bar.reference");
         CHECK(host.whatsNewLiveCount() == before - 1);
 
         // Hovering it again is not a second dismissal.
-        host.hoverSettingsRow("achievements.toasts");
+        host.hoverSettingsRow("gap_bar.reference");
         CHECK(host.whatsNewLiveCount() == before - 1);
 
         // An unmarked row on the same tab dismisses nothing.
-        host.hoverSettingsRow("achievements.toast_duration");
+        host.hoverSettingsRow("gap_bar.show_gap");
         CHECK(host.whatsNewLiveCount() == before - 1);
     }
 
@@ -130,7 +146,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // the case can see it.
         REQUIRE_MESSAGE(host.hasMarkDirty(), "MXBMRP3_Test_FlushIfDirty/IsDirty absent");
         host.setAutoSave(true);
-        REQUIRE(host.openSettingsTab("Achievements"));
+        REQUIRE(host.openSettingsTab("Gap Bar"));
 
         // SAVE FIRST, to clear the flag. Opening a tab persists [Profiles] activeTab
         // and marks dirty by itself, so a dirty check straight after the click passes
@@ -139,7 +155,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         host.save();
         REQUIRE_FALSE(host.isDirty());
 
-        host.hoverSettingsRow("achievements.toasts");
+        host.hoverSettingsRow("gap_bar.reference");
         const int afterDismiss = host.whatsNewLiveCount();
         REQUIRE(afterDismiss == total - 1);
         CHECK_MESSAGE(host.isDirty(),
@@ -153,7 +169,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         REQUIRE(host.whatsNewLiveCount() == total);
         host.loadSettings(saveWin);
         CHECK(host.whatsNewLiveCount() == afterDismiss);
-        CHECK_FALSE(host.whatsNewTabTagged("Achievements"));   // the tab dismissal too
+        CHECK_FALSE(host.whatsNewTabTagged("Gap Bar"));   // the tab dismissal too
     }
 
     SUBCASE("starting up does not silently dismiss a tab") {
@@ -208,14 +224,14 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // anywhere near this. Written against resetAll() alone, a test here would pass
         // while checking half a button.
         REQUIRE_MESSAGE(host.hasResetGlobals(), "MXBMRP3_Test_ResetGlobals not exported");
-        REQUIRE(host.openSettingsTab("Achievements"));
-        host.hoverSettingsRow("achievements.toasts");
+        REQUIRE(host.openSettingsTab("Gap Bar"));
+        host.hoverSettingsRow("gap_bar.reference");
         REQUIRE(host.whatsNewLiveCount() == total - 1);
-        REQUIRE_FALSE(host.whatsNewTabTagged("Achievements"));
+        REQUIRE_FALSE(host.whatsNewTabTagged("Gap Bar"));
 
         host.resetEverything();
         CHECK(host.whatsNewLiveCount() == total - 1);
-        CHECK_FALSE(host.whatsNewTabTagged("Achievements"));
+        CHECK_FALSE(host.whatsNewTabTagged("Gap Bar"));
     }
 
     host.shutdown();

@@ -11,7 +11,6 @@
 //      tape saved on one game build won't strand the menu on an empty tab.
 // Self-contained doctest; see run_tests.sh / TESTING.md.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

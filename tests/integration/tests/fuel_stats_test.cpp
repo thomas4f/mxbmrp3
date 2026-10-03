@@ -17,7 +17,6 @@
 // rides the odometer's ~100m mark, so the distance has to be exact for the
 // crossing to land on a known tick rather than "somewhere around there".
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

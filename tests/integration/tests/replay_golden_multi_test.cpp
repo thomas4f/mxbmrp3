@@ -12,7 +12,6 @@
 // (min-profile slim — state-changing events; see tests/integration/slim_tape.py);
 // run_tests.sh unpacks fixtures. See TESTING.md.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

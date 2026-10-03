@@ -24,7 +24,6 @@
 // where that directory already exists — so a second save path inside one file silently
 // writes nothing. Own file => own process, own plugin lifecycle, own clean save dir.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

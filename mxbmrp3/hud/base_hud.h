@@ -2,7 +2,7 @@
 // hud/base_hud.h
 // Base class for all HUD display elements with common rendering and positioning logic
 // ============================================================================
-// file-budget: 2500 one class definition; the split bar (unchanged class definitions) forbids carving it
+// file-budget: 2100 one class definition (BaseHud); its panel-geometry value types live in panel_plan.h
 #pragma once
 #include <vector>
 #include "../core/small_vec.h"
@@ -22,43 +22,7 @@
 #include "../core/asset_manager.h"   // ThemeAsset (panel themes)
 #include "../core/plugin_utils.h"    // isColorDark (chipGlyphColor)
 #include "nine_slice.h"
-
-// Configuration for individual HUD strings with per-string padding and backgrounds
-struct HudStringConfig {
-    std::string text;
-    float x = 0.0f;
-    float y = 0.0f;
-
-    // Text formatting
-    int justify = PluginConstants::Justify::LEFT;
-    int fontIndex = PluginConstants::Fonts::getNormal();
-    unsigned long color = PluginUtils::makeColor(255, 255, 255);  // White default
-    float fontSize = layoutDefaults().fontSizeNormal;
-
-    // Layout padding (affects spacing and HUD bounds calculation)
-    // This is "logical" padding that affects positioning
-    float paddingLeft = 0.0f;
-    float paddingRight = 0.0f;
-    float paddingTop = 0.0f;
-    float paddingBottom = 0.0f;
-
-    // Optional background
-    bool hasBackground = false;
-    unsigned long backgroundColor = 0x000000;  // Black
-    float backgroundOpacity = 0.85f;
-
-    // Background padding (size of background quad around text)
-    // Only used if hasBackground = true
-    // Can be different from layout padding for visual effects
-    float bgPaddingLeft = 0.0f;
-    float bgPaddingRight = 0.0f;
-    float bgPaddingTop = 0.0f;
-    float bgPaddingBottom = 0.0f;
-
-    // Cached text width (set to > 0 to skip recalculation in render)
-    // PERFORMANCE: Caching this eliminates redundant calculateMonospaceTextWidth calls
-    float cachedTextWidth = 0.0f;
-};
+#include "panel_plan.h"
 
 // Which of the three panel FAMILIES a HUD belongs to, so a theme can style them
 // separately ([card] widget-content, settings-title-band, ...).
@@ -332,6 +296,19 @@ public:
     // Legacy texture index support (for compatibility)
     void setBackgroundTextureIndex(int index) { m_iBackgroundTextureIndex = index; invalidateThemeCache(); }
     int getBackgroundTextureIndex() const { return m_iBackgroundTextureIndex; }
+
+    // Sprites worth loading BEFORE this HUD first draws them: the Direct GL
+    // backend decodes lazily on the Draw thread, so art that first appears
+    // mid-ride costs that frame a decode (see hudgl::Renderer::Warm). Default:
+    // the background art. A HUD with art drawn only on an event (the radar's
+    // proximity sector, the gear limiter circle) adds it. Writes at most `cap`
+    // 1-based sprite indices and returns the count. Called every frame while
+    // Direct GL is on, so an override returns cached indices, never looks up.
+    virtual int glWarmSprites(int* out, int cap) const {
+        if (!m_bShowBackgroundTexture || m_iBackgroundTextureIndex <= 0 || cap <= 0) return 0;
+        out[0] = m_iBackgroundTextureIndex;
+        return 1;
+    }
 
     // Per-HUD panel-theme override:
     //   ""             follow the global Appearance > Panel Theme (the default)
@@ -878,7 +855,6 @@ public:
     // its only inner geometry.
     float titleGlyphInsetX(float contentX) const;
 
-
     bool hasThemedContentCard() const;
     void emitContentCard(float bandBottom);
 
@@ -1081,23 +1057,6 @@ public:
     bool hasThemedTitleBand() const;
     // See the definition: the kind flag alone, without the caption toggle.
     bool themeDrawsTitleBandKind() const;
-private:
-    // Remember (or update -- reserve-then-rewrite lands on the same first quad
-    // twice) a card's rect as a cover for finalizeThemedFill. PRE-offset, like
-    // the coords its callers take.
-    void recordCardCover(int firstQuad, float x, float y, float width, float height);
-    // Shared emitter for both slice sets; useCard picks the quieter card set.
-    void emitThemedSlices(const ThemeAsset& theme, float x, float y,
-                          float width, float height, int firstIndex, bool useCard);
-    // BAND is INNER's sprites at `[card] band-size` rather than `[card] size` -- one
-    // art set, two scales. It is a member of this enum and not a bool beside it so
-    // that every emit names its set once, at the call, and cannot pick the box from
-    // one and the corner from the other.
-    enum class SliceSet { OUTER, INNER, BAND, BUTTON };
-    void emitThemedSliceSet(const ThemeAsset& theme, float x, float y,
-                            float width, float height, int firstIndex,
-                            SliceSet set, unsigned long colorOverride);
-public:
     // Themed card, for elements drawn INSIDE a panel: settings sections and
     // anything else that wants the theme's secondary surface. Coords are pre-offset
     // (the caller is already laying out in offset space). No-op without a theme,
@@ -1361,131 +1320,12 @@ public:
     // absolute edges and the bounds are stored in this space, so hit-testing,
     // clamping and edge magnetism all work unchanged.
     static float rightAnchoredPanelLeft(float panelW);
-protected:
-    // A ring or ring-slice as a fan of quads. Shared by every HUD that draws one;
-    // see the definition for why the angles are rotated rather than recomputed.
-    void addArcSegment(float centerX, float centerY, float innerRadius, float outerRadius,
-                       float startAngleRad, float endAngleRad, unsigned long color,
-                       int numSegments);
-
-    void addDot(float x, float y, unsigned long color, float size);
-    // Centered, aspect-corrected icon sprite (like addDot, but textured). size is
-    // the height in normalized units; the sprite is tinted by color.
-    void addIcon(float x, float y, int spriteIndex, unsigned long color, float size);
-    void addLineSegment(float x1, float y1, float x2, float y2, unsigned long color, float thickness);
-    void addHorizontalGridLine(float x, float y, float width, unsigned long color, float thickness);
-    static void setQuadPositions(SPluginQuad_t& quad, float x, float y, float width, float height);
-
-    // Right-pointing triangle in the same box setQuadPositions would fill: the two
-    // right-hand vertices collapse onto a single tip at the vertical middle. The
-    // draw primitive is four arbitrary corners (m_aafPos[4][2]), not a rect, so a
-    // degenerate edge is a legal quad -- addNeedleQuad already relies on that.
-    //
-    // Used for the standings brand indicator, which real broadcast graphics draw as
-    // an arrow rather than a bar.
-    static void setQuadPositionsArrowRight(SPluginQuad_t& quad, float x, float y,
-                                           float width, float height);
-
-    // The same rect setQuadPositions() would fill, with the SPRITE turned 90
-    // degrees clockwise inside it -- an up-caret comes out pointing right.
-    //
-    // Done by cycling which rect corner each vertex takes, not by swapping a pair:
-    // a swap mirrors, mirroring reverses the winding, and the engine back-face-culls
-    // a non-CCW quad so the sprite silently never draws. Same trap the pos-gain
-    // caret's 180-degree case documents (it negates both axes rather than flipping).
-    //
-    // For callers that need an arbitrary angle rather than a right angle, use
-    // addRotatedSpriteQuad() -- it rotates in uniform space and aspect-corrects
-    // after, which is what a map marker needs. This one preserves the caller's rect
-    // exactly, which is what a sprite replacing a hand-built quad needs.
-    static void setQuadPositionsRotatedCW(SPluginQuad_t& quad, float x, float y,
-                                          float width, float height);
-
-    // Add a gauge needle (trapezoid: flat tip, wider base) pointing outward at angleRad.
-    // Shared by SpeedoWidget and TachoWidget.
-    void addNeedleQuad(float centerX, float centerY, float angleRad,
-                       float needleLength, float needleWidth, unsigned long color);
-
-    // Add a square sprite quad centered on (screenX, screenY), rotated by the
-    // given yaw in UNIFORM (square) space and aspect-corrected on X only after
-    // rotation, then translated by the HUD offset. Shared by RadarHud and
-    // MapHud rider markers; pass cos=1/sin=0 for non-directional icons.
-    void addRotatedSpriteQuad(float screenX, float screenY, float halfSize,
-                              float cosYaw, float sinYaw, int spriteIndex,
-                              unsigned long color);
-
-    // Temperature color gradient: blue (cold) -> green (optimal) -> yellow -> red (hot).
-    // Shared by BarsWidget and TyreTempWidget. optTemp is the optimal/midpoint temperature.
-    static unsigned long calculateTemperatureColor(float temp, float optTemp,
-                                                   float alarmLow, float alarmHigh);
-
-    // Helper to update background quad position during rebuildLayout (reduces duplication)
-    void updateBackgroundQuadPosition(float startX, float startY, float width, float height);
-
-    // Expand quad dimensions to match background texture aspect ratio (prevents stretching)
-    void applyTextureAspectCorrection(float& x, float& y, float& width, float& height) const;
-
-    // Styled string rendering with per-string padding and backgrounds
-    void addStyledString(const HudStringConfig& config);
-    void renderStyledStrings();
-
-    // Calculate bounds for all styled strings (for HUD sizing)
-    struct StyledStringBounds {
-        float minX, minY, maxX, maxY;
-        float width() const { return maxX - minX; }
-        float height() const { return maxY - minY; }
-    };
-    StyledStringBounds calculateStyledStringBounds() const;
-
-    // Scaled dimensions helper (eliminates repeated calculations in rebuildLayout/rebuildRenderData).
-    // Public TYPE (the members stay protected): SettingsLayoutContext — a standalone
-    // struct, not a BaseHud — carries a ScaledDimensions between the settings tabs.
-    // gcc/MSVC let the protected nested-type access slide; clang (which fronts the
-    // thread-safety analysis pass) correctly rejects it.
-public:
-    struct ScaledDimensions {
-        float fontSize;
-        float fontSizeExtraSmall;
-        float fontSizeSmall;
-        float fontSizeLarge;
-        float fontSizeExtraLarge;
-        float paddingH;
-        float paddingV;
-        float lineHeightExtraSmall;
-        float lineHeightSmall;
-        float lineHeightLarge;
-        float lineHeightNormal;
-        float lineHeightExtraLarge;
-        // The snap grid at THIS HUD's scale. Every distance a layout file states is
-        // in cells, so this is what spends them -- one named conversion instead of
-        // each call site remembering whether its value was in lines, cells or
-        // characters.
-        float cellW;
-        float cellH;
-        float scale;
-
-        // Grid-aligned spacing, in cells. cellW/cellH are already scaled, so these
-        // are just named multiplication -- kept because the call sites read better
-        // as "one cell across" than as a bare product.
-        float gridV(float units) const { return cellH * units; }
-        float gridH(float units) const { return cellW * units; }
-    };
-
-    // Declared AFTER ScaledDimensions, which these take by reference: a member
-    // function's parameter TYPES must be complete at its declaration (only the
-    // body is compiled as if the class were), so up with the other layout helpers
-    // these do not parse on MSVC or gcc.
     // A BIG VALUE'S ROW -- what Position / Lap / Time / Clock give their one XL number
     // -- is a NORMAL row, not one sized for the glyph CELL: the normalized .fnt digits
     // ink ~63% of their cell, so an XL value's visible height is about 0.025 where a
     // cell-sized row would reserve 0.047, and the widget would stand two rows tall to
     // show one row of ink. The value is placed by centring its INK in the row
     // (bigValueTextY) rather than its cell -- the same distinction the gear digit needs.
-    // Which type tier a panel captions at. A panel titles at ONE of two sizes -- the
-    // full HUDs at Large, the widgets at Normal -- and the tier picks BOTH the font and
-    // the row together, which is the whole reason it is an enum and not two arguments.
-    enum class TitleTier { Normal, Large };
-
     // The reserved title row, or nothing when the caption is off -- the form every
     // panel actually wants.
     //
@@ -1608,186 +1448,8 @@ public:
     }
 
     // ==== THE BOX-MODEL PLAN (BOX-MODEL-PORT) ===============================
-    // The additive panel geometry, computed ONCE per rebuild by the engine in
-    // core/panel_box.h, and pinned to it by the golden vectors in
-    // tests/fixtures/panel_box_parity.json. A migrated HUD builds:
-    //
-    //     auto dim = getScaledDimensions();
-    //     BaseHud::PanelWant want;
-    //     want.contentW = <widest row, normalized>;
-    //     want.sectionH = { <section heights, normalized> };
-    //     want.captionW = <title text width, normalized>;   // caption can win the ask
-    //     PanelPlan& p = planPanel(dim, want);
-    //     addPlanBackground(p, x, y);       // frame + band + section cards
-    //     addPlanTitle(p, "Name", font, color);
-    //     // rows at p.contentX(), p.contentY(section) + k * rowH
-    //
-    // EVERYTHING IS ON THE MODEL EXCEPT FOUR DELIBERATE HOLDOUTS, each annotated
-    // at its own box: the corner buttons (Director/SettingsButton — themed BUTTON
-    // slices, not panels); the dial gauges (Speedo/Tacho — the box IS the dial
-    // art); the shape-driven panels (Map/Radar/Pitboard/Gamepad — track shape,
-    // radar circle, board and pad art drive the geometry); and the settings
-    // panel's OUTER box (screen-ceiling constrained and content-anchored in X,
-    // see the BOX-MODEL NOTE in settings_hud_render.cpp — every term it spends
-    // still resolves from the box-model surface). The legacy chain below survives
-    // solely as those four's vocabulary; anything else reaching for it is a HUD
-    // that has not been migrated.
-    //
-    // Every derivation the old chain needed (titleRowHeight, panelContentY,
-    // contentCardTop, the reserve/rewrite section dance, the caption row's three
-    // branches) collapses: geometry is fully known before the first quad, and
-    // every box's position is the engine's, not re-derived at the emit site.
-    //
-    // The plan is in CELLS (x-cells across, y-cells down); X()/Y() convert to
-    // normalized units at this HUD's scale. contentPaddingX/Y() and the helpers
-    // above remain for unmigrated panels; a HUD uses one path or the other,
-    // never both in one rebuild.
-    struct PanelWant {
-        float contentW = 0.0f;             // widest section row, normalized units
-        // INLINE up to 8 sections (see small_vec.h): this struct is built and
-        // destroyed once per HUD per rebuild, and a std::vector here costs one
-        // heap round-trip -- 1.57us in the game process -- per rebuild.
-        SmallVec<float, 8> sectionH;       // per-section content height, normalized
-        float captionW = 0.0f;             // caption text width (0 = never wins the ask)
-        TitleTier tier = TitleTier::Normal;
-        int buttons = 0;                   // footer button count
-        float buttonW = 0.0f;              // per-button content width, normalized
-        float buttonH = 0.0f;              // button row content height, normalized
-        float minPanelW = 0.0f;            // minimum panel width, normalized (0 = none)
-        // THE CONTENT IS A SLAB, NOT ROWS -- so the panel's own padding becomes part
-        // of it instead of a margin around it: full-bleed to the sides and the
-        // bottom, and to the top too when no title is shown. A shown title keeps
-        // the top padding as its own air (the caption is rows, not slab, and flush
-        // against the panel's top edge it reads as a defect). UNTHEMED ONLY: with a
-        // theme the frame art needs that ring, and
-        // the padding is the theme's to spend.
-        //
-        // The panel does NOT change size. The engine moves the padding into the
-        // content band rather than dropping it, so the outer rect is identical with
-        // the flag on or off -- which is the whole reason this is a flag the engine
-        // honours and not two edits in the caller that could drift apart.
-        //
-        // Why only some panels: the Gap Bar's coloured fill and the Notices slab ARE
-        // the panel; a cell of air around them reads as a border nobody asked for.
-        // A panel of text rows wants that air, which is why this is opt-in.
-        //
-        // Applies to the sectionH path only -- the vertical share lands on the LAST
-        // section, the one that already absorbs the panel's ceil remainder. A `bands`
-        // caller is left alone (no current one is a slab).
-        bool contentFillsPanel = false;
-        // THE BODY AS COLUMNS, for a panel whose body is a horizontal split. Same
-        // shape as PanelBox::BandAsk, in NORMALIZED units like every field above --
-        // the engine carries columns (panel_box.h names the settings panel's sidebar
-        // as the reason), and this is how a caller reaches them.
-        //
-        // Set `bands` OR contentW/sectionH, never both: bands wins, exactly as
-        // PanelBox::Spec resolves the same pair.
-        struct ColumnWant {
-            float contentW = 0.0f;         // this column's content width, normalized
-            // Plain vector, unlike PanelWant::sectionH above: only the settings
-            // panel states columns, it rebuilds only while open, and its lists are
-            // long enough that inline storage would spill anyway.
-            std::vector<float> sectionH;   // per-section content height, normalized
-        };
-        struct BandWant { std::vector<ColumnWant> columns; };
-        std::vector<BandWant> bands;
-        // A floor under the body, normalized (0 = none) -- see Spec::minBodyH.
-        float minBodyH = 0.0f;
-    };
-    struct PanelPlan {
-        PanelBox::Geom g;                  // the engine's geometry, in cells
-        float cellW = 0.0f, cellH = 0.0f;  // normalized units per cell (scaled)
-        float x0 = 0.0f, y0 = 0.0f;        // panel origin, PRE-offset normalized
-        float capFontSize = 0.0f;          // the tier's caption size, normalized
-        float X(double cells) const { return x0 + static_cast<float>(cells) * cellW; }
-        float Y(double cells) const { return y0 + static_cast<float>(cells) * cellH; }
-        float W(double cells) const { return static_cast<float>(cells) * cellW; }
-        float H(double cells) const { return static_cast<float>(cells) * cellH; }
-        float width() const { return W(g.panelCols); }
-        float height() const { return H(g.panelH); }
-        // A section's content origin — where its first row starts, both axes.
-        float contentX() const { return X(g.rowsX); }
-        float contentY(size_t section = 0) const {
-            return Y(g.sections[section < g.sections.size() ? section : 0].rowsTop);
-        }
-        float contentW() const { return W(g.cols); }
-        // The content box's RIGHT edge -- where a right-aligned value ends. NOT the
-        // LEFT inset mirrored onto the right edge (`panelLeft + width - (contentX -
-        // panelLeft)`), which is the same number only while [content] border and
-        // padding are horizontally symmetric. Write `border = 2 0 4 6` and the mirror
-        // pulls right-aligned values a whole left border inward, into the labels
-        // beside them.
-        float contentRight() const { return contentX() + contentW(); }
-        // A section's DRAWN BOX -- the card as the player sees it, border included,
-        // which is NOT the content band above when [content] border is asymmetric:
-        // the band is inset by border.t at the top and border.b at the bottom, so the
-        // two share a centre only while those are equal.
-        //
-        // Centre a single big value in THIS, not in the content band. Every shipped
-        // theme has a symmetric card border, so the two agree and this changes
-        // nothing; write `border = 2 0 4 6` and the value drawn from the band sits a
-        // cell above the middle of the card it is drawn on.
-        //
-        // Rows still start at contentY(): a LIST belongs inside the border, and only
-        // a lone value centred in its card has a reason to ask where the card is.
-        float sectionBoxY(size_t section = 0) const {
-            return Y(g.sections[section < g.sections.size() ? section : 0].top);
-        }
-        float sectionBoxH(size_t section = 0) const {
-            const PanelBox::SectionGeom& s =
-                g.sections[section < g.sections.size() ? section : 0];
-            return H(s.bot - s.top);
-        }
-        // The horizontal half of the same box: the card's drawn extent along X
-        // (g.cardLeft/cardW -- one column, shared by every section). CENTRED
-        // content anchors HERE, never at the panel's centre: the two are the same
-        // number only while the [content] terms are left/right symmetric, and a
-        // skinner's `margin = 4 6 8 0` moves the panel's centre outside the card
-        // -- a big value, gauge or chip centred on `startX + backgroundWidth / 2`
-        // slides off its own card while the card stays put.
-        // ALIGNED content keeps contentX()/contentRight(): a column respects the
-        // card's border and padding; only centring answers to the drawn box.
-        float sectionBoxX() const { return X(g.cardLeft); }
-        float sectionBoxW() const { return W(g.cardW); }
-        float sectionBoxCenterX() const { return sectionBoxX() + sectionBoxW() / 2.0f; }
-        // A COLUMN of a split body, by band and column index. The one-column
-        // accessors above are `col(0, 0)` with the leftover-width rule applied,
-        // so a caller that has a split reads its columns the same way.
-        const PanelBox::ColumnGeom& col(size_t band, size_t column) const {
-            static const PanelBox::ColumnGeom kNone;
-            if (band >= g.bands.size()) return kNone;
-            const PanelBox::BandGeom& b = g.bands[band];
-            return column < b.columns.size() ? b.columns[column] : kNone;
-        }
-        // A column section's content origin and width -- the engine's own row box
-        // for that column, which for one column IS g.rowsX / g.cols.
-        float colContentX(const PanelBox::ColumnGeom& c) const { return X(c.rowsLeft); }
-        float colContentW(const PanelBox::ColumnGeom& c) const { return W(c.rowsW); }
-        float colContentY(const PanelBox::ColumnGeom& c, size_t section = 0) const {
-            if (c.sections.empty()) return Y(g.panelInner);
-            return Y(c.sections[section < c.sections.size() ? section : 0].rowsTop);
-        }
-
-        // THE BAND A ROW HIGHLIGHT SPANS: the ROWS box, the same box the text sits
-        // in. At the shipped default ([content] padding 0) that IS the card's
-        // interior, so a band reads flush to the card; where a theme asks for
-        // padding, the padding is air around the rows and the highlight is one of
-        // the things it is air around.
-        //
-        // NOT THE CARD'S INTERIOR: that makes the band absorb [content] padding, i.e.
-        // the highlight grows outside the content of the card, way beyond where the
-        // text is. standings_row_band_test pins it: the card-to-band clearance GROWS
-        // with the padding, which only the rows box does.
-        //
-        // ONE OWNER for every emitter -- StandingsHud, RecordsHud, the settings
-        // SIDEBAR and the settings panel's content rows -- so one panel cannot
-        // highlight two ways at once, a column apart.
-        float rowBandX(const PanelBox::ColumnGeom& c) const { return X(c.rowsLeft); }
-        float rowBandW(const PanelBox::ColumnGeom& c) const { return W(c.rowsW); }
-        // The one-column form, for a panel with no split body.
-        float rowBandX() const { return X(g.rowsX); }
-        float rowBandW() const { return W(g.cols); }
-    };
+    // The value types (PanelWant, PanelPlan, ScaledDimensions, TitleTier) and the
+    // model's contract are in panel_plan.h; this is the side that PRODUCES them.
     // Geometry only — no quads, no state; safe to call while merely measuring.
     //
     // MEMOISED against the last call's inputs. A plan is a pure function of the
@@ -1835,9 +1497,9 @@ public:
     // title band and one card PER SECTION at the plan's coordinates. Call before
     // any content — cards must sit behind the rows (quads draw in order).
     void addPlanBackground(PanelPlan& p, float x, float y);
-    // The caption glyph at the plan's column. No-op when the title is off.
-    void addPlanTitle(const PanelPlan& p, const char* text, int fontIndex,
-                      unsigned long color);
+    // The caption glyph at the plan's column, always in the TITLE font (fixed here so a
+    // caption cannot drift to another category). No-op when the title is off.
+    void addPlanTitle(const PanelPlan& p, const char* text, unsigned long color);
     // What PanelWant::captionW should carry: the caption text's width plus the
     // identity icon's advance when one will draw — so a long title widens its
     // panel (the widest-ask rule) instead of overhanging it.
@@ -1873,7 +1535,6 @@ public:
     float panelGapY(const ScaledDimensions& dim) const {
         return panelGapCells() * dim.cellW * PluginConstants::UI_ASPECT_RATIO;
     }
-    struct PlanButtonTerms { float insetL, insetR, insetT, insetB, gap, marginT, marginB; };
     PlanButtonTerms planButtonTerms(const ScaledDimensions& dim) const;
 
     // The BODY height this want would lay out to -- the bands only, without the
@@ -1892,15 +1553,71 @@ public:
     // reader of the theme's box terms, and a caller summing those terms itself is a
     // second spelling of them.
     float planBodyHeight(const ScaledDimensions& dim, const PanelWant& want) const;
-private:
-    // The eleven theme terms + switches for THIS panel, resolved: a set box key
-    // wins, else the legacy scalar/sentinel chain (frameBorder, cardBorder,
-    // titleBorder(), buttonBorder, panelPadding*Override, sectionGap). The ONLY
-    // reader of ThemeAsset's box terms.
-    PanelBox::Spec resolvePanelSpec(const ScaledDimensions& dim,
-                                    const PanelWant& want) const;
     // ==== end box-model plan ================================
 protected:
+    // A ring or ring-slice as a fan of quads. Shared by every HUD that draws one;
+    // see the definition for why the angles are rotated rather than recomputed.
+    void addArcSegment(float centerX, float centerY, float innerRadius, float outerRadius,
+                       float startAngleRad, float endAngleRad, unsigned long color,
+                       int numSegments);
+
+    void addDot(float x, float y, unsigned long color, float size);
+    // Centered, aspect-corrected icon sprite (like addDot, but textured). size is
+    // the height in normalized units; the sprite is tinted by color.
+    void addIcon(float x, float y, int spriteIndex, unsigned long color, float size);
+    void addLineSegment(float x1, float y1, float x2, float y2, unsigned long color, float thickness);
+    void addHorizontalGridLine(float x, float y, float width, unsigned long color, float thickness);
+    static void setQuadPositions(SPluginQuad_t& quad, float x, float y, float width, float height);
+
+    // Right-pointing triangle in the same box setQuadPositions would fill: the two
+    // right-hand vertices collapse onto a single tip at the vertical middle. The
+    // draw primitive is four arbitrary corners (m_aafPos[4][2]), not a rect, so a
+    // degenerate edge is a legal quad -- addNeedleQuad already relies on that.
+    //
+    // Used for the standings brand indicator, which real broadcast graphics draw as
+    // an arrow rather than a bar.
+    static void setQuadPositionsArrowRight(SPluginQuad_t& quad, float x, float y,
+                                           float width, float height);
+
+    // The same rect setQuadPositions() would fill, with the SPRITE turned 90
+    // degrees clockwise inside it -- an up-caret comes out pointing right.
+    //
+    // Done by cycling which rect corner each vertex takes, not by swapping a pair:
+    // a swap mirrors, mirroring reverses the winding, and the engine back-face-culls
+    // a non-CCW quad so the sprite silently never draws. Same trap the pos-gain
+    // caret's 180-degree case documents (it negates both axes rather than flipping).
+    //
+    // For callers that need an arbitrary angle rather than a right angle, use
+    // addRotatedSpriteQuad() -- it rotates in uniform space and aspect-corrects
+    // after, which is what a map marker needs. This one preserves the caller's rect
+    // exactly, which is what a sprite replacing a hand-built quad needs.
+    static void setQuadPositionsRotatedCW(SPluginQuad_t& quad, float x, float y,
+                                          float width, float height);
+
+    // Add a gauge needle (trapezoid: flat tip, wider base) pointing outward at angleRad.
+    // Shared by SpeedoWidget and TachoWidget.
+    void addNeedleQuad(float centerX, float centerY, float angleRad,
+                       float needleLength, float needleWidth, unsigned long color);
+
+    // Add a square sprite quad centered on (screenX, screenY), rotated by the
+    // given yaw in UNIFORM (square) space and aspect-corrected on X only after
+    // rotation, then translated by the HUD offset. Shared by RadarHud and
+    // MapHud rider markers; pass cos=1/sin=0 for non-directional icons.
+    void addRotatedSpriteQuad(float screenX, float screenY, float halfSize,
+                              float cosYaw, float sinYaw, int spriteIndex,
+                              unsigned long color);
+
+    // Temperature color gradient: blue (cold) -> green (optimal) -> yellow -> red (hot).
+    // Shared by BarsWidget and TyreTempWidget. optTemp is the optimal/midpoint temperature.
+    static unsigned long calculateTemperatureColor(float temp, float optTemp,
+                                                   float alarmLow, float alarmHigh);
+
+    // Helper to update background quad position during rebuildLayout (reduces duplication)
+    void updateBackgroundQuadPosition(float startX, float startY, float width, float height);
+
+    // Expand quad dimensions to match background texture aspect ratio (prevents stretching)
+    void applyTextureAspectCorrection(float& x, float& y, float& width, float& height) const;
+
     ScaledDimensions getScaledDimensions() const;
 
     // A DEFAULT POSITION, stated in grid cells.
@@ -1922,11 +1639,14 @@ protected:
     static float labelRowYOffset(const ScaledDimensions& dim) {
         return (dim.lineHeightNormal - dim.lineHeightSmall) * 0.5f;
     }
-    // Render a header/row label: Small font size, vertically centered in the row at rowY.
-    // Keeps labels visually distinct from the full-size data values beside them.
-    void addLabel(const char* text, float x, float rowY, int justify, int fontIndex,
+    // Render a header/row label: the STRONG font at Small size, vertically centered in
+    // the row at rowY. Keeps labels visually distinct from the full-size data values
+    // beside them. The face is fixed here, like addSectionHeading's, so a label cannot
+    // drift to another font category at a call site.
+    void addLabel(const char* text, float x, float rowY, int justify,
                   unsigned long color, const ScaledDimensions& dim) {
-        addString(text, x, rowY + labelRowYOffset(dim), justify, fontIndex, color, dim.fontSizeSmall);
+        addString(text, x, rowY + labelRowYOffset(dim), justify, getFont(FontCategory::STRONG),
+                  color, dim.fontSizeSmall);
     }
 
     // ========================================================================
@@ -1961,6 +1681,34 @@ protected:
     // Row height a section heading occupies. Its own function so a HUD reserving space
     // and a HUD advancing past one cannot disagree.
     static float sectionHeadingRowHeight(const ScaledDimensions& dim) { return dim.lineHeightNormal; }
+
+    // ========================================================================
+    // Blocked-state notice
+    // ========================================================================
+    // A panel whose feature cannot work right now -- no controller, an integration
+    // switched off -- keeps its normal footprint and REPLACES its content with a
+    // headline over a hint: the headline centred on (centerX, centerY) at full size,
+    // the hint a row below it at 0.8x in MUTED, naming where the fix is. The panel
+    // stays the size it will be once the feature works, so a player positioning it
+    // is positioning the real thing.
+    //
+    // ONE SHAPE for every HUD with such a state (Gamepad, Friends, Rumble; Stream
+    // Chat draws the same offsets with one headline per platform), so a player learns
+    // it once. NEGATIVE for something the player has to fix, MUTED for a state that is
+    // simply empty. `hint` may be null.
+    void addBlockedNotice(float centerX, float centerY, float lineH, float fontSize,
+                          const char* headline, ColorSlot headlineSlot, const char* hint) {
+        // Minus addString's own row centring, which compounds with this explicit one.
+        addString(headline, centerX, centerY - lineH * 0.5f - rowCenterOffset(fontSize),
+                  PluginConstants::Justify::CENTER, getFont(FontCategory::NORMAL),
+                  getColor(headlineSlot), fontSize);
+        if (hint) {
+            const float hintSize = fontSize * 0.8f;
+            addString(hint, centerX, centerY + lineH * 0.5f - rowCenterOffset(hintSize),
+                      PluginConstants::Justify::CENTER, getFont(FontCategory::NORMAL),
+                      getColor(ColorSlot::MUTED), hintSize);
+        }
+    }
 
     // ========================================================================
     // History Strip Charts (Telemetry / Performance / Rumble HUDs)
@@ -2046,6 +1794,9 @@ protected:
     unsigned long getColor(ColorSlot slot) const;
     int getFont(FontCategory category) const;
 
+    // A signed time delta's colour (see deltaColorSlot): ahead, behind, even.
+    unsigned long deltaColor(int deltaMs) const { return getColor(deltaColorSlot(deltaMs)); }
+
     // The legible glyph colour to draw ON a coloured chip (a button, a badge).
     //
     // Picks the palette's LIGHT or DARK end by the chip's own luma, rather than
@@ -2121,7 +1872,6 @@ public:
     std::vector<SPluginQuad_t> m_quads;
     std::vector<SPluginString_t> m_strings;
     std::vector<bool> m_stringSkipShadow;  // Parallel to m_strings: true = skip drop shadow for this string
-    std::vector<HudStringConfig> m_styledStringConfigs;  // Storage for styled string configurations
     float m_fScale;
 
     // Title icon tracking (set by addPlanTitle). The icon is a quad whose position is
@@ -2226,6 +1976,29 @@ public:
     int m_benchmarkIndex;
 
 private:
+    // Remember (or update -- reserve-then-rewrite lands on the same first quad
+    // twice) a card's rect as a cover for finalizeThemedFill. PRE-offset, like
+    // the coords its callers take.
+    void recordCardCover(int firstQuad, float x, float y, float width, float height);
+    // Shared emitter for both slice sets; useCard picks the quieter card set.
+    void emitThemedSlices(const ThemeAsset& theme, float x, float y,
+                          float width, float height, int firstIndex, bool useCard);
+    // BAND is INNER's sprites at `[card] band-size` rather than `[card] size` -- one
+    // art set, two scales. It is a member of this enum and not a bool beside it so
+    // that every emit names its set once, at the call, and cannot pick the box from
+    // one and the corner from the other.
+    enum class SliceSet { OUTER, INNER, BAND, BUTTON };
+    void emitThemedSliceSet(const ThemeAsset& theme, float x, float y,
+                            float width, float height, int firstIndex,
+                            SliceSet set, unsigned long colorOverride);
+
+    // The eleven theme terms + switches for THIS panel, resolved: a set box key
+    // wins, else the legacy scalar/sentinel chain (frameBorder, cardBorder,
+    // titleBorder(), buttonBorder, panelPadding*Override, sectionGap). The ONLY
+    // reader of ThemeAsset's box terms.
+    PanelBox::Spec resolvePanelSpec(const ScaledDimensions& dim,
+                                    const PanelWant& want) const;
+
     // Atomic for the same cross-thread reason as m_bVisible (see comment
     // there). Note setDataDirty() writes BOTH flags, so the background
     // callers that mark HUDs dirty reach m_bLayoutDirty too.

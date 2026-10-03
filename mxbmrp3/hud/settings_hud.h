@@ -182,10 +182,6 @@ public:
             BACKGROUND_OPACITY_DOWN,   // Decrease background opacity
             SCALE_UP,                  // Increase scale
             SCALE_DOWN,                // Decrease scale
-            ROW_COUNT_UP,              // Increase row count (StandingsHud)
-            ROW_COUNT_DOWN,            // Decrease row count (StandingsHud)
-            STANDINGS_TOP_COUNT_UP,    // Increase pinned top-N positions (StandingsHud)
-            STANDINGS_TOP_COUNT_DOWN,  // Decrease pinned top-N positions (StandingsHud)
             LAP_LOG_GAP_ROW_TOGGLE,    // Toggle gap row display (LapLogHud)
             LAP_LOG_HEADERS_TOGGLE,    // Toggle column-header row (LapLogHud)
             FRIENDS_HEADERS_TOGGLE,    // Toggle column-header row (FriendsHud)
@@ -399,6 +395,11 @@ public:
             PROBE_SWEEP,               // Developer: run the render-probe sweep
             OPEN_LINK_OVERLAY,         // Open the live web overlay in a browser
             DIRECT_GL_TOGGLE,          // "Direct GL Rendering" toggle (General tab)
+            OPEN_LINK_GITHUB,          // Open the GitHub repository (About page)
+            TWITCH_CHANNEL_EDIT,       // Stream Chat tab: start/commit typing the Twitch channel name
+            TWITCH_ENABLED_TOGGLE,     // Stream Chat tab: the Twitch connection on/off (its Status row)
+            YOUTUBE_CHANNEL_EDIT,      // Stream Chat tab: start/commit typing the YouTube channel
+            YOUTUBE_ENABLED_TOGGLE,    // Stream Chat tab: the YouTube connection on/off (its Status row)
 
             // Sentinel, always last. settings_layout_test.cpp's golden encodes
             // region types as raw ORDINALS, and this enum is unnumbered and
@@ -637,6 +638,7 @@ public:
     static BaseHud* renderTabStats(SettingsLayoutContext& ctx);
     static BaseHud* renderTabEventLog(SettingsLayoutContext& ctx);
     static BaseHud* renderTabDirector(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabStreamChat(SettingsLayoutContext& ctx);
     static BaseHud* renderTabSpotter(SettingsLayoutContext& ctx);
     // The About page. Hidden from the tab list; opened by the footer's About button.
     static BaseHud* renderTabAbout(SettingsLayoutContext& ctx);
@@ -652,6 +654,7 @@ public:
     bool handleClickTabHelmet(const ClickRegion& region);
     bool handleClickTabAppearance(const ClickRegion& region);
     bool handleClickTabGeneral(const ClickRegion& region);
+    bool handleLinkClick(const ClickRegion& region);   // settings/settings_links.cpp; every tab's link rows
     bool handleClickTabFriends(const ClickRegion& region);
     bool handleClickTabHotkeys(const ClickRegion& region);
     bool handleClickTabRiders(const ClickRegion& region);
@@ -676,6 +679,7 @@ public:
     bool handleClickTabSpotter(const ClickRegion& region);
     bool handleClickTabFmx(const ClickRegion& region);
     bool handleClickTabAchievements(const ClickRegion& region);
+    bool handleClickTabStreamChat(const ClickRegion& region);
     bool handleClickTabStats(const ClickRegion& region);
     bool handleClickTabEventLog(const ClickRegion& region);
     // (Notices has no tab-specific click handler: its Duration control is a
@@ -801,23 +805,15 @@ public:
     // calling the free function directly would let the persistence case pass while
     // dismissals never reach disk.
     void testHoverDismissRow(const char* tooltipId) { dismissMarkedRow(tooltipId); }
+    void testHoverDismissTab(int tabIndex) { dismissMarkedTab(tabIndex); }
     // The footer's About button, through dispatchRegion -- the same path a real
     // click takes, so the tab change AND the easter-egg counter both run. A test
     // that set m_activeTab directly would prove neither.
-    // The About button's own click region, so a test measures the geometry the panel
-    // actually built. Returns false when the footer has not been drawn yet.
-    bool testAboutButtonRect(int* l, int* t, int* r, int* b) const {
-        for (const ClickRegion& reg : m_clickRegions) {
-            if (reg.type != ClickRegion::VERSION_CLICK) continue;
-            auto q = [](float v) { return static_cast<int>(v * 1e6f + (v < 0 ? -0.5f : 0.5f)); };
-            if (l) *l = q(reg.x);
-            if (t) *t = q(reg.y);
-            if (r) *r = q(reg.x + reg.width);
-            if (b) *b = q(reg.y + reg.height);
-            return true;
-        }
-        return false;
-    }
+    // The About button's own click region (defined beside the footer that builds it).
+    bool testAboutButtonRect(int* l, int* t, int* r, int* b) const;
+    // Min/max right edge (x * 1e6) of the active tab's ROW closing arrows
+    // (CYCLE_UP/STEPPED_UP); returns the count. Defined in settings_layout.cpp.
+    int testClosingArrowRightX(int* minRight, int* maxRight) const;
     void testClickAbout() {
         ClickRegion r;
         r.type = ClickRegion::VERSION_CLICK;
@@ -925,6 +921,7 @@ private:
     // Dismiss a hovered row's what's-new band + mark dirty. See the definition for
     // why the two must not be separable.
     void dismissMarkedRow(const char* tooltipId);
+    void dismissMarkedTab(int tabIndex);
 
     // The tallest tab's content height in rows, measured by laying every tab out.
     // Cached; -1 means "not measured". See the definition for why it is measured
@@ -988,6 +985,9 @@ private:
         }
     };
     TallestKey m_tallestKey;
+    // The tab the overflow warning last fired for, so a tab that overruns warns once
+    // instead of on every rebuild (the panel rebuilds per frame while open). -1 = none.
+    int m_overflowWarnedTab = -1;
 public:
     // Drop the measurement. Called from show(), for the one input the key cannot
     // see: LIVE DATA moved while the menu was closed (the Riders tab lists session
@@ -1054,6 +1054,16 @@ private:
     void buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan,
                      const PanelBox::ColumnGeom& col, float tabStartX,
                      float tabWidth, float checkboxWidth);
+    // rebuildRenderData() sections; the footer row is settings_hud_footer.cpp.
+    PanelPlan& planSettingsPanel(const ScaledDimensions& dim, float& sidebarAsk, float& contentAsk, float& labelToControl, float& labelToRight);
+    float renderActiveTab(SettingsLayoutContext& layoutCtx, const PanelPlan& plan, const PanelBox::ColumnGeom& mainCol, const ScaledDimensions& dim, float currentY);
+    void addWhatsNewRowBands(const PanelPlan& plan, const PanelBox::ColumnGeom& mainCol);
+    void checkTabOverflow(const PanelPlan& plan, const PanelBox::ColumnGeom& mainCol, const ScaledDimensions& dim, float currentY);
+    void addHoveredRowHighlight(const PanelPlan& plan, const PanelBox::ColumnGeom& mainCol);
+    void renderTooltipText(const SettingsLayoutContext& layoutCtx, const ScaledDimensions& dim);
+    void buildFooterButtons(const ScaledDimensions& dim, const PanelPlan& plan, const PanelBox::ColumnGeom& sideCol, const PanelBox::ColumnGeom& mainCol, float startX, float panelWidth);
+    void addResetTabButton(const ScaledDimensions& dim, const PanelPlan& plan, const PanelBox::ColumnGeom& sideCol, const PlanButtonTerms& bt, float buttonRowY, float buttonBoxH);
+    void addAboutButton(const ScaledDimensions& dim, const PanelPlan& plan, const PanelBox::ColumnGeom& mainCol, const PlanButtonTerms& bt, float buttonRowY, float buttonBoxH);
     bool drawTabIcon(float x, float y, const char* iconName, unsigned long color,
                      const ScaledDimensions& dim, float checkboxWidth);
     // `onBand` = this row is the SELECTED tab, so the icon is drawn over the accent
@@ -1191,6 +1201,7 @@ private:
     void resetTabDirector();
     void resetTabSpotter();
     void resetTabAchievements();
+    void resetTabStreamChat();
 
     // Check if point is inside a clickable region
     bool isPointInRect(float x, float y, float rectX, float rectY, float width, float height) const;
@@ -1279,6 +1290,14 @@ private:
     // Cache actual pixel dimensions for resize detection
     int m_cachedWindowWidth;
     int m_cachedWindowHeight;
+    int m_cachedTwitchStatus = -1;   // Stream Chat tab: last Twitch status drawn (live refresh)
+    int m_cachedYouTubeStatus = -1;  // Stream Chat tab: last YouTube status drawn (live refresh)
+    // Which text field the running TEXT capture belongs to: the commit in
+    // update() sends the typed text to that field's channel.
+    enum class TextField : uint8_t { NONE, TWITCH_CHANNEL, YOUTUBE_CHANNEL };
+    TextField m_textField = TextField::NONE;
+    std::string m_shownCaptureText;  // the text field at its last rebuild (rebuilt only on an edit)
+    size_t m_shownCaptureCursor = 0;
 
 #if GAME_HAS_DISCORD
     // Discord state cache for live status updates
@@ -1325,7 +1344,8 @@ public:
         TAB_SPOTTER = 27,      // Spotter (audio callouts + subtitles)
         TAB_ABOUT = 28,        // About (hidden from the tab list; opened from the footer)
         TAB_ACHIEVEMENTS = 29, // Achievements (global: lifetime numbers as tiered progress)
-        TAB_COUNT = 30
+        TAB_STREAM_CHAT = 30,       // "Stream Chat": (global: Twitch + YouTube channels, the chat HUD)
+        TAB_COUNT = 31
     };
 private:
     int m_activeTab;
@@ -1443,6 +1463,7 @@ private:
     }
 
 #if defined(MXBMRP3_TEST_BUILD)
+    void recordTestAnchors(const PanelPlan& plan, const PanelBox::ColumnGeom& sideCol, const PanelBox::ColumnGeom& mainCol, float leftColumnX, float controlX, const SettingsLayoutContext& layoutCtx);
     // See testColumnEdgesX().
     float m_testColumnLeftX = 0.0f;
     float m_testColumnRightX = 0.0f;

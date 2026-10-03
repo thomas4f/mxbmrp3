@@ -19,7 +19,6 @@
 // re-arms it by itself, and kept apart from the SKIP-version state so that
 // reading about an update never silently skips it.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

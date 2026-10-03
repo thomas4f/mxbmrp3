@@ -336,7 +336,7 @@ void SpotterManager::onRaceEvent(EventLogType type, int raceNum,
 }
 
 void SpotterManager::onRaceLapCompleted(int raceNum, int completedLaps,
-                                        int lapTimeMs, bool lapValid) {
+                                        int lapTimeMs, bool lapValid, bool pitLap) {
     if (!m_enabled && !m_subtitles) return;
     // Closes the lap-quality ladder armed by onPersonalBest / onSessionBest:
     // this runs last of the three calls one crossing makes, so the latch never
@@ -483,6 +483,7 @@ void SpotterManager::onRaceLapCompleted(int raceNum, int completedLaps,
     m_pendingLap.nowMs = nowMs;
     m_pendingLap.vars = lapVars;
     m_pendingLap.lapValid = lapValid;
+    m_pendingLap.pitLap = pitLap;
     m_pendingLap.timeAlreadySpoken = lapTimeAlreadySpoken;
 
     if (!wantPace) return;
@@ -971,7 +972,8 @@ void SpotterManager::flushDeferredCues() {
     // back, so the optional groups drop and the dedicated gap cues -- which
     // resolve moments later with the real number -- stand alone.
     m_lapReportFreshGapsOnly = true;
-    if (!m_pendingLap.lapValid) {
+    // Not for a pit lap: the rider knows why that one did not count.
+    if (!m_pendingLap.lapValid && !m_pendingLap.pitLap) {
         SpotterVars::Vars v = m_pendingLap.vars;
         emitCue("lap_invalidated", SpotterPhrase::Category::Timing, std::move(v), nowMs);
     }

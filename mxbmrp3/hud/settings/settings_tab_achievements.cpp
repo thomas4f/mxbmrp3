@@ -154,67 +154,25 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
     char buf[64];
 
     // === TOASTS: the card's own rows ===
-    // Cell geometry: "< value >" with a 7-character value, in the control column.
-    constexpr int CELL_VALUE_CHARS = 7;
-    const float colX = ctx.labelX + PluginUtils::calculateMonospaceTextWidth(11, ctx.fontSize);
-
+    // Built from the standard row helpers, at the control column with the standard
+    // value width, so the arrows line up with every other tab's Appearance rows.
     ctx.addSectionHeading("Toasts");
 
-    // One row: its label and a row-wide tooltip region.
-    auto beginRow = [&](const char* label, const char* tooltipId) {
-        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            ctx.labelX, ctx.currentY, ctx.rowSpanWidth(), ctx.lineHeightNormal, tooltipId));
-        ctx.parent->addString(label, ctx.labelX, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), colors.getSecondary(), ctx.fontSize);
-    };
-    // "< value >" with two arrow regions of the given types, like addWidgetRow's
-    // inline cycle. Returns the index of the first region pushed (the down arrow)
-    // so a data-driven caller can stamp its descriptor index onto both.
-    auto addCell = [&](const char* value,
-                       SettingsHud::ClickRegion::Type downType,
-                       SettingsHud::ClickRegion::Type upType,
-                       BaseHud* target, bool enabled, bool isOff) -> size_t {
-        const size_t first = ctx.parent->m_clickRegions.size();
-        float cx = colX;
-        const unsigned long valueColor = (enabled && !isOff) ? colors.getPrimary() : colors.getMuted();
-        if (enabled) {
-            ctx.parent->addString("<", cx, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                cx, ctx.currentY, cw * 2, ctx.lineHeightNormal, downType, target, 0, false, 0));
-        }
-        cx += cw * 2;
-        const std::string formatted = SettingsLayoutContext::formatValue(value, CELL_VALUE_CHARS, false);
-        ctx.parent->addString(formatted.c_str(), cx, ctx.currentY, Justify::LEFT,
-            Fonts::getNormal(), valueColor, ctx.fontSize);
-        cx += PluginUtils::calculateMonospaceTextWidth(CELL_VALUE_CHARS, ctx.fontSize);
-        if (enabled) {
-            ctx.parent->addString(" >", cx, ctx.currentY, Justify::LEFT,
-                Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                cx, ctx.currentY, cw * 2, ctx.lineHeightNormal, upType, target, 0, false, 0));
-        }
-        return first;
-    };
-    auto addToggleCell = [&](bool on, SettingsHud::ClickRegion::Type type, BaseHud* target, bool enabled) {
-        addCell(on ? "On" : "Off", type, type, target, enabled, !on);
-    };
     // Every row but Visible greys out with the toasts off: live arrows under an
     // Off switch read as a control that does nothing.
 
     // Visible: the toast master (common handler, shared with the tab-list checkbox).
-    beginRow("Visible", "achievements.toasts");
-    addToggleCell(toastsOn, SettingsHud::ClickRegion::ACHIEVEMENTS_TOASTS_TOGGLE, nullptr, true);
-    ctx.nextLine();
+    ctx.addToggleControl("Visible", toastsOn,
+        SettingsHud::ClickRegion::ACHIEVEMENTS_TOASTS_TOGGLE, nullptr, nullptr, 0, true,
+        "achievements.toasts");
 
-    beginRow("Title", "common.title");
-    if (widget) addToggleCell(widget->getShowTitle(), SettingsHud::ClickRegion::TITLE_TOGGLE, widget, toastsOn);
-    ctx.nextLine();
-
-    // Texture: the same rule addWidgetRow applies -- a HUD with texture variants
-    // cycles them, everything else cycles its panel theme.
-    beginRow("Texture", "common.texture");
     if (widget) {
+        ctx.addToggleControl("Title", widget->getShowTitle(),
+            SettingsHud::ClickRegion::TITLE_TOGGLE, widget, nullptr, 0, toastsOn, "common.title");
+
+        // Texture or Theme: the rule addStandardHudControls applies -- a HUD with
+        // texture variants cycles them, everything else cycles its panel theme
+        // under the "Theme" label and tooltip.
         const bool hasTextures = !widget->getAvailableTextureVariants().empty();
         if (!hasTextures && AssetManager::getInstance().getThemeCount() > 0) {
             const std::string& ov = widget->getThemeOverride();
@@ -226,54 +184,39 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
                     themeValue = t->displayName;
                 }
             }
-            addCell(themeValue.c_str(), SettingsHud::ClickRegion::HUD_THEME_DOWN,
-                    SettingsHud::ClickRegion::HUD_THEME_UP, widget, toastsOn, false);
+            ctx.addCycleControl("Theme", themeValue.c_str(),
+                SettingsHud::ClickRegion::HUD_THEME_DOWN, SettingsHud::ClickRegion::HUD_THEME_UP,
+                widget, toastsOn, false, "common.theme");
         } else {
             char texValue[8];
             const int variant = widget->getTextureVariant();
             snprintf(texValue, sizeof(texValue), (!hasTextures || variant == 0) ? "Off" : "%d", variant);
-            addCell(texValue, SettingsHud::ClickRegion::TEXTURE_VARIANT_DOWN,
-                    SettingsHud::ClickRegion::TEXTURE_VARIANT_UP, widget, toastsOn && hasTextures,
-                    !hasTextures || variant == 0);
+            ctx.addCycleControl("Texture", texValue,
+                SettingsHud::ClickRegion::TEXTURE_VARIANT_DOWN,
+                SettingsHud::ClickRegion::TEXTURE_VARIANT_UP,
+                widget, toastsOn && hasTextures, !hasTextures || variant == 0, "common.texture");
         }
-    }
-    ctx.nextLine();
 
-    beginRow("Opacity", "common.opacity");
-    if (widget) {
         snprintf(buf, sizeof(buf), "%d%%", static_cast<int>(widget->getBackgroundOpacity() * 100.0f + 0.5f));
-        addCell(buf, SettingsHud::ClickRegion::BACKGROUND_OPACITY_DOWN,
-                SettingsHud::ClickRegion::BACKGROUND_OPACITY_UP, widget, toastsOn, false);
-    }
-    ctx.nextLine();
+        ctx.addCycleControl("Opacity", buf,
+            SettingsHud::ClickRegion::BACKGROUND_OPACITY_DOWN,
+            SettingsHud::ClickRegion::BACKGROUND_OPACITY_UP,
+            widget, toastsOn, false, "common.opacity");
 
-    beginRow("Scale", "common.scale");
-    if (widget) {
         snprintf(buf, sizeof(buf), "%d%%", static_cast<int>(widget->getScale() * 100.0f + 0.5f));
-        addCell(buf, SettingsHud::ClickRegion::SCALE_DOWN,
-                SettingsHud::ClickRegion::SCALE_UP, widget, toastsOn, false);
+        ctx.addCycleControl("Scale", buf,
+            SettingsHud::ClickRegion::SCALE_DOWN, SettingsHud::ClickRegion::SCALE_UP,
+            widget, toastsOn, false, "common.scale");
     }
-    ctx.nextLine();
 
-    // Duration: a data-driven stepped control in a cell: register the
-    // descriptor as addSteppedControl does, then stamp its index on the two
-    // arrow regions the cell pushed.
-    beginRow("Duration", "achievements.toast_duration");
-    {
-        auto sc = SettingsHud::SteppedControl::clampInt(
+    // Duration: the manager's own value, a data-driven stepped control.
+    snprintf(buf, sizeof(buf), "%ds", ach.getToastDurationMs() / 1000);
+    ctx.addSteppedControl("Duration", buf,
+        SettingsHud::SteppedControl::clampInt(
             ach.toastDurationMsPtr(), AchievementManager::TOAST_DURATION_STEP_MS,
             AchievementManager::MIN_TOAST_DURATION_MS, AchievementManager::MAX_TOAST_DURATION_MS,
-            widget);
-        const int steppedIndex = static_cast<int>(ctx.parent->m_steppedControls.size());
-        ctx.parent->m_steppedControls.push_back(sc);
-        snprintf(buf, sizeof(buf), "%ds", ach.getToastDurationMs() / 1000);
-        const size_t first = addCell(buf, SettingsHud::ClickRegion::STEPPED_DOWN,
-                                     SettingsHud::ClickRegion::STEPPED_UP, nullptr, toastsOn, false);
-        for (size_t r = first; r < ctx.parent->m_clickRegions.size(); ++r) {
-            ctx.parent->m_clickRegions[r].steppedIndex = steppedIndex;
-        }
-    }
-    ctx.nextLine();
+            widget),
+        nullptr, toastsOn, false, "achievements.toast_duration", /*tooltipOnArrows=*/false);
 
     // === ENTRY GEOMETRY, shared by the summary block and the list ===
     const bool useIcons = UiConfig::getInstance().getTitleIcons();

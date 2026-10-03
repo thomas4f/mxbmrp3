@@ -13,17 +13,31 @@ capstone>=5.0.9
 #   - cairosvg: the ONLY SVG renderer icon_gen.py uses. The version is pinned
 #               EXACTLY because the .tga output is byte-deterministic only for a
 #               fixed renderer version (edge anti-aliasing differs between
-#               releases). 2.9.0 is the version that produced the current
-#               byte-identical mxbmrp3_data/icons/*.tga; do not bump it without
-#               regenerating (and reviewing) the whole set. (rsvg-convert/system
-#               librsvg is deliberately unsupported - not pip-pinnable. See
-#               assets/icons/README.md.)
+#               releases). The pin below is the version that produced the
+#               current byte-identical mxbmrp3_data/icons/*.tga. ENFORCED by the
+#               `icon-repro` gate (tests/integration/check_icon_reproducibility.sh):
+#               a bump that moves any pixel turns it red, and the fix is to
+#               regenerate the whole set in that same PR and review the diff.
+#               That pin is the ONLY place the number appears: a bump edits it
+#               and nothing else, so a copy in prose would silently drift.
+#               (rsvg-convert/system librsvg is deliberately unsupported - not
+#               pip-pinnable. See assets/icons/README.md.)
 Pillow>=12.3.0
-cairosvg==2.9.0
+cairosvg==2.9.1
 
 # tools/analytics_report.py (Aptabase export -> usage_survey/REPORT.md + SVG charts):
 #   - pyarrow: only needed for PARQUET exports; CSV exports need pandas alone.
 #   - pandas:  REQUIRED for the aggregations.
+#   - markdown-it-py: REQUIRED; renders REPORT.md into the interactive Pages
+#               copy, usage_survey/index.html (tools/analytics_page.py).
 #   The SVG charting (tools/analytics_svg.py) is pure-stdlib, no extra dep.
 pyarrow>=25.0.1
-pandas>=3.0.5
+pandas>=3.0.6
+markdown-it-py>=4.2.0
+
+# tools/fontgen/outlines2ttf.py (glyph outline sheet .ai/.pdf/.svg -> .ttf):
+#   - pymupdf:   reads the sheet as vector paths (Illustrator .ai is PDF).
+#   - fonttools: writes the TrueType font mxbmrp3_fontgen then rasterises.
+#   Both REQUIRED; the `outlines2ttf` gate SKIPs without them.
+pymupdf>=1.28.2
+fonttools>=4.66.0

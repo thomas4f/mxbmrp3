@@ -6,7 +6,6 @@
 // who's on screen). Assert the chip lands on the selected rider and moves when
 // the camera switches. Self-contained doctest; see run_tests.sh.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

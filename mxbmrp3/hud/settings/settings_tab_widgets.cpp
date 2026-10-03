@@ -135,7 +135,7 @@ BaseHud* SettingsHud::renderTabWidgets(SettingsLayoutContext& ctx) {
         }
     }
 
-    ctx.addNote("Tip: more options are available in mxbmrp3_settings.ini");
+    ctx.addNote("Tip: more options are available in mxbmrp3_settings.ini.");
 
     // No active HUD for multi-widget tab
     return nullptr;

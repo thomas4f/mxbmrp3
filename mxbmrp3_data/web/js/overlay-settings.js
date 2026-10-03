@@ -228,6 +228,9 @@ function buildSettingsUI() {
             }),
             "The positions gained/lost (+/-) column: Off hides it, or measure it over the current Sector, the current Lap, or the whole Race. Race sessions only.");
     })();
+    addRow(body, "Class", createToggle(CONFIG.showCategory, function (v) {
+        CONFIG.showCategory = v; applySettings();
+    }), "Show each rider's class (MX1, MX2 OEM...) between the name and the gap.");
     addRow(body, "Hide DNS", createToggle(CONFIG.hideDns, function (v) {
         CONFIG.hideDns = v; applySettings();
     }), "Hide riders who did not start from the standings.");

@@ -149,10 +149,6 @@ __declspec(dllexport) void MXBMRP3_Test_ExplorationTick(int spectating, int rumb
                                                    moving != 0, frames, overlayTotal);
 }
 
-__declspec(dllexport) void MXBMRP3_Test_StatsSave() {
-    StatsManager::getInstance().save();
-}
-
 // Set an exploration signal directly, by the JSON key it persists under, and
 // re-evaluate. The tier/toast/halfway machinery needs a FOUR-TIER row it can
 // step to an exact value, and the only cheap event hook (ConfigReloaded) now

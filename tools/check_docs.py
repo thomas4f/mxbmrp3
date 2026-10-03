@@ -27,11 +27,11 @@ describing the same suite in BOTH directions):
      test covers X?", so a test that isn't in it is invisible. Every test file on
      disk must appear.
 
-  4. REGROWTH - CLAUDE.md and ARCHITECTURE.md each have a byte budget; exceeding
-     one means compressing something or moving it next to the code it describes,
-     not raising the cap reflexively. (Raise it deliberately when the project
-     genuinely grows.) See DOC_BUDGETS for why the two budgets exist for
-     different reasons.
+  4. REGROWTH - CLAUDE.md, TESTING.md and ARCHITECTURE.md each have a byte
+     budget; exceeding one means compressing something or moving it next to the
+     code it describes, not raising the cap reflexively. (Raise it deliberately
+     when the project genuinely grows.) See DOC_BUDGETS for why the budgets
+     exist for different reasons.
 
 Pure stdlib, no network, runs in about a second. Usage:
 
@@ -56,6 +56,19 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #   paid on work that never touches the thing being described. That is what
 #   justifies a tight ceiling.
 #
+#   TESTING.md is read on demand like ARCHITECTURE.md, and had no budget at all
+#   until it was the largest doc in the tree at 172 KB — bigger than the two
+#   budgeted ones combined, which is exactly the shape the ratchet exists to
+#   prevent. Its catalogue is a CENSUS: one line per test so a reader can pick
+#   which file to open. Entries had grown into essays restating the test's own
+#   header — the mirroring CLAUDE.md forbids — so 98 of them were cut back to
+#   the claim they lead with, and the ceiling set just above the result. Size
+#   was the smaller half of that argument: a duplicated claim is the one that
+#   goes stale (this catalogue named `kShippedPacks` for a while after the code
+#   renamed it), and check_paths catches a renamed FILE but nothing catches a
+#   sentence that quietly stopped being true. What keeps the surviving copy
+#   worth having is check_test_headers.sh, not this ceiling.
+#
 #   ARCHITECTURE.md is read on demand, so it costs nothing until someone opens
 #   it. Its budget is not about context cost — it is about REGROWTH. This file
 #   is where prose that lost its argument elsewhere tends to settle, and a 100 KB
@@ -64,9 +77,20 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #   sentence that quietly stopped being true). The ceiling makes the next
 #   addition a choice rather than an accretion: something goes in, something
 #   comes out or moves next to its code.
+#   Raised once, 48,000 -> 49,500, for the "Keep the session cheap" section: the
+#   recurring cost that justifies the tight ceiling is exactly what those rules
+#   cut, and ~1.1 KB of them is repaid the first time one fires (two
+#   whole-object PR reads for one field were ~7k tokens on their own). That is
+#   the deliberate-decision case above, not a red build made green - the ratchet
+#   still bites on the next addition.
+#   Ratcheted DOWN 2026-10-03: all three sat within 0.1% of their ceilings, which
+#   pressures the next writer to trim a sentence to fit rather than say what is
+#   needed. Duplicated facts and mechanism detail mirrored from headers were cut
+#   (to 47.9 / 98.7 / 93.0 KB) and each ceiling reset to that size plus ~2%.
 DOC_BUDGETS = {
-    "CLAUDE.md": 48_000,
-    "ARCHITECTURE.md": 103_000,
+    "CLAUDE.md": 48_900,
+    "TESTING.md": 100_700,
+    "ARCHITECTURE.md": 94_900,
 }
 
 # EVERY tracked .md is checked -- the top-level docs and every sub-README -- minus
@@ -628,6 +652,40 @@ def check_readme_toc(failures):
             "read before the list.")
 
 
+def check_zip_readme_copies_readme(failures):
+    """The release zip's README.txt says what README.md says, in its words.
+
+    packaging/release_readme.txt is the one text a manual installer reads, and
+    it used to be its own rewording of the README's intro and install steps --
+    a second version of the same facts, free to drift from the first with
+    nothing to notice. It now COPIES them: the intro sentence and the whole
+    Manual Installation section. Everything else a reader might want is a link.
+
+    Compared after dropping markdown markup (links to their text, bold, code
+    spans and fences, whitespace), since a .txt opened in Notepad is better
+    without it; the words must match exactly.
+    """
+    def plain(text):
+        text = "\n".join(ln for ln in text.splitlines() if not ln.strip().startswith("```"))
+        text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+        return " ".join(text.replace("**", "").replace("`", "").split())
+
+    readme = open(os.path.join(REPO, "README.md"), encoding="utf-8").read()
+    zipped = open(os.path.join(REPO, "packaging", "release_readme.txt"), encoding="utf-8").read()
+    intro = next((ln for ln in readme.splitlines() if ln.startswith("A free, ")), None)
+    if intro is None or plain(intro) not in plain(zipped):
+        failures.append(
+            "packaging/release_readme.txt does not open with README.md's intro "
+            "sentence (the one starting \"A free, \"). Copy it across word for word.")
+    src = re.search(r"^### Manual Installation\n(.*?)(?=^##)", readme, re.S | re.M)
+    dst = re.search(r"^## Manual Installation\n(.*?)(?=^## )", zipped, re.S | re.M)
+    if not src or not dst or plain(src.group(1)) != plain(dst.group(1)):
+        failures.append(
+            "packaging/release_readme.txt's Manual Installation differs from "
+            "README.md's. Copy README.md's section across word for word (markdown "
+            "markup may be dropped), rather than rewording it.")
+
+
 def check_gate_tools_installable(failures):
     """Every binary a CTest gate requires must be installable via install_deps.sh.
 
@@ -1121,36 +1179,6 @@ def check_no_em_dashes(failures):
                     f"{line.strip()[:70]}")
 
 
-def check_tables_end_at_a_blank_line(failures):
-    """A markdown table must be followed by a blank line, not by more text.
-
-    GitHub renders a table that runs straight into an HTML comment; the
-    GitHub PAGES site does not, and that is where the public README is read.
-    Jekyll parses with kramdown, whose table needs the whole block to be rows -
-    the comment is part of that block with no blank line before it, so the
-    block is not a table, and it comes out as one paragraph of pipes with the
-    separator row's dashes typographed into em dashes. The settings-tab table
-    shipped that way in the public README (v1.29.3), correct on github.com and
-    broken on the docs site, which is why nobody caught it here.
-
-    A blank line is the whole fix, and it costs nothing on any renderer. This
-    is a text rule rather than a render check on purpose: kramdown is a Ruby
-    gem, and a gate nobody can run locally is a gate that gets bypassed.
-    """
-    for doc in tracked_docs_all():
-        lines = open(os.path.join(REPO, doc), encoding="utf-8").read().split("\n")
-        for i in range(len(lines) - 1):
-            row, after = lines[i], lines[i + 1]
-            if not row.startswith("|"):
-                continue
-            if after.strip() and not after.startswith("|"):
-                failures.append(
-                    f"{doc}:{i + 2} follows a table row with a non-row line, so "
-                    f"kramdown (GitHub Pages) renders the whole table as a "
-                    f"paragraph. Put a blank line after the last row: "
-                    f"{after.strip()[:60]}")
-
-
 def check_ci_runs_every_gate(failures):
     """Every gate script registered with CTest must also be invoked by CI.
 
@@ -1529,6 +1557,7 @@ def main():
     check_symbol_homes(failures)
     check_build_sharing_gates_are_locked(failures)
     check_readme_toc(failures)
+    check_zip_readme_copies_readme(failures)
     check_no_legacy_data_filenames(failures)
     check_legacy_redirect_stubs(failures)
     check_icon_svgs_carry_the_fill(failures)
@@ -1538,7 +1567,6 @@ def main():
     check_anchor_links(failures)
     check_readme_menu_tables(failures)
     check_no_em_dashes(failures)
-    check_tables_end_at_a_blank_line(failures)
     check_ci_runs_every_gate(failures)
     check_every_ci_script_is_a_gate(failures)
 
@@ -1556,7 +1584,7 @@ def main():
           f"named singletons exist, "
           f"symbols where docs say, build-sharing gates locked, gate tools installable, "
           f"shipped themes share one geometry, legacy redirects intact, "
-          f"icon SVGs tinted, generated docs noted alike, "
+          f"icon SVGs tinted, generated docs noted alike, zip readme copies the README, "
           f"CI and the gate list agree both "
           f"ways, {sizes} bytes.")
     return 0

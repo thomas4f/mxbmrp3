@@ -17,7 +17,6 @@
 //
 // The theme here is synthetic (no .tga files); see theme_geometry_test's header.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

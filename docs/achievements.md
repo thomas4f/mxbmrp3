@@ -112,13 +112,13 @@ A **Hidden** row does not appear in Settings > Achievements until it is earned, 
 
 | # | Id | Icon | Achievement | Bronze | Silver | Gold | Platinum |
 |--:|---|---|---|---|---|---|---|
-| 1 | `crashes` | <img src="../assets/icons/user-injured.svg" width="28" height="28" alt="" title="user-injured"> | Skill Issue | Crash 1,000 times | - | - | - |
+| 1 | `crashes` | <img src="../assets/icons/user-injured.svg" width="28" height="28" alt="" title="user-injured"> | Skill Issue | Crash 1,000 times in total | - | - | - |
 | 2 | `penalties` | <img src="../assets/icons/triangle-exclamation.svg" width="28" height="28" alt="" title="triangle-exclamation"> | Rule Bender | Collect 100 penalties (@Froxy) | - | - | - |
 | 3 | `penalty_time` | <img src="../assets/icons/hourglass.svg" width="28" height="28" alt="" title="hourglass"> | Time Served | Serve 10min of penalty time | - | - | - |
 | 4 | `so_close` | <img src="../assets/icons/poo.svg" width="28" height="28" alt="" title="poo"> | So Close | Lose a race by under a tenth | - | - | - |
-| 5 | `back_marker` | <img src="../assets/icons/road-barrier.svg" width="28" height="28" alt="" title="road-barrier"> | Back Marker | Finish a race three or more laps down | - | - | - |
+| 5 | `back_marker` | <img src="../assets/icons/road-barrier.svg" width="28" height="28" alt="" title="road-barrier"> | Back Marker | Finish a race at least a lap down | - | - | - |
 | 6 | `chain_lost` | <img src="../assets/icons/link-slash.svg" width="28" height="28" alt="" title="link-slash"> | Weakest Link | Crash out of a 2,500-point chain | - | - | - |
-| 7 | `ninety_nine` | <img src="../assets/icons/skull-crossbones.svg" width="28" height="28" alt="" title="skull-crossbones"> | 99 Problems | Crash 99 times in total (@TheRealSliX) | - | - | - |
+| 7 | `ninety_nine` | <img src="../assets/icons/skull-crossbones.svg" width="28" height="28" alt="" title="skull-crossbones"> | 99 Problems | Crash counter hits 99 (@TheRealSliX) | - | - | - |
 | 8 | `rage_quit` | <img src="../assets/icons/door-open.svg" width="28" height="28" alt="" title="door-open"> | Rage Quit | Retire from a race before the finish | - | - | - |
 | 9 | `bakers_dozen` | <img src="../assets/icons/bread-slice.svg" width="28" height="28" alt="" title="bread-slice"> | Baker's Dozen | Crash 13 times in one session | - | - | - |
 | 10 | `ran_dry` | <img src="../assets/icons/person-hiking.svg" width="28" height="28" alt="" title="person-hiking"> | Long Walk Home | Run out of fuel out on track | - | - | - |

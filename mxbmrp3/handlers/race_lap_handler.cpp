@@ -149,6 +149,9 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
     //   - Non-race (practice/warmup): invalid laps have lapTime=0, invalid is always false
     //   - Race: invalid laps have invalid=true but timing data is preserved
     bool isLapValid = (lapTime > 0) && !psRaceLap->invalid;
+    // Consumed for EVERY lap so a mark never outlives the lap it was made in; it
+    // means something only when the lap did not count (PluginData::markLapViaPits).
+    const bool pitLap = data.consumeLapViaPits(raceNum) && !isLapValid;
 
     // Convert accumulated split times to sector times per-sector.
     // Each sector is computed independently — a broken sector is zeroed out without
@@ -193,7 +196,7 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
     data.updateIdealLap(raceNum, completedLapNumZeroIndexed, lapTime, sector1, sector2, sector3, sector4, isLapValid);
 
     // Add completed lap to log (both valid and invalid laps)
-    // Invalid laps in non-race: show placeholders (no timing data)
+    // Invalid laps in non-race: no lap time (the crossed sectors are kept below)
     // Invalid laps in race: show muted times (timing data preserved)
     LapLogEntry completedLap(
         completedLapNumZeroIndexed,
@@ -205,6 +208,19 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
         isLapValid,
         true                        // isComplete
     );
+    completedLap.viaPits = pitLap;
+
+    // A lap without a time (a cut outside a race, a pit lap) still carries the
+    // splits the rider crossed before it ended: an in-game capture shows a pit lap
+    // reported as time 0 with split 1 intact. The Lap Log row keeps those sectors
+    // (muted, the lap being invalid) instead of blanking a lap the rider partly ran.
+    // The final sector needs the lap time, so it stays unknown. Lap log only: the
+    // ideal lap and the stats keep the game's verdict that the lap has no times.
+    if (lapTime <= 0) {
+        if (split1 > 0) completedLap.sector1 = split1;
+        if (split1 > 0 && split2 > split1) completedLap.sector2 = split2 - split1;
+        if (split1 > 0 && split2 > split1 && split3 > split2) completedLap.sector3 = split3 - split2;
+    }
 
     data.updateLapLog(raceNum, completedLap);
 
@@ -242,6 +258,10 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
 
     // If this was a new best lap, also store it separately for easy access
     // bestFlag: 1 = personal best, 2 = overall best (either way, update our personal best)
+    // The stats file's verdicts on the lap (player only), handed to the lap timer
+    // below: they decide which live-gap references the lap becomes.
+    bool isAllTimePB = false;
+    bool bikePbStored = false;
     if (psRaceLap->bestFlag > 0) {
         // Notify session/overall PB for the displayed rider (player or spectated)
         // Check BEFORE setBestLapEntry overwrites the previous best - we only want to
@@ -254,7 +274,6 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
         bool hadPreviousBest = (data.getBestLapEntry(raceNum) != nullptr);
         bool isDisplayRider = (raceNum == displayRaceNum && isLapValid && hadPreviousBest);
         bool isFastestLap = (psRaceLap->bestFlag == 2 && sessionData.isOnline());
-        bool isAllTimePB = false;
 
         // All-time PB tracking is player-only (we only store the local player's history)
         // Check this before firing session/fastest notifications so we can suppress them
@@ -279,6 +298,7 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
             const PersonalBestUpdate pbUpdate = StatsManager::getInstance().updatePersonalBest(
                 sessionData.trackId, sessionData.bikeName, pbEntry);
             isAllTimePB = pbUpdate.beatsScopedBest;
+            bikePbStored = pbUpdate.stored;
             // Sandbagger: a PB stored on the last lap of a race.
             if (pbUpdate.stored && data.isRaceSession() && sessionData.sessionNumLaps > 0 &&
                 completedLapNumZeroIndexed + 1 == sessionData.sessionNumLaps) {
@@ -355,7 +375,7 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
     // Before setCurrentLapNumber/resetLapTimerForNewLap below, which move the
     // rider on to the lap they are now starting.
     SpotterManager::getInstance().onRaceLapCompleted(
-        raceNum, psRaceLap->lapNum, lapTime, isLapValid);
+        raceNum, psRaceLap->lapNum, lapTime, isLapValid, pitLap);
 
     // Initialize tracking for the next lap (clears splits, sets lap number)
     // After completing lap N, we're now on lap N+1, but the API gives us N
@@ -364,5 +384,5 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
 
     // Reset centralized lap timer for new lap (start timing from 0)
     // lapNum is the new lap number we're starting
-    data.resetLapTimerForNewLap(raceNum, psRaceLap->lapNum);
+    data.resetLapTimerForNewLap(raceNum, psRaceLap->lapNum, isLapValid, bikePbStored, isAllTimePB);
 }

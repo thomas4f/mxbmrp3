@@ -52,6 +52,10 @@ public:
     // Steam status, the SessionHud and (via the broadcast key) the Friends HUD,
     // so the format never drifts between them.
     static void formatSessionFormat(int sessionLengthMs, int numLaps, char* buffer, size_t bufferSize);
+    // The same, with the laps spelled out ("10 laps", "8:00 + 1 lap") for text read
+    // as a sentence: the Event Log's session start and the overlay's event detail.
+    // "10L" suits a cell; in "Race 1 started: 10L" it reads as a code.
+    static void formatSessionFormatWords(int sessionLengthMs, int numLaps, char* buffer, size_t bufferSize);
 
     // Format lap time as "M:SS.mmm" (or "MM:SS.mmm" for times >= 10 minutes)
     // Compact mode (global setting): drops leading "0:" for times under 1 minute → "SS.mmm"
@@ -68,10 +72,6 @@ public:
     // Format gap as compact string: "+13.3" for <1min, "+1:13.3" for >=1min
     // Single decimal (tenths) for cleaner pitboard-style display
     static void formatGapCompact(char* buffer, size_t bufferSize, int diffMs);
-
-    // Format sector time as "SS.mmm" (for sectors under 1 minute)
-    // Used by RecordsHud for MXB-Ranked sector times
-    static void formatSectorTime(int sectorTimeMs, char* buffer, size_t bufferSize);
 
     // Format duration as "Xh XXm" for hours, "M:SS" for minutes, "0:00" for zero
     static void formatDuration(int64_t totalMs, char* buffer, size_t bufferSize);
@@ -132,10 +132,8 @@ public:
         for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
 
-    // Truncate a display string to maxChars visible code points, appending "..."
-    // when cut (the ellipsis is folded *into* the budget, so for maxChars > 3 the
-    // result never exceeds maxChars cells; for maxChars 1-3 a cut string is just
-    // "..." (3 cells), as no caller passes a budget that small). UTF-8 aware:
+    // Truncate a display string to maxChars visible code points -- a plain cut,
+    // no ellipsis (plugin_utils.cpp says why). UTF-8 aware:
     // counts code points and lands the cut on a char boundary. The shared
     // truncation used by the table HUDs (Records, Friends, Session, Standings) and
     // Discord presence so rider/server/track/bike names clip identically. Returns
@@ -144,6 +142,32 @@ public:
     // malformed input byte passes through), so a caller forwarding into a
     // UTF-8-validating sink must still guard that boundary.
     static std::string fitText(const std::string& s, int maxChars);
+
+    // fitText for a char buffer, cut in place (no allocation) -- for per-row
+    // callers on the rebuild path (StandingsHud's LONG name column). fitText
+    // itself delegates here, so the two cannot disagree. s[0..len) is the text and
+    // s[len] must be writable (a NUL terminator is written at the new end when it
+    // cuts). Returns the new length. Like fitText: text of <= maxChars code points
+    // is left untouched (stray continuation bytes included); otherwise stray
+    // continuation bytes are dropped and the first maxChars code points kept whole.
+    static size_t fitTextInPlace(char* s, size_t len, int maxChars) {
+        if (maxChars <= 0) { s[0] = '\0'; return 0; }
+        int cps = 0;
+        for (size_t i = 0; i < len; ++i) if ((static_cast<unsigned char>(s[i]) & 0xC0) != 0x80) ++cps;
+        if (cps <= maxChars) return len;
+        size_t w = 0;
+        int seen = 0;
+        for (size_t i = 0; i < len;) {
+            const unsigned char c = static_cast<unsigned char>(s[i]);
+            if ((c & 0xC0) == 0x80) { ++i; continue; }  // stray continuation byte
+            if (seen >= maxChars) break;
+            s[w++] = s[i++]; ++seen;
+            // Carry the trailing continuation bytes of this code point.
+            while (i < len && (static_cast<unsigned char>(s[i]) & 0xC0) == 0x80) s[w++] = s[i++];
+        }
+        s[w] = '\0';
+        return w;
+    }
 
     // Column position helper - used by standings and lap log HUDs
     // Sets target column position if flag is enabled, or -1.0 if disabled

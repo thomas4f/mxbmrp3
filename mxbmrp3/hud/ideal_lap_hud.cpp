@@ -29,7 +29,6 @@ IdealLapHud::IdealLapHud()
     : m_columns(START_X + layoutDefaults().panelPaddingX, m_fScale)
 {
     // One-time setup
-    DEBUG_INFO("IdealLapHud created");
     setDraggable(true);
     // Body card: this HUD draws a content BLOCK under its title, which is what the
     // themed card frames. Opt-in; see BaseHud::m_bContentCard.
@@ -92,7 +91,7 @@ void IdealLapHud::rebuildLayout() {
     }
     int rowCount = static_cast<int>((stringCount - 1) / 3);  // Subtract title, divide by 3 strings per row
 
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(BACKGROUND_WIDTH_CHARS, dim.fontSize);
     want.sectionH = { rowCount * dim.lineHeightNormal };
     want.captionW = planTitleWidth(dim, "Ideal Lap", TitleTier::Large);
@@ -160,7 +159,7 @@ void IdealLapHud::rebuildRenderData() {
     // BOX-MODEL: the plan owns width, height, chrome and the content origin.
     int enabledRows = getEnabledRowCount();
     auto dim = getScaledDimensions();
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(BACKGROUND_WIDTH_CHARS, dim.fontSize);
     want.sectionH = { enabledRows * dim.lineHeightNormal };
     want.captionW = planTitleWidth(dim, "Ideal Lap", TitleTier::Large);
@@ -168,7 +167,7 @@ void IdealLapHud::rebuildRenderData() {
     PanelPlan& plan = planPanel(dim, want);
     setBounds(START_X, START_Y, START_X + plan.width(), START_Y + plan.height());
     addPlanBackground(plan, START_X, START_Y);
-    addPlanTitle(plan, "Ideal Lap", this->getFont(FontCategory::TITLE),
+    addPlanTitle(plan, "Ideal Lap",
                  this->getColor(ColorSlot::PRIMARY));
 
     float contentStartX = plan.contentX();
@@ -224,14 +223,14 @@ void IdealLapHud::rebuildRenderData() {
         char diffStr[16];
 
         // Row label (left-aligned, like the other HUDs)
-        addLabel(label, m_columns.label, currentY, Justify::LEFT, this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim);
+        addLabel(label, m_columns.label, currentY, Justify::LEFT, this->getColor(ColorSlot::TERTIARY), dim);
 
         // Show ideal time or placeholder
         if (idealTimeMs > 0) {
             PluginUtils::formatLapTime(idealTimeMs, timeStr, sizeof(timeStr));
             addString(timeStr, timeRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
         } else {
-            strcpy_s(timeStr, sizeof(timeStr), Placeholders::LAP_TIME);
+            strcpy_s(timeStr, sizeof(timeStr), Placeholders::GENERIC);
             addString(timeStr, timeRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
         }
 
@@ -244,10 +243,7 @@ void IdealLapHud::rebuildRenderData() {
                 diff = currentTimeMs - previousBestMs;
             }
             PluginUtils::formatTimeDiff(diffStr, sizeof(diffStr), diff);
-            unsigned long diffColor = (diff <= 0)
-                ? this->getColor(ColorSlot::POSITIVE)   // On pace or faster (green)
-                : this->getColor(ColorSlot::NEGATIVE);  // Slower (red)
-            addString(diffStr, diffRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), diffColor, dim.fontSize);
+            addString(diffStr, diffRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), this->deltaColor(diff), dim.fontSize);
         } else {
             // No comparison available
             addString(Placeholders::GENERIC, diffRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
@@ -300,14 +296,14 @@ void IdealLapHud::rebuildRenderData() {
         char timeStr[16];
         char diffStr[16];
 
-        addLabel(label, m_columns.label, currentY, Justify::LEFT, this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim);
+        addLabel(label, m_columns.label, currentY, Justify::LEFT, this->getColor(ColorSlot::TERTIARY), dim);
 
         // Show actual lap time
         if (actualLapTime > 0) {
             PluginUtils::formatLapTime(actualLapTime, timeStr, sizeof(timeStr));
             addString(timeStr, timeRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
         } else {
-            strcpy_s(timeStr, sizeof(timeStr), Placeholders::LAP_TIME);
+            strcpy_s(timeStr, sizeof(timeStr), Placeholders::GENERIC);
             addString(timeStr, timeRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
         }
 
@@ -320,10 +316,7 @@ void IdealLapHud::rebuildRenderData() {
                 diff = actualLapTime - prevIdealTime;
             }
             PluginUtils::formatTimeDiff(diffStr, sizeof(diffStr), diff);
-            unsigned long diffColor = (diff <= 0)
-                ? this->getColor(ColorSlot::POSITIVE)   // On pace or faster (green)
-                : this->getColor(ColorSlot::NEGATIVE);  // Slower (red)
-            addString(diffStr, diffRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), diffColor, dim.fontSize);
+            addString(diffStr, diffRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), this->deltaColor(diff), dim.fontSize);
         } else {
             addString(Placeholders::GENERIC, diffRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
         }
@@ -345,13 +338,13 @@ void IdealLapHud::rebuildRenderData() {
     // Use a special version that doesn't show gap
     if (showLaps) {
         char timeStr[16];
-        addLabel("Ideal", m_columns.label, currentY, Justify::LEFT, this->getFont(FontCategory::STRONG), this->getColor(ColorSlot::TERTIARY), dim);
+        addLabel("Ideal", m_columns.label, currentY, Justify::LEFT, this->getColor(ColorSlot::TERTIARY), dim);
 
         if (idealLapTime > 0) {
             PluginUtils::formatLapTime(idealLapTime, timeStr, sizeof(timeStr));
             addString(timeStr, timeRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::POSITIVE), dim.fontSize);
         } else {
-            strcpy_s(timeStr, sizeof(timeStr), Placeholders::LAP_TIME);
+            strcpy_s(timeStr, sizeof(timeStr), Placeholders::GENERIC);
             addString(timeStr, timeRightX, currentY, Justify::RIGHT, this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::MUTED), dim.fontSize);
         }
         // No gap for ideal row

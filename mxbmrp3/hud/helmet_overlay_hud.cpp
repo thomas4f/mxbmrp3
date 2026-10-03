@@ -16,7 +16,6 @@ using namespace PluginConstants;
 HelmetOverlayHud::HelmetOverlayHud() {
     // No caption on this panel -- see BaseHud::m_titleSupported.
     disableTitle();
-    DEBUG_INFO("HelmetOverlayHud created");
 
     // The overlay is non-interactive: no dragging, no title, zero bounds.
     setDraggable(false);

@@ -34,6 +34,21 @@ void Handlers::handleRunInit(Unified::SessionData* psSessionData) {
     // Reset fuel tracking when entering track (rider may have refueled in pits)
     HudManager::getInstance().getFuelWidget().resetFuelTracking();
 
+    // The player is leaving the pits, so the lap that was in progress is dead:
+    // drop the live timer's anchor NOW. The classification's pit flag (1 -> 0)
+    // does this too, but it arrives a frame or more after RunStart, and the
+    // first track-position sample at the pit exit lands in between -- read
+    // against the dead lap's paused anchor at a position most of a lap on, it
+    // showed a gap to PB of -60 s for one frame (an in-game capture, 2026-09-17;
+    // pinned by pb_gap_test). The position baseline goes with it (rejoinedTrack):
+    // the first sample is at the pit box, and read as a delta from where the
+    // rider LEFT the track a box more than half a lap behind that point is a wrap
+    // that would re-anchor the lap at the box (pinned by pb_gap_test too).
+    // Nothing to drop when the player is not the timed rider (spectating) or on
+    // the first entry of a session, when nothing is anchored.
+    PluginData::getInstance().invalidateLapTimerAnchor(PluginData::getInstance().getPlayerRaceNum(),
+                                                       /*rejoinedTrack=*/true);
+
     // Start stats session tracking (pass session type so stats only reset on session change, not pit stops)
     StatsManager::getInstance().recordSessionStart(psSessionData->session);
 }
@@ -52,7 +67,6 @@ void Handlers::handleRunStart() {
 
     // Refresh window information at run start to detect any resolution changes
     // that might have happened while in menus
-    DEBUG_INFO("Run started - refreshing window information");
     InputManager::getInstance().forceWindowRefresh();
 }
 
@@ -65,16 +79,32 @@ void Handlers::handleRunStop() {
     // Pause stats session timer (resumed in RunStart)
     StatsManager::getInstance().notifyPause();
 
-    // Leaving the track for the pits: persist deferred settings + stats now. This is where the
-    // ~2ms settings serialize lands — a frame hitch here is invisible, and we NEVER write while
-    // the player is actively riding. Both are no-ops if nothing changed. (RunDeinit repeats this
-    // for a direct exit that skips the pit stop.)
+    // The simulation stopped (RunStop is "paused" in the API: the Esc menu, or the step into
+    // the pits): persist deferred settings + stats now. This is where the ~2ms settings
+    // serialize lands — a frame hitch here is invisible; the disk I/O itself is on the
+    // AtomicFileWriter thread. Each is a no-op if nothing changed. (RunDeinit repeats this for
+    // a direct exit, and Shutdown() for quitting.)
+    //
+    // Nothing persisted is written while the player is riding, and the stats and the PB
+    // traces are always written TOGETHER (StatsManager::save() writes both): a PB on disk
+    // without its trace is the inconsistency to avoid. A game crash mid-session loses what
+    // changed since the last of these, which is the accepted trade.
     SettingsManager::getInstance().flushIfDirty(HudManager::getInstance());
-    StatsManager::getInstance().save();
+    StatsManager::getInstance().save();   // the PB gap traces flush with the stats
 }
 
 void Handlers::handleRunDeinit() {
     // Event logging now handled by PluginManager
+
+    // Leaving the track: the lap the next RaceLap closes went through the pits.
+    // Marked on the player's own leave-track callback because the classification's
+    // pit flag may never rise for a pit taken from the menu (the sim has stopped
+    // first), which is how the Timing panel's own latch missed it. Unconditional,
+    // not "with a lap under way": a pit before the session's first crossing has
+    // no timer running either, and the game still reports the first crossing
+    // after a re-entry as a 0 ms lap (an in-game log, 2026-09-19). See
+    // PluginData::markLapViaPits.
+    PluginData::getInstance().markLapViaPits(PluginData::getInstance().getPlayerRaceNum());
 
     // Clear player running flag
     PluginData::getInstance().setPlayerRunning(false);
@@ -93,7 +123,7 @@ void Handlers::handleRunDeinit() {
 
     // End stats session and save
     StatsManager::getInstance().recordSessionEnd();
-    StatsManager::getInstance().save();
+    StatsManager::getInstance().save();   // the PB gap traces flush with the stats
 
     // Exiting the run: flush any deferred settings changes (no-op if nothing changed).
     SettingsManager::getInstance().flushIfDirty(HudManager::getInstance());

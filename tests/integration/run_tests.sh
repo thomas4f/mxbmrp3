@@ -115,6 +115,41 @@ if compgen -G "${ROOT}/tests/fixtures/"'*.json' >/dev/null 2>&1; then
     cp "${ROOT}/tests/fixtures/"*.json "${SAVE_ROOT}/fixtures/"
 fi
 
+# Build every selected test binary BEFORE running any, JOBS at a time.
+#
+# Compiling was over half this gate's wall clock and ran one file at a time,
+# interleaved with the runs. Only the BUILD is parallel: every test still RUNS
+# alone, in the serial loop below, in the one shared Wine prefix - which is where
+# this suite's flake history lives (shared prefix, :8080, the CPU-timed tests),
+# so nothing about the run phase changes. Override: MXBMRP3_TEST_JOBS=1.
+#
+# The doctest implementation + main() are compiled ONCE (integration_main.cpp)
+# and linked into each exe; integration_main.h says why.
+JOBS="${MXBMRP3_TEST_JOBS:-$(nproc)}"
+MAIN_OBJ="${BUILD}/integration_main.o"
+echo "== Building ${#SELECTED[@]} test binaries (${JOBS} at a time) =="
+mkdir -p "${BUILD}"
+${CCACHE} "${CXX}" "${CXXFLAGS[@]}" "${INCS[@]}" -c "${HERE}/harness/integration_main.cpp" -o "${MAIN_OBJ}" \
+    || { echo "ERROR: harness main (integration_main.cpp) failed to compile"; exit 1; }
+
+# Compile (ccache-cached) then link, so an unchanged test is a cache hit. The
+# exe is deleted first, so a failed build cannot leave last run's binary behind
+# for the run loop to execute; the compiler output goes to <name>.build.log,
+# which the run loop prints for a failure.
+build_test() {
+    local name="${1%.cpp}"
+    local exe="${BUILD}/${name}.exe" obj="${BUILD}/${name}.o" log="${BUILD}/${name}.build.log"
+    rm -f "${exe}"
+    { ${CCACHE} "${CXX}" "${CXXFLAGS[@]}" "${INCS[@]}" -c "${TESTS_DIR}/$1" -o "${obj}" \
+        && "${CXX}" "${LDFLAGS[@]}" "${obj}" "${MAIN_OBJ}" -o "${exe}" "${LIBS[@]}"; } >"${log}" 2>&1 \
+        || rm -f "${exe}"
+}
+for src in "${SELECTED[@]}"; do
+    while [ "$(jobs -rp | wc -l)" -ge "${JOBS}" ]; do wait -n; done
+    build_test "${src}" &
+done
+wait
+
 rc=0
 total=${#SELECTED[@]}
 i=0
@@ -122,12 +157,10 @@ for src in "${SELECTED[@]}"; do
     i=$((i + 1))
     name="${src%.cpp}"
     exe="${BUILD}/${name}.exe"
-    obj="${BUILD}/${name}.o"
     echo
     echo "== [${i}/${total}] ${name} (cap ${PER_TEST_TIMEOUT}s) =="
-    # Compile (ccache-cached) then link, so an unchanged test is a cache hit.
-    if ! ${CCACHE} "${CXX}" "${CXXFLAGS[@]}" "${INCS[@]}" -c "${TESTS_DIR}/${src}" -o "${obj}" \
-       || ! "${CXX}" "${LDFLAGS[@]}" "${obj}" -o "${exe}" "${LIBS[@]}"; then
+    if [ ! -f "${exe}" ]; then
+        cat "${BUILD}/${name}.build.log"
         echo "FAIL: ${name} failed to compile"; rc=1; continue
     fi
     # Clean, pre-created save dir for this test (Z:\tmp\mxbmrp3-tests\<short>\).
@@ -147,7 +180,11 @@ for src in "${SELECTED[@]}"; do
     ( cd "${BUILD}" && timeout "${PER_TEST_TIMEOUT}" wine "${name}.exe" mxbmrp3_test.dlo 2>"/tmp/${name}.trace.txt" | tee "/tmp/${name}.out.txt" )
     ec=$?
     elapsed=$((SECONDS - started))
-    wineserver -w 2>/dev/null || true
+    # Kill, not wait (-w): the test exe has exited, so all that is left is
+    # Wine's own services, which idle ~2s before the server exits on its own.
+    # Waiting for that was ~2s per test (~4 min of the full suite) and bought
+    # nothing - the next test starts with the same `wineserver -k` regardless.
+    wineserver -k 2>/dev/null || true
     if [ ${ec} -eq 124 ]; then
         # `timeout` kills with 124 — a hang, not a normal assertion failure. Call it out
         # explicitly (and how to lift the cap) so it reads as "aborted", not "slow test".

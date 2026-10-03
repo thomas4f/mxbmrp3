@@ -20,7 +20,6 @@
 // a live layout -- so the capture is armed through a test hook and the close is
 // the real SettingsHud::hide(). That is the seam the fix is on.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
@@ -72,6 +71,17 @@ TEST_CASE("hotkeys: closing the settings menu disarms an in-progress capture") {
         CHECK(host.hotkeyCapturing());
         host.showSettings(false);
         CHECK_FALSE(host.hotkeyCapturing());
+    }
+
+    // Switching tabs disarms it too: a chat channel field left capturing on a
+    // tab no longer shown swallowed every key and committed on Enter.
+    SUBCASE("switching settings tabs disarms an in-progress capture") {
+        host.showSettings(true);
+        host.hotkeyStartCapture(ACTION_TOGGLE_STANDINGS);
+        REQUIRE(host.hotkeyCapturing());
+        REQUIRE(host.openSettingsTab("General"));   // handleTabClick, the sidebar's path
+        CHECK_FALSE(host.hotkeyCapturing());
+        host.showSettings(false);
     }
 
     host.shutdown();

@@ -27,7 +27,6 @@
 // the REAL discovery run via Startup. The small helpers are per-file on
 // purpose -- each test stages its own process, root and tree.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

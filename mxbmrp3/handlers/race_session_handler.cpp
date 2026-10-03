@@ -6,30 +6,21 @@
 #include "../core/handler_singleton.h"
 #include "../diagnostics/logger.h"
 #include "../core/plugin_data.h"
+#include "../core/stats_manager.h"
 #include "../core/spotter_manager.h"
 #include "../core/plugin_utils.h"
 #include "../core/fmx_manager.h"
 
-// Log "Session started" event with optional format detail (e.g., "03:00 + 2L")
+// Log "Session started" event with optional format detail (e.g., "3:00 + 2 laps")
 static void logSessionStarted(PluginData& data, const char* sessionStr, int sessionLength, int sessionNumLaps) {
     char eventMsg[64];
     snprintf(eventMsg, sizeof(eventMsg), "%s started", sessionStr);
 
-    bool hasTime = (sessionLength > 0);
-    bool hasLaps = (sessionNumLaps > 0);
-
-    if (hasTime || hasLaps) {
-        char detail[20];
-        if (hasTime && hasLaps) {
-            char timeBuf[16];
-            PluginUtils::formatTimeMinutesSeconds(sessionLength, timeBuf, sizeof(timeBuf));
-            snprintf(detail, sizeof(detail), "%s + %dL", timeBuf, sessionNumLaps);
-        } else if (hasTime) {
-            PluginUtils::formatTimeMinutesSeconds(sessionLength, detail, sizeof(detail));
-        } else {
-            snprintf(detail, sizeof(detail), "%d %s", sessionNumLaps,
-                     sessionNumLaps == 1 ? "lap" : "laps");
-        }
+    // The Session and Timing panels' helper, with the laps spelled out: this is a
+    // sentence ("Race 1 started: 10 laps"), not a cell.
+    char detail[32];
+    PluginUtils::formatSessionFormatWords(sessionLength, sessionNumLaps, detail, sizeof(detail));
+    if (detail[0] != '\0') {
         data.addEventLogEntry(EventLogType::SessionStarted, eventMsg, detail);
     } else {
         data.addEventLogEntry(EventLogType::SessionStarted, eventMsg);
@@ -165,6 +156,24 @@ void Handlers::handleRaceSessionState(Unified::RaceSessionStateData* psRaceSessi
     // firing on this transition needs the state being entered, not left.
     SpotterManager::getInstance().onSessionState(
         psRaceSessionState->sessionState);
+
+    // RACE OVER is the game's own word that nobody still out there will get a
+    // finish time. The classification-time record (race_classification_handler)
+    // waits for the field to SETTLE, and a rider who quit without the
+    // classification ever dropping them keeps it waiting for good - the race
+    // then landed only at RunDeinit, back in the menus, where no Draw could show
+    // the toasts, which is why they first appeared when the server went to
+    // practice. Same gates as that path: a race, and the player out there (a
+    // replay delivers these states with no RunStart). Idempotent, and the player
+    // must have a finish time of their own; RunDeinit stays the last backstop.
+    // `final`: the classification is as final here as it will ever be, so the
+    // two marks that may have waited for lap logs still filling at the flag (the
+    // finishing margin, the last-lap pass) are retried now too, not only at
+    // RunDeinit where their toasts could not show either.
+    if ((psRaceSessionState->sessionState & PluginConstants::SessionState::RACE_OVER) &&
+        PluginData::getInstance().isRaceSession() && PluginData::getInstance().isPlayerRunning()) {
+        StatsManager::getInstance().tryRecordRaceFinish(PluginData::getInstance(), /*final=*/true);
+    }
 
     // Event log: session state changes
     {

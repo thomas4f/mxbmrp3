@@ -26,7 +26,6 @@
 // space: the section cards' padding, the seams between them and the footer's button
 // box all grow with its terms.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

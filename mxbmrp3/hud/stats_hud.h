@@ -49,7 +49,7 @@ private:
 
     // Shared geometry computed from current column/row/scale state
     struct Layout {
-        BaseHud::PanelPlan plan;   // owns the panel box; fields below are derived
+        PanelPlan plan;   // owns the panel box; fields below are derived
         int cols;
         float backgroundWidth, backgroundHeight;
         float titleHeight;

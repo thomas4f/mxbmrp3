@@ -5,6 +5,8 @@
 #include "hotkey_manager.h"
 #include "input_manager.h"
 #include "xinput_reader.h"
+#include "ui_config.h"
+#include "hold_repeat.h"
 #include "../diagnostics/logger.h"
 #include <windows.h>
 
@@ -51,8 +53,6 @@ HotkeyManager::HotkeyManager()
 
 void HotkeyManager::initialize() {
     if (m_bInitialized) return;
-
-    DEBUG_INFO("HotkeyManager initializing");
 
     resetToDefaults();
 
@@ -188,6 +188,35 @@ void HotkeyManager::startCapture(HotkeyAction action, CaptureType type) {
                  static_cast<int>(action));
 }
 
+void HotkeyManager::startTextCapture(const std::string& initial, size_t maxLen, bool handlePunctuation) {
+    m_captureType = CaptureType::TEXT;
+    m_captureHandlePunctuation = handlePunctuation;
+    m_captureCompleted = false;
+    m_textCommitted = false;
+    m_captureEdit.reset(initial, maxLen);
+    m_repeatKey = 0;
+    // Same baseline as startCapture(): the click that opened the field must not
+    // register as a keypress, and keys already held are not typed.
+    for (int i = 0; i < 256; i++) {
+        m_prevKeyStates[i] = (GetAsyncKeyState(i) & 0x8000) != 0;
+    }
+    DEBUG_INFO("HotkeyManager: Started text capture");
+}
+
+void HotkeyManager::commitTextCapture() {
+    if (m_captureType != CaptureType::TEXT) return;
+    m_captureType = CaptureType::NONE;
+    m_captureCompleted = true;
+    m_textCommitted = true;
+}
+
+bool HotkeyManager::consumeTextCommit(std::string& out) {
+    if (!m_textCommitted) return false;
+    m_textCommitted = false;
+    out = m_captureEdit.text;
+    return true;
+}
+
 void HotkeyManager::cancelCapture() {
     // Callers cancel unconditionally - closing the settings panel does it
     // whether or not a binding was being captured - so there is nothing to say
@@ -196,6 +225,7 @@ void HotkeyManager::cancelCapture() {
     const bool wasCapturing = m_captureType != CaptureType::NONE;
     m_captureType = CaptureType::NONE;
     m_captureCompleted = false;
+    m_textCommitted = false;
     if (wasCapturing) DEBUG_INFO("HotkeyManager: Capture cancelled");
 }
 
@@ -252,6 +282,10 @@ ModifierFlags HotkeyManager::getCurrentModifiers() const {
 }
 
 void HotkeyManager::updateCapture() {
+    if (m_captureType == CaptureType::TEXT) {
+        updateTextCapture();
+        return;
+    }
     if (m_captureType == CaptureType::KEYBOARD) {
         // Look for any key press (excluding modifiers and blacklisted keys)
         for (int vk = 1; vk < 256; vk++) {
@@ -330,6 +364,117 @@ void HotkeyManager::checkTriggeredActions() {
 
 bool HotkeyManager::isKeyPressed(uint8_t vkCode) const {
     return (GetAsyncKeyState(vkCode) & 0x8000) != 0;
+}
+
+void HotkeyManager::updateTextCapture() {
+    const bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+    const bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+    const bool alt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+
+    if (isKeyClicked(VK_RETURN)) {
+        commitTextCapture();
+        return;
+    }
+    // The editing keys repeat while held, on the settings arrows' hold curve
+    // (core/hold_repeat.h), so clearing a pasted URL or walking the cursor
+    // across a name is not one press per character. Only a press made INSIDE
+    // the field repeats: a key already held when it opened never registers as a
+    // click, so it never arms.
+    static constexpr uint8_t REPEAT_KEYS[] = {VK_BACK, VK_DELETE, VK_LEFT, VK_RIGHT};
+    for (uint8_t vk : REPEAT_KEYS) {
+        if (isKeyClicked(vk)) {
+            applyTextEditKey(vk, ctrl);
+            m_repeatKey = vk;
+            m_repeatHeldSince = m_repeatLast = std::chrono::steady_clock::now();
+            m_repeats = 0;
+        }
+    }
+    if (m_repeatKey != 0 && !isKeyPressed(m_repeatKey)) {
+        m_repeatKey = 0;
+    } else if (m_repeatKey != 0) {
+        const auto now = std::chrono::steady_clock::now();
+        const auto held = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_repeatHeldSince).count();
+        if (held >= HoldRepeat::INITIAL_DELAY_MS) {
+            const long long interval = HoldRepeat::intervalMs(
+                m_repeats, UiConfig::getInstance().getHoldRepeatFastMs());
+            if (std::chrono::duration_cast<std::chrono::milliseconds>(now - m_repeatLast).count() >= interval) {
+                applyTextEditKey(m_repeatKey, ctrl);
+                m_repeatLast = now;
+                ++m_repeats;
+            }
+        }
+    }
+    if (isKeyClicked(VK_HOME)) m_captureEdit.home();
+    if (isKeyClicked(VK_END)) m_captureEdit.end();
+    if (ctrl) {
+        if (isKeyClicked('V')) pasteClipboardText();
+        return;  // Ctrl+letter is a shortcut, never a character
+    }
+    if (alt) return;
+
+    auto append = [&](char c) { m_captureEdit.insert(c); };
+    // Virtual-key codes, not the layout's characters: letters and digits sit on
+    // the same VK codes on every layout, which is all a channel name needs.
+    // Anything else can be pasted.
+    for (int vk = 'A'; vk <= 'Z'; ++vk) {
+        if (isKeyClicked(static_cast<uint8_t>(vk))) {
+            append(shift ? static_cast<char>(vk) : static_cast<char>(vk - 'A' + 'a'));
+        }
+    }
+    for (int vk = '0'; vk <= '9'; ++vk) {
+        if (!isKeyClicked(static_cast<uint8_t>(vk))) continue;
+        // Shift+digit is a symbol wherever the key's own character is the
+        // digit (US: Shift+2 is '@', which would otherwise type "2"). On layouts
+        // whose unshifted row is symbols (AZERTY), Shift is how a digit is typed.
+        if (shift && (MapVirtualKeyA(static_cast<UINT>(vk), MAPVK_VK_TO_CHAR) & 0x7FFF) == static_cast<UINT>(vk)) {
+            continue;
+        }
+        append(static_cast<char>(vk));
+    }
+    for (int vk = VK_NUMPAD0; vk <= VK_NUMPAD9; ++vk) {
+        if (isKeyClicked(static_cast<uint8_t>(vk))) append(static_cast<char>('0' + (vk - VK_NUMPAD0)));
+    }
+    // Shift+minus is '_' on most layouts. A bare '-' (and '.') is typed only
+    // for a YouTube handle: a Twitch name cannot contain one, and its
+    // normalizeChannel would silently cut "abc-def" to "abc" at it.
+    if (shift && isKeyClicked(VK_OEM_MINUS)) append('_');
+    if (m_captureHandlePunctuation && !shift) {
+        if (isKeyClicked(VK_OEM_MINUS) || isKeyClicked(VK_SUBTRACT)) append('-');
+        if (isKeyClicked(VK_OEM_PERIOD) || isKeyClicked(VK_DECIMAL)) append('.');
+    }
+}
+
+void HotkeyManager::pasteClipboardText() {
+    if (!OpenClipboard(nullptr)) return;
+    HANDLE data = GetClipboardData(CF_TEXT);
+    if (data) {
+        const char* text = static_cast<const char*>(GlobalLock(data));
+        if (text) {
+            // Paste replaces the buffer, wherever the cursor is: what gets
+            // pasted is a whole name or URL, and one spliced into the old name
+            // would normalize to neither. Raw (the caller normalizes), capped
+            // generously so a URL fits.
+            std::string pasted;
+            constexpr size_t PASTE_MAX = 256;
+            for (size_t i = 0; text[i] != '\0' && i < PASTE_MAX; ++i) {
+                const unsigned char c = static_cast<unsigned char>(text[i]);
+                if (c >= 0x20 && c < 0x7F) pasted += static_cast<char>(c);
+            }
+            m_captureEdit.replaceAll(pasted);
+            GlobalUnlock(data);
+        }
+    }
+    CloseClipboard();
+}
+
+void HotkeyManager::applyTextEditKey(uint8_t vk, bool ctrl) {
+    switch (vk) {
+    case VK_BACK:   ctrl ? m_captureEdit.deleteToStart() : m_captureEdit.backspace(); break;
+    case VK_DELETE: ctrl ? m_captureEdit.deleteToEnd() : m_captureEdit.deleteForward(); break;
+    case VK_LEFT:   ctrl ? m_captureEdit.home() : m_captureEdit.left(); break;
+    case VK_RIGHT:  ctrl ? m_captureEdit.end() : m_captureEdit.right(); break;
+    default: break;
+    }
 }
 
 bool HotkeyManager::isKeyClicked(uint8_t vkCode) const {

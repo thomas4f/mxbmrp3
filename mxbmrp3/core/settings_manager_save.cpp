@@ -153,22 +153,23 @@ std::string SettingsManager::buildHudSection(const char* hudName) const {
     return file.str();
 }
 
-void SettingsManager::saveSettings(const HudManager& hudManager, const char* savePath) {
+bool SettingsManager::saveSettings(const HudManager& hudManager, const char* savePath) {
     // What the setup being written says (Tyre Kicker, Keymaster, Test Pilot...):
     // here, on the write, never in serializeSettings(), which other callers use
     // to READ the setup and must stay a pure function of it.
     StatsManager::getInstance().exploration().observeSettings(hudManager);
-    // Synchronous path (explicit Save / Reset / leave-track flush / shutdown): serialize, then
-    // write on this thread so the file is durable before we return.
+    // Explicit Save / Reset / leave-track flush / shutdown: serialize here, and hand the
+    // bytes to the shared writer, which puts them on disk off the game thread (shutdown
+    // drains it before the process goes).
     const std::string filePath = getSettingsFilePath(savePath);
-    const std::string data = serializeSettings(hudManager, savePath);
-    DEBUG_INFO_F("Saving settings to: %s (synchronous)", filePath.c_str());
-    if (AtomicFileWriter::writeFileAtomic(filePath, data)) {
+    DEBUG_INFO_F("Saving settings to: %s", filePath.c_str());
+    if (AtomicFileWriter::submit(filePath, serializeSettings(hudManager, savePath))) {
         DEBUG_INFO("Settings saved successfully");
         m_settingsDirty = false;   // persisted; nothing pending
-    } else {
-        DEBUG_WARN_F("Failed to save settings: %s", filePath.c_str());
+        return true;
     }
+    DEBUG_WARN_F("Failed to save settings: %s", filePath.c_str());
+    return false;
 }
 
 void SettingsManager::flushIfDirty(const HudManager& hudManager) {
@@ -176,7 +177,8 @@ void SettingsManager::flushIfDirty(const HudManager& hudManager) {
     // where the ~2ms serialize is invisible — but only when Auto-Save is on. With Auto-Save
     // off the user is in manual mode (persists via the Save button), so leaving the track must
     // NOT write. No-op if nothing changed either way.
-    if (!m_settingsDirty) return;
+    // Also when the last write failed on the writer thread (the flag cleared at hand-over).
+    if (!m_settingsDirty && !AtomicFileWriter::needsRetry(getSettingsFilePath(m_savePath.c_str()))) return;
     if (!UiConfig::getInstance().getAutoSave()) return;
     saveSettings(hudManager, m_savePath.c_str());   // clears m_settingsDirty on success
 }

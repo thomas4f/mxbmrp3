@@ -87,11 +87,28 @@ int main(int argc, char** argv) {
     // exists - four measurements told apart by four glyphs is the one thing a
     // capture can settle and the draw-list numbers cannot.
     bool fmxMode = false;
+    bool gapbarMode = false;
+    // "flags": a race with a rider in every flag-marker state the Standings, Map and
+    // Radar draw -- stationary hazard (crashed), wrong way, blue flag, last lap and
+    // finished -- so the markers' sprite + colour pairing (rider_flag_icons.h) can be
+    // compared before and after a change. The wrong-way state is confirmed on a
+    // steady_clock timer with no seam, so this scene waits it out (~1.6 s).
+    bool flagsMode = false;
+    // "pitlap": the timing scene plus a practice cut (no time, splits intact) and the
+    // lap after it abandoned for the pits mid-lap, S1 crossed -- the Lap Log rows that
+    // say INVALID and PIT. Pair it with EXTRA_INI=$'[LapLogHud]\nvisible=1'.
+    bool pitlapMode = false;
     for (int a = 1; a < argc; ++a) {
+        if (std::string(argv[a]) == "flags") flagsMode = true;
         if (std::string(argv[a]) == "gamepad") gamepadMode = true;
         if (std::string(argv[a]) == "gear") gearMode = true;
         if (std::string(argv[a]) == "toast") { gearMode = true; toastMode = true; }
         if (std::string(argv[a]) == "timing") timingMode = true;
+        if (std::string(argv[a]) == "pitlap") { timingMode = true; pitlapMode = true; }
+        // "gapbar": the timing scene plus the Gap Bar (off by default) with a live gap
+        // planted, the ghost marker (from the PB the timing laps set) and two opponents,
+        // so the bar renders with everything it can show. For eyeballing its glyph.
+        if (std::string(argv[a]) == "gapbar") { timingMode = true; gapbarMode = true; }
         if (std::string(argv[a]) == "eventlog") eventlogMode = true;
         // "update": publish a fake UPDATE_AVAILABLE, so the settings footer's
         // "vX.Y.Z available!" chip and the Version widget's notification panel are on
@@ -149,6 +166,32 @@ int main(int argc, char** argv) {
         host.classify(1, 0, { { .num = 4, .best = 108231, .laps = 2, .gap = 0 } });
         host.raceLap(1, 4, 0, 109500, /*best=*/1, /*split0=*/36200, /*split1=*/73000);
         host.raceLap(1, 4, 1, 108231, /*best=*/2, /*split0=*/35900, /*split1=*/72400);
+        if (pitlapMode) {
+            host.raceLap(1, 4, 2, 0, /*best=*/0, /*split0=*/36400, /*split1=*/73300);
+            host.raceSplit(1, 4, /*lapNum=*/2, /*split=*/0, 36100);
+            host.raceTrackPosition({ { .num = 4, .trackPos = 0.40f } });
+            host.draw();      // the lap ticking, as it was when Esc was pressed
+            host.runStop();   // Esc
+            host.runDeinit(); // ...to the pits
+        }
+        if (gapbarMode) {
+            // Alone in the centre stack: the Timing panel and the all-time-PB notice
+            // share its top box and draw over it.
+            host.setHudVisible("gap_bar_hud", true);
+            host.setHudVisible("timing_hud", false);
+            host.noticesSetVisible(false);
+            host.addEntry(10, "R10");
+            host.addEntry(22, "R22");
+            host.classify(1, 0, { { .num = 4, .best = 108231, .laps = 2, .gap = 0 },
+                                  { .num = 10, .best = 109000, .laps = 2, .gap = 800 },
+                                  { .num = 22, .best = 110000, .laps = 2, .gap = 1900 } });
+            host.raceTrackPosition({ { .num = 4, .trackPos = 0.42f }, { .num = 10, .trackPos = 0.61f },
+                                     { .num = 22, .trackPos = 0.27f } });
+            host.gapBarForceGap(-450, true);   // 0.45s up on PB: green, grows right
+            // Start/finish and two splits (meters along the ~1417 m stadium), so the
+            // split ticks (on by default) have somewhere to go.
+            host.trackCenterline(stadium(), { 10.0f, 480.0f, 950.0f, 0.0f });
+        }
     } else if (recordsMode) {
         // A TRACK ID, which the default scene has no reason to set: the player PB row
         // is looked up by StatsManager::getPersonalBest(trackId, bikeName), so with the
@@ -221,7 +264,46 @@ int main(int argc, char** argv) {
         host.recordsStartFetch();
         for (int i = 0; i < 100 && host.recordsFetchState() == 1; ++i) Sleep(50);
         fprintf(stderr, "records fetch state: %d\n", host.recordsFetchState());
+    } else if (flagsMode) {
+        // A three-lap race: #10 has taken the flag, so everyone else is on the last
+        // lap; #3 is a lap down just ahead of the player (blue flag); #22 has crashed
+        // just ahead (stationary hazard); #7 is riding backward further on (wrong way).
+        host.raceEvent("Southwick", /*type=*/2);   // Race
+        host.session(/*session=*/6, /*numLaps=*/3, /*lengthMs=*/0);
+        host.addEntry(4, "Thomas");   // the player first: see the preview scene
+        host.addEntry(10, "Wilhelmina");
+        host.addEntry(22, "Bartholomew");
+        host.addEntry(7, "Cassiopeia");
+        host.addEntry(3, "Aleksander");
+        host.addEntry(18, "Genevieve");
+        host.runInit(6);
+        host.setHudVisible("standings_hud", true);
+        host.setHudVisible("map_hud", true);
+        host.setHudVisible("radar_hud", true);
+        host.eventLogSetVisible(true);
+        host.classify(6, 300000, { { .num = 10, .laps = 3, .gap = 0 },
+                                   { .num = 4,  .laps = 2, .gap = 9000 },
+                                   { .num = 22, .laps = 2, .gap = 9500 },
+                                   { .num = 7,  .laps = 2, .gap = 12000 },
+                                   { .num = 18, .laps = 2, .gap = 20000 },
+                                   { .num = 3,  .laps = 1, .gap = 0 } });
+        host.raceLap(6, 10, 3, 108000, /*best=*/1, 36000, 72000);
+        // World positions along the stadium's first straight (from the origin, +Z),
+        // so the Map spreads the markers out and the Radar has riders near the player.
+        auto positions = [&](float wrongWay, int crashed) {
+            host.raceTrackPosition({ { .num = 4,  .trackPos = 0.500f, .posZ = 120.0f },
+                                     { .num = 10, .trackPos = 0.050f, .posZ = 10.0f },
+                                     { .num = 22, .trackPos = 0.530f, .crashed = crashed, .posZ = 150.0f },
+                                     { .num = 7,  .trackPos = wrongWay, .posZ = 250.0f },
+                                     { .num = 18, .trackPos = 0.300f, .posZ = 60.0f },
+                                     { .num = 3,  .trackPos = 0.520f, .posZ = 135.0f } });
+        };
+        positions(0.640f, 0);
+        positions(0.635f, 1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1600));
+        positions(0.630f, 1);
     } else if (updateMode) {
+
         // The tag reads UpdateChecker directly, so announcing a version is the whole
         // scene -- but the PANEL still has to be opened, exactly as the default
         // branch does it. Omitting that is a blank capture, not a missing tag.
@@ -306,7 +388,11 @@ int main(int argc, char** argv) {
             if (s == "page" && a + 1 < argc) page = std::atoi(argv[a + 1]);
         }
         host.showSettings(true);
-        host.setActiveTab(tab);
+        // "tab About": the About page is not in the tab list (see
+        // settings_tab_about.cpp); it opens from the footer button, which is
+        // what the hook behind clickAbout presses.
+        if (std::string(tab) == "About") host.clickAbout();
+        else host.setActiveTab(tab);
         // Page through with the mouse stand-in, before the surface is pinned below:
         // the pager's next button is found by its tooltip id on the game surface.
         for (int p = 1; p < page; ++p) {

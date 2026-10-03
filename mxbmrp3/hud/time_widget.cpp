@@ -17,7 +17,6 @@ TimeWidget::TimeWidget()
     m_panelKind = PanelKind::Widget;
     m_bContentCard = true;
     // One-time setup
-    DEBUG_INFO("TimeWidget created");
     setDraggable(true);
     m_strings.reserve(2);  // label (optional), time
 
@@ -102,7 +101,7 @@ void TimeWidget::rebuildRenderData() {
     // BOX-MODEL: the plan owns padding, chrome, the title band and the content
     // origin. The fixed 12-char column (shared with Position/Lap/Clock) is the
     // content width, so the four standard widgets keep tiling with each other.
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(
         WidgetDimensions::STANDARD_WIDTH, dim.fontSize);
     want.sectionH = { bigValueRowHeight(dim) };  // Value (2 lines)
@@ -112,7 +111,7 @@ void TimeWidget::rebuildRenderData() {
     const float backgroundHeight = p.height();
 
     addPlanBackground(p, startX, startY);
-    addPlanTitle(p, "Time", this->getFont(FontCategory::TITLE), textColor);
+    addPlanTitle(p, "Time", textColor);
 
     const float contentStartX = p.contentX();
     const float currentY = p.contentY();

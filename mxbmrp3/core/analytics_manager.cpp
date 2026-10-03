@@ -6,12 +6,13 @@
 #include "analytics_manager_internal.h"
 #include "analytics_remote_config.h"
 #include "analytics_endpoint.h"
-#include "atomic_file_writer.h"
 #include "plugin_constants.h"
 #include "settings_manager.h"
 #include "hud_manager.h"
 #include "xinput_reader.h"
 #include "director_manager.h"
+#include "twitch_chat_manager.h"
+#include "youtube_chat_manager.h"
 #include "achievement_manager.h"
 #include "spotter_manager.h"
 #include "update_checker.h"
@@ -22,6 +23,7 @@
 #include "analytics_spotter.h"
 #include "analytics_theme.h"
 #include "../hud/helmet_overlay_hud.h"
+#include "../hud/stream_chat_hud.h"
 #include "../game/game_config.h"
 #include "../diagnostics/logger.h"
 #include "../vendor/nlohmann/json.hpp"
@@ -63,8 +65,6 @@ using namespace AnalyticsInternal;
 
 namespace {
 
-constexpr const char* ANALYTICS_SUBDIRECTORY = "mxbmrp3";
-constexpr const char* ANALYTICS_FILENAME = "mxbmrp3_analytics.json";
 // SDK version is our own informal identifier, bumped if the payload shape changes.
 // Bump on any payload-shape change so old/new event schemas are distinguishable
 // in the data. 2.0.0 = per-feature 0/1 flags (hud_*/widget_*/feat_*), app_ended.
@@ -158,30 +158,23 @@ constexpr const char* ANALYTICS_FILENAME = "mxbmrp3_analytics.json";
 // 2.24.0 = added the prestige_taken event, carrying the LEVEL just reached: the
 //          one act that destroys progress on purpose. Only where the trade
 //          HAPPENS -- the button re-checks its gate, and a refusal is a click.
-constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.24.0";
+// 2.25.0 = app_started carries identity_repair (1 recovered / 2 new id) on the one
+//          launch that rewrote a corrupt analytics file; absent otherwise. Before
+//          it, a corrupt file made every later launch a brand-new install.
+// 2.26.0 = added feat_twitch (Twitch chat HUD in use: visible AND a channel set)
+//          to app_started.
+// 2.27.0 = the chat's connection no longer follows the HUD's visibility, so the
+//          two are reported apart: feat_twitch is now the CONNECTION (enabled AND
+//          a channel set), and hud_stream_chat the HUD shown (counted in
+//          hud_count). A 2.26.0 feat_twitch=1 implied both.
+// 2.28.0 = added feat_youtube (YouTube chat connection in use: enabled AND a
+//          channel set), feat_twitch's twin. hud_stream_chat is still the one
+//          chat HUD, whichever platforms feed it.
+constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.28.0";
 
 // The two Aptabase ingest paths a queued POST can name.
 constexpr const wchar_t* PATH_EVENTS = L"/api/v0/events";
 constexpr const wchar_t* PATH_ERROR  = L"/api/v0/error";
-
-// Build a UUID-v4 string from 16 cryptographically-random bytes. This is the
-// ONLY identifier we ever send — it is random (not derived from hardware or
-// user), so it cannot be tied back to a person. Returns "" on RNG failure.
-std::string generateUuidV4() {
-    unsigned char b[16];
-    if (!BCRYPT_SUCCESS(BCryptGenRandom(nullptr, b, sizeof(b),
-                                        BCRYPT_USE_SYSTEM_PREFERRED_RNG))) {
-        return "";
-    }
-    b[6] = static_cast<unsigned char>((b[6] & 0x0F) | 0x40);  // version 4
-    b[8] = static_cast<unsigned char>((b[8] & 0x3F) | 0x80);  // variant 1
-    char out[37];
-    snprintf(out, sizeof(out),
-             "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-             b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
-             b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]);
-    return std::string(out);
-}
 
 // Current UTC time as Aptabase's ISO-8601 millisecond timestamp.
 std::string isoTimestamp() {
@@ -355,98 +348,6 @@ std::string AnalyticsManager::buildGoatCounterBody() const {
     return body.dump();
 }
 
-void AnalyticsManager::loadAndUpdateIdentity(const char* savePath) {
-    m_installId.clear();
-    m_prevVersion.clear();
-    m_firstSeenUnix = 0;
-    m_launchCount = 0;
-    m_prevSessionStart = 0;
-    m_sessionStartUnix = epochSecondsNow();   // this launch's start time
-
-    // Resolve <savePath>/mxbmrp3/mxbmrp3_analytics.json (mirrors StatsManager).
-    std::string dir;
-    if (!savePath || savePath[0] == '\0') {
-        dir = std::string(".\\") + ANALYTICS_SUBDIRECTORY;
-    } else {
-        dir = savePath;
-        if (dir.back() != '/' && dir.back() != '\\') dir += '\\';
-        dir += ANALYTICS_SUBDIRECTORY;
-    }
-    if (!CreateDirectoryA(dir.c_str(), NULL)) {
-        DWORD err = GetLastError();
-        if (err != ERROR_ALREADY_EXISTS) {
-            DEBUG_INFO_F("AnalyticsManager: could not create %s (error %lu)", dir.c_str(), err);
-        }
-    }
-    std::string path = dir + "\\" + ANALYTICS_FILENAME;
-    // Marker the crash handler writes next to the analytics file on a fault.
-    m_pendingCrashPath = dir + "\\pending_crash.json";
-
-    // Distinguish "file doesn't exist yet" from "exists but couldn't be read".
-    // We must never overwrite an existing-but-unreadable file (a transient lock,
-    // e.g. an AV scanner) — doing so would rotate the stable install id and
-    // inflate unique-install counts.
-    const bool fileExists = (GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES);
-    bool existingUnreadable = false;
-    std::string id;
-    unsigned long long firstSeen = 0, launches = 0;
-
-    if (fileExists) {
-        try {
-            std::ifstream in(path);
-            if (in.is_open()) {
-                nlohmann::json j;
-                in >> j;
-                id = j.value("installId", "");
-                m_prevVersion = j.value("lastVersion", "");  // "" if absent (pre-2.1 file)
-                firstSeen = j.value("firstSeen", 0ULL);
-                launches = j.value("launchCount", 0ULL);
-                // Previous launch's start time — lets us recover a crashed
-                // session's duration (crashTime - prevStart) next launch.
-                m_prevSessionStart = j.value("sessionStart", 0ULL);
-            } else {
-                existingUnreadable = true;  // present but not openable (locked?)
-            }
-        } catch (const std::exception& e) {
-            DEBUG_WARN_F("AnalyticsManager: failed to read analytics file: %s", e.what());
-            existingUnreadable = true;  // present but unparseable — don't clobber
-        }
-    }
-
-    if (existingUnreadable) {
-        // Use a session-only id and leave the file intact, so the persisted id
-        // (and counters) survive if the read failure was transient.
-        DEBUG_WARN("AnalyticsManager: analytics file unreadable; using session-only id");
-        m_installId = generateUuidV4();   // may be "" on RNG failure; caller handles it
-        m_firstSeenUnix = epochSecondsNow();
-        m_launchCount = 0;                 // unknown this run
-        return;
-    }
-
-    if (id.empty()) {
-        id = generateUuidV4();  // first run, or well-formed file missing the key
-        if (id.empty()) return;  // RNG failure — leave m_installId empty
-    }
-    m_installId = id;
-    m_firstSeenUnix = (firstSeen != 0) ? firstSeen : epochSecondsNow();  // set once
-    m_launchCount = launches + 1;  // count this launch
-
-    // Persist identity + counters at launch (off-track, once per launch — the file is tiny).
-    // Route through the shared atomic writer so a crash mid-write can't corrupt it, consistent
-    // with every other persisted file.
-    try {
-        nlohmann::json j;
-        j["installId"] = m_installId;
-        j["lastVersion"] = PluginConstants::PLUGIN_VERSION;
-        j["firstSeen"] = m_firstSeenUnix;
-        j["launchCount"] = m_launchCount;
-        j["sessionStart"] = m_sessionStartUnix;   // for next-launch crash-duration recovery
-        AtomicFileWriter::writeFileAtomic(path, j.dump(2));
-    } catch (const std::exception& e) {
-        DEBUG_WARN_F("AnalyticsManager: failed to write analytics file: %s", e.what());
-    }
-}
-
 std::string AnalyticsManager::buildEventBody() const {
     using nlohmann::json;
 
@@ -478,6 +379,13 @@ std::string AnalyticsManager::buildEventBody() const {
     // Retention signals (anonymous counters, no dates/history kept): how many
     // times this install has launched, and how long it's been installed.
     props["launch_count"] = static_cast<long long>(m_launchCount);
+    // Only on the launch that repaired a corrupt analytics file: 1 = the id
+    // was recovered from the damaged text, 2 = none was and a new one was
+    // minted (this install's earlier launches sit under another id). Absent
+    // otherwise, so the survey can count repairs without a default to filter.
+    if (m_identityRepair != IdentityRepair::NONE) {
+        props["identity_repair"] = m_identityRepair == IdentityRepair::RECOVERED ? 1 : 2;
+    }
     {
         const unsigned long long now = epochSecondsNow();
         const unsigned long long ageSec = (now >= m_firstSeenUnix) ? (now - m_firstSeenUnix) : 0;
@@ -503,6 +411,17 @@ std::string AnalyticsManager::buildEventBody() const {
             else if (f.first.rfind("widget_", 0) == 0) ++widgetCount;
         }
     }
+    // 2.27.0: the Stream Chat HUD is GLOBAL, so it is not in the per-profile
+    // capture the loop above walks. Added by hand under the key the derivation
+    // would have given it (StreamChatHud -> hud_stream_chat), and counted like
+    // any other HUD. The game-surface flag, as for every hud_* key. 2.28.0:
+    // hud_twitch_chat became hud_stream_chat with the class rename (YouTube
+    // joined the chat before either reached a release).
+    {
+        const bool shown = HudManager::getInstance().getStreamChatHud().isVisible();
+        props["hud_stream_chat"] = shown ? 1 : 0;
+        if (shown) ++hudCount;
+    }
     props["hud_count"] = hudCount;
     props["widget_count"] = widgetCount;
 
@@ -523,6 +442,13 @@ std::string AnalyticsManager::buildEventBody() const {
     props["feat_helmet"] = HudManager::getInstance().getHelmetOverlayHud().isVisible() ? 1 : 0;
     // Auto-director (spectate broadcast tool): adoption rate of the feature.
     props["feat_director"] = DirectorManager::getInstance().isEnabled() ? 1 : 0;
+    // 2.27.0: the Twitch chat CONNECTION in use -- switched on AND pointed at a
+    // channel. Whether the HUD is shown is hud_stream_chat (above).
+    props["feat_twitch"] = (TwitchChatManager::getInstance().isEnabled() &&
+                            !TwitchChatManager::getInstance().getChannel().empty()) ? 1 : 0;
+    // 2.28.0: the same for the YouTube chat connection.
+    props["feat_youtube"] = (YouTubeChatManager::getInstance().isEnabled() &&
+                             !YouTubeChatManager::getInstance().getChannel().empty()) ? 1 : 0;
     // Profile auto-switch: automatically swap the active HUD profile on context change.
     props["feat_autoswitch"] = ProfileManager::getInstance().isAutoSwitchEnabled() ? 1 : 0;
     props["feat_updates"] = UpdateChecker::getInstance().isEnabled() ? 1 : 0;

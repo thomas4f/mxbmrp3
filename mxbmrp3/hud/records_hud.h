@@ -14,6 +14,8 @@
 #include <atomic>
 #include <mutex>
 
+struct StatsPersonalBestData;
+
 class RecordsHud : public BaseHud {
 public:
     // Column visibility flags (bitfield)
@@ -169,6 +171,31 @@ private:
     // because the live m_records may be mutated by the fetch thread.
     int findPlayerPositionInRecords(const std::vector<RecordEntry>& records, int playerPBTime) const;
 
+    // ---- rebuildRenderData() sections and the state they share ----
+    struct RowCursor {                 // the table's write position
+        const PanelPlan& plan;
+        const ScaledDimensions& dim;
+        float y;
+        int rowsRendered;              // rows drawn so far (placeholders fill the rest)
+    };
+    struct PlayerPbRow {               // the player's own PB, drawn as a highlighted row
+        bool has;
+        const char* name;
+        const char* bike;
+        const StatsPersonalBestData* pb;
+        const char* date;
+        int position;                  // -1 = no PB, 0+ = position in records
+    };
+    void addFilterRow(float contentStartX, float currentY, const ScaledDimensions& dim);
+    void addCompareButton(const PanelPlan& plan, const ScaledDimensions& dim);
+    float addColumnHeaders(float currentY, const ScaledDimensions& dim);
+    void buildRecordRows(RowCursor& cur, const std::vector<RecordEntry>& allRecords,
+                         const std::string& lastError, float contentStartX);
+    void addPaginatedRecords(RowCursor& cur, const std::vector<RecordEntry>& allRecords,
+                             const PlayerPbRow& player);
+    void addRecordRow(RowCursor& cur, int position, const char* rider, const char* bike, int laptime,
+                      int sector1, int sector2, int sector3, int sector4, const char* date, bool isPlayerRow);
+
     // Base position (0,0) - actual position comes from m_fOffsetX/m_fOffsetY
     static constexpr float START_X = 0.0f;
     static constexpr float START_Y = 0.0f;
@@ -184,7 +211,7 @@ private:
     // keeps its gap too -- that gap is its right clearance inside the panel, and
     // dropping it is what made the lap time end flush with the row highlight. See
     // rebuildRenderData.
-    static constexpr int COL_POS_WIDTH = 4;       // "P99" = 3 chars + 1 gap
+    static constexpr int COL_POS_WIDTH = 4;       // "999" = 3 chars + 1 gap
     static constexpr int COL_RIDER_WIDTH = 13;    // Up to 12 chars displayed + 1 gap
     // 17, not 18: at the default column set (POS+RIDER+BIKE+LAPTIME) the old
     // 18 summed to 44 chars, one wider than the sibling HUDs' 43 (Telemetry's

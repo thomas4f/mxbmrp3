@@ -1,0 +1,11 @@
+<!-- Twitch's Glitch, as Twitch publishes it (brand.twitch.com, flat purple):
+     Twitch Purple #9146FF with the white speech bubble. Official geometry,
+     re-framed on a square canvas it fills top to bottom, as the icon set does.
+     Full colour on purpose, unlike the other textures here: Twitch's brand
+     rules forbid recolouring the logo, so the plugin draws it untinted.
+     Rendered by tools/texture_gen.py. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-200 0 2800 2800">
+  <path fill="#FFFFFF" d="M2200 1300l-400 400h-400l-350 350v-350H600V200h1600z"/>
+  <path fill="#9146FF" d="M500 0L0 500v1800h600v500l500-500h400l900-900V0H500zM2200 1300l-400 400h-400l-350 350v-350H600V200h1600z"/>
+  <path fill="#9146FF" d="M1700 550h200v600h-200zM1150 550h200v600h-200z"/>
+</svg>

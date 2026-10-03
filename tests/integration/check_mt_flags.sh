@@ -9,7 +9,7 @@
 # flags, and a torn or cached plain `bool` there is the classic never-wakes /
 # never-stops bug — invisible in review because the declaration looks fine.
 #
-# Clang's -Wthread-safety (check_thread_safety.sh) does NOT cover this: it
+# Clang's -Wthread-safety (check_clang_tidy.sh) does NOT cover this: it
 # verifies that MUTEX-guarded members are accessed under their mutex, and a
 # plain unannotated bool is simply outside the analysis. So this check closes
 # the other half — every `bool m_*` member declared in a class that owns a

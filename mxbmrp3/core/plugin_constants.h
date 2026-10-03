@@ -248,7 +248,8 @@ namespace PluginConstants {
 
     // Display formatting placeholders
     namespace Placeholders {
-        constexpr const char* LAP_TIME = "-:--.---";    // For lap times in M:SS.mmm format
+        constexpr const char* PIT_LAP = "PIT";          // A lap without a time because it went through the pits
+        constexpr const char* INVALID_LAP = "INVALID";  // A lap struck out by the game (a cut)
         constexpr const char* GENERIC = "-";            // For simple missing data
         constexpr const char* NOT_AVAILABLE = "N/A";    // For structurally unavailable data (e.g., live gap in practice)
     }
@@ -474,8 +475,15 @@ namespace PluginConstants {
         // Race status abbreviations (not from enum - calculated from session data)
         namespace RaceStatus {
             constexpr const char* FINISHED = "FIN";  // Rider finished race
-            constexpr const char* IN_PIT = "PIT";  // Rider in pit
             constexpr const char* LAST_LAP = "LL";  // Rider on last lap
+            constexpr const char* LEADER = "LEADER";  // Rider is leading (Pitboard gap row)
+        }
+
+        // Session-clock overtime labels (PluginUtils::formatSessionClock, and the
+        // HUDs that show the same state without going through it)
+        namespace SessionClock {
+            constexpr const char* CHECKERED = "CHECKERED";  // Leader has finished
+            constexpr const char* FINAL_LAP = "FINAL LAP";  // Leader on the last lap
         }
 
         // Weather conditions (corresponds to Conditions enum)

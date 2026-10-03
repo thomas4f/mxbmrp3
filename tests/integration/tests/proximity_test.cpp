@@ -16,7 +16,6 @@
 // amount per batch, the same technique odometer_test.cpp uses: without it a
 // headless test firing callbacks back to back measures ~nothing.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

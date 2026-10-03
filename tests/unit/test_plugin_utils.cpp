@@ -18,6 +18,8 @@
 
 #include "core/plugin_utils.h"
 #include <cmath>
+#include <cstdio>
+#include <cstring>
 #include <string>
 
 using PU = PluginUtils;
@@ -222,4 +224,32 @@ TEST_CASE("modulateAlpha scales alpha by another colour's, keeping RGB") {
     // modulation can only ever reduce.
     CHECK(PU::modulateAlpha(PU::makeColor(0, 0, 0, 0), PU::makeColor(1, 1, 1, 255))
           == PU::makeColor(0, 0, 0, 0));
+}
+
+// fitTextInPlace is the allocation-free cut StandingsHud's LONG name column and
+// TimingHud's readout rows use per row, and fitText (plugin_utils.cpp, not
+// compiled here) is a copy plus this. Pinned: the cut is by CODE POINT, never
+// splits a multi-byte character, leaves text within budget byte-for-byte
+// untouched (stray continuation bytes included), and terminates where it cuts.
+TEST_CASE("fitTextInPlace cuts by code point, in place") {
+    auto fit = [](const char* in, int maxChars) {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%s", in);
+        const size_t len = PU::fitTextInPlace(buf, std::strlen(in), maxChars);
+        CHECK(len == std::strlen(buf));   // the returned length is the terminated length
+        return std::string(buf);
+    };
+    CHECK(fit("Valentino Rossi", 9) == "Valentino");
+    CHECK(fit("Short", 9) == "Short");                 // within budget: untouched
+    CHECK(fit("Exactly9!", 9) == "Exactly9!");         // at budget: untouched
+    CHECK(fit("anything", 0).empty());
+    CHECK(fit("anything", -3).empty());
+    CHECK(fit("", 5).empty());
+    // "Jörg Müller": ö and ü are two bytes each -- 11 code points, 13 bytes.
+    CHECK(fit("J\xC3\xB6rg M\xC3\xBCller", 11) == "J\xC3\xB6rg M\xC3\xBCller");
+    CHECK(fit("J\xC3\xB6rg M\xC3\xBCller", 7) == "J\xC3\xB6rg M\xC3\xBC");   // ü kept whole
+    CHECK(fit("J\xC3\xB6rg M\xC3\xBCller", 2) == "J\xC3\xB6");
+    // A stray continuation byte: kept when nothing is cut, dropped when something is.
+    CHECK(fit("\x80" "abc", 3) == "\x80" "abc");
+    CHECK(fit("\x80" "abcd", 3) == "abc");
 }

@@ -63,7 +63,7 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
     ctx.addSectionHeading("Layout");
 
     // Show mode: Splits (only after crossing splits) or Always
-    const char* showValue = (hud->m_displayMode == ColumnMode::ALWAYS) ? "Always" : "At Splits";
+    const char* showValue = (hud->m_displayMode == ColumnMode::ALWAYS) ? "Always" : "At splits";
     // Two-state cycle over {SPLITS, ALWAYS}: ColumnMode also has OFF, which
     // this control never selects, so the get/set lambdas map the pair onto a
     // 0/1 index instead of cycling the raw enum range.
@@ -73,22 +73,12 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
         showCycle.set = [hud](int v) { hud->m_displayMode = v ? ColumnMode::ALWAYS : ColumnMode::SPLITS; };
         showCycle.count = 2;
         showCycle.dirtyHud = hud;
-        ctx.addCycleControl("Show mode", showValue, 10, showCycle,
+        ctx.addCycleControl("Show mode", showValue, showCycle,
             hud, true, false, "timing.show");
     }
 
     // Freeze duration: how long to hold official times / gaps after crossing a split
-    char freezeValue[16];
-    bool freezeIsOff = (hud->m_displayDurationMs == 0);
-    if (freezeIsOff) {
-        strcpy_s(freezeValue, sizeof(freezeValue), "Off");
-    } else {
-        snprintf(freezeValue, sizeof(freezeValue), "%ds", hud->m_displayDurationMs / 1000);
-    }
-    ctx.addSteppedControl("Freeze", freezeValue, 10,
-        SettingsHud::SteppedControl::wrapInt(&hud->m_displayDurationMs,
-            TimingHud::DURATION_STEP_MS, TimingHud::MIN_DURATION_MS, TimingHud::MAX_DURATION_MS, hud),
-        hud, true, freezeIsOff, "timing.freeze");
+    ctx.addFreezeControl("Freeze", &hud->m_displayDurationMs, true, hud, true, "timing.freeze");
 
     // Big time row toggle
     ctx.addToggleControl("Time", hud->isTimeEnabled(),
@@ -101,13 +91,13 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
 
     ctx.addToggleControl("Session PB", hud->isComparisonEnabled(GAP_TO_PB),
         SettingsHud::ClickRegion::TIMING_GAP_PB_TOGGLE, hud, nullptr, 0, true, "timing.gap_pb");
-    ctx.addToggleControl("Alltime PB", hud->isComparisonEnabled(GAP_TO_ALLTIME),
+    ctx.addToggleControl("All-time PB", hud->isComparisonEnabled(GAP_TO_ALLTIME),
         SettingsHud::ClickRegion::TIMING_GAP_ALLTIME_TOGGLE, hud, nullptr, 0, true, "timing.gap_alltime");
     ctx.addToggleControl("Ideal", hud->isComparisonEnabled(GAP_TO_IDEAL),
         SettingsHud::ClickRegion::TIMING_GAP_IDEAL_TOGGLE, hud, nullptr, 0, true, "timing.gap_ideal");
     ctx.addToggleControl("Overall", hud->isComparisonEnabled(GAP_TO_OVERALL),
         SettingsHud::ClickRegion::TIMING_GAP_OVERALL_TOGGLE, hud, nullptr, 0, true, "timing.gap_overall");
-    ctx.addToggleControl("Last Lap", hud->isComparisonEnabled(GAP_TO_LASTLAP),
+    ctx.addToggleControl("Last lap", hud->isComparisonEnabled(GAP_TO_LASTLAP),
         SettingsHud::ClickRegion::TIMING_GAP_LASTLAP_TOGGLE, hud, nullptr, 0, true, "timing.gap_lastlap");
     ctx.addToggleControl("Record", hud->isComparisonEnabled(GAP_TO_RECORD),
         SettingsHud::ClickRegion::TIMING_GAP_RECORD_TOGGLE, hud, nullptr, 0, true, "timing.gap_record");

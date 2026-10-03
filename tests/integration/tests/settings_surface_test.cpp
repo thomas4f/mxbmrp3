@@ -26,7 +26,6 @@
 // section card at its own. So this asks the screenshot's question of the real
 // geometry rather than of a re-derivation of it.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

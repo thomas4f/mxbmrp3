@@ -30,7 +30,7 @@ BaseHud* SettingsHud::renderTabPerformance(SettingsLayoutContext& ctx) {
         case 1: modeText = "Numbers"; break;
         case 2: modeText = "Both"; break;
     }
-    ctx.addCycleControl("Style", modeText, 10,
+    ctx.addCycleControl("Style", modeText,
         SettingsHud::CycleControl::enumMember(hud, &PerformanceHud::m_displayMode, 3, hud),
         hud, true, false, "performance.display");
 
@@ -41,7 +41,7 @@ BaseHud* SettingsHud::renderTabPerformance(SettingsLayoutContext& ctx) {
     {
         char rowsBuf[8];
         snprintf(rowsBuf, sizeof(rowsBuf), "%d", hud->m_graphRows);
-        ctx.addSteppedControl("Graph height", rowsBuf, 10,
+        ctx.addSteppedControl("Graph height", rowsBuf,
             SettingsHud::SteppedControl::clampInt(&hud->m_graphRows, 1,
                 PerformanceHud::MIN_GRAPH_ROWS, PerformanceHud::MAX_GRAPH_ROWS, hud),
             hud, true, false, "performance.graph_rows");
@@ -85,7 +85,7 @@ BaseHud* SettingsHud::renderTabPerformance(SettingsLayoutContext& ctx) {
                                 SettingsHud::ClickRegion::PROBE_SWEEP,
                                 running ? SettingsLayoutContext::ButtonRole::Negative
                                         : SettingsLayoutContext::ButtonRole::Positive,
-                                true);
+                                true, "performance.probe_sweep");
             ctx.addInlineNote(running ? "Sweeping - about a minute, frame rate drops."
                                       : "Measures the engine's per-primitive draw cost.");
         }

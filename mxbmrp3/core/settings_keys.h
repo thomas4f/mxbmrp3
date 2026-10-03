@@ -179,6 +179,7 @@ namespace Settings {
             constexpr const char* RACENUM = "col_racenum";
             constexpr const char* NAME = "col_name";
             constexpr const char* BIKE = "col_bike";
+            constexpr const char* CATEGORY = "col_category";
             constexpr const char* PENALTY = "col_penalty";
             constexpr const char* BEST_LAP = "col_best_lap";
             constexpr const char* LAST_LAP = "col_last_lap";

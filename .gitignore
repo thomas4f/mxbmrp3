@@ -393,11 +393,16 @@ crash_analysis/*.zip
 mxbmrp3/version_build.g.h
 
 # Raw Aptabase analytics exports feed tools/analytics_report.py but are never
-# committed -- only the generated analytics/REPORT.md + charts are. See analytics/README.md.
+# committed -- only the generated usage_survey/REPORT.md + charts are.
+# See usage_survey/README.md.
 *.parquet
-# Aptabase analytics exports (CSV since the parquet export was withdrawn). Raw
-# exports are deliberately not kept in the repo - see analytics/README.md.
+# Aptabase analytics exports. Raw exports are deliberately not kept in the repo.
 mxbmrp3*release*.csv
+# Where tools/analytics_fetch.py stages the day files it downloads. Transient by
+# design: a month of them is ~33 MB, and the rollup is the thing worth keeping.
+# The directory itself is tracked (via .gitkeep) so the docs can name it.
+usage_survey/_exports/*
+!usage_survey/_exports/.gitkeep
 
 # Per-stage logs from the deleted run_all.sh; CTest keeps its own under
 # build/tests/Testing/. Kept ignored so a stale tree stays clean.
@@ -420,6 +425,7 @@ wine_test_status.txt
 # Plugin runtime state written when dev tools run the DLL from the repo tree
 mxbmrp3_settings.ini
 mxbmrp3_stats.json
+mxbmrp3_pb_traces.json
 mxbmrp3_log.txt
 
 # Recorded spotter voice packs are baked by tools/spottergen and

@@ -260,10 +260,13 @@ PitboardLayout::BoardGeometry loadBoard(const char* name) {
 TEST_CASE("shipped classic board matches the geometry it replaced") {
     const PitboardLayout::BoardGeometry g = loadBoard("classic");
 
-    // The compiled constant this replaced was exactly 1920/1080, and the shipped
-    // background.tga really is that size -- so the panel must come out identical.
-    CHECK(g.artWidth == doctest::Approx(1920.0f));
-    CHECK(g.artHeight == doctest::Approx(1080.0f));
+    // The compiled constant this replaced was exactly 1920/1080. The shipped
+    // background.tga is now 960x540 (halved: the board draws a few hundred pixels
+    // wide, and the GL backend decodes it on the Draw thread), and only the RATIO
+    // shapes the panel -- so the panel must still come out identical.
+    CHECK(g.artWidth == doctest::Approx(960.0f));
+    CHECK(g.artHeight == doctest::Approx(540.0f));
+    CHECK(g.artWidth / g.artHeight == doctest::Approx(1920.0f / 1080.0f));
 
     // Every offset zero: the artwork was drawn around the coded row positions.
     CHECK(g.riderIdX == doctest::Approx(0.0f));

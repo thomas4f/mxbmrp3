@@ -23,7 +23,6 @@
 // for a zero-width one), and that the clearance between card and band GROWS with the
 // air inside the card -- the number the fault had inverted to negative.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

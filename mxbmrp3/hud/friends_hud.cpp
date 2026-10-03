@@ -20,7 +20,6 @@ using namespace PluginConstants;
 // Truncation is shared: PluginUtils::fitText (UTF-8 aware, ellipsis within budget).
 
 FriendsHud::FriendsHud() {
-    DEBUG_INFO("FriendsHud created");
     setDraggable(true);
     // Body card: this HUD draws a content BLOCK under its title, which is what the
     // themed card frames. Opt-in; see BaseHud::m_bContentCard.
@@ -47,6 +46,18 @@ void FriendsHud::update() {
         return;
     }
 
+    // The empty panel names Steam's state (off / not available), and neither a
+    // toggle in Settings > General nor a late hook is a data change this HUD is
+    // told about -- so watch the pair. Two plain loads per frame.
+    const SteamFriendsManager& steam = SteamFriendsManager::getInstance();
+    const bool steamEnabled = steam.isEnabled();
+    const int steamStatus = static_cast<int>(steam.getStatus());
+    if (steamEnabled != m_lastSteamEnabled || steamStatus != m_lastSteamStatus) {
+        m_lastSteamEnabled = steamEnabled;
+        m_lastSteamStatus = steamStatus;
+        setDataDirty();
+    }
+
     // ON_JOIN: show for a window after friend activity (manager-detected: a friend
     // coming in-game or switching servers - never the user's own session/timing).
     // Runs every frame; flips dirty only on the show<->hide transition so the
@@ -68,7 +79,7 @@ const char* FriendsHud::getShowModeName(ShowMode mode) {
     switch (mode) {
         case ShowMode::ALWAYS:       return "Always";
         case ShowMode::WITH_FRIENDS: return "Friends";
-        case ShowMode::ON_JOIN:      return "On Join";
+        case ShowMode::ON_JOIN:      return "On join";
         default:                     return "Unknown";
     }
 }
@@ -135,28 +146,31 @@ void FriendsHud::rebuildRenderData() {
 
     const bool empty = view.empty();
 
-    // Status-aware empty message + an optional guidance line, mirroring the
-    // gamepad widget (which tells you to check Settings when no controller is
-    // connected). Distinguishes "off" / "unavailable" from a real empty roster.
+    // Nothing to list -> a notice in place of the table, the shape the Gamepad and
+    // Stream Chat panels use (BaseHud::addBlockedNotice): the panel keeps the size the
+    // table will have, and the notice says why it is empty. Steam switched off or
+    // unreachable outranks an empty roster, because nothing will ever fill the table
+    // until it is fixed -- so it reads NEGATIVE with a hint naming the fix, like
+    // "Controller N Not Connected" and "Stream chat off". A real empty roster is not a
+    // fault: MUTED, no hint.
     const char* kTitle = "Friends";
-    const char* kEmptyMsg = nullptr;
-    const char* kEmptyHint = nullptr;
+    const char* noticeMsg = nullptr;
+    const char* noticeHint = nullptr;
+    ColorSlot noticeSlot = ColorSlot::MUTED;
     if (empty) {
         const SteamFriendsManager& mgr = SteamFriendsManager::getInstance();
         if (!mgr.isEnabled()) {
-            kEmptyMsg  = "Steam integration off";
-            kEmptyHint = "Enable in Settings > General";
+            noticeMsg  = "Steam integration off";
+            noticeHint = "Check MXBMRP3 Settings > General";
+            noticeSlot = ColorSlot::NEGATIVE;
         } else if (mgr.getStatus() != SteamFriendsManager::Status::CONNECTED) {
-            kEmptyMsg  = "Steam not available";
-            kEmptyHint = "Launch the game via Steam";
+            noticeMsg  = "Steam not available";
+            noticeHint = "Launch the game via Steam";
+            noticeSlot = ColorSlot::NEGATIVE;
         } else {
-            kEmptyMsg  = "No friends in-game";
+            noticeMsg  = "No friends in-game";
         }
     }
-    // The panel is here because its tab is open, not because anything happened --
-    // say so where the empty card already speaks, rather than inventing a friend.
-    if (empty && isPreviewing()) { kEmptyMsg = "Preview - friends appear here"; kEmptyHint = nullptr; }
-    const int emptyLines = kEmptyHint ? 2 : 1;
 
     // Show-mode gate: the Visible toggle is the master on/off; this decides
     // *when* to actually display while enabled. When a mode hides the box it's
@@ -171,26 +185,32 @@ void FriendsHud::rebuildRenderData() {
     }
     // ...unless the Friends tab is open (isPreviewing): "With friends" and "On
     // join" both leave the panel off screen most of the time, which is when it has
-    // to be positioned. The empty-state card below is what it stands in with, so
-    // there is no fake friend anywhere.
+    // to be positioned. It stands in with exactly what "Always" would draw -- the
+    // roster, or the notice at the table's full size -- so the preview IS the live
+    // panel, and a Steam problem is never hidden behind it. No fake friend anywhere.
     if (!display && !isPreviewing()) {
         setBounds(START_X, START_Y, START_X, START_Y);
         return;
     }
 
-    const int rowsToShow = empty ? emptyLines : std::min(static_cast<int>(view.size()), m_maxDisplayRows);
+    // The empty panel takes the table's FULL configured size (header row + every
+    // row), the most it will ever need, so it does not grow under the player when
+    // the first friend arrives -- the Event Log's empty panel does the same.
+    const int rowsToShow = empty ? m_maxDisplayRows : std::min(static_cast<int>(view.size()), m_maxDisplayRows);
 
     // BOX-MODEL: the caption's ask covers the title's width (widest-ask rule),
     // so the empty box need not hand-max it in; the standard-width floor
-    // rides as the panel minimum.
-    const float headerHeight = (m_bShowHeaders && !empty) ? dim.lineHeightNormal : 0.0f;
-    BaseHud::PanelWant want;
+    // rides as the panel minimum. The notice widens the box only if a column
+    // set is narrower than its text.
+    const float headerHeight = m_bShowHeaders ? dim.lineHeightNormal : 0.0f;
+    const float tableW = PluginUtils::calculateMonospaceTextWidth(getBackgroundWidthChars(), dim.fontSize);
+    PanelWant want;
     want.contentW = empty
-        ? std::max(PluginUtils::calculateMonospaceTextWidth(
-                       static_cast<int>(std::strlen(kEmptyMsg)), dim.fontSize),
-                   kEmptyHint ? PluginUtils::calculateMonospaceTextWidth(
-                       static_cast<int>(std::strlen(kEmptyHint)), dim.fontSize * 0.8f) : 0.0f)
-        : PluginUtils::calculateMonospaceTextWidth(getBackgroundWidthChars(), dim.fontSize);
+        ? std::max({ tableW,
+                     PluginUtils::calculateMonospaceTextWidth(static_cast<int>(std::strlen(noticeMsg)), dim.fontSize),
+                     noticeHint ? PluginUtils::calculateMonospaceTextWidth(
+                         static_cast<int>(std::strlen(noticeHint)), dim.fontSize * 0.8f) : 0.0f })
+        : tableW;
     want.sectionH = { headerHeight + dim.lineHeightNormal * rowsToShow };
     want.captionW = planTitleWidth(dim, kTitle, TitleTier::Large);
     want.tier = TitleTier::Large;
@@ -203,7 +223,16 @@ void FriendsHud::rebuildRenderData() {
 
     float currentY = plan.contentY();
 
-    addPlanTitle(plan, kTitle, getFont(FontCategory::TITLE), getColor(ColorSlot::PRIMARY));
+    addPlanTitle(plan, kTitle, getColor(ColorSlot::PRIMARY));
+
+    if (empty) {
+        // Centred in the content box (header row included: with nothing listed there
+        // is nothing for the headers to caption).
+        addBlockedNotice(plan.contentX() + plan.contentW() * 0.5f,
+                         currentY + want.sectionH[0] * 0.5f,
+                         dim.lineHeightNormal, dim.fontSize, noticeMsg, noticeSlot, noticeHint);
+        return;
+    }
 
     // Column X offsets (left-justified). Only enabled columns consume space, so
     // disabling a column collapses the ones to its right. Columns start at the
@@ -222,21 +251,7 @@ void FriendsHud::rebuildRenderData() {
     const float xInfo   = isColumnEnabled(COL_INFO)   ? advance(COL_INFO_W)   : -1.0f;
     const float xTimer  = isColumnEnabled(COL_TIMER)  ? advance(COL_TIMER_W)  : -1.0f;
 
-
-    if (empty) {
-        addString(kEmptyMsg, contentStartX, currentY, Justify::LEFT,
-            getFont(FontCategory::NORMAL), getColor(ColorSlot::MUTED), dim.fontSize);
-        if (kEmptyHint) {
-            currentY += dim.lineHeightNormal;
-            // Smaller font for the guidance line, matching the gamepad widget's hint.
-            addString(kEmptyHint, contentStartX, currentY, Justify::LEFT,
-                getFont(FontCategory::NORMAL), getColor(ColorSlot::MUTED), dim.fontSize * 0.8f);
-        }
-        return;
-    }
-
     const int nameFont   = getFont(FontCategory::NORMAL);
-    const int strongFont = getFont(FontCategory::STRONG);
     const unsigned long colName   = getColor(ColorSlot::PRIMARY);
     const unsigned long colData   = getColor(ColorSlot::SECONDARY);
     const unsigned long colMuted  = getColor(ColorSlot::MUTED);
@@ -246,11 +261,11 @@ void FriendsHud::rebuildRenderData() {
     if (m_bShowHeaders) {
         // addLabel: Small font size, row-centered - the column-header
         // convention used by StandingsHud/LapLogHud/etc.
-        addLabel("Name", xName, currentY, Justify::LEFT, strongFont, colHeader, dim);
-        if (xServer >= 0) addLabel("Server", xServer, currentY, Justify::LEFT, strongFont, colHeader, dim);
-        if (xTrack  >= 0) addLabel("Track",  xTrack,  currentY, Justify::LEFT, strongFont, colHeader, dim);
-        if (xInfo   >= 0) addLabel("Info",   xInfo,   currentY, Justify::LEFT, strongFont, colHeader, dim);
-        if (xTimer  >= 0) addLabel("Timer",  xTimer,  currentY, Justify::LEFT, strongFont, colHeader, dim);
+        addLabel("Name", xName, currentY, Justify::LEFT, colHeader, dim);
+        if (xServer >= 0) addLabel("Server", xServer, currentY, Justify::LEFT, colHeader, dim);
+        if (xTrack  >= 0) addLabel("Track",  xTrack,  currentY, Justify::LEFT, colHeader, dim);
+        if (xInfo   >= 0) addLabel("Info",   xInfo,   currentY, Justify::LEFT, colHeader, dim);
+        if (xTimer  >= 0) addLabel("Timer",  xTimer,  currentY, Justify::LEFT, colHeader, dim);
         currentY += dim.lineHeightNormal;
     }
 
@@ -328,10 +343,11 @@ void FriendsHud::rebuildRenderData() {
 
         // Timer - the friend's session clock (MM:SS, or N TO GO / FINAL LAP /
         // CHECKERED in time+lap overtime). A coarse snapshot, not a live tick.
+        // Digits font, like the Timing panel's Time readout (same formatSessionClock text).
         if (xTimer >= 0) {
             const bool has = !f.progress.empty();
             addString(has ? PluginUtils::fitText(f.progress, COL_TIMER_W - 1).c_str() : DASH,
-                      xTimer, currentY, Justify::LEFT, nameFont, has ? colData : colMuted, dim.fontSize);
+                      xTimer, currentY, Justify::LEFT, getFont(FontCategory::DIGITS), has ? colData : colMuted, dim.fontSize);
         }
 
         currentY += dim.lineHeightNormal;

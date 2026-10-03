@@ -26,7 +26,6 @@ namespace {
 EcuWidget::EcuWidget() {
     m_panelKind = PanelKind::Widget;
     m_bContentCard = true;
-    DEBUG_INFO("EcuWidget created");
     setDraggable(true);
 
     // Reserve render data:
@@ -109,7 +108,7 @@ void EcuWidget::rebuildRenderData() {
 
     // BOX-MODEL: the plan owns padding, chrome and the card (this panel has no
     // caption at all); the widget states only its content — the chip grid.
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = contentWidth;
     want.sectionH = { contentHeight };
     want.captionW = planTitleWidth(dim, "ECU");
@@ -120,7 +119,7 @@ void EcuWidget::rebuildRenderData() {
 
     // Background + drag bounds
     addPlanBackground(p, startX, startY);
-    addPlanTitle(p, "ECU", this->getFont(FontCategory::TITLE),
+    addPlanTitle(p, "ECU",
         this->getColor(ColorSlot::PRIMARY));
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 
@@ -201,7 +200,9 @@ void EcuWidget::rebuildRenderData() {
         } else if (chip == 0) {
             // Mapping chip: raw value (e.g. "1", "STD", "---"); never labelled, matching the reference
             const char* mapping = bikeData.engineMapping;
-            snprintf(buffer, sizeof(buffer), "%s", (mapping && mapping[0]) ? mapping : Placeholders::GENERIC);
+            const bool hasMapping = mapping && mapping[0];
+            snprintf(buffer, sizeof(buffer), "%s", hasMapping ? mapping : Placeholders::GENERIC);
+            if (!hasMapping) chipTextColor = mutedColor;
         } else {
             int value = (chip == 1) ? bikeData.tractionControl
                       : (chip == 2) ? bikeData.engineBraking
@@ -213,8 +214,9 @@ void EcuWidget::rebuildRenderData() {
             }
         }
 
+        // Digits font, like every other gauge's values (TyreTemp at the same small size).
         addString(buffer, chipCenterX, textY, Justify::CENTER,
-            this->getFont(FontCategory::STRONG), chipTextColor, valueFontSize);
+            this->getFont(FontCategory::DIGITS), chipTextColor, valueFontSize);
     }
 }
 

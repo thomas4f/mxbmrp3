@@ -26,7 +26,6 @@ PitboardHud::PitboardHud()
     m_textureRequired = true;
     m_packKind = PackKind::Pitboard;
     // One-time setup
-    DEBUG_INFO("PitboardHud created");
     setDraggable(true);
     // Body card: this HUD draws a content BLOCK under its title, which is what the
     // themed card frames. Opt-in; see BaseHud::m_bContentCard.
@@ -131,14 +130,9 @@ bool PitboardHud::shouldBeVisible() const {
         return false;
     }
 
-    // Splits mode - show for 10 seconds when passing splits or s/f
+    // Splits mode - show for the freeze duration when passing splits or s/f
     if (m_displayMode == MODE_SPLITS) {
-        if (m_bIsDisplayingTimed) {
-            auto now = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_displayStartTime).count();
-            return elapsed < DISPLAY_DURATION_MS;
-        }
-        return false;
+        return m_splitsHold.running(m_freezeDurationMs);
     }
 
     return true;
@@ -155,75 +149,36 @@ void PitboardHud::update() {
 
     const PluginData& pluginData = PluginData::getInstance();
 
-    // Detect spectate target changes and reset caches
-    int currentDisplayRaceNum = pluginData.getDisplayRaceNum();
-    bool targetChanged = (currentDisplayRaceNum != m_cachedDisplayRaceNum);
-
-    // Also detect when underlying data has been cleared (session change)
-    // If we have cached splits but CurrentLapData is null or empty, reset caches
-    const CurrentLapData* currentLap = pluginData.getCurrentLapData();
-    const IdealLapData* idealLapData = pluginData.getIdealLapData();
-    bool dataCleared = (m_cachedSplit1 > 0 || m_cachedSplit2 > 0 || m_cachedLastLapTime > 0) &&
-                       (!currentLap || (currentLap->split1 <= 0 && currentLap->split2 <= 0)) &&
-                       (!idealLapData || idealLapData->lastLapTime <= 0);
-
-    if (targetChanged || dataCleared) {
-        // Reset all cached values
-        m_cachedSplit1 = -1;
-        m_cachedSplit2 = -1;
-        m_cachedLastLapTime = -1;
-        m_cachedDisplayRaceNum = currentDisplayRaceNum;
-        m_bIsDisplayingTimed = false;
+    // Split and line crossings (split_crossing.h). A new session or spectate
+    // target adopts what is there and clears what the board showed.
+    bool splitChanged = false;
+    const SplitCrossingDetector::Result crossing = m_crossings.poll();
+    if (crossing.adopted) {
+        m_splitsHold.stop();
         m_displayedTime = -1;
-        m_splitType = LAP;
+        m_displayedSplit = -1;
         m_isInvalidLap = false;
-
-        // Update cached values with new rider's current data (without triggering display)
-        if (currentLap) {
-            m_cachedSplit1 = currentLap->split1;
-            m_cachedSplit2 = currentLap->split2;
-        }
-        if (idealLapData) {
-            m_cachedLastLapTime = idealLapData->lastLapTime;
-        }
         setDataDirty();
     }
-
-    // Always check for split times (for timing display in all modes)
-    bool splitChanged = false;
-
-    // Check current lap splits
-    if (currentLap) {
-        // Check split 1 (accumulated time to S1)
-        if (currentLap->split1 > 0 && currentLap->split1 != m_cachedSplit1) {
-            m_cachedSplit1 = currentLap->split1;
-            m_displayedTime = currentLap->split1;
-            m_splitType = SPLIT_1;
-            m_isInvalidLap = false;  // Reset on new split
-            splitChanged = true;
-        }
-        // Check split 2 (accumulated time to S2)
-        if (currentLap->split2 > 0 && currentLap->split2 != m_cachedSplit2) {
-            m_cachedSplit2 = currentLap->split2;
-            m_displayedTime = currentLap->split2;
-            m_splitType = SPLIT_2;
-            m_isInvalidLap = false;  // Reset on new split
+    if (crossing.line) {
+        if (crossing.lapViaPits) {
+            // A pit lap is not a timed lap (as on the Timing panel): no time, no
+            // INVALID, and in At Splits the board stays down.
+            m_displayedTime = -1;
+            m_displayedSplit = -1;
+            m_isInvalidLap = false;
+            setDataDirty();
+        } else if (crossing.lapTime > 0) {
+            m_displayedTime = crossing.lapTime;
+            m_displayedSplit = -1;
+            m_isInvalidLap = !crossing.lapValid;
             splitChanged = true;
         }
     }
-
-    // Check for lap completion (split 3 / finish line)
-    if (idealLapData && idealLapData->lastLapTime > 0 &&
-        idealLapData->lastLapTime != m_cachedLastLapTime) {
-        m_cachedLastLapTime = idealLapData->lastLapTime;
-        m_displayedTime = idealLapData->lastLapTime;
-        m_splitType = LAP;
-        // Check if this lap was invalid via lap log
-        const auto* lapLog = pluginData.getLapLog();
-        m_isInvalidLap = (lapLog && !lapLog->empty() && !(*lapLog)[0].isValid);
-        // Reset split caches for next lap
-        m_cachedSplit1 = -1;
-        m_cachedSplit2 = -1;
+    if (crossing.splitIndex >= 0) {
+        m_displayedTime = crossing.splitTime;
+        m_displayedSplit = crossing.splitIndex;
+        m_isInvalidLap = false;  // Reset on new split
         splitChanged = true;
     }
 
@@ -239,14 +194,12 @@ void PitboardHud::update() {
     else if (m_displayMode == MODE_SPLITS) {
         // SPLITS mode - trigger timed display when splits change
         if (splitChanged) {
-            m_displayStartTime = std::chrono::steady_clock::now();
-            m_bIsDisplayingTimed = true;
+            m_splitsHold.start();
             setDataDirty();
         }
 
         // Check if timed display should end
-        if (m_bIsDisplayingTimed && !shouldBeVisible()) {
-            m_bIsDisplayingTimed = false;
+        if (m_splitsHold.expire(m_freezeDurationMs)) {
             setDataDirty();
         }
     }
@@ -283,6 +236,15 @@ void PitboardHud::rebuildRenderData() {
     clearStrings();
     m_quads.clear();
 
+    // Keep BaseHud's background sprite pointing at the active pack - BEFORE the
+    // hidden early-out, so the board is known while it is not showing: that is
+    // what HudManager::publishGlWarmList hands the GL backend to load ahead of the
+    // first show. Assigned only on change: setBackgroundTextureIndex invalidates
+    // the theme memo.
+    const PitboardAsset* pack = activePack();
+    const int packBackground = pack ? pack->sprites[PitboardSprite::BACKGROUND] : 0;
+    if (getBackgroundTextureIndex() != packBackground) setBackgroundTextureIndex(packBackground);
+
     // Check visibility based on display mode.
     //
     // ...unless the Pitboard tab is open (isPreviewing): At-Splits and In-Pit both
@@ -306,15 +268,9 @@ void PitboardHud::rebuildRenderData() {
     // keeps its shape instead of being stretched to whatever the rows needed. A
     // compiled aspect would make a custom board at another aspect impossible to get
     // right.
-    const PitboardAsset* pack = activePack();
     static const PitboardLayout::BoardGeometry kNoPackGeometry;
     const PitboardLayout::BoardGeometry& layout = pack ? pack->geometry : kNoPackGeometry;
     float backgroundWidth = layout.widthForHeight(backgroundHeight, UI_ASPECT_RATIO);
-
-    // Keep BaseHud's background sprite pointing at the active pack. Assigned only on
-    // change: setBackgroundTextureIndex invalidates the theme memo.
-    const int packBackground = pack ? pack->sprites[PitboardSprite::BACKGROUND] : 0;
-    if (getBackgroundTextureIndex() != packBackground) setBackgroundTextureIndex(packBackground);
 
     // Get dimensions for positioning
     auto dim = getScaledDimensions();
@@ -431,10 +387,10 @@ void PitboardHud::rebuildRenderData() {
             int numLaps = standing->numLaps;
 
             if (sessionData.isRiderFinished(numLaps, standing->numLapsAtLeaderFinish)) {
-                strcpy_s(lapStr, sizeof(lapStr), "FIN");
+                strcpy_s(lapStr, sizeof(lapStr), PluginConstants::DisplayStrings::RaceStatus::FINISHED);
                 showLap = true;
             } else if (data.isRaceSession() && sessionData.isRiderOnLastLap(numLaps, standing->numLapsAtLeaderFinish)) {
-                strcpy_s(lapStr, sizeof(lapStr), "LL");
+                strcpy_s(lapStr, sizeof(lapStr), PluginConstants::DisplayStrings::RaceStatus::LAST_LAP);
                 showLap = true;
             } else if (m_displayMode == MODE_PIT && numLaps > 0) {
                 snprintf(lapStr, sizeof(lapStr), "L%d", numLaps);
@@ -461,15 +417,19 @@ void PitboardHud::rebuildRenderData() {
         if (m_displayMode == MODE_PIT) {
             // Only show previous lap time (nothing on lap 1)
             if (idealLapData && idealLapData->lastLapTime > 0) {
-                timeToShow = idealLapData->lastLapTime;
-                // Check lap log for validity in pit mode
+                // Check lap log for validity in pit mode. A pit lap is not a
+                // timed lap (as on the Timing panel): no time, no INVALID.
                 const auto* lapLog = PluginData::getInstance().getLapLog();
-                isInvalidLap = (lapLog && !lapLog->empty() && !(*lapLog)[0].isValid);
+                const LapLogEntry* lastLap = (lapLog && !lapLog->empty()) ? &(*lapLog)[0] : nullptr;
+                if (!(lastLap && lastLap->viaPits)) {
+                    timeToShow = idealLapData->lastLapTime;
+                    isInvalidLap = lastLap && !lastLap->isValid;
+                }
             }
         } else {
             // In other modes, show current split/lap time
             timeToShow = m_displayedTime;
-            isInvalidLap = (m_splitType == LAP && m_isInvalidLap);
+            isInvalidLap = (m_displayedSplit < 0 && m_isInvalidLap);
         }
         if (timeToShow > 0) {
             char timeStr[16];
@@ -496,7 +456,7 @@ void PitboardHud::rebuildRenderData() {
                            (effectiveMode == GAP_SESSION_PB || effectiveMode == GAP_ALLTIME_PB);
 
         if (showInvalid) {
-            snprintf(gapStr, sizeof(gapStr), "INVALID");
+            strcpy_s(gapStr, sizeof(gapStr), Placeholders::INVALID_LAP);
             float gapPosX = centerX + (backgroundWidth * layout.gapX);
             float gapPosY = currentY + (backgroundHeight * layout.gapY);
             addString(gapStr, gapPosX, gapPosY, Justify::CENTER,
@@ -504,7 +464,7 @@ void PitboardHud::rebuildRenderData() {
         } else if (hasGap) {
             // Format the gap string
             if (effectiveMode == GAP_LEADER && gapMs <= 0) {
-                snprintf(gapStr, sizeof(gapStr), "Leader");
+                strcpy_s(gapStr, sizeof(gapStr), PluginConstants::DisplayStrings::RaceStatus::LEADER);
             } else {
                 PluginUtils::formatGapCompact(gapStr, sizeof(gapStr), gapMs);
             }
@@ -548,91 +508,47 @@ int PitboardHud::calculateCompareGap(bool& hasGap, GapCompareMode& effectiveMode
     // For time-based comparisons, we need a split/lap time to compare against
     if (m_displayedTime <= 0) return 0;
 
-    const IdealLapData* idealLapData = data.getIdealLapData();
-    const LapLogEntry* bestLap = data.getBestLapEntry();
-
+    // The reference's time to the same crossing (split_crossing.h): its
+    // accumulated sectors to the split, or its lap time at the line.
+    const int split = m_displayedSplit;
+    int refTime = -1;
     if (effectiveMode == GAP_SESSION_PB) {
-        int refTime = -1;
-        if (m_splitType == LAP) {
-            refTime = bestLap ? bestLap->lapTime : -1;
-        } else if (m_splitType == SPLIT_1) {
-            refTime = bestLap ? bestLap->sector1 : -1;
-        } else if (m_splitType == SPLIT_2) {
-            if (bestLap && bestLap->sector1 > 0 && bestLap->sector2 > 0)
-                refTime = bestLap->sector1 + bestLap->sector2;
-        }
-        if (refTime > 0) {
-            hasGap = true;
-            return m_displayedTime - refTime;
-        }
+        const LapLogEntry* bestLap = data.getBestLapEntry();
+        if (bestLap) refTime = timeToCrossing(bestLap->lapTime, bestLap->sector1, bestLap->sector2, bestLap->sector3, split);
     }
     else if (effectiveMode == GAP_IDEAL) {
-        int refTime = -1;
+        const IdealLapData* idealLapData = data.getIdealLapData();
         if (idealLapData) {
-            if (m_splitType == LAP) {
-                refTime = idealLapData->getIdealLapTime();
-            } else if (m_splitType == SPLIT_1) {
-                refTime = idealLapData->bestSector1;
-            } else if (m_splitType == SPLIT_2) {
-                if (idealLapData->bestSector1 > 0 && idealLapData->bestSector2 > 0)
-                    refTime = idealLapData->bestSector1 + idealLapData->bestSector2;
-            }
-        }
-        if (refTime > 0) {
-            hasGap = true;
-            return m_displayedTime - refTime;
+            refTime = timeToCrossing(idealLapData->getIdealLapTime(), idealLapData->bestSector1,
+                                     idealLapData->bestSector2, idealLapData->bestSector3, split);
         }
     }
     else if (effectiveMode == GAP_ALLTIME_PB) {
         const StatsPersonalBestData* pb = StatsManager::getInstance().getPersonalBest();
-        if (pb && pb->isValid()) {
-            int refTime = -1;
-            if (m_splitType == LAP) {
-                refTime = pb->lapTime;
-            } else if (m_splitType == SPLIT_1) {
-                refTime = pb->sector1;
-            } else if (m_splitType == SPLIT_2) {
-                if (pb->sector1 > 0 && pb->sector2 > 0)
-                    refTime = pb->sector1 + pb->sector2;
-            }
-            if (refTime > 0) {
-                hasGap = true;
-                return m_displayedTime - refTime;
-            }
-        }
+        if (pb && pb->isValid()) refTime = timeToCrossing(pb->lapTime, pb->sector1, pb->sector2, pb->sector3, split);
     }
     else if (effectiveMode == GAP_OVERALL) {
         const LapLogEntry* overallBest = data.getOverallBestLap();
         if (overallBest) {
-            int refTime = -1;
-            if (m_splitType == LAP) {
-                refTime = data.getOverallBestLapTime();   // any rider
-            } else if (m_splitType == SPLIT_1) {
-                refTime = overallBest->sector1;
-            } else if (m_splitType == SPLIT_2) {
-                if (overallBest->sector1 > 0 && overallBest->sector2 > 0)
-                    refTime = overallBest->sector1 + overallBest->sector2;
-            }
-            if (refTime > 0) {
-                hasGap = true;
-                return m_displayedTime - refTime;
-            }
+            // The line against the best lap of any rider
+            const int lapTime = data.getOverallBestLapTime();
+            refTime = timeToCrossing(lapTime, overallBest->sector1, overallBest->sector2, overallBest->sector3, split);
         }
     }
 #if GAME_HAS_RECORDS_PROVIDER
     else if (effectiveMode == GAP_RECORD) {
         // Only compare full laps to records (no sector data available)
-        if (m_splitType == LAP) {
+        if (split < 0) {
             const RecordsHud& recordsHud = HudManager::getInstance().getRecordsHud();
-            int refTime = recordsHud.getFastestRecordLapTime();
-            if (refTime > 0) {
-                hasGap = true;
-                return m_displayedTime - refTime;
-            }
+            refTime = recordsHud.getFastestRecordLapTime();
         }
     }
 #endif
 
+    if (refTime > 0) {
+        hasGap = true;
+        return m_displayedTime - refTime;
+    }
     return 0;
 }
 
@@ -650,14 +566,12 @@ void PitboardHud::resetToDefaults() {
     m_enabledRows = ROW_DEFAULT;
     m_displayMode = MODE_SPLITS;  // Show at splits by default
     m_gapCompareMode = GAP_AUTO;  // Auto: leader when racing, session PB when solo
-    m_cachedSplit1 = -1;
-    m_cachedSplit2 = -1;
-    m_cachedLastLapTime = -1;
-    m_cachedDisplayRaceNum = -1;
-    m_bIsDisplayingTimed = false;
+    m_freezeDurationMs = FreezeDuration::PITBOARD_DEFAULT_MS;
+    m_crossings.reset();
+    m_splitsHold.stop();
     m_bWasVisibleLastFrame = false;
     m_displayedTime = -1;
-    m_splitType = LAP;
+    m_displayedSplit = -1;
     m_isInvalidLap = false;
     m_cachedRenderedTime = -1;
     setDataDirty();

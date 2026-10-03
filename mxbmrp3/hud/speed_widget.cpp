@@ -19,7 +19,6 @@ SpeedWidget::SpeedWidget()
     m_panelKind = PanelKind::Widget;
     m_bContentCard = true;
     // One-time setup
-    DEBUG_INFO("SpeedWidget created");
     setDraggable(true);
     m_strings.reserve(3);  // Title (optional) + speed value + units
 
@@ -76,7 +75,7 @@ void SpeedWidget::rebuildRenderData() {
     // BOX-MODEL: the plan owns padding, chrome, the title band and the card;
     // the widget states only its content — the value row plus the optional
     // units row.
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::SPEED_WIDTH, dim.fontSize);
     float sectionH = dim.lineHeightLarge;  // Speed value always shown
     if (m_enabledRows & ROW_UNITS) sectionH += dim.lineHeightNormal;
@@ -91,7 +90,7 @@ void SpeedWidget::rebuildRenderData() {
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
 
     addPlanBackground(p, startX, startY);
-    addPlanTitle(p, "Speed", this->getFont(FontCategory::TITLE), textColor);
+    addPlanTitle(p, "Speed", textColor);
     float currentY = p.contentY();
 
     // Build speed value string
@@ -114,12 +113,17 @@ void SpeedWidget::rebuildRenderData() {
     // left/right symmetric); the caption sits at the plan's own column.
     float centerX = p.sectionBoxCenterX();
 
+    // A placeholder draws MUTED, like the Timing panel's big time and the gap bar's gap
+    // with nothing to show: in the primary colour it reads as a value.
+    const unsigned long valueColor = bikeData.isValid
+        ? textColor : this->getColor(ColorSlot::MUTED);
+
     // Speed value (extra large font) - always shown, centered
     addString(speedValueBuffer, centerX, currentY, Justify::CENTER,
-        this->getFont(FontCategory::TITLE), textColor, dim.fontSizeExtraLarge);
+        this->getFont(FontCategory::TITLE), valueColor, dim.fontSizeExtraLarge);
     currentY += dim.lineHeightLarge;
 
-    // Add units label (normal font) - centered
+    // Add units label (title font at normal size) - centered
     if (m_enabledRows & ROW_UNITS) {
         const char* unitsLabel = (m_speedUnit == SpeedUnit::KMH) ? "km/h" : "mph";
         addString(unitsLabel, centerX, currentY, Justify::CENTER,

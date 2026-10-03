@@ -134,14 +134,14 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
     if (SettingsManager::getInstance().isDeveloperMode()) {
         // Debug mode toggle (for testing updates)
         bool isDebugMode = UpdateChecker::getInstance().isDebugMode();
-        ctx.addToggleControl("Debug Mode (test)", isDebugMode,
+        ctx.addToggleControl("Debug mode (test)", isDebugMode,
                             SettingsHud::ClickRegion::UPDATE_DEBUG_MODE, nullptr,
                             nullptr, 0, true, "updates.debug_mode");
 
         // Update channel selector (Stable / Prerelease)
         bool isPrerelease = UpdateChecker::getInstance().isPrereleaseChannel();
         const char* channelText = isPrerelease ? "Prerelease" : "Stable";
-        ctx.addCycleControl("Update Channel", channelText, 10,
+        ctx.addCycleControl("Update channel", channelText,
                             SettingsHud::ClickRegion::UPDATE_CHANNEL_DOWN,
                             SettingsHud::ClickRegion::UPDATE_CHANNEL_UP,
                             nullptr, true, false, "updates.channel");
@@ -149,7 +149,7 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
 
     // Check for Updates toggle using < > cycle control
     bool updatesEnabled = UpdateChecker::getInstance().isEnabled();
-    ctx.addToggleControl("Check for Updates", updatesEnabled,
+    ctx.addToggleControl("Check for updates", updatesEnabled,
                         SettingsHud::ClickRegion::UPDATE_CHECK_TOGGLE, nullptr,
                         nullptr, 0, true, "updates.check_enabled");
 
@@ -165,7 +165,8 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
         // POSITIVE: this is the confirming action of the tab -- fetch and install.
         // Paired with the red on Reset in the General tab.
         ctx.addActionButton(buttonText, 11, SettingsHud::ClickRegion::UPDATE_CHECK_NOW,
-                            SettingsLayoutContext::ButtonRole::Positive, !isDisabled);
+                            SettingsLayoutContext::ButtonRole::Positive, !isDisabled,
+                            "updates.check_now");
     }
 
     ctx.addSectionHeading("Status");
@@ -291,7 +292,8 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
         ctx.addSpacing();
 
         // Retry button - centered
-        ctx.addActionButton("Retry", 7, SettingsHud::ClickRegion::UPDATE_SKIP_VERSION);
+        ctx.addActionButton("Retry", 7, SettingsHud::ClickRegion::UPDATE_SKIP_VERSION,
+                            SettingsLayoutContext::ButtonRole::Accent, true, "updates.retry");
 
     } else if (isUpdateAvailable) {
         // Update available - show release notes and install button
@@ -338,7 +340,8 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
         }
 
         // Install button - centered
-        ctx.addActionButton("Install Update", 16, SettingsHud::ClickRegion::UPDATE_INSTALL);
+        ctx.addActionButton("Install Update", 16, SettingsHud::ClickRegion::UPDATE_INSTALL,
+                            SettingsLayoutContext::ButtonRole::Accent, true, "updates.install");
 
     } else if (checkerStatus == UpdateChecker::Status::CHECKING) {
         ctx.addTextRow("Checking for updates...", colorConfig.getSecondary());

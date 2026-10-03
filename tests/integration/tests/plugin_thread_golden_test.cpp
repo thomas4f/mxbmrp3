@@ -12,7 +12,6 @@
 // functionally identical — no event dropped, reordered, or raced across the
 // queue — on data far richer than any hand-authored scenario.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

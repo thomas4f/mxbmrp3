@@ -26,7 +26,7 @@ BaseHud* SettingsHud::renderTabTelemetry(SettingsLayoutContext& ctx) {
         case 1: modeText = "Numbers"; break;
         case 2: modeText = "Both"; break;
     }
-    ctx.addCycleControl("Style", modeText, 10,
+    ctx.addCycleControl("Style", modeText,
         SettingsHud::CycleControl::enumMember(hud, &TelemetryHud::m_displayMode, 3, hud),
         hud, true, false, "telemetry.display");
 
@@ -37,7 +37,7 @@ BaseHud* SettingsHud::renderTabTelemetry(SettingsLayoutContext& ctx) {
     {
         char rowsBuf[8];
         snprintf(rowsBuf, sizeof(rowsBuf), "%d", hud->m_graphRows);
-        ctx.addSteppedControl("Graph height", rowsBuf, 10,
+        ctx.addSteppedControl("Graph height", rowsBuf,
             SettingsHud::SteppedControl::clampInt(&hud->m_graphRows, 1,
                 TelemetryHud::MIN_GRAPH_ROWS, TelemetryHud::MAX_GRAPH_ROWS, hud),
             hud, true, false, "telemetry.graph_rows");

@@ -127,6 +127,9 @@ function startDemo() {
                 var phase = (idx < 2) ? 0.6 : (idx < 4) ? 2.4 : Math.random() * Math.PI * 2;
                 return {
                     num: r.num, fullName: r.name, bike: r.bike, brand: r.brand,
+                    // The class the game would name, from the bike's displacement, so
+                    // the Class column has something to show under ?demo.
+                    cat: /250/.test(r.bike) ? "MX2 OEM" : "MX1 OEM",
                     color: r.color, pace: r.pace, phase: phase,
                     dist: 0, laps: 0, lastLapMs: 0, bestLapMs: 0, gridPos: 0,
                     // Per-lap history (oldest-first {t,v}) so the session-charts
@@ -299,7 +302,7 @@ function startDemo() {
             if (rr.num === specNum) chips.push("camera");
             standings.push({
                 pos: k + 1, num: rr.num, name: rr.fullName, fullName: rr.fullName,
-                bike: rr.bike, brand: rr.brand, brandColor: rr.color,
+                bike: rr.bike, cat: rr.cat, brand: rr.brand, brandColor: rr.color,
                 plateColor: (rr.num === DEMO_TRACKED_NUM ? DEMO_TRACKED_PLATE : undefined),
                 gap: "", gapMs: 0, gapLaps: 0,
                 state: 0, numLaps: rr.laps, inPit: false, penalty: 0,
@@ -382,7 +385,7 @@ function startDemo() {
             // "camera" chip is added below, once the director subject is chosen.
             standings.push({
                 pos: k + 1, num: rr.num, name: rr.fullName, fullName: rr.fullName,
-                bike: rr.bike, brand: rr.brand, brandColor: rr.color,
+                bike: rr.bike, cat: rr.cat, brand: rr.brand, brandColor: rr.color,
                 plateColor: (rr.num === DEMO_TRACKED_NUM ? DEMO_TRACKED_PLATE : undefined),
                 gap: "", gapMs: (k === 0 ? 0 : gMs), gapLaps: (k === 0 ? 0 : gLaps),
                 // Live gaps: same leader-relative value as the official gap here

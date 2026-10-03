@@ -414,7 +414,7 @@ TEST_CASE("box model: every term moves its own content by exactly itself") {
 // ============================================================================
 // `cols` IS THE COLUMN THE PANEL LAID OUT, NOT THE ASK.
 //
-// Geom::cols is documented (and read by BaseHud::PanelPlan::contentW /
+// Geom::cols is documented (and read by PanelPlan::contentW /
 // rowBandW) as the one-column view of the ROW box -- the same box
 // ColumnGeom::rowsW carries per column. It used to be `spec.cols` echoed
 // straight back, which is only the same number when the ROWS ask is what set

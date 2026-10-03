@@ -24,7 +24,6 @@
 // isolates one named button rather than inferring it from a panel total, and it
 // cannot be satisfied by quads appearing anywhere else on the panel.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

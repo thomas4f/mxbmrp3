@@ -365,7 +365,7 @@ Var analyticsCheckbox
 ; Welcome to MXBMRP3 Setup (skipped in the relaunched elevated child — the user already
 ; made every choice in the original, un-elevated window)
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipPageIfElevatedChild
-!define MUI_WELCOMEPAGE_TEXT "Setup will guide you through the installation of ${PLUGIN_NAME} for PiBoSo racing games.$\n$\nSupported games:$\n  • MX Bikes$\n  • GP Bikes$\n  • Kart Racing Pro$\n$\nSetup will try to find your game installations automatically.$\n$\nClick Next to continue."
+!define MUI_WELCOMEPAGE_TEXT "Setup will guide you through the installation of ${PLUGIN_NAME} for PiBoSo racing games.$\n$\n${PLUGIN_NAME} is free and open source (MIT).$\n$\nSupported games:$\n  • MX Bikes$\n  • GP Bikes$\n  • Kart Racing Pro$\n$\nSetup will try to find your game installations automatically.$\n$\nClick Next to continue."
 !insertmacro MUI_PAGE_WELCOME
 
 ; Existing MXBMRP3 Installation Detected
@@ -804,8 +804,10 @@ Function OnPrivacyLinkClick
   ExecShell "open" "${PLUGIN_URL}#privacy"
 FunctionEnd
 
+; The report's interactive page on GitHub Pages; the repo's REPORT.md is the
+; same content without the hover readouts.
 Function OnReportLinkClick
-  ExecShell "open" "${PLUGIN_URL}/blob/main/usage_survey/REPORT.md"
+  ExecShell "open" "https://thomas4f.github.io/mxbmrp3/usage_survey/"
 FunctionEnd
 
 Function ShowPrivacyPage

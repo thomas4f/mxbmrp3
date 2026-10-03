@@ -183,6 +183,16 @@ html {
        the tower reflows when the column is hidden. Kept in sync with the .col-posdelta
        flex-basis below. */
     --posdelta-w:    2rem;
+    /* Width of the optional Class column ("MX2 OEM"), shown via the overlay's Class
+       setting. 7 characters at the column's own --fs-sm (0.75rem; the 0.75 here IS
+       that ratio -- keep them in step) plus its right padding, in root-font ch so
+       the same expression measures the same on #overlay's width calc and on the
+       .col-cat flex-basis (a ch resolves against the USING element's font, so the
+       column's 7ch at --fs-sm is 0.75 * 7ch here). Collapsed to 0 on
+       #overlay.hide-cat so the tower reflows when the column is hidden, exactly
+       as --posdelta-w does; without the reserve the fixed-width columns overflowed
+       the tower by the column's width when Class was turned on. */
+    --cat-w:         calc(7ch * 0.75 + var(--sp-sm));
     --row-height:    1.4rem;
     /* Numeric column widths.
        --col-pos-w is a plain `ch` token (advance of "0" in the column's own
@@ -268,14 +278,20 @@ body {
        measured px width (same value the columns use), so this formula matches the
        row exactly — the gap column reaches the right edge with no surplus pooling
        after it. The ± column (--posdelta-w) collapses to 0 when hidden — the +var here
-       resolves against #overlay's own --posdelta-w, so hide-posdelta shrinks the tower. */
-    width: calc(var(--tower-width-base) + var(--posdelta-w));
+       resolves against #overlay's own --posdelta-w, so hide-posdelta shrinks the tower.
+       The Class column (--cat-w) is reserved the same way, collapsed by hide-cat. */
+    width: calc(var(--tower-width-base) + var(--posdelta-w) + var(--cat-w));
 }
 
 /* ± column hidden (non-race session or disabled): drop its reserved width so the
    tower shrinks to match the visible columns instead of leaving a gap / overflowing. */
 #overlay.hide-posdelta {
     --posdelta-w: 0rem;
+}
+/* Class column hidden (the default): the same collapse, so the tower is exactly
+   as wide as before the column existed. */
+#overlay.hide-cat {
+    --cat-w: 0rem;
 }
 
 /* Idle state — no active session */
@@ -597,6 +613,19 @@ body {
 .col-name {
     flex: 0 0 calc(var(--name-chars) * 1ch);
 }
+
+/* The rider's class, between name and gap. Dim and small like a label: it
+   qualifies the name rather than competing with it. */
+.col-cat {
+    flex: 0 0 calc(7ch + var(--sp-sm));   /* = --cat-w, measured in this column's --fs-sm font */
+    font-size: var(--fs-sm);
+    color: var(--text-dim);
+    padding-right: var(--sp-sm);
+    overflow: hidden;
+    text-overflow: clip;
+    white-space: nowrap;
+}
+.hide-cat .col-cat { display: none; }
 
 .col-gap {
     /* Fixed width so the tower width is solely controlled by --name-chars.

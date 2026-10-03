@@ -15,8 +15,8 @@
 // that installs the plugin, so it cannot miss.
 //
 // WHY A STAMP AND NOT DELETE-ON-CONSUME. The nearest precedent in the codebase
-// is the donation-nudge sentinel (settings_manager.cpp), which is consumed by
-// deleting it -- but that file lives under savePath, which the player always
+// was the donation-nudge sentinel (removed in 1.31.0), which was consumed by
+// deleting it -- but that file lived under savePath, which the player always
 // owns. This one sits in the GAME folder, which may be Program Files: a plugin
 // running unelevated can be unable to delete it. A marker that cannot be
 // consumed would re-apply on every launch and permanently override the in-game

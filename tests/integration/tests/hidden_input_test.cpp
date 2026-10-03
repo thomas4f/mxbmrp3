@@ -12,7 +12,6 @@
 // the injected mouse through the real frame path and asserts a hidden HUD
 // stays put while the same drag moves it once it is back on screen.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

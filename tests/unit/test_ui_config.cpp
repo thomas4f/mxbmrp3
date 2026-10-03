@@ -42,3 +42,17 @@ TEST_CASE("UiConfig: gridOverlayMajorEvery is clamped to [1, 1000]") {
 
     ui.resetToDefaults();  // leave the singleton at defaults for other TUs
 }
+
+// Tyre temps once printed Celsius whatever the Temp Unit setting said; SessionHud
+// honoured it. Both now read the value through this one conversion.
+TEST_CASE("UiConfig: toDisplayTemperature follows the temperature unit") {
+    UiConfig& ui = UiConfig::getInstance();
+    ui.setTemperatureUnit(TemperatureUnit::CELSIUS);
+    CHECK(ui.toDisplayTemperature(85.4f) == 85);
+    CHECK(ui.toDisplayTemperature(85.6f) == 86);
+    ui.setTemperatureUnit(TemperatureUnit::FAHRENHEIT);
+    CHECK(ui.toDisplayTemperature(100.0f) == 212);
+    CHECK(ui.toDisplayTemperature(0.0f) == 32);
+    CHECK(ui.toDisplayTemperature(85.0f) == 185);
+    ui.setTemperatureUnit(TemperatureUnit::CELSIUS);
+}

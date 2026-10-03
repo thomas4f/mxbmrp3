@@ -5,7 +5,6 @@
 // MXBMRP3_Test_CompareVersions hook. No game state, no HTTP — just loads the DLL
 // and exercises the exported comparator. Self-contained doctest; see run_tests.sh.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include <windows.h>

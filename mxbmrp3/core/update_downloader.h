@@ -88,14 +88,13 @@ public:
     void setDebugMode(bool enabled) { m_debugMode = enabled; }
     bool isDebugMode() const { return m_debugMode; }
 
-    // Donation nudge: show "updated successfully" + Ko-fi button after auto-install (default on)
-    void setDonationNudgeEnabled(bool enabled) { m_donationNudgeEnabled = enabled; }
-    bool isDonationNudgeEnabled() const { return m_donationNudgeEnabled; }
-
-    // Check for and clear the donation nudge sentinel written after a successful install.
-    // Returns true once (deletes the file), false on every subsequent call.
-    // Call on startup after cleanupOldFiles().
-    bool checkAndClearDonationNudge();
+    // Check for and clear the sentinel written after a successful auto-install,
+    // confirming the new DLL is the one now running. Returns true once (deletes
+    // the file), false on every subsequent call. Call on startup after
+    // cleanupOldFiles(). Its one reader is the Fresh Coat achievement; the
+    // post-update donation prompt it used to open is gone -- the plugin does
+    // not ask for money (see the About page).
+    bool checkAndClearUpdateInstalled();
 
     // Cleanup old .dlo files from previous updates (call on startup)
     void cleanupOldFiles();
@@ -201,6 +200,4 @@ private:
     // Debug mode: extract to test subdirectory
     std::atomic<bool> m_debugMode;
 
-    // Donation nudge enable flag (INI: [Updates] donationNudge)
-    bool m_donationNudgeEnabled = true;  // mt-plain: settings load/save only, game thread; the download worker never reads it
 };

@@ -43,7 +43,9 @@ public:
     // Save settings to disk synchronously (temp-file + atomic replace on the calling
     // thread). Use for the paths that must be durable before returning: explicit Save,
     // Reset-to-defaults, and plugin shutdown. Also clears the dirty flag.
-    void saveSettings(const HudManager& hudManager, const char* savePath);
+    // Returns whether the file landed on disk (the atomic replace can fail; the
+    // caller that reads the file back as an oracle -- the tests -- needs to know).
+    bool saveSettings(const HudManager& hudManager, const char* savePath);
 
     // Mark settings as changed WITHOUT writing to disk. The frequent auto-save path — a HUD
     // drag/scale, a toggle, a hotkey binding — calls this. Serializing settings costs a couple
@@ -243,10 +245,10 @@ private:
     // Helper: capture all HUD settings to a cache (shared by captureToProfile and captureFactoryDefaults)
     void captureToCache(const HudManager& hudManager, ProfileCache& cache);
 
-    // Serialize all GLOBAL (non-per-profile) sections — [General], [Advanced], [Display],
-    // [Colors], [Fonts], [Rumble], [HelmetOverlay], [Hotkeys] — to a stream. Single source
-    // of truth shared by saveSettings() (writes the file) and captureFactoryDefaults()
-    // (captures the startup snapshot into m_globalDefaultsIni).
+    // Serialize all GLOBAL (non-per-profile) sections — every writer row of
+    // globalSectionRegistry(), in row order — to a stream. Single source of truth shared
+    // by saveSettings() (writes the file) and captureFactoryDefaults() (captures the
+    // startup snapshot into m_globalDefaultsIni).
     void writeGlobalSettings(std::ostream& out, const HudManager& hudManager) const;
 
     // Capture live state to the active profile, then serialize the full settings file to a
@@ -261,11 +263,67 @@ private:
 
     // Build the GamepadWidget / PitboardHud per-variant layout blocks (read live from the widgets).
 
-    // Apply one parsed key/value belonging to a global section to the live singletons.
+    // Apply one parsed key/value belonging to a global section to the live singletons:
+    // dispatches to the applier of the globalSectionRegistry() row named `section`.
     // Returns true if the section was a recognized global section (so the caller stops
     // parsing the line further). Shared by loadSettings() and resetGlobalsToFactoryDefaults().
     bool applyGlobalLine(const std::string& section, const std::string& key,
                          const std::string& value, HudManager& hudManager);
+
+    // One global INI section: its writer (null for a section written elsewhere) and its
+    // applier. globalSectionRegistry() (settings_manager_global.cpp) is the one ordered
+    // table both dispatchers above iterate, so a section is added as one row and its
+    // write and apply cannot drift apart.
+    struct GlobalSectionSerializer {
+        const char* name;
+        void (SettingsManager::*write)(std::ostream& out, const HudManager& hudManager) const;
+        void (SettingsManager::*apply)(const std::string& key, const std::string& value, HudManager& hudManager);
+    };
+    static const std::vector<GlobalSectionSerializer>& globalSectionRegistry();
+
+    // Per-section writer/applier pairs (the registry's rows). [General] .. [Fonts] and
+    // the [Fingerprint] applier are defined in settings_manager_global.cpp; [Rumble] ..
+    // [Hotkeys] in settings_manager_global_features.cpp.
+    void writeGeneralSettings(std::ostream& out, const HudManager& hudManager) const;
+    void applyGeneralLine(const std::string& key, const std::string& value, HudManager& hudManager);
+    void writeUpdatesSettings(std::ostream& out, const HudManager& hudManager) const;
+    void applyUpdatesLine(const std::string& key, const std::string& value, HudManager& hudManager);
+    void writeAdvancedSettings(std::ostream& out, const HudManager& hudManager) const;
+    void applyAdvancedLine(const std::string& key, const std::string& value, HudManager& hudManager);
+    void writeDisplaySettings(std::ostream& out, const HudManager& hudManager) const;
+    void applyDisplayLine(const std::string& key, const std::string& value, HudManager& hudManager);
+    void writeColorsSettings(std::ostream& out, const HudManager& hudManager) const;
+    void applyColorsLine(const std::string& key, const std::string& value, HudManager& hudManager);
+    void writeFontsSettings(std::ostream& out, const HudManager& hudManager) const;
+    void applyFontsLine(const std::string& key, const std::string& value, HudManager& hudManager);
+    void writeRumbleSettings(std::ostream& out, const HudManager& hudManager) const;
+    void applyRumbleLine(const std::string& key, const std::string& value, HudManager& hudManager);
+    void writeHelmetOverlaySettings(std::ostream& out, const HudManager& hudManager) const;
+    void applyHelmetOverlayLine(const std::string& key, const std::string& value, HudManager& hudManager);
+    void writeSpotterSettings(std::ostream& out, const HudManager& hudManager) const;
+    void applySpotterLine(const std::string& key, const std::string& value, HudManager& hudManager);
+    void writeDirectorSettings(std::ostream& out, const HudManager& hudManager) const;
+    void applyDirectorLine(const std::string& key, const std::string& value, HudManager& hudManager);
+    void writeAchievementsSettings(std::ostream& out, const HudManager& hudManager) const;
+    void applyAchievementsLine(const std::string& key, const std::string& value, HudManager& hudManager);
+#if GAME_HAS_RECORDER
+    void writeRecorderSettings(std::ostream& out, const HudManager& hudManager) const;
+    void applyRecorderLine(const std::string& key, const std::string& value, HudManager& hudManager);
+#endif
+    void writeHotkeysSettings(std::ostream& out, const HudManager& hudManager) const;
+    void applyHotkeysLine(const std::string& key, const std::string& value, HudManager& hudManager);
+    void applyFingerprintLine(const std::string& key, const std::string& value, HudManager& hudManager);
+
+    // [StreamChat]: the whole StreamChatHud (a GLOBAL HUD, so its geometry lives
+    // here rather than in the per-profile cache, like the Director button's).
+    // [Twitch] / [YouTube]: each platform's switch and channel. Split out of
+    // settings_manager_global.cpp; rows of its globalSectionRegistry().
+    void writeStreamChatSettings(std::ostream& out, const HudManager& hudManager) const;
+    void applyStreamChatLine(const std::string& key, const std::string& value, HudManager& hudManager);
+    void writeTwitchSettings(std::ostream& out, const HudManager& hudManager) const;
+    void applyTwitchLine(const std::string& key, const std::string& value, HudManager& hudManager);
+    void writeYouTubeSettings(std::ostream& out, const HudManager& hudManager) const;
+    void applyYouTubeLine(const std::string& key, const std::string& value, HudManager& hudManager);
 
     // Replay the captured global-defaults snapshot through applyGlobalLine(). When
     // sectionFilter is null, every section is applied; otherwise only sections whose name

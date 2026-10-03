@@ -4,7 +4,7 @@
 //
 //   |            1:23.456            |   <- current/frozen time (large, centered)
 //   | Session          +0:12.526    |   <- one row per chosen comparison: name (left),
-//   | Alltime           1:22.100    |      value (right) = the live +/- gap while frozen
+//   | All-time          1:22.100    |      value (right) = the live +/- gap while frozen
 //   | Ideal             1:21.800    |      on a split/lap, else the (progressive) target time
 //
 // The player picks which comparison rows to show; the big time can be toggled. The freeze,
@@ -14,6 +14,9 @@
 #pragma once
 
 #include "base_hud.h"
+#include "freeze_duration.h"
+#include "hold_timer.h"
+#include "split_crossing.h"
 #include "../core/ui_config.h"  // For PBScope enum
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
@@ -39,7 +42,7 @@ enum GapTypeFlags : uint8_t {
     GAP_TO_OVERALL = 1 << 2,  // "Server Best" - gap to best lap by anyone in session
     GAP_TO_ALLTIME = 1 << 3,  // "All-Time PB" - gap to all-time personal best (persisted)
     GAP_TO_RECORD  = 1 << 4,  // "Record" - gap to fastest record from RecordsHud provider
-    GAP_TO_LASTLAP = 1 << 5,  // "Last Lap" - gap to the previously completed lap
+    GAP_TO_LASTLAP = 1 << 5,  // "Last lap" - gap to the previously completed lap
 
     // Default comparison rows: Session PB + All-Time PB.
     GAP_DEFAULT_ENABLED = GAP_TO_PB | GAP_TO_ALLTIME
@@ -65,7 +68,7 @@ enum ReadoutFlags : uint32_t {
     READOUT_POSITION  = 1 << 0,  // "Pos"     - P / total
     READOUT_LAP       = 1 << 1,  // "Lap"     - lap / total
     READOUT_TIME      = 1 << 2,  // "Time"    - session clock, overtime label and all
-    READOUT_SESSION   = 1 << 3,  // "Format"  - how long it runs: "20 min + 2 laps"
+    READOUT_SESSION   = 1 << 3,  // "Format"  - how long it runs: "10:00 + 2L"
     READOUT_FUEL      = 1 << 4,  // "Fuel"    - estimated laps left in the tank
     READOUT_SERVER    = 1 << 5,  // "Server"  - the same label the Session panel prints
     READOUT_TRACK     = 1 << 6,  // "Track"   - ...and the same track name
@@ -95,7 +98,7 @@ struct ReadoutInfo {
 // The INI key rides along rather than being derived from the label, so renaming
 // what a row is CALLED never silently orphans what users already saved.
 inline constexpr ReadoutInfo READOUT_INFO[] = {
-    // "Position" spelled out: the label column already carries "Last Lap" at the same
+    // "Position" spelled out: the label column already carries "Last lap" at the same
     // eight characters, and a row's label only competes with its OWN value, so this
     // costs the Position row two characters and every other row nothing.
     { READOUT_POSITION, "Position", "Position",  "readout_position" },
@@ -145,10 +148,10 @@ struct GapTypeInfo {
 // Ordered list of gap types for cycling and display
 inline constexpr GapTypeInfo GAP_TYPE_INFO[] = {
     { GAP_TO_PB,      "Session"  },
-    { GAP_TO_ALLTIME, "Alltime"  },
+    { GAP_TO_ALLTIME, "All-time" },
     { GAP_TO_IDEAL,   "Ideal"    },
     { GAP_TO_OVERALL, "Overall"  },
-    { GAP_TO_LASTLAP, "Last Lap" },
+    { GAP_TO_LASTLAP, "Last lap" },
 #if GAME_HAS_RECORDS_PROVIDER
     { GAP_TO_RECORD,  "Record"   }
 #endif
@@ -161,25 +164,19 @@ struct GapData {
     int gap;           // Gap in ms (positive = slower)
     int refTime;       // Reference time in ms (for display)
     bool hasGap;       // Is this gap valid?
-    bool isFaster;     // Faster than reference?
-    bool isSlower;     // Slower than reference?
 
-    GapData() : gap(0), refTime(0), hasGap(false), isFaster(false), isSlower(false) {}
+    GapData() : gap(0), refTime(0), hasGap(false) {}
 
     void set(int gapMs, int referenceTime) {
         gap = gapMs;
         refTime = referenceTime;
         hasGap = (referenceTime > 0);
-        isFaster = (gapMs < 0);
-        isSlower = (gapMs > 0);
     }
 
     void reset() {
         gap = 0;
         refTime = 0;
         hasGap = false;
-        isFaster = false;
-        isSlower = false;
     }
 };
 
@@ -198,7 +195,7 @@ struct OfficialTimingData {
     GapData gapToOverall;     // "Overall" - gap to overall best lap by anyone in session
     GapData gapToAllTime;     // "All-Time PB" - gap to all-time personal best
     GapData gapToRecord;      // "Record" - gap to fastest record from provider
-    GapData gapToLastLap;     // "Last Lap" - gap to the previously completed lap
+    GapData gapToLastLap;     // "Last lap" - gap to the previously completed lap
 
     OfficialTimingData()
         : time(0), lapNum(0), splitIndex(-1), isInvalid(false) {}
@@ -269,7 +266,7 @@ public:
     // "freeze" that follows a split/lap event for displayDuration). Test-only accessor: the
     // freeze state isn't in /api/state, and it's the signal for the "a completed lap must
     // freeze" regression (see MXBMRP3_Test_TimingFrozen).
-    bool isFrozen() const { return m_isFrozen; }
+    bool isFrozen() const { return m_hold.active(); }
 
     // Test-only: the rendered panel HEIGHT and the scaled dimensions the grid-band geometry
     // test asserts against. The panel is a stack of grid-aligned bands — one lineHeightLarge
@@ -338,6 +335,51 @@ private:
     // reference, and the "N/A" the panel renders in their place.
     bool comparisonAppliesToDisplayRider(GapTypeFlags type) const;
 
+    // ---- rebuildRenderData() sections and the state they share ----
+    // What segment mode shows this rebuild (see resolveSegmentView).
+    struct SegmentView {
+        bool active = false;   // segment mode owns the panel
+        bool frozen = false;   // a just-completed segment held during the split-style freeze
+        int refBestMs = -1;    // passive "Best" reference; -1 = none yet
+        GapData gap;           // cumulative delta-to-best (staged by formatTimeCell)
+    };
+    // The big time cell's text and what colours it.
+    struct TimeCell {
+        char text[32];
+        bool placeholder = false;
+        bool invalid = false;
+    };
+    // One rendered comparison value: the +/- delta (active), the target time (passive), or a
+    // "-"/"N/A" placeholder. A delta takes the shared delta colour (deltaColorSlot).
+    struct RowValue {
+        char value[16] = "";
+        int delta = 0;
+        bool isReference = false;   // a target time (neutral) vs a delta / placeholder (muted)
+        bool isDelta = false;       // a real delta in `delta`
+    };
+    struct Row { const char* name; RowValue val; };
+    // 24, not the 16 a lap time needs: the session format is the long one here
+    // ("10:00 + 2L"), and a value that silently truncates is worse than a
+    // row that costs eight bytes more on the stack.
+    // 48, not 24: a server or track name is free text, and a buffer shorter than the
+    // panel is a SECOND, invisible truncation -- it silently cut the value before the
+    // row's own budget could, which is what made an earlier test look like it passed.
+    // The row's width is the only thing that should decide what fits.
+    // isText: Server/Track carry free text, drawn in the normal font; every other
+    // readout is a number (with at most a unit or overtime word) in the digits font.
+    struct Readout { const char* name; char value[48]; bool isText = false; };
+
+    SegmentView resolveSegmentView(const PluginData& pluginData) const;
+    void formatTimeCell(const PluginData& pluginData, SegmentView& sv, TimeCell& cell) const;
+    int buildComparisonRows(Row* rows, const SegmentView& sv, bool showGapData, int targetSplit) const;
+    int buildReadouts(Readout* readouts) const;
+    void addTimeSection(const PanelPlan& p, size_t section, const TimeCell& cell, float centerX,
+                        const ScaledDimensions& dim);
+    void addComparisonRows(const Row* rows, int rowCount, float y, float leftTextX, float rightTextX,
+                           const ScaledDimensions& dim);
+    void addReadoutRows(Readout* readouts, int readoutCount, float y, float leftTextX, float rightTextX,
+                        const ScaledDimensions& dim);
+
     // Display mode (Off/Splits/Always) controls when HUD content is shown
     ColumnMode m_displayMode;
 
@@ -356,22 +398,16 @@ private:
     mutable int m_lastReadoutBudget = 0;
     uint32_t m_enabledReadouts = READOUT_DEFAULT_ENABLED;  // ...and of readout rows (ReadoutFlags)
 
-    // Cached data to detect changes (accumulated times from CurrentLapData)
-    int m_cachedSplit1;              // Accumulated time to split 1
-    int m_cachedSplit2;              // Accumulated time to split 2
-    int m_cachedSplit3;              // Accumulated time to split 3 (4-sector games only)
-    int m_cachedLastCompletedLapNum; // Last completed lap number (for detection)
+    // Split and line crossings of the display rider
+    SplitCrossingDetector m_crossings;
     int m_cachedDisplayRaceNum;      // Track spectate target changes
     int m_cachedSessionGeneration;   // Track session changes (monotonic counter from PluginData)
     PBScope m_cachedPBScope;         // Track PB scope changes (re-cache all-time PB)
     int m_cachedPitState;            // Track pit entry/exit (0 = on track, 1 = in pits)
-    bool m_lapInterruptedByPit = false;  // The in-progress lap passed through the pits -> its
-                                         // completion isn't a genuine timed lap (suppress INVALID)
     long long m_cachedSegmentSig = -1;  // Track segment-timer state changes (segment mode line)
     // Segment split-style freeze: hold a completed segment's time on screen briefly.
     unsigned int m_segCachedCompletion = 0;  // last segment completionCounter seen
-    bool m_segFrozen = false;                // currently holding a completed segment
-    std::chrono::time_point<std::chrono::steady_clock> m_segFrozenAt;  // when the hold started
+    HoldTimer m_segHold;                     // holding a completed segment
 
     // Cached all-time PB (for showing improvement when beating PB)
     int m_previousAllTimeLap;        // Previous all-time PB lap time
@@ -380,15 +416,8 @@ private:
     int m_previousAllTimeS1PlusS2PlusS3;  // Previous all-time PB sector 1+2+3 (4-sector games)
 
     // Display state
-    bool m_isFrozen;                 // Currently showing official time (frozen)?
-    std::chrono::time_point<std::chrono::steady_clock> m_frozenAt;  // When freeze started
+    HoldTimer m_hold;                // Showing the official split/lap time (frozen)
 
     // Cached official data (retained between timing events)
     OfficialTimingData m_officialData;
-
-    // Duration limits
-    static constexpr int MIN_DURATION_MS = 0;      // 0 = disabled
-    static constexpr int MAX_DURATION_MS = 10000;  // 10 seconds maximum
-    static constexpr int DEFAULT_DURATION_MS = 5000;  // 5 seconds default
-    static constexpr int DURATION_STEP_MS = 1000;  // 1 second steps
 };

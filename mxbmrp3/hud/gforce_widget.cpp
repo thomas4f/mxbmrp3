@@ -22,7 +22,6 @@ GForceWidget::GForceWidget()
 {
     m_panelKind = PanelKind::Widget;
     m_bContentCard = true;
-    DEBUG_INFO("GForceWidget created");
     setDraggable(true);
     m_quads.reserve(RING_SEGMENTS + 4);   // bg quad + ring arc segments + 2 dots
     m_strings.reserve(3);                 // optional title + current + peak
@@ -148,7 +147,7 @@ void GForceWidget::rebuildRenderData() {
 
     // BOX-MODEL: the plan owns padding, chrome, the title band and the body card;
     // the gauge area is the single section's content.
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = contentWidth;
     want.sectionH = { gaugeAreaHeight };
     want.captionW = planTitleWidth(dim, "G-Force");
@@ -164,7 +163,7 @@ void GForceWidget::rebuildRenderData() {
     float innerRadius = ringMidRadius - arcThickness * 0.5f;
 
     addPlanBackground(p, startX, startY);
-    addPlanTitle(p, "G-Force", this->getFont(FontCategory::TITLE),
+    addPlanTitle(p, "G-Force",
         this->getColor(ColorSlot::PRIMARY));
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 

@@ -40,7 +40,6 @@ unsigned long tierColor(int tier, unsigned long fallback) {
 AchievementWidget::AchievementWidget() {
     m_panelKind = PanelKind::Widget;
     m_bContentCard = true;
-    DEBUG_INFO("AchievementWidget created");
     setDraggable(true);
     m_strings.reserve(3);
     m_quads.reserve(8);
@@ -170,7 +169,7 @@ void AchievementWidget::rebuildRenderData() {
     const int detailChars = static_cast<int>(std::strlen(toast.detail));
     const int textChars = titleChars > detailChars ? titleChars : detailChars;
 
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = iconColW + PluginUtils::calculateMonospaceTextWidth(textChars, dim.fontSize);
     want.sectionH = { rowH * 2.0f };
     want.captionW = planTitleWidth(dim, "Achievement");
@@ -180,7 +179,7 @@ void AchievementWidget::rebuildRenderData() {
     // its text grows leftward and stays in the corner it defaults to.
     const float panelX = rightAnchoredPanelLeft(p.width());
     addPlanBackground(p, panelX, 0.0f);
-    addPlanTitle(p, "Achievement", getFont(FontCategory::TITLE), primary);
+    addPlanTitle(p, "Achievement", primary);
 
     const float x = p.contentX();
     const float y = p.contentY();

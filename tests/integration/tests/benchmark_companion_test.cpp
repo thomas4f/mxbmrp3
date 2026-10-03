@@ -30,7 +30,6 @@
 // frame". (TESTING.md principle 2: white box only when the value genuinely never
 // surfaces.)
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

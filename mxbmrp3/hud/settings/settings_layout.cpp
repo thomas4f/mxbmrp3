@@ -14,6 +14,7 @@
 #include "../../core/asset_manager.h"
 #include "../../core/input_manager.h"
 #include "../gamepad_widget.h"   // the Gamepad row's pack cycle reads activePack()
+#include "../freeze_duration.h"
 #include "../pitboard_hud.h"     // ...and the Pitboard row's
 #include "../tacho_widget.h"     // ...and both gauge rows'
 
@@ -31,13 +32,9 @@ const LayoutMetrics& SettingsLayoutContext::layout() const {
 using namespace PluginConstants;
 
 
-// Standard width (in characters) of a control's value field. Value strings longer
-// than this are truncated by formatValue(), so keep cycle/toggle value text within it.
-
-
 SettingsLayoutContext::SettingsLayoutContext(
     SettingsHud* _parent,
-    const BaseHud::ScaledDimensions& dim,
+    const ScaledDimensions& dim,
     float _labelX,
     float _controlX,
     float _rightColumnX,
@@ -83,6 +80,12 @@ SettingsLayoutContext::ButtonRowGeom SettingsLayoutContext::buttonRow(int labelC
     g.labelY = g.y + bt.insetT;
     g.advance = bt.marginT + g.h + bt.marginB;
     return g;
+}
+
+int SettingsLayoutContext::valueChars() const {
+    // The row runs the whole content column (labelX == contentAreaStartX; see
+    // rowSpanWidth), so its width in characters is the column's stated ask.
+    return layout().settingsContentAreaChars() - SETTINGS_CONTROL_COLUMN - 4;
 }
 
 float SettingsLayoutContext::charWidth() const {
@@ -185,32 +188,58 @@ void SettingsLayoutContext::addNote(const char* text) {
     currentY += lineHeightNormal * 0.9f;
 }
 
-float SettingsLayoutContext::addRadioRow(
-    bool selected, SettingsHud::ClickRegion::Type type,
-    int clickChars, const char* tooltipId
-) {
-    const float radioWidth = PluginUtils::calculateMonospaceTextWidth(SettingsHud::CHECKBOX_WIDTH, fontSize);
-
-    if (tooltipId && tooltipId[0] != '\0') {
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            labelX, currentY, rowSpanWidth(), lineHeightNormal, tooltipId));
-    }
-    parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-        labelX, currentY,
-        radioWidth + PluginUtils::calculateMonospaceTextWidth(clickChars, fontSize),
-        lineHeightNormal, type, nullptr));
-
-    parent->addString(selected ? "(O)" : "( )", labelX, currentY, Justify::LEFT,
-        Fonts::getNormal(), ColorConfig::getInstance().getSecondary(), fontSize);
-
-    return labelX + radioWidth;
-}
-
 void SettingsLayoutContext::addInlineNote(const char* text) {
     addSpacing();
     parent->addString(text, labelX, currentY, Justify::LEFT,
         Fonts::getNormal(), ColorConfig::getInstance().getMuted(), fontSize * 0.9f);
     currentY += lineHeightNormal;
+}
+
+size_t SettingsLayoutContext::addInlineCycle(float x, const char* value, int valueChars,
+                                             SettingsHud::ClickRegion::Type downType,
+                                             SettingsHud::ClickRegion::Type upType,
+                                             BaseHud* target, bool enabled, bool muted) {
+    const ColorConfig& colors = ColorConfig::getInstance();
+    const float cw = charWidth();
+    const size_t first = parent->m_clickRegions.size();
+    const unsigned long valueColor = (enabled && !muted) ? colors.getPrimary() : colors.getMuted();
+    // Arrows always drawn, muted when disabled -- the addCycleControl look, so a
+    // greyed cell reads the same as a greyed row. Clickable only when enabled.
+    const unsigned long arrowColor = enabled ? colors.getAccent() : colors.getMuted();
+    float currentX = x;
+    parent->addString("<", currentX, currentY, Justify::LEFT,
+        Fonts::getNormal(), arrowColor, fontSize);
+    if (enabled) {
+        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, currentY, cw * 2, lineHeightNormal, downType, target));
+    }
+    currentX += cw * 2;
+    const std::string formatted = formatValue(value, valueChars, false);
+    parent->addString(formatted.c_str(), currentX, currentY, Justify::LEFT,
+        Fonts::getNormal(), valueColor, fontSize);
+    currentX += PluginUtils::calculateMonospaceTextWidth(valueChars, fontSize);
+    parent->addString(" >", currentX, currentY, Justify::LEFT,
+        Fonts::getNormal(), arrowColor, fontSize);
+    if (enabled) {
+        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            currentX, currentY, cw * 2, lineHeightNormal, upType, target));
+    }
+    return first;
+}
+
+void SettingsLayoutContext::addBracketField(float x, int fieldChars, const char* text,
+                                            unsigned long color, int cursorColumn) {
+    const float cw = charWidth();
+    char inner[64];
+    snprintf(inner, sizeof(inner), "%.*s", fieldChars, text);  // cut to the field
+    parent->addString("[", x, currentY, Justify::LEFT, Fonts::getNormal(), color, fontSize);
+    parent->addString(inner, x + cw, currentY, Justify::LEFT, Fonts::getNormal(), color, fontSize);
+    if (cursorColumn >= 0) {
+        parent->addString("_", x + cw * (cursorColumn + 1), currentY, Justify::LEFT,
+            Fonts::getNormal(), color, fontSize);
+    }
+    parent->addString("]", x + cw * (fieldChars + 1), currentY, Justify::LEFT,
+        Fonts::getNormal(), color, fontSize);
 }
 
 void SettingsLayoutContext::addTextRow(const char* text, unsigned long color) {
@@ -236,7 +265,7 @@ void SettingsLayoutContext::addLabelValueRow(
     currentY += lineHeightNormal;
 }
 
-// The track and the fill of a bar or band: two solid quads in the given rect.
+// The track and the fill of a band: two solid quads in the given rect.
 void SettingsLayoutContext::emitFillLevel(float x, float y, float width, float height,
                                           float fraction, unsigned long trackColor,
                                           unsigned long fillColor) {
@@ -257,16 +286,6 @@ void SettingsLayoutContext::addSolidQuad(float x, float y, float width, float he
     q.m_iSprite = SpriteIndex::SOLID_COLOR;   // solid-quad-exempt: a fill level or a swatch is a flat rectangle by definition, not a themed button
     q.m_ulColor = color;
     parent->m_quads.push_back(q);
-}
-
-void SettingsLayoutContext::addProgressBar(float x, float width, float fraction,
-                                           unsigned long fillColor) {
-    // A bar about a third of the row, centred: thick enough to read as a fill
-    // level beside a text row, thin enough not to read as a second row.
-    const float barH = lineHeightNormal * 0.36f;
-    const float barY = currentY + (lineHeightNormal - barH) * 0.5f;
-    emitFillLevel(x, barY, width, barH, fraction,
-                  PluginUtils::applyOpacity(ColorConfig::getInstance().getMuted(), 0.3f), fillColor);
 }
 
 void SettingsLayoutContext::addProgressBand(float x, float y, float width, float height,
@@ -324,7 +343,7 @@ void SettingsLayoutContext::addLinkRow(const char* prefix, const char* url, int 
 void SettingsLayoutContext::addActionButtonPair(
     const char* labelA, SettingsHud::ClickRegion::Type typeA, ButtonRole roleA, bool enabledA,
     const char* labelB, SettingsHud::ClickRegion::Type typeB, ButtonRole roleB, bool enabledB,
-    int labelChars
+    int labelChars, const char* tooltipIdA, const char* tooltipIdB
 ) {
     ColorConfig& colors = ColorConfig::getInstance();
     const ButtonRowGeom bg = buttonRow(labelChars);
@@ -332,10 +351,10 @@ void SettingsLayoutContext::addActionButtonPair(
     const float pairW = bg.w * 2.0f + gap;
     const float leftX = bg.centerX - pairW / 2.0f;
 
-    struct One { const char* label; SettingsHud::ClickRegion::Type type; ButtonRole role; bool on; float x; };
+    struct One { const char* label; SettingsHud::ClickRegion::Type type; ButtonRole role; bool on; float x; const char* tip; };
     const One two[2] = {
-        { labelA, typeA, roleA, enabledA, leftX },
-        { labelB, typeB, roleB, enabledB, leftX + bg.w + gap },
+        { labelA, typeA, roleA, enabledA, leftX, tooltipIdA },
+        { labelB, typeB, roleB, enabledB, leftX + bg.w + gap, tooltipIdB },
     };
     for (const One& b : two) {
         // Same region policy and same colour/state derivation as the single-button
@@ -345,6 +364,7 @@ void SettingsLayoutContext::addActionButtonPair(
         if (b.on) {
             parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
                 b.x, bg.y, bg.w, bg.h, b.type, nullptr));
+            if (b.tip) parent->m_clickRegions.back().tooltipId = b.tip;
         }
         const unsigned long roleColor = (b.role == ButtonRole::Positive) ? colors.getPositive()
                                       : (b.role == ButtonRole::Negative) ? colors.getNegative()
@@ -541,7 +561,6 @@ void SettingsLayoutContext::addTabTooltip(const char* tabId) {
 void SettingsLayoutContext::addCycleControl(
     const char* label,
     const char* value,
-    int valueWidth,
     SettingsHud::ClickRegion::Type downType,
     SettingsHud::ClickRegion::Type upType,
     BaseHud* targetHud,
@@ -591,6 +610,7 @@ void SettingsLayoutContext::addCycleControl(
     currentX += cw * 2;
 
     // Value with fixed width (formatted, left-aligned for consistent positioning)
+    const int valueWidth = valueChars();
     std::string formattedValue = formatValue(value, valueWidth, false);  // left-align for consistency
     parent->addString(formattedValue.c_str(), currentX, currentY, Justify::LEFT,
         Fonts::getNormal(), valueColor, fontSize);
@@ -609,10 +629,34 @@ void SettingsLayoutContext::addCycleControl(
     currentY += lineHeightNormal;
 }
 
+#if defined(MXBMRP3_TEST_BUILD)
+// Defined beside the row it measures. ROW closing arrows only: a CYCLE/STEPPED
+// pair (emitted down, then up) whose opening arrow sits at the control column --
+// a table's inline cells (the Rumble effects grid) use the same types at their
+// own columns. theme_geometry_test holds the min and max to the row's right edge.
+int SettingsHud::testClosingArrowRightX(int* minRight, int* maxRight) const {
+    auto q = [](float v) { return static_cast<int>(v * 1e6f + (v < 0 ? -0.5f : 0.5f)); };
+    int count = 0, lo = 0, hi = 0;
+    for (size_t i = static_cast<size_t>(m_testContentRegionBegin) + 1; i < m_clickRegions.size(); ++i) {
+        const ClickRegion& down = m_clickRegions[i - 1];
+        const ClickRegion& up = m_clickRegions[i];
+        const bool pair = (down.type == ClickRegion::CYCLE_DOWN && up.type == ClickRegion::CYCLE_UP)
+                       || (down.type == ClickRegion::STEPPED_DOWN && up.type == ClickRegion::STEPPED_UP);
+        if (!pair || q(down.x) != q(m_testControlX)) continue;
+        const int r = q(up.x + up.width);
+        if (count == 0 || r < lo) lo = r;
+        if (count == 0 || r > hi) hi = r;
+        ++count;
+    }
+    if (minRight) *minRight = lo;
+    if (maxRight) *maxRight = hi;
+    return count;
+}
+#endif
+
 void SettingsLayoutContext::addCycleControl(
     const char* label,
     const char* value,
-    int valueWidth,
     SettingsHud::ClickRegion::Type downType,
     SettingsHud::ClickRegion::Type upType,
     const SettingsHud::ClickRegion::TargetPointer& payload,
@@ -622,7 +666,7 @@ void SettingsLayoutContext::addCycleControl(
     // arrow regions it created. The row tooltip is a TOOLTIP_ROW region, so it is
     // never one of them.
     const size_t firstRegion = parent->m_clickRegions.size();
-    addCycleControl(label, value, valueWidth, downType, upType,
+    addCycleControl(label, value, downType, upType,
         /*targetHud=*/nullptr, /*enabled=*/true, /*isOff=*/false, tooltipId);
     for (size_t r = firstRegion; r < parent->m_clickRegions.size(); ++r) {
         auto& region = parent->m_clickRegions[r];
@@ -635,7 +679,6 @@ void SettingsLayoutContext::addCycleControl(
 void SettingsLayoutContext::addCycleControl(
     const char* label,
     const char* value,
-    int valueWidth,
     const SettingsHud::CycleControl& control,
     BaseHud* targetHud,
     bool enabled,
@@ -654,7 +697,7 @@ void SettingsLayoutContext::addCycleControl(
     // regions it created with the descriptor index (and optionally the row
     // tooltip).
     const size_t firstRegion = parent->m_clickRegions.size();
-    addCycleControl(label, value, valueWidth,
+    addCycleControl(label, value,
         SettingsHud::ClickRegion::CYCLE_DOWN,
         SettingsHud::ClickRegion::CYCLE_UP,
         targetHud, enabled, isOff, tooltipId);
@@ -668,10 +711,30 @@ void SettingsLayoutContext::addCycleControl(
     }
 }
 
+void SettingsLayoutContext::addFreezeControl(
+    const char* label,
+    int* durationMs,
+    bool allowOff,
+    BaseHud* targetHud,
+    bool enabled,
+    const char* tooltipId
+) {
+    const bool isOff = (*durationMs == 0);
+    char value[16];
+    if (isOff) {
+        strcpy_s(value, sizeof(value), "Off");
+    } else {
+        snprintf(value, sizeof(value), "%ds", *durationMs / 1000);
+    }
+    const int lo = allowOff ? FreezeDuration::MIN_MS : FreezeDuration::PITBOARD_MIN_MS;
+    addSteppedControl(label, value,
+        SettingsHud::SteppedControl::wrapInt(durationMs, FreezeDuration::STEP_MS, lo, FreezeDuration::MAX_MS, targetHud),
+        targetHud, enabled, isOff, tooltipId);
+}
+
 void SettingsLayoutContext::addSteppedControl(
     const char* label,
     const char* value,
-    int valueWidth,
     const SettingsHud::SteppedControl& control,
     BaseHud* targetHud,
     bool enabled,
@@ -690,7 +753,7 @@ void SettingsLayoutContext::addSteppedControl(
     // created with the descriptor index (and optionally the row tooltip, which is
     // what the old per-type tooltip fallback resolved to for these controls).
     const size_t firstRegion = parent->m_clickRegions.size();
-    addCycleControl(label, value, valueWidth,
+    addCycleControl(label, value,
         SettingsHud::ClickRegion::STEPPED_DOWN,
         SettingsHud::ClickRegion::STEPPED_UP,
         targetHud, enabled, isOff, tooltipId);
@@ -733,11 +796,11 @@ void SettingsLayoutContext::addToggleControl(
 
     float currentX = controlX;
     unsigned long valueColor = (enabled && isOn) ? colors.getPrimary() : colors.getMuted();
-    constexpr int VALUE_WIDTH = STANDARD_VALUE_WIDTH;
+    const int valueWidth = valueChars();
 
     // Use override value if provided, otherwise show On/Off
     const char* displayValue = valueOverride ? valueOverride : (isOn ? "On" : "Off");
-    std::string formattedValue = formatValue(displayValue, VALUE_WIDTH, false);
+    std::string formattedValue = formatValue(displayValue, valueWidth, false);
 
     // Left arrow "<" - always visible, muted when disabled, clickable only when enabled
     parent->addString("<", currentX, currentY, Justify::LEFT,
@@ -760,7 +823,7 @@ void SettingsLayoutContext::addToggleControl(
     // Value with fixed width
     parent->addString(formattedValue.c_str(), currentX, currentY, Justify::LEFT,
         Fonts::getNormal(), valueColor, fontSize);
-    currentX += PluginUtils::calculateMonospaceTextWidth(VALUE_WIDTH, fontSize);
+    currentX += PluginUtils::calculateMonospaceTextWidth(valueWidth, fontSize);
 
     // Right arrow " >" - always visible, muted when disabled, clickable only when enabled
     parent->addString(" >", currentX, currentY, Justify::LEFT,
@@ -809,10 +872,10 @@ void SettingsLayoutContext::addToggleControl(
 
     float currentX = controlX;
     unsigned long valueColor = (enabled && isOn) ? colors.getPrimary() : colors.getMuted();
-    constexpr int VALUE_WIDTH = STANDARD_VALUE_WIDTH;
+    const int valueWidth = valueChars();
 
     const char* displayValue = valueOverride ? valueOverride : (isOn ? "On" : "Off");
-    std::string formattedValue = formatValue(displayValue, VALUE_WIDTH, false);
+    std::string formattedValue = formatValue(displayValue, valueWidth, false);
 
     // Left arrow "<" - always visible, muted when disabled, clickable only when enabled
     parent->addString("<", currentX, currentY, Justify::LEFT,
@@ -828,7 +891,7 @@ void SettingsLayoutContext::addToggleControl(
     // Value
     parent->addString(formattedValue.c_str(), currentX, currentY, Justify::LEFT,
         Fonts::getNormal(), valueColor, fontSize);
-    currentX += PluginUtils::calculateMonospaceTextWidth(VALUE_WIDTH, fontSize);
+    currentX += PluginUtils::calculateMonospaceTextWidth(valueWidth, fontSize);
 
     // Right arrow " >" - always visible, muted when disabled, clickable only when enabled
     parent->addString(" >", currentX, currentY, Justify::LEFT,
@@ -848,14 +911,6 @@ void SettingsLayoutContext::addToggleControl(
 // and is what every HUD ships as -- so a user who only sets the global theme never
 // has per-HUD values written, and a changed default still reaches them on upgrade.
 void SettingsLayoutContext::addPerHudThemeControl(BaseHud* hud) {
-    const ColorConfig& colors = ColorConfig::getInstance();
-    float rowWidth = rowSpanWidth();
-
-    parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-        labelX, currentY, rowWidth, lineHeightNormal, "common.theme"));
-    parent->addString("Theme", labelX, currentY, Justify::LEFT,
-        Fonts::getNormal(), colors.getSecondary(), fontSize);
-
     const std::string& ov = hud->getThemeOverride();
     std::string label;
     if (ov.empty()) {
@@ -870,27 +925,9 @@ void SettingsLayoutContext::addPerHudThemeControl(BaseHud* hud) {
         label = "Default";
     }
 
-    float toggleX = controlX;
-    float cw = charWidth();
-    constexpr int VALUE_WIDTH = STANDARD_VALUE_WIDTH;
-
-    parent->addString("<", toggleX, currentY, Justify::LEFT,
-        Fonts::getNormal(), colors.getAccent(), fontSize);
-    parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-        toggleX, currentY, cw * 2, lineHeightNormal,
-        SettingsHud::ClickRegion::HUD_THEME_DOWN, hud, 0, false, 0));
-    toggleX += cw * 2;
-
-    std::string formatted = formatValue(label.c_str(), VALUE_WIDTH, false);
-    parent->addString(formatted.c_str(), toggleX, currentY, Justify::LEFT,
-        Fonts::getNormal(), colors.getPrimary(), fontSize);
-    toggleX += PluginUtils::calculateMonospaceTextWidth(VALUE_WIDTH, fontSize);
-
-    parent->addString(" >", toggleX, currentY, Justify::LEFT,
-        Fonts::getNormal(), colors.getAccent(), fontSize);
-    parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-        toggleX, currentY, cw * 2, lineHeightNormal,
-        SettingsHud::ClickRegion::HUD_THEME_UP, hud, 0, false, 0));
+    addCycleControl("Theme", label.c_str(),
+        SettingsHud::ClickRegion::HUD_THEME_DOWN, SettingsHud::ClickRegion::HUD_THEME_UP,
+        hud, /*enabled=*/true, /*isOff=*/false, "common.theme");
 }
 
 // The Texture row for a HUD whose art comes from an asset PACK rather than from a
@@ -966,57 +1003,21 @@ void SettingsLayoutContext::addPackControl(BaseHud* hud) {
 
     // Greyed with nothing to cycle -- one pack is a legitimate install, and with the
     // Off entry gone there is genuinely nowhere for the arrows to go.
-    addCycleControl("Texture", label.c_str(), STANDARD_VALUE_WIDTH, down, up,
+    addCycleControl("Texture", label.c_str(), down, up,
         hud, /*enabled=*/count > 1, /*isOff=*/false, tip);
 }
 
-float SettingsLayoutContext::addStandardHudControls(BaseHud* hud) {
-    const bool enableTitle = hud->m_titleSupported;
-    // Save starting Y for right column (data toggles)
-    float sectionStartY = currentY;
-    ColorConfig& colors = ColorConfig::getInstance();
-    // panelWidth is actually contentAreaWidth (from contentAreaStartX to right edge)
-    float rowWidth = rowSpanWidth();
+void SettingsLayoutContext::addStandardHudControls(BaseHud* hud) {
+    // Every row is the shared helper's: row-wide tooltip region, label, then the
+    // "< value >" arrows -- so the block every HUD tab opens with cannot drift
+    // from the rows below it.
 
     // Visibility toggle. ACTIVE SURFACE, not the game flag: the click below emits
     // HUD_TOGGLE, which edits whichever surface the menu is on, so displaying
     // isVisible() would show the game's state while the click changed the
     // companion's. (The inline variant further down already reads it this way.)
-    bool isVisible = hud->isVisibleOnActiveSurface();
-    // Add row-wide tooltip region
-    parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-        labelX, currentY, rowWidth, lineHeightNormal, "common.visible"
-    ));
-    parent->addString("Visible", labelX, currentY, Justify::LEFT,
-        Fonts::getNormal(), colors.getSecondary(), fontSize);
-    // Use inline toggle (same line)
-    {
-        float toggleX = controlX;
-        float cw = charWidth();
-        unsigned long valueColor = isVisible ? colors.getPrimary() : colors.getMuted();
-        constexpr int VALUE_WIDTH = STANDARD_VALUE_WIDTH;
-
-        parent->addString("<", toggleX, currentY, Justify::LEFT,
-            Fonts::getNormal(), colors.getAccent(), fontSize);
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            toggleX, currentY, cw * 2, lineHeightNormal,
-            SettingsHud::ClickRegion::HUD_TOGGLE, hud
-        ));
-        toggleX += cw * 2;
-
-        std::string formattedVisible = formatValue(isVisible ? "On" : "Off", VALUE_WIDTH, false);
-        parent->addString(formattedVisible.c_str(), toggleX, currentY, Justify::LEFT,
-            Fonts::getNormal(), valueColor, fontSize);
-        toggleX += PluginUtils::calculateMonospaceTextWidth(VALUE_WIDTH, fontSize);
-
-        parent->addString(" >", toggleX, currentY, Justify::LEFT,
-            Fonts::getNormal(), colors.getAccent(), fontSize);
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            toggleX, currentY, cw * 2, lineHeightNormal,
-            SettingsHud::ClickRegion::HUD_TOGGLE, hud
-        ));
-    }
-    currentY += lineHeightNormal;
+    addToggleControl("Visible", hud->isVisibleOnActiveSurface(),
+        SettingsHud::ClickRegion::HUD_TOGGLE, hud, nullptr, 0, true, "common.visible");
 
     // THE TITLE ROW IS ABSENT, not greyed, on a panel that cannot carry a caption
     // (BaseHud::m_titleSupported). A greyed row is right for a setting that is
@@ -1025,38 +1026,9 @@ float SettingsLayoutContext::addStandardHudControls(BaseHud* hud) {
     // as something broken, and it spends a row on every one of these tabs. The Widgets
     // TABLE still greys its Title column rather than dropping it, because that column is
     // shared by nineteen rows and cannot be per-row.
-    if (enableTitle) {
-        const bool showTitle = hud->getShowTitle();
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            labelX, currentY, rowWidth, lineHeightNormal, "common.title"
-        ));
-        parent->addString("Title", labelX, currentY, Justify::LEFT,
-            Fonts::getNormal(), colors.getSecondary(), fontSize);
-
-        float toggleX = controlX;
-        const float cw = charWidth();
-        constexpr int VALUE_WIDTH = STANDARD_VALUE_WIDTH;
-
-        parent->addString("<", toggleX, currentY, Justify::LEFT,
-            Fonts::getNormal(), colors.getAccent(), fontSize);
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            toggleX, currentY, cw * 2, lineHeightNormal,
-            SettingsHud::ClickRegion::TITLE_TOGGLE, hud
-        ));
-        toggleX += cw * 2;
-
-        std::string formattedTitle = formatValue(showTitle ? "On" : "Off", VALUE_WIDTH, false);
-        parent->addString(formattedTitle.c_str(), toggleX, currentY, Justify::LEFT,
-            Fonts::getNormal(), showTitle ? colors.getPrimary() : colors.getMuted(), fontSize);
-        toggleX += PluginUtils::calculateMonospaceTextWidth(VALUE_WIDTH, fontSize);
-
-        parent->addString(" >", toggleX, currentY, Justify::LEFT,
-            Fonts::getNormal(), colors.getAccent(), fontSize);
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            toggleX, currentY, cw * 2, lineHeightNormal,
-            SettingsHud::ClickRegion::TITLE_TOGGLE, hud
-        ));
-        currentY += lineHeightNormal;
+    if (hud->m_titleSupported) {
+        addToggleControl("Title", hud->getShowTitle(),
+            SettingsHud::ClickRegion::TITLE_TOGGLE, hud, nullptr, 0, true, "common.title");
     }
 
     // One row, two meanings, decided by what the HUD actually HAS.
@@ -1066,246 +1038,49 @@ float SettingsLayoutContext::addStandardHudControls(BaseHud* hud) {
     // suppressed for it anyway. Every other HUD declares a texture base name with
     // no files behind it, so its Texture row was permanently "Off" and unclickable
     // -- dead UI. Those get the per-HUD Theme override instead.
-    bool hasTextures = !hud->getAvailableTextureVariants().empty();
+    const bool hasTextures = !hud->getAvailableTextureVariants().empty();
     if (hud->m_packKind != BaseHud::PackKind::None) {
         // A PACK HUD gets a Texture row that cycles PACKS -- the same row Radar gets,
         // driven by a different source. Not the per-HUD Theme control below (which
         // it would otherwise reach: no texture base name, so hasTextures is false) --
         // that control is DEAD here: the artwork is mandatory on these HUDs and
         // artwork suppresses the theme, so nothing it offers can take effect.
-        addPackControl(hud);   // advances currentY itself (addCycleControl does)
+        addPackControl(hud);
     } else if (!hasTextures && AssetManager::getInstance().getThemeCount() > 0) {
         addPerHudThemeControl(hud);
-        currentY += lineHeightNormal;
     } else {
-
-    // Background texture variant cycle (Off, 1, 2, ...)
-    // Add row-wide tooltip region
-    parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-        labelX, currentY, rowWidth, lineHeightNormal, "common.texture"
-    ));
-    parent->addString("Texture", labelX, currentY, Justify::LEFT,
-        Fonts::getNormal(), hasTextures ? colors.getSecondary() : colors.getMuted(), fontSize);
-    char textureValue[16];
-    int variant = hud->getTextureVariant();
-    if (!hasTextures || variant == 0) {
-        snprintf(textureValue, sizeof(textureValue), "Off");
-    } else {
-        snprintf(textureValue, sizeof(textureValue), "%d", variant);
-    }
-    {
-        float toggleX = controlX;
-        float cw = charWidth();
-        constexpr int VALUE_WIDTH = STANDARD_VALUE_WIDTH;
-
-        if (hasTextures) {
-            parent->addString("<", toggleX, currentY, Justify::LEFT,
-                Fonts::getNormal(), colors.getAccent(), fontSize);
-            parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                toggleX, currentY, cw * 2, lineHeightNormal,
-                SettingsHud::ClickRegion::TEXTURE_VARIANT_DOWN, hud, 0, false, 0
-            ));
+        // Background texture variant cycle (Off, 1, 2, ...). Greyed without textures.
+        // The value keeps primary for "Off" while textures exist (isOff=false), as
+        // this row always has.
+        char textureValue[16];
+        const int variant = hud->getTextureVariant();
+        if (!hasTextures || variant == 0) {
+            snprintf(textureValue, sizeof(textureValue), "Off");
+        } else {
+            snprintf(textureValue, sizeof(textureValue), "%d", variant);
         }
-        toggleX += cw * 2;
-
-        std::string formattedTexture = formatValue(textureValue, VALUE_WIDTH, false);
-        parent->addString(formattedTexture.c_str(), toggleX, currentY, Justify::LEFT,
-            Fonts::getNormal(), hasTextures ? colors.getPrimary() : colors.getMuted(), fontSize);
-        toggleX += PluginUtils::calculateMonospaceTextWidth(VALUE_WIDTH, fontSize);
-
-        if (hasTextures) {
-            parent->addString(" >", toggleX, currentY, Justify::LEFT,
-                Fonts::getNormal(), colors.getAccent(), fontSize);
-            parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                toggleX, currentY, cw * 2, lineHeightNormal,
-                SettingsHud::ClickRegion::TEXTURE_VARIANT_UP, hud, 0, false, 0
-            ));
-        }
+        addCycleControl("Texture", textureValue,
+            SettingsHud::ClickRegion::TEXTURE_VARIANT_DOWN,
+            SettingsHud::ClickRegion::TEXTURE_VARIANT_UP,
+            hud, /*enabled=*/hasTextures, /*isOff=*/false, "common.texture");
     }
-    currentY += lineHeightNormal;
 
-    }   // end of the Texture branch (see the Theme/Texture choice above)
-
-    // Background opacity controls
-    // Add row-wide tooltip region
-    parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-        labelX, currentY, rowWidth, lineHeightNormal, "common.opacity"
-    ));
-    parent->addString("Opacity", labelX, currentY, Justify::LEFT,
-        Fonts::getNormal(), colors.getSecondary(), fontSize);
+    // Background opacity
     char opacityValue[16];
-    int opacityPercent = static_cast<int>(std::round(hud->getBackgroundOpacity() * 100.0f));
-    snprintf(opacityValue, sizeof(opacityValue), "%d%%", opacityPercent);
-    {
-        float toggleX = controlX;
-        float cw = charWidth();
-        constexpr int VALUE_WIDTH = STANDARD_VALUE_WIDTH;
+    snprintf(opacityValue, sizeof(opacityValue), "%d%%",
+        static_cast<int>(std::round(hud->getBackgroundOpacity() * 100.0f)));
+    addCycleControl("Opacity", opacityValue,
+        SettingsHud::ClickRegion::BACKGROUND_OPACITY_DOWN,
+        SettingsHud::ClickRegion::BACKGROUND_OPACITY_UP,
+        hud, true, false, "common.opacity");
 
-        parent->addString("<", toggleX, currentY, Justify::LEFT,
-            Fonts::getNormal(), colors.getAccent(), fontSize);
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            toggleX, currentY, cw * 2, lineHeightNormal,
-            SettingsHud::ClickRegion::BACKGROUND_OPACITY_DOWN, hud, 0, false, 0
-        ));
-        toggleX += cw * 2;
-
-        std::string formattedOpacity = formatValue(opacityValue, VALUE_WIDTH, false);
-        parent->addString(formattedOpacity.c_str(), toggleX, currentY, Justify::LEFT,
-            Fonts::getNormal(), colors.getPrimary(), fontSize);
-        toggleX += PluginUtils::calculateMonospaceTextWidth(VALUE_WIDTH, fontSize);
-
-        parent->addString(" >", toggleX, currentY, Justify::LEFT,
-            Fonts::getNormal(), colors.getAccent(), fontSize);
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            toggleX, currentY, cw * 2, lineHeightNormal,
-            SettingsHud::ClickRegion::BACKGROUND_OPACITY_UP, hud, 0, false, 0
-        ));
-    }
-    currentY += lineHeightNormal;
-
-    // Scale controls
-    // Add row-wide tooltip region
-    parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-        labelX, currentY, rowWidth, lineHeightNormal, "common.scale"
-    ));
-    parent->addString("Scale", labelX, currentY, Justify::LEFT,
-        Fonts::getNormal(), colors.getSecondary(), fontSize);
+    // Scale
     char scaleValue[16];
-    int scalePercent = static_cast<int>(std::round(hud->getScale() * 100.0f));
-    snprintf(scaleValue, sizeof(scaleValue), "%d%%", scalePercent);
-    {
-        float toggleX = controlX;
-        float cw = charWidth();
-        constexpr int VALUE_WIDTH = STANDARD_VALUE_WIDTH;
-
-        parent->addString("<", toggleX, currentY, Justify::LEFT,
-            Fonts::getNormal(), colors.getAccent(), fontSize);
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            toggleX, currentY, cw * 2, lineHeightNormal,
-            SettingsHud::ClickRegion::SCALE_DOWN, hud, 0, false, 0
-        ));
-        toggleX += cw * 2;
-
-        std::string formattedScale = formatValue(scaleValue, VALUE_WIDTH, false);
-        parent->addString(formattedScale.c_str(), toggleX, currentY, Justify::LEFT,
-            Fonts::getNormal(), colors.getPrimary(), fontSize);
-        toggleX += PluginUtils::calculateMonospaceTextWidth(VALUE_WIDTH, fontSize);
-
-        parent->addString(" >", toggleX, currentY, Justify::LEFT,
-            Fonts::getNormal(), colors.getAccent(), fontSize);
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            toggleX, currentY, cw * 2, lineHeightNormal,
-            SettingsHud::ClickRegion::SCALE_UP, hud, 0, false, 0
-        ));
-    }
-    currentY += lineHeightNormal;
-
-    return sectionStartY;
-}
-
-void SettingsLayoutContext::addDataToggle(
-    const char* label,
-    uint32_t* bitfield,
-    uint32_t flag,
-    bool isRequired,
-    BaseHud* targetHud,
-    float yPos,
-    int labelWidth
-) {
-    float cw = charWidth();
-    ColorConfig& colors = ColorConfig::getInstance();
-    bool isChecked = (*bitfield & flag) != 0;
-    bool enabled = !isRequired;
-
-    // Label with padding
-    char paddedLabel[32];
-    snprintf(paddedLabel, sizeof(paddedLabel), "%-*s", labelWidth, label);
-    parent->addString(paddedLabel, rightColumnX, yPos, Justify::LEFT,
-        Fonts::getNormal(), enabled ? colors.getSecondary() : colors.getMuted(), fontSize);
-
-    // Toggle control
-    float toggleX = rightColumnX + PluginUtils::calculateMonospaceTextWidth(labelWidth, fontSize);
-    unsigned long valueColor = (enabled && isChecked) ? colors.getPrimary() : colors.getMuted();
-    constexpr int VALUE_WIDTH = 3;
-
-    // Left arrow "<" - only show when enabled
-    if (enabled) {
-        parent->addString("<", toggleX, yPos, Justify::LEFT,
-            Fonts::getNormal(), colors.getAccent(), fontSize);
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            toggleX, yPos, cw * 2, lineHeightNormal,
-            SettingsHud::ClickRegion::CHECKBOX, bitfield, flag, false, targetHud
-        ));
-    }
-    toggleX += cw * 2;
-
-    std::string formattedValue = formatValue(isChecked ? "On" : "Off", VALUE_WIDTH, false);
-    parent->addString(formattedValue.c_str(), toggleX, yPos, Justify::LEFT,
-        Fonts::getNormal(), valueColor, fontSize);
-    toggleX += PluginUtils::calculateMonospaceTextWidth(VALUE_WIDTH, fontSize);
-
-    // Right arrow " >" - only show when enabled
-    if (enabled) {
-        parent->addString(" >", toggleX, yPos, Justify::LEFT,
-            Fonts::getNormal(), colors.getAccent(), fontSize);
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            toggleX, yPos, cw * 2, lineHeightNormal,
-            SettingsHud::ClickRegion::CHECKBOX, bitfield, flag, false, targetHud
-        ));
-    }
-}
-
-void SettingsLayoutContext::addGroupToggle(
-    const char* label,
-    uint32_t* bitfield,
-    uint32_t groupFlags,
-    bool isRequired,
-    BaseHud* targetHud,
-    float yPos,
-    int labelWidth
-) {
-    float cw = charWidth();
-    ColorConfig& colors = ColorConfig::getInstance();
-    // Group is checked if all bits in group are set
-    bool isChecked = (*bitfield & groupFlags) == groupFlags;
-    bool enabled = !isRequired;
-
-    // Label with padding
-    char paddedLabel[32];
-    snprintf(paddedLabel, sizeof(paddedLabel), "%-*s", labelWidth, label);
-    parent->addString(paddedLabel, rightColumnX, yPos, Justify::LEFT,
-        Fonts::getNormal(), enabled ? colors.getSecondary() : colors.getMuted(), fontSize);
-
-    // Toggle control
-    float toggleX = rightColumnX + PluginUtils::calculateMonospaceTextWidth(labelWidth, fontSize);
-    unsigned long valueColor = (enabled && isChecked) ? colors.getPrimary() : colors.getMuted();
-    constexpr int VALUE_WIDTH = 3;
-
-    // Left arrow "<" - only show when enabled
-    if (enabled) {
-        parent->addString("<", toggleX, yPos, Justify::LEFT,
-            Fonts::getNormal(), colors.getAccent(), fontSize);
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            toggleX, yPos, cw * 2, lineHeightNormal,
-            SettingsHud::ClickRegion::CHECKBOX, bitfield, groupFlags, false, targetHud
-        ));
-    }
-    toggleX += cw * 2;
-
-    std::string formattedValue = formatValue(isChecked ? "On" : "Off", VALUE_WIDTH, false);
-    parent->addString(formattedValue.c_str(), toggleX, yPos, Justify::LEFT,
-        Fonts::getNormal(), valueColor, fontSize);
-    toggleX += PluginUtils::calculateMonospaceTextWidth(VALUE_WIDTH, fontSize);
-
-    // Right arrow " >" - only show when enabled
-    if (enabled) {
-        parent->addString(" >", toggleX, yPos, Justify::LEFT,
-            Fonts::getNormal(), colors.getAccent(), fontSize);
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            toggleX, yPos, cw * 2, lineHeightNormal,
-            SettingsHud::ClickRegion::CHECKBOX, bitfield, groupFlags, false, targetHud
-        ));
-    }
+    snprintf(scaleValue, sizeof(scaleValue), "%d%%",
+        static_cast<int>(std::round(hud->getScale() * 100.0f)));
+    addCycleControl("Scale", scaleValue,
+        SettingsHud::ClickRegion::SCALE_DOWN, SettingsHud::ClickRegion::SCALE_UP,
+        hud, true, false, "common.scale");
 }
 
 void SettingsLayoutContext::nextLine() {
@@ -1323,61 +1098,6 @@ void SettingsLayoutContext::addSpacing() {
               * layout().cellW * PluginConstants::UI_ASPECT_RATIO * parent->getScale();
 }
 
-float SettingsLayoutContext::addRightColumnCycleControl(
-    const char* label,
-    const char* value,
-    int valueWidth,
-    SettingsHud::ClickRegion::Type downType,
-    SettingsHud::ClickRegion::Type upType,
-    BaseHud* targetHud,
-    float yPos,
-    int labelWidth,
-    bool enabled,
-    bool isOff
-) {
-    float cw = charWidth();
-    ColorConfig& colors = ColorConfig::getInstance();
-
-    // Label with padding
-    char paddedLabel[32];
-    snprintf(paddedLabel, sizeof(paddedLabel), "%-*s", labelWidth, label);
-    parent->addString(paddedLabel, rightColumnX, yPos, Justify::LEFT,
-        Fonts::getNormal(), enabled ? colors.getSecondary() : colors.getMuted(), fontSize);
-
-    // Cycle control
-    float toggleX = rightColumnX + PluginUtils::calculateMonospaceTextWidth(labelWidth, fontSize);
-    unsigned long valueColor = (enabled && !isOff) ? colors.getPrimary() : colors.getMuted();
-
-    // Left arrow "<" - only show when enabled
-    if (enabled) {
-        parent->addString("<", toggleX, yPos, Justify::LEFT,
-            Fonts::getNormal(), colors.getAccent(), fontSize);
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            toggleX, yPos, cw * 2, lineHeightNormal,
-            downType, targetHud, 0, false, 0
-        ));
-    }
-    toggleX += cw * 2;
-
-    // Value with fixed width (formatted, left-aligned for consistent positioning)
-    std::string formattedValue = formatValue(value, valueWidth, false);  // left-align for consistency
-    parent->addString(formattedValue.c_str(), toggleX, yPos, Justify::LEFT,
-        Fonts::getNormal(), valueColor, fontSize);
-    toggleX += PluginUtils::calculateMonospaceTextWidth(valueWidth, fontSize);
-
-    // Right arrow " >" - only show when enabled
-    if (enabled) {
-        parent->addString(" >", toggleX, yPos, Justify::LEFT,
-            Fonts::getNormal(), colors.getAccent(), fontSize);
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            toggleX, yPos, cw * 2, lineHeightNormal,
-            upType, targetHud, 0, false, 0
-        ));
-    }
-
-    return yPos + lineHeightNormal;
-}
-
 void SettingsLayoutContext::addWidgetRow(
     const char* name,
     BaseHud* hud,
@@ -1388,7 +1108,6 @@ void SettingsLayoutContext::addWidgetRow(
     const char* tooltipId,
     bool menuOnlyPointerRow
 ) {
-    float cw = charWidth();
     ColorConfig& colors = ColorConfig::getInstance();
 
     // Column positions (spacing for table layout with toggle controls)
@@ -1408,73 +1127,10 @@ void SettingsLayoutContext::addWidgetRow(
         ));
     }
 
-    // Widget name
+    // Widget name, in the row-label colour every other settings row uses
     parent->addString(name, nameX, currentY, Justify::LEFT,
-        Fonts::getNormal(), colors.getPrimary(), fontSize);
+        Fonts::getNormal(), colors.getSecondary(), fontSize);
 
-    // Helper lambda for inline toggle control (position-based, no label)
-    auto addInlineToggle = [&](float x, bool isOn, SettingsHud::ClickRegion::Type toggleType, bool enabled) {
-        float currentX = x;
-        unsigned long valueColor = (enabled && isOn) ? colors.getPrimary() : colors.getMuted();
-        constexpr int VALUE_WIDTH = 3;
-
-        if (enabled) {
-            parent->addString("<", currentX, currentY, Justify::LEFT,
-                Fonts::getNormal(), colors.getAccent(), fontSize);
-            parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, currentY, cw * 2, lineHeightNormal,
-                toggleType, hud
-            ));
-        }
-        currentX += cw * 2;
-
-        std::string formattedValue = formatValue(isOn ? "On" : "Off", VALUE_WIDTH, false);
-        parent->addString(formattedValue.c_str(), currentX, currentY, Justify::LEFT,
-            Fonts::getNormal(), valueColor, fontSize);
-        currentX += PluginUtils::calculateMonospaceTextWidth(VALUE_WIDTH, fontSize);
-
-        if (enabled) {
-            parent->addString(" >", currentX, currentY, Justify::LEFT,
-                Fonts::getNormal(), colors.getAccent(), fontSize);
-            parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, currentY, cw * 2, lineHeightNormal,
-                toggleType, hud
-            ));
-        }
-    };
-
-    // Helper lambda for inline cycle control (position-based, no label)
-    auto addInlineCycle = [&](float x, const char* value, int valueWidth,
-                              SettingsHud::ClickRegion::Type downType,
-                              SettingsHud::ClickRegion::Type upType,
-                              bool enabled) {
-        float currentX = x;
-        unsigned long valueColor = enabled ? colors.getPrimary() : colors.getMuted();
-
-        if (enabled) {
-            parent->addString("<", currentX, currentY, Justify::LEFT,
-                Fonts::getNormal(), colors.getAccent(), fontSize);
-            parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, currentY, cw * 2, lineHeightNormal,
-                downType, hud, 0, false, 0
-            ));
-        }
-        currentX += cw * 2;
-
-        std::string formattedValue = formatValue(value, valueWidth, false);
-        parent->addString(formattedValue.c_str(), currentX, currentY, Justify::LEFT,
-            Fonts::getNormal(), valueColor, fontSize);
-        currentX += PluginUtils::calculateMonospaceTextWidth(valueWidth, fontSize);
-
-        if (enabled) {
-            parent->addString(" >", currentX, currentY, Justify::LEFT,
-                Fonts::getNormal(), colors.getAccent(), fontSize);
-            parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                currentX, currentY, cw * 2, lineHeightNormal,
-                upType, hud, 0, false, 0
-            ));
-        }
-    };
 
     // Visibility toggle (shows actual value, grayed out when disabled). The pointer
     // row is special: its toggle drives the menu-only-cursor mode, not the widget's
@@ -1483,14 +1139,18 @@ void SettingsLayoutContext::addWidgetRow(
     // settings menu, so it can't be the toggle target.
     if (menuOnlyPointerRow) {
         bool pointerOn = !UiConfig::getInstance().getMenuOnlyCursor();
-        addInlineToggle(visX, pointerOn, SettingsHud::ClickRegion::MENU_ONLY_CURSOR_TOGGLE, true);
+        addInlineCycle(visX, pointerOn ? "On" : "Off", 3,
+            SettingsHud::ClickRegion::MENU_ONLY_CURSOR_TOGGLE,
+            SettingsHud::ClickRegion::MENU_ONLY_CURSOR_TOGGLE, hud, true, !pointerOn);
     } else {
         // Show the ACTIVE surface's visibility, like the per-HUD tabs: on the companion
         // window the toggle already edits the companion instance (HUD_TOGGLE routes by
         // active surface), so the displayed On/Off must read it too — otherwise a widget
         // enabled only on the companion still shows the game's state.
         bool visOn = hud->isVisibleOnActiveSurface();
-        addInlineToggle(visX, visOn, SettingsHud::ClickRegion::HUD_TOGGLE, enableVisibility);
+        addInlineCycle(visX, visOn ? "On" : "Off", 3,
+            SettingsHud::ClickRegion::HUD_TOGGLE, SettingsHud::ClickRegion::HUD_TOGGLE,
+            hud, enableVisibility, !visOn);
     }
 
     // Title toggle, greyed on a widget that carries no caption. The column is shared by
@@ -1499,7 +1159,10 @@ void SettingsLayoutContext::addWidgetRow(
     // a broken control. getShowTitle() is already forced false there (see
     // BaseHud::m_titleSupported), so there is no stale value to mask.
     const bool enableTitle = hud->m_titleSupported;
-    addInlineToggle(titleX, hud->getShowTitle(), SettingsHud::ClickRegion::TITLE_TOGGLE, enableTitle);
+    const bool titleOn = hud->getShowTitle();
+    addInlineCycle(titleX, titleOn ? "On" : "Off", 3,
+        SettingsHud::ClickRegion::TITLE_TOGGLE, SettingsHud::ClickRegion::TITLE_TOGGLE,
+        hud, enableTitle, !titleOn);
 
     // Same column, same rule as the per-HUD tabs (addStandardHudControls): a widget
     // with real texture variants keeps the Texture cycle, everything else gets its
@@ -1545,7 +1208,7 @@ void SettingsLayoutContext::addWidgetRow(
                      : SettingsHud::ClickRegion::GAMEPAD_PACK_DOWN,
             isGauges ? SettingsHud::ClickRegion::GAUGES_PACK_UP
                      : SettingsHud::ClickRegion::GAMEPAD_PACK_UP,
-            enableBgTexture && packCount > 1);
+            hud, enableBgTexture && packCount > 1);
     } else if (!hasTextures && AssetManager::getInstance().getThemeCount() > 0) {
         const std::string& ov = hud->getThemeOverride();
         // Abbreviated to fit the table column; the per-HUD tab spells it out.
@@ -1562,7 +1225,7 @@ void SettingsLayoutContext::addWidgetRow(
         addInlineCycle(bgTexX, themeValue.c_str(), 3,
             SettingsHud::ClickRegion::HUD_THEME_DOWN,
             SettingsHud::ClickRegion::HUD_THEME_UP,
-            enableBgTexture);
+            hud, enableBgTexture);
     } else {
         char texValue[8];
         int texVariant = hud->getTextureVariant();
@@ -1570,7 +1233,7 @@ void SettingsLayoutContext::addWidgetRow(
         addInlineCycle(bgTexX, texValue, 3,
             SettingsHud::ClickRegion::TEXTURE_VARIANT_DOWN,
             SettingsHud::ClickRegion::TEXTURE_VARIANT_UP,
-            enableBgTexture && hasTextures);
+            hud, enableBgTexture && hasTextures);
     }
 
     // BG Opacity (shows muted value without arrows when disabled)
@@ -1580,7 +1243,7 @@ void SettingsLayoutContext::addWidgetRow(
     addInlineCycle(opacityX, opacityValue, 4,
         SettingsHud::ClickRegion::BACKGROUND_OPACITY_DOWN,
         SettingsHud::ClickRegion::BACKGROUND_OPACITY_UP,
-        enableOpacity);
+        hud, enableOpacity);
 
     // Scale (shows muted value without arrows when disabled)
     char scaleValue[16];
@@ -1589,19 +1252,18 @@ void SettingsLayoutContext::addWidgetRow(
     addInlineCycle(scaleX, scaleValue, 4,
         SettingsHud::ClickRegion::SCALE_DOWN,
         SettingsHud::ClickRegion::SCALE_UP,
-        enableScale);
+        hud, enableScale);
 
     currentY += lineHeightNormal;
 }
 
 // Get icon display name from shape index (0 = Off)
-std::string getShapeDisplayName(int shapeIndex, int maxWidth) {
+std::string getShapeDisplayName(int shapeIndex) {
     if (shapeIndex <= 0) return "Off";
     const auto& assetMgr = AssetManager::getInstance();
     // Base index: this asks for the icon's NAME, which a theme override does not change.
     int spriteIndex = assetMgr.getFirstIconSpriteIndex() + shapeIndex - 1;
     std::string name = assetMgr.getIconDisplayName(spriteIndex);
     if (name.empty()) return "Unknown";
-    if (static_cast<int>(name.length()) > maxWidth) name.resize(maxWidth);
     return name;
 }

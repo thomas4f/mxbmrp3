@@ -5,14 +5,22 @@
 #pragma once
 
 #include "hotkey_config.h"
+#include "text_edit.h"
 #include <array>
+#include <chrono>
 #include <functional>
+#include <string>
 
 // Capture mode types
 enum class CaptureType {
     NONE,
     KEYBOARD,
-    CONTROLLER
+    CONTROLLER,
+    // Free-text entry for a settings field (the Twitch channel name). Rides the
+    // capture machinery so everything that already keeps a capture safe applies
+    // unchanged: hotkeys are suppressed while it runs (processKeyboardInput), ESC
+    // cancels it (SettingsHud::update), and closing the menu disarms it.
+    TEXT
 };
 
 // Callback type for when a hotkey action is triggered
@@ -54,6 +62,22 @@ public:
     // Check if capture completed this frame (returns true once, clears flag)
     bool wasCaptureCompleted();
 
+    // Text capture (CaptureType::TEXT). Keys typed while it runs edit the buffer
+    // at its cursor (core/text_edit.h): letters, digits, '_' (Shift+minus),
+    // Backspace/Delete (Ctrl: everything before/after the cursor), Left/Right
+    // (Ctrl: to either end), Home/End, Ctrl+V (paste replaces all, raw -- the
+    // caller normalizes); Enter commits. The committed text is handed over once
+    // through consumeTextCommit(); wasCaptureCompleted() fires on the same frame
+    // like any other capture.
+    // `handlePunctuation` also types a bare '-' and '.', which YouTube handles
+    // can contain and Twitch names cannot (see updateTextCapture).
+    void startTextCapture(const std::string& initial, size_t maxLen, bool handlePunctuation);
+    const std::string& getCaptureText() const { return m_captureEdit.text; }
+    size_t getCaptureCursor() const { return m_captureEdit.cursor; }
+    bool consumeTextCommit(std::string& out);
+    // Commit whatever is in the buffer now (clicking the field again).
+    void commitTextCapture();
+
     // Check if a specific action was triggered this frame
     bool wasActionTriggered(HotkeyAction action) const;
 
@@ -72,6 +96,9 @@ private:
 
     // Internal helpers
     void updateCapture();
+    void updateTextCapture();
+    void pasteClipboardText();
+    void applyTextEditKey(uint8_t vk, bool ctrl);
     void checkTriggeredActions();
     bool isKeyPressed(uint8_t vkCode) const;
     bool isKeyClicked(uint8_t vkCode) const;
@@ -92,6 +119,15 @@ private:
     CaptureType m_captureType;
     HotkeyAction m_captureAction;
     bool m_captureCompleted;
+    TextEdit::Buffer m_captureEdit;  // TEXT capture buffer + cursor
+    bool m_captureHandlePunctuation = false;
+    bool m_textCommitted = false;    // a TEXT capture ended with Enter/commit, not consumed yet
+    // Hold-to-repeat for the editing keys (Backspace, Delete, Left, Right): the
+    // one last pressed inside the field, 0 when none is held.
+    uint8_t m_repeatKey = 0;
+    std::chrono::steady_clock::time_point m_repeatHeldSince{};
+    std::chrono::steady_clock::time_point m_repeatLast{};
+    int m_repeats = 0;
 
     bool m_bInitialized;
 };

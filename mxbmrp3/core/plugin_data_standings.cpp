@@ -80,15 +80,24 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
 
     bool anyChanged = false;
 
-    // Reserve space for classification order (avoid reallocations)
-    m_classificationOrder.clear();
-    m_classificationOrder.reserve(numEntries);
+    // The new order is built in a scratch vector and swapped in AFTER the loop.
+    // The loop below logs pit entry/exit events, and addEventLogEntry notifies
+    // every consumer synchronously — including the HTTP server, which builds the
+    // overlay snapshot on the spot when its window is open. Built mid-loop, that
+    // snapshot walked an order holding only the riders before the one whose pit
+    // flag changed, so the overlay's tower shrank to a prefix for one push and
+    // grew back on the next: the "flicker" seen on a broadcaster's stream while
+    // the field spawned in. Every reader sees the previous complete order until
+    // the new one is whole. Steady-state this allocates nothing: the swap hands
+    // the old buffer back as the next scratch.
+    m_classificationScratch.clear();
+    m_classificationScratch.reserve(numEntries);
 
     for (int i = 0; i < numEntries; ++i) {
         const Unified::RaceClassificationEntry& entry = entries[i];
 
         // Build classification order (game already sorted by position)
-        m_classificationOrder.push_back(entry.raceNum);
+        m_classificationScratch.push_back(entry.raceNum);
 
         // Update standings data
         auto it = m_standings.find(entry.raceNum);
@@ -138,6 +147,13 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
                         // Pit entry (0→1)
                         snprintf(eventMsg, sizeof(eventMsg), "%s entered pits", riderLabel);
                         addEventLogEntry(EventLogType::PitEntry, eventMsg, nullptr, -1, entry.raceNum);
+                        // The lap in progress is a pit lap (see markLapViaPits). For the
+                        // display rider only while a lap is actually being timed: at a
+                        // session's start the rider sits in the garage before ever
+                        // crossing S/F, and that sit must not mark the first flying lap.
+                        if (entry.raceNum != getDisplayRaceNum() || hasLapTimerAnchor(entry.raceNum)) {
+                            markLapViaPits(entry.raceNum);
+                        }
                     } else {
                         // Pit exit (1→0) - start per-rider hazard grace period
                         snprintf(eventMsg, sizeof(eventMsg), "%s left pits", riderLabel);
@@ -145,8 +161,10 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
                         startPitExitGrace(entry.raceNum);
                         // Reset the display rider's live lap timer to the placeholder (like a
                         // fresh track entry) instead of letting the in-progress dead lap keep
-                        // ticking through pit exit; the next S/F crossing re-anchors it.
-                        invalidateLapTimerAnchor(entry.raceNum);
+                        // ticking through pit exit; the next S/F crossing re-anchors it. The
+                        // position baseline stays: this rider's samples have been arriving
+                        // from the pit lane all along, so the next one is a real delta.
+                        invalidateLapTimerAnchor(entry.raceNum, /*rejoinedTrack=*/false);
                     }
                 }
 
@@ -177,6 +195,8 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
         }
 
     }
+
+    m_classificationOrder.swap(m_classificationScratch);
 
     // Mark position cache dirty now that classification order is rebuilt,
     // so any position lookups below use the fresh order

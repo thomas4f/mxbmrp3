@@ -60,11 +60,14 @@ the original example, `test_plugin_utils.cpp` covers the inline pure functions i
   "never throws, returns fallback on garbage" contract (including the
   `strtoul` leading-zero quirk).
 - **`getRelativePositionColor`** - the ahead / behind / lapped branch matrix.
+- **`fitTextInPlace`** - the allocation-free code-point cut behind `fitText`
+  (UTF-8 boundaries, stray continuation bytes, the untouched-within-budget case).
 
 ## What's *not* covered (and how to extend)
 
 The formatting functions in `plugin_utils.**cpp**` (`formatLapTime`,
-`formatSessionClock`, `formatDistance`, `fitText`, `sanitizeUntrusted`, the
+`formatSessionClock`, `formatDistance`, `fitText` (its cut is `fitTextInPlace`, above),
+`sanitizeUntrusted`, the
 gap formatters, the enum→string mappers) are **not** tested here. Compiling
 that `.cpp` on Linux is currently impractical because it reaches into:
 

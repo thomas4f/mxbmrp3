@@ -142,6 +142,28 @@ fi
   echo "export WINEPREFIX=\"\${WINEPREFIX:-$HOME/.wineprefix-mxbmrp3}\""
 } >> "$CLAUDE_ENV_FILE"
 
+# Shared compile cache. A fresh container starts with an empty ccache, so every
+# new session paid the cold cross-build, unit builds and integration compiles
+# (~7 min of a full run) even when nothing it compiles had changed. ccache's own
+# secondary storage (`remote_storage = file:`) points every session at one
+# directory that outlives the container: in a project, its shared folder. Hits
+# are copied into the local cache, misses written through; ccache owns the
+# format and the atomic writes, this only says where. MXBMRP3_SHARED_CCACHE
+# overrides the location (empty string to disable).
+#
+# update-mtime makes a hit refresh the entry's mtime, so the prune below is LRU:
+# an entry nobody has read for three weeks is deleted. Without it the directory
+# only ever grows. The prune runs in the background so it never delays startup.
+SHARED_CCACHE="${MXBMRP3_SHARED_CCACHE-}"
+if [ -z "${MXBMRP3_SHARED_CCACHE+set}" ] && [ -d /mnt/project-files ]; then
+  SHARED_CCACHE=/mnt/project-files/.ccache
+fi
+if [ -n "${SHARED_CCACHE}" ] && command -v ccache >/dev/null 2>&1 \
+   && mkdir -p "${SHARED_CCACHE}" 2>/dev/null; then
+  echo "export CCACHE_REMOTE_STORAGE=\"file:${SHARED_CCACHE}|update-mtime=true\"" >> "$CLAUDE_ENV_FILE"
+  ( find "${SHARED_CCACHE}" -type f -mtime +21 -delete >/dev/null 2>&1 & )
+fi
+
 # Warm the Wine prefix once so the first integration test isn't racing its init.
 export WINELOADER=/usr/lib/wine/wine64 WINEARCH=win64 WINEDEBUG=-all
 export WINEPREFIX="${WINEPREFIX:-$HOME/.wineprefix-mxbmrp3}"

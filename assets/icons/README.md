@@ -78,11 +78,12 @@ it is pinned by `tests/integration/tests/theme_icons_test.cpp`.
 ## Renderer: cairosvg, pinned
 
 `icon_gen.py` rasterises with **cairosvg only**, pinned to the exact version in
-[`tools/requirements.txt`](../../tools/requirements.txt) (`cairosvg==2.9.0`). The
-output TGA carries no timestamp or metadata (fixed 18-byte header + raw BGRA
-pixels), so its content hash is fully deterministic - but **only for a fixed
-renderer + version** (edge anti-aliasing differs between releases). cairosvg is a
-pip package, so it pins cleanly and reproduces byte-for-byte on any machine.
+[`tools/requirements.txt`](../../tools/requirements.txt) - the pin is the single
+place that number is written, so a bump can't leave a stale copy here. The output
+TGA carries no timestamp or metadata (fixed 18-byte header + raw BGRA pixels), so
+its content hash is fully deterministic - but **only for a fixed renderer +
+version** (edge anti-aliasing differs between releases). cairosvg is a pip
+package, so it pins cleanly and reproduces byte-for-byte on any machine.
 
 `rsvg-convert`/system librsvg is **deliberately not used**: its output can't be
 pinned via pip and drifts between OS releases - that is exactly why the original
@@ -93,7 +94,7 @@ installed has no effect.
 ## Regenerate
 
 ```bash
-python3 -m pip install -r tools/requirements.txt   # Pillow + cairosvg==2.9.0
+python3 -m pip install -r tools/requirements.txt   # Pillow + the pinned cairosvg
 
 # Flat identity icons (hud-*) -> shipped folder
 python3 tools/icon_gen.py 'assets/icons/hud-*.svg' -o mxbmrp3_data/icons
@@ -111,7 +112,13 @@ so a source added here without being generated is an oversight, not a spare.
 ## Verify a regeneration
 
 The output is deterministic, so a regenerated icon must hash-match the shipped
-one. To confirm your environment reproduces the set:
+one. CI does the whole set on every run - the `icon-repro` gate
+([`tests/integration/check_icon_reproducibility.sh`](../../tests/integration/check_icon_reproducibility.sh))
+re-renders all of them and fails on a single differing byte, in either direction
+(an SVG whose `.tga` was not regenerated, a `.tga` whose SVG is gone). Run it
+yourself with `ctest --test-dir build/tests -R icon-repro`.
+
+To spot-check one icon by hand:
 
 ```bash
 # Regenerate a known icon and diff against the shipped TGA (exit 0 = identical)
@@ -119,8 +126,8 @@ python3 tools/icon_gen.py 'assets/icons/hud-standings.svg' -o /tmp/iconcheck
 cmp /tmp/iconcheck/hud-standings.tga mxbmrp3_data/icons/hud-standings.tga && echo "byte-identical"
 ```
 
-If an icon does **not** reproduce byte-for-byte, your `cairosvg` is not `==2.9.0`
-(`pip install -r tools/requirements.txt`).
+If an icon does **not** reproduce byte-for-byte, your `cairosvg` is not the
+pinned version (`pip install -r tools/requirements.txt`).
 
 ## README table icons
 

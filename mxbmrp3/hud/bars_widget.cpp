@@ -36,7 +36,6 @@ BarsWidget::BarsWidget() {
     m_panelKind = PanelKind::Widget;
     m_bContentCard = true;
     // One-time setup
-    DEBUG_INFO("BarsWidget created");
     setDraggable(true);
     m_quads.reserve(48);   // 1 background + bar quads (single/split × empty+filled) + gap-split temp bars + max markers
     m_strings.reserve(8);  // 8 labels: T, B, C, R, S, F, E, W
@@ -151,7 +150,7 @@ void BarsWidget::rebuildRenderData() {
     // (it pads BOTH ends and ceils the height itself).
     // The label row is part of sectionHeight, so the box measures it like any
     // other content -- no drawing outside what the plan was told about.
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = barsWidth;
     want.sectionH = { sectionHeight };
     want.captionW = planTitleWidth(dims, "Bars");
@@ -163,7 +162,7 @@ void BarsWidget::rebuildRenderData() {
 
     // Background, title band and body card at the plan's coordinates
     addPlanBackground(p, START_X, START_Y);
-    addPlanTitle(p, "Bars", this->getFont(FontCategory::TITLE),
+    addPlanTitle(p, "Bars",
         this->getColor(ColorSlot::PRIMARY));
 
     // CENTRED ON THE CARD, like the Lean and G-force gauges beside it

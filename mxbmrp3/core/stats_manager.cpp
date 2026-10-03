@@ -7,6 +7,7 @@
 #include "achievement_manager.h"
 #include "atomic_file_writer.h"
 #include "finish_margin.h"
+#include "pb_trace_store.h"
 #include "plugin_data.h"
 #include "plugin_utils.h"
 #include "ui_config.h"
@@ -148,15 +149,16 @@ void StatsManager::recordLap(int lapTime, int sector1, int sector2, int sector3,
             stats.bestLapTimeMs = lapTime;
         }
 
-        // Update best sectors
-        if (sector1 > 0 && (stats.bestSector1Ms < 0 || sector1 < stats.bestSector1Ms))
-            stats.bestSector1Ms = sector1;
-        if (sector2 > 0 && (stats.bestSector2Ms < 0 || sector2 < stats.bestSector2Ms))
-            stats.bestSector2Ms = sector2;
-        if (sector3 > 0 && (stats.bestSector3Ms < 0 || sector3 < stats.bestSector3Ms))
-            stats.bestSector3Ms = sector3;
-        if (sector4 > 0 && (stats.bestSector4Ms < 0 || sector4 < stats.bestSector4Ms))
-            stats.bestSector4Ms = sector4;
+        // Best sectors, all four through ONE path. sector4 is GP Bikes only (0 or -1 elsewhere, so
+        // the > 0 guard skips it); a 0 sector means "not reported", not "instant".
+        const int sec[4] = { sector1, sector2, sector3, sector4 };
+        int* const best[4] = { &stats.bestSector1Ms, &stats.bestSector2Ms,
+                               &stats.bestSector3Ms, &stats.bestSector4Ms };
+        for (int i = 0; i < 4; ++i) {
+            if (sec[i] > 0 && (*best[i] < 0 || sec[i] < *best[i])) {
+                *best[i] = sec[i];
+            }
+        }
 
         // Session best
         if (m_sessionBestLapMs < 0 || lapTime < m_sessionBestLapMs) {
@@ -317,13 +319,13 @@ void StatsManager::notifyResume() {
 }
 
 // The finishing margin, once more, for the two rows that need it when the lap
-// logs were still filling at the flag. Everything else the finish moved has
-// already counted; these are marks, so a retry that finds the same answer costs
-// nothing. Cleared either way -- one retry, not a standing request.
+// logs were still filling at the flag. Everything else has counted; these are
+// marks, so a retry that finds the same answer costs nothing. The debt clears
+// when the margin can be READ, not when asked: `final` runs at Race Over and
+// again at RunDeinit, and the runner-up's last lap can land between the two.
 void StatsManager::retryFinishMargin(const PluginData& pd) {
     const int position = m_pendingMarginPosition;
     if (position == 0) return;
-    m_pendingMarginPosition = 0;
     const int playerRaceNum = pd.getPlayerRaceNum();
     const auto& classOrder = pd.getClassificationOrder();
     const StandingsData* own = pd.getStanding(playerRaceNum);
@@ -340,6 +342,7 @@ void StatsManager::retryFinishMargin(const PluginData& pd) {
         ? FinishMargin::marginMs(*ownLaps, own->numLaps, *otherLaps, other->numLaps)
         : FinishMargin::marginMs(*otherLaps, other->numLaps, *ownLaps, own->numLaps);
     if (margin < 0) return;
+    m_pendingMarginPosition = 0;
     if (m_exploration.onFinishMargin(position, position == 1 ? margin : -1,
                                      position == 2 ? margin : -1)) {
         m_dirty = true;
@@ -491,8 +494,8 @@ void StatsManager::tryRecordRaceFinish(const PluginData& pd, bool final) {
                 // settle before the last RaceLap reaches them: the two come from
                 // different callbacks, and "settled" only asks that every racing
                 // rider has a finishTime. Everything else above has counted, so
-                // only the margin is owed - remembered here and retried once at
-                // RunDeinit, by which point the logs are complete.
+                // only the margin is owed - remembered here and retried by each
+                // `final` pass (Race Over, then RunDeinit) until it can be read.
                 m_pendingMarginPosition =
                     (position == 1 && gapToSecond < 0) || (position == 2 && gapToWinner < 0)
                         ? position : 0;
@@ -547,10 +550,14 @@ void StatsManager::recordFmxTrick(const FmxTrickSample& trick) {
     if (trick.turnDown) m_fmx.turnDowns++;
     if (trick.endo) {
         m_fmx.endos++;
-        if (duration > m_fmx.longestEndoSec) m_fmx.longestEndoSec = duration;
+        if (duration > m_fmx.longestEndoSec) {
+            m_fmx.longestEndoSec = duration;
+        }
     }
     if (trick.wheelie) {
-        if (duration > m_fmx.longestWheelieSec) m_fmx.longestWheelieSec = duration;
+        if (duration > m_fmx.longestWheelieSec) {
+            m_fmx.longestWheelieSec = duration;
+        }
         m_fmx.wheelieDistanceM += distance;
     }
     if (trick.kind && trick.kind[0]) m_fmx.kinds.insert(trick.kind);
@@ -561,7 +568,9 @@ void StatsManager::recordFmxTrick(const FmxTrickSample& trick) {
 void StatsManager::recordFmxChainBanked(int chainScore) {
     if (chainScore > 0) {
         m_fmx.totalScore += chainScore;
-        if (chainScore > m_fmx.bestChainScore) m_fmx.bestChainScore = chainScore;
+        if (chainScore > m_fmx.bestChainScore) {
+            m_fmx.bestChainScore = chainScore;
+        }
     }
     m_dirty = true;
     AchievementManager::getInstance().onStatsChanged();
@@ -626,8 +635,7 @@ PersonalBestUpdate StatsManager::updatePersonalBest(const StatsPersonalBestData&
     }
     m_personalBests[m_currentKey] = entry;
     m_globalStats.pbCount++;
-    m_dirty = true;   // deferred: persisted on leave-track (RunStop/RunDeinit). A PB is set at
-                      // lap completion (start/finish) — on track — and we never write on track.
+    m_dirty = true;
     result.stored = true;
     AchievementManager::getInstance().onStatsChanged();
     return result;
@@ -706,7 +714,7 @@ PersonalBestUpdate StatsManager::updatePersonalBest(const std::string& trackId, 
     }
     m_personalBests[key] = entry;
     m_globalStats.pbCount++;
-    m_dirty = true;   // deferred: persisted on leave-track (RunStop/RunDeinit) — never on track.
+    m_dirty = true;
     result.stored = true;
     AchievementManager::getInstance().onStatsChanged();
     return result;
@@ -862,6 +870,7 @@ bool StatsManager::clearEntry(const std::string& trackId, const std::string& bik
 
 void StatsManager::clearAll() {
     wipe(/*keepLapRecords=*/false);
+    PbTraceStore::getInstance().clear();   // no PB left for a trace to match
     save();
 }
 

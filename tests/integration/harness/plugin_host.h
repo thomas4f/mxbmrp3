@@ -119,6 +119,7 @@ public:
         m_hkCapturing    = sym<int(*)()>("MXBMRP3_Test_HotkeyCapturing");
         m_spotParked = sym<int(*)()>("MXBMRP3_Test_SpotterWorkerParked");
         m_stTheme   = sym<void(*)(char*,int)>("MXBMRP3_Test_StandingsTheme");
+        m_mapZoom   = sym<int(*)()>("MXBMRP3_Test_MapZoomEnabled");
         m_stSetTheme = sym<void(*)(const char*)>("MXBMRP3_Test_StandingsSetTheme");
         m_rdTheme   = sym<void(*)(char*,int)>("MXBMRP3_Test_RadarTheme");
         m_rdSetTheme = sym<void(*)(const char*)>("MXBMRP3_Test_RadarSetTheme");
@@ -133,6 +134,7 @@ public:
         m_dirIsLocked = sym<int(*)()>("MXBMRP3_Test_DirectorIsLocked");
         m_dirNextLockedCam = sym<int(*)(int)>("MXBMRP3_Test_DirectorNextLockedCamera");
         m_dirSetNowMs = sym<void(*)(long long)>("MXBMRP3_Test_DirectorSetNowMs");
+        m_lapTimerSetNowUs = sym<void(*)(long long)>("MXBMRP3_Test_LapTimerSetNowUs");
         m_dirSetStories = sym<void(*)(int)>("MXBMRP3_Test_DirectorSetStories");
         m_dirSetShotSec = sym<void(*)(int, int)>("MXBMRP3_Test_DirectorSetShotSec");
         m_dirHomeSubject = sym<int(*)()>("MXBMRP3_Test_DirectorHomeSubject");
@@ -173,7 +175,7 @@ public:
         m_eventLogSetVisible = sym<void(*)(int)>("MXBMRP3_Test_EventLogSetVisible");
         m_eventLogIconColorSlot = sym<int(*)(const char*)>("MXBMRP3_Test_EventLogIconColorSlot");
         m_noticesSetVisible = sym<void(*)(int)>("MXBMRP3_Test_NoticesSetVisible");
-        m_save      = sym<void(*)()>("MXBMRP3_Test_Save");
+        m_save      = sym<int(*)()>("MXBMRP3_Test_Save");
         m_markDirty = sym<void(*)()>("MXBMRP3_Test_MarkDirty");
         m_flushIfDirty = sym<void(*)()>("MXBMRP3_Test_FlushIfDirty");
         m_isDirty = sym<int(*)()>("MXBMRP3_Test_IsDirty");
@@ -183,7 +185,9 @@ public:
         m_wnReset      = sym<void(*)()>("MXBMRP3_Test_WhatsNewReset");
         m_wnLiveCount  = sym<int(*)()>("MXBMRP3_Test_WhatsNewLiveCount");
         m_wnTabTagged  = sym<int(*)(const char*)>("MXBMRP3_Test_WhatsNewTabTagged");
+        m_wnTabHighlit = sym<int(*)(const char*)>("MXBMRP3_Test_WhatsNewTabHighlighted");
         m_wnHoverRow   = sym<void(*)(const char*)>("MXBMRP3_Test_WhatsNewHoverRow");
+        m_wnHoverTab   = sym<int(*)(const char*)>("MXBMRP3_Test_WhatsNewHoverTab");
         m_wnClickTab   = sym<int(*)(const char*)>("MXBMRP3_Test_WhatsNewClickTab");
         m_wnMarkerCount    = sym<int(*)()>("MXBMRP3_Test_WhatsNewMarkerCount");
         m_wnMarkerResolves = sym<int(*)(int)>("MXBMRP3_Test_WhatsNewMarkerResolves");
@@ -223,12 +227,24 @@ public:
         m_glConfirmPct = sym<int(*)()>("MXBMRP3_Test_GlConfirmRemainingPct");
         m_glConfirmTick = sym<void(*)(int)>("MXBMRP3_Test_GlConfirmTick");
         m_glDrewLastFrame = sym<int(*)()>("MXBMRP3_Test_GlDrewLastFrame");
+        m_glHasTexture = sym<int(*)(const char*)>("MXBMRP3_Test_GlHasTexture");
         m_glFrameAssetName = sym<int(*)(int,int,char*,int)>("MXBMRP3_Test_GlFrameAssetName");
         m_glFrameAssetCount = sym<int(*)(int)>("MXBMRP3_Test_GlFrameAssetCount");
         m_getActiveTab = sym<void(*)(char*, int)>("MXBMRP3_Test_GetActiveTab");
         m_capturedSections = sym<void(*)(char*, int)>("MXBMRP3_Test_CapturedSections");
         m_anPrime      = sym<void(*)()>("MXBMRP3_Test_AnalyticsPrime");
         m_anSetFull    = sym<void(*)(int)>("MXBMRP3_Test_AnalyticsSetFullLaunch");
+        m_anLoadIdentity = sym<void(*)(const char*,char*,int)>("MXBMRP3_Test_AnalyticsLoadIdentity");
+        m_writeFileAtomic = sym<int(*)(const char*,const char*)>("MXBMRP3_Test_WriteFileAtomic");
+        m_submitWrite  = sym<void(*)(const char*,const char*)>("MXBMRP3_Test_SubmitWrite");
+        m_flushWrites  = sym<void(*)()>("MXBMRP3_Test_FlushWrites");
+        m_setAsyncWrites = sym<void(*)(int)>("MXBMRP3_Test_SetAsyncWrites");
+        m_writerRunning = sym<int(*)()>("MXBMRP3_Test_WriterRunning");
+        m_writeNeedsRetry = sym<int(*)(const char*)>("MXBMRP3_Test_WriteNeedsRetry");
+        // Saves go straight to disk by default, so a test can read a file the moment the
+        // call that saved it returns. The disk writer's own tests call setAsyncWrites(true)
+        // before startup() to run the real worker thread.
+        if (m_setAsyncWrites) m_setAsyncWrites(0);
         m_anAppStarted = sym<void(*)(char*, int)>("MXBMRP3_Test_AnalyticsAppStarted");
         m_anSessionEnd = sym<void(*)()>("MXBMRP3_Test_AnalyticsQueueSessionEnd");
         m_anCustom     = sym<void(*)(const char*)>("MXBMRP3_Test_AnalyticsQueueCustom");
@@ -245,6 +261,7 @@ public:
         m_setHudScale       = sym<int(*)(const char*, float)>("MXBMRP3_Test_SetHudScale");
         m_hudBgSprite       = sym<int(*)(const char*)>("MXBMRP3_Test_HudBackgroundTextureOn");
         m_gapBarWidth       = sym<void(*)(int)>("MXBMRP3_Test_GapBarWidth");
+        m_gapBarShowSplits  = sym<void(*)(int)>("MXBMRP3_Test_GapBarShowSplits");
         m_setThemeContentBorder =
             sym<int(*)(float,float,float,float)>("MXBMRP3_Test_SetThemeContentBorder");
         m_setThemeContentMargin =
@@ -253,6 +270,8 @@ public:
             sym<int(*)(float,float,float,float)>("MXBMRP3_Test_SetThemeTitleMargin");
         m_hudCardRect = sym<int(*)(const char*,int*)>("MXBMRP3_Test_HudCardRect");
         m_gapBarForceGap = sym<void(*)(int,int)>("MXBMRP3_Test_GapBarForceGap");
+        m_liveGapToPb = sym<int(*)(int*)>("MXBMRP3_Test_LiveGapToPb");
+        m_liveGapRef = sym<int(*)(int,int*)>("MXBMRP3_Test_LiveGapRef");
         m_setThemeIcon      = sym<int(*)(const char*,int,int)>("MXBMRP3_Test_SetThemeIconOverride");
         m_iconForName       = sym<int(*)(const char*)>("MXBMRP3_Test_IconSpriteForName");
         m_iconForShape      = sym<int(*)(int)>("MXBMRP3_Test_IconSpriteForShape");
@@ -266,6 +285,7 @@ public:
         m_quadRects         = sym<int(*)(const char*,int*,int)>("MXBMRP3_Test_HudQuadRects");
         m_stringColor       = sym<unsigned long(*)(const char*,int)>("MXBMRP3_Test_HudStringColor");
         m_quadColor         = sym<unsigned long(*)(const char*,int)>("MXBMRP3_Test_HudQuadColor");
+        m_stringFont        = sym<int(*)(const char*,int)>("MXBMRP3_Test_HudStringFont");
         m_minLumaGap        = sym<int(*)()>("MXBMRP3_Test_MinGlyphLumaGap");
         m_luma601           = sym<int(*)(unsigned long)>("MXBMRP3_Test_Luma601");
         m_stringRows        = sym<int(*)(const char*,int,int*,int*,char*,int)>("MXBMRP3_Test_HudStringRows");
@@ -277,6 +297,7 @@ public:
         m_setThemeGap       = sym<int(*)(float)>("MXBMRP3_Test_SetThemeGap");
         m_settingsGutter    = sym<void(*)(int*,int*,int*)>("MXBMRP3_Test_SettingsGutter");
         m_settingsContentX  = sym<void(*)(int*,int*,int*)>("MXBMRP3_Test_SettingsContentX");
+        m_settingsClosingArrows = sym<int(*)(int*,int*)>("MXBMRP3_Test_SettingsClosingArrowRightX");
         m_setHudTitle       = sym<int(*)(const char*,int)>("MXBMRP3_Test_SetHudTitle");
         m_updateSetAvailable = sym<void(*)(const char*)>("MXBMRP3_Test_UpdateSetAvailable");
         m_versionRowTerms   = sym<void(*)(int*,int*)>("MXBMRP3_Test_VersionRowTerms");
@@ -380,6 +401,27 @@ public:
         m_setHudsEnabled    = sym<void(*)(int)>("MXBMRP3_Test_SetHudsEnabled");
         m_setEveryHudVisible = sym<void(*)(int)>("MXBMRP3_Test_SetEveryHudVisible");
         m_setHudVisible = sym<int(*)(const char*,int)>("MXBMRP3_Test_SetHudVisible");
+        m_twInject   = sym<void(*)(const char*)>("MXBMRP3_Test_TwitchInjectLine");
+        m_twInjectStale = sym<void(*)(const char*)>("MXBMRP3_Test_TwitchInjectStaleLine");
+        m_twChannel  = sym<void(*)(char*,int)>("MXBMRP3_Test_TwitchChannel");
+        m_twEntries  = sym<int(*)()>("MXBMRP3_Test_ChatEntryCount");
+        m_twRows     = sym<int(*)()>("MXBMRP3_Test_ChatRowCount");
+        m_twRowText  = sym<void(*)(int,char*,int)>("MXBMRP3_Test_ChatRowText");
+        m_twNameColor = sym<unsigned long(*)(int)>("MXBMRP3_Test_ChatNameColor");
+        m_twStatus   = sym<int(*)()>("MXBMRP3_Test_TwitchStatus");
+        m_twForceStatus = sym<void(*)(int)>("MXBMRP3_Test_TwitchForceStatus");
+        m_twSimConnected = sym<void(*)()>("MXBMRP3_Test_TwitchSimulateConnected");
+        m_twBadge = sym<int(*)(int)>("MXBMRP3_Test_TwitchBadgeSprite");
+        m_ytInjectPoll = sym<int(*)(const char*)>("MXBMRP3_Test_YouTubeInjectPoll");
+        m_ytForceStatus = sym<void(*)(int)>("MXBMRP3_Test_YouTubeForceStatus");
+        m_ytSimConnected = sym<void(*)()>("MXBMRP3_Test_YouTubeSimulateConnected");
+        m_ytStatus = sym<int(*)()>("MXBMRP3_Test_YouTubeStatus");
+        m_ytSetChannel = sym<void(*)(const char*)>("MXBMRP3_Test_YouTubeSetChannel");
+        m_ytChannel = sym<void(*)(char*,int)>("MXBMRP3_Test_YouTubeChannel");
+        m_chatBadge = sym<int(*)(int,int)>("MXBMRP3_Test_ChatBadgeSprite");
+        m_chatPlatformSprite = sym<int(*)(int)>("MXBMRP3_Test_ChatPlatformSprite");
+        m_chatRowSprites = sym<int(*)(int,int*,int*)>("MXBMRP3_Test_ChatRowSprites");
+        m_texSprite = sym<int(*)(const char*)>("MXBMRP3_Test_TextureSprite");
         m_setWidgetsEnabled = sym<void(*)(int)>("MXBMRP3_Test_SetWidgetsEnabled");
         m_crashTally        = sym<int(*)(int)>("MXBMRP3_Test_CrashTally");
         m_recParse          = sym<int(*)(int, const char*)>("MXBMRP3_Test_RecordsParse");
@@ -389,6 +431,7 @@ public:
         m_recStartFetch     = sym<int(*)()>("MXBMRP3_Test_RecordsStartFetch");
         m_recFetchState     = sym<int(*)()>("MXBMRP3_Test_RecordsFetchState");
         m_steamStartWorker  = sym<int(*)()>("MXBMRP3_Test_SteamStartWorker");
+        m_steamSetEnabled   = sym<void(*)(int)>("MXBMRP3_Test_SteamSetEnabled");
         m_steamWorkerAlive  = sym<int(*)()>("MXBMRP3_Test_SteamWorkerRunning");
         m_eventDeinit  = sym<PFN_Shutdown>("EventDeinit");
         m_raceDeinit   = sym<PFN_Shutdown>("RaceDeinit");
@@ -577,11 +620,11 @@ public:
     // bikeName defaults to a name deliberately OUTSIDE PluginUtils' brand map, so
     // existing tests keep the brand-less entry they were written against; pass a
     // real one (e.g. "FACTORY CRF450R") to exercise the brand/brandColor fields.
-    void addEntry(int num, const char* name, const char* bikeName = "Test 450") {
+    void addEntry(int num, const char* name, const char* bikeName = "Test 450", const char* category = "MX1") {
         SPluginsRaceAddEntry_t e{};
         e.m_iRaceNum = num; setStr(e.m_szName, name);
         setStr(e.m_szBikeName, bikeName); setStr(e.m_szBikeShortName, "T450");
-        setStr(e.m_szCategory, "MX1"); e.m_iNumberOfGears = 5; e.m_iMaxRPM = 13000;
+        setStr(e.m_szCategory, category); e.m_iNumberOfGears = 5; e.m_iMaxRPM = 13000;
         if (m_addEntry) m_addEntry(&e, (int)sizeof(e));
     }
     void removeEntry(int num) {
@@ -1027,6 +1070,40 @@ public:
         if (m_dirSetNowMs) m_dirSetNowMs(-1);   // restore the real clock
         return applied;
     }
+    // Clocked replay for the lap timer and everything read from it (live lap time,
+    // sectors, the PB gap): before each event the recorded timestamp is fed to
+    // MXBMRP3_Test_LapTimerSetNowUs, so anchors and reads see the real recorded
+    // wall time instead of the few milliseconds a burst replay takes. After each
+    // DISPATCHED event `observe(type, timestampUs, payload)` is called, which is
+    // how a test samples plugin state mid-replay (read a hook, parse the payload
+    // for the rider/position it describes). Restores the real clock on exit.
+    // Returns events applied.
+    template <typename Observer>
+    int replayTapeClocked(const std::string& path, Observer&& observe) {
+        FILE* f = fopen(path.c_str(), "rb");
+        if (!f) { HOST_TRACE("replayTapeClocked: cannot open %s", path.c_str()); return -1; }
+        tape::FileHeader fh{};
+        if (fread(&fh, sizeof(fh), 1, f) != 1 || std::memcmp(fh.magic, "MXBHREC", 7) != 0) {
+            HOST_TRACE("replayTapeClocked: %s is not a MXBHREC tape", path.c_str());
+            fclose(f); return -1;
+        }
+        int applied = 0;
+        tape::EventHeader eh{};
+        std::vector<uint8_t> buf;
+        while (fread(&eh, sizeof(eh), 1, f) == 1) {
+            buf.resize(eh.dataSize);
+            if (eh.dataSize && fread(buf.data(), 1, eh.dataSize, f) != eh.dataSize) break;
+            if (m_lapTimerSetNowUs) m_lapTimerSetNowUs(static_cast<long long>(eh.timestampUs));
+            if (dispatch(static_cast<tape::EventType>(eh.eventType), buf)) {
+                ++applied;
+                observe(static_cast<tape::EventType>(eh.eventType), eh.timestampUs, buf);
+            }
+        }
+        fclose(f);
+        if (m_lapTimerSetNowUs) m_lapTimerSetNowUs(-1);   // restore the real clock
+        return applied;
+    }
+
     // Sim time (ms) of the last event fed by replayTapeTimed() — i.e. the tape's end,
     // used to attribute screen time to the final shot (which has no following cut).
     long long lastReplayTimeMs() const { return m_lastReplayTimeMs; }
@@ -1140,6 +1217,8 @@ public:
         return std::string(buf);
     }
     void setStandingsTheme(const char* v) { if (m_stSetTheme) m_stSetTheme(v); }
+    // MapHud zoom toggle, read back after a settings load; see MXBMRP3_Test_MapZoomEnabled.
+    bool mapZoomEnabled() { return m_mapZoom && m_mapZoom() != 0; }
     // RadarHud's, whose factory default is THEME_NONE -- see MXBMRP3_Test_RadarTheme
     // for why a non-empty default is the only way to test clearing one.
     std::string radarTheme() {
@@ -1307,7 +1386,9 @@ public:
                                                &g.lineLarge, &g.lineNormal);
         return g;
     }
-    void save()     { if (m_save) m_save(); }
+    // False when the write did not land (see MXBMRP3_Test_Save). A test whose
+    // oracle is the file on disk must REQUIRE this, or a lost write reads as a bug.
+    bool save()     { return m_save && m_save() == 1; }
     // Mark settings dirty without writing (deferred auto-save); flush with flushIfDirty().
     bool hasMarkDirty() const { return m_markDirty && m_flushIfDirty && m_isDirty && m_setAutoSave; }
     void markDirty() { if (m_markDirty) m_markDirty(); }
@@ -1330,6 +1411,10 @@ public:
     bool whatsNewTabTagged(const char* tab) {
         return m_wnTabTagged && m_wnTabTagged(tab) != 0;
     }
+    // The row-band stand-in for the tag, on tabs whose names fill the sidebar.
+    bool whatsNewTabHighlighted(const char* tab) {
+        return m_wnTabHighlit && m_wnTabHighlit(tab) != 0;
+    }
     // Opening a tab goes through handleTabClick, the path the sidebar click takes
     // and the one that dismisses the tag. Deliberately NOT setActiveTabByName: that
     // is also the persisted-tab restore, which must not dismiss anything.
@@ -1338,6 +1423,10 @@ public:
     }
     void hoverSettingsRow(const char* rowTooltipId) {
         if (m_wnHoverRow) m_wnHoverRow(rowTooltipId);
+    }
+    // Hovering a sidebar tab, through the pointer path's own dismissal helper.
+    bool hoverSettingsTab(const char* tab) {
+        return m_wnHoverTab && m_wnHoverTab(tab) != 0;
     }
     // Does marker `i` point at a row that this build actually draws? Opens its
     // tab and looks for a click region carrying its tooltip id. A marker naming
@@ -1730,6 +1819,9 @@ public:
     int glConfirmPct() const { return m_glConfirmPct ? m_glConfirmPct() : -1; }
     void glConfirmTick(int ms) { if (m_glConfirmTick) m_glConfirmTick(ms); }
     bool glDrewLastFrame() const { return m_glDrewLastFrame && m_glDrewLastFrame() != 0; }
+    // 1 = the live GL backend has loaded this sprite (render name), 0 = not,
+    // -1 = no backend (or a build without the hook).
+    int glHasTexture(const char* renderName) const { return m_glHasTexture ? m_glHasTexture(renderName) : -1; }
 
     // The asset names the in-context GL frame carries (kind 0 = fonts,
     // 1 = sprites). These are RENDER names - what the backend resolves against
@@ -2062,6 +2154,65 @@ public:
     void setEveryHudVisible(bool on) { if (m_setEveryHudVisible) m_setEveryHudVisible(on ? 1 : 0); }
     // One HUD's game-surface visibility by harness id (MXBMRP3_Test_SetHudVisible).
     bool setHudVisible(const char* name, bool on) { return m_setHudVisible && m_setHudVisible(name, on ? 1 : 0) == 1; }
+
+    // --- Twitch chat (core/test_hooks_twitch.cpp). Lines go through the real
+    // parse-and-queue path with no network; the HUD drains them on its next draw.
+    bool hasTwitchHooks() const { return m_twInject && m_twRowText; }
+    void twitchInject(const char* raw) { if (m_twInject) m_twInject(raw); }
+    // A line from BEFORE the last channel switch (previous generation).
+    void twitchInjectStale(const char* raw) { if (m_twInjectStale) m_twInjectStale(raw); }
+    std::string twitchChannel() {
+        char buf[64] = {};
+        if (m_twChannel) m_twChannel(buf, static_cast<int>(sizeof(buf)));
+        return buf;
+    }
+    int chatEntryCount() { return m_twEntries ? m_twEntries() : -1; }
+    int chatRowCount() { return m_twRows ? m_twRows() : -1; }
+    std::string chatRow(int i) {
+        char buf[256] = {};
+        if (m_twRowText) m_twRowText(i, buf, static_cast<int>(sizeof(buf)));
+        return buf;
+    }
+    unsigned long chatNameColor(int i) { return m_twNameColor ? m_twNameColor(i) : 0; }
+    int twitchStatus() { return m_twStatus ? m_twStatus() : -1; }
+    // Make the plugin report a connection status (-1 = the real one). Values are
+    // TwitchChatManager::Status: 0 off, 1 connecting, 2 joining, 3 connected,
+    // 4 not found, 5 retrying.
+    void twitchForceStatus(int status) { if (m_twForceStatus) m_twForceStatus(status); }
+    // Chat on for "testchan", reported connected, no socket opened.
+    void twitchSimulateConnected() { if (m_twSimConnected) m_twSimConnected(); }
+    // Texture sprite of a Twitch role's badge (one Chat::Role bit); 0 = none, -1 = no hook.
+    int twitchBadgeSprite(int role) { return m_twBadge ? m_twBadge(role) : -1; }
+
+    // --- YouTube chat (core/test_hooks_youtube.cpp). A get_live_chat body goes
+    // through the real parse-and-queue path with no network; the one chat HUD
+    // drains it on its next draw, and its rows read back through chatRow().
+    bool hasYouTubeHooks() const { return m_ytInjectPoll && m_chatRowSprites; }
+    // Returns the PollResult: 0 ok, 1 ended, 2 unrecognized; -1 = no hook.
+    int youtubeInjectPoll(const char* body) { return m_ytInjectPoll ? m_ytInjectPoll(body) : -1; }
+    // YouTubeChatManager::Status: 0 off, 1 connecting, 2 connected, 3 not live,
+    // 4 not found, 5 retrying, 6 unavailable (-1 = the real one).
+    void youtubeForceStatus(int status) { if (m_ytForceStatus) m_ytForceStatus(status); }
+    // YouTube on for "@testchan", reported connected, no request made.
+    void youtubeSimulateConnected() { if (m_ytSimConnected) m_ytSimConnected(); }
+    int youtubeStatus() { return m_ytStatus ? m_ytStatus() : -1; }
+    // Channel as typed on the Stream Chat tab; only safe while the status is forced.
+    void youtubeSetChannel(const char* channel) { if (m_ytSetChannel) m_ytSetChannel(channel); }
+    std::string youtubeChannel() {
+        char buf[64] = {};
+        if (m_ytChannel) m_ytChannel(buf, static_cast<int>(sizeof(buf)));
+        return buf;
+    }
+    // Chat::Platform: 0 Twitch, 1 YouTube. Sprites: 0 = none, -1 = no hook.
+    int chatBadgeSprite(int platform, int role) { return m_chatBadge ? m_chatBadge(platform, role) : -1; }
+    int chatPlatformSprite(int platform) { return m_chatPlatformSprite ? m_chatPlatformSprite(platform) : -1; }
+    // Rendered row `i`'s platform and role icon sprites; false past the last row.
+    bool chatRowSprites(int i, int& platformSprite, int& roleSprite) {
+        platformSprite = roleSprite = -1;
+        return m_chatRowSprites && m_chatRowSprites(i, &platformSprite, &roleSprite) == 1;
+    }
+    // Sprite of a texture by its file base name (variant 1); -1 = no hook.
+    int textureSprite(const char* baseName) { return m_texSprite ? m_texSprite(baseName) : -1; }
     // The Widgets master toggle (see MXBMRP3_Test_SetWidgetsEnabled).
     void setWidgetsEnabled(bool on) { if (m_setWidgetsEnabled) m_setWidgetsEnabled(on ? 1 : 0); }
 
@@ -2083,6 +2234,8 @@ public:
     // parsed record count, or -1 on a parse error (-2 = hook missing).
     // Steam friend-scan worker: lifecycle only (no Steam in a test build).
     bool steamStartWorker() { return m_steamStartWorker && m_steamStartWorker() != 0; }
+    bool hasSteamSetEnabled() const { return m_steamSetEnabled != nullptr; }
+    void steamSetEnabled(bool on) { if (m_steamSetEnabled) m_steamSetEnabled(on ? 1 : 0); }
     bool steamWorkerRunning() const { return m_steamWorkerAlive && m_steamWorkerAlive() != 0; }
 
     int recordsParse(int provider, const std::string& json) {
@@ -2396,11 +2549,30 @@ public:
     struct QuadRect { double l = 0, t = 0, r = 0, b = 0; };
     bool hasQuadRects() const { return m_quadRects != nullptr; }
 
+    // The Gap Bar's split ticks (MXBMRP3_Test_GapBarShowSplits).
+    bool hasGapBarShowSplits() const { return m_gapBarShowSplits != nullptr; }
+    bool gapBarShowSplits(bool on) {
+        if (!m_gapBarShowSplits) return false;
+        m_gapBarShowSplits(on ? 1 : 0);
+        return true;
+    }
     // Plant a live gap in the Gap Bar so its fill draws (see the hook).
     bool gapBarForceGap(int ms, bool valid) {
         if (!m_gapBarForceGap) return false;
         m_gapBarForceGap(ms, valid ? 1 : 0);
         return true;
+    }
+    // The computed live gap to the display rider's PB; false while there is no
+    // reference lap or no lap-timer anchor. See MXBMRP3_Test_LiveGapToPb.
+    bool liveGapToPb(int& gapMs) {
+        gapMs = 0;
+        return m_liveGapToPb && m_liveGapToPb(&gapMs) != 0;
+    }
+    // The same against a chosen reference: 0 session PB, 1 all-time PB, 2 last
+    // lap (PbGapTracker::Ref). See MXBMRP3_Test_LiveGapRef.
+    bool liveGapRef(int ref, int& gapMs) {
+        gapMs = 0;
+        return m_liveGapRef && m_liveGapRef(ref, &gapMs) != 0;
     }
 
     // The placed card rect of a HUD's memoized plan, pre-offset (see the hook).
@@ -2453,6 +2625,9 @@ public:
     unsigned long quadColor(const char* name, int i) {
         return m_quadColor ? m_quadColor(name, i) : 0;
     }
+    // The font a drawn string uses (engine index; 0 = unknown panel/index or no hook).
+    bool hasStringFont() const { return m_stringFont != nullptr; }
+    int stringFont(const char* name, int i) { return m_stringFont ? m_stringFont(name, i) : 0; }
     // The plugin's own threshold and its own luma formula, read live rather than
     // re-spelled here -- a second copy of either is a test that can agree with itself
     // while disagreeing with the code.
@@ -2541,6 +2716,14 @@ public:
         SettingsContentX c;
         if (m_settingsContentX) m_settingsContentX(&c.labelX, &c.controlX, &c.rowRight);
         return c;
+    }
+    // The active tab's generic closing arrows (CYCLE_UP / STEPPED_UP): their
+    // min/max right edge, 1e6 fixed point. count < 0 when the hook is absent.
+    struct ClosingArrows { int count = -1, minRight = 0, maxRight = 0; };
+    ClosingArrows settingsClosingArrows() {
+        ClosingArrows a;
+        if (m_settingsClosingArrows) a.count = m_settingsClosingArrows(&a.minRight, &a.maxRight);
+        return a;
     }
 
     // --- Appearance palette / font precedence (theme_palette_test) ----------
@@ -2687,6 +2870,29 @@ public:
     bool hasAnalytics() const { return m_anPrime && m_anAppStarted && m_anDrain; }
     void analyticsPrime() { if (m_anPrime) m_anPrime(); }
     void analyticsSetFullLaunch(bool full) { if (m_anSetFull) m_anSetFull(full ? 1 : 0); }
+    // The real identity load against a save path: "<installId>|<launchCount>|<repair>|<prevVersion>"
+    // (repair 0 none, 1 recovered from a damaged file, 2 new id minted). See MXBMRP3_Test_AnalyticsLoadIdentity.
+    // The shared atomic writer: temp file + replace, then the stale-temp sweep.
+    // See MXBMRP3_Test_WriteFileAtomic.
+    bool writeFileAtomic(const std::string& path, const std::string& bytes) {
+        return m_writeFileAtomic && m_writeFileAtomic(path.c_str(), bytes.c_str()) != 0;
+    }
+    // The disk writer's worker thread (off by default in the harness, see the
+    // constructor): switch it on before startup(), queue without waiting, wait.
+    void setAsyncWrites(bool on) { if (m_setAsyncWrites) m_setAsyncWrites(on ? 1 : 0); }
+    void submitWrite(const std::string& path, const std::string& bytes) {
+        if (m_submitWrite) m_submitWrite(path.c_str(), bytes.c_str());
+    }
+    void flushWrites() { if (m_flushWrites) m_flushWrites(); }
+    bool writerRunning() { return m_writerRunning && m_writerRunning() != 0; }
+    bool writeNeedsRetry(const std::string& path) {
+        return m_writeNeedsRetry && m_writeNeedsRetry(path.c_str()) != 0;
+    }
+    std::string analyticsLoadIdentity(const char* savePath) {
+        char buf[256] = {0};
+        if (m_anLoadIdentity) m_anLoadIdentity(savePath, buf, sizeof(buf));
+        return buf;
+    }
     std::string analyticsAppStarted() {
         if (!m_anAppStarted) return {};
         std::vector<char> buf(8192, 0);
@@ -2952,6 +3158,13 @@ private:
             case ET::RaceAddEntry:    if (m_addEntry)  { m_addEntry(p, size);  return true; } break;
             case ET::RaceRemoveEntry: if (m_removeEntry){ m_removeEntry(p, size); return true; } break;
             case ET::RaceLap:         if (m_raceLap)   { m_raceLap(p, size);   return true; } break;
+            case ET::RaceSplit:       if (m_raceSplit) { m_raceSplit(p, size); return true; } break;
+            // The player's track entries and the sim pause: RunStop/RunStart pause and
+            // resume the lap timer, so a clocked replay keeps the recorded pauses.
+            case ET::RunInit:         if (m_runInit)   { m_runInit(p, size);   return true; } break;
+            case ET::RunDeinit:       if (m_runDeinit) { m_runDeinit();        return true; } break;
+            case ET::RunStart:        if (m_runStart)  { m_runStart();         return true; } break;
+            case ET::RunStop:         if (m_runStop)   { m_runStop();          return true; } break;
             case ET::RaceHoleshot:    if (m_holeshot)  { m_holeshot(p, size);  return true; } break;
             case ET::RaceCommunication:if (m_comm)     { m_comm(p, size);      return true; } break;
             case ET::Draw:            draw(); return true;
@@ -2990,7 +3203,7 @@ private:
                 m_telemetry(p, (int)sizeof(SPluginsBikeData_t), time, pos);
                 return true;
             }
-            default: break;   // Startup/Shutdown/Run*/splits/etc. — skipped
+            default: break;   // Startup/Shutdown/RunLap/RunSplit/vehicle data — skipped
         }
         return false;
     }
@@ -3102,6 +3315,7 @@ private:
     int         (*m_hkCapturing)() = nullptr;
     int         (*m_spotParked)() = nullptr;
     void        (*m_stTheme)(char*, int) = nullptr;
+    int         (*m_mapZoom)() = nullptr;
     void        (*m_stSetTheme)(const char*) = nullptr;
     void        (*m_rdTheme)(char*, int) = nullptr;
     void        (*m_rdSetTheme)(const char*) = nullptr;
@@ -3116,6 +3330,7 @@ private:
     int         (*m_dirIsLocked)() = nullptr;
     int         (*m_dirNextLockedCam)(int) = nullptr;
     void        (*m_dirSetNowMs)(long long) = nullptr;
+    void        (*m_lapTimerSetNowUs)(long long) = nullptr;
     void        (*m_eventLogEnableDirector)(int) = nullptr;
     void        (*m_timingConfig)(int,int,int) = nullptr;
     void        (*m_timingReadouts)(unsigned int) = nullptr;
@@ -3158,7 +3373,7 @@ private:
     int         (*m_setHudOffset)(const char*,float,float) = nullptr;
     int         (*m_maxQuadArea)(const char*) = nullptr;
     long long   m_lastReplayTimeMs = 0;
-    void        (*m_save)() = nullptr;
+    int         (*m_save)() = nullptr;
     void        (*m_markDirty)() = nullptr;
     void        (*m_flushIfDirty)() = nullptr;
     int         (*m_isDirty)() = nullptr;
@@ -3168,7 +3383,9 @@ private:
     void        (*m_wnReset)() = nullptr;
     int         (*m_wnLiveCount)() = nullptr;
     int         (*m_wnTabTagged)(const char*) = nullptr;
+    int         (*m_wnTabHighlit)(const char*) = nullptr;
     void        (*m_wnHoverRow)(const char*) = nullptr;
+    int         (*m_wnHoverTab)(const char*) = nullptr;
     int         (*m_wnClickTab)(const char*) = nullptr;
     int  (*m_wnMarkerCount)() = nullptr;
     int  (*m_wnMarkerResolves)(int) = nullptr;
@@ -3212,6 +3429,7 @@ private:
     int         (*m_glConfirmPct)() = nullptr;
     void        (*m_glConfirmTick)(int) = nullptr;
     int         (*m_glDrewLastFrame)() = nullptr;
+    int         (*m_glHasTexture)(const char*) = nullptr;
     int         (*m_glFrameAssetName)(int,int,char*,int) = nullptr;
     int         (*m_glFrameAssetCount)(int) = nullptr;
     HWND  m_glWnd = nullptr;
@@ -3225,6 +3443,7 @@ private:
     int         (*m_setHudScale)(const char*, float) = nullptr;
     int         (*m_hudBgSprite)(const char*) = nullptr;
     void        (*m_gapBarWidth)(int) = nullptr;
+    void        (*m_gapBarShowSplits)(int) = nullptr;
     void        (*m_clearTheme)() = nullptr;
     int         (*m_setThemeIcon)(const char*,int,int) = nullptr;
     int         (*m_iconForName)(const char*) = nullptr;
@@ -3238,6 +3457,7 @@ private:
     int         (*m_quadRects)(const char*,int*,int) = nullptr;
     unsigned long (*m_stringColor)(const char*,int) = nullptr;
     unsigned long (*m_quadColor)(const char*,int) = nullptr;
+    int         (*m_stringFont)(const char*,int) = nullptr;
     int         (*m_minLumaGap)() = nullptr;
     int         (*m_luma601)(unsigned long) = nullptr;
     int         (*m_stringRows)(const char*,int,int*,int*,char*,int) = nullptr;
@@ -3247,12 +3467,15 @@ private:
     void        (*m_setScreenClamping)(int) = nullptr;
     void        (*m_settingsMarginsX)(int*,int*,int*,int*) = nullptr;
     void        (*m_settingsContentX)(int*,int*,int*) = nullptr;
+    int         (*m_settingsClosingArrows)(int*,int*) = nullptr;
     int         (*m_setHudTitle)(const char*,int) = nullptr;
     int         (*m_setThemeContentBorder)(float,float,float,float) = nullptr;
     int         (*m_setThemeContentMargin)(float,float,float,float) = nullptr;
     int         (*m_setThemeTitleMargin)(float,float,float,float) = nullptr;
     int         (*m_hudCardRect)(const char*,int*) = nullptr;
     void        (*m_gapBarForceGap)(int,int) = nullptr;
+    int         (*m_liveGapToPb)(int*) = nullptr;
+    int         (*m_liveGapRef)(int,int*) = nullptr;
     void        (*m_updateSetAvailable)(const char*) = nullptr;
     void        (*m_versionRowTerms)(int*,int*) = nullptr;
     void        (*m_showAllHuds)(int) = nullptr;
@@ -3356,9 +3579,31 @@ private:
     void        (*m_setEveryHudVisible)(int) = nullptr;
     int         (*m_settingsVisible)() = nullptr;
     int         (*m_setHudVisible)(const char*,int) = nullptr;
+    void        (*m_twInject)(const char*) = nullptr;
+    void        (*m_twInjectStale)(const char*) = nullptr;
+    void        (*m_twChannel)(char*,int) = nullptr;
+    int         (*m_twEntries)() = nullptr;
+    int         (*m_twRows)() = nullptr;
+    void        (*m_twRowText)(int,char*,int) = nullptr;
+    unsigned long (*m_twNameColor)(int) = nullptr;
+    int         (*m_twStatus)() = nullptr;
+    void        (*m_twForceStatus)(int) = nullptr;
+    void        (*m_twSimConnected)() = nullptr;
+    int         (*m_twBadge)(int) = nullptr;
+    int         (*m_ytInjectPoll)(const char*) = nullptr;
+    void        (*m_ytForceStatus)(int) = nullptr;
+    void        (*m_ytSimConnected)() = nullptr;
+    int         (*m_ytStatus)() = nullptr;
+    void        (*m_ytSetChannel)(const char*) = nullptr;
+    void        (*m_ytChannel)(char*, int) = nullptr;
+    int         (*m_chatBadge)(int, int) = nullptr;
+    int         (*m_chatPlatformSprite)(int) = nullptr;
+    int         (*m_chatRowSprites)(int, int*, int*) = nullptr;
+    int         (*m_texSprite)(const char*) = nullptr;
     void        (*m_setWidgetsEnabled)(int) = nullptr;
     int         (*m_crashTally)(int) = nullptr;
     int         (*m_steamStartWorker)() = nullptr;
+    void        (*m_steamSetEnabled)(int) = nullptr;
     int         (*m_steamWorkerAlive)() = nullptr;
     int         (*m_recParse)(int, const char*) = nullptr;
     int         (*m_recCount)() = nullptr;
@@ -3371,6 +3616,13 @@ private:
     void        (*m_getActiveTab)(char*, int) = nullptr;
     void        (*m_capturedSections)(char*, int) = nullptr;
     void        (*m_anPrime)() = nullptr;
+    void        (*m_anLoadIdentity)(const char*,char*,int) = nullptr;
+    int         (*m_writeFileAtomic)(const char*,const char*) = nullptr;
+    void        (*m_submitWrite)(const char*,const char*) = nullptr;
+    void        (*m_flushWrites)() = nullptr;
+    void        (*m_setAsyncWrites)(int) = nullptr;
+    int         (*m_writerRunning)() = nullptr;
+    int         (*m_writeNeedsRetry)(const char*) = nullptr;
     void        (*m_anSetFull)(int) = nullptr;
     void        (*m_anAppStarted)(char*, int) = nullptr;
     void        (*m_anSessionEnd)() = nullptr;

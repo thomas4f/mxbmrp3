@@ -80,9 +80,10 @@ void Handlers::handleRaceClassification(
     // toast into and first surfaced at the NEXT track load. Waiting for the field
     // to settle rather than for the player's own crossing also means the margin
     // to second and "every rider a lap down" are read off the final
-    // classification instead of a mid-race one. Idempotent (m_raceFinishRecorded),
-    // and handleRunDeinit stays the backstop for a race whose field never settles
-    // - a rider who quits without the classification ever dropping them.
+    // classification instead of a mid-race one. Idempotent (m_raceFinishRecorded).
+    // A field that never settles - a rider who quit without the classification
+    // ever dropping them - is recorded at the game's RACE_OVER state instead
+    // (race_session_handler), and handleRunDeinit stays the last backstop.
     // The trade: a penalty handed out AFTER the field is in no longer counts
     // against the race's clean run. Penalties are live race events (cutting, a
     // jump start), so in practice they land laps earlier.

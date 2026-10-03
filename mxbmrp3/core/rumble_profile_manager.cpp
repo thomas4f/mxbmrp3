@@ -151,9 +151,9 @@ void RumbleProfileManager::load(const char* savePath) {
 }
 
 void RumbleProfileManager::save() {
-    if (!m_dirty) return;
-
+    // Also when the last write failed on the writer thread (m_dirty cleared at hand-over).
     std::string filePath = getFilePath();
+    if (!m_dirty && !AtomicFileWriter::needsRetry(filePath)) return;
 
     try {
         nlohmann::json j;
@@ -203,11 +203,8 @@ void RumbleProfileManager::save() {
         }
         j["profiles"] = profiles;
 
-        // Write via the shared atomic writer (temp file + MoveFileExA replace). Synchronous:
-        // rumble profiles are saved on discrete edits / bike switches, not the per-frame
-        // path — so keep immediate durability while sharing the one atomic-write helper.
-        // Only clear the dirty flag on a successful write.
-        if (AtomicFileWriter::writeFileAtomic(filePath, j.dump(2))) {
+        // Through the shared writer (atomic replace, off the game thread).
+        if (AtomicFileWriter::submit(filePath, j.dump(2))) {
             m_dirty = false;
             DEBUG_INFO_F("[RumbleProfileManager] Saved %zu rumble profiles to %s",
                          m_bikeConfigs.size(), filePath.c_str());

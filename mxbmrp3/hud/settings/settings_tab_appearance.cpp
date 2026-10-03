@@ -182,8 +182,6 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
 
     FontConfig& fontConfig = FontConfig::getInstance();
     ColorConfig& colorConfig = ColorConfig::getInstance();
-    // Standard value width for the unit/format cycle controls (matches the General tab)
-    constexpr int VALUE_WIDTH = 10;
 
     // === DISPLAY SECTION ===
     // Shown first so the theme and the units/format sit at the top of the tab.
@@ -198,7 +196,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
             ? nullptr : AssetManager::getInstance().getThemeByName(themeName);
         // An unknown saved name reads as "None", matching what actually renders.
         const std::string valueLabel = theme ? theme->displayName : std::string("None");
-        ctx.addCycleControl("Panel Theme", valueLabel.c_str(), VALUE_WIDTH,
+        ctx.addCycleControl("Panel theme", valueLabel.c_str(),
                             SettingsHud::ClickRegion::THEME_PREV,
                             SettingsHud::ClickRegion::THEME_NEXT,
                             /*targetHud=*/nullptr, /*enabled=*/true, /*isOff=*/false,
@@ -208,7 +206,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     // Speed unit toggle
     {
         SpeedWidget* speedWidget = ctx.parent->getSpeedWidget();
-        ctx.addCycleControl("Speed Unit", (speedWidget && speedWidget->getSpeedUnit() == SpeedWidget::SpeedUnit::KMH) ? "km/h" : "mph", VALUE_WIDTH,
+        ctx.addCycleControl("Speed unit", (speedWidget && speedWidget->getSpeedUnit() == SpeedWidget::SpeedUnit::KMH) ? "km/h" : "mph",
                             SettingsHud::ClickRegion::SPEED_UNIT_TOGGLE,
                             SettingsHud::ClickRegion::SPEED_UNIT_TOGGLE,
                             speedWidget, /*enabled=*/true, /*isOff=*/false,
@@ -218,7 +216,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     // Fuel unit toggle
     {
         FuelWidget* fuelWidget = ctx.parent->getFuelWidget();
-        ctx.addCycleControl("Fuel Unit", (fuelWidget && fuelWidget->getFuelUnit() == FuelWidget::FuelUnit::GALLONS) ? "gal" : "L", VALUE_WIDTH,
+        ctx.addCycleControl("Fuel unit", (fuelWidget && fuelWidget->getFuelUnit() == FuelWidget::FuelUnit::GALLONS) ? "gal" : "L",
                             SettingsHud::ClickRegion::FUEL_UNIT_TOGGLE,
                             SettingsHud::ClickRegion::FUEL_UNIT_TOGGLE,
                             fuelWidget, /*enabled=*/true, /*isOff=*/false,
@@ -227,7 +225,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
 
     // Temperature unit toggle
     {
-        ctx.addCycleControl("Temp Unit", (UiConfig::getInstance().getTemperatureUnit() == TemperatureUnit::FAHRENHEIT) ? "F" : "C", VALUE_WIDTH,
+        ctx.addCycleControl("Temp unit", (UiConfig::getInstance().getTemperatureUnit() == TemperatureUnit::FAHRENHEIT) ? "F" : "C",
                             SettingsHud::ClickRegion::TEMP_UNIT_TOGGLE,
                             SettingsHud::ClickRegion::TEMP_UNIT_TOGGLE,
                             nullptr, /*enabled=*/true, /*isOff=*/false,
@@ -237,7 +235,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     // Clock format toggle
     {
         ClockWidget* clockWidget = ctx.parent->getClockWidget();
-        ctx.addCycleControl("Clock Format", (clockWidget && clockWidget->getFormat24h()) ? "24h" : "12h", VALUE_WIDTH,
+        ctx.addCycleControl("Clock format", (clockWidget && clockWidget->getFormat24h()) ? "24h" : "12h",
                             SettingsHud::ClickRegion::CLOCK_FORMAT_TOGGLE,
                             SettingsHud::ClickRegion::CLOCK_FORMAT_TOGGLE,
                             clockWidget, /*enabled=*/true, /*isOff=*/false,
@@ -245,17 +243,17 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     }
 
     // Compact time format toggle
-    ctx.addToggleControl("Compact Times", PluginData::getInstance().isShortTimeFormat(),
+    ctx.addToggleControl("Compact times", PluginData::getInstance().isShortTimeFormat(),
         SettingsHud::ClickRegion::SHORT_TIME_FORMAT_TOGGLE, nullptr, nullptr, 0, true,
         "appearance.compact_times");
 
     // Drop shadow toggle
-    ctx.addToggleControl("Drop Shadow", UiConfig::getInstance().getDropShadow(),
+    ctx.addToggleControl("Drop shadow", UiConfig::getInstance().getDropShadow(),
         SettingsHud::ClickRegion::DROP_SHADOW_TOGGLE, nullptr, nullptr, 0, true,
         "appearance.drop_shadow");
 
     // UI icons toggle (HUD title icons, settings tab/section icons, settings button)
-    ctx.addToggleControl("UI Icons", UiConfig::getInstance().getTitleIcons(),
+    ctx.addToggleControl("UI icons", UiConfig::getInstance().getTitleIcons(),
         SettingsHud::ClickRegion::TITLE_ICONS_TOGGLE, nullptr, nullptr, 0, true,
         "appearance.hud_icons");
 
@@ -270,7 +268,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
         const char* valueLabel = (target == DisplayTarget::COMPANION) ? "Companion"
                                : (target == DisplayTarget::BOTH)      ? "Both"
                                                                       : "In-game";
-        ctx.addCycleControl("HUD Display", valueLabel, VALUE_WIDTH,
+        ctx.addCycleControl("HUD display", valueLabel,
                             SettingsHud::ClickRegion::DISPLAY_TARGET_TOGGLE,
                             SettingsHud::ClickRegion::DISPLAY_TARGET_TOGGLE,
                             /*targetHud=*/nullptr, /*enabled=*/true, /*isOff=*/false,
@@ -298,10 +296,10 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
         const bool isDefaultFont =
             std::strcmp(fontConfig.getFontName(category),
                         FontConfig::getThemeOrDefaultFontName(category)) == 0;
-        // The value is TRUNCATED to the field by the shared helper, like every other
-        // row: the shipped names are 13-21 characters ("RobotoMono-Regular" renders
-        // as "Roboto Mono Regular"), so drawn raw the name runs straight through the
-        // ">" arrow beside it.
+        // The value goes through the shared field like every other row's: the
+        // shipped names (13-21 characters, "RobotoMono-Regular" renders as "Roboto
+        // Mono Regular") fit it whole, and a user font with a longer name is cut at
+        // the field rather than running through the ">" arrow beside it.
         //
         // NOTHING AFTER THE CONTROL. "Default" is simply one of the values the cycler
         // steps through, and the row reads as every other row on the tab. Trailing
@@ -310,7 +308,6 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
         // not asking, put a second column of text on six rows that no other control
         // has, and need its own truncation maths to stay inside the panel.
         ctx.addCycleControl(categoryName, isDefaultFont ? "Default" : fontDisplayName,
-                            STANDARD_VALUE_WIDTH,
                             SettingsHud::ClickRegion::FONT_CATEGORY_PREV,
                             SettingsHud::ClickRegion::FONT_CATEGORY_NEXT,
                             category, tooltipId);
@@ -358,7 +355,6 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
         // either: "Default" is a value of the cycler, not a state annotated beside it.
         const bool isDefaultColor = (color == ColorConfig::getThemeOrDefaultColor(slot));
         ctx.addCycleControl(slotName, isDefaultColor ? "Default" : colorName,
-                            STANDARD_VALUE_WIDTH,
                             SettingsHud::ClickRegion::COLOR_CYCLE_PREV,
                             SettingsHud::ClickRegion::COLOR_CYCLE_NEXT,
                             slot, tooltipId);

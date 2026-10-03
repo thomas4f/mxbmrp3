@@ -8,7 +8,7 @@
   "configurePresets": [
     {
       "name": "msvc",
-      "displayName": "MSVC \u2014 the shipping plugin (Windows)",
+      "displayName": "MSVC — the shipping plugin (Windows)",
       "description": "Generates build/msvc/mxbmrp3.sln. Open that in Visual Studio, or build from the command line with --preset. Set APTABASE_KEY/GOATCOUNTER_TOKEN BEFORE configuring: CMake reads them here, not at build time.",
       "generator": "Visual Studio 17 2022",
       "architecture": "x64",
@@ -20,14 +20,39 @@
       }
     },
     {
+      "name": "msvc-ninja",
+      "displayName": "MSVC + Ninja — the same plugin, for VS Code / the command line (Windows)",
+      "description": "The msvc preset's compiler and flags with the Ninja generator: faster incremental builds, compile_commands.json for IntelliSense, no .sln. Single-config, so this one is Release; msvc-ninja-debug is Debug. Run from a Developer Command Prompt (or a CMake Tools MSVC kit) so cl.exe is on PATH. Its own build dir: CMake cannot switch generator inside build/msvc.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/msvc-ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "msvc-ninja-debug",
+      "displayName": "MSVC + Ninja — Debug (Windows)",
+      "inherits": "msvc-ninja",
+      "binaryDir": "${sourceDir}/build/msvc-ninja-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
       "name": "tests",
-      "displayName": "Tests \u2014 register the CTest gates (any host)",
+      "displayName": "Tests — register the CTest gates (any host)",
       "description": "Builds nothing on Linux beyond the unit-test targets; this is the tree ctest --test-dir build/tests uses.",
       "binaryDir": "${sourceDir}/build/tests"
     },
     {
       "name": "cross",
-      "displayName": "Cross-build \u2014 Windows DLL via mingw-w64 (Linux)",
+      "displayName": "Cross-build — Windows DLL via mingw-w64 (Linux)",
       "description": "The headless test configuration. tests/integration/build.sh wraps this; it is NOT shippable.",
       "binaryDir": "${sourceDir}/build/cross",
       "cacheVariables": {
@@ -67,6 +92,27 @@
       "description": "What the old All-Release configuration did. This is what make_release.bat and release.yml build.",
       "configurePreset": "msvc",
       "configuration": "Release"
+    },
+    {
+      "name": "ninja-mxb",
+      "displayName": "MX Bikes only, Release (Ninja)",
+      "configurePreset": "msvc-ninja",
+      "targets": [
+        "mxbmrp3"
+      ]
+    },
+    {
+      "name": "ninja-mxb-debug",
+      "displayName": "MX Bikes only, Debug (Ninja)",
+      "configurePreset": "msvc-ninja-debug",
+      "targets": [
+        "mxbmrp3"
+      ]
+    },
+    {
+      "name": "ninja-all-games",
+      "displayName": "All three games, Release (Ninja)",
+      "configurePreset": "msvc-ninja"
     },
     {
       "name": "cross",

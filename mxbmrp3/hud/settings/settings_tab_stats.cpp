@@ -73,9 +73,12 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
             hud->m_finishAutoShown = false;
             hud->m_wasInPits = false;
         };
-        ctx.addCycleControl("Show mode", visModeName, 10, visCycle,
+        ctx.addCycleControl("Show mode", visModeName, visCycle,
             hud, true, false, "stats.visibility_mode", /*tooltipOnArrows=*/false);
     }
+
+    // === CONTENT SECTION ===
+    ctx.addSectionHeading("Content");
 
     // Column toggles
     ctx.addToggleControl("Last lap", hud->m_showLap,
@@ -93,7 +96,6 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
 
     // Colors and fonts
     ColorConfig& colors = ColorConfig::getInstance();
-    unsigned long secondaryColor = colors.getSecondary();
 
     const StatsManager& stats = StatsManager::getInstance();
 
@@ -105,9 +107,10 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
     const GlobalStats global = stats.getGlobalStats();
 
     // A read-only stat: label at labelX, value in the CONTROL column, so these rows
-    // line up with every other tab's cyclers.
+    // line up with every other tab's cyclers -- and in their colours too (secondary
+    // label, primary value).
     auto addGlobalRow = [&](const char* label, const char* value) {
-        ctx.addLabelValueRow(label, colors.getTertiary(), value, secondaryColor);
+        ctx.addLabelValueRow(label, colors.getSecondary(), value, colors.getPrimary());
     };
 
     char valueBuf[32];
@@ -130,7 +133,7 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
     if (globalPenTimeMs > 0) {
         snprintf(valueBuf, sizeof(valueBuf), "%llds", (long long)(globalPenTimeMs + 500) / 1000);
     } else {
-        snprintf(valueBuf, sizeof(valueBuf), "--");
+        snprintf(valueBuf, sizeof(valueBuf), "%s", PluginConstants::Placeholders::GENERIC);
     }
     addGlobalRow("Pen. time", valueBuf);
 

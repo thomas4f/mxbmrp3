@@ -1,0 +1,37 @@
+{
+ "responseContext": {},
+ "continuationContents": {
+  "liveChatContinuation": {
+   "continuations": [
+    {
+     "timedContinuationData": {
+      "timeoutMs": 20000,
+      "continuation": "NEXT_TOKEN_2"
+     }
+    }
+   ],
+   "actions": [
+    {
+     "addChatItemAction": {
+      "item": {
+       "liveChatTextMessageRenderer": {
+        "messageId": "M-NEW",
+        "author": {
+         "name": "@Someone",
+         "channelId": "UCsomeone000000000000000"
+        },
+        "content": {
+         "segments": [
+          {
+           "text": "the format moved"
+          }
+         ]
+        }
+       }
+      }
+     }
+    }
+   ]
+  }
+ }
+}

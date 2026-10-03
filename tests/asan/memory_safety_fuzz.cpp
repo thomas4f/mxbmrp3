@@ -27,6 +27,7 @@
 // ============================================================================
 #include "core/plugin_data.h"
 #include "core/live_gap_engine.h"
+#include "core/pb_gap_tracker.h"
 
 #include <cstdio>
 #include <cstdint>
@@ -180,11 +181,71 @@ static int churnCrashSiteContainers() {
     return (int)(ops & 0x7fffffff);
 }
 
+// ----------------------------------------------------------------------------
+// 4. PB gap tracker position input (core/pb_gap_tracker.h).
+//    The same class of input as (2): the game's float trackPos, now consumed by
+//    PbGapTracker::onTrackPosition (slot write) and gapAt()/bestLapProgressAt()
+//    (slot reads with interpolation). The tracker rejects non-finite input
+//    before any cast; this drives the REAL class with the pool above plus
+//    random bit patterns, random elapsed times (including -1 = unanchored and
+//    INT_MIN/INT_MAX), random re-anchor flags and lap completions, and reads
+//    the gap at the same positions -- an unbounded slot would fault under ASan,
+//    a NaN reaching the cast under UBSan.
+// ----------------------------------------------------------------------------
+static int fuzzPbGapTracker() {
+    auto* t = new PbGapTracker();   // heap-boxed so an OOB slot write is a red zone hit
+    static const float kFloats[] = {
+        0.0f, 0.5f, 1.0f, 0.999999f, 1.0000001f, -0.0f, -1.0f, -1e30f, 1e30f,
+        std::numeric_limits<float>::quiet_NaN(),
+        std::numeric_limits<float>::infinity(),
+        -std::numeric_limits<float>::infinity(),
+        std::numeric_limits<float>::denorm_min(),
+        std::numeric_limits<float>::max(),
+        std::numeric_limits<float>::lowest(),
+    };
+    static const int kElapsed[] = { -1, 0, 1, 59999, INT_MAX, INT_MIN, -2 };
+    const int nF = (int)(sizeof(kFloats) / sizeof(kFloats[0]));
+    const int nE = (int)(sizeof(kElapsed) / sizeof(kElapsed[0]));
+
+    long ops = 0;
+    for (int i = 0; i < nF; ++i) {
+        for (int e = 0; e < nE; ++e) {
+            t->onTrackPosition(kFloats[i], kElapsed[e], (i + e) & 1);
+            bool ok = false;
+            (void)t->gapAt(kFloats[i], kElapsed[e], &ok);
+            (void)t->bestLapProgressAt(kElapsed[e]);
+            ++ops;
+        }
+        t->onLapCompleted(60000 + i, true);      // a reference exists from here on
+    }
+    for (long i = 0; i < 300000; ++i) {
+        uint32_t bits = rnd();
+        float f; std::memcpy(&f, &bits, sizeof(f));
+        const int elapsed = (int)(rnd() % 3u == 0 ? (int)rnd() : (int)(rnd() % 120000u) - 1);
+        t->onTrackPosition(f, elapsed, (bits & 0x10u) != 0);
+        bool ok = false;
+        (void)t->gapAt(f, elapsed, &ok);
+        (void)t->bestLapProgressAt(elapsed);
+        switch (bits % 977u) {
+            case 0: t->onLapCompleted((int)(rnd() % 200000u), (bits & 0x20u) != 0); break;
+            case 1: t->clearCurrentLap(); break;
+            case 2: t->onGridStart(); break;
+            case 3: t->forgetBestLap(); break;
+            case 4: t->reset(); break;
+            default: break;
+        }
+        ++ops;
+    }
+    delete t;
+    return (int)(ops & 0x7fffffff);
+}
+
 int main() {
     long r1 = fuzzRaceEntryData();
     long r2 = fuzzLeaderTimingIndex();
     long r3 = churnCrashSiteContainers();
-    printf("ASAN MEMORY-SAFETY HARNESS PASSED  (raceEntry=%ld indexWrites=%ld churnOps=%ld)\n",
-           r1, r2, r3);
+    long r4 = fuzzPbGapTracker();
+    printf("ASAN MEMORY-SAFETY HARNESS PASSED  (raceEntry=%ld indexWrites=%ld churnOps=%ld pbGapOps=%ld)\n",
+           r1, r2, r3, r4);
     return 0;
 }

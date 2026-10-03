@@ -31,7 +31,6 @@ SpeedoWidget::SpeedoWidget()
     // A PACK HUD -- see TachoWidget's constructor for why no texture stem is
     // declared alongside.
     m_packKind = PackKind::Gauges;
-    DEBUG_INFO("SpeedoWidget created");
     setDraggable(true);
     m_quads.reserve(6);   // dial background + needle + 4 odometer background quads
     m_strings.reserve(5); // odometer: main + last + unit, trip: main + last

@@ -13,13 +13,13 @@
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
+#include "../core/ui_config.h"
 
 using namespace PluginConstants;
 
 TyreTempWidget::TyreTempWidget() {
     m_panelKind = PanelKind::Widget;
     m_bContentCard = true;
-    DEBUG_INFO("TyreTempWidget created");
     setDraggable(true);
 
     // Reserve space for render data:
@@ -107,7 +107,7 @@ void TyreTempWidget::rebuildRenderData() {
 
     // BOX-MODEL: the plan owns padding, chrome and the card (this panel has no
     // caption at all); the widget states only its content — the wheel rows.
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = contentWidth;
     want.sectionH = { contentHeight };
     want.captionW = planTitleWidth(dim, "Tyre Temp");
@@ -117,7 +117,7 @@ void TyreTempWidget::rebuildRenderData() {
     const float backgroundHeight = p.height();
 
     addPlanBackground(p, startX, startY);
-    addPlanTitle(p, "Tyre Temp", this->getFont(FontCategory::TITLE),
+    addPlanTitle(p, "Tyre Temp",
         this->getColor(ColorSlot::PRIMARY));
 
     // Set bounds for drag detection
@@ -222,8 +222,8 @@ void TyreTempWidget::rebuildRenderData() {
                     tempColor = mutedColor;
                 } else {
                     float temp = bikeData.treadTemperature[wheel][section];
-                    int displayTemp = static_cast<int>(temp + 0.5f);
-                    snprintf(tempBuffer, sizeof(tempBuffer), "%d", displayTemp);
+                    snprintf(tempBuffer, sizeof(tempBuffer), "%d",
+                             UiConfig::getInstance().toDisplayTemperature(temp));
                 }
 
                 addString(tempBuffer, tempX, textY, Justify::CENTER,

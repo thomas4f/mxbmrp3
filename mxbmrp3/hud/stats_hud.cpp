@@ -17,7 +17,6 @@
 using namespace PluginConstants;
 
 StatsHud::StatsHud() {
-    DEBUG_INFO("StatsHud created");
     m_strings.reserve(45);  // title + header row + up to 10 rows * 4 strings
 
     setDraggable(true);
@@ -86,7 +85,7 @@ int StatsHud::getTickIntervalMs() const {
 const char* StatsHud::getVisibilityModeName(VisibilityMode mode) {
     switch (mode) {
         case VisibilityMode::ALWAYS:      return "Always";
-        case VisibilityMode::SESSION_END: return "On Finish";
+        case VisibilityMode::SESSION_END: return "On finish";
         default:                          return "Unknown";
     }
 }
@@ -111,7 +110,7 @@ bool StatsHud::computeLayout(Layout& out) const {
     // BOX-MODEL: the plan owns the box; the caption band is its, not a content
     // term. This file must not spell the panel terms itself — the plan is the one
     // owner.
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(widthChars, out.dim.fontSize);
     want.sectionH = { out.dim.lineHeightNormal * rowCount };
     want.captionW = planTitleWidth(out.dim, "Stats", TitleTier::Large);
@@ -216,12 +215,11 @@ void StatsHud::rebuildRenderData() {
     if (m_showAllTime) headerNames[headerIdx++] = "All-time";
 
     // Title — the plan's caption row, above currentY.
-    addPlanTitle(lay.plan, "Stats", this->getFont(FontCategory::TITLE), primaryColor);
+    addPlanTitle(lay.plan, "Stats", primaryColor);
 
     // Column headers — their own row below the title (like StandingsHud)
     for (int i = 0; i < lay.cols; i++) {
-        addLabel(headerNames[i], lay.col[i], currentY, Justify::RIGHT,
-            this->getFont(FontCategory::STRONG), labelColor, lay.dim);
+        addLabel(headerNames[i], lay.col[i], currentY, Justify::RIGHT, labelColor, lay.dim);
     }
     currentY += lay.dim.lineHeightNormal;
 
@@ -229,8 +227,7 @@ void StatsHud::rebuildRenderData() {
     struct ColValue { const char* text; unsigned long color; };
 
     auto addRow = [&](const char* label, ColValue lap, ColValue session, ColValue allTime) {
-        addLabel(label, lay.contentStartX, currentY, Justify::LEFT,
-            this->getFont(FontCategory::STRONG), labelColor, lay.dim);
+        addLabel(label, lay.contentStartX, currentY, Justify::LEFT, labelColor, lay.dim);
 
         int ci = 0;
         if (m_showLap) {

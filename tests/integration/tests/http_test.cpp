@@ -10,14 +10,15 @@
 // coverage so that split doesn't leave the serving path untested.
 // Self-contained doctest; see run_tests.sh.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
 #include "assertions.h"
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <thread>
 
 TEST_CASE("http: the server serves /api/state and it matches the direct snapshot") {
     // Stage web files BEFORE the server starts, so set_mount_point() succeeds and
@@ -88,3 +89,53 @@ TEST_CASE("http: the server serves /api/state and it matches the direct snapshot
     host.shutdown();
 }
 
+
+// THE TOWER THAT SHRANK MID-UPDATE. On a broadcaster's stream the overlay's
+// standings tower dropped, every now and then and for a push or two, from the
+// full field to its first N rows and grew back: 14 rows, then 10, then 14. The
+// surviving rows were always a prefix, which is the signature of a snapshot
+// built against a classification order that was still being filled.
+// batchUpdateStandings() cleared m_classificationOrder and pushed the riders
+// back one at a time; a rider whose pit flag changed logged an event from
+// inside that loop, and addEventLogEntry notifies the HTTP server
+// synchronously, which builds the snapshot right there when its window is
+// open. The order then held only the riders before that one. The field was
+// spawning onto the track, so pit exits were arriving every few seconds.
+//
+// Deterministic because of the build window: the pit-flip classification's
+// mid-loop build lands when the window has elapsed, and the Standings
+// notification at the END of the same loop is then inside the window, so it
+// only marks the cache stale. What /api/state serves right after IS the
+// mid-loop snapshot. Before the fix this fetched 10 rows.
+TEST_CASE("http: a pit event mid-classification does not serve a truncated tower") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\http\\");
+    REQUIRE(host.startHttp());
+
+    host.eventInit("TestTrack", "Rider1");
+    host.raceEvent("TestTrack");
+    host.session(/*session=*/6, /*numLaps=*/10, /*lengthMs=*/0);
+    std::vector<ClassRow> rows;
+    for (int n = 1; n <= 14; ++n) {
+        char name[16];
+        snprintf(name, sizeof(name), "Rider%d", n);
+        host.addEntry(n, name);
+        rows.push_back({ .num = n, .best = 90000 + n * 100, .laps = 3, .gap = (n - 1) * 1000 });
+    }
+    host.classify(6, 300000, rows);
+    REQUIRE(host.state()["standings"].size() == 14);
+
+    // Let the build window elapse, so the next event-log notification builds
+    // on the spot rather than deferring past the end of the loop.
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+
+    rows[10].pit = 1;                              // the 11th rider enters the pits
+    host.classify(6, 300000, rows);
+    const auto served = host.state();
+    REQUIRE(served.is_object());
+    CHECK_MESSAGE(served["standings"].size() == 14,
+                  "the snapshot built by the pit event's notification saw a "
+                  "half-filled classification order: the overlay tower shrank to "
+                  << served["standings"].size() << " rows for this push");
+}

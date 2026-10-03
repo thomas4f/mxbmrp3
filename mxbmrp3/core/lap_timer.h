@@ -57,6 +57,26 @@ struct LapTimer {
     // Threshold for S/F line detection (position jump > 0.5 = S/F crossing)
     static constexpr float WRAP_THRESHOLD = 0.5f;
 
+    // The clock every anchor and read uses. TEST ONLY override
+    // (MXBMRP3_Test_LapTimerSetNowUs): a replayed tape fires its events
+    // back-to-back, but this timer is wall-clock anchored, so a burst replay
+    // would read ~0 ms between every split. The harness feeds each recorded
+    // event's timestamp here instead (see PluginHost::replayTapeClocked), the
+    // same way DirectorManager::testSetNowMs paces the director. -1 = the real
+    // clock. Compiled out of shipping builds.
+    static std::chrono::steady_clock::time_point now() {
+#if defined(MXBMRP3_TEST_BUILD)
+        if (s_testNowUs >= 0) {
+            return std::chrono::steady_clock::time_point(std::chrono::microseconds(s_testNowUs));
+        }
+#endif
+        return std::chrono::steady_clock::now();
+    }
+#if defined(MXBMRP3_TEST_BUILD)
+    static void testSetNowUs(long long us) { s_testNowUs = us; }
+    inline static long long s_testNowUs = -1;
+#endif
+
     LapTimer()
         : anchorAccumulatedTime(0), anchorValid(false), isPaused(false)
         , lastTrackPos(0.0f), lastLapNum(0), trackMonitorInitialized(false)
@@ -79,7 +99,7 @@ struct LapTimer {
     }
 
     void setAnchor(int accumulatedTime) {
-        anchorTime = std::chrono::steady_clock::now();
+        anchorTime = now();
         anchorAccumulatedTime = accumulatedTime;
         anchorValid = true;
         isPaused = false;  // Clear pause state when setting new anchor
@@ -97,6 +117,17 @@ struct LapTimer {
         // lap 1), so end the grace: the next S/F crossing must re-anchor normally rather than be
         // skipped (which would leave the timer stuck on the placeholder until the lap completes).
         anchoredFromRaceStart = false;
+    }
+
+    // The rider is somewhere else now: the next sample is a baseline, not a
+    // delta from the last one. Used when the player re-enters the track from the
+    // pits (RunInit) -- read as a delta from where they LEFT, a pit box more than
+    // half a lap "behind" that point (left at 0.70, box at 0.02) is a wrap, and
+    // with the anchor already dropped onTrackPosition would re-anchor the lap at
+    // the pit box. The classification's pit-flag path does not need this: its
+    // sample has already gone through by the time the flag arrives.
+    void forgetTrackPosition() {
+        trackMonitorInitialized = false;
     }
 
     // ------------------------------------------------------------------------
@@ -183,7 +214,7 @@ struct LapTimer {
     // Pause/resume support - adjusts anchor to exclude pause duration
     void pause() {
         if (!isPaused && anchorValid) {
-            pausedAt = std::chrono::steady_clock::now();
+            pausedAt = now();
             isPaused = true;
         }
     }
@@ -191,7 +222,7 @@ struct LapTimer {
     void resume() {
         if (isPaused && anchorValid) {
             // Adjust anchor forward by the pause duration so elapsed time is correct
-            auto pauseDuration = std::chrono::steady_clock::now() - pausedAt;
+            auto pauseDuration = now() - pausedAt;
             anchorTime += pauseDuration;
             isPaused = false;
         }
@@ -204,7 +235,7 @@ struct LapTimer {
         }
 
         // Use pause time if paused, otherwise use now
-        auto endTime = isPaused ? pausedAt : std::chrono::steady_clock::now();
+        auto endTime = isPaused ? pausedAt : now();
         auto wallElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             endTime - anchorTime
         ).count();

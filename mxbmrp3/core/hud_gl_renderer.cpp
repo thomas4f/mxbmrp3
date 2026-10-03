@@ -2,6 +2,7 @@
 // core/hud_gl_renderer.cpp
 // Implementation of the in-context GL backend - see hud_gl_renderer.h for the
 // design and, in particular, for why this is GL 1.1 only.
+// file-budget: 1050 render()'s save/draw/restore reads as one sequence; the asset cache (texture/font/prewarm) is the split when it next grows
 // ============================================================================
 #include "hud_gl_renderer.h"
 
@@ -183,6 +184,11 @@ struct Renderer::Impl {
     GLuint white = 0;
     struct Tex { GLuint id = 0; bool ok = false; };
     std::map<std::string, Tex> texs;                 // requestArtReload clears
+    // Sprite-index -> texture-name slots over `texs`, so the per-quad lookup on
+    // the game thread is an array read instead of a std::map<std::string>
+    // find. Invalidated at EVERY site that clears texs (hudbatch::TextureCache
+    // says why that is mandatory).
+    hudbatch::TextureCache texCache;
     struct Font { GLuint id = 0; hudassets::FntFont font; };
     std::map<std::string, Font> fonts;               // kept; nobody iterates a .fnt
 
@@ -220,12 +226,46 @@ struct Renderer::Impl {
     // this one cannot, because a GL context belongs to the thread that has it.
     static constexpr int kMaxDecodesPerFrame = 4;
     int decodesThisFrame = 0;
+    // Pre-warm progress (see Renderer::Warm): how many leading items of the list
+    // are known loaded, and a hash of the list that count belongs to. Reset with
+    // the caches it describes.
+    uint64_t warmSig = 0;
+    int warmDone = 0;
 
     GLuint upload(const uint8_t* px, int w, int h, bool alphaOnly);
     GLuint uploadMipped(const std::vector<hudassets::MipLevel>& mips, bool alphaOnly);
     Tex* texture(const std::string& base, bool icon, const std::string& root);
     Font* font(const std::string& base, const std::string& root);
+    void prewarm(const Warm& w, const hudsw::Frame& f);
 };
+
+// Load at most ONE item of the warm list, and only on a frame that has loaded
+// nothing yet - see Renderer::Warm. Walks past items already cached, so once the
+// list is loaded this is the hash and nothing else.
+void Renderer::Impl::prewarm(const Warm& w, const hudsw::Frame& f) {
+    uint64_t sig = 1469598103934665603ull;   // FNV-1a over the indices
+    auto mix = [&sig](int v) { sig = (sig ^ static_cast<uint32_t>(v)) * 1099511628211ull; };
+    for (int i = 0; i < w.spriteCount; ++i) mix(w.sprites[i]);
+    mix(-1);                                  // sprites {1},fonts {} != sprites {},fonts {1}
+    for (int i = 0; i < w.fontCount; ++i) mix(w.fonts[i]);
+    if (sig != warmSig) { warmSig = sig; warmDone = 0; }
+
+    const int total = w.spriteCount + w.fontCount;
+    while (warmDone < total && decodesThisFrame == 0) {
+        const int i = warmDone++;
+        if (i < w.spriteCount) {
+            const int idx = w.sprites[i] - 1;
+            if (f.spriteNames && idx >= 0 && idx < static_cast<int>(f.spriteNames->size()))
+                texture((*f.spriteNames)[idx], w.sprites[i] >= f.firstIcon, f.assetRoot);
+        } else {
+            const int idx = w.fonts[i - w.spriteCount] - 1;
+            if (f.fontNames && idx >= 0 && idx < static_cast<int>(f.fontNames->size()))
+                font((*f.fontNames)[idx], f.assetRoot);
+        }
+        // A failed load is cached as a miss, exactly as on demand, so it counts
+        // as done here too - retrying it every frame would re-read the file.
+    }
+}
 
 // Upload one image, ROWS AS THEY ARE. No vertical flip - and that is worth
 // stating, because "GL textures are upside down" is the reflex and it is wrong
@@ -374,7 +414,8 @@ Renderer::~Renderer() {
     // thread, and glDeleteTextures without a context is undefined. Leaking a
     // few texture names into a process that is exiting anyway is the safer
     // trade - the same reasoning hud_gpu_renderer applies to its DLLs.
-    delete m_impl;
+    // m_impl (unique_ptr) frees only the CPU-side Impl; Impl has no GL calls
+    // in its destructor, so that rule holds.
 }
 
 bool Renderer::ok() const { return m_impl && m_impl->ready; }
@@ -385,7 +426,7 @@ const std::string& Renderer::lastError() const {
 
 bool Renderer::init() {
     if (m_impl) return m_impl->ready;
-    m_impl = new Impl();
+    m_impl = std::make_unique<Impl>();
     Impl& im = *m_impl;
 
     // GetModuleHandle, never LoadLibrary: if opengl32 is not already resident
@@ -527,8 +568,14 @@ void Renderer::requestArtReload() {
     if (m_impl) m_impl->artReload.store(true, std::memory_order_relaxed);
 }
 
+bool Renderer::hasTexture(const std::string& renderName) const {
+    if (!m_impl) return false;
+    auto it = m_impl->texs.find(renderName);
+    return it != m_impl->texs.end() && it->second.ok;
+}
+
 bool Renderer::render(const hudsw::Frame& frame, int w, int h,
-                      float vx, float vy, float vw, float vh) {
+                      float vx, float vy, float vw, float vh, const Warm* warm) {
     if (!ok() || w <= 0 || h <= 0) return false;
     Impl& im = *m_impl;
     Gl& g = im.gl;
@@ -607,8 +654,10 @@ bool Renderer::render(const hudsw::Frame& frame, int w, int h,
                      static_cast<void*>(im.ctx), static_cast<void*>(nowCtx),
                      im.texs.size(), im.fonts.size());
         im.texs.clear();
+        im.texCache.invalidate();
         im.fonts.clear();
         im.white = 0;
+        im.warmDone = 0;
         im.ctx = nowCtx;
     }
 
@@ -616,6 +665,8 @@ bool Renderer::render(const hudsw::Frame& frame, int w, int h,
         for (auto& kv : im.texs)
             if (kv.second.id) g.DeleteTextures(1, &kv.second.id);
         im.texs.clear();
+        im.texCache.invalidate();
+        im.warmDone = 0;
         // Fonts are deliberately kept: a .fnt is not something anyone iterates
         // on, and re-decoding an atlas per reload would be pure cost.
     }
@@ -753,7 +804,10 @@ bool Renderer::render(const hudsw::Frame& frame, int w, int h,
     // our calls permanent in the game's context: upload()'s GL_UNPACK_ALIGNMENT
     // of 1 and whatever texture it left bound. Inside them, the pops restore
     // both.
-    hudbatch::build(frame, w, h, vx, vy, vw, vh, resolver, im.verts, im.runs);
+    hudbatch::build(frame, w, h, vx, vy, vw, vh, resolver, im.verts, im.runs, &im.texCache);
+    // After the build, so a frame that loaded anything on demand pre-warms
+    // nothing; inside the save for the same reason as the build.
+    if (warm) im.prewarm(*warm, frame);
     if (im.verts.empty()) {              // nothing to draw is not a failure
         g.PopClientAttrib();
         g.PopAttrib();
@@ -960,12 +1014,14 @@ bool Renderer::render(const hudsw::Frame& frame, int w, int h,
 #else   // !_WIN32
 
 namespace hudgl {
+struct Renderer::Impl {};   // complete type for unique_ptr's deleter
 Renderer::Renderer() = default;
 Renderer::~Renderer() = default;
 bool Renderer::init() { return false; }
 bool Renderer::ok() const { return false; }
 const std::string& Renderer::lastError() const { static const std::string s; return s; }
-bool Renderer::render(const hudsw::Frame&, int, int, float, float, float, float) { return false; }
+bool Renderer::render(const hudsw::Frame&, int, int, float, float, float, float, const Warm*) { return false; }
+bool Renderer::hasTexture(const std::string&) const { return false; }
 void Renderer::requestArtReload() {}
 }  // namespace hudgl
 

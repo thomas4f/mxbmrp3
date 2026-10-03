@@ -717,15 +717,9 @@ void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* saveP
     // Cleanup any leftover files from previous updates
     UpdateDownloader::getInstance().cleanupOldFiles();
 
-    // Show donation nudge if this is the first load after a successful auto-install.
-    // Always consume the sentinel (clear it) even when the nudge is disabled, so a
-    // disabled user doesn't leave the pending file lingering on disk; gate only the
-    // showing on the enabled flag.
-    bool nudgePending = UpdateDownloader::getInstance().checkAndClearDonationNudge();
-    if (nudgePending) m_updateInstalled = true;   // Fresh Coat, read at the stats load
-    if (nudgePending && UpdateDownloader::getInstance().isDonationNudgeEnabled()) {
-        hudManager.getVersionWidget().showDonationNudge();
-    }
+    // First load after a successful auto-install: consume the sentinel. Its only
+    // reader is the Fresh Coat achievement, at the stats load.
+    if (UpdateDownloader::getInstance().checkAndClearUpdateInstalled()) m_updateInstalled = true;
 
     // Trigger update check on startup if enabled
     if (UpdateChecker::getInstance().isEnabled()) {

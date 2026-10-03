@@ -32,6 +32,7 @@
 #include "lap_widget.h"
 #include "speed_widget.h"
 #include "gear_widget.h"
+#include "director_widget.h"
 #include "crash_widget.h"
 #include "speedo_widget.h"
 #include "tacho_widget.h"
@@ -341,10 +342,15 @@ void SettingsHud::resetTabDirector() {
     // Director maps 1:1 to the [Director] snapshot section. Replay it but leave
     // the master enable alone (like Updates' check toggle); a full "Reset all
     // settings" disables it instead.
+    // The section also carries the status button's hudVisible, which every
+    // other tab's reset keeps, so it is restored the same way.
     bool wasEnabled = DirectorManager::getInstance().isEnabled();
+    DirectorWidget* button = HudManager::getInstance().getDirectorWidget();
+    const bool buttonWasVisible = button && button->isVisible();
     SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
         HudManager::getInstance(), {"Director"});
     DirectorManager::getInstance().setEnabled(wasEnabled);
+    if (button) button->setVisible(buttonWasVisible);
 }
 
 void SettingsHud::resetTabSpotter() {
@@ -377,6 +383,15 @@ void SettingsHud::resetTabAchievements() {
     SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
         HudManager::getInstance(), {"Achievements"});
     AchievementManager::getInstance().setToastsEnabled(wasOn);
+}
+
+void SettingsHud::resetTabStreamChat() {
+    // [StreamChat] holds the whole chat HUD (it is global); replay it but keep
+    // its visibility. [Twitch] and [YouTube] hold only each platform's switch
+    // and channel, which a streamer resetting the layout has not asked to lose
+    // (disconnected, or retyping their names), so they are not replayed.
+    SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
+        HudManager::getInstance(), {"StreamChat"}, {{"StreamChat", "visible"}});
 }
 
 void SettingsHud::resetCurrentProfile() {

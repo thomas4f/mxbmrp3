@@ -10,7 +10,6 @@
 // the DLL and drives it; nlohmann::json asserts the snapshot. Built and run by
 // tests/integration/run_tests.sh. The DLL path comes from argv (see the runner).
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

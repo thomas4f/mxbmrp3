@@ -34,7 +34,6 @@
 // was always the property (the magic number was one model's value of it), and the
 // plan model owns that arithmetic now.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

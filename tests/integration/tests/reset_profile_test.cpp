@@ -17,7 +17,6 @@
 // phases; the re-authored INI is pulled in each phase via the LoadSettings hook
 // (which clears and reloads the caches). Self-contained doctest; see run_tests.sh.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

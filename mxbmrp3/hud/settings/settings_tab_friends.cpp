@@ -54,14 +54,10 @@ BaseHud* SettingsHud::renderTabFriends(SettingsLayoutContext& ctx) {
 
     char rowCountValue[8];
     snprintf(rowCountValue, sizeof(rowCountValue), "%d", hud->m_maxDisplayRows);
-    ctx.addSteppedControl("Max rows", rowCountValue, 10,
+    ctx.addSteppedControl("Rows to show", rowCountValue,
         SettingsHud::SteppedControl::clampInt(&hud->m_maxDisplayRows, 1,
             FriendsHud::MIN_DISPLAY_ROWS, FriendsHud::MAX_DISPLAY_ROWS, hud),
         hud, true, false, "friends.rows");
-
-    ctx.addToggleControl("Column headers", hud->m_bShowHeaders,
-        SettingsHud::ClickRegion::FRIENDS_HEADERS_TOGGLE, hud, nullptr, 0, true,
-        "friends.headers");
 
     {
         SettingsHud::CycleControl showCycle = SettingsHud::CycleControl::enumMember(
@@ -70,7 +66,7 @@ BaseHud* SettingsHud::renderTabFriends(SettingsLayoutContext& ctx) {
         // Reset transient ON_JOIN state on mode change (exactly what the old
         // dedicated handler did).
         showCycle.postStep = [hud]() { hud->m_activityShowing = false; };
-        ctx.addCycleControl("Show mode", FriendsHud::getShowModeName(hud->m_showMode), 10,
+        ctx.addCycleControl("Show mode", FriendsHud::getShowModeName(hud->m_showMode),
             showCycle, hud, true, false, "friends.showmode");
     }
 
@@ -80,6 +76,10 @@ BaseHud* SettingsHud::renderTabFriends(SettingsLayoutContext& ctx) {
 
     // === CONTENT SECTION ===
     ctx.addSectionHeading("Content");
+
+    ctx.addToggleControl("Column headers", hud->m_bShowHeaders,
+        SettingsHud::ClickRegion::FRIENDS_HEADERS_TOGGLE, hud, nullptr, 0, true,
+        "friends.headers");
 
     bool serverOn = (hud->m_enabledColumns & FriendsHud::COL_SERVER) != 0;
     ctx.addToggleControl("Server", serverOn, SettingsHud::ClickRegion::CHECKBOX, hud,

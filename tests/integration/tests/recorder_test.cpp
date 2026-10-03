@@ -29,7 +29,6 @@
 //     uses. Fresh-from-empty replay reconstruction is already covered by
 //     replay_golden_test / replay_test with committed tapes.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

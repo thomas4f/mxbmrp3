@@ -3,7 +3,6 @@
 // Gap Bar HUD - visualizes current lap progress vs best lap timing
 // Shows a horizontal bar with current position, best lap marker, and live gap
 // ============================================================================
-// file-budget: 1300 one HUD, one TU; a split would separate layout from the gap model it draws
 #include "gap_bar_hud.h"
 
 #include <cstdio>
@@ -21,22 +20,9 @@
 using namespace PluginConstants;
 
 GapBarHud::GapBarHud()
-    : m_bestLapTime(0)
-    , m_hasBestLap(false)
-    , m_currentTrackPos(0.0f)
-    , m_currentLapNum(0)
-    , m_observedLapStart(false)
-    , m_cachedDisplayRaceNum(-1)
+    : m_cachedDisplayRaceNum(-1)
     , m_cachedSessionGeneration(-1)
-    , m_cachedPitState(-1)
-    , m_cachedLastCompletedLapNum(-1)
-    , m_cachedSplit1(-1)
-    , m_cachedSplit2(-1)
-    , m_cachedPlayerRunning(true)
-    , m_isFrozen(false)
-    , m_frozenGap(0)
-    , m_frozenSplitIndex(-1)
-    , m_freezeDurationMs(DEFAULT_FREEZE_MS)
+    , m_freezeDurationMs(FreezeDuration::DEFAULT_MS)
     , m_markerMode(MarkerMode::GHOST)
     , m_labelMode(LabelMode::NONE)
     , m_riderColorMode(RiderColorMode::RELATIVE_POS)
@@ -47,8 +33,11 @@ GapBarHud::GapBarHud()
     , m_barWidthPercent(DEFAULT_WIDTH_PERCENT)
     , m_fMarkerScale(DEFAULT_MARKER_SCALE)
 {
+    for (int i = 0; i < SPLIT_SLOTS; ++i) {
+        m_learnedSplitPos[i] = -1.0f;
+        m_learnSplitCache[i] = -1;
+    }
     // One-time setup
-    DEBUG_INFO("GapBarHud created");
     // A themed body card behind the bar, like every other table HUD: without it the
     // bar sits straight on the frame while Standings and the rest give their content
     // a well to sit in.
@@ -76,174 +65,60 @@ bool GapBarHud::handlesDataType(DataChangeType dataType) const {
 }
 
 void GapBarHud::update() {
-    // NOTE: State tracking runs even when not visible so live gap is published
-    // to PluginData for LapLogHud. Only rendering is skipped when hidden.
-
+    // The live gap, the ghost's position and the rider's own are PluginData's
+    // (PbGapTracker, driven from the central lap timer). This HUD tracks only what
+    // it PRESENTS: the freeze that holds an official split/lap gap on screen for a
+    // moment (official_gap_freeze.h). That detection runs while hidden too -- a
+    // split crossed while the bar was off must not read as new the moment it is
+    // shown again -- but it is a few integer compares; only the rebuild is gated
+    // on visibility.
     const PluginData& pluginData = PluginData::getInstance();
     const SessionData& sessionData = pluginData.getSessionData();
 
-    // Handle pause/resume - sync anchor pause state with player running state
-    // Only check pause when on track (spectate/replay don't have pause concept)
-    bool playerRunning = pluginData.isPlayerRunning();
-    bool onTrack = (pluginData.getDrawState() == PluginConstants::ViewState::ON_TRACK);
-    if (onTrack && playerRunning != m_cachedPlayerRunning) {
-        if (playerRunning) {
-            m_anchor.resume();
-        } else {
-            m_anchor.pause();
-        }
-        m_cachedPlayerRunning = playerRunning;
-    }
-
-    // Detect session changes (new event/track/bike) and reset state
+    // Session change (new event/track/bike): restart the learned split positions.
+    // (The freeze sees the change itself.)
     int currentGeneration = sessionData.sessionGeneration;
-
     if (currentGeneration != m_cachedSessionGeneration) {
         DEBUG_INFO_F("GapBarHud: Session reset detected (generation %d -> %d)",
             m_cachedSessionGeneration, currentGeneration);
-        resetTimingState();
+        for (int i = 0; i < SPLIT_SLOTS; ++i) {
+            m_learnedSplitPos[i] = -1.0f;
+            m_learnSplitCache[i] = -1;
+        }
         m_cachedSessionGeneration = currentGeneration;
-        m_cachedPitState = -1;
         if (isVisibleAnySurface()) setDataDirty();
     }
 
-    // Detect spectate target changes and reset state
+    // Spectate target change: adopt the new rider's splits so far, so they are
+    // not taken for fresh crossings.
     int currentDisplayRaceNum = pluginData.getDisplayRaceNum();
-    const IdealLapData* idealLapData = pluginData.getIdealLapData();
     if (currentDisplayRaceNum != m_cachedDisplayRaceNum) {
         DEBUG_INFO_F("GapBarHud: Spectate target changed from %d to %d",
             m_cachedDisplayRaceNum, currentDisplayRaceNum);
-
-        // Full reset on spectate change
-        resetTimingState();
         m_cachedDisplayRaceNum = currentDisplayRaceNum;
-        m_cachedPitState = -1;
-
-        // Update cached values with new rider's current data (without triggering display)
-        // This prevents stale splits from the previous rider triggering freeze
         const CurrentLapData* currentLap = pluginData.getCurrentLapData();
         if (currentLap) {
-            m_cachedSplit1 = currentLap->split1;
-            m_cachedSplit2 = currentLap->split2;
+            m_learnSplitCache[0] = currentLap->split1;
+            m_learnSplitCache[1] = currentLap->split2;
+            m_learnSplitCache[2] = currentLap->split3;
         }
-        if (idealLapData) {
-            m_cachedLastCompletedLapNum = idealLapData->lastCompletedLapNum;
-        }
-
         if (isVisibleAnySurface()) setDataDirty();
     }
 
-    // Detect pit entry/exit and reset anchor (but keep best lap data)
-    const StandingsData* standing = pluginData.getStanding(currentDisplayRaceNum);
-    if (standing) {
-        int currentPitState = standing->pit;
-        if (m_cachedPitState != -1 && currentPitState != m_cachedPitState) {
-            DEBUG_INFO_F("GapBarHud: Pit state changed from %d to %d",
-                m_cachedPitState, currentPitState);
-            // Soft reset - clear current lap timing but keep best lap data
-            m_anchor.reset();
-            m_trackMonitor.reset();
-            m_currentLapTimingPoints.fill(BestLapTimingPoint());
-            if (isVisibleAnySurface()) setDataDirty();
-        }
-        m_cachedPitState = currentPitState;
+    // Official splits and the line: freeze on their gap against m_reference
+    if (m_freeze.update(m_reference, m_freezeDurationMs) && isVisibleAnySurface()) {
+        setDataDirty();
     }
+    // Always, not only while shown: switching the ticks on mid-lap must not take
+    // the split already behind the rider for one crossed right now.
+    learnSplitPositions();
 
-    // Process split updates (like TimingHud's processTimingUpdates)
-    processSplitUpdates();
-
-    // Check if freeze period has expired
-    checkFreezeExpiration();
-
-    // Check for lap completion - mirrors TimingHud's processTimingUpdates() logic
-    if (idealLapData && idealLapData->lastCompletedLapNum >= 0 &&
-        idealLapData->lastCompletedLapNum != m_cachedLastCompletedLapNum) {
-
-        // Lap completion means S/F was crossed - mark as observed
-        // This handles the race condition where lap completion callback fires
-        // before track position callback (which normally sets this flag)
-        m_observedLapStart = true;
-
-        // Check if this lap was a PB and save timing data
-        checkAndSavePreviousLap();
-
-        const LapLogEntry* personalBest = pluginData.getBestLapEntry();
-        int lapTime = idealLapData->lastLapTime;
-        int bestTime = personalBest ? personalBest->lapTime : -1;
-        int previousBestTime = idealLapData->previousBestLapTime;
-
-        // Check if this lap was valid by looking at the lap log
-        bool isValid = true;
-        int completedLapNum = idealLapData->lastCompletedLapNum;
-        const std::deque<LapLogEntry>* lapLog = pluginData.getLapLog();
-        if (lapLog && !lapLog->empty()) {
-            const LapLogEntry& mostRecentLap = (*lapLog)[0];
-            isValid = mostRecentLap.isValid;
-            if (mostRecentLap.lapNum >= 0) {
-                completedLapNum = mostRecentLap.lapNum;
-            }
-        }
-
-        // Calculate gap (like TimingHud)
-        int gap = 0;
-        if (isValid && lapTime > 0) {
-            gap = (lapTime > 0 && bestTime > 0) ? lapTime - bestTime : 0;
-            if (gap == 0 && previousBestTime > 0) {
-                gap = lapTime - previousBestTime;  // New PB - compare to previous
-            }
-        }
-
-        // Freeze to show official gap (if freeze is enabled)
-        if (m_freezeDurationMs > 0) {
-            m_frozenGap = gap;
-            m_frozenSplitIndex = -1;  // -1 = lap complete
-            m_isFrozen = true;
-            m_frozenAt = std::chrono::steady_clock::now();
-        }
-
-        // Reset anchor for new lap (like TimingHud does at line 279)
-        m_anchor.set();
-        m_currentLapNum = completedLapNum + 1;
-
-        // Clear timing points for next lap
-        m_currentLapTimingPoints.fill(BestLapTimingPoint());
-
-        // Reset split cache for new lap
-        m_cachedSplit1 = -1;
-        m_cachedSplit2 = -1;
-
-        m_cachedLastCompletedLapNum = idealLapData->lastCompletedLapNum;
-        if (isVisibleAnySurface()) setDataDirty();
-    }
-
-    // Rate-limited updates for smooth animation
+    // The live gap moves with the clock: refresh at ~60Hz while shown
     auto now = std::chrono::steady_clock::now();
     auto sinceLastUpdate = std::chrono::duration_cast<std::chrono::milliseconds>(
         now - m_lastUpdate).count();
-
     if (sinceLastUpdate >= UPDATE_INTERVAL_MS) {
         m_lastUpdate = now;
-        updateCurrentLapTiming();
-
-        // Publish live gap to PluginData for use by LapLogHud and other HUDs
-        // This runs even when hidden so LapLogHud can display gap
-        //
-        // A TEST-PLANTED gap is left alone: it exists precisely because the live
-        // path cannot be driven headlessly, so letting this recompute overwrite it
-        // made the fill's geometry cases depend on how long the harness took to get
-        // from the plant to the draw. See GapBarHud::testForceGap.
-        if (m_testGapForced) {
-            PluginData::getInstance().setLiveGap(m_cachedGap, m_cachedGapValid);
-        } else if (m_hasBestLap && m_anchor.valid) {
-            m_cachedGap = calculateCurrentGap();
-            m_cachedGapValid = true;
-            PluginData::getInstance().setLiveGap(m_cachedGap, true);
-        } else {
-            m_cachedGap = 0;
-            m_cachedGapValid = false;
-            PluginData::getInstance().setLiveGap(0, false);
-        }
-
         if (isVisibleAnySurface()) setDataDirty();
     }
 
@@ -254,269 +129,6 @@ void GapBarHud::update() {
         clearDataDirty();
         clearLayoutDirty();
     }
-}
-
-void GapBarHud::updateTrackPosition(int raceNum, float trackPos, int lapNum) {
-    // NOTE: Track position updates always run (even when hidden) for gap tracking
-    // Only process for the rider we're currently displaying
-    if (raceNum != m_cachedDisplayRaceNum) {
-        return;
-    }
-
-    // Clamp track position to valid range (defensive - API should provide valid values)
-    trackPos = std::clamp(trackPos, 0.0f, 1.0f);
-    m_currentTrackPos = trackPos;
-
-    if (!m_trackMonitor.initialized) {
-        m_trackMonitor.lastTrackPos = trackPos;
-        m_trackMonitor.lastLapNum = lapNum;
-        m_trackMonitor.initialized = true;
-        // Don't set anchor here - wait for S/F crossing or lap completion
-        // This prevents pit-to-S/F time from counting as lap timing
-        return;
-    }
-
-    float delta = trackPos - m_trackMonitor.lastTrackPos;
-
-    // Detect S/F crossing: large negative delta (0.95 -> 0.05 gives delta ~ -0.9)
-    // Like TimingHud, just set anchor here - lap completion handles timing point management
-    if (delta < -GapBarTrackMonitor::WRAP_THRESHOLD) {
-        if (!m_anchor.valid || lapNum != m_trackMonitor.lastLapNum) {
-            m_anchor.set();
-            m_currentLapNum = lapNum;
-            m_observedLapStart = true;  // We saw the lap start at S/F
-        }
-    }
-
-    m_trackMonitor.lastTrackPos = trackPos;
-    m_trackMonitor.lastLapNum = lapNum;
-}
-
-void GapBarHud::checkAndSavePreviousLap() {
-    const PluginData& pluginData = PluginData::getInstance();
-    const IdealLapData* idealLapData = pluginData.getIdealLapData();
-    const LapLogEntry* personalBest = pluginData.getBestLapEntry();
-
-    // Check if this lap was a PB
-    if (personalBest && idealLapData && idealLapData->lastLapTime > 0 &&
-        idealLapData->lastLapTime == personalBest->lapTime) {
-
-        // Only save timing data if we observed the lap start at S/F
-        // This prevents saving partial data when joining mid-lap
-        if (m_observedLapStart) {
-            DEBUG_INFO_F("GapBarHud: New PB! Lap time: %d ms", idealLapData->lastLapTime);
-            m_bestLapTimingPoints = m_currentLapTimingPoints;
-            m_bestLapTime = idealLapData->lastLapTime;
-            m_hasBestLap = true;
-        }
-    }
-}
-
-void GapBarHud::updateCurrentLapTiming() {
-    if (!m_anchor.valid) {
-        return;
-    }
-
-    // Calculate current timing point index
-    int positionIndex = static_cast<int>(m_currentTrackPos * static_cast<float>(NUM_TIMING_POINTS));
-    positionIndex = std::max(0, std::min(positionIndex, NUM_TIMING_POINTS - 1));
-
-    // Store current elapsed time at this position
-    int elapsedTime = m_anchor.getElapsedMs();
-    m_currentLapTimingPoints[positionIndex] = BestLapTimingPoint(elapsedTime);
-}
-
-void GapBarHud::processSplitUpdates() {
-    const PluginData& pluginData = PluginData::getInstance();
-    const CurrentLapData* currentLap = pluginData.getCurrentLapData();
-    const IdealLapData* idealLapData = pluginData.getIdealLapData();
-    const LapLogEntry* personalBest = pluginData.getBestLapEntry();
-
-    if (!currentLap) return;
-
-    // Check split 1 (accumulated time to S1)
-    if (currentLap->split1 > 0 && currentLap->split1 != m_cachedSplit1) {
-        int splitTime = currentLap->split1;
-        int bestTime = personalBest ? personalBest->sector1 : -1;
-        int previousBestTime = idealLapData ? idealLapData->previousBestSector1 : -1;
-
-        // Calculate gap (like TimingHud::calculateGapToBest)
-        int gap = (splitTime > 0 && bestTime > 0) ? splitTime - bestTime : 0;
-        if (gap == 0 && previousBestTime > 0) {
-            gap = splitTime - previousBestTime;  // New PB - compare to previous
-        }
-
-        // Freeze to show official gap (if freeze is enabled)
-        if (m_freezeDurationMs > 0) {
-            m_frozenGap = gap;
-            m_frozenSplitIndex = 0;  // S1
-            m_isFrozen = true;
-            m_frozenAt = std::chrono::steady_clock::now();
-        }
-
-        // Resync anchor with official split time (keeps live gap accurate)
-        m_anchor.set(splitTime);
-
-        m_cachedSplit1 = currentLap->split1;
-        setDataDirty();
-    }
-    // Check split 2 (accumulated time to S2)
-    else if (currentLap->split2 > 0 && currentLap->split2 != m_cachedSplit2) {
-        int splitTime = currentLap->split2;
-
-        // Compare against PB lap's accumulated time to S2 (sector1 + sector2)
-        int bestTime = -1;
-        int previousBestTime = -1;
-        if (personalBest && personalBest->sector1 > 0 && personalBest->sector2 > 0) {
-            bestTime = personalBest->sector1 + personalBest->sector2;
-        }
-        if (idealLapData && idealLapData->previousBestSector1 > 0 && idealLapData->previousBestSector2 > 0) {
-            previousBestTime = idealLapData->previousBestSector1 + idealLapData->previousBestSector2;
-        }
-
-        // Calculate gap
-        int gap = (splitTime > 0 && bestTime > 0) ? splitTime - bestTime : 0;
-        if (gap == 0 && previousBestTime > 0) {
-            gap = splitTime - previousBestTime;
-        }
-
-        // Freeze to show official gap (if freeze is enabled)
-        if (m_freezeDurationMs > 0) {
-            m_frozenGap = gap;
-            m_frozenSplitIndex = 1;  // S2
-            m_isFrozen = true;
-            m_frozenAt = std::chrono::steady_clock::now();
-        }
-
-        // Resync anchor with official split time (keeps live gap accurate)
-        m_anchor.set(splitTime);
-
-        m_cachedSplit2 = currentLap->split2;
-        setDataDirty();
-    }
-}
-
-void GapBarHud::checkFreezeExpiration() {
-    if (!m_isFrozen) return;
-
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now - m_frozenAt
-    ).count();
-
-    if (elapsed >= m_freezeDurationMs) {
-        m_isFrozen = false;
-        setDataDirty();
-    }
-}
-
-int GapBarHud::calculateCurrentGap() const {
-    if (!m_hasBestLap || !m_anchor.valid) {
-        return 0;
-    }
-
-    // Calculate exact position index (floating point for interpolation)
-    float exactIndex = m_currentTrackPos * static_cast<float>(NUM_TIMING_POINTS);
-    int lowerIndex = static_cast<int>(exactIndex);
-    int upperIndex = lowerIndex + 1;
-    float fraction = exactIndex - static_cast<float>(lowerIndex);
-
-    // Clamp indices to valid range
-    lowerIndex = std::max(0, std::min(lowerIndex, NUM_TIMING_POINTS - 1));
-    upperIndex = std::max(0, std::min(upperIndex, NUM_TIMING_POINTS - 1));
-
-    // Get timing points for interpolation
-    const BestLapTimingPoint& lowerPoint = m_bestLapTimingPoints[lowerIndex];
-    const BestLapTimingPoint& upperPoint = m_bestLapTimingPoints[upperIndex];
-
-    // Find valid timing points, searching backward if needed
-    int bestLapTime = 0;
-    if (lowerPoint.valid && upperPoint.valid) {
-        // Both valid - interpolate for smooth gap
-        bestLapTime = lowerPoint.elapsedTime +
-            static_cast<int>(fraction * static_cast<float>(upperPoint.elapsedTime - lowerPoint.elapsedTime));
-    } else if (lowerPoint.valid) {
-        // Only lower valid - use it directly
-        bestLapTime = lowerPoint.elapsedTime;
-    } else if (upperPoint.valid) {
-        // Only upper valid - use it directly
-        bestLapTime = upperPoint.elapsedTime;
-    } else {
-        // Neither valid - search backward for any valid point
-        for (int offset = 1; offset < 10; offset++) {
-            int searchIdx = lowerIndex - offset;
-            if (searchIdx >= 0 && m_bestLapTimingPoints[searchIdx].valid) {
-                bestLapTime = m_bestLapTimingPoints[searchIdx].elapsedTime;
-                break;
-            }
-        }
-        if (bestLapTime == 0) {
-            return 0;  // No valid timing data found
-        }
-    }
-
-    // Current lap elapsed time
-    int currentElapsed = m_anchor.getElapsedMs();
-
-    // Gap = current - best (positive = slower/behind, negative = faster/ahead)
-    return currentElapsed - bestLapTime;
-}
-
-float GapBarHud::calculateBestLapProgress() const {
-    if (!m_hasBestLap || !m_anchor.valid || m_bestLapTime <= 0) {
-        return -1.0f;  // Invalid - don't show marker
-    }
-
-    // How far into the current lap are we (by time)?
-    int currentElapsed = m_anchor.getElapsedMs();
-
-    // What position would we be at on the best lap at this elapsed time?
-    // Search through best lap timing points to find matching position
-    for (int i = 0; i < NUM_TIMING_POINTS; i++) {
-        if (m_bestLapTimingPoints[i].valid &&
-            m_bestLapTimingPoints[i].elapsedTime >= currentElapsed) {
-            // Found the first timing point where best lap elapsed time >= current elapsed
-            // Interpolate for smooth marker movement
-            if (i > 0 && m_bestLapTimingPoints[i - 1].valid) {
-                int prevTime = m_bestLapTimingPoints[i - 1].elapsedTime;
-                int thisTime = m_bestLapTimingPoints[i].elapsedTime;
-                if (thisTime > prevTime) {
-                    float fraction = static_cast<float>(currentElapsed - prevTime) /
-                                   static_cast<float>(thisTime - prevTime);
-                    return (static_cast<float>(i - 1) + fraction) / static_cast<float>(NUM_TIMING_POINTS);
-                }
-            }
-            return static_cast<float>(i) / static_cast<float>(NUM_TIMING_POINTS);
-        }
-    }
-
-    // Current elapsed exceeds best lap time - marker would be past finish
-    // Clamp to end of bar
-    return 1.0f;
-}
-
-void GapBarHud::resetTimingState() {
-    m_anchor.reset();
-    m_trackMonitor.reset();
-    m_hasBestLap = false;
-    m_bestLapTime = 0;
-    m_currentTrackPos = 0.0f;
-    m_currentLapNum = 0;
-    m_observedLapStart = false;
-    m_cachedLastCompletedLapNum = -1;
-    m_cachedSplit1 = -1;
-    m_cachedSplit2 = -1;
-    m_cachedPlayerRunning = true;
-    m_isFrozen = false;
-    m_frozenGap = 0;
-    m_frozenSplitIndex = -1;
-    m_cachedGap = 0;
-    m_cachedGapValid = false;
-    m_bestLapTimingPoints.fill(BestLapTimingPoint());
-    m_currentLapTimingPoints.fill(BestLapTimingPoint());
-
-    // Clear live gap in PluginData
-    PluginData::getInstance().setLiveGap(0, false);
 }
 
 void GapBarHud::rebuildLayout() {
@@ -584,7 +196,7 @@ void GapBarHud::rebuildRenderData() {
     // BOX-MODEL: the bar is the section's content; the card is its border box.
     // The panel wraps both through the plan, so the bar's interior, the card the
     // user sees and the panel height are one computation.
-    BaseHud::PanelWant want;
+    PanelWant want;
     // The PANEL is the ask; the bar is read back from the plan below. contentW stays
     // 0 deliberately -- setting both would make the wider of the two win and leave
     // the panel two paddings too wide.
@@ -627,7 +239,7 @@ void GapBarHud::rebuildRenderData() {
     const float boxLeft = centerAnchoredPanelLeft(boxWidth);
     startX = boxLeft + insetL;
     addPlanBackground(plan, boxLeft, boxTop);
-    addPlanTitle(plan, "Gap Bar", this->getFont(FontCategory::TITLE),
+    addPlanTitle(plan, "Gap Bar",
                  this->getColor(ColorSlot::PRIMARY));
     // THE CARD'S DRAWN BOX, not the content band inside it: the bar IS the card here,
     // so its fill, its markers and its gap text all belong to the box the player sees.
@@ -658,10 +270,10 @@ void GapBarHud::rebuildRenderData() {
     if (m_showGapBar) {
         // Always use live gap for the bar visualization (use cached value)
         int gap = 0;
-        const LapLogEntry* personalBest = PluginData::getInstance().getBestLapEntry();
+        const PluginData& data = PluginData::getInstance();
 
-        if (m_cachedGapValid && personalBest) {
-            gap = m_cachedGap;
+        if (data.hasValidLiveGap(m_reference)) {
+            gap = data.getLiveGap(m_reference);
         }
 
         // Calculate bar extent: gap / range = percentage of half-bar
@@ -730,9 +342,16 @@ void GapBarHud::rebuildRenderData() {
         }
     }
 
+    // ==== SPLIT TICKS (over the fill, under the riders) ====
+    if (m_showSplits) {
+        renderSplitTicks(startY, barHeight, startX + innerInsetH, innerWidth);
+    }
+
     // ==== RIDER MARKERS (icons instead of vertical bars) ====
-    // Renders self, ghost, and/or opponents based on marker mode
-    renderRiderMarkers(startX + innerInsetH, startY + innerInsetV, innerWidth, innerHeight, dim);
+    // Renders self, ghost, and/or opponents based on marker mode; OFF draws none.
+    if (m_markerMode != MarkerMode::OFF) {
+        renderRiderMarkers(startX + innerInsetH, startY + innerInsetV, innerWidth, innerHeight, dim);
+    }
 
     // ==== GAP TEXT (centered inside bar, primary color) - conditionally rendered ====
     if (!m_showGapText) {
@@ -764,31 +383,16 @@ void GapBarHud::rebuildRenderData() {
     float gapTextY = inkCenteredY(startY, barHeight, dim.fontSizeLarge);
 
     char gapBuffer[32];
-    unsigned long gapColor = this->getColor(ColorSlot::PRIMARY);
+    unsigned long gapColor;
 
-    // Only show gaps when we have a PB to compare against (like TimingHud)
-    const LapLogEntry* personalBest = PluginData::getInstance().getBestLapEntry();
-
-    if (m_isFrozen && personalBest) {
-        // Show frozen official gap from split/lap crossing (full precision)
-        PluginUtils::formatTimeDiff(gapBuffer, sizeof(gapBuffer), m_frozenGap);
-        // Colorize based on gap value: positive = slower (red), negative = faster (green)
-        if (m_frozenGap > 0) {
-            gapColor = this->getColor(ColorSlot::NEGATIVE);
-        } else if (m_frozenGap < 0) {
-            gapColor = this->getColor(ColorSlot::POSITIVE);
-        }
-    } else if (m_cachedGapValid && personalBest) {
-        // Show live gap (full precision, use cached value)
-        PluginUtils::formatTimeDiff(gapBuffer, sizeof(gapBuffer), m_cachedGap);
-        // Colorize based on gap value: positive = slower (red), negative = faster (green)
-        if (m_cachedGap > 0) {
-            gapColor = this->getColor(ColorSlot::NEGATIVE);
-        } else if (m_cachedGap < 0) {
-            gapColor = this->getColor(ColorSlot::POSITIVE);
-        }
+    // The frozen official gap from a split/lap crossing, else the live one (full precision)
+    const PluginData& data = PluginData::getInstance();
+    if (m_freeze.isFrozen() || data.hasValidLiveGap(m_reference)) {
+        const int gap = m_freeze.isFrozen() ? m_freeze.frozenGap() : data.getLiveGap(m_reference);
+        PluginUtils::formatTimeDiff(gapBuffer, sizeof(gapBuffer), gap);
+        gapColor = this->deltaColor(gap);
     } else {
-        // No best lap - show placeholder in primary color
+        // No gap to show
         strcpy_s(gapBuffer, sizeof(gapBuffer), Placeholders::GENERIC);
         // MUTED, like the Timing panel's big time with no lap to show. A placeholder
         // in the primary colour reads as a value -- the one thing it is not -- and at
@@ -833,6 +437,7 @@ void GapBarHud::setBarWidth(int percent) {
 
 void GapBarHud::resetToDefaults() {
     m_bVisible = false;  // Disabled by default
+    m_reference = Reference::SESSION_PB;
     // Off by DEFAULT, not unavailable -- the toggle is in the Gap Bar tab. Switching
     // it on grows the box DOWNWARD, so the bar and everything under it move down by
     // the band's height; center_stack.h derives the two panels below from box heights
@@ -850,7 +455,7 @@ void GapBarHud::resetToDefaults() {
     setPosition(CENTER_ANCHOR_X, CenterStack::stackBoxTop());
 
     // Settings
-    m_freezeDurationMs = DEFAULT_FREEZE_MS;
+    m_freezeDurationMs = FreezeDuration::DEFAULT_MS;
     m_markerMode = MarkerMode::GHOST;  // Default to ghost-only
     m_labelMode = LabelMode::NONE;     // No labels by default (like MapHud default)
     m_labelAnchor = LabelAnchor::BELOW;  // ...and under the marker, like the other two
@@ -861,8 +466,9 @@ void GapBarHud::resetToDefaults() {
     m_gapRangeMs = DEFAULT_RANGE_MS;
     m_barWidthPercent = DEFAULT_WIDTH_PERCENT;
     m_fMarkerScale = DEFAULT_MARKER_SCALE;
+    m_showSplits = true;
 
-    resetTimingState();
+    m_freeze.reset();
     setDataDirty();
 }
 
@@ -943,13 +549,14 @@ unsigned long GapBarHud::calculateRiderColor(int riderRaceNum, int displayRaceNu
             if (entry) {
                 return PluginUtils::applyOpacity(entry->bikeBrandColor, 0.75f);
             }
-            return this->getColor(ColorSlot::TERTIARY);  // Fallback if no entry
+            return this->getColor(ColorSlot::PRIMARY);  // Fallback if no entry
         }
 
         case RiderColorMode::UNIFORM:
         default:
-            // Uniform gray for all riders
-            return this->getColor(ColorSlot::TERTIARY);
+            // Uniform: riders use the primary color (matching Map and Radar, and their
+            // name color in the standings); accent is reserved for the player.
+            return this->getColor(ColorSlot::PRIMARY);
     }
 }
 
@@ -1077,8 +684,8 @@ void GapBarHud::renderRiderMarkers(float innerX, float innerY, float innerWidth,
 
     // === Render ghost (best lap) marker ===
     if ((m_markerMode == MarkerMode::GHOST || m_markerMode == MarkerMode::GHOST_OPPONENTS) &&
-        m_hasBestLap && m_anchor.valid) {
-        float bestLapProgress = calculateBestLapProgress();
+        PluginData::getInstance().hasValidLiveGap(m_reference)) {
+        float bestLapProgress = PluginData::getInstance().getPbGhostProgress(m_reference);
         if (bestLapProgress >= 0.0f && bestLapProgress <= 1.0f) {
             float markerX = innerX + (innerWidth * bestLapProgress);
 
@@ -1107,8 +714,9 @@ void GapBarHud::renderRiderMarkers(float innerX, float innerY, float innerWidth,
     }
 
     // === Render self marker (always on top) ===
-    if (m_currentTrackPos > 0.001f) {
-        float markerX = innerX + (innerWidth * m_currentTrackPos);
+    const float selfTrackPos = PluginData::getInstance().getDisplayRiderTrackPos();
+    if (selfTrackPos > 0.001f) {
+        float markerX = innerX + (innerWidth * selfTrackPos);
         // A touch larger than the pack, like MapHud's local-player marker -- on a bar
         // whose whole subject is YOUR gap, the one marker that is you should be the
         // one you find first. See MarkerLabel::PLAYER_BOOST.

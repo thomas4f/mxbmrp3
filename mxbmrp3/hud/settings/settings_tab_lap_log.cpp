@@ -12,9 +12,9 @@ bool SettingsHud::handleClickTabLapLog(const ClickRegion& region) {
     if (!lapLogHud) lapLogHud = m_lapLog;
 
     switch (region.type) {
-        // Laps-to-show is a data-driven STEPPED control and Order is a
-        // data-driven CYCLE control - registered in renderTabLapLog via
-        // ctx.addSteppedControl / ctx.addCycleControl.
+        // Laps-to-show and Gap freeze are data-driven STEPPED controls and
+        // Order and Gap reference are data-driven CYCLE controls - registered
+        // in renderTabLapLog via ctx.addSteppedControl / ctx.addCycleControl.
 
         case ClickRegion::LAP_LOG_GAP_ROW_TOGGLE:
             if (lapLogHud) {
@@ -53,7 +53,7 @@ BaseHud* SettingsHud::renderTabLapLog(SettingsLayoutContext& ctx) {
     // Row count
     char rowCountValue[8];
     snprintf(rowCountValue, sizeof(rowCountValue), "%d", hud->m_maxDisplayLaps);
-    ctx.addSteppedControl("Laps to show", rowCountValue, 10,
+    ctx.addSteppedControl("Laps to show", rowCountValue,
         SettingsHud::SteppedControl::clampInt(&hud->m_maxDisplayLaps, 1,
             LapLogHud::MIN_DISPLAY_LAPS, LapLogHud::MAX_DISPLAY_LAPS, hud),
         hud, true, false, "lap_log.rows");
@@ -61,9 +61,15 @@ BaseHud* SettingsHud::renderTabLapLog(SettingsLayoutContext& ctx) {
     // Display order
     const char* orderValue = (hud->m_displayOrder == LapLogHud::DisplayOrder::OLDEST_FIRST)
         ? "Oldest" : "Newest";
-    ctx.addCycleControl("Display order", orderValue, 10,
+    ctx.addCycleControl("Display order", orderValue,
         SettingsHud::CycleControl::enumMember(hud, &LapLogHud::m_displayOrder, 2, hud),
         hud, true, false, "lap_log.order");
+
+    // How long the gap row holds the official gap after a split or the line
+    ctx.addFreezeControl("Gap freeze", &hud->m_freezeDurationMs, true, hud, true, "lap_log.freeze");
+
+    // === CONTENT SECTION ===
+    ctx.addSectionHeading("Content");
 
     // Column headers toggle
     ctx.addToggleControl("Column headers", hud->m_bShowHeaders,
@@ -81,6 +87,18 @@ BaseHud* SettingsHud::renderTabLapLog(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Live gap row", hud->m_showGapRow,
         SettingsHud::ClickRegion::LAP_LOG_GAP_ROW_TOGGLE, hud, nullptr, 0, true,
         "lap_log.gap_row");
+
+    // Which lap the gap row measures against (its own setting, not the Gap Bar's):
+    // after the row it qualifies, as on the Gap Bar tab
+    const char* referenceStr = "";
+    switch (hud->m_gapReference) {
+        case PbGapTracker::Ref::SESSION_PB: referenceStr = "Session PB"; break;
+        case PbGapTracker::Ref::ALLTIME_PB: referenceStr = "All-time"; break;
+        case PbGapTracker::Ref::LAST_LAP:   referenceStr = "Last lap"; break;
+    }
+    ctx.addCycleControl("Gap reference", referenceStr,
+        SettingsHud::CycleControl::enumMember(hud, &LapLogHud::m_gapReference, PbGapTracker::REF_COUNT, hud),
+        hud, true, false, "lap_log.reference");
 
     return hud;
 }

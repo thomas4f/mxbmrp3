@@ -89,6 +89,12 @@ bool isLive(const Marker& m);
 // Any live marker on this tab -- drives the sidebar's "New" tag.
 bool tabHasLive(int tabId);
 
+// The same news on a tab too long-named to carry the tag (Stream Chat,
+// Achievements): the sidebar bands its ROW instead, the way a marked row in a
+// tab is banded. Cleared like a row band (hovering the tab) and like the tag
+// (opening it) -- both go through dismissTab.
+bool tabHighlightsRow(int tabId);
+
 // The live marker for a row, or nullptr. `rowTooltipId` may be empty.
 const Marker* liveForRow(int tabId, const char* rowTooltipId);
 

@@ -57,7 +57,7 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     // tooltipOnArrows=false on all three cycles below: these arrows have no
     // per-type tooltip fallback (no TAB_EVENT_LOG section in
     // getTooltipIdForRegion), so keep the tooltip on the row region only.
-    ctx.addCycleControl("Show mode", modeStr, 10,
+    ctx.addCycleControl("Show mode", modeStr,
         SettingsHud::CycleControl::enumMember(hud, &EventLogHud::m_displayMode, 3, hud),
         hud, true, isOff, "event_log.display_mode", /*tooltipOnArrows=*/false);
 
@@ -68,7 +68,7 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     // tooltipOnArrows=false: these arrows have no per-type tooltip fallback (no
     // TAB_EVENT_LOG section in getTooltipIdForRegion), so keep the tooltip on
     // the row region only.
-    ctx.addSteppedControl("Duration", durationValue, 10,
+    ctx.addSteppedControl("Duration", durationValue,
         SettingsHud::SteppedControl::wrapInt(&hud->m_autoHideDurationMs,
             EventLogHud::AUTO_HIDE_STEP_MS, EventLogHud::MIN_AUTO_HIDE_MS,
             EventLogHud::MAX_AUTO_HIDE_MS, hud),
@@ -77,14 +77,14 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     // Display order: Newest / Oldest
     const char* orderStr = (hud->m_displayOrder == EventLogHud::DisplayOrder::NEWEST_FIRST)
         ? "Newest" : "Oldest";
-    ctx.addCycleControl("Order", orderStr, 10,
+    ctx.addCycleControl("Display order", orderStr,
         SettingsHud::CycleControl::enumMember(hud, &EventLogHud::m_displayOrder, 2, hud),
         hud, true, false, "event_log.order", /*tooltipOnArrows=*/false);
 
-    // Max events to show
+    // Events to show
     char rowCountValue[8];
     snprintf(rowCountValue, sizeof(rowCountValue), "%d", hud->m_maxDisplayEvents);
-    ctx.addSteppedControl("Max events", rowCountValue, 10,
+    ctx.addSteppedControl("Events to show", rowCountValue,
         SettingsHud::SteppedControl::clampInt(&hud->m_maxDisplayEvents, 1,
             EventLogHud::MIN_DISPLAY_EVENTS, EventLogHud::MAX_DISPLAY_EVENTS, hud),
         hud, true, false, "event_log.max_events", /*tooltipOnArrows=*/false);
@@ -97,7 +97,7 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     case EventLogHud::TimestampMode::SESSION: timestampStr = "Session"; break;
     case EventLogHud::TimestampMode::CLOCK:   timestampStr = "Clock"; break;
     }
-    ctx.addCycleControl("Timestamp", timestampStr, 10,
+    ctx.addCycleControl("Timestamp", timestampStr,
         SettingsHud::CycleControl::enumMember(hud, &EventLogHud::m_timestampMode, 3, hud),
         hud, true, tsOff, "event_log.timestamp", /*tooltipOnArrows=*/false);
     // === EVENTS SECTION ===

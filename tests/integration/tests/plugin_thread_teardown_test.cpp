@@ -12,7 +12,6 @@
 // test doesn't hang or crash) + the worker reporting stopped afterward is the
 // assertion — it proves shutdown() joined it and drained the queue.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

@@ -71,6 +71,7 @@
 #include "../hud/fmx_hud.h"
 #include "../hud/stats_hud.h"
 #include "../hud/event_log_hud.h"
+#include "../hud/stream_chat_hud.h"
 #include "../hud/benchmark_widget.h"
 #include "hotkey_manager.h"
 #if GAME_HAS_HTTP_SERVER
@@ -164,6 +165,7 @@ void HudManager::initialize() {
 #endif
     createHud(m_pStatsHud, "stats_hud");
     createHud(m_pEventLog, "event_log_hud");
+    createHud(m_pStreamChat, "stream_chat_hud");
 
     // Benchmark Widget (always created, but only accessible via settings when developer mode is on)
     // Note: Must be created unconditionally because isDeveloperMode() returns false here -
@@ -309,7 +311,7 @@ void HudManager::initialize() {
     // No observer registration needed - PluginData calls us directly
 
     m_bInitialized = true;
-    DEBUG_INFO("HudManager initialized");
+    DEBUG_INFO_F("HudManager initialized: %zu HUDs", m_huds.size());
 }
 
 void HudManager::shutdown() {
@@ -461,15 +463,9 @@ int HudManager::initializeResources(int* piNumSprites, char** pszSpriteName, int
 
     m_bResourcesInitialized = true;
 
+    // Counts only: AssetManager's discovery already logged every font, texture
+    // and pack these came from, and the per-file list was ~700 lines.
     DEBUG_INFO_F("Resources initialized: %d sprites, %d fonts", numSprites, numFonts);
-
-    for (const auto& name : m_spriteNames) {
-        DEBUG_INFO_F("Sprite: %s", name.c_str());
-    }
-
-    for (const auto& name : m_fontNames) {
-        DEBUG_INFO_F("Font: %s", name.c_str());
-    }
 
     return 0;
 }
@@ -486,7 +482,6 @@ void HudManager::registerHud(std::unique_ptr<BaseHud> hud, const char* harnessId
     if (hud) {
         hud->setHarnessId(harnessId);
         m_huds.push_back(std::move(hud));
-        DEBUG_INFO_F("HUD '%s' registered, total HUDs: %zu", harnessId, m_huds.size());
     }
 }
 
@@ -576,8 +571,6 @@ void HudManager::onDataChanged(DataChangeType changeType) {
 }
 
 void HudManager::validateAllHudPositions() {
-    DEBUG_INFO("Validating all HUD positions");
-
     for (auto& hud : m_huds) {
         if (hud) {
             hud->validatePosition();
@@ -867,21 +860,14 @@ void HudManager::updateRiderPositions(int numVehicles, Unified::TrackPositionDat
             const StandingsData* standing = pluginData.getStanding(displayRaceNum);
             int lapNum = standing ? standing->numLaps : 0;
 
-            // Update centralized lap timer (used by TimingHud, IdealLapHud, and others)
+            // Update the centralized lap timer, and with it the PB gap tracker read by
+            // TimingHud, LapLogHud and GapBarHud
             pluginData.updateLapTimerTrackPosition(
                 displayRaceNum,
                 positions[i].trackPos,
                 lapNum
             );
 
-            // Update GapBarHud
-            if (m_pGapBar) {
-                m_pGapBar->updateTrackPosition(
-                    displayRaceNum,
-                    positions[i].trackPos,
-                    lapNum
-                );
-            }
             break;
         }
     }

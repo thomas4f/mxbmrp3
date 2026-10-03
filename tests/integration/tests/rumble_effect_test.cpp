@@ -23,7 +23,6 @@
 //     to the global config; a malformed single ENTRY is skipped without
 //     discarding the sibling profiles (and `version` stays informational).
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

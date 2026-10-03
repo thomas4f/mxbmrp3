@@ -14,7 +14,6 @@ PointerWidget::PointerWidget() {
     // No caption on this panel -- see BaseHud::m_titleSupported.
     disableTitle();
     m_panelKind = PanelKind::Widget;
-    DEBUG_INFO("PointerWidget created");
 
     // Pointer is not draggable (it follows mouse position)
     setDraggable(false);

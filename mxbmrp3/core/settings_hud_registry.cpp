@@ -159,94 +159,95 @@ void SettingsManager::app_StandingsHud(HudManager& hudManager, const SettingsMan
 
             const auto& settings = it->second;
             try {
-                if (settings.count(DISPLAY_ROW_COUNT)) hud.m_displayRowCount = validateDisplayRows(std::stoi(settings.at(DISPLAY_ROW_COUNT)));
+                if (auto v = readInt(settings, DISPLAY_ROW_COUNT)) hud.m_displayRowCount = validateDisplayRows(*v);
                 loadStandingsColumns(settings, hud.m_enabledColumns);  // Named keys instead of bitmask
                 // Positions-gained mode. Migrate from the old col_posgain bit (a plain on/off
                 // that meant "since race start") when the new key is absent.
-                if (settings.count(POSGAIN_MODE)) {
-                    hud.m_posGainMode = stringToPosGainMode(settings.at(POSGAIN_MODE));
+                if (auto v = readStr(settings, POSGAIN_MODE)) {
+                    hud.m_posGainMode = stringToPosGainMode(*v);
                 } else {
                     hud.m_posGainMode = (hud.m_enabledColumns & StandingsHud::COL_POSGAIN)
                         ? StandingsHud::PosGainMode::RACE_START
                         : StandingsHud::PosGainMode::OFF;
                 }
-                if (settings.count(GAP_MODE)) {
-                    hud.m_gapMode = stringToGapMode(settings.at(GAP_MODE));
-                } else if (settings.count("showGapColumn")) {
+                if (auto v = readStr(settings, GAP_MODE)) {
+                    hud.m_gapMode = stringToGapMode(*v);
+                } else if (auto wasOn = readBool(settings, "showGapColumn")) {
                     // Migrate from old showGapColumn + gapScope
-                    bool wasOn = std::stoi(settings.at("showGapColumn")) != 0;
-                    if (!wasOn) {
+                    const std::string* scope = readStr(settings, "gapScope");
+                    if (!*wasOn) {
                         hud.m_gapMode = StandingsHud::GapMode::OFF;
-                    } else if (settings.count("gapScope") && settings.at("gapScope") == "PLAYER") {
+                    } else if (scope && *scope == "PLAYER") {
                         hud.m_gapMode = StandingsHud::GapMode::PLAYER;
                     } else {
                         hud.m_gapMode = StandingsHud::GapMode::ALL;
                     }
-                } else if (settings.count("gapColumnMode")) {
+                } else if (auto w = readStr(settings, "gapColumnMode")) {
                     // Migrate from older GapColumnMode
-                    hud.m_gapMode = (settings.at("gapColumnMode") == "OFF")
+                    hud.m_gapMode = (*w == "OFF")
                         ? StandingsHud::GapMode::OFF : StandingsHud::GapMode::ALL;
-                } else if (settings.count("officialGapMode") || settings.count("liveGapMode")) {
+                } else if (readStr(settings, "officialGapMode") || readStr(settings, "liveGapMode")) {
                     // Migrate from oldest officialGapMode/liveGapMode keys
-                    bool hadOfficial = settings.count("officialGapMode") && settings.at("officialGapMode") != "OFF";
-                    bool hadLive = settings.count("liveGapMode") && settings.at("liveGapMode") != "OFF";
+                    const std::string* official = readStr(settings, "officialGapMode");
+                    const std::string* live = readStr(settings, "liveGapMode");
+                    bool hadOfficial = official && *official != "OFF";
+                    bool hadLive = live && *live != "OFF";
                     if (!hadOfficial && !hadLive) {
                         hud.m_gapMode = StandingsHud::GapMode::OFF;
                     } else {
-                        bool wasPlayer = (settings.count("officialGapMode") && settings.at("officialGapMode") == "PLAYER") ||
-                                         (settings.count("liveGapMode") && settings.at("liveGapMode") == "PLAYER");
+                        bool wasPlayer = (official && *official == "PLAYER") || (live && *live == "PLAYER");
                         hud.m_gapMode = wasPlayer ? StandingsHud::GapMode::PLAYER : StandingsHud::GapMode::ALL;
                     }
                 }
-                if (settings.count(GAP_REFERENCE_MODE)) {
-                    hud.m_gapReferenceMode = stringToGapReferenceMode(settings.at(GAP_REFERENCE_MODE));
+                if (auto v = readStr(settings, GAP_REFERENCE_MODE)) {
+                    hud.m_gapReferenceMode = stringToGapReferenceMode(*v);
                     if (hud.m_gapReferenceMode == StandingsHud::GapReferenceMode::ALTERNATING) {
                         hud.m_lastGapRefToggle = std::chrono::steady_clock::now();
                         hud.m_alternatingCurrent = StandingsHud::GapReferenceMode::LEADER;
                     }
                 }
-                if (settings.count(IniOnly::Standings::TOP_POSITIONS.key)) {
-                    int topPos = std::stoi(settings.at(IniOnly::Standings::TOP_POSITIONS.key));
+                if (auto v = readInt(settings, IniOnly::Standings::TOP_POSITIONS.key)) {
+                    int topPos = *v;
                     topPos = std::max(0, std::min(topPos, static_cast<int>(StandingsHud::MAX_TOP_POSITIONS)));
                     hud.m_topPositionsCount = topPos;
                 }
-                if (settings.count(IniOnly::Standings::PLAYER_ROW_HIGHLIGHT.key)) {
-                    hud.m_bPlayerRowHighlight = std::stoi(settings.at(IniOnly::Standings::PLAYER_ROW_HIGHLIGHT.key)) != 0;
+                if (auto v = readBool(settings, IniOnly::Standings::PLAYER_ROW_HIGHLIGHT.key)) {
+                    hud.m_bPlayerRowHighlight = *v;
                 }
-                if (settings.count(IniOnly::Standings::PLAYER_ROW_HIGHLIGHT_BRAND.key)) {
-                    hud.m_bPlayerRowHighlightBrand = std::stoi(settings.at(IniOnly::Standings::PLAYER_ROW_HIGHLIGHT_BRAND.key)) != 0;
+                if (auto v = readBool(settings, IniOnly::Standings::PLAYER_ROW_HIGHLIGHT_BRAND.key)) {
+                    hud.m_bPlayerRowHighlightBrand = *v;
                 }
-                if (settings.count(IniOnly::Standings::LAST_LAP_COLOR.key)) {
-                    hud.m_bLastLapColorCode = std::stoi(settings.at(IniOnly::Standings::LAST_LAP_COLOR.key)) != 0;
+                if (auto v = readBool(settings, IniOnly::Standings::LAST_LAP_COLOR.key)) {
+                    hud.m_bLastLapColorCode = *v;
                 }
-                if (settings.count(ANIMATION_MODE)) {
-                    hud.m_animationMode = stringToAnimationMode(settings.at(ANIMATION_MODE));
-                } else if (settings.count("animatePositions")) {
+                if (auto v = readStr(settings, ANIMATION_MODE)) {
+                    hud.m_animationMode = stringToAnimationMode(*v);
+                } else if (auto w = readBool(settings, "animatePositions")) {
                     // Legacy: animatePositions=0/1 → OFF/BASIC. Read on load only; not
                     // re-emitted on save, so the key drops out of the INI on first
                     // re-save (intentional — replaced by animationMode).
-                    hud.m_animationMode = (std::stoi(settings.at("animatePositions")) != 0)
+                    hud.m_animationMode = (*w)
                         ? StandingsHud::AnimationMode::BASIC
                         : StandingsHud::AnimationMode::OFF;
                 }
-                if (settings.count(SHOW_HEADERS)) {
-                    hud.m_bShowHeaders = std::stoi(settings.at(SHOW_HEADERS)) != 0;
+                if (auto v = readBool(settings, SHOW_HEADERS)) {
+                    hud.m_bShowHeaders = *v;
                 }
-                if (settings.count(SHOW_SESSION_INFO)) {
-                    hud.m_bShowSessionInfo = std::stoi(settings.at(SHOW_SESSION_INFO)) != 0;
+                if (auto v = readBool(settings, SHOW_SESSION_INFO)) {
+                    hud.m_bShowSessionInfo = *v;
                 }
-                if (settings.count(LIVE_GAPS)) {
-                    hud.m_bLiveGaps = std::stoi(settings.at(LIVE_GAPS)) != 0;
+                if (auto v = readBool(settings, LIVE_GAPS)) {
+                    hud.m_bLiveGaps = *v;
                 }
-                if (settings.count(IniOnly::Standings::ANIMATION_DURATION_MS.key)) {
-                    int durationMs = std::stoi(settings.at(IniOnly::Standings::ANIMATION_DURATION_MS.key));
+                if (auto v = readInt(settings, IniOnly::Standings::ANIMATION_DURATION_MS.key)) {
+                    int durationMs = *v;
                     hud.m_animationDurationMs = static_cast<float>(std::max(50, std::min(1000, durationMs)));
                 }
-                if (settings.count(IniOnly::Standings::CLASSIC_LAYOUT.key)) {
-                    hud.m_bClassicLayout = std::stoi(settings.at(IniOnly::Standings::CLASSIC_LAYOUT.key)) != 0;
+                if (auto v = readBool(settings, IniOnly::Standings::CLASSIC_LAYOUT.key)) {
+                    hud.m_bClassicLayout = *v;
                 }
-                if (settings.count(IniOnly::Standings::NAME_MODE.key)) {
-                    int mode = std::stoi(settings.at(IniOnly::Standings::NAME_MODE.key));
+                if (auto v = readInt(settings, IniOnly::Standings::NAME_MODE.key)) {
+                    int mode = *v;
                     if (mode >= 0 && mode <= 2) {
                         hud.m_nameMode = static_cast<StandingsHud::NameMode>(mode);
                     }
@@ -255,13 +256,13 @@ void SettingsManager::app_StandingsHud(HudManager& hudManager, const SettingsMan
                     hud.m_nameMode = (hud.m_enabledColumns & StandingsHud::COL_NAME)
                         ? StandingsHud::NameMode::SHORT : StandingsHud::NameMode::OFF;
                 }
-                if (settings.count(IniOnly::Standings::SHORT_NAME_CHARS.key)) {
-                    int chars = std::stoi(settings.at(IniOnly::Standings::SHORT_NAME_CHARS.key));
+                if (auto v = readInt(settings, IniOnly::Standings::SHORT_NAME_CHARS.key)) {
+                    int chars = *v;
                     hud.m_shortNameChars = std::max(StandingsHud::MIN_SHORT_NAME_CHARS,
                         std::min(chars, StandingsHud::MAX_SHORT_NAME_CHARS));
                 }
-                if (settings.count(IniOnly::Standings::LONG_NAME_CHARS.key)) {
-                    int chars = std::stoi(settings.at(IniOnly::Standings::LONG_NAME_CHARS.key));
+                if (auto v = readInt(settings, IniOnly::Standings::LONG_NAME_CHARS.key)) {
+                    int chars = *v;
                     hud.m_longNameChars = std::max(StandingsHud::MIN_LONG_NAME_CHARS,
                         std::min(chars, StandingsHud::MAX_LONG_NAME_CHARS));
                 }
@@ -307,43 +308,40 @@ void SettingsManager::app_MapHud(HudManager& hudManager, const SettingsManager::
 
             try {
                 // Map-specific settings
-                if (settings.count("rotateToPlayer")) hud.setRotateToPlayer(std::stoi(settings.at("rotateToPlayer")) != 0);
-                if (settings.count("showOutline")) hud.setShowOutline(std::stoi(settings.at("showOutline")) != 0);
-                if (settings.count("outlineWidthScale")) {
-                    hud.setOutlineWidthScale(parseFiniteFloat(settings.at("outlineWidthScale"),
-                                                              MapHud::DEFAULT_OUTLINE_WIDTH_SCALE));
+                if (auto v = readBool(settings, "rotateToPlayer")) hud.setRotateToPlayer(*v);
+                if (auto v = readBool(settings, "showOutline")) hud.setShowOutline(*v);
+                if (auto v = readFloat(settings, "outlineWidthScale", MapHud::DEFAULT_OUTLINE_WIDTH_SCALE)) {
+                    hud.setOutlineWidthScale(*v);
                 }
-                if (settings.count("showTrackMarkers")) hud.setShowTrackMarkers(std::stoi(settings.at("showTrackMarkers")) != 0);
-                if (settings.count("riderColorMode")) hud.setRiderColorMode(stringToRiderColorMode(settings.at("riderColorMode")));
-                if (settings.count("trackWidthScale")) hud.setTrackWidthScale(validateTrackWidthScale(parseFiniteFloat(settings.at("trackWidthScale"))));
-                if (settings.count("labelMode")) hud.setLabelMode(stringToLabelMode(settings.at("labelMode")));
-                if (settings.count(IniOnly::Marker::LABEL_ANCHOR.key)) hud.setLabelAnchor(stringToLabelAnchor(settings.at(IniOnly::Marker::LABEL_ANCHOR.key)));
-                if (settings.count("riderShape")) hud.setRiderShape(filenameToShapeIndex(settings.at("riderShape"), 1));
-                if (settings.count("zoomEnabled")) hud.setZoomEnabled(std::stoi(settings.at("zoomEnabled")) != 0);
-                if (settings.count("zoomDistance")) hud.setZoomDistance(validateZoomDistance(parseFiniteFloat(settings.at("zoomDistance"))));
-                if (settings.count("markerScale")) hud.setMarkerScale(parseFiniteFloat(settings.at("markerScale")));
+                if (auto v = readBool(settings, "showTrackMarkers")) hud.setShowTrackMarkers(*v);
+                if (auto v = readStr(settings, "riderColorMode")) hud.setRiderColorMode(stringToRiderColorMode(*v));
+                if (auto v = readFloat(settings, "trackWidthScale")) hud.setTrackWidthScale(validateTrackWidthScale(*v));
+                if (auto v = readStr(settings, "labelMode")) hud.setLabelMode(stringToLabelMode(*v));
+                if (auto v = readStr(settings, IniOnly::Marker::LABEL_ANCHOR.key)) hud.setLabelAnchor(stringToLabelAnchor(*v));
+                if (auto v = readStr(settings, "riderShape")) hud.setRiderShape(filenameToShapeIndex(*v, 1));
+                if (auto v = readBool(settings, "zoomEnabled")) hud.setZoomEnabled(*v);
+                if (auto v = readFloat(settings, "zoomDistance")) hud.setZoomDistance(validateZoomDistance(*v));
+                if (auto v = readFloat(settings, "markerScale")) hud.setMarkerScale(*v);
                 // Detail: new scale/adaptive keys, with legacy `detail=AUTO|HIGH|LOW`
                 // migration for pre-1.27.6 INIs (only when the new keys are absent, so
                 // a file carrying both prefers the new ones). Setters clamp.
-                if (settings.count("detailScale")) {
-                    hud.setDetailScale(parseFiniteFloat(settings.at("detailScale"),
-                                                        MapHud::DEFAULT_DETAIL_SCALE));
-                } else if (settings.count("detail")) {
-                    applyLegacyMapDetail(hud, settings.at("detail"));
+                if (auto v = readFloat(settings, "detailScale", MapHud::DEFAULT_DETAIL_SCALE)) {
+                    hud.setDetailScale(*v);
+                } else if (auto w = readStr(settings, "detail")) {
+                    applyLegacyMapDetail(hud, *w);
                 }
-                if (settings.count("detailAdaptive")) hud.setAdaptiveDetail(std::stoi(settings.at("detailAdaptive")) != 0);
-                if (settings.count(IniOnly::Map::DETAIL_BASELINE.key)) {
-                    hud.setDetailBaseline(parseFiniteFloat(settings.at(IniOnly::Map::DETAIL_BASELINE.key),
-                                                           MapHud::DEFAULT_DETAIL_BASELINE));
+                if (auto v = readBool(settings, "detailAdaptive")) hud.setAdaptiveDetail(*v);
+                if (auto v = readFloat(settings, IniOnly::Map::DETAIL_BASELINE.key, MapHud::DEFAULT_DETAIL_BASELINE)) {
+                    hud.setDetailBaseline(*v);
                 }
 
                 // Anchor-based positioning. The anchor replaces offsetX/Y for this HUD,
                 // so it needs the same range clamp — a hand-edited anchorX=1e30 is
                 // finite but places the map unrecoverably off-screen (and auto-save
                 // would re-persist it).
-                if (settings.count("anchorPoint")) hud.setAnchorPoint(stringToAnchorPoint(settings.at("anchorPoint")));
-                if (settings.count("anchorX")) hud.m_fAnchorX = validateOffset(parseFiniteFloat(settings.at("anchorX")));
-                if (settings.count("anchorY")) hud.m_fAnchorY = validateOffset(parseFiniteFloat(settings.at("anchorY")));
+                if (auto v = readStr(settings, "anchorPoint")) hud.setAnchorPoint(stringToAnchorPoint(*v));
+                if (auto v = readFloat(settings, "anchorX")) hud.m_fAnchorX = validateOffset(*v);
+                if (auto v = readFloat(settings, "anchorY")) hud.m_fAnchorY = validateOffset(*v);
                 hud.updatePositionFromAnchor();
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("MapHud: Failed to parse settings: %s", e.what());
@@ -379,41 +377,41 @@ void SettingsManager::app_RadarHud(HudManager& hudManager, const SettingsManager
 
             const auto& settings = it->second;
             try {
-                if (settings.count("radarRange")) {
-                    float range = parseFiniteFloat(settings.at("radarRange"));
+                if (auto v = readFloat(settings, "radarRange")) {
+                    float range = *v;
                     if (range < RadarHud::MIN_RADAR_RANGE) range = RadarHud::MIN_RADAR_RANGE;
                     if (range > RadarHud::MAX_RADAR_RANGE) range = RadarHud::MAX_RADAR_RANGE;
                     hud.setRadarRange(range);
                 }
                 // riderColorMode - string enum
-                if (settings.count("riderColorMode")) {
-                    hud.setRiderColorMode(stringToRadarRiderColorMode(settings.at("riderColorMode")));
+                if (auto v = readStr(settings, "riderColorMode")) {
+                    hud.setRiderColorMode(stringToRadarRiderColorMode(*v));
                 }
-                if (settings.count("radarMode")) {
-                    hud.setRadarMode(stringToRadarMode(settings.at("radarMode")));
+                if (auto v = readStr(settings, "radarMode")) {
+                    hud.setRadarMode(stringToRadarMode(*v));
                 }
-                if (settings.count("proximityArrowMode")) {
-                    hud.setProximityArrowMode(stringToProximityArrowMode(settings.at("proximityArrowMode")));
+                if (auto v = readStr(settings, "proximityArrowMode")) {
+                    hud.setProximityArrowMode(stringToProximityArrowMode(*v));
                 }
-                if (settings.count("alertDistance")) {
-                    float distance = parseFiniteFloat(settings.at("alertDistance"));
+                if (auto v = readFloat(settings, "alertDistance")) {
+                    float distance = *v;
                     if (distance < RadarHud::MIN_ALERT_DISTANCE) distance = RadarHud::MIN_ALERT_DISTANCE;
                     if (distance > RadarHud::MAX_ALERT_DISTANCE) distance = RadarHud::MAX_ALERT_DISTANCE;
                     hud.setAlertDistance(distance);
                 }
-                if (settings.count("labelMode")) hud.setLabelMode(stringToLabelMode(settings.at("labelMode")));
-                if (settings.count(IniOnly::Marker::LABEL_ANCHOR.key)) hud.setLabelAnchor(stringToLabelAnchor(settings.at(IniOnly::Marker::LABEL_ANCHOR.key)));
-                if (settings.count("riderShape")) {
-                    hud.setRiderShape(filenameToShapeIndex(settings.at("riderShape"), 1));
+                if (auto v = readStr(settings, "labelMode")) hud.setLabelMode(stringToLabelMode(*v));
+                if (auto v = readStr(settings, IniOnly::Marker::LABEL_ANCHOR.key)) hud.setLabelAnchor(stringToLabelAnchor(*v));
+                if (auto v = readStr(settings, "riderShape")) {
+                    hud.setRiderShape(filenameToShapeIndex(*v, 1));
                 }
-                if (settings.count("proximityArrowShape")) {
-                    hud.setProximityArrowShape(filenameToShapeIndex(settings.at("proximityArrowShape"), 1));
+                if (auto v = readStr(settings, "proximityArrowShape")) {
+                    hud.setProximityArrowShape(filenameToShapeIndex(*v, 1));
                 }
-                if (settings.count("proximityArrowScale")) hud.setProximityArrowScale(parseFiniteFloat(settings.at("proximityArrowScale")));
-                if (settings.count("proximityArrowColorMode")) {
-                    hud.setProximityArrowColorMode(stringToProximityArrowColorMode(settings.at("proximityArrowColorMode")));
+                if (auto v = readFloat(settings, "proximityArrowScale")) hud.setProximityArrowScale(*v);
+                if (auto v = readStr(settings, "proximityArrowColorMode")) {
+                    hud.setProximityArrowColorMode(stringToProximityArrowColorMode(*v));
                 }
-                if (settings.count("markerScale")) hud.setMarkerScale(parseFiniteFloat(settings.at("markerScale")));
+                if (auto v = readFloat(settings, "markerScale")) hud.setMarkerScale(*v);
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("RadarHud: Failed to parse settings: %s", e.what());
             }
@@ -428,6 +426,7 @@ void SettingsManager::cap_PitboardHud(const HudManager& hudManager, SettingsMana
         savePitboardRows(settings, hud.m_enabledRows);  // Named keys instead of bitmask
         settings["displayMode"] = pitboardDisplayModeToString(hud.m_displayMode);
         settings["gapCompareMode"] = pitboardGapCompareModeToString(hud.m_gapCompareMode);
+        settings["freezeDuration"] = std::to_string(hud.m_freezeDurationMs);
         // The board by NAME. Written verbatim even when this install has no such
         // pack, so removing a pack folder and putting it back restores the choice.
         settings[Keys::Pitboard::PACK] = hud.getPitboardPack();
@@ -443,8 +442,13 @@ void SettingsManager::app_PitboardHud(HudManager& hudManager, const SettingsMana
             const auto& settings = it->second;
             try {
                 loadPitboardRows(settings, hud.m_enabledRows);  // Named keys instead of bitmask
-                if (settings.count("displayMode")) hud.m_displayMode = stringToPitboardDisplayMode(settings.at("displayMode"));
-                if (settings.count("gapCompareMode")) hud.m_gapCompareMode = stringToPitboardGapCompareMode(settings.at("gapCompareMode"));
+                if (auto v = readStr(settings, "displayMode")) hud.m_displayMode = stringToPitboardDisplayMode(*v);
+                if (auto v = readStr(settings, "gapCompareMode")) hud.m_gapCompareMode = stringToPitboardGapCompareMode(*v);
+                if (auto v = readInt(settings, "freezeDuration")) {
+                    if (*v >= FreezeDuration::PITBOARD_MIN_MS && *v <= FreezeDuration::MAX_MS) {
+                        hud.m_freezeDurationMs = *v;
+                    }
+                }
                 auto pack = settings.find(Keys::Pitboard::PACK);
                 if (pack != settings.end() && !pack->second.empty()) {
                     hud.setPitboardPack(pack->second);
@@ -477,15 +481,15 @@ void SettingsManager::app_RecordsHud(HudManager& hudManager, const SettingsManag
             const auto& settings = it->second;
             try {
                 loadRecordsColumns(settings, hud.m_enabledColumns);  // Named keys instead of bitmask
-                if (settings.count("recordsToShow")) {
-                    int count = std::stoi(settings.at("recordsToShow"));
+                if (auto v = readInt(settings, "recordsToShow")) {
+                    int count = *v;
                     if (count >= 3 && count <= 30) hud.m_recordsToShow = count;
                 }
-                if (settings.count("showHeaders")) {
-                    hud.m_bShowHeaders = std::stoi(settings.at("showHeaders")) != 0;
+                if (auto v = readBool(settings, "showHeaders")) {
+                    hud.m_bShowHeaders = *v;
                 }
-                if (settings.count(IniOnly::Records::SHOW_FOOTER.key)) {
-                    hud.m_bShowFooter = std::stoi(settings.at(IniOnly::Records::SHOW_FOOTER.key)) != 0;
+                if (auto v = readBool(settings, IniOnly::Records::SHOW_FOOTER.key)) {
+                    hud.m_bShowFooter = *v;
                 }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("RecordsHud: Failed to parse settings: %s", e.what());
@@ -503,6 +507,8 @@ void SettingsManager::cap_LapLogHud(const HudManager& hudManager, SettingsManage
         settings["maxDisplayLaps"] = std::to_string(hud.m_maxDisplayLaps);
         settings["displayOrder"] = std::to_string(static_cast<int>(hud.m_displayOrder));
         settings["showGapRow"] = hud.m_showGapRow ? "1" : "0";
+        settings["reference"] = std::to_string(static_cast<int>(hud.m_gapReference));
+        settings["freezeDuration"] = std::to_string(hud.m_freezeDurationMs);
         settings["showHeaders"] = hud.m_bShowHeaders ? "1" : "0";
         cache[name] = std::move(settings);
 }
@@ -516,13 +522,23 @@ void SettingsManager::app_LapLogHud(HudManager& hudManager, const SettingsManage
             const auto& settings = it->second;
             try {
                 loadLapLogColumns(settings, hud.m_enabledColumns);  // Named keys instead of bitmask
-                if (settings.count("maxDisplayLaps")) hud.m_maxDisplayLaps = validateDisplayLaps(std::stoi(settings.at("maxDisplayLaps")));
-                if (settings.count("displayOrder")) {
-                    int order = std::stoi(settings.at("displayOrder"));
+                if (auto v = readInt(settings, "maxDisplayLaps")) hud.m_maxDisplayLaps = validateDisplayLaps(*v);
+                if (auto v = readInt(settings, "displayOrder")) {
+                    int order = *v;
                     hud.m_displayOrder = (order == 1) ? LapLogHud::DisplayOrder::NEWEST_FIRST : LapLogHud::DisplayOrder::OLDEST_FIRST;
                 }
-                if (settings.count("showGapRow")) hud.m_showGapRow = (settings.at("showGapRow") == "1");
-                if (settings.count("showHeaders")) hud.m_bShowHeaders = std::stoi(settings.at("showHeaders")) != 0;
+                if (auto v = readStr(settings, "showGapRow")) hud.m_showGapRow = (*v == "1");
+                if (auto v = readInt(settings, "reference")) {
+                    if (*v >= 0 && *v < PbGapTracker::REF_COUNT) {
+                        hud.m_gapReference = static_cast<PbGapTracker::Ref>(*v);
+                    }
+                }
+                if (auto v = readInt(settings, "freezeDuration")) {
+                    if (*v >= FreezeDuration::MIN_MS && *v <= FreezeDuration::MAX_MS) {
+                        hud.m_freezeDurationMs = *v;
+                    }
+                }
+                if (auto v = readBool(settings, "showHeaders")) hud.m_bShowHeaders = *v;
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("LapLogHud: Failed to parse settings: %s", e.what());
             }
@@ -553,40 +569,40 @@ void SettingsManager::app_SessionChartsHud(HudManager& hudManager, const Setting
 
             const auto& settings = it->second;
             try {
-                if (settings.count("enabledCharts")) {
-                    int charts = std::stoi(settings.at("enabledCharts"));
+                if (auto v = readInt(settings, "enabledCharts")) {
+                    int charts = *v;
                     charts &= static_cast<int>(SessionChartsHud::CHART_ALLFLAGS);  // ignore stray bits
                     hud.m_enabledCharts = static_cast<uint32_t>(charts);
                 }
-                if (settings.count("enabledElements")) {
-                    int elems = std::stoi(settings.at("enabledElements"));
+                if (auto v = readInt(settings, "enabledElements")) {
+                    int elems = *v;
                     hud.m_enabledElements = static_cast<uint32_t>(elems);
                 }
-                if (settings.count("colorMode")) {
-                    int mode = std::stoi(settings.at("colorMode"));
+                if (auto v = readInt(settings, "colorMode")) {
+                    int mode = *v;
                     int maxMode = static_cast<int>(SessionChartsHud::RiderColorMode::COLOR_MODE_COUNT) - 1;
                     if (mode >= 0 && mode <= maxMode) {
                         hud.m_riderColorMode = static_cast<SessionChartsHud::RiderColorMode>(mode);
                     }
                 }
-                if (settings.count("displayRowCount")) {
-                    int count = std::stoi(settings.at("displayRowCount"));
+                if (auto v = readInt(settings, "displayRowCount")) {
+                    int count = *v;
                     hud.m_displayRowCount = std::max(SessionChartsHud::MIN_ROW_COUNT,
                                                      std::min(count, SessionChartsHud::MAX_ROW_COUNT));
                 }
-                if (settings.count("graphRows")) {
-                    hud.m_graphRows = std::clamp(std::stoi(settings.at("graphRows")),
+                if (auto v = readInt(settings, "graphRows")) {
+                    hud.m_graphRows = std::clamp(*v,
                         SessionChartsHud::MIN_GRAPH_ROWS, SessionChartsHud::MAX_GRAPH_ROWS);
                 }
-                if (settings.count("topPositionsCount")) {
-                    int count = std::stoi(settings.at("topPositionsCount"));
+                if (auto v = readInt(settings, "topPositionsCount")) {
+                    int count = *v;
                     int maxTop = std::min(SessionChartsHud::MAX_TOP_COUNT, hud.m_displayRowCount);
                     hud.m_topPositionsCount = std::max(SessionChartsHud::MIN_TOP_COUNT,
                                                        std::min(count, maxTop));
                 }
                 // Advanced tuning (INI-only)
-                if (settings.count("outlierFactor")) {
-                    float factor = parseFiniteFloat(settings.at("outlierFactor"));
+                if (auto v = readFloat(settings, "outlierFactor")) {
+                    float factor = *v;
                     hud.m_outlierFactor = std::max(1.05f, std::min(factor, 5.0f));
                 }
             } catch (const std::exception& e) {
@@ -630,15 +646,15 @@ void SettingsManager::app_FmxHud(HudManager& hudManager, const SettingsManager::
 
             const auto& settings = it->second;
             try {
-                if (settings.count(ENABLED_ROWS)) {
-                    hud.m_enabledRows = static_cast<uint32_t>(std::stoul(settings.at(ENABLED_ROWS)));
+                if (auto v = readUInt(settings, ENABLED_ROWS)) {
+                    hud.m_enabledRows = *v;
                 }
-                if (settings.count(MAX_CHAIN_DISPLAY_ROWS)) {
-                    int rows = std::stoi(settings.at(MAX_CHAIN_DISPLAY_ROWS));
+                if (auto v = readInt(settings, MAX_CHAIN_DISPLAY_ROWS)) {
+                    int rows = *v;
                     hud.m_maxChainDisplayRows = std::max(0, std::min(10, rows));
                 }
-                if (settings.count(SHOW_DEBUG_LOGGING)) {
-                    hud.m_showDebugLogging = settings.at(SHOW_DEBUG_LOGGING) == "1";
+                if (auto v = readStr(settings, SHOW_DEBUG_LOGGING)) {
+                    hud.m_showDebugLogging = *v == "1";
                     FmxManager::getInstance().setLoggingEnabled(hud.m_showDebugLogging);
                 }
 
@@ -654,9 +670,8 @@ void SettingsManager::app_FmxHud(HudManager& hudManager, const SettingsManager::
                     auto t = static_cast<Fmx::TrickType>(i);
                     if (Fmx::getTrickDirection(t) == Fmx::TrickDirection::RIGHT) continue;
                     std::string key = std::string(TRICK_ENABLED_PREFIX) + Fmx::getTrickIniKey(t);
-                    auto entry = settings.find(key);
-                    if (entry != settings.end()) {
-                        bool enabled = std::stoi(entry->second) != 0;
+                    if (auto v = readBool(settings, key)) {
+                        const bool enabled = *v;
                         fmxCfg.tricksEnabled[i] = enabled;
                         Fmx::TrickType opposite = Fmx::flipTrickDirection(t);
                         if (opposite != t) {
@@ -694,20 +709,20 @@ void SettingsManager::app_StatsHud(HudManager& hudManager, const SettingsManager
 
             const auto& settings = it->second;
             try {
-                if (settings.count(VISIBILITY_MODE)) {
-                    int mode = std::stoi(settings.at(VISIBILITY_MODE));
+                if (auto v = readInt(settings, VISIBILITY_MODE)) {
+                    int mode = *v;
                     if (mode >= 0 && mode < static_cast<int>(StatsHud::VisibilityMode::COUNT)) {
                         hud.m_visibilityMode = static_cast<StatsHud::VisibilityMode>(mode);
                     }
                 }
-                if (settings.count(SHOW_LAP)) {
-                    hud.m_showLap = settings.at(SHOW_LAP) == "1";
+                if (auto v = readStr(settings, SHOW_LAP)) {
+                    hud.m_showLap = *v == "1";
                 }
-                if (settings.count(SHOW_SESSION)) {
-                    hud.m_showSession = settings.at(SHOW_SESSION) == "1";
+                if (auto v = readStr(settings, SHOW_SESSION)) {
+                    hud.m_showSession = *v == "1";
                 }
-                if (settings.count(SHOW_ALLTIME)) {
-                    hud.m_showAllTime = settings.at(SHOW_ALLTIME) == "1";
+                if (auto v = readStr(settings, SHOW_ALLTIME)) {
+                    hud.m_showAllTime = *v == "1";
                 }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("StatsHud: Failed to parse settings: %s", e.what());
@@ -739,43 +754,43 @@ void SettingsManager::app_EventLogHud(HudManager& hudManager, const SettingsMana
             const auto& settings = it->second;
             try {
                 loadEventLogEvents(settings, hud.m_enabledEvents);
-                if (settings.count("displayMode")) {
-                    int mode = std::stoi(settings.at("displayMode"));
+                if (auto v = readInt(settings, "displayMode")) {
+                    int mode = *v;
                     if (mode >= 0 && mode <= 2) {
                         hud.m_displayMode = static_cast<EventLogHud::DisplayMode>(mode);
                     }
                 }
-                if (settings.count("displayOrder")) {
-                    int order = std::stoi(settings.at("displayOrder"));
+                if (auto v = readInt(settings, "displayOrder")) {
+                    int order = *v;
                     hud.m_displayOrder = (order == 1)
                         ? EventLogHud::DisplayOrder::NEWEST_FIRST
                         : EventLogHud::DisplayOrder::OLDEST_FIRST;
                 }
-                if (settings.count("maxDisplayEvents")) {
-                    int max = std::stoi(settings.at("maxDisplayEvents"));
+                if (auto v = readInt(settings, "maxDisplayEvents")) {
+                    int max = *v;
                     hud.m_maxDisplayEvents = std::max(EventLogHud::MIN_DISPLAY_EVENTS,
                                                       std::min(max, EventLogHud::MAX_DISPLAY_EVENTS));
                 }
-                if (settings.count("autoHideDurationMs")) {
-                    int duration = std::stoi(settings.at("autoHideDurationMs"));
+                if (auto v = readInt(settings, "autoHideDurationMs")) {
+                    int duration = *v;
                     if (duration >= EventLogHud::MIN_AUTO_HIDE_MS && duration <= EventLogHud::MAX_AUTO_HIDE_MS) {
                         hud.m_autoHideDurationMs = duration;
                     }
                 }
-                if (settings.count("timestampMode")) {
-                    int mode = std::stoi(settings.at("timestampMode"));
+                if (auto v = readInt(settings, "timestampMode")) {
+                    int mode = *v;
                     if (mode >= 0 && mode <= 2) {
                         hud.m_timestampMode = static_cast<EventLogHud::TimestampMode>(mode);
                     }
                 }
                 // Legacy: migrate old useWallClock bool to new timestampMode
-                else if (settings.count("useWallClock")) {
-                    hud.m_timestampMode = (settings.at("useWallClock") == "1")
+                else if (auto w = readStr(settings, "useWallClock")) {
+                    hud.m_timestampMode = (*w == "1")
                         ? EventLogHud::TimestampMode::CLOCK
                         : EventLogHud::TimestampMode::SESSION;
                 }
-                if (settings.count("showIcons")) {
-                    hud.m_showIcons = (settings.at("showIcons") == "1");
+                if (auto v = readStr(settings, "showIcons")) {
+                    hud.m_showIcons = (*v == "1");
                 }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("EventLogHud: Failed to parse settings: %s", e.what());
@@ -813,22 +828,22 @@ void SettingsManager::app_FriendsHud(HudManager& hudManager, const SettingsManag
                 loadBitFromKey(settings, "col_track",  hud.m_enabledColumns, FriendsHud::COL_TRACK);
                 loadBitFromKey(settings, "col_info",   hud.m_enabledColumns, FriendsHud::COL_INFO);
                 loadBitFromKey(settings, "col_timer",  hud.m_enabledColumns, FriendsHud::COL_TIMER);
-                if (settings.count("maxDisplayRows")) {
-                    int r = std::stoi(settings.at("maxDisplayRows"));
+                if (auto v = readInt(settings, "maxDisplayRows")) {
+                    int r = *v;
                     hud.m_maxDisplayRows = std::max(FriendsHud::MIN_DISPLAY_ROWS, std::min(FriendsHud::MAX_DISPLAY_ROWS, r));
                 }
-                if (settings.count("showHeaders")) hud.m_bShowHeaders = std::stoi(settings.at("showHeaders")) != 0;
-                if (settings.count("showMode")) {
-                    int sm = std::stoi(settings.at("showMode"));
+                if (auto v = readBool(settings, "showHeaders")) hud.m_bShowHeaders = *v;
+                if (auto v = readInt(settings, "showMode")) {
+                    int sm = *v;
                     if (sm >= 0 && sm < static_cast<int>(FriendsHud::ShowMode::COUNT)) {
                         hud.m_showMode = static_cast<FriendsHud::ShowMode>(sm);
                     }
                 }
-                if (settings.count("onJoinDurationMs")) {
-                    int ms = std::stoi(settings.at("onJoinDurationMs"));
+                if (auto v = readInt(settings, "onJoinDurationMs")) {
+                    int ms = *v;
                     hud.m_onJoinDurationMs = std::max(1000, std::min(120000, ms));  // 1s..2min
                 }
-                if (settings.count("showSelf")) hud.m_showSelf = std::stoi(settings.at("showSelf")) != 0;
+                if (auto v = readBool(settings, "showSelf")) hud.m_showSelf = *v;
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("FriendsHud: Failed to parse settings: %s", e.what());
             }
@@ -880,8 +895,8 @@ void SettingsManager::app_TelemetryHud(HudManager& hudManager, const SettingsMan
             const auto& settings = it->second;
             try {
                 loadTelemetryElements(settings, hud.m_enabledElements);  // Named keys instead of bitmask
-                if (settings.count("displayMode")) hud.m_displayMode = stringToDisplayMode(settings.at("displayMode"));
-                if (settings.count("graphRows")) hud.m_graphRows = std::clamp(std::stoi(settings.at("graphRows")),
+                if (auto v = readStr(settings, "displayMode")) hud.m_displayMode = stringToDisplayMode(*v);
+                if (auto v = readInt(settings, "graphRows")) hud.m_graphRows = std::clamp(*v,
                     TelemetryHud::MIN_GRAPH_ROWS, TelemetryHud::MAX_GRAPH_ROWS);
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("TelemetryHud: Failed to parse settings: %s", e.what());
@@ -909,8 +924,8 @@ void SettingsManager::app_PerformanceHud(HudManager& hudManager, const SettingsM
             const auto& settings = it->second;
             try {
                 loadPerformanceElements(settings, hud.m_enabledElements);  // Named keys instead of bitmask
-                if (settings.count("displayMode")) hud.m_displayMode = stringToDisplayMode(settings.at("displayMode"));
-                if (settings.count("graphRows")) hud.m_graphRows = std::clamp(std::stoi(settings.at("graphRows")),
+                if (auto v = readStr(settings, "displayMode")) hud.m_displayMode = stringToDisplayMode(*v);
+                if (auto v = readInt(settings, "graphRows")) hud.m_graphRows = std::clamp(*v,
                     PerformanceHud::MIN_GRAPH_ROWS, PerformanceHud::MAX_GRAPH_ROWS);
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("PerformanceHud: Failed to parse settings: %s", e.what());

@@ -177,6 +177,11 @@ jobs:
       - name: Docs are honest (paths resolve, invariants labelled, budget kept)
         run: python3 tools/check_docs.py
 
+      # TESTING.md's catalogue names a test; the test's header is what explains
+      # it. That makes the header load-bearing, so it has to be there.
+      - name: Every test file explains itself in its header
+        run: ./tests/integration/check_test_headers.sh
+
       # The same docs through the renderer the PUBLIC SITE uses. GitHub Pages is
       # Jekyll, so it is kramdown rather than GitHub's own cmark-gfm, and where
       # the two disagree the page silently comes out wrong - a table as a
@@ -202,6 +207,16 @@ jobs:
       - name: Font generator (mxbmrp3_fontgen) regression
         run: ./tools/fontgen/test.sh
 
+      # The outline-sheet importer (artwork .ai/.pdf/.svg -> .ttf -> .fnt). Its
+      # gate SKIPs without pymupdf + fonttools, and a SKIP in CI is a silent
+      # hole, so install them first and fail on anything but a pass. From
+      # tools/requirements.txt (the analytics group), like every other pip dep,
+      # so CI and a dev box install the same versions.
+      - name: Outline-sheet font importer (outlines2ttf) regression
+        run: |
+          ./tools/install_deps.sh analytics
+          ./tools/fontgen/test_outlines2ttf.sh
+
       # The trainer repair page. Runs in a browser and there is no second
       # implementation to check it against, so this is its only gate.
       - name: Trainer repair page (Playwright)
@@ -218,6 +233,21 @@ jobs:
         run: |
           ./tools/install_deps.sh analytics
           python3 tools/analytics_report.py --selftest
+
+      # The Aptabase fetcher. Needs no deps — it is the validation layer that
+      # keeps a 200-with-an-error-body out of the rollup, so it runs unconditionally.
+      - name: Analytics fetcher self-test
+        run: python3 tools/analytics_fetch.py --selftest
+
+      # The shipped .tga icons must still reproduce byte-for-byte from their SVG
+      # sources under the PINNED renderer. Its gate SKIPs without cairosvg, and a
+      # SKIP in CI is a silent hole, so install the pinned deps first — the
+      # analytics group is `-r tools/requirements.txt`, which is where the
+      # cairosvg pin lives.
+      - name: Icons reproduce from their SVG sources
+        run: |
+          ./tools/install_deps.sh analytics
+          ./tests/integration/check_icon_reproducibility.sh
 
   # Native AddressSanitizer + UBSan over the plugin's portable memory surface
   # (fixed buffers, the leader-timing index clamp, the crash-site container
@@ -300,6 +330,12 @@ jobs:
       # a developer box; here setup-node's npm cache and the keyed Playwright
       # browser cache above do that job better. Both paths end at the same
       # `npx playwright test`, so the tests can't diverge — only the setup does.
+      # usage_page.spec.js builds its page with tools/analytics_page.py, which
+      # renders Markdown with markdown-it-py (tools/requirements.txt, via the
+      # analytics group, like every other pip dep).
+      - name: Install the usage-page generator's dependency
+        run: ./tools/install_deps.sh analytics
+
       - name: Run overlay tests
         run: npm test
 
@@ -406,7 +442,10 @@ jobs:
       - name: Unit shim constants match the real mingw headers
         run: ./tests/unit/shim/regen_constants.sh --check
 
-      - name: Thread-safety analysis (clang -Wthread-safety)
+      # The analysis itself (clang -Wthread-safety) runs inside the clang-tidy
+      # step below, on the same parse; this is the grep for raw std::mutex,
+      # which the analysis cannot see.
+      - name: No raw std sync primitives
         run: ./tests/integration/check_thread_safety.sh
 
       # The other half of the threading invariant. -Wthread-safety only checks
@@ -426,15 +465,14 @@ jobs:
       - name: Lazy module import lint (linked artifact)
         run: ./tests/integration/check_lazy_module_imports.sh
 
-      # Argument-evaluation-order lint. gcc (every gate here) and MSVC (the only
-      # build that ships) disagree about the order call arguments are evaluated
-      # in, so a call that both moves out of a variable and reads a member off
-      # it is correct here and wrong in the release. That is not a hypothetical:
-      # it shipped `SPOTTER SAY [position_gained] Up .` with this suite green.
-      - name: Move-then-read lint (argument evaluation order)
-        run: ./tests/integration/check_move_reads.sh
-      - name: Move-then-read lint (self-test)
-        run: ./tests/integration/check_move_reads.sh --self-test
+      # clang-tidy, only the checks in mxbmrp3/.clang-tidy. Today that is
+      # bugprone-use-after-move, for its unsequenced case: gcc (every gate here)
+      # and MSVC (the only build that ships) evaluate call arguments in different
+      # orders, so a call that moves out of a variable and reads it is correct
+      # here and wrong in the release. It shipped `SPOTTER SAY [position_gained]
+      # Up .` with this suite green. See the script header.
+      - name: clang-tidy (bugprone-use-after-move + -Wthread-safety)
+        run: ./tests/integration/check_clang_tidy.sh
       - name: Caption title-tier lint
         run: ./tests/integration/check_title_tier.sh
       - name: HUD raw-data caching lint
@@ -750,7 +788,7 @@ jobs:
               [ -e "$RUNNER_TEMP/bare/$b" ] || ln -s "$f" "$RUNNER_TEMP/bare/$b"
             done
           done
-          for t in x86_64-w64-mingw32-g++ wine clang++ cppcheck makensis node gcovr; do
+          for t in x86_64-w64-mingw32-g++ wine clang++ clang-tidy cppcheck makensis node gcovr; do
             if PATH="$RUNNER_TEMP/bare" command -v "$t" >/dev/null 2>&1; then
               echo "::error::$t is still reachable — the scrub did not work"; exit 1
             fi

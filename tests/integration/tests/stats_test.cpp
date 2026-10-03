@@ -14,7 +14,6 @@
 // slower-rejected) PB written on leave-track. Player = first active RaceAddEntry after
 // EventInit, so #10 is added first. Self-contained doctest; see run_tests.sh.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
@@ -36,7 +35,7 @@ static nlohmann::json onlyTrackBike(const std::string& statsPath) {
     return nlohmann::json();
 }
 
-TEST_CASE("stats: PB deferred off-track, flushed on RunDeinit; only a faster lap replaces it") {
+TEST_CASE("stats: PB written on RunDeinit, not while riding; only a faster lap replaces it") {
     const char* saveWin = "Z:\\tmp\\mxbmrp3-tests\\stats\\";
     const std::string statsPath =
         "Z:\\tmp\\mxbmrp3-tests\\stats\\mxbmrp3\\mxbmrp3_stats.json";
@@ -53,9 +52,8 @@ TEST_CASE("stats: PB deferred off-track, flushed on RunDeinit; only a faster lap
     host.addEntry(22, "Bob");
     host.runInit(RACE1);                     // start the player's session (stats timers)
 
-    // A PB lap (best=2 → overall best) updates the in-memory best but is DEFERRED — a PB is set
-    // at lap completion, on track, and the plugin never writes while riding. So the stats file
-    // must NOT reflect it yet.
+    // A PB lap (best=2 → overall best) updates the in-memory best but is DEFERRED: nothing is
+    // written while the player is on track (see on_track_save_test.cpp).
     host.raceLap(RACE1, /*raceNum=*/10, /*lap=*/1, /*lapTimeMs=*/90000, /*best=*/2);
     {
         auto tb = onlyTrackBike(statsPath);
@@ -74,8 +72,11 @@ TEST_CASE("stats: PB deferred off-track, flushed on RunDeinit; only a faster lap
     host.telemetry(std::numeric_limits<float>::infinity());
     host.telemetry(30.0f);
 
-    // Still nothing on disk while on track.
-    CHECK_FALSE(onlyTrackBike(statsPath).is_object());
+    // Still nothing on disk while on track, telemetry included.
+    {
+        auto tb = onlyTrackBike(statsPath);
+        CHECK_FALSE(tb.is_object());
+    }
 
     // Leaving the track (RunDeinit) flushes stats — now the file reflects the final state.
     host.runDeinit();

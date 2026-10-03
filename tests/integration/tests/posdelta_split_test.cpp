@@ -8,7 +8,6 @@
 // for each rider, then reorder the field and assert the deltas. Self-contained
 // doctest; see run_tests.sh.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

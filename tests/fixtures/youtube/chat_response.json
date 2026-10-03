@@ -1,0 +1,538 @@
+{
+ "responseContext": {
+  "serviceTrackingParams": [],
+  "mainAppWebResponseContext": {
+   "loggedOut": true
+  }
+ },
+ "continuationContents": {
+  "liveChatContinuation": {
+   "continuations": [
+    {
+     "invalidationContinuationData": {
+      "invalidationId": {
+       "objectSource": 1056,
+       "objectId": "x",
+       "topic": "chat~abcDEF12345"
+      },
+      "timeoutMs": 5234,
+      "continuation": "NEXT_TOKEN_1"
+     }
+    }
+   ],
+   "actions": [
+    {
+     "addChatItemAction": {
+      "item": {
+       "liveChatTextMessageRenderer": {
+        "id": "M-OWNER",
+        "timestampUsec": "1790000000000000",
+        "message": {
+         "runs": [
+          {
+           "text": "Welcome to the race "
+          },
+          {
+           "emoji": {
+            "emojiId": "UCabc/xyz",
+            "shortcuts": [
+             ":_mxbWheelie:"
+            ],
+            "searchTerms": [
+             "mxbWheelie"
+            ],
+            "image": {
+             "thumbnails": [
+              {
+               "url": "https://yt3.ggpht.com/e"
+              }
+             ]
+            },
+            "isCustomEmoji": true
+           }
+          },
+          {
+           "text": " go go"
+          }
+         ]
+        },
+        "authorName": {
+         "simpleText": "@TestChannel"
+        },
+        "authorExternalChannelId": "UCowner0000000000000000a",
+        "authorPhoto": {
+         "thumbnails": [
+          {
+           "url": "https://yt4.ggpht.com/x",
+           "width": 32,
+           "height": 32
+          }
+         ]
+        },
+        "authorBadges": [
+         {
+          "liveChatAuthorBadgeRenderer": {
+           "icon": {
+            "iconType": "OWNER"
+           },
+           "tooltip": "Owner",
+           "accessibility": {
+            "accessibilityData": {
+             "label": "Owner"
+            }
+           }
+          }
+         }
+        ]
+       }
+      },
+      "clientId": "c-M-OWNER"
+     }
+    },
+    {
+     "addChatItemAction": {
+      "item": {
+       "liveChatTextMessageRenderer": {
+        "id": "M-MOD",
+        "timestampUsec": "1790000000000000",
+        "message": {
+         "runs": [
+          {
+           "text": "Keep it clean "
+          },
+          {
+           "emoji": {
+            "emojiId": "🏁",
+            "shortcuts": [
+             ":chequered_flag:"
+            ],
+            "searchTerms": [
+             "chequered"
+            ],
+            "image": {
+             "thumbnails": [
+              {
+               "url": "https://www.youtube.com/s/gaming/emoji/x.svg"
+              }
+             ]
+            }
+           }
+          }
+         ]
+        },
+        "authorName": {
+         "simpleText": "@ModPerson"
+        },
+        "authorExternalChannelId": "UCmod000000000000000000a",
+        "authorPhoto": {
+         "thumbnails": [
+          {
+           "url": "https://yt4.ggpht.com/x",
+           "width": 32,
+           "height": 32
+          }
+         ]
+        },
+        "authorBadges": [
+         {
+          "liveChatAuthorBadgeRenderer": {
+           "icon": {
+            "iconType": "MODERATOR"
+           },
+           "tooltip": "Moderator",
+           "accessibility": {
+            "accessibilityData": {
+             "label": "Moderator"
+            }
+           }
+          }
+         }
+        ]
+       }
+      },
+      "clientId": "c-M-MOD"
+     }
+    },
+    {
+     "addChatItemAction": {
+      "item": {
+       "liveChatTextMessageRenderer": {
+        "id": "M-MEMBER",
+        "timestampUsec": "1790000000000000",
+        "message": {
+         "runs": [
+          {
+           "text": "Six months already"
+          }
+         ]
+        },
+        "authorName": {
+         "simpleText": "@LoyalFan"
+        },
+        "authorExternalChannelId": "UCmember000000000000000a",
+        "authorPhoto": {
+         "thumbnails": [
+          {
+           "url": "https://yt4.ggpht.com/x",
+           "width": 32,
+           "height": 32
+          }
+         ]
+        },
+        "authorBadges": [
+         {
+          "liveChatAuthorBadgeRenderer": {
+           "customThumbnail": {
+            "thumbnails": [
+             {
+              "url": "https://yt3.ggpht.com/badge",
+              "width": 16,
+              "height": 16
+             }
+            ]
+           },
+           "tooltip": "Member (6 months)",
+           "accessibility": {
+            "accessibilityData": {
+             "label": "Member (6 months)"
+            }
+           }
+          }
+         }
+        ]
+       }
+      },
+      "clientId": "c-M-MEMBER"
+     }
+    },
+    {
+     "addChatItemAction": {
+      "item": {
+       "liveChatTextMessageRenderer": {
+        "id": "M-VERIFIED",
+        "timestampUsec": "1790000000000000",
+        "message": {
+         "runs": [
+          {
+           "text": "Nice line through the whoops"
+          }
+         ]
+        },
+        "authorName": {
+         "simpleText": "@BigChannel"
+        },
+        "authorExternalChannelId": "UCverified00000000000000",
+        "authorPhoto": {
+         "thumbnails": [
+          {
+           "url": "https://yt4.ggpht.com/x",
+           "width": 32,
+           "height": 32
+          }
+         ]
+        },
+        "authorBadges": [
+         {
+          "liveChatAuthorBadgeRenderer": {
+           "icon": {
+            "iconType": "VERIFIED"
+           },
+           "tooltip": "Verified",
+           "accessibility": {
+            "accessibilityData": {
+             "label": "Verified"
+            }
+           }
+          }
+         }
+        ]
+       }
+      },
+      "clientId": "c-M-VERIFIED"
+     }
+    },
+    {
+     "addChatItemAction": {
+      "item": {
+       "liveChatTextMessageRenderer": {
+        "id": "M-PLAIN",
+        "timestampUsec": "1790000000000000",
+        "message": {
+         "runs": [
+          {
+           "text": "Café racer! åäö"
+          }
+         ]
+        },
+        "authorName": {
+         "simpleText": "@Viewer_42"
+        },
+        "authorExternalChannelId": "UCplain00000000000000000",
+        "authorPhoto": {
+         "thumbnails": [
+          {
+           "url": "https://yt4.ggpht.com/x",
+           "width": 32,
+           "height": 32
+          }
+         ]
+        }
+       }
+      },
+      "clientId": "c-M-PLAIN"
+     }
+    },
+    {
+     "addChatItemAction": {
+      "item": {
+       "liveChatTextMessageRenderer": {
+        "id": "M-EMOJIONLY",
+        "timestampUsec": "1790000000000000",
+        "message": {
+         "runs": [
+          {
+           "emoji": {
+            "emojiId": "UCabc/xyz",
+            "shortcuts": [
+             ":_mxbWheelie:"
+            ],
+            "searchTerms": [
+             "mxbWheelie"
+            ],
+            "image": {
+             "thumbnails": [
+              {
+               "url": "https://yt3.ggpht.com/e"
+              }
+             ]
+            },
+            "isCustomEmoji": true
+           }
+          }
+         ]
+        },
+        "authorName": {
+         "simpleText": "@EmojiFan"
+        },
+        "authorExternalChannelId": "UCemoji00000000000000000",
+        "authorPhoto": {
+         "thumbnails": [
+          {
+           "url": "https://yt4.ggpht.com/x",
+           "width": 32,
+           "height": 32
+          }
+         ]
+        }
+       }
+      },
+      "clientId": "c-M-EMOJIONLY"
+     }
+    },
+    {
+     "addChatItemAction": {
+      "item": {
+       "liveChatPaidMessageRenderer": {
+        "id": "M-SUPER",
+        "timestampUsec": "1790000001000000",
+        "purchaseAmountText": {
+         "simpleText": "$5.00"
+        },
+        "message": {
+         "runs": [
+          {
+           "text": "Go number 42!"
+          }
+         ]
+        },
+        "headerBackgroundColor": 4278239141,
+        "headerTextColor": 4278190080,
+        "bodyBackgroundColor": 4280150454,
+        "bodyTextColor": 4278190080,
+        "authorNameTextColor": 2315255808,
+        "timestampColor": 2147483648,
+        "isV2Style": true,
+        "authorName": {
+         "simpleText": "@GenerousFan"
+        },
+        "authorExternalChannelId": "UCsuper00000000000000000",
+        "authorPhoto": {
+         "thumbnails": [
+          {
+           "url": "https://yt4.ggpht.com/x",
+           "width": 32,
+           "height": 32
+          }
+         ]
+        }
+       }
+      }
+     }
+    },
+    {
+     "addChatItemAction": {
+      "item": {
+       "liveChatPaidMessageRenderer": {
+        "id": "M-SUPER-NOTEXT",
+        "timestampUsec": "1790000001500000",
+        "purchaseAmountText": {
+         "simpleText": "€2.00"
+        },
+        "authorName": {
+         "simpleText": "@QuietFan"
+        },
+        "authorExternalChannelId": "UCquiet00000000000000000",
+        "authorPhoto": {
+         "thumbnails": [
+          {
+           "url": "https://yt4.ggpht.com/x",
+           "width": 32,
+           "height": 32
+          }
+         ]
+        }
+       }
+      }
+     }
+    },
+    {
+     "addChatItemAction": {
+      "item": {
+       "liveChatPaidStickerRenderer": {
+        "id": "M-STICKER",
+        "timestampUsec": "1790000002000000",
+        "purchaseAmountText": {
+         "simpleText": "$1.99"
+        },
+        "sticker": {
+         "thumbnails": [
+          {
+           "url": "https://lh3.googleusercontent.com/s"
+          }
+         ],
+         "accessibility": {
+          "accessibilityData": {
+           "label": "A thumbs up"
+          }
+         }
+        },
+        "moneyChipBackgroundColor": 4280191205,
+        "authorName": {
+         "simpleText": "@StickerFan"
+        },
+        "authorExternalChannelId": "UCsticker000000000000000",
+        "authorPhoto": {
+         "thumbnails": [
+          {
+           "url": "https://yt4.ggpht.com/x",
+           "width": 32,
+           "height": 32
+          }
+         ]
+        }
+       }
+      }
+     }
+    },
+    {
+     "addChatItemAction": {
+      "item": {
+       "liveChatMembershipItemRenderer": {
+        "id": "M-NEWMEMBER",
+        "timestampUsec": "1790000003000000",
+        "headerSubtext": {
+         "runs": [
+          {
+           "text": "Welcome to "
+          },
+          {
+           "text": "Test Channel"
+          },
+          {
+           "text": "!"
+          }
+         ]
+        },
+        "authorName": {
+         "simpleText": "@NewMember"
+        },
+        "authorExternalChannelId": "UCnewmember0000000000000",
+        "authorPhoto": {
+         "thumbnails": [
+          {
+           "url": "https://yt4.ggpht.com/x",
+           "width": 32,
+           "height": 32
+          }
+         ]
+        }
+       }
+      }
+     }
+    },
+    {
+     "addChatItemAction": {
+      "item": {
+       "liveChatViewerEngagementMessageRenderer": {
+        "id": "M-ENGAGE",
+        "timestampUsec": "1790000000000000",
+        "message": {
+         "runs": [
+          {
+           "text": "Welcome to live chat! Remember to guard your privacy."
+          }
+         ]
+        }
+       }
+      }
+     }
+    },
+    {
+     "addChatItemAction": {
+      "item": {
+       "liveChatSponsorshipsGiftPurchaseAnnouncementRenderer": {
+        "id": "M-GIFT",
+        "authorExternalChannelId": "UCgift00000000000000000"
+       }
+      }
+     }
+    },
+    {
+     "addLiveChatTickerItemAction": {
+      "item": {
+       "liveChatTickerPaidMessageItemRenderer": {
+        "id": "T-1"
+       }
+      },
+      "durationSec": "120"
+     }
+    },
+    {
+     "markChatItemAsDeletedAction": {
+      "deletedStateMessage": {
+       "runs": [
+        {
+         "text": "[message retracted]"
+        }
+       ]
+      },
+      "targetItemId": "M-OLD1"
+     }
+    },
+    {
+     "markChatItemsByAuthorAsDeletedAction": {
+      "deletedStateMessage": {
+       "runs": [
+        {
+         "text": "[message deleted]"
+        }
+       ]
+      },
+      "externalChannelId": "UCspammer000000000000000"
+     }
+    }
+   ]
+  }
+ },
+ "trackingParams": "x"
+}

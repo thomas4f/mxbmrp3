@@ -86,9 +86,9 @@ enum class Signal : uint8_t {
     Palindrome,           // flag: a lap time that reads the same backwards
     DejaVu,               // flag: two identical lap times in one session
     RageQuits,            // count: races left before the finish
-    BackMarker,           // max-ever: laps down at a race's end (three is the row)
+    BackMarker,           // max-ever: laps down at a race's end (one is the row)
     BakersDozen,          // max-ever: crashes in one session (thirteen is the row)
-    SteadyHands,          // max-ever: seconds RIDDEN in one session without a crash (1800 = the row; pits and parking pause it)
+    SteadyHands,          // max-ever: seconds RIDDEN since the last crash (1800 = the row; pits, menus, session changes and restarts pause it)
     ChainCrash,           // flag: a chain of five tricks ended by a crash
     ChainLost,            // max-ever: points an unfinished chain was worth when it was lost
     DayStreak,            // max-ever: consecutive local days shown up on (Regular's days, in a row)

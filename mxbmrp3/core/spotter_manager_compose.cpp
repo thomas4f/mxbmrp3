@@ -751,12 +751,22 @@ void SpotterManager::previewVoice(bool ttsOnly) {
     }
     if (text.empty()) return;   // a pack may mute its own voice_preview
 
+    // The same audio ladder as emitCue: the pack's own mix, then its own whole
+    // clip, then the guaranteed-chunk stitch. Skipping the wav rung played a
+    // pack's `voice_preview_wav` as nothing: the stitch below needs rider.wav,
+    // point.wav and num_965's chunks, a minimal pack ships none of them, so the
+    // mix missed a chunk and the preview fell back to the TTS voice - while the
+    // same pack played its recordings fine on track.
     std::vector<std::string> tokens;
+    const std::string* wavName = nullptr;
     const auto mx = m_pack.mixes.find("voice_preview");
+    const auto wv = m_pack.wavs.find("voice_preview");
     if (ttsOnly) {
         // leave empty: fall through to say() below
     } else if (mx != m_pack.mixes.end()) {
         tokens = mx->second;
+    } else if (wv != m_pack.wavs.end() && !wv->second.empty()) {
+        wavName = &wv->second;
     } else if (!m_pack.wavs.empty() || !m_pack.mixes.empty()) {
         // A RECORDED pack with no voice_preview row of its own: stitch one from the
         // chunks the format guarantees. Gated on the pack having audio at all,
@@ -768,6 +778,23 @@ void SpotterManager::previewVoice(bool ttsOnly) {
         tokens, kPreviewRider, kPreviewComposed, kPreviewTenths,
         /*penaltySecs=*/-1, /*lapsLeft=*/-1, /*posValue=*/-1);
 
+#if defined(MXBMRP3_TEST_BUILD)
+    // The same seam emitCue records, in the same shape, so a test can tell the
+    // pack's recording from the TTS that stands in for it.
+    m_lastAudioRoute = "voice_preview|";
+    if (!mixFiles.empty()) {
+        m_lastAudioRoute += "mix:";
+        for (size_t i = 0; i < mixFiles.size(); ++i) {
+            if (i) m_lastAudioRoute += "+";
+            m_lastAudioRoute += mixFiles[i];
+        }
+    } else if (wavName) {
+        m_lastAudioRoute += "wav:" + *wavName;
+    } else {
+        m_lastAudioRoute += "tts";
+    }
+#endif
+
     // No cue-log entry and no subtitle: this is a settings-menu noise, not
     // something that happened in the race, and it must not land in the feed
     // the subtitle widget replays.
@@ -778,6 +805,8 @@ void SpotterManager::previewVoice(bool ttsOnly) {
         cue.mixDir = m_packDir;
         cue.mixChunks = mixFiles;
         enqueue(std::move(cue));
+    } else if (wavName) {
+        playWav(m_packDir + "\\" + *wavName);
     } else {
         say(text);   // no pack (TTS mode), or a pack that resolved to nothing
     }

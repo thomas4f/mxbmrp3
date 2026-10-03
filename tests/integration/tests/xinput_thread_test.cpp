@@ -13,7 +13,6 @@
 // the policy logic and quantization survived the refactor, and the I/O thread's
 // start/stop/join lifecycle is exercised by every test's startup/shutdown.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

@@ -97,6 +97,7 @@ var CONFIG = {
     // current lap = "Lap"), "split" (the current sector = "Sector"). Keys stay
     // "start"/"sf"/"split" to match the plugin's JSON.
     showPosDelta: true,      // Show positions gained/lost column (races only)
+    showCategory: false,     // Show the rider's class ("MX1", "MX2 OEM") between name and gap
     posDeltaRef: "sf",       // +/- reference: "start" | "sf" | "split" (default: Lap)
     hideDns: false,          // Hide DNS riders from standings
     maxRiders: 20,           // Max visible standings rows (0 = show all)
@@ -362,7 +363,7 @@ var BASE_URL = (location.protocol === "file:")
     : "";
 var SSE_URL = BASE_URL + "/api/events";
 
-var LAP_PLACEHOLDER = "-:--.---";
+var LAP_PLACEHOLDER = "-";
 
 // Rider states (matches Unified::EntryState in plugin)
 var STATE_DNS = 1;

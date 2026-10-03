@@ -26,7 +26,6 @@ PrestigeWidget::PrestigeWidget() {
     // card either: there is no block under a title for a theme to frame, only
     // the picture, and a card behind it would put a slab round the badge.
     m_textureRequired = true;
-    DEBUG_INFO("PrestigeWidget created");
     setDraggable(true);
     m_quads.reserve(1);   // the badge, drawn as the panel background
     m_strings.reserve(0);
@@ -95,7 +94,7 @@ void PrestigeWidget::rebuildRenderData() {
     const ScaledDimensions dim = getScaledDimensions();
     const float badge = dim.fontSizeLarge * BADGE_LINES;
 
-    BaseHud::PanelWant want;
+    PanelWant want;
     // Square on screen: the height is the badge, so the width is that height
     // divided by the aspect ratio (the same conversion the settings tab's tier
     // tile and the settings button's box make). The artwork is square, and

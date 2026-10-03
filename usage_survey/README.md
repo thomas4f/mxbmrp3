@@ -6,25 +6,99 @@ A static dashboard derived from the plugin's [Aptabase](https://aptabase.com) te
 Aptabase provides, merged with the rollup described below. The raw exports are **not**
 kept in the repo - only the generated report and that rollup are.
 
+The same run writes [`index.html`](index.html), the report as an interactive page for
+[GitHub Pages](https://thomas4f.github.io/mxbmrp3/usage_survey/): same text, with the charts
+inlined so hovering one reads out its values. `REPORT.md` stays the version for browsing the
+repo, where GitHub shows charts as flat images. The page is built by
+[`tools/analytics_page.py`](../tools/analytics_page.py); `--demo DIR` writes a sample to
+look at without any data.
+
+It also writes [`badge.json`](badge.json), the unique-installs badge at the top of the main README
+(shields.io's endpoint format, the same lifetime total as the report's Unique installs tile). The
+README's badge URL never changes, so the number follows the report without the job ever
+editing the README; it updates publicly when the mirror is pushed, like the page it links to.
+
+The report's Downloads and Releases figures and its release-line table read [`downloads.json`](downloads.json),
+the public releases' dates and installer + zip download counts, which the same job refreshes with
+[`tools/release_downloads.py`](../tools/release_downloads.py) before rendering.
+
 ## Regenerate
 
-1. In Aptabase, export **just the newest month** (CSV or Parquet - the tool reads either,
-   and they can be mixed in one run; Aptabase withdrew the Parquet export at one point).
-   Every earlier month is already in [`rollup/`](rollup/).
-2. Run the generator (Windows `&`, or one command per line):
+**This is automated.** [`.github/workflows/usage-survey.yml`](../.github/workflows/usage-survey.yml)
+runs daily in the private repo: it fetches the days the rollup does not yet have, re-renders
+the report, and commits only when something actually changed. Nothing below is needed unless
+you are backfilling, debugging, or the workflow is broken.
 
-   ```
-   python3 tools/analytics_report.py path\to\mxbmrp3release2026XX.csv
-   ```
+The public mirror gets `usage_survey/` as part of `mirror.yml`'s squashed tree, so the daily
+commits never reach it.
 
-   Pass any number of files (or a glob) - they're merged and de-duplicated, and a day the
-   export covers replaces that day in the rollup, so re-running a month you already have
-   is safe. The report's data window is taken from the data itself, not the filenames.
-   Output defaults to `usage_survey/`; override with `--out`.
+### Fetching by hand
 
-3. Commit the regenerated `usage_survey/REPORT.md`, `usage_survey/charts/*.svg` **and**
-   `usage_survey/rollup/*`. Do **not** commit the raw export (both `.csv` and `.parquet` are
-   git-ignored).
+[`tools/analytics_fetch.py`](../tools/analytics_fetch.py) pulls the export over HTTP, one
+request per UTC day, and replaces the dashboard download entirely:
+
+```
+export APTABASE_AUTH_SESSION=...   # the `auth-session` cookie of the shared read-only account
+export APTABASE_APP_ID=...         # the app's NanoId from /api/_apps, NOT the A-EU-… key
+python3 tools/analytics_fetch.py --since 2026-09-01
+```
+
+With no `--since` it resumes from the rollup's own high-water mark, so a missed run widens
+the next window instead of leaving a hole. Files land in `usage_survey/_exports/` (git-ignored).
+
+Three properties of Aptabase's export endpoint drive that script's design, and all three are
+pinned by `--selftest` - read its header before changing it:
+
+- It answers **HTTP 200 even when it failed** (a Tinybird limit error arrives as a ~230-byte
+  JSON body), so responses are validated by content, never by status.
+- The CSV path can **truncate mid-stream, still at 200** - it sets the status before paging,
+  so a failed page cannot switch it to a 500. Parquet cannot hide this: its `PAR1` footer is
+  written last, so a short file fails to open. That is why parquet is the default, ahead of
+  it also being ~17x smaller.
+- Aptabase Cloud runs the query on **Tinybird, which caps a result at 100 MiB**. The parquet
+  path is a single unpaginated query, so a fortnight already exceeds it. One day per request
+  stays far under that *and* under the CSV path's 100k-row pagination.
+
+### Generating the report
+
+```
+python3 tools/analytics_report.py usage_survey/_exports/*.parquet
+```
+
+Pass any number of files (or a glob) - they're merged and de-duplicated, and a day the
+export covers replaces that day in the rollup, so re-running a day you already have is safe.
+The report's data window is taken from the data itself, not the filenames. Output defaults
+to `usage_survey/`; override with `--out`.
+
+### Previewing a generator change, with no credentials
+
+The rollup is committed, so the whole page rebuilds locally from it - no Aptabase
+fetch, no secrets, no workflow run:
+
+```
+mkdir -p /tmp/preview && ln -s "$PWD/usage_survey/rollup" /tmp/preview/rollup
+python3 tools/analytics_report.py --no-rollup-write --out /tmp/preview
+```
+
+This is how a change to the generator should be looked at before it lands. It covers
+the rollup's window only (through its last checkpoint, not the last day fetched), which
+is enough to judge layout and wording and not enough to quote figures from.
+
+**Only the default branch commits `usage_survey/`.** A run on a feature branch
+regenerates and prints the diff but writes nothing - see the guard on the workflow's
+commit step. Output is generated, so two branches writing it means every merge
+conflicts in `REPORT.md` and a dozen charts, none of which can be resolved by hand.
+
+`--no-rollup-write` reads the rollup but leaves it alone. The daily job runs this way: the
+rollup's gzip shards are rewritten wholesale and git cannot delta a compressed blob, so
+committing them every day would add ~690 MB/year to a repository whose entire history is
+~32 MB. The rollup is checkpointed on the 1st instead. The generator is deterministic -
+re-rendering unchanged data reproduces `REPORT.md`, `index.html` and every chart byte-for-byte - so a
+run with nothing new produces no diff at all.
+
+Commit the regenerated `usage_survey/REPORT.md`, its `index.html`, `usage_survey/charts/*.svg` **and**, on a
+checkpoint run, `usage_survey/rollup/*`. Do **not** commit the raw export (both `.csv` and
+`.parquet` are git-ignored).
 
 ## The rollup (why you only need the newest export)
 
@@ -56,13 +130,16 @@ whole pipeline on synthetic data with no export on hand.
 
 ## What it measures (and how to read it)
 
-It opens with a short **Highlights** TL;DR (reach, platform, repeat use, top HUD, stability),
-then the detail: what matters to the **plugin dev / users** (installs, activity per game,
-versions, geography, OS, repeat usage, feature/HUD/widget adoption) and to the **upstream game
-dev** (crash rate, crash categories, the most common crashes with triggers + workarounds, and
-an uncatalogued tail). Each crash is listed once - named crashes by name, the rest by fault
-signature - so the two crash tables don't overlap. Count charts label each bar with its count
-and share; adoption charts label with share then count. Two things are worth internalising:
+It opens with the header tiles (installs, average active per day, launches, countries), then
+the detail: what matters to the **plugin dev / users** (games, activity, repeat usage,
+retention, versions, geography, OS, feature/HUD/widget adoption) and to the **upstream game
+dev** (crash rate by game and by plugin version, crash categories, the most common crashes
+with triggers + workarounds, and an uncatalogued tail). There is no Highlights section: it
+lifted the top row out of tables directly below it. Each fact is stated once - a section's
+base once, a chart's title once (the SVG carries it, and the Markdown alt repeats it), and
+each crash once, named crashes by name and the rest by fault signature, so the two crash
+tables don't overlap. Count charts label each bar with its count and share; adoption charts
+label with share then count. Two things are worth internalising:
 
 - **`install_id`, not `user_id`.** Aptabase's `user_id` is a privacy-preserving hash that
   **rotates daily** (~8 distinct ids per real install in the sample data), so it badly

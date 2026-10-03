@@ -46,34 +46,15 @@ mxbmrp3/
 │   └── diagnostics/            # Debugging tools
 │       ├── logger.*            # Debug logging to file
 │       └── timer.h             # Performance measurement
-├── mxbmrp3_data/               # Runtime assets (discovered dynamically)
-│   ├── fonts/                  # .fnt files (bitmap fonts)
-│   ├── textures/               # .tga files (HUD backgrounds with variants)
-│   ├── icons/                  # .tga files (rider icons for map/radar)
-│   └── web/                    # Web overlay (HTML/CSS/JS served by HttpServer)
-│       └── logos/              # Logo slideshow PNGs (auto-detected by /api/logos)
-├── tests/                      # All automated tests (Layers 1-6)
-│   ├── unit/                   #   Layer 1: pure-logic unit tests (doctest, no game)
-│   ├── integration/            #   Layers 2 & 3: mingw cross-build + Wine
-│   │   ├── harness/            #     PluginHost, tape.h, assertions, doctest
-│   │   ├── tests/              #     doctest integration tests (+ fixtures/ tapes)
-│   │   └── tapes/              #     full master captures (git-ignored)
-│   ├── web/                    #   Layer 4: Playwright overlay tests (?demo)
-│   └── asan/                   #   Layer 5: ASan/UBSan memory-safety harness
-├── tools/                      # Dev tools. One file = a script, a directory = a tool
-│   ├── check_*.py gen_*.py     #   CI checks and fixture/report generators
-│   ├── *_report.py             #   Analytics, benchmark, director and minidump analysis
-│   ├── replay/                 #   Real-time tape replay / overlay preview (MSVC)
-│   ├── fontgen/                #   Portable PiBoSo .fnt bitmap-font generator (MSVC + build.sh)
-│   ├── hud_window/             #   Companion-window demo/screenshot harness (headless Wine)
-│   ├── spottergen/ themeslice/ #   Spotter-reference and theme-slice generators
-│   └── probetheme/ trnfix/     #   Theme cost probe; the trainer repair page
+├── mxbmrp3_data/               # Runtime assets and packs, discovered by AssetManager;
+│                               #   web/ is the overlay HttpServer serves
+├── tests/                      # All automated tests; layout and layers in TESTING.md
+├── tools/                      # Dev tools, each documented in its own header/README
 ├── assets/                     # Source art (helmet .pdn, icon .svg)
 ├── crash_analysis/             # Crash catalogue (known_game_crashes.json + docs)
 └── CMakeLists.txt              # Gates + the plugin definition (mxbmrp3/CMakeLists.txt);
                                 #   generates build/msvc/mxbmrp3.sln for Visual Studio
 ```
-See **[`TESTING.md`](TESTING.md)** for the test layers.
 
 ## The Big Picture
 
@@ -381,7 +362,8 @@ Features:
 - Context-based API: set current track+bike once, then telemetry-rate calls avoid lookups
 - Migrates legacy data from the old `mxbmrp3_personal_bests.json` and `mxbmrp3_odometer_data.json` files
 - Cached global totals (recomputed on load/clear, updated incrementally)
-- Dirty flag with periodic save (not every telemetry tick)
+- Saved on leaving the track, at `Shutdown()` and by a few in-place actions (crash tally reset, prestige), never mid-ride; each `save()` also writes the PB gap traces (`core/pb_trace_store.*`, `{save_path}/mxbmrp3/mxbmrp3_pb_traces.json`), and `clearAll()` clears them
+- Every persisted file goes through `core/atomic_file_writer.*` (atomic replace, disk I/O on one worker that also flushes the log)
 
 **Non-finite hardening.** The persisted floats (per-bike odometer, `totalDistanceM`, `topSpeedMs`) are integrated from `speed × dt`, and the `>=`/`>` comparisons that gate them reject NaN but not `+Inf` - so one bad physics sample corrupts state that survives restarts. `updateTelemetry` sanitises at the sample, `finiteOrZero()` in `stats_manager_persistence.cpp` heals an already-corrupted file on load, and the reasoning sits at both. **Any new persisted float needs the same guard at both ends** - that is a Maintenance Invariant in CLAUDE.md, pinned by `stats_test.cpp` and `odometer_test.cpp`.
 
@@ -454,17 +436,13 @@ Top-level Structured Exception Handling (SEH) filter for unhandled hardware faul
 - Chains to the previously-installed filter (typically the host's own or the OS default), so MX Bikes' crash dialog / Windows Error Reporting still runs
 - Uninstalled in `PluginManager::shutdown()` so the OS doesn't hold a function pointer into our DLL after unload
 
-**Minidump contents:**
-- `MiniDumpNormal | MiniDumpWithThreadInfo | MiniDumpWithIndirectlyReferencedMemory | MiniDumpWithUnloadedModules`
-- Includes exception record (code, address, context), thread stacks, module list, heap pages locals point into
-- Deliberately excludes full memory (would produce multi-GB dumps)
-
-**Design constraints inside the filter:**
-- The heap may be corrupt at fault time, so the filter uses only stack-allocated buffers and Win32 calls. No `std::string`, no `new`, no `Logger`.
-- `dbghelp.lib` is linked implicitly via `#pragma comment(lib, "dbghelp.lib")` so the DLL is mapped before any crash, not lazily loaded inside the filter.
-- Re-entry guard via `InterlockedExchange(&s_dumping, 1)` prevents infinite recursion if `MiniDumpWriteDump` itself faults. The same guard also serializes concurrent SEH faults across threads.
-- The filter explicitly does NOT call `Logger::warn()`. `Logger::log()` holds a mutex, and `MiniDumpWriteDump` suspends other threads to walk their stacks; if any thread held the log mutex at fault time, the filter would wedge.
-- Transactional install/uninstall: `PluginManager::initialize()` wraps everything after `CrashHandler::install` in `try/catch(...)`. If init throws, the catch uninstalls the filter and rethrows. Otherwise the game would unload the DLL while the OS still held a function pointer into it.
+**Inside the filter** the heap may be corrupt and other threads may hold locks, so it
+uses only stack buffers and Win32 calls behind a re-entry guard. The minidump flags,
+that rule, and the one try-lock Logger flush it allows are commented in
+`core/crash_handler.cpp`; the next-launch `pending_crash.json` report is in its header.
+Install is transactional: if `PluginManager::initialize()` throws after
+`CrashHandler::install`, the filter is uninstalled before the exception leaves, so the
+OS never holds a pointer into an unloaded DLL.
 
 **What it does NOT do:**
 - Prevent crashes. It runs *after* a fault has fired and the process is already going down. It just leaves a `.dmp` behind for debugging.
@@ -474,19 +452,15 @@ Top-level Structured Exception Handling (SEH) filter for unhandled hardware faul
 
 A standalone, in-process OS window that renders the plugin's own HUD **outside** the game, so a player can drag it to a second monitor (telemetry on one screen, standings on another). It is **not** a network mirror and shares nothing with the web overlay - it reads the plugin's live render primitives directly from memory and draws them itself.
 
-**How it renders (`hud_sw_renderer`):** the game normally hands our quads/strings to its own engine to draw. The companion has no engine, so `hud_sw_renderer` is a from-scratch software rasterizer for the exact same primitives: scanline convex-quad fill, affine (rotation-capable) sprite blit with bilinear atlas sampling, and text drawn from the game's own PiBoSo `.fnt` bitmap fonts (see `tools/fontgen`). Crucially it reproduces the game's **texture stage**: a texel is modulated by the quad's color (`out.rgb = tex.rgb × color.rgb`, `coverage = tex.a × color.a`) so per-quad **opacity** and the white-icon **colorization** the game does come out identical - a divergence here shows up as icons that ignore opacity or never tint. Presented via a plain Win32 window (`StretchDIBits`), natively on Windows and under Proton/Wine. Normalized HUD coords map into a **centered 16:9 viewport** (`Image::setViewport`) so the HUD keeps its aspect and never distorts in a non-16:9 window - but the renderer draws into the **full client**, so elements positioned outside `[0,1]` (negative / past 1, exactly as the in-game HUD allows) land in the surrounding area instead of being clipped to a letterbox. The window is freely resizable to any shape; only the *content scale* is 16:9, not the usable area.
+**How it renders.** The companion has no engine, so it draws the same quads/strings the game would. It tries a D3D11 backend first (`core/hud_gpu_renderer.*`, INI-only `[Advanced] hwAccel`, default on) and falls back to the from-scratch software rasterizer `hud_sw_renderer` on ANY init or runtime failure, so the worst case equals software-only. Both consume the same `hudsw::Frame`, share the `.tga`/`.fnt` decoders and text-layout math (`core/render_asset_decode.h`), and reproduce the game's **texture stage** (texel × quad colour), so per-quad opacity and white-icon tinting match the game. Normalized coords map into a centered 16:9 *scale* viewport while the renderer draws into the **full client**, so elements outside `[0,1]` land in the surrounding area instead of a letterbox. Each renderer's header documents its own mechanism; `hud_gpu_renderer.h` also records why Direct2D, DirectXTK and `UpdateLayeredWindow` were rejected.
 
-**Threading:** the game thread calls `submit()` once per `Draw` with a cheap POD copy of the current frame (quads/strings + the font/sprite registration tables) under a mutex. A dedicated **window thread** owns the Win32 message loop and renders the latest snapshot on its own cadence - so the window stays live and interactive **in menus**, when the game issues no `Draw` calls. Enabled via the `[Display]` INI target; identified by its window class (`isCompanionHwnd()`) so input can tell the two surfaces apart.
+**Threading:** the game thread calls `submit()` once per `Draw` with a cheap POD copy of the current frame under a mutex; a dedicated **window thread** owns the Win32 message loop and renders the latest snapshot on its own cadence, so the window stays live **in menus**, when the game issues no `Draw` calls. Focus (it never takes it), cursor hiding, geometry persistence and the close-button fallback to In-game are handled in `companion_window.cpp` and commented there.
 
-**Window behavior:** persisted geometry + maximized state (window thread writes as the user moves/resizes; game thread reads at save time), **never takes focus** from the game (`WS_EX_NOACTIVATE` is kept for the window's whole life, not cleared after show - input is routed by the window under the cursor, so the companion never needs activating to interact with), hides the OS cursor over its client area (the plugin draws its own), and closing it (the X button) falls the display target back to In-game via a consumed `consumeUserClosed()` flag.
-
-**Per-surface decoupling (the "two settings menus" model):** the companion is not a dumb clone - each HUD carries an *optional second instance* of its on/off + position (`base_hud.h`: `m_bCompanionConfigured` / `m_bCompanionVisible` / `m_fCompanionOffsetX/Y`). While a HUD is unconfigured its `getCompanion*()` accessors **fall back to the game values** (so both windows look identical, and a game-side change is reflected); the first companion-side edit **snapshots** the game state into the companion instance and thereafter the two are independent. `HudManager::collectSurface(companion)` builds the companion frame as a **second pass** (into `m_companionQuads`/`m_companionStrings`) gated on `CompanionWindow::isEnabled()` - `collectSurface(false)` stays byte-identical to the old single-frame game path. Which surface the settings menu / a drag edits is chosen by `InputManager::getActiveSurface()` (the focused window). Everything else - colors, fonts, sizes, columns - stays shared (one profile).
+**Per-surface decoupling (the "two settings menus" model):** each HUD carries an *optional second instance* of its on/off + position (`base_hud.h`), which falls back to the game values until the first companion-side edit snapshots them. `HudManager::collectSurface(companion)` builds the companion frame as a **second pass** gated on `CompanionWindow::isEnabled()`, and `InputManager::getActiveSurface()` picks which surface the settings menu or a drag edits. Everything else - colours, fonts, sizes, columns - stays shared (one profile). The four places a new per-surface setting must be wired are CLAUDE.md's *Maintenance Invariants*.
 
 **Feature gating:** runtime only (the `[Display]` target: In-game / Companion / Both). Wired to analytics as `feat_companion`.
 
-**GPU backend (`core/hud_gpu_renderer.*`, INI-only `[Advanced] hwAccel`, default on):** both windows try a D3D11 backend first and fall back to the software rasterizer on ANY failure (init or runtime), so the worst case equals the software-only behavior. It consumes the same `hudsw::Frame`, and shares the `.tga`/`.fnt` decoders and the text-layout math with the software path (`core/render_asset_decode.h` - parity by construction, extracted verbatim and pinned by the sw renderer's golden-frame tests). One shader computes texel × quad color - the game's texture stage - so tint/opacity semantics are identical; what it adds is fill cost measured in microseconds instead of milliseconds (the software path was fill-rate bound: ~3.2 ms/frame at 1080p themed), 4x MSAA edge AA, and bilinear sampling. d3d11.dll/d3dcompiler_47.dll load dynamically, so the plugin gains no import that could fail at DLL load. It has ONE present path - a blt-model swapchain for the companion window. It used to have three: a **DirectComposition** composition swapchain and an `UpdateLayeredWindow` fallback existed for the in-game overlay window, and went with it when Direct GL Rendering superseded that approach. One measurement from that era is worth keeping even though the code is gone: ULW's win32k locking SERIALIZED the game thread, taking the plugin's game-thread cost from 0.09 to 1.6 ms under a ~400 fps game, which is why DComp existed at all - anyone tempted to present a HUD through `UpdateLayeredWindow` should know that first. Its header records why Direct2D and DirectXTK were rejected.
-
-**In-game overlay renderer - REMOVED.** A transparent click-through window that drew the game-surface frame on its own thread once lived here, and it worked: roughly +30% fps. It was removed when `hud_gl_renderer` (§13a) reached the same goal by drawing inside the game's OWN GL context. The reason is worth keeping: every bug that path ever had - capture hooks, plane promotion, z-order, taskbar, focus, the monitor-sized-window scanout problem it had to grow the game window a pixel to defeat - existed *because it was a second window*. Those are not a bug list you finish; they are a category you leave. In-context GL does not fix them, it makes them unrepresentable. The `[Advanced] overlayInGame` and `overlayRefreshHz` keys are accepted and ignored so an old INI does not look corrupt.
+**In-game overlay renderer - REMOVED.** A transparent click-through window that drew the game-surface frame on its own thread once lived here (roughly +30% fps). It was removed when `hud_gl_renderer` (§13a) reached the same goal inside the game's OWN GL context: every bug that path had - capture hooks, plane promotion, z-order, taskbar, focus, monitor-sized-window scanout - existed *because it was a second window*, and in-context GL makes that category unrepresentable. The `[Advanced] overlayInGame` and `overlayRefreshHz` keys are accepted and ignored so an old INI does not look corrupt.
 
 ### 13a. Direct GL Rendering - the in-game HUD, drawn by us (`core/hud_gl_renderer.*`)
 
@@ -535,17 +509,17 @@ An **opt-in** mode (`[Advanced] pluginThread=1`, **off by default**) that moves 
 
 An audio **spotter**: short spoken callouts over the game audio, the way a crew chief talks on the radio. It is a global (per-install) feature in the `[Spotter]` INI section, and it is the largest subsystem added since the HTTP server - the hub class plus ten pure headers, each with its own tests.
 
-**Where the pieces are.** `spotter_manager.*` is the hub and the only stateful part. Everything it decides is delegated to pure headers, which is why the logic is unit-testable without a game: `spotter_phrase.h` (event → words, and the cue **categories** that decide which settings switch mutes a cue), `spotter_cue_pack.h` (the pack format), `spotter_mix.h` (the chunk mixer), `spotter_hazard.h` (proximity / alongside / blue-flag edges), `spotter_milestones.h`, `spotter_pace.h` (gaps and trends), `spotter_vars.h` (the `{placeholder}` registry), `spotter_queue.h`, `spotter_stretch.h`, `spotter_tts_voice.h`. Read the hub's header first: it maps them.
+**Where the pieces are.** `spotter_manager.*` is the hub and the only stateful part; everything it decides is delegated to the pure `core/spotter_*.h` headers, which is why the logic is unit-testable without a game. The hub's header maps them, and also owns the output ladder (pack mix, pack wav, SAPI TTS - and why a default install is silent under Wine/Proton), the threading model, the volume path and the backend's single-channel limits.
 
 **One emit path, one category gate.** Every cue goes through `emitCue(key, category, vars…)`. The category a cue is emitted *as* is the same one that mutes it, by construction - this used to be checked at each of twenty-odd emitters and three had drifted, leaving settings switches that did not silence what they named. Ambient variables (position, gaps, rider names) are filled in `emitCue` from live state rather than carried by each event, so a new variable reaches every template at once.
 
-**Three output rungs**, all zero-dependency Windows built-ins, tried in order per cue: a pack's stitched **mix** (chunks assembled from memory), a pack's whole **wav**, or **SAPI TTS**. The bundled `default` pack is text only, so out of the box every cue lands on TTS. Worth knowing: **SAPI does not exist under Wine/Proton**, so on those systems a default install is silent and a recorded pack is what makes it audible.
+**Packs are content, not configuration.** `mxbmrp3_data/spotters/<name>/spotter.ini` is a pack's whole vocabulary. A pack is chosen by NAME, never by discovery index (the asset-pack invariant in CLAUDE.md), and every pack type - theme, gamepad, pit board, gauges, voice - opens its ini with the same `[pack]` section and takes the same optional `base =`. `docs/spotter.md` is the author's guide; `docs/spotter-reference.md` is generated from the registry by `tools/spottergen`, so the documented cue set cannot drift from the code.
 
-**Packs are content, not configuration.** `mxbmrp3_data/spotters/<name>/spotter.ini` is a pack's whole vocabulary - one line per cue key, `_2`/`_3` suffixes for variants picked at random, `[optional groups]` that drop when their variables are empty. A pack is chosen by NAME, never by discovery index (the asset-pack invariant in CLAUDE.md), and every pack type - theme, gamepad, pit board, gauges, voice - opens its ini with the same `[pack]` section and takes the same optional `base =`. `docs/spotter.md` is the author's guide; `docs/spotter-reference.md` is generated from the registry by `tools/spottergen`, so the documented cue set cannot drift from the code.
+**Threading.** All audio runs on one worker started lazily at the first cue, so the 480fps game thread never touches COM, disk or a speech engine. The worker is joined by the orchestrated `PluginManager::shutdown()`, never by the destructor, per the DLL-detach invariant. Tests are catalogued in TESTING.md (`test_spotter_*.cpp`, `spotter_test.cpp`).
 
-**Threading.** All audio runs on one worker started lazily at the first cue, so the 480fps game thread never touches COM, disk or a speech engine; `say()`/`playWav()` enqueue under a mutex and notify. Speech is serialised (a spotter talking over itself is noise); wav playback is fire-and-forget through winmm, which gives **one channel, no per-sound volume and no ducking** - a backend limit, not a design choice, so the `[Spotter]` volume applies to TTS only. The worker is joined by the orchestrated `PluginManager::shutdown()`, never by the destructor, per the DLL-detach invariant.
+### 17. Stream Chat (`core/twitch_*`, `core/youtube_*`, `core/chat_*.h`, `hud/stream_chat_hud.*`)
 
-**Tests.** Pure logic in `tests/unit/test_spotter_*.cpp`; end-to-end cue behaviour in `tests/integration/tests/spotter_test.cpp`, which drives real callbacks and reads the chosen cue through a test hook rather than listening to audio. `test_spotter_pack_census.cpp` asserts every key in the registry is actually emitted by something - the check that catches a cue wired up, documented, shipped, and firing never.
+Read-only, no login: Twitch over an anonymous IRC WebSocket, YouTube through the chat popout's unofficial web interface (when that changes the status reads Unavailable; the UI never promises a fix). Each manager's lazily started worker does the network, parsing and UTF-8 to CP1252 conversion, and hands messages to the game thread through a bounded queue behind an atomic flag. Blocking WinHTTP calls are cancelled by closing their handle; both workers are joined by `PluginManager::shutdown()`.
 
 ## The HUD System
 
@@ -586,7 +560,7 @@ Abstract base class that all HUDs inherit from. Provides:
 - `TelemetryHud` - Throttle/brake/suspension graphs
 - `PerformanceHud` - FPS and plugin-time graphs
 - `RadarHud` - Proximity radar with nearby rider alerts
-- `PitboardHud` - Pitboard-style lap/split information. Ships as a **pack** (`pitboards/<name>/` = art + `pitboard.ini` of its proportions and row offsets), selected by name - what makes a custom board portable: its geometry used to live in the *user's* settings file, and its aspect was a compiled constant
+- `PitboardHud` - Pitboard-style lap/split information. Ships as a **pack** (`pitboards/<name>/` = art + `pitboard.ini`), selected by name
 - `RecordsHud` - Track records from online databases (CBR or MXB-Ranked providers)
 - `TimingHud` - Split time comparison popup (center display)
 - `GapBarHud` - Live gap visualization bar with ghost position marker
@@ -598,6 +572,7 @@ Abstract base class that all HUDs inherit from. Provides:
 - `FriendsHud` - Steam friends in the same game, their server/track, and who has joined your session
 - `EventLogHud` - Timestamped feed of race events with per-type filters (`m_enabledEvents` bitmask)
 - `RumbleHud` - Real-time monitor of the controller rumble motor outputs and effect values (a window onto the rumble system)
+- `StreamChatHud` - Twitch and YouTube chat together, read-only (see §17)
 
 **Overlays** (full-screen, telemetry-driven):
 - `HelmetOverlayHud` - First-person helmet overlay with visor tint, tilt (lean angle) and vibration (suspension). Global settings in `[HelmetOverlay]` INI section. Registered first to draw behind all other HUDs.
@@ -609,15 +584,15 @@ Abstract base class that all HUDs inherit from. Provides:
 - `TimeWidget` - Session time remaining
 - `ClockWidget` - Real-time clock
 - `GearWidget` - Current gear indicator
-- `CrashWidget` - A resettable crash tally for streaming. Deliberately NOT a view of StatsManager's per-track+bike `crashCount`: it counts across practice, races, server hops and restarts (`GlobalStats::crashTally`) and moves only on the widget's Reset button or the `CRASH_RESET` hotkey. Sized to share Speed's and Gear's content box so the three tile in a row
-- `SpeedoWidget`, `TachoWidget` - Analog dials. They ship as one **pack** (`gauges/<name>/` = `tacho.tga` + `speedo.tga` + `gauge.ini`), selected by name, because what a face READS is data about that picture: the ticks and figures are painted into the art while the needle used to be placed from constants compiled into the widgets, so any face but the shipped one was mis-drawn. That was already wrong without a modder involved - neither gauge is game-gated, so the same 230 km/h face ships to GP Bikes and Kart Racing Pro. Both faces in one pack because they are drawn as a set; each widget stores its own selection, so mixing needs no `base =` skin. `hud/gauge_geometry.h` has the format
+- `CrashWidget` - A resettable crash tally for streaming (`GlobalStats::crashTally`), deliberately not StatsManager's per-track+bike `crashCount`
+- `SpeedoWidget`, `TachoWidget` - Analog dials. They ship as one **pack** (`gauges/<name>/` = `tacho.tga` + `speedo.tga` + `gauge.ini`), selected by name; `hud/gauge_geometry.h` has the format and why a dial's range lives in the pack
 - `BarsWidget` - Visual telemetry bars (throttle, brake, etc.)
 - `LeanWidget` - Bike lean/roll angle display with arc gauge and steering bar
 - `GForceWidget` - Lateral/longitudinal G-force gauge with peak marker
 - `FuelWidget` - Fuel calculator with consumption tracking
 - `TyreTempWidget` - Front and rear tyre tread temperatures (GP Bikes only)
 - `EcuWidget` - Electronic rider aids: engine map, traction control, engine braking, anti-wheeling (GP Bikes only)
-- `GamepadWidget` - Controller visualization with button/stick/trigger display. Sizes its interior from its own FRAME, not the global grid (`hud/gamepad_geometry.h` says why). Its ~30 button offsets are per-pad DATA, so a pad ships as a **pack** - `gamepads/<name>/` = 17 `.tga` + `gamepad.ini`, selected by *name* - and a new pad needs no build
+- `GamepadWidget` - Controller visualization with button/stick/trigger display. A pad ships as a **pack** (`gamepads/<name>/` = 17 `.tga` + `gamepad.ini`), selected by name; `hud/gamepad_geometry.h` covers its sizing
 - `CompassWidget` - Bike heading dial (classic north-up needle, or modern rotating card with numeric readout)
 - `VersionWidget` - Plugin version display (includes hidden Breakout game easter egg; high score persisted via StatsManager)
 - `SettingsButtonWidget` - Settings menu toggle button
@@ -699,7 +674,7 @@ struct SPluginString_t {
 
 **Font format & text encoding.** The game's `.fnt` bitmap fonts are a **byte-indexed 256-glyph table** built from CP1252 (`code_page = 1252`, glyphs 32–255). The renderer indexes by raw byte, so it cannot render UTF-8 - multi-byte rider names garble regardless of any truncation logic, which makes UTF-8-safe truncation *in-game* moot. The web overlay is the only UTF-8-aware renderer and handles names client-side. `m_szString` is `char[100]`, so in-game strings are also length-bounded by the struct.
 
-**Header/label convention.** Table column headers and axis labels go through `BaseHud::addLabel()` - the STRONG font at the *Small* size, vertically centered in the row via `labelRowYOffset()` - rather than a hand-rolled `addString` at data-font size. FriendsHud (column headers) and FmxHud (rotation-arc Pitch/Yaw/Roll labels) both deviated and were brought in line; new HUDs should use the helper.
+**Header/label convention.** Table column headers and row labels go through `BaseHud::addLabel()` - the STRONG font at the *Small* size, vertically centered in the row via `labelRowYOffset()` - rather than a hand-rolled `addString` at data-font size. Chart axis labels instead use the SMALL font (`addStripChartFrame`, SessionChartsHud). New HUDs should use the helper.
 
 ### Coordinate System
 
@@ -727,7 +702,7 @@ constexpr unsigned long makeColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 2
 
 The settings layer is split across several TUs (all `SettingsManager`): `settings_manager.cpp`
 (path resolution, serialize/build, save/load orchestration), `settings_manager_global.cpp`
-(global-section `writeGlobalSettings`/`applyGlobalLine`), `settings_hud_profiles.cpp`
+(global-section registry + `writeGlobalSettings`/`applyGlobalLine`), `settings_hud_profiles.cpp`
 (per-profile capture/apply orchestration + profile switch/copy/reset), and
 `settings_hud_registry.{cpp,h}` (the per-HUD serializer registry, below). Shared free helpers
 live in `settings_keys.h` (INI key constants), `settings_serde.h` (the HUD-free half:
@@ -1072,23 +1047,7 @@ void NoticesHud::update() {
 
 ### Handler Singleton Macro
 
-All handlers use this pattern:
-```cpp
-// In header
-class MyHandler {
-public:
-    static MyHandler& getInstance();
-    void handleSomething(Data* data);
-};
-
-// In .cpp
-DEFINE_HANDLER_SINGLETON(MyHandler)
-
-void MyHandler::handleSomething(Data* data) {
-    HANDLER_NULL_CHECK(data);
-    // Process data...
-}
-```
+Stateless handlers are free functions in `namespace Handlers`; only the stateful ones are singletons, via `DEFINE_HANDLER_SINGLETON` (`core/handler_singleton.h`). `HANDLER_NULL_CHECK(data)` guards the incoming API pointer in either shape.
 
 ### Data Change Notifications
 
@@ -1168,10 +1127,9 @@ absent it *follows* `border` (`ThemeAsset::titleBorderOverride`).
 
 NINE files per set (center + four corners + four edges); `ThemeAsset` says why.
 
-**Sprite order is an unchecked contract** for THEMES: `discoverThemes()` hands out
-indices in `spriteFiles` order and `setupDefaultResources()` pushes them in it;
-diverge and a theme draws another's sprites (hence the rewind on rejection). The
-asset packs removed this class by walking one shared `kStems` table.
+**Sprite order** (`discoverThemes()` vs `setupDefaultResources()`) is the
+*Theme sprite order* invariant in CLAUDE.md, which names its startup check
+and test; the asset packs removed the class by walking one shared `kStems` table.
 
 **Title bands and body cards** are new geometry rather than frame decoration - a band
 behind the caption, a card behind the content, both spanning the panel's inner width
@@ -1199,18 +1157,10 @@ built-in defaults do. The hues are the language's own; only which slot each fill
 is ours. A theme that reassigned them would make a delta mean something different
 depending on the theme, which is the one thing a palette must not do.
 
-`debug` is a measuring instrument rather than a look, and it ships because that is
-what makes it useful to a skinner: every slice of every set is a different flat
-colour, at three brightnesses for the three sets, with a brighter band on each
-slice's outer side, so a band pointing inward says which *file* is authored wrong.
-Its ini carries the legend, and it is the one theme that turns every `[card]` switch
-on and exaggerates its box terms - the shared geometry turns the bands off, which
-would leave it unable to show one. It answers "which margin did that knob just
-move?", and the 9-slice bugs this project has shipped (corners culled by reversed
-winding, a spine on the wrong axis after rotation) are visible in it and invisible
-in a tinted monochrome theme.
-Its colours are baked (`[frame] tint = 0`), so it deliberately ignores the HUD
-background colour.
+`debug` is a measuring instrument rather than a look: every slice of every set
+is its own flat colour, so a skinner can see which *file* is authored wrong and
+which margin a knob just moved. Its legend is the header of
+`assets/themes/debug.ini`.
 
 **INI-only tuning knobs.** Power-user settings with no in-game control, edited directly in the INI (documented inline, clamped on load, reset covered by the global-snapshot replay):
 
@@ -1268,46 +1218,21 @@ there (`MXBMRP3_Test_SetRenderProbe`). Off by default; ships in the DLL but dorm
 
 ## Testing
 
-The shipping plugin is MSVC/Windows-only, but the game-independent logic is
-covered by automated tests that run headless on Linux (and in CI)
-with **no game engine**. **[`TESTING.md`](TESTING.md) is the canonical guide**
-(layers, harness, how to add a test, philosophy); this is the architectural
-summary. Six layers:
-
-1. **Unit** (`tests/unit/`) - pure logic compiled from the real headers with a
-   plain C++17 compiler (doctest).
-2. **Integration** (`tests/integration/tests/`) - the heart of the suite. A
-   mingw-w64 cross-build compiles the whole plugin to a Windows DLL; each doctest
-   loads it under Wine and drives the **real PiBoSo callbacks**, exercising the
-   full data flow: api exports → adapters → PluginData change detection →
-   `buildJsonSnapshot`.
-3. **Specialized** (`tests/integration/run_*.sh`) - persistence round-trip,
-   config/callback fuzzing, CPU perf baseline, installer mechanics.
-4. **Web overlay** (`tests/web/`) - Playwright asserts the rendered DOM, plus
-   eslint over every `.js`. One spec closes the seam BETWEEN the layers: it
-   renders a real captured `/api/state` snapshot (`tests/fixtures/`), so a field
-   renamed in the plugin cannot pass a C++ suite reading the new name and a
-   client suite driving its own synthetic demo.
-5. **Memory safety** (`tests/asan/`) - the unit suite under ASan/UBSan, plus a
-   targeted harness and an MSVC-DLL CI job over the real callback boundary.
-6. **Visual** (`tools/hud_window/companion_demo.sh`) - screenshots the
-   real HUD through the companion software renderer, so rendering is
-   pixel-diffable. An instrument, not a gate.
+The game-independent logic is covered by automated tests that run headless on
+Linux (and in CI) with **no game engine**. **[`TESTING.md`](TESTING.md) is the
+canonical guide**: the six layers (unit, integration under Wine, specialized
+runners, web overlay, memory safety, visual), how to run them, how to add a test,
+and what still needs manual in-game testing.
 
 Two seams are architectural rather than test detail. **Observation:** logic tests
 read `PluginHost::snapshot()` - `buildJsonSnapshot()` called directly through a
 test hook, with no server, socket or rebuild gating - so they depend on the
 plugin's computation, not the serving layer; internal state that never reaches
-the JSON is read through typed `MXBMRP3_Test_*` hooks (`core/test_hooks.cpp`,
+the JSON is read through typed `MXBMRP3_Test_*` hooks (`core/test_hooks*.cpp`,
 gated on `MXBMRP3_TEST_BUILD`, excluded from every shipping target). **Fidelity:**
 the in-plugin recorder (`core/event_recorder`, hidden `[Recorder] enabled=1`)
 captures the real callback stream in-game; `PluginHost::replayTape()` replays it
 headlessly, so committed real-race tapes anchor the synthetic scenarios.
-
-What the headless build cannot reach - and so what manual in-game testing is
-still for - is in **[`TESTING.md`](TESTING.md)**, along with how to run
-everything and add tests; the cross-build's divergences from the shipping DLL
-are in CLAUDE.md's *Build & Test*.
 
 ## Common Gotchas
 
@@ -1315,9 +1240,9 @@ are in CLAUDE.md's *Build & Test*.
 
 2. **0-based vs 1-based indexing** - API uses 0-based lap numbers, UI shows 1-based. Check the API header comments.
 
-3. **C++ exceptions must not cross the DLL boundary** - The host game terminates if a C++ exception escapes a DLL export. Every export in `vendor/piboso/*_api.cpp` wraps its body in `API_GUARD_CATCH` (see `vendor/piboso/api_guard.h`). When adding a new export, follow the same pattern. Similarly, every `std::thread` body (HttpServer, UpdateChecker, UpdateDownloader, DiscordManager, RecordsFetcher, CompanionWindow, SteamFriendsManager, AnalyticsManager, XInputReader, PluginThread) wraps itself in a top-level try/catch, since an uncaught throw in a `std::thread` calls `std::terminate()`. For hardware faults that don't go through the C++ exception system (null deref, OOB, divide-by-zero), the SEH filter in `core/crash_handler.*` writes a minidump for diagnosis but doesn't prevent the crash.
+3. **C++ exceptions must not cross the DLL boundary** - The host game terminates if a C++ exception escapes a DLL export. Every export in `vendor/piboso/*_api.cpp` wraps its body in `API_GUARD_CATCH` (see `vendor/piboso/api_guard.h`). When adding a new export, follow the same pattern. Similarly, every `std::thread` body wraps itself in a top-level try/catch, since an uncaught throw in a `std::thread` calls `std::terminate()`. For hardware faults that don't go through the C++ exception system (null deref, OOB, divide-by-zero), the SEH filter in `core/crash_handler.*` writes a minidump for diagnosis but doesn't prevent the crash.
 
-4. **Game thread vs background threads** - All PiBoSo API callbacks (`Draw`, `RunTelemetry`, etc.) run on the game thread. `PluginData`, `HudManager`, `SettingsManager`, and the various other managers are game-thread-only and not thread-safe. Background threads exist for I/O and off-thread work (HttpServer, DiscordManager, UpdateChecker, UpdateDownloader, RecordsFetcher, CompanionWindow, SteamFriendsManager, AnalyticsManager, XInputReader, PluginThread) and must NOT touch those singletons directly. They consume snapshots built on the game thread instead (see `HttpServer::buildJsonSnapshot`, `DiscordManager::updateSnapshot`). The `Logger` has its own internal mutex and is safe to call from any thread. Two corollaries for any worker serving a HUD, both stated with their enforcement in `CLAUDE.md` → *Maintenance Invariants*: **(a)** a mutex-guarded member is guarded at *every* access site, including private helpers that merely look like they sit inside locked code (copy under the lock, pass the snapshot in); **(b)** snapshot game-thread inputs at task start, and join before teardown. The records fetch thread is the worked example of both - it now lives in `core/records_fetcher.*` while `RecordsHud` owns the data it fills, snapshots provider/track in `startFetch()`, and is joined via `RecordsHud::joinFetchThread` from `HudManager::clear()` *before* cached HUD pointers are nulled, because the worker dirties TimingHud on completion.
+4. **Game thread vs background threads** - All PiBoSo API callbacks (`Draw`, `RunTelemetry`, etc.) run on the game thread. `PluginData`, `HudManager`, `SettingsManager`, and the various other managers are game-thread-only and not thread-safe. Background threads (I/O and off-thread work; the Logger entry in CLAUDE.md lists them) must NOT touch those singletons directly. They consume snapshots built on the game thread instead (see `HttpServer::buildJsonSnapshot`, `DiscordManager::updateSnapshot`). The `Logger` has its own internal mutex and is safe to call from any thread. Two corollaries for any worker serving a HUD - guard a mutex-guarded member at *every* access site, and snapshot game-thread inputs at task start and join before teardown - are stated with their enforcement in `CLAUDE.md` → *Maintenance Invariants*; the records fetch thread (`core/records_fetcher.*`) is the worked example of both.
 
 5. **Sprite indices are 1-based** - Index 0 means "solid color fill", not "first sprite".
 

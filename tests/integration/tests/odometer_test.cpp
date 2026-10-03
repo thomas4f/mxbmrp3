@@ -19,7 +19,6 @@
 //  - the accumulated total is persisted, finite, on the leave-track flush
 //    (RunDeinit) — the same no-save-while-riding contract as stats_test.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

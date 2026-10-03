@@ -3,6 +3,7 @@
 // Dynamic asset discovery and management for fonts, textures, and icons
 // ============================================================================
 #include "asset_manager.h"
+#include "atomic_file_writer.h"
 #include "../diagnostics/call_counters.h"
 #include "icon_resolve.h"
 #include "layout_config.h"
@@ -456,36 +457,35 @@ void AssetManager::migrateLegacyGaugeArt(const std::string& userBaseDir) {
     }
 
     const std::string ini = packDir + "\\" + PackIni::kGauges + ".ini";
+    // Through the shared writer, synchronously: the pack scan that follows reads this
+    // ini straight back.
     if (GetFileAttributesA(ini.c_str()) == INVALID_FILE_ATTRIBUTES) {
-        std::ofstream f(ini, std::ios::binary);
-        if (f.is_open()) {
-            f << "; Written automatically when this version moved the dial faces into\r\n"
-                 "; packs. Your own tacho_widget/speedo_widget art from mxbmrp3\\textures\\\r\n"
-                 "; was copied in beside this file so it keeps being drawn.\r\n"
-                 ";\r\n"
-                 "; `base = classic` answers whatever this folder does not: the face you\r\n"
-                 "; did not redraw, and the ranges your art was drawn against (they used\r\n"
-                 "; to be compiled into the plugin, which is what this change fixes -- see\r\n"
-                 "; the shipped gauges/classic/gauge.ini).\r\n"
-                 ";\r\n"
-                 "; This file is yours now: rename the pack, state your own [tacho] max if\r\n"
-                 "; your face is not printed to 15000, or delete the whole folder. It is\r\n"
-                 "; written once and never rewritten.\r\n"
-                 "\r\n";
-            // Header from the shared constant, never spelled here: see
-            // PackIni::kSection for the bug that costs.
-            f << "[" << PackIni::kSection << "]\r\n"
-                 "name = Legacy\r\n"
-                 "base = classic\r\n";
-        }
+        std::string f = "; Written automatically when this version moved the dial faces into\r\n"
+             "; packs. Your own tacho_widget/speedo_widget art from mxbmrp3\\textures\\\r\n"
+             "; was copied in beside this file so it keeps being drawn.\r\n"
+             ";\r\n"
+             "; `base = classic` answers whatever this folder does not: the face you\r\n"
+             "; did not redraw, and the ranges your art was drawn against (they used\r\n"
+             "; to be compiled into the plugin, which is what this change fixes -- see\r\n"
+             "; the shipped gauges/classic/gauge.ini).\r\n"
+             ";\r\n"
+             "; This file is yours now: rename the pack, state your own [tacho] max if\r\n"
+             "; your face is not printed to 15000, or delete the whole folder. It is\r\n"
+             "; written once and never rewritten.\r\n"
+             "\r\n";
+        // Header from the shared constant, never spelled here: see
+        // PackIni::kSection for the bug that costs.
+        f += "[";
+        f += PackIni::kSection;
+        f += "]\r\n"
+             "name = Legacy\r\n"
+             "base = classic\r\n";
+        AtomicFileWriter::writeNow(ini, f);
     }
 
     // The marker goes down even if a copy failed: retrying every launch would
     // just log the same failure forever, and the folder is now the user's to fix.
-    std::ofstream m(marker, std::ios::binary);
-    if (m.is_open()) {
-        m << "Delete this file to let the plugin look for pre-pack gauge art again.\r\n";
-    }
+    AtomicFileWriter::writeNow(marker, "Delete this file to let the plugin look for pre-pack gauge art again.\r\n");
 
     DEBUG_INFO_F("AssetManager: migrated %d legacy gauge face(s) from textures\\ into "
                  "gauges\\legacy - it is selected by default; pick another in "

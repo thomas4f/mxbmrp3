@@ -280,8 +280,7 @@ void RenderProbeSweep::writeReport(bool completed) const {
     std::strftime(stamp, sizeof(stamp), "%Y%m%d_%H%M%S", &tmv);
     const std::string path = dir + "\\probe_sweep_" + stamp + ".txt";
 
-    const std::string out = buildReport(completed);
-    if (!AtomicFileWriter::writeFileAtomic(path, out)) {
+    if (!AtomicFileWriter::submit(path, buildReport(completed))) {
         DEBUG_WARN_F("RenderProbeSweep: failed to write %s", path.c_str());
         return;
     }

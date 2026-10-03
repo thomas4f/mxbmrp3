@@ -29,7 +29,6 @@
 // (30°) on; the case also checks the mirror: a nose-up BEFORE the whip starts
 // (a steep launch, a bailed flip) still isn't an oppo.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

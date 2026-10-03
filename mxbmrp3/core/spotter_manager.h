@@ -125,9 +125,11 @@ public:
     // the ONLY signal there is: the cutting flag rides RaceCommunication,
     // which a practice session never sends because it issues no penalties. So
     // an invalidated practice lap is knowable at the line and not a moment
-    // sooner — which is exactly where lap_invalidated speaks.
+    // sooner — which is exactly where lap_invalidated speaks. pitLap says the
+    // lap did not count because it went through the pits (LapLogEntry::viaPits):
+    // the rider chose that, so it is not struck out at them.
     void onRaceLapCompleted(int raceNum, int completedLaps, int lapTimeMs,
-                            bool lapValid = true);
+                            bool lapValid = true, bool pitLap = false);
 
     // Called from the race-lap handler when a lap beats the rider's SESSION
     // best without being an all-time PB — the third tier of the ladder the
@@ -426,7 +428,7 @@ public:
         return m_workerParked.load(std::memory_order_acquire);
     }
 private:
-    std::string m_lastAudioRoute;   // mt-plain: game thread only (emitCue)
+    std::string m_lastAudioRoute;   // mt-plain: game thread only (emitCue, previewVoice)
     int m_pinVariant = -1;          // mt-plain: game thread only (emitCue)
 #endif
 
@@ -527,6 +529,7 @@ private:
         int lapTimeMs = -1;
         int nowMs = 0;
         bool lapValid = true;
+        bool pitLap = false;     // invalid because of a pit visit: lap_invalidated stays quiet
         // A lap-quality cue (personal_best / record_beaten / session_best)
         // already spoke this lap's TIME at the crossing. Carried rather than
         // read at flush time because the ladder latch is cleared at the top of

@@ -22,6 +22,13 @@ public:
     bool m_bShowShiftColor = true;     // Red gear text at shift RPM
     bool m_bShowLimiterCircle = true;  // Circle indicator at limiter RPM
 
+    // The limiter circle first draws MID-RIDE, the first time the rev limiter hits.
+    int glWarmSprites(int* out, int cap) const override {
+        int n = BaseHud::glWarmSprites(out, cap);
+        if (m_bShowLimiterCircle && m_circleSprite > 0 && n < cap) out[n++] = m_circleSprite;
+        return n;
+    }
+
 protected:
     void rebuildLayout() override;
 
@@ -30,4 +37,6 @@ private:
     // box-model plan is the one source of geometry), so nothing repositions the
     // limiter circle in place anymore.
     void rebuildRenderData() override;
+
+    int m_circleSprite = 0;  // "gear_circle", resolved once per rebuild
 };

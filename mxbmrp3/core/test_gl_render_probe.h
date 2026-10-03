@@ -5,11 +5,11 @@
 // thin exports and was at its size budget - the budget's rule is that an
 // oversized file wants a split rather than a bigger number.
 //
-// The EXPORT still lives in test_hooks.cpp (check_test_hook_placement.sh
-// requires it, and that placement is what keeps test hooks out of a shipping
-// DLL); only the body is here. Both fences still apply: the whole file is gated
-// on MXBMRP3_TEST_BUILD, and mxbmrp3/CMakeLists.txt removes it from every
-// shipping target's source list alongside test_hooks.cpp.
+// The EXPORT lives in test_hooks_gl.cpp (check_test_hook_placement.sh
+// requires a test_hooks*.cpp, and that placement is what keeps test hooks out of
+// a shipping DLL); only the body is here. Both fences still apply: the whole
+// file is gated on MXBMRP3_TEST_BUILD, and mxbmrp3/CMakeLists.txt removes it
+// from every shipping target's source list alongside the test_hooks files.
 // ============================================================================
 #pragma once
 

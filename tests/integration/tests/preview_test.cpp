@@ -20,7 +20,6 @@
 // The other six are wired to the same one mechanism (HudManager::setPreviewHud
 // off SettingsHud::activeTabHud), so this pins the mechanism, not each of them.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

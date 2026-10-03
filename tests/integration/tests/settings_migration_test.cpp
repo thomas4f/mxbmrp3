@@ -27,7 +27,6 @@
 // the version header, load via the hook, re-save, and assert the edits survived.
 // Self-contained doctest; see run_tests.sh.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

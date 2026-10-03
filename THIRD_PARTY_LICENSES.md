@@ -8,6 +8,10 @@ The SIL Open Font License 1.1 and the Apache License 2.0 are referenced by sever
 entries below; both are reproduced in full at the end of this file, as those
 licenses require when the covered files are redistributed.
 
+Twitch and YouTube, and their logos, are trademarks of their respective owners.
+The plugin shows the official logos unaltered, only to mark which platform a
+chat message came from, and is not affiliated with or endorsed by either.
+
 ---
 
 ## Gamepad Viewer

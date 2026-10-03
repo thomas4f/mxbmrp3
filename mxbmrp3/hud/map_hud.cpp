@@ -52,9 +52,6 @@ void mapHudReadProfile(double& boundsUs, double& ribbonUs, double& markersUs,
 void MapHud::CachedIcons::ensureInitialized() {
     if (initialized) return;
     const AssetManager& assets = AssetManager::getInstance();
-    circleExclamation = assets.getIconSpriteIndex("circle-exclamation");
-    flag = assets.getIconSpriteIndex("flag");
-    flagCheckered = assets.getIconSpriteIndex("flag-checkered");
     // A bare chevron, deliberately NOT one of the rider shapes: the off-view track
     // pointer must not read as another rider sitting on the edge of the map. It
     // points UP unrotated, which is the same zero-heading convention the rider
@@ -87,7 +84,6 @@ MapHud::MapHud()
       m_fDetailBaseline(DEFAULT_DETAIL_BASELINE) {
 
     // One-time setup
-    DEBUG_INFO("MapHud created");
     setDraggable(true);
     // Body card: this HUD draws a content BLOCK under its title, which is what the
     // themed card frames. Opt-in; see BaseHud::m_bContentCard.
@@ -727,7 +723,7 @@ void MapHud::rebuildRenderData() {
     // plan's coordinates, so the Map's title lands exactly where every other
     // panel's does.
     addPlanBackground(plan, x, y);
-    addPlanTitle(plan, "Map", this->getFont(FontCategory::TITLE),
+    addPlanTitle(plan, "Map",
                  this->getColor(ColorSlot::PRIMARY));
 
     // Calculate clip bounds for track rendering (absolute screen coords)

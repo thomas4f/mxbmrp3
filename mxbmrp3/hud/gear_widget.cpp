@@ -20,7 +20,6 @@ GearWidget::GearWidget()
 {
     m_panelKind = PanelKind::Widget;
     m_bContentCard = true;
-    DEBUG_INFO("GearWidget created");
     setDraggable(true);
     m_quads.reserve(2);    // Background + gear circle
     m_strings.reserve(2);  // Title (optional) + gear value
@@ -58,6 +57,7 @@ void GearWidget::rebuildLayout() {
 void GearWidget::rebuildRenderData() {
     clearStrings();
     m_quads.clear();
+    m_circleSprite = AssetManager::getInstance().getSpriteIndex("gear_circle", 1);
 
     auto dim = getScaledDimensions();
     float gearRowHeight = dim.lineHeightLarge + dim.lineHeightNormal;  // Match SpeedWidget content height (value + units)
@@ -74,7 +74,7 @@ void GearWidget::rebuildRenderData() {
 
     // BOX-MODEL: the plan owns padding, chrome, the title band and the card;
     // the widget states only its content — the single gear row.
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::GEAR_WIDTH, dim.fontSize);
     want.sectionH = { gearRowHeight };
     want.captionW = planTitleWidth(dim, "Gear");
@@ -86,7 +86,7 @@ void GearWidget::rebuildRenderData() {
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
 
     addPlanBackground(p, startX, startY);
-    addPlanTitle(p, "Gear", this->getFont(FontCategory::TITLE), textColor);
+    addPlanTitle(p, "Gear", textColor);
     float currentY = p.contentY();
     // THE ROW THE PLAN LAID OUT, not the one asked for: the last section's box absorbs
     // the panel's ceil remainder (panel_box.h), so at some uiLineHeight values it is
@@ -137,16 +137,20 @@ void GearWidget::rebuildRenderData() {
         SPluginQuad_t circleQuad{};
         applyOffset(circleX, circleTopY);
         setQuadPositions(circleQuad, circleX, circleTopY, circleWidth, circleHeight);
-        circleQuad.m_iSprite = AssetManager::getInstance().getSpriteIndex("gear_circle", 1);
+        circleQuad.m_iSprite = m_circleSprite;
         circleQuad.m_ulColor = ColorPalette::WHITE;
         m_quads.push_back(circleQuad);
     }
 
     // Gear color: red if recommended shift point reached, otherwise primary.
-    // Skip shift coloring on gearless vehicles (nothing to shift to).
-    unsigned long gearColor = (m_bShowShiftColor && bikeData.isValid && isViewingPlayer
-                               && bikeData.numberOfGears > 1
-                               && sessionData.shiftRPM > 0 && bikeData.rpm >= sessionData.shiftRPM)
+    // Skip shift coloring on gearless vehicles (nothing to shift to). The placeholder
+    // draws MUTED, like the Timing panel's big time and the gap bar's gap with nothing
+    // to show: in the primary colour it reads as a value.
+    unsigned long gearColor = !bikeData.isValid
+        ? this->getColor(ColorSlot::MUTED)
+        : (m_bShowShiftColor && isViewingPlayer
+           && bikeData.numberOfGears > 1
+           && sessionData.shiftRPM > 0 && bikeData.rpm >= sessionData.shiftRPM)
         ? this->getColor(ColorSlot::NEGATIVE)
         : textColor;
     // INK-CENTRED IN THE ROW -- the same solve TimingHud's big time, the gap bar's

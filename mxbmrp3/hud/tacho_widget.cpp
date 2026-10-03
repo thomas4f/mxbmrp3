@@ -29,7 +29,6 @@ TachoWidget::TachoWidget()
     // the widget in both worlds at once -- see BaseHud::setTextureVariant, where a
     // stale textureVariant key in an upgraded INI turns a pack HUD's art off.
     m_packKind = PackKind::Gauges;
-    DEBUG_INFO("TachoWidget created");
     setDraggable(true);
     m_quads.reserve(2);  // dial background + needle
 

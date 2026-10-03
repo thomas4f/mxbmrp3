@@ -12,7 +12,6 @@
 // worker's fully-applied state (in the game there is deliberately no such barrier —
 // the point is that the game thread never waits on us).
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

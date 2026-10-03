@@ -19,7 +19,6 @@
 // The Event Log assertions go through the real rebuild (visible HUD + spectate draw
 // state), so they cover the raceNum plumbed onto EventLogEntry as well as the gate.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

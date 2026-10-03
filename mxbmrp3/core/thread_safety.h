@@ -8,7 +8,7 @@
 // iterating live m_records unlocked while its caller had carefully copied
 // under lock. With members declared MXB_GUARDED_BY(mutex), clang's
 // -Wthread-safety turns that class of mistake into a COMPILE ERROR
-// (tests/integration/check_thread_safety.sh, CI).
+// (tests/integration/check_clang_tidy.sh, CI).
 //
 // The annotations are attributes only — they expand to nothing outside clang,
 // and the wrappers delegate straight to std::mutex — so MSVC (shipping) and

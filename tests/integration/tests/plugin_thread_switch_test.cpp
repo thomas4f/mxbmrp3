@@ -9,7 +9,6 @@
 // mode, then in threaded mode after switching on, then in sync mode again after
 // switching off — all against one running plugin instance.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

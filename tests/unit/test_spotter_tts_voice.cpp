@@ -107,10 +107,10 @@ TEST_CASE("cycle: the system default is a reachable entry, both directions") {
 // nowhere else). Enumerating only the first is why a voice installed in
 // Windows never showed up in the picker.
 
-// The settings row is ten characters wide and every Windows voice is named
-// "Microsoft <who> - English (<place>)", so every one of them rendered as
-// "Microso..." — the same string for all of them, telling a player nothing
-// about what they had just selected.
+// Every Windows voice is named "Microsoft <who> - English (<place>)", longer
+// than the settings row's value field, so drawn whole they all lead with the
+// same "Microsoft" (at the field's old ten characters every one of them read
+// "Microso...", telling a player nothing about what they had just selected).
 TEST_CASE("displayName: keeps the part that differs") {
     CHECK(displayName("Microsoft David Desktop - English (United States)") ==
           "David Desktop - English");

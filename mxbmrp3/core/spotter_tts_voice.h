@@ -88,9 +88,10 @@ inline std::string resolve(const std::vector<std::string>& available,
 }
 
 // What the settings row SHOWS for a voice. Every Windows voice is named
-// "Microsoft <who> - English (United Kingdom)", and the row is ten characters
-// wide — so every one of them rendered as "Microso...", which is the same
-// string for all of them and tells a player nothing about what they picked.
+// "Microsoft <who> - English (United Kingdom)", longer than the row's value
+// field — so drawn whole, every one of them is cut to the same leading
+// "Microsoft ..." and tells a player little about what they picked (at ten
+// characters, which the field once was, they all read "Microso...").
 //
 // The prefix is dropped and the locale parenthetical with it, leaving the part
 // that differs: "David Desktop - English", "Ryan". Display only — the STORED

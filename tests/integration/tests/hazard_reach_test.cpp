@@ -22,7 +22,6 @@
 // cheaper than adding a seam, and it errs safe — waiting LONGER than the threshold cannot
 // un-confirm a rider who is still going backward.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

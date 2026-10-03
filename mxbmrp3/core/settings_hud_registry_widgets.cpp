@@ -182,12 +182,8 @@ void SettingsManager::app_ClockWidget(HudManager& hudManager, const SettingsMana
 
             const auto& settings = it->second;
             try {
-                if (settings.count("showUtc")) {
-                    hud.setShowUtc(std::stoi(settings.at("showUtc")) != 0);
-                }
-                if (settings.count("utcOnTop")) {
-                    hud.setUtcOnTop(std::stoi(settings.at("utcOnTop")) != 0);
-                }
+                if (auto v = readBool(settings, "showUtc")) hud.setShowUtc(*v);
+                if (auto v = readBool(settings, "utcOnTop")) hud.setUtcOnTop(*v);
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("ClockWidget: Failed to parse settings: %s", e.what());
             }
@@ -240,9 +236,7 @@ void SettingsManager::app_SessionHud(HudManager& hudManager, const SettingsManag
             const auto& settings = it->second;
             try {
                 loadSessionRows(settings, hud.m_enabledRows);
-                if (settings.count(Keys::Session::SHOW_ICONS)) {
-                    hud.m_bShowIcons = (std::stoi(settings.at(Keys::Session::SHOW_ICONS)) != 0);
-                }
+                if (auto v = readBool(settings, Keys::Session::SHOW_ICONS)) hud.m_bShowIcons = *v;
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("SessionHud: Failed to parse settings: %s", e.what());
             }
@@ -291,12 +285,8 @@ void SettingsManager::app_GearWidget(HudManager& hudManager, const SettingsManag
 
             const auto& settings = it->second;
             try {
-                if (settings.count(IniOnly::Gear::SHOW_SHIFT_COLOR.key)) {
-                    hud.m_bShowShiftColor = std::stoi(settings.at(IniOnly::Gear::SHOW_SHIFT_COLOR.key)) != 0;
-                }
-                if (settings.count(IniOnly::Gear::SHOW_LIMITER_CIRCLE.key)) {
-                    hud.m_bShowLimiterCircle = std::stoi(settings.at(IniOnly::Gear::SHOW_LIMITER_CIRCLE.key)) != 0;
-                }
+                if (auto v = readBool(settings, IniOnly::Gear::SHOW_SHIFT_COLOR.key)) hud.m_bShowShiftColor = *v;
+                if (auto v = readBool(settings, IniOnly::Gear::SHOW_LIMITER_CIRCLE.key)) hud.m_bShowLimiterCircle = *v;
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("GearWidget: Failed to parse settings: %s", e.what());
             }
@@ -320,9 +310,7 @@ void SettingsManager::app_CrashWidget(HudManager& hudManager, const SettingsMana
 
             const auto& settings = it->second;
             try {
-                if (settings.count(IniOnly::Crash::SHOW_RESET_BUTTON.key)) {
-                    hud.m_bShowResetButton = std::stoi(settings.at(IniOnly::Crash::SHOW_RESET_BUTTON.key)) != 0;
-                }
+                if (auto v = readBool(settings, IniOnly::Crash::SHOW_RESET_BUTTON.key)) hud.m_bShowResetButton = *v;
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("CrashWidget: Failed to parse settings: %s", e.what());
             }
@@ -382,12 +370,8 @@ void SettingsManager::app_SpeedoWidget(HudManager& hudManager, const SettingsMan
                 if (settings.count(IniOnly::Speedo::NEEDLE_COLOR.key)) {
                     applyNeedleColorSetting(hud, settings.at(IniOnly::Speedo::NEEDLE_COLOR.key));
                 }
-                if (settings.count(IniOnly::Speedo::SHOW_ODOMETER.key)) {
-                    hud.setShowOdometer(std::stoi(settings.at(IniOnly::Speedo::SHOW_ODOMETER.key)) != 0);
-                }
-                if (settings.count(IniOnly::Speedo::SHOW_TRIPMETER.key)) {
-                    hud.setShowTripmeter(std::stoi(settings.at(IniOnly::Speedo::SHOW_TRIPMETER.key)) != 0);
-                }
+                if (auto v = readBool(settings, IniOnly::Speedo::SHOW_ODOMETER.key)) hud.setShowOdometer(*v);
+                if (auto v = readBool(settings, IniOnly::Speedo::SHOW_TRIPMETER.key)) hud.setShowTripmeter(*v);
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("SpeedoWidget: Failed to parse settings: %s", e.what());
             }
@@ -452,10 +436,9 @@ void SettingsManager::app_TimingHud(HudManager& hudManager, const SettingsManage
                 if (settings.count("showTime")) {
                     hud.m_showTime = settings.at("showTime") == "1";
                 }
-                if (settings.count("displayDuration")) {
-                    int duration = std::stoi(settings.at("displayDuration"));
-                    if (duration >= TimingHud::MIN_DURATION_MS && duration <= TimingHud::MAX_DURATION_MS) {
-                        hud.m_displayDurationMs = duration;
+                if (auto v = readInt(settings, "displayDuration")) {
+                    if (*v >= FreezeDuration::MIN_MS && *v <= FreezeDuration::MAX_MS) {
+                        hud.m_displayDurationMs = *v;
                     }
                 }
                 loadTimingSecondaryGaps(settings, hud.m_enabledComparisons);
@@ -473,6 +456,7 @@ void SettingsManager::cap_GapBarHud(const HudManager& hudManager, SettingsManage
         captureBaseHudSettings(settings, hud);
         settings["freezeDuration"] = std::to_string(hud.m_freezeDurationMs);
         settings["markerMode"] = std::to_string(static_cast<int>(hud.m_markerMode));
+        settings["reference"] = std::to_string(static_cast<int>(hud.m_reference));
         // Persist by filename (not positional index) so the choice survives icon-set
         // reordering, matching map/radar. 0 = "use default icon" serializes as "Off".
         settings["riderIcon"] = shapeIndexToFilename(hud.m_riderIconIndex);
@@ -481,6 +465,7 @@ void SettingsManager::cap_GapBarHud(const HudManager& hudManager, SettingsManage
         settings["gapRange"] = std::to_string(hud.m_gapRangeMs);
         settings["barWidth"] = std::to_string(hud.m_barWidthPercent);
         settings["markerScale"] = std::to_string(hud.m_fMarkerScale);
+        settings["showSplits"] = hud.m_showSplits ? "1" : "0";
         // The NAME, matching Map and Radar -- same enum (MarkerLabel::Mode), same key,
         // so the three sections read alike in the INI. A bare int is still accepted
         // on load; see stringToLabelMode.
@@ -497,23 +482,30 @@ void SettingsManager::app_GapBarHud(HudManager& hudManager, const SettingsManage
             applyBaseHudSettings(hud, it->second);
             const auto& settings = it->second;
             try {
-                if (settings.count("freezeDuration")) {
-                    int freeze = std::stoi(settings.at("freezeDuration"));
-                    if (freeze >= GapBarHud::MIN_FREEZE_MS && freeze <= GapBarHud::MAX_FREEZE_MS) {
-                        hud.m_freezeDurationMs = freeze;
+                if (auto v = readInt(settings, "freezeDuration")) {
+                    if (*v >= FreezeDuration::MIN_MS && *v <= FreezeDuration::MAX_MS) {
+                        hud.m_freezeDurationMs = *v;
                     }
                 }
                 // New marker mode setting (replaces old showMarkers boolean)
-                if (settings.count("markerMode")) {
-                    int mode = std::stoi(settings.at("markerMode"));
-                    if (mode >= 0 && mode <= 2) {
-                        hud.m_markerMode = static_cast<GapBarHud::MarkerMode>(mode);
+                if (auto v = readInt(settings, "markerMode")) {
+                    if (*v >= 0 && *v < GapBarHud::MARKER_MODE_COUNT) {
+                        hud.m_markerMode = static_cast<GapBarHud::MarkerMode>(*v);
                     }
                 }
-                // Legacy compatibility: convert old showMarkers boolean to markerMode
+                // Legacy compatibility: convert old showMarkers boolean to markerMode.
+                // Chained off markerMode and nothing else: a key inserted between the
+                // two once re-parented this else, so a file carrying markerMode next
+                // to a stale showMarkers had its mode overwritten with GHOST
+                // (settings_malformed_test).
                 else if (settings.count("showMarkers") || settings.count("showMarker")) {
                     // Old behavior: markers on = ghost mode, off = still ghost mode (markers always shown now)
                     hud.m_markerMode = GapBarHud::MarkerMode::GHOST;
+                }
+                if (auto v = readInt(settings, "reference")) {
+                    if (*v >= 0 && *v < GapBarHud::REFERENCE_COUNT) {
+                        hud.m_reference = static_cast<GapBarHud::Reference>(*v);
+                    }
                 }
                 // Rider icon (name-based; 0/"Off" = use default icon)
                 if (settings.count("riderIcon")) {
@@ -528,28 +520,27 @@ void SettingsManager::app_GapBarHud(HudManager& hudManager, const SettingsManage
                     hud.m_showGapBar = (settings.at("showGapBar") == "1");
                 }
                 // Gap range
-                if (settings.count("gapRange")) {
-                    int range = std::stoi(settings.at("gapRange"));
-                    if (range >= GapBarHud::MIN_RANGE_MS && range <= GapBarHud::MAX_RANGE_MS) {
-                        hud.m_gapRangeMs = range;
+                if (auto v = readInt(settings, "gapRange")) {
+                    if (*v >= GapBarHud::MIN_RANGE_MS && *v <= GapBarHud::MAX_RANGE_MS) {
+                        hud.m_gapRangeMs = *v;
                     }
-                } else if (settings.count("legacyRange")) {
-                    int range = std::stoi(settings.at("legacyRange"));
-                    if (range >= GapBarHud::MIN_RANGE_MS && range <= GapBarHud::MAX_RANGE_MS) {
-                        hud.m_gapRangeMs = range;
+                } else if (auto w = readInt(settings, "legacyRange")) {
+                    if (*w >= GapBarHud::MIN_RANGE_MS && *w <= GapBarHud::MAX_RANGE_MS) {
+                        hud.m_gapRangeMs = *w;
                     }
                 }
-                if (settings.count("barWidth")) {
-                    int width = std::stoi(settings.at("barWidth"));
-                    if (width >= GapBarHud::MIN_WIDTH_PERCENT && width <= GapBarHud::MAX_WIDTH_PERCENT) {
-                        hud.m_barWidthPercent = width;
+                if (auto v = readInt(settings, "barWidth")) {
+                    if (*v >= GapBarHud::MIN_WIDTH_PERCENT && *v <= GapBarHud::MAX_WIDTH_PERCENT) {
+                        hud.m_barWidthPercent = *v;
                     }
+                }
+                if (settings.count("showSplits")) {
+                    hud.m_showSplits = (settings.at("showSplits") == "1");
                 }
                 // Marker scale
-                if (settings.count("markerScale")) {
-                    float scale = parseFiniteFloat(settings.at("markerScale"));
-                    if (scale >= GapBarHud::MIN_MARKER_SCALE && scale <= GapBarHud::MAX_MARKER_SCALE) {
-                        hud.m_fMarkerScale = scale;
+                if (auto v = readFloat(settings, "markerScale")) {
+                    if (*v >= GapBarHud::MIN_MARKER_SCALE && *v <= GapBarHud::MAX_MARKER_SCALE) {
+                        hud.m_fMarkerScale = *v;
                     }
                 }
                 // Label mode -- the shared converter, which also reads a bare int.
@@ -594,15 +585,9 @@ void SettingsManager::app_BarsWidget(HudManager& hudManager, const SettingsManag
             const auto& settings = it->second;
             try {
                 loadBarsColumns(settings, hud.m_enabledColumns);
-                if (settings.count("showLabels")) {
-                    hud.m_bShowLabels = std::stoi(settings.at("showLabels")) != 0;
-                }
-                if (settings.count("showMaxMarkers")) {
-                    hud.m_bShowMaxMarkers = std::stoi(settings.at("showMaxMarkers")) != 0;
-                }
-                if (settings.count("maxMarkerLingerFrames")) {
-                    hud.m_maxMarkerLingerFrames = std::stoi(settings.at("maxMarkerLingerFrames"));
-                }
+                if (auto v = readBool(settings, "showLabels")) hud.m_bShowLabels = *v;
+                if (auto v = readBool(settings, "showMaxMarkers")) hud.m_bShowMaxMarkers = *v;
+                if (auto v = readInt(settings, "maxMarkerLingerFrames")) hud.m_maxMarkerLingerFrames = *v;
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("BarsWidget: Failed to parse settings: %s", e.what());
             }
@@ -643,10 +628,9 @@ void SettingsManager::app_NoticesHud(HudManager& hudManager, const SettingsManag
             const auto& settings = it->second;
             try {
                 loadNotices(settings, hud.m_enabledNotices);
-                if (settings.count(IniOnly::Notices::PB_DURATION.key)) {
-                    int duration = std::stoi(settings.at(IniOnly::Notices::PB_DURATION.key));
-                    if (duration >= NoticesHud::MIN_NOTICE_DURATION_MS && duration <= NoticesHud::MAX_NOTICE_DURATION_MS) {
-                        hud.m_noticeDurationMs = duration;
+                if (auto v = readInt(settings, IniOnly::Notices::PB_DURATION.key)) {
+                    if (*v >= NoticesHud::MIN_NOTICE_DURATION_MS && *v <= NoticesHud::MAX_NOTICE_DURATION_MS) {
+                        hud.m_noticeDurationMs = *v;
                     }
                 }
             } catch (const std::exception& e) {
@@ -704,9 +688,8 @@ void SettingsManager::app_GamepadWidget(HudManager& hudManager, const SettingsMa
                 if (pack != settings.end() && !pack->second.empty()) {
                     hud.setGamepadPack(pack->second);
                 }
-                auto fill = settings.find(IniOnly::Gamepad::TRIGGER_FILL_MODE.key);
-                if (fill != settings.end()) {
-                    hud.setTriggerFillMode(std::stoi(fill->second) == 1 ? 1 : 0);
+                if (auto v = readInt(settings, IniOnly::Gamepad::TRIGGER_FILL_MODE.key)) {
+                    hud.setTriggerFillMode(*v == 1 ? 1 : 0);
                 }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("GamepadWidget: Failed to parse settings: %s", e.what());
@@ -736,16 +719,11 @@ void SettingsManager::app_LeanWidget(HudManager& hudManager, const SettingsManag
             const auto& settings = it->second;
             try {
                 loadLeanRows(settings, hud.m_enabledRows);  // Named keys instead of bitmask
-                if (settings.count("showMaxMarkers")) {
-                    hud.m_bShowMaxMarkers = std::stoi(settings.at("showMaxMarkers")) != 0;
-                }
-                if (settings.count("maxMarkerLingerFrames")) {
-                    hud.m_maxMarkerLingerFrames = std::stoi(settings.at("maxMarkerLingerFrames"));
-                }
-                if (settings.count(IniOnly::Lean::FILL_COLOR_MODE.key)) {
-                    const int mode = std::stoi(settings.at(IniOnly::Lean::FILL_COLOR_MODE.key));
-                    hud.setFillColorMode(mode == 1 ? LeanWidget::FillColorMode::FIXED
-                                                   : LeanWidget::FillColorMode::RAMP);
+                if (auto v = readBool(settings, "showMaxMarkers")) hud.m_bShowMaxMarkers = *v;
+                if (auto v = readInt(settings, "maxMarkerLingerFrames")) hud.m_maxMarkerLingerFrames = *v;
+                if (auto v = readInt(settings, IniOnly::Lean::FILL_COLOR_MODE.key)) {
+                    hud.setFillColorMode(*v == 1 ? LeanWidget::FillColorMode::FIXED
+                                                 : LeanWidget::FillColorMode::RAMP);
                 }
                 if (settings.count(IniOnly::Lean::ARC_FILL_COLOR.key)) {
                     hud.setArcFillColor(PluginUtils::parseColorHex(settings.at(IniOnly::Lean::ARC_FILL_COLOR.key), hud.getArcFillColor()));
@@ -776,19 +754,12 @@ void SettingsManager::app_GForceWidget(HudManager& hudManager, const SettingsMan
 
             const auto& settings = it->second;
             try {
-                if (settings.count(IniOnly::GForce::MAX_SCALE.key)) {
-                    float v = parseFiniteFloat(settings.at(IniOnly::GForce::MAX_SCALE.key));
-                    if (v > 0.1f) hud.m_maxScale = v;
+                if (auto v = readFloat(settings, IniOnly::GForce::MAX_SCALE.key)) {
+                    if (*v > 0.1f) hud.m_maxScale = *v;
                 }
-                if (settings.count(IniOnly::GForce::SHOW_MAX_TEXT.key)) {
-                    hud.m_bShowMaxText = std::stoi(settings.at(IniOnly::GForce::SHOW_MAX_TEXT.key)) != 0;
-                }
-                if (settings.count(IniOnly::GForce::SHOW_MAX_MARKER.key)) {
-                    hud.m_bShowMaxMarker = std::stoi(settings.at(IniOnly::GForce::SHOW_MAX_MARKER.key)) != 0;
-                }
-                if (settings.count(IniOnly::GForce::MAX_MARKER_LINGER_FRAMES.key)) {
-                    hud.m_maxMarkerLingerFrames = std::stoi(settings.at(IniOnly::GForce::MAX_MARKER_LINGER_FRAMES.key));
-                }
+                if (auto v = readBool(settings, IniOnly::GForce::SHOW_MAX_TEXT.key)) hud.m_bShowMaxText = *v;
+                if (auto v = readBool(settings, IniOnly::GForce::SHOW_MAX_MARKER.key)) hud.m_bShowMaxMarker = *v;
+                if (auto v = readInt(settings, IniOnly::GForce::MAX_MARKER_LINGER_FRAMES.key)) hud.m_maxMarkerLingerFrames = *v;
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("GForceWidget: Failed to parse settings: %s", e.what());
             }
@@ -842,16 +813,10 @@ void SettingsManager::app_TyreTempWidget(HudManager& hudManager, const SettingsM
 
             const auto& settings = it->second;
             try {
-                if (settings.count("coldThreshold")) {
-                    hud.setColdThreshold(parseFiniteFloat(settings.at("coldThreshold")));
-                }
-                if (settings.count("hotThreshold")) {
-                    hud.setHotThreshold(parseFiniteFloat(settings.at("hotThreshold")));
-                }
+                if (auto v = readFloat(settings, "coldThreshold")) hud.setColdThreshold(*v);
+                if (auto v = readFloat(settings, "hotThreshold")) hud.setHotThreshold(*v);
                 loadTyreTempRows(settings, hud.m_enabledRows);  // Named keys for row toggles
-                if (settings.count("showLabels")) {
-                    hud.m_bShowLabels = std::stoi(settings.at("showLabels")) != 0;
-                }
+                if (auto v = readBool(settings, "showLabels")) hud.m_bShowLabels = *v;
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("TyreTempWidget: Failed to parse settings: %s", e.what());
             }
@@ -879,9 +844,7 @@ void SettingsManager::app_EcuWidget(HudManager& hudManager, const SettingsManage
             const auto& settings = it->second;
             try {
                 loadEcuRows(settings, hud.m_enabledRows);  // Named keys for chip toggles
-                if (settings.count("showLabels")) {
-                    hud.m_bShowLabels = std::stoi(settings.at("showLabels")) != 0;
-                }
+                if (auto v = readBool(settings, "showLabels")) hud.m_bShowLabels = *v;
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("EcuWidget: Failed to parse settings: %s", e.what());
             }
@@ -937,12 +900,8 @@ void SettingsManager::app_RumbleHud(HudManager& hudManager, const SettingsManage
 
             const auto& settings = it->second;
             try {
-                if (settings.count("showMaxMarkers")) {
-                    hud.m_bShowMaxMarkers = std::stoi(settings.at("showMaxMarkers")) != 0;
-                }
-                if (settings.count("maxMarkerLingerFrames")) {
-                    hud.m_maxMarkerLingerFrames = std::stoi(settings.at("maxMarkerLingerFrames"));
-                }
+                if (auto v = readBool(settings, "showMaxMarkers")) hud.m_bShowMaxMarkers = *v;
+                if (auto v = readInt(settings, "maxMarkerLingerFrames")) hud.m_maxMarkerLingerFrames = *v;
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("RumbleHud: Failed to parse settings: %s", e.what());
             }
@@ -978,9 +937,7 @@ void SettingsManager::app_Global(HudManager& hudManager, const SettingsManager::
         if (it != cache.end()) {
             const auto& settings = it->second;
             try {
-                if (settings.count("widgetsEnabled")) {
-                    hudManager.setWidgetsEnabled(std::stoi(settings.at("widgetsEnabled")) != 0);
-                }
+                if (auto v = readBool(settings, "widgetsEnabled")) hudManager.setWidgetsEnabled(*v);
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("Global: Failed to parse settings: %s", e.what());
             }

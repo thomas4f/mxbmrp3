@@ -27,7 +27,6 @@
 // The bytes are chunk-framed by httplib, so the frames are read by searching
 // for the SSE fields (see PluginHost::sseOpen). Self-contained doctest.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

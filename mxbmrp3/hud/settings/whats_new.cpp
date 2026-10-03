@@ -19,10 +19,13 @@ namespace {
 // check_whats_new.sh fails the build if a version here falls behind resource.h,
 // so the review is not optional.
 //
-// 1.30 is the achievements release. One marker: the tab is new from top to
-// bottom, and the row banded is the one switch on it a player might want to
-// find (the toasts). The tab itself draws no tag - its name fills the sidebar
-// (tabCanTag below) - and being a new tab is its own announcement. The 1.29 markers - panel themes, the Crashes widget, the
+// 1.31 is the Stream Chat release: its tab bands the two Status switches, the
+// one thing on it to turn on (no tag: the name fills the sidebar, tabCanTag
+// below). The Gap Bar's Splits and Reference, the Lap Log's Gap reference and
+// Gap freeze, the Pitboard's Freeze, and the Standings' Class column are the
+// release's other new rows. The 1.30 marker (the achievement toasts) is
+// gone with its release (the Achievements tab never drew a tag: its name fills
+// the sidebar, tabCanTag below). The 1.29 markers - panel themes, the Crashes widget, the
 // pack pickers, the Timing readouts, the spotter hotkey, Direct GL - are gone:
 // each had its release, and a tag still lit a release later says nothing.
 //
@@ -30,7 +33,14 @@ namespace {
 // it is new the moment a player trades their ladder for it, and the row it
 // bands does not exist on the Widgets tab until then.
 const Marker kMarkers[] = {
-    { SettingsHud::TAB_ACHIEVEMENTS, "achievements.toasts", "1.30" },
+    { SettingsHud::TAB_STREAM_CHAT,  "twitch.status",            "1.31" },
+    { SettingsHud::TAB_STREAM_CHAT,  "youtube.status",           "1.31" },
+    { SettingsHud::TAB_GAP_BAR,      "gap_bar.splits",           "1.31" },
+    { SettingsHud::TAB_GAP_BAR,      "gap_bar.reference",        "1.31" },
+    { SettingsHud::TAB_LAP_LOG,      "lap_log.reference",        "1.31" },
+    { SettingsHud::TAB_LAP_LOG,      "lap_log.freeze",           "1.31" },
+    { SettingsHud::TAB_PITBOARD,     "pitboard.freeze",          "1.31" },
+    { SettingsHud::TAB_STANDINGS,    "standings.col_category",   "1.31" },
     { SettingsHud::TAB_WIDGETS,      "widgets.prestige",         nullptr, Gate::Unlocked },
 };
 
@@ -102,19 +112,28 @@ bool isLive(const Marker& m) {
 }
 
 // A tab whose name fills the sidebar's label cells gets no "New" tag: the
-// Achievements row in s_tabRegistry (settings_hud_render.cpp) has the
-// arithmetic. Its markers still band their rows.
+// Achievements and Stream Chat rows in s_tabRegistry (settings_hud_render.cpp)
+// have the arithmetic. Their markers still band their rows, and the sidebar
+// bands their ROW instead (tabHighlightsRow).
 bool tabCanTag(int tabId) {
-    return tabId != SettingsHud::TAB_ACHIEVEMENTS;
+    return tabId != SettingsHud::TAB_ACHIEVEMENTS && tabId != SettingsHud::TAB_STREAM_CHAT;
 }
 
-bool tabHasLive(int tabId) {
-    if (!tabCanTag(tabId)) return false;
+// Undismissed news on this tab, whichever way the sidebar shows it.
+static bool tabHasNews(int tabId) {
     if (dismissed().count(tabKey(tabId))) return false;
     for (int i = 0; i < MARKER_COUNT; ++i) {
         if (kMarkers[i].tabId == tabId && isLive(kMarkers[i])) return true;
     }
     return false;
+}
+
+bool tabHasLive(int tabId) {
+    return tabCanTag(tabId) && tabHasNews(tabId);
+}
+
+bool tabHighlightsRow(int tabId) {
+    return !tabCanTag(tabId) && tabHasNews(tabId);
 }
 
 const Marker* liveForRow(int tabId, const char* rowTooltipId) {

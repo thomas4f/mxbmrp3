@@ -23,7 +23,9 @@ mxbmrp3/
     └── logos/   ← Sponsor/logo PNGs for the web overlay slideshow
 ```
 
-A pack's payload is its own `.tga` art, or `.wav` audio for a voice, alongside its `<type>.ini`. Every type's ini opens with the same `[pack]` section, and it takes an **optional `name`** giving the pack a human title in the picker. Leave it out and the folder name is used, title-cased. Every shipped pack whose title can be derived that way leaves it out on purpose, so copying one and naming the folder is the whole job - there is no line to edit inside the file. The `ds4` pads are the exception that shows when to state one: `ds4` title-cases to "Ds4", not "DualShock 4". It is a label only: a pack is stored and selected by its **folder** name, so retitling one never reassigns anybody's choice. Section headers are matched **case-insensitively** in every pack type, so `[pack]` and `[Pack]` are the same section and a capital cannot silently cost a pack its `base` - the shipped files spell them lowercase, except the spotter's own `[Cues]` and `[Mix]`. User files override bundled assets of the same name.
+A pack's payload is its own `.tga` art, or `.wav` audio for a voice, alongside its `<type>.ini`. The `[pack]` section takes an **optional `name`** for a human title in the picker; leave it out and the folder name is used, title-cased. The shipped packs leave it out wherever that works, and state one only where it does not (`ds4` title-cases to "Ds4", not "DualShock 4"). Section headers are matched case-insensitively. User files override bundled assets of the same name.
+
+**`base = <pack>` is one rule for every pack type.** Your ini layers over the named pack: whatever your folder and ini state wins, and everything they leave out - art, geometry, colors, offsets - is answered from the base. So a reskin is a folder holding a `<type>.ini` with a `base` line and the one or two files you actually changed. A base must itself be a pack with no `base` of its own.
 
 **What needs a restart and what does not.** ADDING or REMOVING a `.tga` needs one: sprites are handed to the game once at startup and everything holds them by number afterwards. Everything else the **Reload Config** hotkey picks up - a changed `.ini` (theme, gamepad, pit board, gauges), and a voice pack's `.wav` outright, since audio is opened by path as it plays. Redrawn `.tga` art is the case in between: the companion window re-reads it on the hotkey, while the game keeps the old art until you relaunch.
 
@@ -35,7 +37,7 @@ A light theme is worth a note: its text is near-black, so a HUD you run with its
 
 Writing your own: a theme is a folder of 27 `.tga` slices plus a `theme.ini` of its colors, fonts and box terms. `tools/themeslice` cuts the slices out of one master image (it never draws - the art is yours), and `assets/themes/` in the repo holds the masters for the shipped themes plus a **debug** master whose every slice is a different flat color, which is the fastest way to see where each of the 27 pieces actually lands.
 
-**Recoloring one is a single file.** `base = <theme>` layers your ini over a theme that already exists, so a folder containing nothing but a `theme.ini` is a complete theme:
+**Recoloring one is a single file.** With a `base` line, a folder containing nothing but a `theme.ini` is a complete theme:
 
 ```ini
 [pack]
@@ -47,7 +49,7 @@ primary = #00e0c0
 accent  = #ff8800
 ```
 
-Every slice, font and box term comes from the base; only what you state wins. Bring a `.tga` too and it replaces that one file, leaving the other twenty-six alone - so you can redraw a corner without touching the rest. A base must itself be a theme with no `base` of its own.
+Bring a `.tga` too and it replaces that one slice, leaving the other twenty-six alone - so you can redraw a corner without touching the rest.
 
 ## Custom Textures
 
@@ -69,21 +71,21 @@ gamepads\
 
 Xbox and DualShock 4 ship built in, each with nine **brand-color skins** (Orange, Crimson, Navy, Royal, Lime, Cyan, Yellow, Graphite, Silver) taken from the plugin's own BrandColors table, so a pad and a pit board of the same name match. To add your own, start from what you are actually changing:
 
-- **A reskin** - same controller, new look - is two files. Copy any shipped skin folder (say `xbox-crimson`), rename the folder, replace `background.tga`. The ini is called `gamepad.ini` in every pack, so there is nothing else to rename. Its `base = xbox` line is what makes that enough: whatever your folder and ini state wins, and everything they leave out - the sixteen button sprites, the geometry - is answered from the base pack, the same layering rule spotter voice packs use. Add one of the other `.tga` (names in the base's folder) only if you redraw it, and a geometry key only if your art moves things. A base must be a pack without a `base` of its own.
+- **A reskin** - same controller, new look - is two files. Copy any shipped skin folder (say `xbox-crimson`), rename the folder, replace `background.tga`. Its `base = xbox` line answers the sixteen button sprites and the geometry. Add one of the other `.tga` (names in the base's folder) only if you redraw it, and a geometry key only if your art moves things.
 - **A new controller** needs the full set: copy the `xbox` folder instead, replace all 17 `.tga` and adjust the `[size]` / `[offset]` / `[spacing]` values until the buttons line up - the shipped `xbox\gamepad.ini` documents every key.
 
-Either way the folder goes under `gamepads\` in your Documents plugin folder, and your pack appears in the Texture column in Settings > Widgets. The **Reload Config** hotkey re-reads the `.ini` without restarting, which makes nudging offsets quick. Source design files (PSD) are in [`assets/`](../assets/).
+Either way the folder goes under `gamepads\` in your Documents plugin folder, and your pack appears in the Texture column in Settings > Widgets. Source design files (PSD) are in [`assets/`](../assets/).
 
-**Pitboard** - The pit board is a **pack** too, for a sharper reason than the gamepad: the board picture was always replaceable, but the offsets positioning each row on it lived in *your own settings file*, so a board you drew could not be given to anyone else. A pack keeps the two together:
+**Pitboard** - A pit board pack is the board picture plus the offsets that place each row on it, so a board you drew can be given to anyone:
 
 ```
 pitboards\
   classic\   pitboard.ini  background.tga
 ```
 
-Nine skins of it ship - the same board with a recolored frame, in the same nine brand colors as the gamepad skins - and any of them is the two-file template to copy for your own board: rename the folder, drop in your artwork, done - its `base = classic` line answers every row offset from the classic board, so you only add `[offset]` keys for rows your art puts somewhere else (`classic\pitboard.ini` names them all). They keep classic's white writing surface, so they need no `[text] color` - row text defaults to the marker black that surface is drawn for. A board with a DARK surface does need it; `classic\pitboard.ini` documents the key. Your board's **aspect ratio comes from its own art**, so it is no longer forced to the shipped 16:9. Pick it in Settings > Pitboard; the **Reload Config** hotkey re-reads the `.ini` without a restart.
+Nine skins of it ship - the same board with a recolored frame, in the same nine brand colors as the gamepad skins - and any of them is the two-file template for your own board: rename the folder, drop in your artwork, and its `base = classic` line answers every row offset, so you add `[offset]` keys only for rows your art puts somewhere else (`classic\pitboard.ini` names them all). Row text defaults to marker black for a white writing surface; a board with a DARK surface needs a `[text] color`, which the same file documents. The board's **aspect ratio comes from its own art**. Pick it in Settings > Pitboard.
 
-**Gauges** - The tacho and speedo are one **pack**, for the sharpest reason of the three: the ticks and figures are painted into the dial art while the needle used to be placed from numbers compiled into the plugin, so a face drawn to any other ceiling read wrong at every point but zero - and nothing anywhere said so. A pack keeps the picture and its scale together:
+**Gauges** - The tacho and speedo are one **pack**: the ticks and figures are painted into the dial art, so the numbers that place the needle travel with it:
 
 ```
 gauges\
@@ -92,11 +94,13 @@ gauges\
 
 Both faces live in one pack because they are drawn as a set. To mix, you do not need two packs: each gauge stores its own choice, so you can run your tacho with the shipped speedo by picking them separately - and a pack with `base = classic` that contains only `tacho.tga` is a two-file set that does the same thing.
 
-The faces are square and drawn as a circle, so unlike a pit board there is no aspect to state - only what your art READS. `[tacho] max` and `[speedo] max` are the numbers worth checking first, along with `min-angle` / `max-angle` for how far your dial sweeps (0 is straight up; the shipped faces run -158 to 142). `speedo.max` is in km/h whatever unit your face is printed in, so a 0-140 mph dial writes `max-mph = 140` and the plugin converts. `needle-color`, `needle-length` and `needle-width` belong to the pack too, because a needle has to suit the face it sits on - your own `[TachoWidget] needleColor` in the settings file still wins if you set one. `classic\gauge.ini` documents every key. Pick a set in the Texture column in Settings > Widgets; the **Reload Config** hotkey re-reads the `.ini` without a restart, which is what makes lining a needle up bearable.
+The faces are square and drawn as a circle, so there is no aspect to state - only what your art READS. `[tacho] max` and `[speedo] max` are the numbers to check first, with `min-angle` / `max-angle` for how far the dial sweeps (0 is straight up; the shipped faces run -158 to 142). `speedo.max` is in km/h whatever unit the face is printed in, so a 0-140 mph dial writes `max-mph = 140` and the plugin converts. `needle-color`, `needle-length` and `needle-width` belong to the pack too, since a needle has to suit its face; your own `[TachoWidget] needleColor` in the settings file still wins if you set one. `classic\gauge.ini` documents every key. Pick a set in the Texture column in Settings > Widgets.
 
 If you had drawn your own `tacho_widget_1.tga` before this, the plugin copies it into `gauges\legacy\` for you the first time it runs and selects it, so nothing is lost. That only works for art in your Documents plugin folder - a file dropped straight into the game's own `plugins\` folder cannot be told apart from the one older versions shipped there, so that one is left alone and the log says what to do with it.
 
 **Helmet** - The helmet overlay uses two textures: `helmet_upper_1.tga` (visor rim/top) and `helmet_lower_1.tga` (chin bar). Author at screen resolution with transparent visor openings and ~10% bleed on all sides (extra opaque border beyond the visible area) so tilt and vibration don't expose hard edges.
+
+**Twitch chat badges** - The stream chat shows an icon for each chatter's role. For Twitch lines, to use Twitch's own badge images instead, add them yourself - the plugin can't ship Twitch's badge art - as `.tga` files in `textures\`, named `twitch_` plus Twitch's badge name and `_1`: `twitch_broadcaster_1.tga`, `twitch_lead_moderator_1.tga`, `twitch_moderator_1.tga`, `twitch_vip_1.tga`, `twitch_staff_1.tga`, `twitch_partner_1.tga`, `twitch_artist_1.tga`, `twitch_premium_1.tga` (Prime), `twitch_turbo_1.tga`, `twitch_founder_1.tga`, `twitch_subscriber_1.tga`. Each file replaces that role's icon and is drawn as-is, not tinted; roles without a file keep their icon. Square images work best - Twitch serves its badges at 72x72.
 
 ## Custom Fonts
 

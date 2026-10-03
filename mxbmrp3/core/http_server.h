@@ -8,7 +8,7 @@
 // only thread allowed to read it. The resulting string is cached behind an
 // annotated Mutex (thread_safety.h) that the SSE server threads read through;
 // clang's thread-safety analysis checks every access site in CI
-// (tests/integration/check_thread_safety.sh). onDataChanged() arrives on
+// (tests/integration/check_clang_tidy.sh). onDataChanged() arrives on
 // PluginData's notification path, the same one HudManager is on, and
 // per-client sequence tracking keeps a multi-client wake from racing.
 //

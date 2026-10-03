@@ -17,7 +17,6 @@ ClockWidget::ClockWidget()
 {
     m_panelKind = PanelKind::Widget;
     m_bContentCard = true;
-    DEBUG_INFO("ClockWidget created");
     setDraggable(true);
     m_strings.reserve(3);  // label (optional), primary time, secondary line (optional)
     setTextureBaseName("clock_widget");
@@ -144,7 +143,7 @@ void ClockWidget::rebuildRenderData() {
     // BOX-MODEL: the plan owns padding, chrome, the title band and the content
     // origin. The fixed 12-char column (shared with Position/Lap/Time) is the
     // content width, so the four standard widgets keep tiling with each other.
-    BaseHud::PanelWant want;
+    PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(
         WidgetDimensions::STANDARD_WIDTH, dim.fontSize);
     want.sectionH = { bigValueRowHeight(dim) };  // the big value's row; the UTC line rides in the bottom padding
@@ -154,7 +153,7 @@ void ClockWidget::rebuildRenderData() {
     const float backgroundHeight = p.height();
 
     addPlanBackground(p, startX, startY);
-    addPlanTitle(p, titleLabel, this->getFont(FontCategory::TITLE), textColor);
+    addPlanTitle(p, titleLabel, textColor);
 
     const float contentStartX = p.contentX();
     float currentY = p.contentY();
@@ -164,7 +163,7 @@ void ClockWidget::rebuildRenderData() {
         this->getFont(FontCategory::TITLE), textColor, dim.fontSizeExtraLarge);
     currentY += bigValueRowHeight(dim);
 
-    // Secondary time (embedded in bottom padding - like TimeWidget's session type)
+    // Secondary time (embedded in bottom padding)
     if (m_bShowUtc) {
         addString(secondaryBuf, contentStartX, currentY, Justify::LEFT,
             this->getFont(FontCategory::TITLE), textColor, dim.fontSize);

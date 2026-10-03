@@ -447,7 +447,7 @@ void MapHud::renderRaceMarkers(const RotationCache& rotation,
         return;
     }
 
-    unsigned long splitColor = this->getColor(ColorSlot::POSITIVE);   // green for splits
+    unsigned long splitColor = this->getColor(ColorSlot::SECONDARY);  // as the Gap Bar's split ticks
     unsigned long holeshotColor = this->getColor(ColorSlot::NEUTRAL);  // yellow for holeshot
                                                                        // (accent is reserved for
                                                                        // the player's own segments)

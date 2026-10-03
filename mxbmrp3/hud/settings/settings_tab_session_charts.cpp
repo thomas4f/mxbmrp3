@@ -49,7 +49,7 @@ BaseHud* SettingsHud::renderTabSessionCharts(SettingsLayoutContext& ctx) {
     ctx.addSectionHeading("Layout");
 
     // Rider line colours
-    ctx.addCycleControl("Colors", getColorModeName(hud->m_riderColorMode), 10,
+    ctx.addCycleControl("Colors", getColorModeName(hud->m_riderColorMode),
         SettingsHud::CycleControl::enumMember(hud, &SessionChartsHud::m_riderColorMode,
             static_cast<int>(SessionChartsHud::RiderColorMode::COLOR_MODE_COUNT), hud),
         hud, true, false, "session_charts.colors", /*tooltipOnArrows=*/false);
@@ -68,14 +68,14 @@ BaseHud* SettingsHud::renderTabSessionCharts(SettingsLayoutContext& ctx) {
     rowsControl.postStep = [hud]() {
         hud->m_topPositionsCount = std::min(hud->m_topPositionsCount, hud->m_displayRowCount);
     };
-    ctx.addSteppedControl("Rows to show", buf, 10, rowsControl,
+    ctx.addSteppedControl("Rows to show", buf, rowsControl,
         hud, true, false, "session_charts.rows", /*tooltipOnArrows=*/false);
 
     // Top-N pinned leaders (label harmonized with the Standings HUD). The upper
     // bound tracks the rows drawn; it's re-resolved on every rebuild, and the
     // Rows control above re-clamps this value whenever it shrinks.
     snprintf(buf, sizeof(buf), "%d", hud->m_topPositionsCount);
-    ctx.addSteppedControl("Top positions", buf, 10,
+    ctx.addSteppedControl("Top positions", buf,
         SettingsHud::SteppedControl::fixedInt(&hud->m_topPositionsCount, 1,
             SessionChartsHud::MIN_TOP_COUNT,
             std::min(SessionChartsHud::MAX_TOP_COUNT, hud->m_displayRowCount), hud),
@@ -88,7 +88,7 @@ BaseHud* SettingsHud::renderTabSessionCharts(SettingsLayoutContext& ctx) {
     {
         char rowsBuf[8];
         snprintf(rowsBuf, sizeof(rowsBuf), "%d", hud->m_graphRows);
-        ctx.addSteppedControl("Chart height", rowsBuf, 10,
+        ctx.addSteppedControl("Chart height", rowsBuf,
             SettingsHud::SteppedControl::clampInt(&hud->m_graphRows, 1,
                 SessionChartsHud::MIN_GRAPH_ROWS, SessionChartsHud::MAX_GRAPH_ROWS, hud),
             hud, true, false, "session_charts.graph_rows");

@@ -117,6 +117,26 @@ the levers for text render cost are on-screen size and character count.
 `scale` from the old format is accepted but ignored - use `cell_height` instead
 (it is predictable; `fontgen`'s `scale` is not).
 
+## Glyphs drawn as artwork, not as a font (`outlines2ttf.py`)
+
+A number-plate digit set that exists only as vector outlines (an Illustrator
+`.ai`, a PDF, or an SVG - one filled shape per glyph in a row) goes through
+`outlines2ttf.py` first, which writes a `.ttf` the generator above takes as-is:
+
+```bash
+python3 -m pip install -r tools/requirements.txt          # pymupdf + fonttools, once
+python3 tools/fontgen/outlines2ttf.py numbers.ai --chars 1234567890 -o NeonNumbers.ttf
+tools/fontgen/mxbmrp3_fontgen NeonNumbers.ttf              # -> NeonNumbers.fnt
+```
+
+`--base <font.ttf>` borrows every character the artwork does not draw from
+another font, scaled to the artwork's digit height - so a digits-only face still
+renders `P1`, `#12` and `1/24`. Without it, undrawn characters are blank but
+keep a digit's advance, so a stray character leaves a hole rather than closing
+up. How glyphs are picked off the sheet, how the baseline and advances are
+derived and why it is a separate step from the generator are in the script's
+header; `test_outlines2ttf.sh` is its test.
+
 ## `.fnt` binary format
 
 Specified once, at the top of `mxbmrp3_fontgen.cpp` - the writer, so it is the

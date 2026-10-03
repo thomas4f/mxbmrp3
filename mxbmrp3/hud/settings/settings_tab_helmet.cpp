@@ -217,7 +217,7 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
 
     {
         std::string val = fmtVariant(hud->m_helmetUpperVariant);
-        ctx.addCycleControl("Upper texture", val.c_str(), 10,
+        ctx.addCycleControl("Upper texture", val.c_str(),
             SettingsHud::ClickRegion::HELMET_UPPER_TEX_DOWN,
             SettingsHud::ClickRegion::HELMET_UPPER_TEX_UP,
             hud, true, hud->m_helmetUpperVariant == 0,
@@ -226,7 +226,7 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
 
     {
         std::string val = fmtVariant(hud->m_helmetLowerVariant);
-        ctx.addCycleControl("Lower texture", val.c_str(), 10,
+        ctx.addCycleControl("Lower texture", val.c_str(),
             SettingsHud::ClickRegion::HELMET_LOWER_TEX_DOWN,
             SettingsHud::ClickRegion::HELMET_LOWER_TEX_UP,
             hud, true, hud->m_helmetLowerVariant == 0,
@@ -237,7 +237,7 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
         char buf[16];
         const int pct = static_cast<int>(std::round(100.0f * (1.0f + hud->m_helmetZoom)));
         snprintf(buf, sizeof(buf), "%d%%", pct);
-        ctx.addCycleControl("Zoom", buf, 10,
+        ctx.addCycleControl("Zoom", buf,
             SettingsHud::ClickRegion::HELMET_ZOOM_DOWN,
             SettingsHud::ClickRegion::HELMET_ZOOM_UP,
             hud, true, false, "helmet.zoom");
@@ -245,7 +245,7 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
 
     {
         std::string val = fmtOffset(hud->m_helmetUpperOffsetY);
-        ctx.addCycleControl("Upper offset", val.c_str(), 10,
+        ctx.addCycleControl("Upper offset", val.c_str(),
             SettingsHud::ClickRegion::HELMET_UPPER_OFFSET_DOWN,
             SettingsHud::ClickRegion::HELMET_UPPER_OFFSET_UP,
             hud, true, false, "helmet.upper_offset");
@@ -253,7 +253,7 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
 
     {
         std::string val = fmtOffset(hud->m_helmetLowerOffsetY);
-        ctx.addCycleControl("Lower offset", val.c_str(), 10,
+        ctx.addCycleControl("Lower offset", val.c_str(),
             SettingsHud::ClickRegion::HELMET_LOWER_OFFSET_DOWN,
             SettingsHud::ClickRegion::HELMET_LOWER_OFFSET_UP,
             hud, true, false, "helmet.lower_offset");
@@ -272,7 +272,7 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
         } else {
             snprintf(buf, sizeof(buf), "%+d%%", pct);
         }
-        ctx.addCycleControl("Tilt strength", buf, 10,
+        ctx.addCycleControl("Tilt strength", buf,
             SettingsHud::ClickRegion::HELMET_TILT_DOWN,
             SettingsHud::ClickRegion::HELMET_TILT_UP,
             hud, true, pct == 0,
@@ -287,7 +287,7 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
         } else {
             snprintf(buf, sizeof(buf), "%+d%%", pct);
         }
-        ctx.addCycleControl("Vibration strength", buf, 10,
+        ctx.addCycleControl("Vibration strength", buf,
             SettingsHud::ClickRegion::HELMET_VIBRATION_DOWN,
             SettingsHud::ClickRegion::HELMET_VIBRATION_UP,
             hud, true, pct == 0,
@@ -296,7 +296,7 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
 
     {
         std::string val = fmtPct(hud->m_helmetVibrationSensitivity);
-        ctx.addCycleControl("Vibration sensitivity", val.c_str(), 10,
+        ctx.addCycleControl("Vibration sensitivity", val.c_str(),
             SettingsHud::ClickRegion::HELMET_VIB_SENS_DOWN,
             SettingsHud::ClickRegion::HELMET_VIB_SENS_UP,
             hud, true, hud->m_helmetVibrationSensitivity <= 0.0f,
@@ -310,30 +310,32 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
 
     {
         static const char* modeNames[] = { "Off", "Goggles", "Visor" };
-        ctx.addCycleControl("Mode", modeNames[hud->m_visorMode], 10,
+        ctx.addCycleControl("Mode", modeNames[hud->m_visorMode],
             SettingsHud::ClickRegion::HELMET_VISOR_MODE_DOWN,
             SettingsHud::ClickRegion::HELMET_VISOR_MODE_UP,
             hud, true, false,
             "helmet.visor_mode");
     }
 
+    // Tint does nothing without a visor: greyed out like any row whose setting
+    // is moot, not drawn as an "Off" value.
     {
         bool off = (hud->m_visorMode == HelmetOverlayHud::VISOR_OFF);
         std::string val = fmtPct(hud->m_visorTintOpacity);
-        ctx.addCycleControl("Tint opacity", val.c_str(), 10,
+        ctx.addCycleControl("Tint opacity", val.c_str(),
             SettingsHud::ClickRegion::HELMET_VISOR_TINT_OPACITY_DOWN,
             SettingsHud::ClickRegion::HELMET_VISOR_TINT_OPACITY_UP,
-            hud, true, off,
+            hud, !off, false,
             "helmet.visor_tint_opacity");
     }
 
     {
         bool off = (hud->m_visorMode == HelmetOverlayHud::VISOR_OFF);
         const char* colorName = ColorPalette::getColorName(hud->m_visorTintColor);
-        ctx.addCycleControl("Tint color", colorName, 10,
+        ctx.addCycleControl("Tint color", colorName,
             SettingsHud::ClickRegion::HELMET_VISOR_TINT_COLOR_DOWN,
             SettingsHud::ClickRegion::HELMET_VISOR_TINT_COLOR_UP,
-            hud, true, off,
+            hud, !off, false,
             "helmet.visor_tint_color");
     }
 

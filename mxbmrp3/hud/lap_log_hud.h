@@ -8,8 +8,16 @@
 #include "lap_log_plan.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
+#include "../core/pb_gap_tracker.h"
+#include "official_gap_freeze.h"
+#include "freeze_duration.h"
 #include <chrono>
 #include <vector>
+#include <deque>
+
+class PluginData;
+struct LapLogEntry;
+struct CurrentLapData;
 
 class LapLogHud : public BaseHud {
 public:
@@ -90,6 +98,7 @@ private:
     // Live timing support
     bool m_showLiveTiming = true;  // Show current lap in progress with live sectors/timer
     bool m_showGapRow = true;      // Show gap-to-PB row when live timing is active
+    PbGapTracker::Ref m_gapReference = PbGapTracker::Ref::SESSION_PB;  // Lap the gap row measures against (own setting, not the Gap Bar's)
     bool m_bShowHeaders = false;   // Show a column-header row labeling each column above the lap rows
 
     // Scratch for LapLogPlan::compute() — members, not locals, so a steady-state
@@ -103,4 +112,35 @@ private:
 
     // Get current sector index (0=S1 in progress, 1=S2, 2=S3, -1=no active lap)
     int getCurrentActiveSector() const;
+
+    // ---- rebuildRenderData() sections and the state they share ----
+    // Right-edge anchors for the numeric columns (see computeColumnAnchors).
+    struct LapColumnX {
+        float lapRightX = 0.0f, s1RightX = 0.0f, s2RightX = 0.0f, s3RightX = 0.0f;
+        float s4RightX = 0.0f;  // 4-sector games only
+        float timeRightX = 0.0f;
+        bool showSectors = false;
+    };
+    // The session's best sectors and lap, which a lap row highlights.
+    struct BestTimes {
+        int bestSector1 = -1, bestSector2 = -1, bestSector3 = -1;
+        int bestSector4 = -1;   // 4-sector games only
+        int bestLapTime = -1;
+    };
+    void computeRowPlan(const std::deque<LapLogEntry>* lapLog, const LapLogEntry* bestLapEntry,
+                        bool showCurrentLapRow, bool showGapRow);
+    LapColumnX computeColumnAnchors(const ScaledDimensions& dim) const;
+    BestTimes resolveBestTimes(const PluginData& data, const LapLogEntry* bestLapEntry) const;
+    void addHeaderRow(const LapColumnX& cx, float currentY, const ScaledDimensions& dim);
+    void addCurrentLapRow(const LapColumnX& cx, const PluginData& data, const CurrentLapData* currentLap,
+                          bool pitLap, float currentY, const ScaledDimensions& dim);
+    void addGapRow(const LapColumnX& cx, const PluginData& data, float currentY, const ScaledDimensions& dim);
+    void addPlaceholderRow(const LapColumnX& cx, float currentY, const ScaledDimensions& dim);
+    void addLapEntryRow(const LapColumnX& cx, const BestTimes& best, const LapLogEntry& entry,
+                        float currentY, const ScaledDimensions& dim);
+
+    // Gap row freeze: after each split and the line, the row holds the official
+    // gap against m_gapReference for m_freezeDurationMs (official_gap_freeze.h).
+    int m_freezeDurationMs = FreezeDuration::DEFAULT_MS;  // Own setting, not the Gap Bar's
+    OfficialGapFreeze m_gapFreeze;
 };

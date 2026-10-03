@@ -32,7 +32,6 @@
 // is exactly what this is for — then copy it over tests/fixtures/ and rerun.
 // Self-contained doctest; see run_tests.sh.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

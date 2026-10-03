@@ -110,7 +110,8 @@ function renderHeader(session) {
 //         span.num-badge
 //         span.brand-strip
 //       span.col-name           [0][3]
-//       span.col-gap            [0][4]
+//       span.col-cat            [0][4]  (class; hidden unless CONFIG.showCategory)
+//       span.col-gap            [0][5]
 //     div.row-chips            [1] - no background, hangs outside
 function createStandingsRow() {
     var row = document.createElement("div");
@@ -140,6 +141,10 @@ function createStandingsRow() {
     var name = document.createElement("span");
     name.className = "col-name";
     main.appendChild(name);
+
+    var cat = document.createElement("span");
+    cat.className = "col-cat";
+    main.appendChild(cat);
 
     var gap = document.createElement("span");
     gap.className = "col-gap";
@@ -268,6 +273,9 @@ function renderStandings(standings, session) {
     // keeping the column out of the layout entirely otherwise.
     var showPosDelta = CONFIG.showPosDelta && session && session.isRace;
     overlay.classList.toggle("hide-posdelta", !showPosDelta);
+    // The class column is the overlay's own choice, like +/-: the plugin always
+    // sends `cat` when the game names one.
+    overlay.classList.toggle("hide-cat", !CONFIG.showCategory);
 
     // Auto-fit the badge and gap columns: write the exact measured widths to
     // the *-measured vars that --badge-w / --col-gap-w fall back to (see
@@ -459,10 +467,13 @@ function renderStandings(standings, session) {
         var fullName = rider.fullName || rider.name || "";
         setText(cols[3], fullName.substring(0, CONFIG.nameChars));
 
+        // Class, as the game names it; empty when it does not.
+        setText(cols[4], rider.cat || "");
+
         // Gap — format client-side from raw ms values (shared with tail panel)
         var g = computeGap(rider, session);
-        setClass(cols[4], g.cls);
-        setText(cols[4], g.text);
+        setClass(cols[5], g.cls);
+        setText(cols[5], g.text);
 
         // Chips - filter client-side based on CONFIG.chips. "camera" is never a
         // chip icon (the spectated rider is a row highlight); it stays in the data
@@ -571,7 +582,9 @@ function renderEventLog(events) {
     // events. Status lines are kept in memory in `statusLines` so they
     // can reappear when maxEvents is raised back from 0 — but they
     // share the maxEvents budget like any other entry, so maxEvents=0
-    // hides them along with everything else.
+    // hides them along with everything else. The non-error ones also
+    // expire on their own (STATUS_LINE_TTL_MS).
+    pruneStatusLines();
     var combined = [];
     for (var s = 0; s < statusLines.length; s++) {
         var sl = statusLines[s];

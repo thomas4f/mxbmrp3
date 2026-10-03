@@ -2,8 +2,7 @@
 // hud/standings_hud_build.cpp
 // StandingsHud::rebuildRenderData() — builds the display entries and formatted
 // strings for the standings table (positions, gaps, lap times, penalties,
-// chips), plus the test-build per-phase profiling counters the headless
-// standings perf probe reads (standingsReadProfile / standingsReadTrackedUs).
+// chips).
 // (Split from standings_hud.cpp; row layout stays there, per-row quad/string
 //  emission is standings_hud_render.cpp, row animation standings_hud_animation.cpp.)
 // ============================================================================
@@ -26,39 +25,7 @@
 
 using namespace PluginConstants;
 
-#if defined(MXBMRP3_TEST_BUILD)
-#include <chrono>
-// Per-phase profiling for the headless standings perf probe (test builds only).
-// Attributes rebuildRenderData() cost to setup (build display entries) / format
-// (gap+laptime+penalty strings) / name+anim / layout / render (per-row quads +
-// strings). Compiled out of every shipping DLL.
-namespace {
-    using StClock = std::chrono::steady_clock;
-    double g_stSetupUs = 0, g_stFormatUs = 0, g_stNameAnimUs = 0, g_stLayoutUs = 0, g_stRenderUs = 0;
-    long long g_stCount = 0;
-    inline double stUsSince(StClock::time_point a) {
-        return std::chrono::duration<double, std::micro>(StClock::now() - a).count();
-    }
-}
-void standingsReadProfile(double& setupUs, double& formatUs, double& nameAnimUs,
-                          double& layoutUs, double& renderUs, long long& count) {
-    setupUs = g_stSetupUs; formatUs = g_stFormatUs; nameAnimUs = g_stNameAnimUs;
-    layoutUs = g_stLayoutUs; renderUs = g_stRenderUs; count = g_stCount;
-    g_stSetupUs = g_stFormatUs = g_stNameAnimUs = g_stLayoutUs = g_stRenderUs = 0;
-    g_stCount = 0;
-}
-
-// Shared with standings_hud_render.cpp (renderRiderRow), so external linkage.
-double g_standingsTrackedUs = 0;
-double standingsReadTrackedUs() { double v = g_standingsTrackedUs; g_standingsTrackedUs = 0; return v; }
-#endif
-
-
 void StandingsHud::rebuildRenderData() {
-#if defined(MXBMRP3_TEST_BUILD)
-    auto stSetupStart = StClock::now();
-#endif
-
     clearStrings();
     m_quads.clear();
     m_displayEntries.clear();
@@ -70,15 +37,124 @@ void StandingsHud::rebuildRenderData() {
 
     const PluginData& pluginData = PluginData::getInstance();
     int displayRaceNum = pluginData.getDisplayRaceNum();
-    const SessionData& sessionData = pluginData.getSessionData();
     const auto& classificationOrder = pluginData.getDisplayClassificationOrder();
 
-    // Prune stale icon cache entries for riders no longer in the classification
-    // (e.g. after a new session/race, or a departed rider whose number is reused).
-    // Do NOT compare sizes: m_cachedIconStates only ever holds *displayed* riders,
-    // so on any grid larger than the display row count a size mismatch is permanent,
-    // which would wipe the cache every rebuild -> update() re-inserts + setDataDirty()
-    // -> full rebuild every frame (defeating dirty-gating; the 480fps trap).
+    pruneIconCache(classificationOrder);
+
+    // Use effective columns (with gap mode adjustments) for rendering
+    uint32_t savedEnabledColumns = m_enabledColumns;
+    m_enabledColumns = computeEffectiveColumns();
+
+    buildDisplayEntries(classificationOrder, displayRaceNum, pluginData);
+    formatDisplayEntries(classificationOrder, displayRaceNum, pluginData);
+    applyNameMode();
+
+    // Update animation state (detect position changes, start/clean animations)
+    updateAnimationState();
+
+    // Generate render data
+    // Apply scale to all dimensions
+    auto dim = getScaledDimensions();
+
+    // Render all display entries (rider rows + gap rows)
+    int rowsToRender = static_cast<int>(m_displayEntries.size());
+
+    // The plan first: the columns are positioned from ITS content origin.
+    auto hudDim = calculateHudDimensions(dim, rowsToRender);
+
+    float contentStartX = hudDim.contentStartX;
+    int nameColWidth = getNameColumnWidth();
+    m_columns = ColumnPositions(contentStartX, m_fScale, m_enabledColumns, nameColWidth, getRaceNumColumnWidth());
+    buildColumnTable();  // Rebuild column table and cache width
+
+    setBounds(START_X, START_Y, START_X + hudDim.backgroundWidth, START_Y + hudDim.backgroundHeight);
+
+    addPlanBackground(hudDim.plan, START_X, START_Y);
+
+    float currentY = hudDim.contentStartY;
+
+    // Title: static "Standings" caption in the standard title style, toggled by
+    // the shared title control. addPlanTitle keeps string index 0 stable
+    // (emits an empty string when the title is hidden).
+    addPlanTitle(hudDim.plan, "Standings",
+                 this->getColor(ColorSlot::PRIMARY));
+
+    // Session-info row: context-aware "<session>: <clock / leader lap / overtime>"
+    // on a single line below the title (e.g. "Race 2: FINAL LAP"). The overtime
+    // label ("N TO GO" / "FINAL LAP" / "CHECKERED") replaces the frozen 00:00 once
+    // a time+lap clock expires. Always emitted (empty when disabled) so string
+    // index 1 stays stable for the rebuildLayout fast path.
+    char sessionInfoBuf[48] = "";
+    if (m_bShowSessionInfo) {
+        formatSessionInfo(sessionInfoBuf, sizeof(sessionInfoBuf), classificationOrder, pluginData);
+    }
+    // A SECTION HEADING, through the shared helper -- see BaseHud. Always
+    // emitted (empty when disabled) so string index 1 stays stable for the fast path.
+    addSectionHeading(sessionInfoBuf, hudDim.contentStartX, currentY, dim);
+    if (m_bShowSessionInfo) currentY += sectionHeadingRowHeight(dim);
+
+    // Optional column-header row. Emits one string per enabled column (skipping the
+    // status-icon column, which has no label), in the same column-table order the
+    // per-row strings use so the rebuildLayout fast path can reposition them by index.
+    if (m_bShowHeaders) {
+        addColumnHeaders(currentY, dim);
+        currentY += hudDim.headerHeight;
+    }
+
+    // Clear and rebuild click regions for rider selection
+    m_riderClickRegions.clear();
+
+    // Render rows (no spacing between rows, consistent with other HUDs)
+    for (int i = 0; i < rowsToRender; ++i) {
+        const auto& entry = m_displayEntries[i];
+
+        // Apply animation offset (slides row from old position to new position)
+        float animOffset = (!entry.isPlaceholder && entry.raceNum >= 0)
+            ? getAnimatedRowOffset(entry.raceNum, dim.lineHeightNormal) : 0.0f;
+        float rowY = currentY + animOffset;
+
+        // Colored animation mode: tint the row positive/negative while it slides.
+        addSlideTint(entry, i, rowY, hudDim, dim);
+
+        // Skip highlights for placeholder rows
+        if (!entry.isPlaceholder) {
+            addPlayerOrHoverHighlight(entry, i, rowY, hudDim, dim);
+        }
+
+        // Race number plate: quad behind number (primary color) + brand color strip
+        // Layout within COL_RACENUM_WIDTH: [plate 4 chars][strip ~0.5 chars][padding ~0.5 chars]
+        // Skipped in classic layout (no plates, no brand strip)
+        if (isColumnEnabled(COL_RACENUM) && !entry.isPlaceholder && entry.raceNum >= 0 && !m_bClassicLayout) {
+            addRaceNumPlate(entry, i, rowY, dim);
+        }
+
+        renderRiderRow(entry, entry.isPlaceholder, rowY, dim, i);
+
+        // Add click region for this rider so they can be hover-highlighted and
+        // clicked to spectate — but only for riders actually on track. Anyone who
+        // can't be spectated (DNS/DSQ/retired/unknown, e.g. left the server) or is
+        // sitting in the pits gets no region, so they're neither highlighted on
+        // hover nor clickable. This is the single chokepoint for both behaviors.
+        // The gate is PluginData's now, so Standings, Map, Event Log and Session Charts
+        // cannot drift apart on what "spectatable" means (see isRiderSpectatable).
+        if (!entry.isPlaceholder && pluginData.isRiderSpectatable(entry.raceNum)) {
+            addRiderClickRegion(entry.raceNum, rowY, hudDim, dim);
+        }
+
+        currentY += dim.lineHeightNormal;
+    }
+
+    // Restore m_enabledColumns to the profile-set value (we temporarily modified it for gap mode filtering)
+    m_enabledColumns = savedEnabledColumns;
+}
+
+// Prune stale icon cache entries for riders no longer in the classification
+// (e.g. after a new session/race, or a departed rider whose number is reused).
+// Do NOT compare sizes: m_cachedIconStates only ever holds *displayed* riders,
+// so on any grid larger than the display row count a size mismatch is permanent,
+// which would wipe the cache every rebuild -> update() re-inserts + setDataDirty()
+// -> full rebuild every frame (defeating dirty-gating; the 480fps trap).
+void StandingsHud::pruneIconCache(const std::vector<int>& classificationOrder) {
     if (!m_cachedIconStates.empty()) {
         for (auto it = m_cachedIconStates.begin(); it != m_cachedIconStates.end();) {
             if (std::find(classificationOrder.begin(), classificationOrder.end(), it->first)
@@ -89,13 +165,11 @@ void StandingsHud::rebuildRenderData() {
             }
         }
     }
+}
 
-    // Column configuration is now managed by the profile system
-    bool isRace = pluginData.isRaceSession();
-
-    // Determine gap data source: use live gap in race sessions when enabled
-    bool useLiveGap = isRace && m_bLiveGaps;
-
+// The profile's column set with the gap/name/positions-gained modes folded in.
+// Column configuration is now managed by the profile system.
+uint32_t StandingsHud::computeEffectiveColumns() const {
     // Apply gap mode toggle
     uint32_t effectiveColumns = m_enabledColumns;
     if (m_gapMode != GapMode::OFF) {
@@ -126,10 +200,11 @@ void StandingsHud::rebuildRenderData() {
         prevEffectiveColumns = effectiveColumns;
     }
 
-    // Use effective columns (with gap mode adjustments) for rendering
-    uint32_t savedEnabledColumns = m_enabledColumns;
-    m_enabledColumns = effectiveColumns;
+    return effectiveColumns;
+}
 
+void StandingsHud::buildDisplayEntries(const std::vector<int>& classificationOrder, int displayRaceNum,
+                                       const PluginData& pluginData) {
     // Build display entries with smart pagination
     // Strategy:
     // - If display rider is in top 3 and (running or spectating): show first N riders (simple case)
@@ -187,13 +262,69 @@ void StandingsHud::rebuildRenderData() {
             }
         }
     }
+}
+
+void StandingsHud::formatDisplayEntries(const std::vector<int>& classificationOrder, int displayRaceNum,
+                                        const PluginData& pluginData) {
+    const SessionData& sessionData = pluginData.getSessionData();
 
     // Format strings for all built entries (they're all displayed)
     // Resolve effective gap reference mode (ALTERNATING → current LEADER or PLAYER)
     const GapReferenceMode effectiveGapRef = getEffectiveGapReferenceMode();
+    const StandingsGap::Table gapTable = buildGapTable(classificationOrder, displayRaceNum, pluginData,
+                                                      effectiveGapRef);
+
+    for (size_t entryIdx = 0; entryIdx < m_displayEntries.size(); ++entryIdx) {
+        auto& entry = m_displayEntries[entryIdx];
+        // Skip formatting for placeholders
+        if (entry.isPlaceholder) {
+            continue;
+        }
+
+        entry.updateFormattedStrings();
+
+        // Determine if rider has finished (used for icon display and gap logic)
+        entry.isFinishedRace = (entry.state == RiderState::NORMAL) &&
+            (sessionData.isRiderFinished(entry.numLaps, entry.numLapsAtLeaderFinish) || entry.sessionFinished);
+
+        // Format gap column. The DECISION (which value, which style, which
+        // tint) is StandingsGap::planGap in standings_gap_plan.h — pure and
+        // unit-tested; this side only turns the plan into characters and
+        // palette slots.
+        bool isPlayerRow = (entry.raceNum == displayRaceNum);
+
+        StandingsGap::Row gapRow;
+        gapRow.index = static_cast<int>(entryIdx);
+        gapRow.stateNormal = (entry.state == RiderState::NORMAL);
+        gapRow.hasStateAbbr = (PluginUtils::getRiderStateAbbreviation(entry.state)[0] != '\0');
+        gapRow.isLeaderRow = (entry.position == Position::FIRST);
+        gapRow.isPlayerRow = isPlayerRow;
+        gapRow.officialGap = entry.officialGap;
+        gapRow.gapLaps = entry.gapLaps;
+        gapRow.realTimeGap = entry.realTimeGap;
+        gapRow.bestLap = entry.bestLap;
+        gapRow.isFinished = sessionData.isRiderFinished(entry.numLaps, entry.numLapsAtLeaderFinish);
+        gapRow.hasActiveTrackPos = pluginData.hasActiveTrackPos(entry.raceNum);
+
+        const StandingsGap::Plan gapPlan = StandingsGap::planGap(gapTable, gapRow);
+
+        formatEntryGap(entry, gapPlan, effectiveGapRef);
+        formatEntryLapColumns(entry, entryIdx);
+    }
+}
+
+StandingsGap::Table StandingsHud::buildGapTable(const std::vector<int>& classificationOrder, int displayRaceNum,
+                                                const PluginData& pluginData,
+                                                GapReferenceMode effectiveGapRef) const {
+    const SessionData& sessionData = pluginData.getSessionData();
+
+    bool isRace = pluginData.isRaceSession();
+
+    // Determine gap data source: use live gap in race sessions when enabled
+    bool useLiveGap = isRace && m_bLiveGaps;
 
     // Gather the table-wide gap inputs once. Everything the gap decision needs
-    // from PluginData is read HERE; StandingsGap::planGap() below sees only
+    // from PluginData is read HERE; StandingsGap::planGap() (formatDisplayEntries) sees only
     // these numbers (see standings_gap_plan.h).
     const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
     // The leader (P1) has gap == 0 legitimately — their zero is valid data, not missing.
@@ -263,136 +394,102 @@ void StandingsHud::rebuildRenderData() {
     gapTable.playerLiveGap = (playerLiveGapUsable && playerStanding->realTimeGap > 0)
         ? playerStanding->realTimeGap : 0;
 
-#if defined(MXBMRP3_TEST_BUILD)
-    g_stSetupUs += stUsSince(stSetupStart);
-    auto stFormatStart = StClock::now();
-#endif
+    return gapTable;
+}
 
-    for (size_t entryIdx = 0; entryIdx < m_displayEntries.size(); ++entryIdx) {
-        auto& entry = m_displayEntries[entryIdx];
-        // Skip formatting for placeholders
-        if (entry.isPlaceholder) {
-            continue;
-        }
+// Turn a gap plan into characters and palette slots.
+void StandingsHud::formatEntryGap(DisplayEntry& entry, const StandingsGap::Plan& gapPlan,
+                                  GapReferenceMode effectiveGapRef) const {
+    entry.gapStyle = static_cast<DisplayEntry::GapStyle>(gapPlan.style);
 
-        entry.updateFormattedStrings();
+    switch (gapPlan.kind) {
+    case StandingsGap::Kind::Empty:
+        entry.formattedGap[0] = '\0';
+        break;
+    case StandingsGap::Kind::StateAbbr:
+        strcpy_s(entry.formattedGap, sizeof(entry.formattedGap),
+            PluginUtils::getRiderStateAbbreviation(entry.state));
+        break;
+    case StandingsGap::Kind::Label:
+        strcpy_s(entry.formattedGap, sizeof(entry.formattedGap),
+            effectiveGapRef == GapReferenceMode::LEADER ? "Leader" : "Player");
+        break;
+    case StandingsGap::Kind::LapTime: {
+        // Right-aligned like the numeric gaps.
+        char tmp[16];
+        PluginUtils::formatLapTime(gapPlan.value, tmp, sizeof(tmp));
+        snprintf(entry.formattedGap, sizeof(entry.formattedGap), "%s", tmp);
+        break;
+    }
+    case StandingsGap::Kind::TimeDiff:
+        PluginUtils::formatTimeDiff(entry.formattedGap, sizeof(entry.formattedGap), gapPlan.value);
+        break;
+    case StandingsGap::Kind::LapDiff:
+        snprintf(entry.formattedGap, sizeof(entry.formattedGap), "%+dL", gapPlan.value);
+        break;
+    case StandingsGap::Kind::Placeholder:
+    default:
+        strcpy_s(entry.formattedGap, sizeof(entry.formattedGap), Placeholders::GENERIC);
+        break;
+    }
 
-        // Determine if rider has finished (used for icon display and gap logic)
-        entry.isFinishedRace = (entry.state == RiderState::NORMAL) &&
-            (sessionData.isRiderFinished(entry.numLaps, entry.numLapsAtLeaderFinish) || entry.sessionFinished);
+    // Adjacent-mode tint. The plan says which side of the player the row is
+    // on; the palette slot is chosen here so a theme change never reaches
+    // the pure header.
+    if (gapPlan.tint == StandingsGap::Tint::Ahead) {
+        entry.gapColorOverride = this->getColor(ColorSlot::NEGATIVE);
+    } else if (gapPlan.tint == StandingsGap::Tint::Behind) {
+        entry.gapColorOverride = this->getColor(ColorSlot::POSITIVE);
+    }
+}
 
-        // Format gap column. The DECISION (which value, which style, which
-        // tint) is StandingsGap::planGap in standings_gap_plan.h — pure and
-        // unit-tested; this side only turns the plan into characters and
-        // palette slots.
-        bool isPlayerRow = (entry.raceNum == displayRaceNum);
+// Best lap, last lap (+ optional faster/slower coding) and penalty columns.
+void StandingsHud::formatEntryLapColumns(DisplayEntry& entry, size_t entryIdx) const {
+    // Format best lap time
+    if (entry.hasBestLap) {
+        PluginUtils::formatLapTime(entry.bestLap, entry.formattedLapTime, sizeof(entry.formattedLapTime));
+    }
+    else {
+        strcpy_s(entry.formattedLapTime, sizeof(entry.formattedLapTime), Placeholders::GENERIC);
+    }
 
-        StandingsGap::Row gapRow;
-        gapRow.index = static_cast<int>(entryIdx);
-        gapRow.stateNormal = (entry.state == RiderState::NORMAL);
-        gapRow.hasStateAbbr = (PluginUtils::getRiderStateAbbreviation(entry.state)[0] != '\0');
-        gapRow.isLeaderRow = (entry.position == Position::FIRST);
-        gapRow.isPlayerRow = isPlayerRow;
-        gapRow.officialGap = entry.officialGap;
-        gapRow.gapLaps = entry.gapLaps;
-        gapRow.realTimeGap = entry.realTimeGap;
-        gapRow.bestLap = entry.bestLap;
-        gapRow.isFinished = sessionData.isRiderFinished(entry.numLaps, entry.numLapsAtLeaderFinish);
-        gapRow.hasActiveTrackPos = pluginData.hasActiveTrackPos(entry.raceNum);
+    // Format last lap time (cuts included; 0/none -> placeholder)
+    if (entry.hasLastLap) {
+        PluginUtils::formatLapTime(entry.lastLap, entry.formattedLastLap, sizeof(entry.formattedLastLap));
+    }
+    else {
+        strcpy_s(entry.formattedLastLap, sizeof(entry.formattedLastLap), Placeholders::GENERIC);
+    }
 
-        const StandingsGap::Plan gapPlan = StandingsGap::planGap(gapTable, gapRow);
-
-        entry.gapStyle = static_cast<DisplayEntry::GapStyle>(gapPlan.style);
-
-        switch (gapPlan.kind) {
-        case StandingsGap::Kind::Empty:
-            entry.formattedGap[0] = '\0';
-            break;
-        case StandingsGap::Kind::StateAbbr:
-            strcpy_s(entry.formattedGap, sizeof(entry.formattedGap),
-                PluginUtils::getRiderStateAbbreviation(entry.state));
-            break;
-        case StandingsGap::Kind::Label:
-            strcpy_s(entry.formattedGap, sizeof(entry.formattedGap),
-                effectiveGapRef == GapReferenceMode::LEADER ? "Leader" : "Player");
-            break;
-        case StandingsGap::Kind::LapTime: {
-            // Right-aligned like the numeric gaps.
-            char tmp[16];
-            PluginUtils::formatLapTime(gapPlan.value, tmp, sizeof(tmp));
-            snprintf(entry.formattedGap, sizeof(entry.formattedGap), "%s", tmp);
-            break;
-        }
-        case StandingsGap::Kind::TimeDiff:
-            PluginUtils::formatTimeDiff(entry.formattedGap, sizeof(entry.formattedGap), gapPlan.value);
-            break;
-        case StandingsGap::Kind::LapDiff:
-            snprintf(entry.formattedGap, sizeof(entry.formattedGap), "%+dL", gapPlan.value);
-            break;
-        case StandingsGap::Kind::Placeholder:
-        default:
-            strcpy_s(entry.formattedGap, sizeof(entry.formattedGap), Placeholders::GENERIC);
-            break;
-        }
-
-        // Adjacent-mode tint. The plan says which side of the player the row is
-        // on; the palette slot is chosen here so a theme change never reaches
-        // the pure header.
-        if (gapPlan.tint == StandingsGap::Tint::Ahead) {
-            entry.gapColorOverride = this->getColor(ColorSlot::NEGATIVE);
-        } else if (gapPlan.tint == StandingsGap::Tint::Behind) {
-            entry.gapColorOverride = this->getColor(ColorSlot::POSITIVE);
-        }
-
-        // Format best lap time
-        if (entry.hasBestLap) {
-            PluginUtils::formatLapTime(entry.bestLap, entry.formattedLapTime, sizeof(entry.formattedLapTime));
-        }
-        else {
-            strcpy_s(entry.formattedLapTime, sizeof(entry.formattedLapTime), Placeholders::LAP_TIME);
-        }
-
-        // Format last lap time (cuts included; 0/none -> placeholder)
-        if (entry.hasLastLap) {
-            PluginUtils::formatLapTime(entry.lastLap, entry.formattedLastLap, sizeof(entry.formattedLastLap));
-        }
-        else {
-            strcpy_s(entry.formattedLastLap, sizeof(entry.formattedLastLap), Placeholders::LAP_TIME);
-        }
-
-        // Hidden INI faster/slower coding vs the LOCAL rider's last lap (the display
-        // target - your own bike, or the rider you're spectating). Uses the semantic
-        // POSITIVE/NEGATIVE palette slots (default green/red, but follows the user's
-        // theme), not literal colors. Default off (m_bLastLapColorCode). Skip the local
-        // rider's own row and any row without a comparable time; leave the override at 0
-        // so the default color applies.
-        entry.lastLapColorOverride = 0;
-        if (m_bLastLapColorCode && entry.hasLastLap &&
-            m_cachedPlayerIndex >= 0 && m_cachedPlayerIndex < static_cast<int>(m_displayEntries.size()) &&
-            static_cast<int>(entryIdx) != m_cachedPlayerIndex) {
-            int playerLastLap = m_displayEntries[m_cachedPlayerIndex].lastLap;
-            if (playerLastLap > 0 && entry.lastLap != playerLastLap) {
-                entry.lastLapColorOverride = (entry.lastLap > playerLastLap)
-                    ? this->getColor(ColorSlot::POSITIVE)   // slower than you → POSITIVE slot
-                    : this->getColor(ColorSlot::NEGATIVE);  // faster than you → NEGATIVE slot
-            }
-        }
-
-        // Format penalty as whole seconds (e.g., "+5s" for 5 second penalty)
-        if (entry.penalty > 0) {
-            int penaltySeconds = (entry.penalty + MS_TO_SEC_ROUNDING_OFFSET) / MS_TO_SEC_DIVISOR;
-            snprintf(entry.formattedPenalty, sizeof(entry.formattedPenalty), "+%ds", penaltySeconds);
-        } else {
-            // No penalty - show generic placeholder
-            strcpy_s(entry.formattedPenalty, sizeof(entry.formattedPenalty), Placeholders::GENERIC);
+    // Hidden INI faster/slower coding vs the LOCAL rider's last lap (the display
+    // target - your own bike, or the rider you're spectating). Uses the semantic
+    // POSITIVE/NEGATIVE palette slots (default green/red, but follows the user's
+    // theme), not literal colors. Default off (m_bLastLapColorCode). Skip the local
+    // rider's own row and any row without a comparable time; leave the override at 0
+    // so the default color applies.
+    entry.lastLapColorOverride = 0;
+    if (m_bLastLapColorCode && entry.hasLastLap &&
+        m_cachedPlayerIndex >= 0 && m_cachedPlayerIndex < static_cast<int>(m_displayEntries.size()) &&
+        static_cast<int>(entryIdx) != m_cachedPlayerIndex) {
+        int playerLastLap = m_displayEntries[m_cachedPlayerIndex].lastLap;
+        if (playerLastLap > 0 && entry.lastLap != playerLastLap) {
+            entry.lastLapColorOverride = (entry.lastLap > playerLastLap)
+                ? this->getColor(ColorSlot::POSITIVE)   // slower than you → POSITIVE slot
+                : this->getColor(ColorSlot::NEGATIVE);  // faster than you → NEGATIVE slot
         }
     }
 
-#if defined(MXBMRP3_TEST_BUILD)
-    g_stFormatUs += stUsSince(stFormatStart);
-    auto stNameAnimStart = StClock::now();
-#endif
+    // Format penalty as whole seconds (e.g., "+5s" for 5 second penalty)
+    if (entry.penalty > 0) {
+        int penaltySeconds = (entry.penalty + MS_TO_SEC_ROUNDING_OFFSET) / MS_TO_SEC_DIVISOR;
+        snprintf(entry.formattedPenalty, sizeof(entry.formattedPenalty), "+%ds", penaltySeconds);
+    } else {
+        // No penalty - show generic placeholder
+        strcpy_s(entry.formattedPenalty, sizeof(entry.formattedPenalty), Placeholders::GENERIC);
+    }
+}
 
+void StandingsHud::applyNameMode() {
     // Apply name mode: truncate names for SHORT, calculate long width for LONG
     if (m_nameMode == NameMode::SHORT) {
         for (auto& entry : m_displayEntries) {
@@ -404,302 +501,221 @@ void StandingsHud::rebuildRenderData() {
         // Static column width (m_longNameChars); names beyond it get the shared
         // ellipsis truncation. No longest-name scan, so the table doesn't reflow
         // as riders join/leave. SHORT mode above stays a deliberate hard cut.
+        // Cut in place: no per-row std::string on the rebuild path.
         for (auto& entry : m_displayEntries) {
-            if (!entry.isPlaceholder && static_cast<int>(strlen(entry.name)) > m_longNameChars) {
-                std::string fitted = PluginUtils::fitText(entry.name, m_longNameChars);
-                strncpy_s(entry.name, sizeof(entry.name), fitted.c_str(), _TRUNCATE);
+            const size_t len = strlen(entry.name);
+            if (!entry.isPlaceholder && static_cast<int>(len) > m_longNameChars) {
+                PluginUtils::fitTextInPlace(entry.name, len, m_longNameChars);
             }
         }
     }
+}
 
-    // Update animation state (detect position changes, start/clean animations)
-    updateAnimationState();
+// Session-info row text: "<session>: <clock / leader lap / overtime>".
+void StandingsHud::formatSessionInfo(char* buf, size_t bufSize, const std::vector<int>& classificationOrder,
+                                     const PluginData& pluginData) const {
+    const SessionData& sessionData = pluginData.getSessionData();
+    const char* sessionLabel = PluginUtils::getSessionString(sessionData.eventType, sessionData.session);
+    if (!sessionLabel) sessionLabel = Placeholders::GENERIC;
 
-#if defined(MXBMRP3_TEST_BUILD)
-    g_stNameAnimUs += stUsSince(stNameAnimStart);
-    auto stLayoutStart = StClock::now();
-#endif
-
-    // Generate render data
-    // Apply scale to all dimensions
-    auto dim = getScaledDimensions();
-
-    // Render all display entries (rider rows + gap rows)
-    int rowsToRender = static_cast<int>(m_displayEntries.size());
-
-    // The plan first: the columns are positioned from ITS content origin.
-    auto hudDim = calculateHudDimensions(dim, rowsToRender);
-
-    float contentStartX = hudDim.contentStartX;
-    int nameColWidth = getNameColumnWidth();
-    m_columns = ColumnPositions(contentStartX, m_fScale, m_enabledColumns, nameColWidth, getRaceNumColumnWidth());
-    buildColumnTable();  // Rebuild column table and cache width
-
-    setBounds(START_X, START_Y, START_X + hudDim.backgroundWidth, START_Y + hudDim.backgroundHeight);
-
-    addPlanBackground(hudDim.plan, START_X, START_Y);
-
-    float currentY = hudDim.contentStartY;
-
-    // Title: static "Standings" caption in the standard title style, toggled by
-    // the shared title control. addPlanTitle keeps string index 0 stable
-    // (emits an empty string when the title is hidden).
-    addPlanTitle(hudDim.plan, "Standings", this->getFont(FontCategory::TITLE),
-                 this->getColor(ColorSlot::PRIMARY));
-
-    // Session-info row: context-aware "<session>: <clock / leader lap / overtime>"
-    // on a single line below the title (e.g. "Race 2: FINAL LAP"). The overtime
-    // label ("N TO GO" / "FINAL LAP" / "CHECKERED") replaces the frozen 00:00 once
-    // a time+lap clock expires. Always emitted (empty when disabled) so string
-    // index 1 stays stable for the rebuildLayout fast path.
-    char sessionInfoBuf[48] = "";
-    if (m_bShowSessionInfo) {
-        const char* sessionLabel = PluginUtils::getSessionString(sessionData.eventType, sessionData.session);
-        if (!sessionLabel) sessionLabel = Placeholders::GENERIC;
-
-        char value[24] = "";
-        if (sessionData.sessionLength > 0) {
-            // Timed (or timed+lap) session: live countdown, or the overtime label.
+    char value[24] = "";
+    if (sessionData.sessionLength > 0) {
+        // Timed (or timed+lap) session: live countdown, or the overtime label.
+        PluginUtils::formatSessionClock(pluginData.getLeaderLapsToGo(),
+            pluginData.getSessionTime(), value, sizeof(value));
+    } else if (sessionData.sessionNumLaps > 0) {
+        // Pure lap race: "CHECKERED" once the leader crosses the line on the final
+        // lap; the session clock (a count-up elapsed timer for lap races) before the
+        // race goes green; otherwise the leader's current lap / total laps. Reuse
+        // isRiderFinished so the threshold matches the FinalLap/finished logic, and
+        // so laps-only races read consistently with the time+lap overtime label.
+        const StandingsData* leaderStanding = classificationOrder.empty()
+            ? nullptr : pluginData.getStanding(classificationOrder[0]);
+        bool leaderFinished = leaderStanding && sessionData.isRiderFinished(
+            leaderStanding->numLaps, leaderStanding->numLapsAtLeaderFinish);
+        bool raceInProgress = (sessionData.sessionState & SessionState::IN_PROGRESS) != 0;
+        if (leaderFinished) {
+            // Checked first so the post-race state (also "not in progress") keeps the
+            // checkered label instead of falling back to the pre-race timer below.
+            strcpy_s(value, sizeof(value), PluginConstants::DisplayStrings::SessionClock::CHECKERED);
+        } else if (!raceInProgress) {
+            // Pre-race (not yet green): show the session clock like timed races do,
+            // instead of a static "Lap 1/N" before anyone has turned a lap.
             PluginUtils::formatSessionClock(pluginData.getLeaderLapsToGo(),
                 pluginData.getSessionTime(), value, sizeof(value));
-        } else if (sessionData.sessionNumLaps > 0) {
-            // Pure lap race: "CHECKERED" once the leader crosses the line on the final
-            // lap; the session clock (a count-up elapsed timer for lap races) before the
-            // race goes green; otherwise the leader's current lap / total laps. Reuse
-            // isRiderFinished so the threshold matches the FinalLap/finished logic, and
-            // so laps-only races read consistently with the time+lap overtime label.
-            const StandingsData* leaderStanding = classificationOrder.empty()
-                ? nullptr : pluginData.getStanding(classificationOrder[0]);
-            bool leaderFinished = leaderStanding && sessionData.isRiderFinished(
-                leaderStanding->numLaps, leaderStanding->numLapsAtLeaderFinish);
-            bool raceInProgress = (sessionData.sessionState & SessionState::IN_PROGRESS) != 0;
-            if (leaderFinished) {
-                // Checked first so the post-race state (also "not in progress") keeps the
-                // checkered label instead of falling back to the pre-race timer below.
-                strcpy_s(value, sizeof(value), "CHECKERED");
-            } else if (!raceInProgress) {
-                // Pre-race (not yet green): show the session clock like timed races do,
-                // instead of a static "Lap 1/N" before anyone has turned a lap.
-                PluginUtils::formatSessionClock(pluginData.getLeaderLapsToGo(),
-                    pluginData.getSessionTime(), value, sizeof(value));
-            } else {
-                int leaderLap = leaderStanding ? leaderStanding->numLaps + 1 : 1;  // numLaps = completed → 1-based current
-                if (leaderLap < 1) leaderLap = 1;
-                if (leaderLap > sessionData.sessionNumLaps) leaderLap = sessionData.sessionNumLaps;
-                snprintf(value, sizeof(value), "Lap %d/%d", leaderLap, sessionData.sessionNumLaps);
-            }
-        } else if (!pluginData.isWaitingSession()) {
-            // UNLIMITED session (Testing / Open Practice, and any practice run with
-            // neither a clock nor a lap target): the game's clock has nothing to count
-            // down TO, so it counts UP. ELAPSED time is what this row means, so it
-            // reads the accessor that says so; formatTimeMinutesSeconds, not
-            // formatSessionClock, because no overtime label can apply where no clock
-            // can expire. Skipped in Waiting -- see isWaitingSession().
-            PluginUtils::formatTimeMinutesSeconds(pluginData.getSessionElapsedTime(),
-                                                  value, sizeof(value));
-        }
-
-        if (value[0] != '\0') {
-            snprintf(sessionInfoBuf, sizeof(sessionInfoBuf), "%s: %s", sessionLabel, value);
         } else {
-            snprintf(sessionInfoBuf, sizeof(sessionInfoBuf), "%s", sessionLabel);
+            int leaderLap = leaderStanding ? leaderStanding->numLaps + 1 : 1;  // numLaps = completed → 1-based current
+            if (leaderLap < 1) leaderLap = 1;
+            if (leaderLap > sessionData.sessionNumLaps) leaderLap = sessionData.sessionNumLaps;
+            snprintf(value, sizeof(value), "Lap %d/%d", leaderLap, sessionData.sessionNumLaps);
         }
-    }
-    // A SECTION HEADING, through the shared helper -- see BaseHud. Always
-    // emitted (empty when disabled) so string index 1 stays stable for the fast path.
-    addSectionHeading(sessionInfoBuf, hudDim.contentStartX, currentY, dim);
-    if (m_bShowSessionInfo) currentY += sectionHeadingRowHeight(dim);
-
-    // Optional column-header row. Emits one string per enabled column (skipping the
-    // status-icon column, which has no label), in the same column-table order the
-    // per-row strings use so the rebuildLayout fast path can reposition them by index.
-    if (m_bShowHeaders) {
-        unsigned long headerColor = this->getColor(ColorSlot::TERTIARY);
-        int headerFont = this->getFont(FontCategory::STRONG);
-        for (const auto& col : m_columnTable) {
-            if (col.columnIndex == COL_IDX_TRACKED) continue;
-            int justify = Justify::LEFT;
-            float textX = getColumnHeaderTextX(col.columnIndex, col.position, dim.fontSize, &justify);
-            addLabel(getColumnHeaderLabel(col.columnIndex), textX, currentY, justify,
-                headerFont, headerColor, dim);
-        }
-        currentY += hudDim.headerHeight;
+    } else if (!pluginData.isWaitingSession()) {
+        // UNLIMITED session (Testing / Open Practice, and any practice run with
+        // neither a clock nor a lap target): the game's clock has nothing to count
+        // down TO, so it counts UP. ELAPSED time is what this row means, so it
+        // reads the accessor that says so; formatTimeMinutesSeconds, not
+        // formatSessionClock, because no overtime label can apply where no clock
+        // can expire. Skipped in Waiting -- see isWaitingSession().
+        PluginUtils::formatTimeMinutesSeconds(pluginData.getSessionElapsedTime(),
+                                              value, sizeof(value));
     }
 
-    // Clear and rebuild click regions for rider selection
-    m_riderClickRegions.clear();
-
-#if defined(MXBMRP3_TEST_BUILD)
-    g_stLayoutUs += stUsSince(stLayoutStart);
-    auto stRenderStart = StClock::now();
-#endif
-
-    // Render rows (no spacing between rows, consistent with other HUDs)
-    for (int i = 0; i < rowsToRender; ++i) {
-        const auto& entry = m_displayEntries[i];
-
-        // Apply animation offset (slides row from old position to new position)
-        float animOffset = (!entry.isPlaceholder && entry.raceNum >= 0)
-            ? getAnimatedRowOffset(entry.raceNum, dim.lineHeightNormal) : 0.0f;
-        float rowY = currentY + animOffset;
-
-        // Colored animation mode: tint row positive/negative while animating.
-        // Skipped on the player row while the row highlight is on (the default), so
-        // the accent/brand background stays unobstructed (no crossfade, no flicker —
-        // slide direction on the player row is conveyed by the row-position change itself).
-        // The quad index is cached so rebuildLayout can update its position + alpha
-        // each frame without forcing a full data rebuild.
-        bool suppressSlideForPlayerRow = (m_bPlayerRowHighlight && i == m_cachedPlayerIndex);
-        if (m_animationMode == AnimationMode::COLORED && !entry.isPlaceholder && entry.raceNum >= 0
-                && !suppressSlideForPlayerRow) {
-            float slideFade = getSlideFade(entry.raceNum);
-            if (slideFade > 0.0f) {
-                auto animIt = m_activeAnimations.find(entry.raceNum);
-                bool promoted = (animIt != m_activeAnimations.end())
-                    && (animIt->second.fromSlot > animIt->second.toSlot);
-                unsigned long tintColor = promoted
-                    ? this->getColor(ColorSlot::POSITIVE)
-                    : this->getColor(ColorSlot::NEGATIVE);
-
-                SPluginQuad_t slide;
-                float slideX = hudDim.contentStartX;
-                float slideY = rowY;
-                applyOffset(slideX, slideY);
-                setQuadPositions(slide, slideX, slideY, hudDim.plan.contentW(), dim.lineHeightNormal);
-                slide.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-                slide.m_ulColor = PluginUtils::applyOpacity(tintColor, ROW_HIGHLIGHT_OPACITY * slideFade);
-                m_slideHighlightQuads.push_back({m_quads.size(), i, entry.raceNum, promoted});
-                m_quads.push_back(slide);
-            }
-        }
-
-        // Skip highlights for placeholder rows
-        if (!entry.isPlaceholder) {
-            // Player/spectated row highlight (full-row background, accent color by
-            // default, bike brand color via INI). On by default; when disabled via
-            // INI the accent-colored name marker in renderRiderRow takes over.
-            if (m_bPlayerRowHighlight && i == m_cachedPlayerIndex) {
-                unsigned long highlightColor;
-                if (m_bPlayerRowHighlightBrand) {
-                    // Brand mode: use the bike's brand color, but fall back to the
-                    // muted slot when the bike has no real brand mapping (all GPB/KRP
-                    // bikes and brand-less MXB bikes resolve to the neutral gray
-                    // sentinel) so the bar stays theme-aware instead of off-palette gray.
-                    highlightColor = (entry.bikeBrandColor == PluginConstants::BrandColors::DEFAULT)
-                        ? this->getColor(ColorSlot::MUTED)
-                        : entry.bikeBrandColor;
-                } else {
-                    highlightColor = this->getColor(ColorSlot::ACCENT);
-                }
-                // The index is taken BEFORE emitting: the slide animation repositions
-                // this band by index every frame (see StandingsHud::update), which is
-                // also why addRowHighlight stays one quad.
-                // THE CONTENT COLUMN -- plan.rowBandX/W, the one owner every row
-                // highlight in the plugin spans. See there for why it is the rows
-                // box and not the card's interior.
-#if defined(MXBMRP3_TEST_BUILD)
-                m_testRowBandX = hudDim.plan.rowBandX();
-                m_testRowBandW = hudDim.plan.rowBandW();
-#endif
-                m_cachedHighlightQuadIndex = addRowHighlight(
-                    hudDim.plan.rowBandX(), rowY, hudDim.plan.rowBandW(),
-                    dim.lineHeightNormal,
-                    PluginUtils::applyOpacity(highlightColor, ROW_SELECT_ALPHA));
-            }
-            // Hover highlight for other riders (spectator mode only). Uses the muted
-            // slot to stay visually distinct from the player's own accent highlight.
-            else if (i == m_hoveredRowIndex && i != m_cachedPlayerIndex) {
-                addRowHighlight(hudDim.plan.rowBandX(), rowY, hudDim.plan.rowBandW(),
-                                dim.lineHeightNormal,
-                                PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED),
-                                                          ROW_HOVER_ALPHA));
-            }
-        }
-
-        // Race number plate: quad behind number (primary color) + brand color strip
-        // Layout within COL_RACENUM_WIDTH: [plate 4 chars][strip ~0.5 chars][padding ~0.5 chars]
-        // Skipped in classic layout (no plates, no brand strip)
-        if (isColumnEnabled(COL_RACENUM) && !entry.isPlaceholder && entry.raceNum >= 0 && !m_bClassicLayout) {
-            PlateGeometry pg(dim.fontSize, dim.lineHeightNormal);
-
-            // Number plate quad
-            SPluginQuad_t numPlate;
-            float npX = m_columns.raceNum, npY = rowY + pg.platePadY;
-            applyOffset(npX, npY);
-            setQuadPositions(numPlate, npX, npY, pg.plateWidth, pg.plateHeight);
-            numPlate.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-
-            // Determine plate color: podium colors for finished P1-P3, muted for DNS/DSQ/RET, primary otherwise
-            bool isMutedRider = (entry.state == PluginConstants::RiderState::DNS ||
-                                 entry.state == PluginConstants::RiderState::DSQ ||
-                                 entry.state == PluginConstants::RiderState::RETIRED);
-            unsigned long basePlateColor;
-            if (isMutedRider) {
-                basePlateColor = this->getColor(ColorSlot::MUTED);
-            } else if (entry.trackedColor != 0) {
-                // Tracked riders keep their custom plate colour (e.g. a red
-                // points-leader plate) even when finishing on the podium; only the
-                // muted (DNS/RET/DSQ) state takes precedence over it.
-                basePlateColor = entry.trackedColor;
-            } else if (entry.isFinishedRace && entry.position == 1) {
-                basePlateColor = PluginConstants::PodiumColors::GOLD;
-            } else if (entry.isFinishedRace && entry.position == 2) {
-                basePlateColor = PluginConstants::PodiumColors::SILVER;
-            } else if (entry.isFinishedRace && entry.position == 3) {
-                basePlateColor = PluginConstants::PodiumColors::BRONZE;
-            } else {
-                // Default plate: secondary colour (dark number stays legible on it).
-                basePlateColor = this->getColor(ColorSlot::SECONDARY);
-            }
-            unsigned long plateColor = PluginUtils::applyOpacity(basePlateColor, 230.0f / 255.0f);
-            numPlate.m_ulColor = plateColor;
-
-            size_t numPlateIdx = m_quads.size();
-            m_quads.push_back(numPlate);
-
-            // Brand-coloured mark, right of the plate with a gap.
-            SPluginQuad_t brandStrip;
-            float bsLeftX = npX + pg.plateWidth + pg.stripGap;
-            setBrandMarkQuad(brandStrip, bsLeftX, npY + pg.arrowInsetY, pg);
-            // Brand color always visible; dimmed for non-participants (DNS/RET/DSQ)
-            float stripOpacity = isMutedRider ? 100.0f / 255.0f : 230.0f / 255.0f;
-            unsigned long stripColor = PluginUtils::applyOpacity(entry.bikeBrandColor, stripOpacity);
-            brandStrip.m_ulColor = stripColor;
-
-            size_t brandStripIdx = m_quads.size();
-            m_quads.push_back(brandStrip);
-
-            m_raceNumPlateQuads.push_back({numPlateIdx, brandStripIdx, i});
-        }
-
-        renderRiderRow(entry, entry.isPlaceholder, rowY, dim, i);
-
-        // Add click region for this rider so they can be hover-highlighted and
-        // clicked to spectate — but only for riders actually on track. Anyone who
-        // can't be spectated (DNS/DSQ/retired/unknown, e.g. left the server) or is
-        // sitting in the pits gets no region, so they're neither highlighted on
-        // hover nor clickable. This is the single chokepoint for both behaviors.
-        // The gate is PluginData's now, so Standings, Map, Event Log and Session Charts
-        // cannot drift apart on what "spectatable" means (see isRiderSpectatable).
-        if (!entry.isPlaceholder && pluginData.isRiderSpectatable(entry.raceNum)) {
-            RiderClickRegion region;
-            region.x = START_X;
-            region.y = rowY;
-            region.width = hudDim.backgroundWidth;
-            region.height = dim.lineHeightNormal;
-            region.raceNum = entry.raceNum;
-            applyOffset(region.x, region.y);  // Apply drag offset to region
-            m_riderClickRegions.push_back(region);
-        }
-
-        currentY += dim.lineHeightNormal;
+    if (value[0] != '\0') {
+        snprintf(buf, bufSize, "%s: %s", sessionLabel, value);
+    } else {
+        snprintf(buf, bufSize, "%s", sessionLabel);
     }
+}
 
-    // Restore m_enabledColumns to the profile-set value (we temporarily modified it for gap mode filtering)
-    m_enabledColumns = savedEnabledColumns;
+// One header string per enabled column (skipping the status-icon column).
+void StandingsHud::addColumnHeaders(float y, const ScaledDimensions& dim) {
+    unsigned long headerColor = this->getColor(ColorSlot::TERTIARY);
+    for (const auto& col : m_columnTable) {
+        if (col.columnIndex == COL_IDX_TRACKED) continue;
+        int justify = Justify::LEFT;
+        float textX = getColumnHeaderTextX(col.columnIndex, col.position, dim.fontSize, &justify);
+        addLabel(getColumnHeaderLabel(col.columnIndex), textX, y, justify, headerColor, dim);
+    }
+}
 
+void StandingsHud::addSlideTint(const DisplayEntry& entry, int rowIndex, float rowY,
+                                const HudDimensions& hudDim, const ScaledDimensions& dim) {
+    // Colored animation mode: tint row positive/negative while animating.
+    // Skipped on the player row while the row highlight is on (the default), so
+    // the accent/brand background stays unobstructed (no crossfade, no flicker —
+    // slide direction on the player row is conveyed by the row-position change itself).
+    // The quad index is cached so rebuildLayout can update its position + alpha
+    // each frame without forcing a full data rebuild.
+    bool suppressSlideForPlayerRow = (m_bPlayerRowHighlight && rowIndex == m_cachedPlayerIndex);
+    if (m_animationMode == AnimationMode::COLORED && !entry.isPlaceholder && entry.raceNum >= 0
+            && !suppressSlideForPlayerRow) {
+        float slideFade = getSlideFade(entry.raceNum);
+        if (slideFade > 0.0f) {
+            auto animIt = m_activeAnimations.find(entry.raceNum);
+            bool promoted = (animIt != m_activeAnimations.end())
+                && (animIt->second.fromSlot > animIt->second.toSlot);
+            unsigned long tintColor = promoted
+                ? this->getColor(ColorSlot::POSITIVE)
+                : this->getColor(ColorSlot::NEGATIVE);
+
+            SPluginQuad_t slide;
+            float slideX = hudDim.contentStartX;
+            float slideY = rowY;
+            applyOffset(slideX, slideY);
+            setQuadPositions(slide, slideX, slideY, hudDim.plan.contentW(), dim.lineHeightNormal);
+            slide.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+            slide.m_ulColor = PluginUtils::applyOpacity(tintColor, ROW_HIGHLIGHT_OPACITY * slideFade);
+            m_slideHighlightQuads.push_back({m_quads.size(), rowIndex, entry.raceNum, promoted});
+            m_quads.push_back(slide);
+        }
+    }
+}
+
+void StandingsHud::addPlayerOrHoverHighlight(const DisplayEntry& entry, int rowIndex, float rowY,
+                                             const HudDimensions& hudDim, const ScaledDimensions& dim) {
+    // Player/spectated row highlight (full-row background, accent color by
+    // default, bike brand color via INI). On by default; when disabled via
+    // INI the accent-colored name marker in renderRiderRow takes over.
+    if (m_bPlayerRowHighlight && rowIndex == m_cachedPlayerIndex) {
+        unsigned long highlightColor;
+        if (m_bPlayerRowHighlightBrand) {
+            // Brand mode: use the bike's brand color, but fall back to the
+            // muted slot when the bike has no real brand mapping (all GPB/KRP
+            // bikes and brand-less MXB bikes resolve to the neutral gray
+            // sentinel) so the bar stays theme-aware instead of off-palette gray.
+            highlightColor = (entry.bikeBrandColor == PluginConstants::BrandColors::DEFAULT)
+                ? this->getColor(ColorSlot::MUTED)
+                : entry.bikeBrandColor;
+        } else {
+            highlightColor = this->getColor(ColorSlot::ACCENT);
+        }
+        // The index is taken BEFORE emitting: the slide animation repositions
+        // this band by index every frame (see StandingsHud::update), which is
+        // also why addRowHighlight stays one quad.
+        // THE CONTENT COLUMN -- plan.rowBandX/W, the one owner every row
+        // highlight in the plugin spans. See there for why it is the rows
+        // box and not the card's interior.
 #if defined(MXBMRP3_TEST_BUILD)
-    g_stRenderUs += stUsSince(stRenderStart);
-    ++g_stCount;
+        m_testRowBandX = hudDim.plan.rowBandX();
+        m_testRowBandW = hudDim.plan.rowBandW();
 #endif
+        m_cachedHighlightQuadIndex = addRowHighlight(
+            hudDim.plan.rowBandX(), rowY, hudDim.plan.rowBandW(),
+            dim.lineHeightNormal,
+            PluginUtils::applyOpacity(highlightColor, ROW_SELECT_ALPHA));
+    }
+    // Hover highlight for other riders (spectator mode only). Uses the muted
+    // slot to stay visually distinct from the player's own accent highlight.
+    else if (rowIndex == m_hoveredRowIndex && rowIndex != m_cachedPlayerIndex) {
+        addRowHighlight(hudDim.plan.rowBandX(), rowY, hudDim.plan.rowBandW(),
+                        dim.lineHeightNormal,
+                        PluginUtils::applyOpacity(this->getColor(ColorSlot::MUTED),
+                                                  ROW_HOVER_ALPHA));
+    }
+}
+
+void StandingsHud::addRaceNumPlate(const DisplayEntry& entry, int rowIndex, float rowY,
+                                   const ScaledDimensions& dim) {
+    PlateGeometry pg(dim.fontSize, dim.lineHeightNormal);
+
+    // Number plate quad
+    SPluginQuad_t numPlate;
+    float npX = m_columns.raceNum, npY = rowY + pg.platePadY;
+    applyOffset(npX, npY);
+    setQuadPositions(numPlate, npX, npY, pg.plateWidth, pg.plateHeight);
+    numPlate.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+
+    // Determine plate color: podium colors for finished P1-P3, muted for DNS/DSQ/RET, primary otherwise
+    bool isMutedRider = (entry.state == PluginConstants::RiderState::DNS ||
+                         entry.state == PluginConstants::RiderState::DSQ ||
+                         entry.state == PluginConstants::RiderState::RETIRED);
+    unsigned long basePlateColor;
+    if (isMutedRider) {
+        basePlateColor = this->getColor(ColorSlot::MUTED);
+    } else if (entry.trackedColor != 0) {
+        // Tracked riders keep their custom plate colour (e.g. a red
+        // points-leader plate) even when finishing on the podium; only the
+        // muted (DNS/RET/DSQ) state takes precedence over it.
+        basePlateColor = entry.trackedColor;
+    } else if (entry.isFinishedRace && entry.position == 1) {
+        basePlateColor = PluginConstants::PodiumColors::GOLD;
+    } else if (entry.isFinishedRace && entry.position == 2) {
+        basePlateColor = PluginConstants::PodiumColors::SILVER;
+    } else if (entry.isFinishedRace && entry.position == 3) {
+        basePlateColor = PluginConstants::PodiumColors::BRONZE;
+    } else {
+        // Default plate: secondary colour (dark number stays legible on it).
+        basePlateColor = this->getColor(ColorSlot::SECONDARY);
+    }
+    unsigned long plateColor = PluginUtils::applyOpacity(basePlateColor, 230.0f / 255.0f);
+    numPlate.m_ulColor = plateColor;
+
+    size_t numPlateIdx = m_quads.size();
+    m_quads.push_back(numPlate);
+
+    // Brand-coloured mark, right of the plate with a gap.
+    SPluginQuad_t brandStrip;
+    float bsLeftX = npX + pg.plateWidth + pg.stripGap;
+    setBrandMarkQuad(brandStrip, bsLeftX, npY + pg.arrowInsetY, pg);
+    // Brand color always visible; dimmed for non-participants (DNS/RET/DSQ)
+    float stripOpacity = isMutedRider ? 100.0f / 255.0f : 230.0f / 255.0f;
+    unsigned long stripColor = PluginUtils::applyOpacity(entry.bikeBrandColor, stripOpacity);
+    brandStrip.m_ulColor = stripColor;
+
+    size_t brandStripIdx = m_quads.size();
+    m_quads.push_back(brandStrip);
+
+    m_raceNumPlateQuads.push_back({numPlateIdx, brandStripIdx, rowIndex});
+}
+
+void StandingsHud::addRiderClickRegion(int raceNum, float rowY, const HudDimensions& hudDim,
+                                       const ScaledDimensions& dim) {
+    RiderClickRegion region;
+    region.x = START_X;
+    region.y = rowY;
+    region.width = hudDim.backgroundWidth;
+    region.height = dim.lineHeightNormal;
+    region.raceNum = raceNum;
+    applyOffset(region.x, region.y);  // Apply drag offset to region
+    m_riderClickRegions.push_back(region);
 }

@@ -24,7 +24,6 @@
 //     no half-registered pack, and the by-name degradation covers rendering;
 //   - a standalone pack still requires the full set (the old rule, untouched).
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

@@ -179,6 +179,9 @@ function createGridRow(cls) {
     var name = document.createElement("span");
     name.className = "col-name";
     row.appendChild(name);
+    var cat = document.createElement("span");    // respects hide-cat, like the tower
+    cat.className = "col-cat";
+    row.appendChild(cat);
     var gap = document.createElement("span");
     gap.className = "col-gap";
     row.appendChild(gap);
@@ -188,7 +191,7 @@ function createGridRow(cls) {
 // Populate a grid row. `gap` is {text, cls} — the caller decides what the
 // gap column shows (tower gap for the tail, intra-battle interval for a battle).
 function setGridRow(row, cls, rider, gap) {
-    var cols = row.children; // [pos, posdelta, num, name, gap]
+    var cols = row.children; // [pos, posdelta, num, name, cat, gap]
     var inactive = rider.state === STATE_DNS || rider.state === STATE_RETIRED || rider.state === STATE_DSQ;
     row.className = cls + (inactive ? " state-inactive" : "");
     setText(cols[0], String(rider.pos));
@@ -196,8 +199,9 @@ function setGridRow(row, cls, rider, gap) {
     applyPlateColor(cols[2].children[0], rider);
     cols[2].children[1].style.background = rider.brandColor || "transparent";
     setText(cols[3], (rider.fullName || rider.name || "").substring(0, CONFIG.nameChars));
-    setClass(cols[4], gap.cls);
-    setText(cols[4], gap.text);
+    setText(cols[4], rider.cat || "");
+    setClass(cols[5], gap.cls);
+    setText(cols[5], gap.text);
 }
 
 // Build the single vertical list of ALL tail riders. The viewport shows up to slotRows

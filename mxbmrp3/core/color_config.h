@@ -151,6 +151,16 @@ enum class ColorSlot {
     COUNT
 };
 
+// The colour of a signed time delta (a gap, a +/- against a reference), one rule
+// for every HUD that shows one: ahead (negative) POSITIVE, behind (positive)
+// NEGATIVE, and exactly even PRIMARY -- a real value, so not the placeholder's
+// MUTED. Pinned by test_delta_color.cpp.
+constexpr ColorSlot deltaColorSlot(int deltaMs) {
+    return deltaMs < 0 ? ColorSlot::POSITIVE
+         : deltaMs > 0 ? ColorSlot::NEGATIVE
+         : ColorSlot::PRIMARY;
+}
+
 // Slot from the ini key that names it ("primary"), or -1. The names are the same
 // ones the settings file's [Colors] section uses, so a theme's palette and a user's
 // override are written identically -- one vocabulary, two files.

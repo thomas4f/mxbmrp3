@@ -99,6 +99,11 @@ private:
     int  m_onJoinDurationMs = 15000;
     bool m_activityShowing = false;
 
+    // Last Steam state the panel was built for (see update()); -1 forces the first
+    // compare to rebuild.
+    bool m_lastSteamEnabled = false;
+    int  m_lastSteamStatus = -1;
+
     // Cached "circle" icon sprite for the same-server badge (resolved once, since
     // a font glyph like U+25CF isn't reliably present in every configured font).
     int  m_badgeIcon = 0;

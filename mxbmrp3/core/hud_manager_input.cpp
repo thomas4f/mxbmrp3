@@ -74,6 +74,7 @@
 #include "../hud/fmx_hud.h"
 #include "../hud/stats_hud.h"
 #include "../hud/event_log_hud.h"
+#include "../hud/stream_chat_hud.h"
 #include "../hud/benchmark_widget.h"
 #include "hotkey_manager.h"
 #if GAME_HAS_HTTP_SERVER
@@ -283,6 +284,12 @@ void HudManager::processKeyboardInput() {
         DEBUG_INFO_F("Hotkey: Helmet %s", m_pHelmetOverlay->isVisible() ? "shown" : "hidden");
     }
 
+    // Hiding only hides: the chat stays connected (each platform manager's switch).
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_STREAM_CHAT) && m_pStreamChat) {
+        m_pStreamChat->setVisible(!m_pStreamChat->isVisible());
+        DEBUG_INFO_F("Hotkey: Stream Chat %s", m_pStreamChat->isVisible() ? "shown" : "hidden");
+    }
+
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_FRIENDS) && m_pFriends) {
         m_pFriends->setVisible(!m_pFriends->isVisible());
         DEBUG_INFO_F("Hotkey: Friends %s", m_pFriends->isVisible() ? "shown" : "hidden");
@@ -299,7 +306,7 @@ void HudManager::processKeyboardInput() {
             HotkeyAction::TOGGLE_GAP_BAR, HotkeyAction::TOGGLE_PERFORMANCE, HotkeyAction::TOGGLE_RUMBLE,
             HotkeyAction::TOGGLE_EVENT_LOG, HotkeyAction::TOGGLE_FRIENDS, HotkeyAction::TOGGLE_HELMET,
             HotkeyAction::TOGGLE_SESSION_CHARTS, HotkeyAction::TOGGLE_FMX, HotkeyAction::TOGGLE_STATS,
-            HotkeyAction::TOGGLE_SESSION, HotkeyAction::TOGGLE_NOTICES,
+            HotkeyAction::TOGGLE_SESSION, HotkeyAction::TOGGLE_NOTICES, HotkeyAction::TOGGLE_STREAM_CHAT,
         };
         for (HotkeyAction a : kHudToggles) {
             if (!hotkeyMgr.wasActionTriggered(a)) continue;

@@ -512,6 +512,7 @@ namespace Settings {
         saveBitAsKey(settings, RACENUM, cols, StandingsHud::COL_RACENUM);
         saveBitAsKey(settings, NAME, cols, StandingsHud::COL_NAME);
         saveBitAsKey(settings, BIKE, cols, StandingsHud::COL_BIKE);
+        saveBitAsKey(settings, CATEGORY, cols, StandingsHud::COL_CATEGORY);
         saveBitAsKey(settings, PENALTY, cols, StandingsHud::COL_PENALTY);
         saveBitAsKey(settings, BEST_LAP, cols, StandingsHud::COL_BEST_LAP);
         saveBitAsKey(settings, LAST_LAP, cols, StandingsHud::COL_LAST_LAP);
@@ -527,6 +528,7 @@ namespace Settings {
         loadBitFromKey(settings, RACENUM, cols, StandingsHud::COL_RACENUM);
         loadBitFromKey(settings, NAME, cols, StandingsHud::COL_NAME);
         loadBitFromKey(settings, BIKE, cols, StandingsHud::COL_BIKE);
+        loadBitFromKey(settings, CATEGORY, cols, StandingsHud::COL_CATEGORY);
         loadBitFromKey(settings, PENALTY, cols, StandingsHud::COL_PENALTY);
         loadBitFromKey(settings, BEST_LAP, cols, StandingsHud::COL_BEST_LAP);
         loadBitFromKey(settings, LAST_LAP, cols, StandingsHud::COL_LAST_LAP);

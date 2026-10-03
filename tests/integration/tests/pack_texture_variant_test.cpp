@@ -26,7 +26,6 @@
 // environment" exactly as it reads 0 for the bug. This test was written that way
 // first and passed for the wrong reason -- it failed even with the fix in.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"

@@ -10,9 +10,11 @@ and a shaded tile pushed through the icon path comes out as a white square.
 Sources are greyscale on purpose. A texture is drawn with a vertex colour the
 game multiplies in, so white takes the caller's tint in full, grey a darker
 tint, and the shading survives whatever colour the tile is given (the badge
-tiles take the tier's metal). Same renderer as the icons (cairosvg, pinned in
-tools/requirements.txt), same TGA encoding (icon_gen.write_tga), so the output
-is byte-reproducible for a fixed renderer version.
+tiles take the tier's metal). The exception is a brand logo, which must keep
+its own colours and is drawn untinted (assets/textures/README.md). Same
+renderer as the icons (cairosvg, pinned in tools/requirements.txt), same TGA
+encoding (icon_gen.write_tga), so the output is byte-reproducible for a fixed
+renderer version.
 
     python3 tools/texture_gen.py assets/textures/badge_*.svg -o mxbmrp3_data/textures
 

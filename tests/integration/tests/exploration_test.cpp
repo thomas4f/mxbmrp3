@@ -35,10 +35,9 @@
 //  11. Test Pilot from an experimental setting seen on at a save; Profile
 //      Hopper from every real switch, whichever path made it.
 //
-// Back Marker (lapped three times) is not driven here: a lapped rider's finish
-// hangs on the leader's, which the harness does not model.
+// Back Marker: finishing a lap down earns it (it asked for three until 1.31.0);
+// the lapped player is classified at their own crossing after the leader's flag.
 // ============================================================================
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
@@ -560,6 +559,46 @@ TEST_CASE("exploration: Photo Finish is the lap-time margin, and it lands at the
     host.shutdown();
 }
 
+TEST_CASE("exploration: a margin owed at the flag survives a Race Over that cannot read it yet") {
+    // The `final` pass runs twice: at the game's Race Over, with the player still
+    // on track, and at RunDeinit. The margin is read from BOTH riders' lap logs,
+    // and the runner-up's final RaceLap can land between the two passes. The
+    // first used to consume the debt whether or not it could pay it, so the
+    // backstop had nothing left to retry and the row went uncounted.
+    cleanSaveDir();
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSaveWin);
+
+    host.eventInit("TestTrack", "Alice", 1600.0f, 2, "Test 450", "MX1", "TestTrack");
+    host.raceEvent("TestTrack");
+    host.session(RACE1, 2, 0);
+    host.addEntry(10, "Alice");
+    host.addEntry(21, "Rider");
+    host.runInit(RACE1);
+    host.runStart();
+    host.classify(RACE1, 1000, { { .num = 10, .laps = 0 }, { .num = 21, .laps = 0 } });
+    host.raceLap(RACE1, 10, 1, 92000);
+    host.raceLap(RACE1, 21, 1, 92100);
+    host.raceLap(RACE1, 10, 2, 91500);
+    // The field settles before Rider's final RaceLap reaches the lap log: the
+    // race is recorded, the margin is owed.
+    host.classify(RACE1, 200000, {
+        { .num = 10, .best = 91500, .laps = 2, .gap = 0 },
+        { .num = 21, .best = 91443, .laps = 2, .gap = 43 },
+    });
+    CHECK(host.achievementTier("races") == 1);
+    CHECK(host.achievementValue("photo_finish") == doctest::Approx(0.0));
+
+    host.raceSessionState(RACE1, 512 /* RACE_OVER */);   // asked, still unreadable: stays owed
+    CHECK(host.achievementValue("photo_finish") == doctest::Approx(0.0));
+    host.raceLap(RACE1, 21, 2, 91443);                    // forty-three thousandths, now readable
+    host.runDeinit();
+    CHECK(host.achievementValue("photo_finish") == doctest::Approx(1.0));
+    host.eventDeinit();
+    host.shutdown();
+}
+
 TEST_CASE("exploration: Lapped the Field ignores riders who never raced to the flag") {
     // Regression test for a shipped bug: the scan required gapLaps >= 1 from
     // EVERY row in the classification, whatever its state. One rider who
@@ -602,6 +641,43 @@ TEST_CASE("exploration: Lapped the Field ignores riders who never raced to the f
     host.runDeinit();
     host.eventDeinit();
     CHECK(host.achievementValue("lapped_field") == doctest::Approx(1.0));
+    host.shutdown();
+}
+
+TEST_CASE("exploration: Back Marker is finishing a race one lap down") {
+    // It asked for three laps down until 1.31.0, which almost nobody finishes a
+    // race at; one is the ordinary way to be lapped. The signal keeps the most
+    // laps down, so the row's threshold is all that moved.
+    cleanSaveDir();
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSaveWin);
+
+    host.eventInit("TestTrack", "Alice", 1600.0f, 2, "Test 450", "MX1", "TestTrack");
+    host.raceEvent("TestTrack");
+    host.session(RACE1, 2, 0);
+    host.addEntry(10, "Alice");
+    host.addEntry(21, "Leader");
+    host.runInit(RACE1);
+    host.runStart();
+    host.classify(RACE1, 1000, { { .num = 21, .laps = 0 }, { .num = 10, .laps = 0 } });
+    host.raceLap(RACE1, 10, 1, 99000);
+    // The leader takes the flag with the player a lap down...
+    host.classify(RACE1, 180000, {
+        { .num = 21, .best = 90000, .laps = 2, .gap = 0 },
+        { .num = 10, .best = 99000, .laps = 1, .gap = 8000, .gapLaps = 1 },
+    });
+    CHECK(host.achievementValue("back_marker") == doctest::Approx(0.0));   // not finished yet
+    // ...and the player finishes at their own next crossing, still a lap down.
+    host.raceLap(RACE1, 10, 2, 99000);
+    host.classify(RACE1, 190000, {
+        { .num = 21, .best = 90000, .laps = 2, .gap = 0 },
+        { .num = 10, .best = 99000, .laps = 2, .gap = 8000, .gapLaps = 1 },
+    });
+    host.runDeinit();
+    host.eventDeinit();
+    CHECK(host.achievementValue("back_marker") == doctest::Approx(1.0));
+    CHECK(host.achievementTier("back_marker") == 1);   // the one-shot earned
     host.shutdown();
 }
 
@@ -1322,7 +1398,7 @@ TEST_CASE("exploration: Tyre Kicker counts HUDs ever switched on, not on at once
         host.setEveryHudVisible(true);
         // The two HUDs that show THEMSELVES are not in the count: the Direct GL
         // confirmation (armed by that setting's prompt) and the version widget
-        // (an update notice, the donation nudge). Off, every switch still reads
+        // (an update notice). Off, every switch still reads
         // as 100%; counted, Platinum would need both events.
         REQUIRE(host.setHudVisible("gl_confirm", false));
         REQUIRE(host.setHudVisible("version_widget", false));
@@ -2377,4 +2453,60 @@ TEST_CASE("exploration: Holeshot, Wire to Wire and Perfect Race need another rid
     CHECK(host.achievementValue("wire_to_wire") == doctest::Approx(1.0));   // unchanged
 
     host.shutdown();
+}
+
+TEST_CASE("exploration: Steady Hands counts riding since the last CRASH - the menus, a new session and a restart pause it") {
+    // The row says "ride half an hour without crashing", and nothing about
+    // sessions. It used to zero at every session start, so fifteen clean minutes
+    // in testing followed by fifteen online never added up, and a player who
+    // wanted the row had to grind it in one sitting. Now only a crash resets the
+    // stint; it is persisted (crashFreeSec) so a spell in the menus, a session
+    // change or quitting the game and coming back merely pause it.
+    cleanSaveDir();
+    {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        host.startup(kSaveWin);
+        enterPractice(host);
+        for (int s = 0; s < 900; ++s) {                 // fifteen clean minutes
+            host.explorationTick(/*spectating=*/false, /*rumbleLive=*/false, /*onTrack=*/true, 120, 0);
+        }
+        CHECK(host.achievementValue("steady_hands") == doctest::Approx(900.0));
+        CHECK(host.achievementTier("steady_hands") == 0);
+        for (int s = 0; s < 60; ++s) {                  // a minute in the menus: paused, not lost
+            host.explorationTick(false, false, /*onTrack=*/false, 120, 0);
+        }
+        host.runStop();
+        host.runDeinit();
+        auto j = readStats();
+        REQUIRE(j.is_object());
+        CHECK(j["exploration"].value("crashFreeSec", 0.0) == doctest::Approx(900.0));
+        host.shutdown();
+    }   // quit the game
+
+    PluginHost again(dllPath());
+    REQUIRE(again.loaded());
+    again.startup(kSaveWin);
+    enterPractice(again);                               // a new session, later
+    for (int s = 0; s < 900; ++s) {                     // fifteen more, still clean
+        again.explorationTick(false, false, true, 120, 0);
+    }
+    CHECK(again.achievementValue("steady_hands") == doctest::Approx(1800.0));
+    CHECK(again.achievementTier("steady_hands") == 1);   // half an hour without crashing: earned
+
+    // A crash, and only a crash, starts the stint over. The row's VALUE keeps
+    // the best run ever seen; the persisted stint is what restarts.
+    again.raceTrackPosition({ { .num = 10, .trackPos = 0.1f, .crashed = 1 } });
+    again.telemetry(10.0f, 3);
+    again.raceTrackPosition({ { .num = 10, .trackPos = 0.1f, .crashed = 0 } });
+    for (int s = 0; s < 10; ++s) {
+        again.explorationTick(false, false, true, 120, 0);
+    }
+    CHECK(again.achievementValue("steady_hands") == doctest::Approx(1800.0));
+    again.runStop();
+    again.runDeinit();
+    auto j2 = readStats();
+    REQUIRE(j2.is_object());
+    CHECK(j2["exploration"].value("crashFreeSec", 0.0) == doctest::Approx(10.0));
+    again.shutdown();
 }

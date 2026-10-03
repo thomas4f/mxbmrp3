@@ -98,8 +98,18 @@ void PluginThread::stop() {
     // consistent for the shutdown-time stats/settings saves.
     std::deque<std::function<void()>> leftover;
     { MutexLock lk(m_qMutex); leftover.swap(m_queue); }
+    // A throwing leftover must not stop the drain (the rest still need to run
+    // for the shutdown saves), but it must not vanish either: it is a command
+    // whose state change never landed. Logger outlives every singleton but
+    // PluginManager, so logging here is safe.
     for (auto& cmd : leftover) {
-        try { if (cmd) cmd(); } catch (...) {}
+        try {
+            if (cmd) cmd();
+        } catch (const std::exception& e) {
+            DEBUG_WARN_F("PluginThread: leftover command threw at shutdown: %s", e.what());
+        } catch (...) {
+            DEBUG_WARN("PluginThread: leftover command threw a non-std exception at shutdown");
+        }
     }
     DEBUG_INFO("PluginThread: worker stopped");
 }

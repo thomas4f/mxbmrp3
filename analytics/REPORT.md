@@ -1,5 +1,7 @@
 # Moved to [`usage_survey/REPORT.md`](../usage_survey/REPORT.md)
 
+It is also published as an [interactive page](https://thomas4f.github.io/mxbmrp3/usage_survey/).
+
 This report now lives in [`usage_survey/`](../usage_survey/), matching the name the
 plugin and installer use for the thing that produces it: the **usage survey**
 (Settings > General, and the installer's Privacy page).
