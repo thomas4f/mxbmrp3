@@ -124,6 +124,15 @@ test('the section links wrap instead of scrolling sideways', async ({ page }) =>
   expect(pageW).toBeLessThanOrEqual(400);
 });
 
+test('the header scrolls away with the page instead of framing it', async ({ page }) => {
+  // A pinned header read as a frame with the report scrolling inside it.
+  await page.setViewportSize({ width: 1400, height: 300 });
+  await page.goto(pageUrl);
+  await page.evaluate(() => window.scrollTo(0, 400));
+  const bottom = await page.locator('.top').evaluate(el => el.getBoundingClientRect().bottom);
+  expect(bottom).toBeLessThanOrEqual(0);
+});
+
 test('the headline figures render as cards, not the Markdown table', async ({ page }) => {
   await page.goto(pageUrl);
   const cards = page.locator('.glance .card');

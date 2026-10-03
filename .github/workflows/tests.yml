@@ -332,8 +332,10 @@ jobs:
       # `npx playwright test`, so the tests can't diverge — only the setup does.
       # usage_page.spec.js builds its page with tools/analytics_page.py, which
       # renders Markdown with markdown-it-py (tools/requirements.txt, via the
-      # analytics group, like every other pip dep).
+      # analytics group, like every other pip dep). Escapes the tests/web
+      # default like the eslint step: the script path is repo-root relative.
       - name: Install the usage-page generator's dependency
+        working-directory: ${{ github.workspace }}
         run: ./tools/install_deps.sh analytics
 
       - name: Run overlay tests

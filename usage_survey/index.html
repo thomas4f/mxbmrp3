@@ -42,17 +42,12 @@ a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 .top {
-  z-index: 2;
   background: var(--bg);
   border-bottom: 1px solid var(--line);
 }
-/* The section links wrap rather than scroll sideways (a scrollbar under a row
-   of links read as a stray frame). Wrapped, they take two lines on a desktop
-   and five on a phone, so the header only sticks where it stays that short. */
-@media (min-width: 720px) {
-  html { scroll-padding-top: 140px; }
-  .top { position: sticky; top: 0; }
-}
+/* The header scrolls away with the page: pinned, it read as a frame with the
+   content scrolling inside it. The section links wrap rather than scroll
+   sideways (a scrollbar under a row of links read as a stray frame too). */
 .top h1 { font-size: 22px; margin: 14px 0 2px; }
 .top .alt { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
 .top nav {
