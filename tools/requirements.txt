@@ -40,4 +40,4 @@ markdown-it-py>=4.2.0
 #   - fonttools: writes the TrueType font mxbmrp3_fontgen then rasterises.
 #   Both REQUIRED; the `outlines2ttf` gate SKIPs without them.
 pymupdf>=1.28.2
-fonttools>=4.66.0
+fonttools>=4.66.1
