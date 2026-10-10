@@ -208,7 +208,7 @@ void CrashWidget::resetToDefaults() {
     // either side of its slot). Speed and Gear are the transparent ones --
     // they are bare numerals with no box to speak of.
     m_fBackgroundOpacity = 1.0f;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     m_bShowResetButton = true;
     // Lean's old slot on the widget rail (13-cell pitch, shared y); everything
     // from Lean leftward moved one slot down to make room.

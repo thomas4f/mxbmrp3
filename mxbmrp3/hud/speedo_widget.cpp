@@ -33,7 +33,7 @@ SpeedoWidget::SpeedoWidget()
     m_packKind = PackKind::Gauges;
     setDraggable(true);
     m_quads.reserve(6);   // dial background + needle + 4 odometer background quads
-    m_strings.reserve(5); // odometer: main + last + unit, trip: main + last
+    m_strings.reserve(9);  // odometer: main + last + unit, trip: main + last; +2 a row while it rolls
 
     // Set all configurable defaults
     resetToDefaults();
@@ -218,8 +218,18 @@ void SpeedoWidget::rebuildRenderData() {
     unsigned long bgNormal = PluginUtils::applyOpacity(this->getColor(ColorSlot::BACKGROUND), m_fBackgroundOpacity);
     unsigned long textNormal = PluginUtils::applyOpacity(this->getColor(ColorSlot::PRIMARY), m_fBackgroundOpacity);
 
+    // DIGIT ROLL (Motion, digit_roll.h): a reading one step on from the last rolls
+    // up, like a drum - the last digit on every step, the rest on a carry;
+    // anything else (another bike, a new session, Motion off) switches. This
+    // widget rebuilds every frame, so a roll costs up to two more strings per row
+    // while it runs and nothing otherwise.
+    const long long nowUs = DigitRoll::nowUs();
+    const bool rollOn = DigitRoll::enabled();
+
     // Helper lambda to add an odometer row - black background, white text, inverted last digit
-    auto addOdometerRow = [&](const char* displayText, float rowY) {
+    auto addOdometerRow = [&](const char* displayText, float rowY, OdometerRoll& roll, int value, int wrap) {
+        const int dir = (rollOn && roll.lastValue >= 0 && value == (roll.lastValue + 1) % wrap) ? 1 : 0;
+        roll.lastValue = value;
         int numChars = static_cast<int>(strlen(displayText));
         float textWidth = charWidth * numChars;
         float bgWidth = textWidth + (paddingH * 2.0f);
@@ -254,18 +264,20 @@ void SpeedoWidget::rebuildRenderData() {
         mainDigits[numChars - 1] = '\0';
         lastDigit[0] = displayText[numChars - 1];
         lastDigit[1] = '\0';
+        roll.main.update(mainDigits, dir, nowUs, textNormal);
+        roll.last.update(lastDigit, dir, nowUs, bgNormal);
 
         // Main digits (white, left-justified from text start)
         // skipShadow=true: odometer uses inverted last digit styling, shadows look wrong
         float textStartX = centerX - (textWidth / 2.0f);
-        addString(mainDigits, textStartX, rowY, Justify::LEFT,
-                  this->getFont(FontCategory::DIGITS), textNormal, fontSize, true);
+        addRolledString(roll.main, textStartX, rowY, Justify::LEFT,
+                        this->getFont(FontCategory::DIGITS), fontSize, true);
 
         // Last digit (black, right-aligned in white quad)
         // skipShadow=true: inverted digit (black on white) should not have shadow
         float lastCharRightX = lastCharX + charWidth;
-        addString(lastDigit, lastCharRightX, rowY, Justify::RIGHT,
-                  this->getFont(FontCategory::DIGITS), bgNormal, fontSize, true);
+        addRolledString(roll.last, lastCharRightX, rowY, Justify::RIGHT,
+                        this->getFont(FontCategory::DIGITS), fontSize, true);
     };
 
     // Odometer: 6 digits, last digit = 1 km (e.g., "000078" = 78 km)
@@ -273,7 +285,9 @@ void SpeedoWidget::rebuildRenderData() {
         char odometerDisplay[16];
         snprintf(odometerDisplay, sizeof(odometerDisplay), "%06d", odometerWhole);
         float odometerY = startY + dialHeight * gauges.odometerY;
-        addOdometerRow(odometerDisplay, odometerY);
+        addOdometerRow(odometerDisplay, odometerY, m_odometerRoll, odometerWhole, 1000000);
+    } else {
+        m_odometerRoll.reset();
     }
 
     // Trip meter: 4 digits, last digit = 0.1 km (e.g., "0078" = 7.8 km)
@@ -282,7 +296,9 @@ void SpeedoWidget::rebuildRenderData() {
         char tripDisplay[16];
         snprintf(tripDisplay, sizeof(tripDisplay), "%04d", tripTenths);
         float tripY = startY + dialHeight * gauges.tripmeterY;
-        addOdometerRow(tripDisplay, tripY);
+        addOdometerRow(tripDisplay, tripY, m_tripRoll, tripTenths, 10000);
+    } else {
+        m_tripRoll.reset();
     }
 
     // Add needle quad LAST so it renders on top of everything.
@@ -303,7 +319,7 @@ void SpeedoWidget::resetToDefaults() {
     // the member directly.
     setShowBackgroundTexture(true);
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
-    m_fScale = 1.5f;  // 150% default scale
+    setScale(1.5f);  // 150% default scale
     setPosition(cellsX(125), cellsY(64));
     m_smoothedSpeed = 0.0f;
     // EMPTY, not "classic": empty means "whatever the default pack resolves to",

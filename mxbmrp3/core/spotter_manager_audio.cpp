@@ -70,8 +70,8 @@ std::string wideToUtf8(const wchar_t* wide) {
 // case this cannot serve — COM refusing to initialise — and because it is what
 // answers on a machine with no SAPI at all (every Wine prefix).
 //
-// COM ON THE GAME THREAD, scoped to this call. It runs when the settings menu
-// asks for the list, not per frame, and all three CoInitializeEx outcomes are
+// COM ON THE GAME THREAD, scoped to this call. It runs once per session, at
+// plugin load (SpotterManager::getTtsVoices), never per frame, and all three CoInitializeEx outcomes are
 // real: S_OK (ours to undo), S_FALSE (already initialised here, still ours to
 // balance), RPC_E_CHANGED_MODE (the game holds a different apartment — use it,
 // and do NOT uninitialise something we did not start).
@@ -308,10 +308,10 @@ ISpObjectToken* findVoiceToken(const std::string& displayName) {
 // for that, is a thing waiting to disagree with the first.
 std::vector<std::pair<std::string, std::string>> enumerateTtsVoices() {
     auto viaSapi = enumerateTtsVoicesViaSapi();
-    // ONCE per run, not per call. Cycling the voice setting calls this on
-    // every click, and the full catalogue is fifteen lines — which buried the
-    // one line that says what was actually chosen. The list is what you want
-    // when a voice is MISSING, and that question is asked once.
+    // ONCE per run, not per call. Only getTtsVoices() calls this, once per
+    // session, so today the guard only keeps it that way: the full catalogue
+    // is fifteen lines, which buried the one line that says what was chosen
+    // when this ran on every voice click.
     static bool logged = false;
     const bool first = !logged;
     logged = true;
@@ -385,10 +385,9 @@ void SpotterManager::setTtsVoice(const std::string& name) {
     // reinstalling the voice restores the choice.
     std::string voiceName = m_ttsVoice;
     if (!m_ttsVoice.empty()) {
-        bool installed = false;
-        for (const auto& v : enumerateTtsVoices()) {
-            if (v.first == m_ttsVoice) { installed = true; break; }
-        }
+        const std::vector<std::string>& voices = *getTtsVoices();
+        const bool installed =
+            std::find(voices.begin(), voices.end(), m_ttsVoice) != voices.end();
         if (!installed) {
             DEBUG_WARN_F("Spotter: TTS voice '%s' is not installed - using the "
                          "system default (the setting is kept)",
@@ -402,10 +401,21 @@ void SpotterManager::setTtsVoice(const std::string& name) {
     m_ttsVoicePublished = voiceName;
 }
 
-std::vector<std::string> SpotterManager::listTtsVoices() const {
-    std::vector<std::string> voices;
-    for (const auto& v : enumerateTtsVoices()) voices.push_back(v.first);
-    return voices;
+#if defined(MXBMRP3_TEST_BUILD)
+// How many times the voice list was enumerated (MXBMRP3_Test_TtsVoiceReads).
+int g_ttsVoiceReads = 0;
+#endif
+
+const std::shared_ptr<const std::vector<std::string>>& SpotterManager::getTtsVoices() {
+    if (!m_ttsVoices) {
+        std::vector<std::string> voices;
+        for (const auto& v : enumerateTtsVoices()) voices.push_back(v.first);
+        m_ttsVoices = std::make_shared<const std::vector<std::string>>(std::move(voices));
+#if defined(MXBMRP3_TEST_BUILD)
+        ++g_ttsVoiceReads;
+#endif
+    }
+    return m_ttsVoices;
 }
 SpotterManager::~SpotterManager() {
     // Backstop for the unload-WITHOUT-Shutdown() path only; the normal path

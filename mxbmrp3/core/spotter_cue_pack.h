@@ -336,7 +336,7 @@ inline const std::vector<CueKeyInfo>& allCueKeys() {
         { "pit_exit_other",  "someone else left the pits" , SpotterPhrase::Category::Opponents },
         // -- not race events -------------------------------------------------
         { "spectate_target", "the camera cut to a different rider - the auto-director cuts constantly, so this ships silent" , SpotterPhrase::Category::Opponents },
-        { "hotkey_triggered", "the Spotter Cue hotkey was pressed" , SpotterPhrase::Category::General },
+        { "hotkey_triggered", "the Spotter hotkey was pressed" , SpotterPhrase::Category::General },
         { "voice_preview", "cycling onto this pack in the settings. Optional even for a recorded pack - absent, the plugin builds a preview from the number clips every pack has - and it never reaches the subtitle" , SpotterPhrase::Category::General },
     };
     return kKeys;

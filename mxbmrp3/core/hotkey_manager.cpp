@@ -9,6 +9,7 @@
 #include "hold_repeat.h"
 #include "../diagnostics/logger.h"
 #include <windows.h>
+#include <cstdio>
 
 namespace {
 // Pack the pressed buttons of an XInputData into an XINPUT_GAMEPAD button mask.
@@ -74,14 +75,9 @@ void HotkeyManager::shutdown() {
 }
 
 void HotkeyManager::resetToDefaults() {
-    // Clear all bindings first
-    for (auto& binding : m_bindings) {
-        binding.clearAll();
+    for (size_t i = 0; i < m_bindings.size(); ++i) {
+        m_bindings[i] = defaultHotkeyBinding(static_cast<HotkeyAction>(i));
     }
-
-    // Set default keyboard bindings - only Settings Menu has defaults
-    // VK_OEM_3 is ` on US keyboards, § on some EU layouts
-    m_bindings[static_cast<size_t>(HotkeyAction::TOGGLE_SETTINGS)]     = HotkeyBinding(VK_OEM_3);
 
     DEBUG_INFO("HotkeyManager: Reset to default bindings");
 }
@@ -91,6 +87,11 @@ void HotkeyManager::update() {
 
     // Clear triggered actions from last frame
     m_triggeredActions.fill(false);
+#if defined(MXBMRP3_TEST_BUILD)
+    for (size_t i = 0; i < m_injected.size(); ++i) {
+        if (m_injected[i]) { m_triggeredActions[i] = true; m_injected[i] = false; }
+    }
+#endif
 
     // Only detect hotkey actions when game window is focused
     if (InputManager::getInstance().isCursorEnabled()) {
@@ -138,6 +139,26 @@ void HotkeyManager::update() {
 
 const HotkeyBinding& HotkeyManager::getBinding(HotkeyAction action) const {
     return m_bindings[static_cast<size_t>(action)];
+}
+
+void HotkeyManager::formatOpenSettingsHint(char* out, size_t cap) const {
+    const HotkeyBinding& b = getBinding(HotkeyAction::TOGGLE_SETTINGS);
+    const bool backtick = b.hasKeyboard() && b.keyboard.keyCode == VK_OEM_3;
+    if (backtick && b.keyboard.modifiers == ModifierFlags::NONE) {
+        snprintf(out, cap, "The key under Esc opens settings");
+    } else if (backtick) {
+        const ModifierFlags mods = b.keyboard.modifiers;
+        snprintf(out, cap, "Press %s%s%sthe key under Esc to open settings",
+                 hasModifier(mods, ModifierFlags::CTRL) ? "Ctrl + " : "",
+                 hasModifier(mods, ModifierFlags::SHIFT) ? "Shift + " : "",
+                 hasModifier(mods, ModifierFlags::ALT) ? "Alt + " : "");
+    } else if (b.hasKeyboard()) {
+        char key[32] = {};
+        formatKeyBinding(b.keyboard, key, sizeof(key));
+        snprintf(out, cap, "Press %s to open settings", key);
+    } else {
+        snprintf(out, cap, "Click the menu button to open settings");
+    }
 }
 
 void HotkeyManager::setBinding(HotkeyAction action, const HotkeyBinding& binding) {

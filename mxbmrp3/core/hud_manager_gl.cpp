@@ -34,7 +34,6 @@
 #include "ui_config.h"
 #include "render_probe_sweep.h"
 #include "font_config.h"
-#include "gl_probe.h"
 #include "hud_gl_renderer.h"
 #include "ui_viewport.h"
 #include "../hud/base_hud.h"
@@ -145,25 +144,6 @@ bool HudManager::renderInContextGl(const SPluginQuad_t* quads, int quadCount,
     if (!UiConfig::getInstance().getGlInGame() ||
         m_glLatchedOff.load(std::memory_order_relaxed)) return false;
 
-    // glProbe=2 WINS over glInGame, and they must never both take effect.
-    // The probe's whole method is a PAIR of bars - one drawn by the engine, one
-    // drawn by us into the GL context - stacked flush so any disagreement in the
-    // two coordinate mappings is visible in one look. Suppressing the engine
-    // frame routes the engine's own reference bar through this backend too, and
-    // the comparison silently degenerates to GL against GL: it would still look
-    // like agreement, and would prove nothing at all. Refusing here keeps the
-    // pairing honest and costs only that glInGame does not apply while probing.
-    if (UiConfig::getInstance().getGlProbe() >= 2) {
-        if (!m_glProbeConflictLogged) {
-            m_glProbeConflictLogged = true;
-            DEBUG_WARN("hudgl: [Advanced] glProbe=2 and glInGame=1 are both set - the "
-                       "in-context renderer is STAYING OFF for this session. The probe "
-                       "compares an engine-drawn bar against a GL-drawn one; suppressing "
-                       "the engine frame would draw both through GL and prove nothing. "
-                       "Set glProbe=0 to use glInGame.");
-        }
-        return false;
-    }
     if (quadCount <= 0 && stringCount <= 0) return false;
 
     hudgl::Renderer* gl = m_glRenderer.load(std::memory_order_acquire);

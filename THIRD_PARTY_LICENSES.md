@@ -237,7 +237,7 @@ SOFTWARE.
 
 **Project:** https://fontawesome.com
 **Author:** Fonticons, Inc.
-**Used for:** Icon graphics (in-game rider markers from v4, web overlay SVG icons from v7 Free)
+**Used for:** Icon graphics (in-game rider markers from v4; in-game UI icons and web overlay SVG icons from v7 Free)
 
 ```
 Icons - CC BY 4.0 License
@@ -338,6 +338,98 @@ Copyright 2022-2024 The Tiny5 Project Authors
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is available with a FAQ at: https://scripts.sil.org/OFL
+```
+
+---
+
+## DSEG
+
+**Project:** https://github.com/keshikan/DSEG
+**Designer:** keshikan
+**Used for:** UI fonts: LCD14 Regular and Bold, a Modified Version of DSEG14
+Classic, and LCD7 Bold Italic, a Modified Version of DSEG7 Classic (wider dot
+and space, plus added comma, question mark, plus and slash in LCD7; renamed as
+the Reserved Font Name requires; `tools/fontgen/derive_lcd14.py`,
+`tools/fontgen/derive_lcd7.py`)
+
+```
+SIL Open Font License, Version 1.1
+
+Copyright (c) 2018, keshikan (http://www.keshikan.net),
+with Reserved Font Name "DSEG".
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is available with a FAQ at: https://openfontlicense.org
+```
+
+---
+
+## Doto
+
+**Project:** https://fonts.google.com/specimen/Doto
+**Designer:** Oliver Lalan
+**Used for:** UI font (dot-matrix LCD; Regular and Bold cut from the variable
+font at square dots)
+
+```
+SIL Open Font License, Version 1.1
+
+Copyright 2024 The Doto Project Authors (https://github.com/oliverlalan/Doto)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is available with a FAQ at: https://openfontlicense.org
+```
+
+---
+
+## Chakra Petch
+
+**Project:** https://fonts.google.com/specimen/Chakra+Petch
+**Designer:** Cadson Demak
+**Used for:** UI font (SemiBold Italic and Bold Italic)
+
+```
+SIL Open Font License, Version 1.1
+
+Copyright 2018 The Chakra Petch Project Authors (https://github.com/m4rc1e/Chakra-Petch.git)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is available with a FAQ at: https://openfontlicense.org
+```
+
+---
+
+## Quantico
+
+**Project:** https://fonts.google.com/specimen/Quantico
+**Designer:** MADType
+**Used for:** UI font (Bold Italic)
+
+```
+SIL Open Font License, Version 1.1
+
+Copyright (c) 2011 Matthew Desmond (http://www.madtype.com | mattdesmond@gmail.com),
+with Reserved Font Name "Quantico"
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is available with a FAQ at: https://openfontlicense.org
+```
+
+---
+
+## Tomorrow
+
+**Project:** https://fonts.google.com/specimen/Tomorrow
+**Designer:** Tony de Marco, Monica Rizzolli
+**Used for:** UI font (SemiBold Italic and Bold Italic)
+
+```
+SIL Open Font License, Version 1.1
+
+Copyright 2019 The Tomorrow Project Authors (https://github.com/MonicaRizzolli/Tomorrow)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is available with a FAQ at: https://openfontlicense.org
 ```
 
 ---
@@ -503,8 +595,9 @@ installer, into `mxbmrp3_data\`.
 ## SIL Open Font License, Version 1.1
 
 Applies to: Font Awesome (font builds), IBM Plex Sans, IBM Plex Mono, Roboto
-Mono, Fuzzy Bubbles, Tiny5, Audiowide, Caveat Brush, Reenie Beanie, Gloria
-Hallelujah. Each font's own copyright notice is in its entry above.
+Mono, Fuzzy Bubbles, Tiny5, DSEG, Doto, Chakra Petch, Quantico, Tomorrow,
+Audiowide, Caveat Brush, Reenie Beanie, Gloria Hallelujah. Each font's own
+copyright notice is in its entry above.
 
 ```
 -----------------------------------------------------------

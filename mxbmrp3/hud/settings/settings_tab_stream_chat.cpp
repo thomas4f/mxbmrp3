@@ -131,18 +131,17 @@ BaseHud* SettingsHud::renderTabStreamChat(SettingsLayoutContext& ctx) {
         const size_t fieldRegion = ctx.parent->m_clickRegions.size();
         const bool hovered = ctx.parent->m_hoveredRegionIndex == static_cast<int>(fieldRegion);
 
-        // Visible characters inside the brackets: the row's `< value >` span, so the
-        // closing bracket lands on the column every other row's ">" does. The
-        // longest Twitch name (25) fits; a longer handle or pasted URL shows its
-        // tail while editing.
-        const int fieldChars = ctx.valueChars() + 2;
+        // Visible characters: the value and the dropdown caret's cell, so the box
+        // starts and ends where a dropdown box does and the text sits on the value
+        // column. The longest Twitch name (25) fits; a longer handle or pasted URL
+        // shows its tail while editing.
+        const int fieldChars = ctx.valueChars() + 1;
         char inner[64];
         unsigned long color;
-        int cursorColumn = -1;  // editing: the '_' cursor's column inside the brackets
+        int cursorColumn = -1;  // editing: the caret's column in the field
         if (editing) {
             // The text scrolls to keep the cursor in view (TextEdit::viewStart);
-            // the cursor is a '_' drawn under its column, past the end when
-            // appending.
+            // the caret is drawn before its column, past the end when appending.
             const std::string& text = hk.getCaptureText();
             const bool prefix = handlePrefix && YouTubeChat::showsHandlePrefix(text);
             const size_t cols = static_cast<size_t>(fieldChars - (prefix ? 1 : 0));
@@ -157,13 +156,13 @@ BaseHud* SettingsHud::renderTabStreamChat(SettingsLayoutContext& ctx) {
             color = hovered ? colors.getAccent() : colors.getMuted();
         } else {
             // A stored handle can be longer than the field (YouTube's run to 31):
-            // cut it at the field, never over the closing bracket.
+            // cut it at the field.
             snprintf(inner, sizeof(inner), "%.*s", fieldChars, channel.c_str());
             color = hovered ? colors.getAccent() : colors.getPrimary();
         }
-        const float fx = ctx.controlX;
-        ctx.addBracketField(fx, fieldChars, inner, color, cursorColumn);
-        SettingsHud::ClickRegion field(fx, ctx.currentY, cw * (fieldChars + 2), ctx.lineHeightNormal,
+        const float fx = ctx.controlX + cw;
+        ctx.addInputField(fx, fieldChars, inner, color, editing, cursorColumn);
+        SettingsHud::ClickRegion field(fx, ctx.currentY, cw * (fieldChars + 1), ctx.lineHeightNormal,
             regionType, nullptr);
         field.tooltipId = tooltipId;
         ctx.parent->m_clickRegions.push_back(field);
@@ -249,10 +248,10 @@ BaseHud* SettingsHud::renderTabStreamChat(SettingsLayoutContext& ctx) {
     {
         // The one note: the field being edited, else what to do about the first
         // problem a Status row names (the states the chat panel reports), else
-        // the read-only line.
+        // the unofficial-support note.
         const bool twitchOn = twitch.isEnabled();
         const bool youtubeOn = youtube.isEnabled();
-        const char* note = "Read-only, no login. YouTube chat is unofficial.";
+        const char* note = "Note: YouTube chat is unofficial.";
         if (editingTwitch) {
             note = "Type or Ctrl+V a name or URL. Enter saves, ESC cancels.";
         } else if (editingYouTube) {
@@ -279,15 +278,11 @@ BaseHud* SettingsHud::renderTabStreamChat(SettingsLayoutContext& ctx) {
 
     // === LAYOUT === (the Event Log's controls, same wording)
     ctx.addSectionHeading("Layout");
-    const char* modeStr = "Always";
-    bool modeOff = false;
-    switch (hud->m_displayMode) {
-    case StreamChatHud::DisplayMode::OFF:       modeStr = "Off"; modeOff = true; break;
-    case StreamChatHud::DisplayMode::ON:        modeStr = "Always"; break;
-    case StreamChatHud::DisplayMode::AUTO_HIDE: modeStr = "Auto-hide"; break;
-    }
-    ctx.addCycleControl("Show mode", modeStr,
-        SettingsHud::CycleControl::enumMember(hud, &StreamChatHud::m_displayMode, 3, hud),
+    ctx.beginColumns(2, 6);   // side by side (beginColumns)
+    static const char* const kModes[] = { "Off", "Always", "Auto-hide" };
+    const bool modeOff = (hud->m_displayMode == StreamChatHud::DisplayMode::OFF);
+    ctx.addCycleControl("Show mode", cycleName(kModes, static_cast<int>(hud->m_displayMode)),
+        SettingsHud::CycleControl::enumMember(hud, &StreamChatHud::m_displayMode, 3, hud, kModes),
         hud, true, modeOff, "stream_chat.display_mode", /*tooltipOnArrows=*/false);
 
     char buf[16];
@@ -298,6 +293,13 @@ BaseHud* SettingsHud::renderTabStreamChat(SettingsLayoutContext& ctx) {
             StreamChatHud::MAX_AUTO_HIDE_MS, hud),
         hud, hud->m_displayMode == StreamChatHud::DisplayMode::AUTO_HIDE, false,
         "stream_chat.duration", /*tooltipOnArrows=*/false);
+
+    // Display order: Newest / Oldest, the Event Log's row
+    const char* orderStr = (hud->m_displayOrder == StreamChatHud::DisplayOrder::NEWEST_FIRST)
+        ? "Newest" : "Oldest";
+    ctx.addCycleControl("Display order", orderStr,
+        SettingsHud::CycleControl::enumMember(hud, &StreamChatHud::m_displayOrder, 2, hud),
+        hud, true, false, "stream_chat.order", /*tooltipOnArrows=*/false);
 
     snprintf(buf, sizeof(buf), "%d", hud->m_maxRows);
     ctx.addSteppedControl("Lines to show", buf,
@@ -317,21 +319,19 @@ BaseHud* SettingsHud::renderTabStreamChat(SettingsLayoutContext& ctx) {
         boolCycle(&hud->m_showTimestamps, hud), hud, true, !hud->m_showTimestamps,
         "stream_chat.timestamp", /*tooltipOnArrows=*/false);
 
+    ctx.endColumns();
+
     // === MESSAGES ===
     ctx.addSectionHeading("Messages");
+    ctx.beginColumns(2, 8);
     auto addBool = [&](const char* label, bool* value, const char* tooltipId) {
         ctx.addCycleControl(label, *value ? "On" : "Off", boolCycle(value, hud),
             hud, true, !*value, tooltipId, /*tooltipOnArrows=*/false);
     };
     {
-        const char* iconsStr = "Auto";
-        switch (hud->m_platformIcons) {
-        case StreamChatHud::PlatformIcons::OFF:  iconsStr = "Off"; break;
-        case StreamChatHud::PlatformIcons::ON:   iconsStr = "On"; break;
-        case StreamChatHud::PlatformIcons::AUTO: iconsStr = "Auto"; break;
-        }
-        ctx.addCycleControl("Platform icons", iconsStr,
-            SettingsHud::CycleControl::enumMember(hud, &StreamChatHud::m_platformIcons, 3, hud),
+        static const char* const kIcons[] = { "Off", "On", "Auto" };
+        ctx.addCycleControl("Platform icons", cycleName(kIcons, static_cast<int>(hud->m_platformIcons)),
+            SettingsHud::CycleControl::enumMember(hud, &StreamChatHud::m_platformIcons, 3, hud, kIcons),
             hud, true, hud->m_platformIcons == StreamChatHud::PlatformIcons::OFF,
             "stream_chat.platform_icons", /*tooltipOnArrows=*/false);
     }
@@ -352,6 +352,7 @@ BaseHud* SettingsHud::renderTabStreamChat(SettingsLayoutContext& ctx) {
     addBool("Hide commands", &hud->m_hideCommands, "stream_chat.hide_commands");
     addBool("Hide bots", &hud->m_hideBots, "stream_chat.hide_bots");
     addBool("Hide links", &hud->m_hideLinks, "stream_chat.hide_links");
+    ctx.endColumns();
 
     return hud;
 }

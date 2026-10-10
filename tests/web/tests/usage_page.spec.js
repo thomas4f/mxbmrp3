@@ -72,16 +72,17 @@ test('a line chart reads out every series on the day under the cursor', async ({
 test('a bar, and a tier segment, read out their own value', async ({ page }) => {
   await page.goto(pageUrl);
   const tip = page.locator('.tip');
-  await page.locator('rect[data-tip="Windows 10: 2,779 (21%)"]').hover();
-  await expect(tip).toHaveText('Windows 10: 2,779 (21%)');
-  // A sliver under 1% reads "<1%", not "0%"; an achievement tier adds its
-  // requirement as a second line.
+  await page.locator('rect[data-tip="Windows 10: 21% (2,779)"]').hover();
+  await expect(tip).toHaveText('Windows 10: 21% (2,779)');
+  // A segment reads its share and count, the same shape as the labels; a sliver
+  // under 1% reads "<1%", not "0%"; an achievement tier adds its requirement as
+  // a second line.
   await page.locator('rect[data-tip^="Racer: Gold <1%"]').hover({ force: true });
-  await expect(tip).toHaveText('Racer: Gold <1%\nFinish 100 races');
-  expect(await tip.evaluate(el => el.innerText)).toBe('Racer: Gold <1%\nFinish 100 races');
+  await expect(tip).toHaveText('Racer: Gold <1% (5)\nFinish 100 races');
+  expect(await tip.evaluate(el => el.innerText)).toBe('Racer: Gold <1% (5)\nFinish 100 races');
   // A one-shot has no tiers, so its segment names no "Bronze".
   await page.locator('rect[data-tip^="Metronome"]').hover({ force: true });
-  expect(await tip.evaluate(el => el.innerText)).toBe('Metronome: 3%\nFive laps in a row, all within a tenth');
+  expect(await tip.evaluate(el => el.innerText)).toBe('Metronome: 3% (30)\nFive laps in a row, all within a tenth');
   // The achievement's name reads out what it asks, tier by tier.
   await page.locator('text[data-tip^="Racer"]').hover();
   expect(await tip.evaluate(el => el.innerText))

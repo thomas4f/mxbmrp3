@@ -34,8 +34,11 @@ set(MXB_UNIT_SOURCES
     test_twitch_irc.cpp
     test_youtube_chat.cpp
     test_hold_repeat.cpp
+    test_hotkey_names.cpp
+    test_slider_control.cpp
     test_text_edit.cpp
     test_achievements.cpp
+    test_system_messages.cpp
     test_analytics_remote_config.cpp
     test_analytics_endpoint.cpp
     test_analytics_redact.cpp
@@ -61,6 +64,7 @@ set(MXB_UNIT_SOURCES
     test_delta_color.cpp
     test_split_crossing.cpp
     test_pb_gap_tracker.cpp
+    test_lap_delta_rate.cpp
     test_pb_trace_store.cpp
     test_live_gap_engine.cpp
     test_marker_label.cpp
@@ -81,6 +85,8 @@ set(MXB_UNIT_SOURCES
     test_install_prefs.cpp
     test_records_window.cpp
     test_radar_fade.cpp
+    test_motion.cpp
+    test_digit_roll.cpp
     test_severity_ramp.cpp
     test_icon_resolve.cpp
     test_peak_marker.cpp
@@ -119,6 +125,7 @@ set(MXB_UNIT_SOURCES
     test_thread_detach_grace.cpp
     test_gl_state_fingerprint.cpp
     test_render_batch.cpp
+    pixel_text_test.cpp
     shim/logger_stub.cpp
     ${MXB_ROOT}/mxbmrp3/core/hud_sw_renderer.cpp
     ${MXB_ROOT}/mxbmrp3/core/render_asset_decode.cpp
@@ -129,7 +136,13 @@ set(MXB_UNIT_SOURCES
     ${MXB_ROOT}/mxbmrp3/core/layout_config.cpp
     ${MXB_ROOT}/mxbmrp3/core/ui_config.cpp
     # test_pb_trace_store.cpp round-trips the real file reader/writer (JSON + <fstream>).
-    ${MXB_ROOT}/mxbmrp3/core/pb_trace_store.cpp)
+    ${MXB_ROOT}/mxbmrp3/core/pb_trace_store.cpp
+    # test_system_messages.cpp: the toast queue + startup-popup bookkeeping (no I/O).
+    ${MXB_ROOT}/mxbmrp3/core/system_messages.cpp)
+
+# Its testReset() is compiled only into test builds; the unit TU asks for it.
+set_source_files_properties(${MXB_ROOT}/mxbmrp3/core/system_messages.cpp
+    PROPERTIES COMPILE_DEFINITIONS MXBMRP3_TEST_BUILD)
 
 # hud_sw_renderer.cpp's .fnt atlas decode needs miniz's inflate. The coverage
 # flavour needs all four TUs, not just tinfl: at -O0 (which coverage forces, to

@@ -89,7 +89,7 @@ int LapLogHud::getBackgroundWidthChars() const {
 void LapLogHud::update() {
     // The gap row's freeze tracks crossings while hidden too (see
     // official_gap_freeze.h); only the rebuild is gated on visibility.
-    if (m_gapFreeze.update(m_gapReference, m_freezeDurationMs) && isVisibleAnySurface()) {
+    if (m_gapFreeze.update(gapReference(), HudDefaults::freezeMs(m_freezeDurationMs)) && isVisibleAnySurface()) {
         setDataDirty();
     }
 
@@ -208,7 +208,7 @@ void LapLogHud::rebuildRenderData() {
             addCurrentLapRow(cx, data, currentLap, pitLap, currentY, dim);
         } else if (rowKind == LapLogPlan::kGap) {
             // Gap row (shows live gap to PB, colorized)
-            addGapRow(cx, data, currentY, dim);
+            addGapRow(cx, currentY, dim);
         } else if (rowKind == LapLogPlan::kPlaceholder) {
             // Handle placeholder row - show muted dash placeholders so empty slots read as
             // a table awaiting data (filled in as laps complete) rather than blank rows.
@@ -439,17 +439,15 @@ void LapLogHud::addCurrentLapRow(const LapColumnX& cx, const PluginData& data, c
     addString(timeStr, cx.timeRightX, currentY, Justify::RIGHT, this->getFont(timeFont), colorTime, dim.fontSize);
 }
 
-void LapLogHud::addGapRow(const LapColumnX& cx, const PluginData& data, float currentY, const ScaledDimensions& dim) {
+void LapLogHud::addGapRow(const LapColumnX& cx, float currentY, const ScaledDimensions& dim) {
     char gapStr[32];
     unsigned long gapColor = this->getColor(ColorSlot::MUTED);
 
     // Against the lap this HUD's own Reference setting names: session
     // PB, all-time PB or last lap (the Gap Bar has its own). Just after a
     // split or the line, the official gap the freeze holds instead.
-    const PbGapTracker::Ref ref = m_gapReference;
-    const bool frozen = m_gapFreeze.isFrozen();
-    if (frozen || data.hasValidLiveGap(ref)) {
-        int gap = frozen ? m_gapFreeze.frozenGap() : data.getLiveGap(ref);
+    int gap = 0;
+    if (m_gapFreeze.shownGap(gapReference(), &gap)) {
         PluginUtils::formatTimeDiff(gapStr, sizeof(gapStr), gap);
         gapColor = this->deltaColor(gap);
     } else {
@@ -595,14 +593,15 @@ void LapLogHud::resetToDefaults() {
     m_bShowTitle = true;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     setPosition(cellsX(1), cellsY(64));
     m_enabledColumns = COL_DEFAULT;
     m_maxDisplayLaps = 5;
     m_showLiveTiming = true;
     m_showGapRow = true;
     m_gapReference = PbGapTracker::Ref::SESSION_PB;
-    m_freezeDurationMs = FreezeDuration::DEFAULT_MS;
+    m_gapReferenceDefault = true;
+    m_freezeDurationMs = FreezeDuration::FOLLOW_DEFAULT;
     m_gapFreeze.reset();
     m_bShowHeaders = false;
     m_displayOrder = DisplayOrder::OLDEST_FIRST;

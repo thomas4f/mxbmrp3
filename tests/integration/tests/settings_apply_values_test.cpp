@@ -42,7 +42,7 @@ const std::vector<Anchor> kAnchors = {
     { "MapHud",       "riderColorMode",   "UNIFORM"   },  // enum, base RELATIVE_POS
     { "MapHud",       "labelMode",        "NONE"      },  // enum, base RACE_NUM
     { "GapBarHud",    "labelMode",        "RACE_NUM"  },  // enum, base NONE -- see below
-    { "MapHud",       "trackWidthScale",  "2.000000"  },  // float,base 1.0  (range 0.5..3.0)
+    { "MapHud",       "trackWidthScale",  "2.000000"  },  // float,base 1.5  (range 0.5..3.0)
     { "LapLogHud",    "maxDisplayLaps",   "8"         },  // int,  base 5    (range 1..30)
     { "LapLogHud",    "reference",        "1"         },  // enum, base 0 SESSION_PB (ALLTIME_PB)
     { "LapLogHud",    "freezeDuration",   "7000"      },  // int,  base 5000 (range 0..10000)

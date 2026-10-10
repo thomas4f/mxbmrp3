@@ -524,7 +524,7 @@ void StatsHud::resetToDefaults() {
     m_bShowTitle = true;
     setTextureVariant(0);
     m_fBackgroundOpacity = 0.80f;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     m_visibilityMode = VisibilityMode::ALWAYS;
     m_showLap = true;
     m_showSession = true;

@@ -76,7 +76,8 @@ OUT="${1:-${HERE}/companion_window.png}"
 DEFAULT_HOLD=25
 HOLD="${2:-${DEFAULT_HOLD}}"
 # Args from $3 on are passed through to the exe: a scene mode ("gamepad", "gear", "toast",
-# "timing", "gapbar", "eventlog", "close") or a settings tab ("tab Map", "tab Timing", ...).
+# "timing", "gapbar", "eventlog", "close") or a settings tab ("tab Map", "tab Timing", ...),
+# optionally with the pointer left over one of its rows ("hover appearance.color_accent").
 # "gapbar" wants its marker mode seeded, since the demo cannot set it through a hook:
 #   EXTRA_INI=$'[GapBarHud]\nmarkerMode=2' companion_demo.sh out.png 25 gapbar
 SHOT_RES="${SHOT_RES:-1920x1080}"
@@ -294,6 +295,7 @@ sleep 2
 # a CEILING, not a duration.
 STARTUP_GRACE=30
 WINE_LIFETIME=$((HOLD + STARTUP_GRACE))
+rm -f "${RUNDIR}/motion.ready"   # see the capture poll
 ( cd "${RUNDIR}" && timeout "${WINE_LIFETIME}" wine companion_demo.exe mxbmrp3_test.dlo "${HOLD}" "${@:3}" ) \
     >/tmp/mxbmrp3-companion.log 2>&1 &
 WINE_PID=$!
@@ -316,8 +318,14 @@ sleep 3
 # DEFAULT_HOLD of 25, which is why it survived: every attempt lands comfortably.
 capture_ok=0
 attempt=0
+# A motion mode photographs a frame partway through a fade that starts after the
+# window is up, so "the first frame with content" is too early: the demo drops
+# motion.ready once the frame it means is on screen, and the poll waits for it.
+wait_ready=0
+for a in "${@:3}"; do [[ "${a}" == motion* ]] && wait_ready=1; done
 deadline=$((SECONDS + WINE_LIFETIME - 3))   # -3 for the settle already slept
 while (( SECONDS < deadline )); do
+    if (( wait_ready )) && [[ ! -e "${RUNDIR}/motion.ready" ]]; then sleep 1; continue; fi
     attempt=$((attempt + 1))
     import -window root "${OUT}" 2>/dev/null || true
     if [[ -s "${OUT}" ]]; then

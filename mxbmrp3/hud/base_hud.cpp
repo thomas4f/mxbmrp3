@@ -423,43 +423,6 @@ void BaseHud::setTextureVariant(int variant) {
     }
 }
 
-void BaseHud::cycleTextureVariant(bool forward) {
-    if (m_textureBaseName.empty()) {
-        return;
-    }
-
-    std::vector<int> variants = getAvailableTextureVariants();
-    if (variants.empty()) {
-        return;
-    }
-
-    // Off, then the variants -- EXCEPT where the artwork is the widget, which
-    // cycles the variants alone (see m_textureRequired for what Off looked like).
-    std::vector<int> cycleOrder;
-    if (!m_textureRequired) cycleOrder.push_back(0);
-    cycleOrder.insert(cycleOrder.end(), variants.begin(), variants.end());
-
-    // Find current position in cycle
-    int currentIndex = 0;
-    for (size_t i = 0; i < cycleOrder.size(); ++i) {
-        if (cycleOrder[i] == m_textureVariant) {
-            currentIndex = static_cast<int>(i);
-            break;
-        }
-    }
-
-    // Calculate next position
-    int cycleSize = static_cast<int>(cycleOrder.size());
-    int newIndex;
-    if (forward) {
-        newIndex = (currentIndex + 1) % cycleSize;
-    } else {
-        newIndex = (currentIndex - 1 + cycleSize) % cycleSize;
-    }
-
-    setTextureVariant(cycleOrder[newIndex]);
-}
-
 std::vector<int> BaseHud::getAvailableTextureVariants() const {
     if (m_textureBaseName.empty()) {
         return {};

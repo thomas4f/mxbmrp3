@@ -118,6 +118,13 @@ EnumT cycleEnum(EnumT current, int enumCount, bool forward) {
 // HUD, and there are only four to walk. Held, it cycled them several times a
 // second (a streamer filmed the strobing) and made Profile Hopper a row you earn
 // by leaning on an arrow. One click, one switch; pinned by exploration_test.
+bool SettingsHud::isRepeatableRegion(const ClickRegion& region) const {
+    if (!isRepeatableRegionType(region.type)) return false;
+    if (region.type != ClickRegion::CYCLE_UP && region.type != ClickRegion::CYCLE_DOWN) return true;
+    const int i = region.cycleIndex;
+    return i < 0 || i >= static_cast<int>(m_cycleControls.size()) || m_cycleControls[static_cast<size_t>(i)].repeat;
+}
+
 bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
     switch (type) {
         // Value cycling controls (all _UP/_DOWN pairs)
@@ -125,40 +132,6 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::STEPPED_DOWN:
         case ClickRegion::CYCLE_UP:
         case ClickRegion::CYCLE_DOWN:
-        case ClickRegion::COPY_TARGET_UP:
-        case ClickRegion::COPY_TARGET_DOWN:
-        case ClickRegion::TEXTURE_VARIANT_UP:
-        case ClickRegion::TEXTURE_VARIANT_DOWN:
-        case ClickRegion::HUD_THEME_UP:
-        case ClickRegion::HUD_THEME_DOWN:
-        case ClickRegion::BACKGROUND_OPACITY_UP:
-        case ClickRegion::BACKGROUND_OPACITY_DOWN:
-        case ClickRegion::SCALE_UP:
-        case ClickRegion::SCALE_DOWN:
-        case ClickRegion::MAP_RANGE_UP:
-        case ClickRegion::MAP_RANGE_DOWN:
-        case ClickRegion::MAP_RIDER_SHAPE_UP:
-        case ClickRegion::MAP_RIDER_SHAPE_DOWN:
-        case ClickRegion::MAP_OUTLINE_UP:
-        case ClickRegion::MAP_OUTLINE_DOWN:
-        case ClickRegion::RADAR_PROXIMITY_SHAPE_UP:
-        case ClickRegion::RADAR_PROXIMITY_SHAPE_DOWN:
-        case ClickRegion::RADAR_RIDER_SHAPE_UP:
-        case ClickRegion::RADAR_RIDER_SHAPE_DOWN:
-        case ClickRegion::GAPBAR_ICON_UP:
-        case ClickRegion::GAPBAR_ICON_DOWN:
-        case ClickRegion::COLOR_CYCLE_PREV:
-        case ClickRegion::COLOR_CYCLE_NEXT:
-        case ClickRegion::FONT_CATEGORY_PREV:
-        case ClickRegion::FONT_CATEGORY_NEXT:
-        case ClickRegion::RUMBLE_CONTROLLER_UP:
-        case ClickRegion::RUMBLE_CONTROLLER_DOWN:
-        case ClickRegion::UPDATE_CHANNEL_UP:
-        case ClickRegion::UPDATE_CHANNEL_DOWN:
-        case ClickRegion::RIDER_COLOR_PREV:
-        case ClickRegion::RIDER_COLOR_NEXT:
-        case ClickRegion::RIDER_SHAPE_PREV:
-        case ClickRegion::RIDER_SHAPE_NEXT:
         case ClickRegion::SERVER_PAGE_PREV:
         case ClickRegion::SERVER_PAGE_NEXT:
         case ClickRegion::TRACKED_PAGE_PREV:
@@ -168,48 +141,7 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::WEB_SERVER_PORT_DOWN:
         case ClickRegion::WEB_SERVER_PORT_UP:
 #endif
-        // Helmet overlay controls
-        case ClickRegion::HELMET_UPPER_TEX_DOWN:
-        case ClickRegion::HELMET_UPPER_TEX_UP:
-        case ClickRegion::HELMET_LOWER_TEX_DOWN:
-        case ClickRegion::HELMET_LOWER_TEX_UP:
-        case ClickRegion::HELMET_UPPER_OFFSET_DOWN:
-        case ClickRegion::HELMET_UPPER_OFFSET_UP:
-        case ClickRegion::HELMET_LOWER_OFFSET_DOWN:
-        case ClickRegion::HELMET_LOWER_OFFSET_UP:
-        case ClickRegion::HELMET_TILT_DOWN:
-        case ClickRegion::HELMET_TILT_UP:
-        case ClickRegion::HELMET_VIBRATION_DOWN:
-        case ClickRegion::HELMET_VIBRATION_UP:
-        case ClickRegion::HELMET_VIB_SENS_DOWN:
-        case ClickRegion::HELMET_VIB_SENS_UP:
-        case ClickRegion::HELMET_ZOOM_DOWN:
-        case ClickRegion::HELMET_ZOOM_UP:
-        case ClickRegion::HELMET_VISOR_MODE_DOWN:
-        case ClickRegion::HELMET_VISOR_MODE_UP:
-        case ClickRegion::HELMET_VISOR_TINT_COLOR_DOWN:
-        case ClickRegion::HELMET_VISOR_TINT_COLOR_UP:
-        case ClickRegion::HELMET_VISOR_TINT_OPACITY_DOWN:
-        case ClickRegion::HELMET_VISOR_TINT_OPACITY_UP:
         // Director tab steppers + cycle controls (consistent with the other tabs).
-        case ClickRegion::DIRECTOR_MINSHOT_UP:
-        case ClickRegion::DIRECTOR_MINSHOT_DOWN:
-        case ClickRegion::DIRECTOR_MAXSHOT_UP:
-        case ClickRegion::DIRECTOR_MAXSHOT_DOWN:
-        case ClickRegion::DIRECTOR_BATTLEGAP_UP:
-        case ClickRegion::DIRECTOR_BATTLEGAP_DOWN:
-        case ClickRegion::DIRECTOR_BATTLEMAXPOS_UP:
-        case ClickRegion::DIRECTOR_BATTLEMAXPOS_DOWN:
-        case ClickRegion::DIRECTOR_RESUME_UP:
-        case ClickRegion::DIRECTOR_RESUME_DOWN:
-        case ClickRegion::DIRECTOR_VARIETY_UP:
-        case ClickRegion::DIRECTOR_VARIETY_DOWN:
-        case ClickRegion::DIRECTOR_HOLD_UP:
-        case ClickRegion::DIRECTOR_HOLD_DOWN:
-        case ClickRegion::DIRECTOR_CAM_FENDER_UP:
-        case ClickRegion::DIRECTOR_CAM_FENDER_DOWN:
-        case ClickRegion::DIRECTOR_CAM_HELMET_UP:
-        case ClickRegion::DIRECTOR_CAM_HELMET_DOWN:
             return true;
         default:
             return false;
@@ -292,10 +224,7 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* f
       m_hoveredRegionIndex(-1),
       m_hoveredHotkeyRow(-1),
       m_hoveredHotkeyColumn(HotkeyColumn::NONE),
-      m_hotkeyContentStartY(0.0f),
       m_hotkeyRowHeight(0.0f),
-      m_hotkeyKeyboardX(0.0f),
-      m_hotkeyControllerX(0.0f),
       m_hotkeyFieldCharWidth(0.0f),
       m_hoveredTrackedRiderIndex(-1),
       m_trackedRidersStartY(0.0f),
@@ -358,6 +287,7 @@ void SettingsHud::show() {
     if (m_bVisible) return;
 
     m_bVisible = true;
+    ++m_openSerial;
 
     // Re-measure on OPEN as well as on layout changes: a tab whose rows follow live
     // data (Riders lists the session's entries) can have changed while the menu was
@@ -423,6 +353,9 @@ void SettingsHud::hide() {
     m_clickRegions.clear();
     m_steppedControls.clear();  // rebuilt in lockstep with the click regions
     m_cycleControls.clear();    // rebuilt in lockstep with the click regions
+    endSliderDrag();            // a deferred value (UI scale) is applied, not lost
+    m_sliders.clear();
+    m_dropdown.open = -1; m_dropdown.firstRegion = -1;
     m_holdRegionIndex = -1;  // Stop any hold-to-repeat in progress
     m_holdSavePending = false;
     setBounds(0, 0, 0, 0);  // Clear collision bounds to prevent blocking input
@@ -440,6 +373,22 @@ void SettingsHud::showAchievementsTab(int catalogueIndex) {
     if (catalogueIndex < 0) m_achievementsPage = 0;
     setDataDirty();
     show();
+}
+
+void SettingsHud::showTab(int tabId) {
+    // The same event as a tab click arriving another way, so the same side
+    // effects as setActiveTabByName: Grand Tour, and no Reset left armed.
+    if (tabId >= 0 && tabId < TAB_COUNT && isTabAvailable(tabId) && tabId != m_activeTab) {
+        m_activeTab = tabId;
+        recordTabOpened(tabId);
+        disarmResets();
+    }
+    setDataDirty();
+    show();
+}
+
+void SettingsHud::showWhatsNew() {
+    showTab(WhatsNew::firstTabWithNews());
 }
 
 void SettingsHud::update() {
@@ -513,8 +462,10 @@ void SettingsHud::update() {
     CursorPosition cursor = input.getCursorPosition();
     mapCursorToHudSpace(cursor.x, cursor.y);
     if (cursor.isValid) {
-        int newHoveredIndex = -1;
-        for (size_t i = 0; i < m_clickRegions.size(); ++i) {
+        // An open dropdown's entries first (findClickRegionAt), then the panel's.
+        int newHoveredIndex = (m_dropdown.firstRegion >= 0) ? findClickRegionAt(cursor.x, cursor.y) : -1;
+        if (newHoveredIndex < m_dropdown.firstRegion) newHoveredIndex = -1;
+        for (size_t i = 0; newHoveredIndex < 0 && i < m_clickRegions.size(); ++i) {
             const auto& region = m_clickRegions[i];
             if (isPointInRect(cursor.x, cursor.y, region.x, region.y, region.width, region.height)) {
                 newHoveredIndex = static_cast<int>(i);
@@ -552,37 +503,24 @@ void SettingsHud::update() {
             int newHoveredRow = -1;
             HotkeyColumn newHoveredColumn = HotkeyColumn::NONE;
 
-            // Apply offset to stored coordinates for comparison with cursor
-            float contentStartY = m_hotkeyContentStartY + m_fOffsetY;
-            float keyboardX = m_hotkeyKeyboardX + m_fOffsetX;
-            float controllerX = m_hotkeyControllerX + m_fOffsetX;
-
-            if (cursor.y >= contentStartY) {
-                // Find which row the cursor is over using the recorded per-row tops.
-                // This handles the half-row spacers between groups exactly (a purely
-                // geometric reconstruction drifts past every gap), and leaves
-                // newHoveredRow at -1 while the cursor is in a gap.
-                for (size_t r = 0; r < m_hotkeyRowTops.size(); ++r) {
-                    float rowTop = m_hotkeyRowTops[r] + m_fOffsetY;
-                    if (cursor.y >= rowTop && cursor.y < rowTop + m_hotkeyRowHeight) {
-                        newHoveredRow = static_cast<int>(r);
-                        break;
-                    }
+            // A binding is hovered only while the cursor is over one of its fields.
+            const float kbW = m_hotkeyFieldCharWidth * (HOTKEY_KEY_FIELD + 1);
+            const float padW = m_hotkeyFieldCharWidth * (HOTKEY_PAD_FIELD + 1);
+            for (size_t r = 0; r < m_hotkeyCells.size(); ++r) {
+                const HotkeyCell& cell = m_hotkeyCells[r];
+                const float top = cell.top + m_fOffsetY;
+                if (cursor.y < top || cursor.y >= top + m_hotkeyRowHeight) continue;
+                const float kbX = cell.keyboardX + m_fOffsetX;
+                const float padX = cell.controllerX + m_fOffsetX;
+                if (cursor.x >= kbX && cursor.x < kbX + kbW) {
+                    newHoveredColumn = HotkeyColumn::KEYBOARD;
+                } else if (cursor.x >= padX && cursor.x < padX + padW) {
+                    newHoveredColumn = HotkeyColumn::CONTROLLER;
+                } else {
+                    continue;
                 }
-
-                // Check which column the cursor is in (only if on a valid row)
-                if (newHoveredRow >= 0) {
-                    constexpr int kbFieldWidth = 16;
-                    constexpr int ctrlFieldWidth = 12;
-                    float kbFieldEnd = keyboardX + m_hotkeyFieldCharWidth * (kbFieldWidth + 2);
-                    float ctrlFieldEnd = controllerX + m_hotkeyFieldCharWidth * (ctrlFieldWidth + 2);
-
-                    if (cursor.x >= keyboardX && cursor.x < kbFieldEnd) {
-                        newHoveredColumn = HotkeyColumn::KEYBOARD;
-                    } else if (cursor.x >= controllerX && cursor.x < ctrlFieldEnd) {
-                        newHoveredColumn = HotkeyColumn::CONTROLLER;
-                    }
-                }
+                newHoveredRow = static_cast<int>(r);
+                break;
             }
 
             if (newHoveredRow != m_hoveredHotkeyRow || newHoveredColumn != m_hoveredHotkeyColumn) {
@@ -628,10 +566,11 @@ void SettingsHud::update() {
     const auto& leftButton = input.getLeftButton();
     if (leftButton.isClicked()) {
         m_leftPressArmed = false;
-        if (cursor.isValid) {
-            int idx = findClickRegionAt(cursor.x, cursor.y);
+        const int idx = cursor.isValid ? findClickRegionAt(cursor.x, cursor.y) : -1;
+        // A slider grabs the press; an open list swallows a press outside it.
+        if (!handleControlPress(idx, cursor.x)) {
             if (idx >= 0) {
-                if (isRepeatableRegionType(m_clickRegions[idx].type)) {
+                if (isRepeatableRegion(m_clickRegions[idx])) {
                     // Stepper: fire immediately and start hold-to-repeat tracking.
                     m_holdRepeatCount = 0;  // handlers see 0 on the initial click
                     handleClick(cursor.x, cursor.y);
@@ -647,6 +586,8 @@ void SettingsHud::update() {
                 }
             }
         }
+    } else if (leftButton.isPressed && m_sliderDrag.index >= 0) {
+        if (cursor.isValid) updateSliderDrag(cursor.x, true);
     } else if (leftButton.isPressed && m_holdRegionIndex >= 0) {
         // Button still held - check for repeat firing
         auto now = std::chrono::steady_clock::now();
@@ -679,6 +620,7 @@ void SettingsHud::update() {
             }
         }
     } else if (leftButton.isReleased()) {
+        updateSliderDrag(cursor.x, false);   // ends a drag and saves; no-op otherwise
         // Fire an armed button/toggle only if released over the SAME region it was pressed
         // on (so sliding off before releasing aborts the action).
         if (m_leftPressArmed && cursor.isValid) {
@@ -714,9 +656,9 @@ void SettingsHud::update() {
         markSettingsDirty();
     }
 
-    // Handle right-click for shape cycling (TAB_RIDERS only)
+    // Handle right-click: clearing a binding (Hotkeys)
     if (input.getRightButton().isClicked()) {
-        if (cursor.isValid && m_activeTab == TAB_RIDERS) {
+        if (cursor.isValid && m_activeTab == TAB_HOTKEYS) {
             handleRightClick(cursor.x, cursor.y);
         }
     }
@@ -852,15 +794,6 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
             return "common.visible";
         case ClickRegion::TITLE_TOGGLE:
             return "common.title";
-        case ClickRegion::TEXTURE_VARIANT_UP:
-        case ClickRegion::TEXTURE_VARIANT_DOWN:
-            return "common.texture";
-        case ClickRegion::BACKGROUND_OPACITY_UP:
-        case ClickRegion::BACKGROUND_OPACITY_DOWN:
-            return "common.opacity";
-        case ClickRegion::SCALE_UP:
-        case ClickRegion::SCALE_DOWN:
-            return "common.scale";
         default:
             break;
     }
@@ -869,9 +802,6 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
     switch (activeTab) {
         case TAB_STANDINGS:
             switch (type) {
-                case ClickRegion::GAP_REFERENCE_TOGGLE:
-                case ClickRegion::GAP_REFERENCE_BACK:
-                    return "standings.gap_reference";
                 case ClickRegion::FILTER_DNS_TOGGLE:
                     return "standings.filter_dns";
                 case ClickRegion::HEADERS_TOGGLE:
@@ -885,27 +815,10 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
             switch (type) {
                 case ClickRegion::MAP_ROTATION_TOGGLE:
                     return "map.rotation";
-                case ClickRegion::MAP_OUTLINE_UP:
-                case ClickRegion::MAP_OUTLINE_DOWN:
-                    return "map.outline";
-                case ClickRegion::MAP_RANGE_UP:
-                case ClickRegion::MAP_RANGE_DOWN:
-                    return "map.range";
-                case ClickRegion::MAP_RIDER_SHAPE_UP:
-                case ClickRegion::MAP_RIDER_SHAPE_DOWN:
-                    return "map.rider_shape";
                 case ClickRegion::MAP_DETAIL_ADAPTIVE_TOGGLE:
                     return "map.detail_adaptive";
-                default:
-                    break;
-            }
-            break;
-
-        case TAB_RADAR:
-            switch (type) {
-                case ClickRegion::RADAR_RIDER_SHAPE_UP:
-                case ClickRegion::RADAR_RIDER_SHAPE_DOWN:
-                    return "radar.rider_shape";
+                case ClickRegion::MAP_RANGE_ADAPTIVE_TOGGLE:
+                    return "map.range_adaptive";
                 default:
                     break;
             }
@@ -954,23 +867,10 @@ const char* SettingsHud::getTooltipIdForRegion(ClickRegion::Type type, int activ
 
         case TAB_GAP_BAR:
             switch (type) {
-                case ClickRegion::GAPBAR_ICON_UP:
-                case ClickRegion::GAPBAR_ICON_DOWN:
-                    return "gap_bar.icon";
                 case ClickRegion::GAPBAR_GAP_TEXT_TOGGLE:
                     return "gap_bar.show_gap";
                 case ClickRegion::GAPBAR_GAP_BAR_TOGGLE:
                     return "gap_bar.show_gap_bar";
-                default:
-                    break;
-            }
-            break;
-
-        case TAB_GENERAL:
-            switch (type) {
-                case ClickRegion::RUMBLE_CONTROLLER_UP:
-                case ClickRegion::RUMBLE_CONTROLLER_DOWN:
-                    return "general.controller";
                 default:
                     break;
             }

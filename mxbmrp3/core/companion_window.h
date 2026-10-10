@@ -10,10 +10,12 @@
 // current quads/strings (POD, cheap to copy) under a mutex; a dedicated window
 // thread owns the Win32 window + message loop and renders the latest snapshot on
 // its own cadence — so the window stays live and interactive even in menus, when
-// the game issues no Draw calls. Enable via the [CompanionWindow] INI setting.
+// the game issues no Draw calls. Turned on by Settings > Appearance > HUD
+// display (Companion or Both).
 // ============================================================================
 #pragma once
 #include <atomic>
+#include <cstdint>
 #include <mutex>
 #include "thread_safety.h"
 #include <string>
@@ -21,6 +23,26 @@
 #include <vector>
 
 #include "../game/game_config.h"   // SPluginQuad_t / SPluginString_t
+
+// What fills the companion window behind the HUD. DARK is the legible default;
+// GREEN / BLUE / MAGENTA are solid chroma-key backdrops matching OBS's Chroma Key
+// presets, so OBS Window Capture + that filter shows just the HUD over the game.
+// Three because a key colour also removes HUD elements drawn in it: pick the one
+// your HUD does not use. Only the clear colour changes: no per-frame cost, and
+// both renderers honour it.
+//
+// Why no "transparent" option: OBS Window Capture never carries alpha, and its
+// Game Capture hooks the FIRST swapchain that presents in the process -- the
+// game's own -- so it cannot single out this window (tried in game, 2026-10).
+// A per-pixel-alpha window would need UpdateLayeredWindow, which
+// hud_gpu_renderer.h rules out for its game-thread cost.
+enum class CompanionBackground : uint8_t {
+    DARK = 0,
+    GREEN = 1,
+    BLUE = 2,
+    MAGENTA = 3,
+    COUNT
+};
 
 class CompanionWindow {
 public:
@@ -81,6 +103,18 @@ public:
     void setHwAccel(bool on) { m_hwAccel.store(on, std::memory_order_relaxed); }
     bool getHwAccel() const { return m_hwAccel.load(std::memory_order_relaxed); }
 
+    // Backdrop mode (see CompanionBackground). Read by the window thread every
+    // frame; a change forces a repaint, since the frame content is unchanged.
+    void setBackground(CompanionBackground bg) {
+        // Range-checked: the window thread indexes its colour table with this.
+        if (bg >= CompanionBackground::COUNT) bg = CompanionBackground::DARK;
+        m_background.store(static_cast<uint8_t>(bg), std::memory_order_relaxed);
+        m_forceRepaint.store(true, std::memory_order_relaxed);
+    }
+    CompanionBackground getBackground() const {
+        return static_cast<CompanionBackground>(m_background.load(std::memory_order_relaxed));
+    }
+
     // Request the window to close from WITHIN the window thread (the WM_CLOSE
     // handler): just signals the loop to exit — it must NOT join itself. The thread
     // tears down its own window and finishes; a later stop()/setEnabled() reaps it.
@@ -118,6 +152,7 @@ private:
     std::atomic<bool> m_geomMax{ false };
     std::atomic<int> m_refreshHz{ 0 };   // 0 = V-Sync; N = fixed N Hz cap
     std::atomic<bool> m_hwAccel{ true }; // GPU backend wanted (falls back live)
+    std::atomic<uint8_t> m_background{ static_cast<uint8_t>(CompanionBackground::DARK) };
     // joined-by: stop() (HudManager shutdown path); the destructor's
     // spinThenDetach is only the no-Shutdown() unload backstop.
     std::thread m_thread;

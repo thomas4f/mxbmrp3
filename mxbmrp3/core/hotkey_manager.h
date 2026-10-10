@@ -39,6 +39,10 @@ public:
 
     // Get/set bindings
     const HotkeyBinding& getBinding(HotkeyAction action) const;
+    // "Press F1 to open settings": how the settings menu opens, as bound. The
+    // shipped ` has no glyph in the game font, so it is named by place; with
+    // no keyboard binding, the menu button.
+    void formatOpenSettingsHint(char* out, size_t cap) const;
     void setBinding(HotkeyAction action, const HotkeyBinding& binding);
     void setKeyboardBinding(HotkeyAction action, const KeyBinding& binding);
     void setControllerBinding(HotkeyAction action, ControllerButton button);
@@ -81,6 +85,12 @@ public:
     // Check if a specific action was triggered this frame
     bool wasActionTriggered(HotkeyAction action) const;
 
+#if defined(MXBMRP3_TEST_BUILD)
+    // Fire `action` on the next update(), as if its binding was pressed: the
+    // headless tests have no keyboard to press it with.
+    void testInject(HotkeyAction action) { m_injected[static_cast<size_t>(action)] = true; }
+#endif
+
     // Check for binding conflicts
     bool hasKeyboardConflict(HotkeyAction action, const KeyBinding& binding) const;
     bool hasControllerConflict(HotkeyAction action, ControllerButton button) const;
@@ -114,6 +124,9 @@ private:
 
     // Actions triggered this frame
     std::array<bool, static_cast<size_t>(HotkeyAction::COUNT)> m_triggeredActions;
+#if defined(MXBMRP3_TEST_BUILD)
+    std::array<bool, static_cast<size_t>(HotkeyAction::COUNT)> m_injected{};
+#endif
 
     // Capture state
     CaptureType m_captureType;

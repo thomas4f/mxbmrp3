@@ -9,17 +9,17 @@
 // to cost one. See TabDescriptor::hidden.
 //
 // NO CONTROLS: everything here is prose or a link, so the page has no settings
-// to reset and no click handler of its own. The three thanks links reuse the
-// General tab's addLinkRow and its link regions (OPEN_LINK_COMMUNITY is the
-// same mxb-mods page the General tab's Discussion row opens); the regions are
+// to reset and no click handler of its own. The links use the shared link
+// regions (OPEN_LINK_COMMUNITY is the mxb-mods discussion page); the regions are
 // dispatched by SettingsHud::dispatchRegion's common cases, not by a tab
 // handler -- with them in handleClickTabGeneral, this page's links did nothing.
 //
 // TWO CONSTRAINTS ON THE COPY, both of which have already caught a draft:
 //
-//   * LINES DO NOT WRAP. Each is its own row, broken by hand at 49 of the 50 the
+//   * LINES DO NOT WRAP. Each is its own row, broken by hand within the 58 the
 //     content column allows (settingsContentAreaChars - settingsLabelColumn,
-//     one narrower with a themed card).
+//     one narrower with a themed card), and worded so no paragraph ends on a
+//     lone word.
 //   * ASCII ONLY. The in-game renderer is a byte-indexed 256-glyph CP1252
 //     table, so an em-dash written as UTF-8 garbles on screen -- it is two
 //     bytes, and each is drawn as its own glyph. Hyphens here; the README is
@@ -35,7 +35,9 @@
 #include "../settings_hud.h"
 #include "../version_widget.h"
 #include "../../core/color_config.h"
+#include "../../core/font_config.h"
 #include "../../core/plugin_constants.h"
+#include "../../core/plugin_utils.h"
 
 #include <cstdio>
 
@@ -57,56 +59,82 @@ BaseHud* SettingsHud::renderTabAbout(SettingsLayoutContext& ctx) {
     // it, where it came from, why it is open source and free. ONE paragraph on
     // the last: this page does not scroll, and the themed panel overflowed the
     // screen when it was two (settings_render_test).
-    ctx.addTextRow("MXBMRP3 is a community project: one person's", colors.getSecondary());
-    ctx.addTextRow("spare-time work, and much of what it has become", colors.getSecondary());
-    ctx.addTextRow("comes from the people who use it - the riders who", colors.getSecondary());
-    ctx.addTextRow("report problems, suggest features, test new ideas,", colors.getSecondary());
-    ctx.addTextRow("and keep finding new ways to use it.", colors.getSecondary());
+    ctx.addTextRow("MXBMRP3 is a community project: one person's spare-time", colors.getSecondary());
+    ctx.addTextRow("work, and much of what it has become comes from the people", colors.getSecondary());
+    ctx.addTextRow("who use it - the riders who report problems, suggest", colors.getSecondary());
+    ctx.addTextRow("features, test new ideas and find new ways to use it.", colors.getSecondary());
     ctx.addSpacing();
-    ctx.addTextRow("It started in 2024, after development of MaxHUD,", colors.getSecondary());
-    ctx.addTextRow("the community's long-standing HUD, came to an", colors.getSecondary());
-    ctx.addTextRow("end. The first version, MXBMRP - MX Bikes Memory", colors.getSecondary());
-    ctx.addTextRow("Reader Project, was a small experiment I built", colors.getSecondary());
-    ctx.addTextRow("before I really knew what I was doing. That grew", colors.getSecondary());
-    ctx.addTextRow("through several versions into MXBMRP3, a full", colors.getSecondary());
-    ctx.addTextRow("plugin built on the game's plugin API.", colors.getSecondary());
+    ctx.addTextRow("It started in 2024, after development of MaxHUD, the", colors.getSecondary());
+    ctx.addTextRow("community's long-standing HUD, came to an end. The first", colors.getSecondary());
+    ctx.addTextRow("version, MXBMRP - MX Bikes Memory Reader Project, was a", colors.getSecondary());
+    ctx.addTextRow("small experiment I built before I really knew what I was", colors.getSecondary());
+    ctx.addTextRow("doing. That grew through several versions into MXBMRP3, a", colors.getSecondary());
+    ctx.addTextRow("full plugin built on the game's plugin API.", colors.getSecondary());
     ctx.addSpacing();
-    ctx.addTextRow("Keeping MXBMRP3 open source is deliberate: it can", colors.getPrimary());
-    ctx.addTextRow("be studied, changed and built on, and does not", colors.getPrimary());
-    ctx.addTextRow("depend on me. It is free, with no paid tier, no", colors.getPrimary());
-    ctx.addTextRow("locked features, no ads, and every release is", colors.getPrimary());
-    ctx.addTextRow("built entirely from the public source (MIT).", colors.getPrimary());
+    ctx.addTextRow("Keeping MXBMRP3 open source is deliberate: it can be", colors.getPrimary());
+    ctx.addTextRow("studied, changed and built on, and does not depend on me.", colors.getPrimary());
+    ctx.addTextRow("It is free, with no paid tier, no locked features and no", colors.getPrimary());
+    ctx.addTextRow("ads, and every release is built from the public source.", colors.getPrimary());
     ctx.addSpacing();
-    ctx.addTextRow("If MXBMRP3 makes the game a little better for", colors.getSecondary());
-    ctx.addTextRow("you, or inspires something new, then it has done", colors.getSecondary());
-    ctx.addTextRow("what I hoped it would.", colors.getSecondary());
+    ctx.addTextRow("If MXBMRP3 makes the game a little better for you, or", colors.getSecondary());
+    ctx.addTextRow("inspires something new, it has done what I hoped it would.", colors.getSecondary());
 
     // The one place a way to say thanks is mentioned, and the only one: this is
     // the page that explains who makes the thing, so a link reads as context
     // rather than as a solicitation. Nothing else in the plugin asks -- the
-    // post-update prompt that used to is gone. Docs and Discussion stay on
-    // General, where someone looking for help will look.
+    // post-update prompt that used to is gone.
     //
     // Three ways, in the order a player is most likely to take them, and the
-    // README's sentence word for word: a comment or rating where the plugin is
+    // README's sentence less its links: a comment or rating where the plugin is
     // downloaded, a star where it is built, and last the coffee. No reason is
     // given; the links say what they are.
     //
-    // ITS OWN SECTION with the URLs at labelX, rather than "Support:" labels with
+    // ITS OWN SECTION with the links at labelX, rather than "Support:" labels with
     // the URL at column 18. That is the shape every other link row in the panel
     // uses and it is wrong here: those sit in a LIST, where the labels form a
     // column and the indent is what aligns the URLs with each other. These rows
     // have the sentence above them to align with, so the indent would read as a
     // gap. A heading says the same thing and leaves the URLs flush with the prose.
-    ctx.addSectionHeading("Say Thanks");
-    ctx.addTextRow("A comment or rating on mxb-mods or a star on", colors.getSecondary());
-    ctx.addTextRow("GitHub helps, and there is a Ko-fi. All optional.", colors.getSecondary());
-    ctx.addLinkRow("", "https://mxb-mods.com/mxbmrp3", 0,
-                   SettingsHud::ClickRegion::OPEN_LINK_COMMUNITY);
-    ctx.addLinkRow("", "https://github.com/thomas4f/mxbmrp3", 0,
-                   SettingsHud::ClickRegion::OPEN_LINK_GITHUB);
-    ctx.addLinkRow("", "https://ko-fi.com/thomas4f", 0,
-                   SettingsHud::ClickRegion::OPEN_LINK_KOFI);
+    // "Thanks" and "Help" SIDE BY SIDE in the one card, a faint rule between
+    // them: two sections, without a second card's seam, which would make this
+    // page -- among the tallest -- set the panel height. Same four rows as one
+    // section: a heading, then three lines.
+    //
+    // The README's sentence, then its three names as links on a row of their
+    // own, each at a FIXED COLUMN. Not in place inside the sentence: a link's x
+    // there is the width of the text before it, counted in monospace cells, and
+    // a proportional font draws that text narrower or wider, so the link landed
+    // in a gap or on top of a word.
+    const float headingY = ctx.addSectionHeading("Thanks");
+    const float cw = PluginUtils::calculateMonospaceTextWidth(1, ctx.fontSize);
+    constexpr int THANKS_CHARS = 36;   // the sentence's longest line
+    constexpr int GAP_CHARS = 3;
+    const float helpX = ctx.labelX + cw * static_cast<float>(THANKS_CHARS + GAP_CHARS);
+    ctx.parent->addString("Help", helpX, headingY, PluginConstants::Justify::LEFT,
+        PluginConstants::Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
+    {
+        auto text = [&](const char* t, float x) {
+            ctx.parent->addString(t, x, ctx.currentY, PluginConstants::Justify::LEFT,
+                PluginConstants::Fonts::getNormal(), colors.getSecondary(), ctx.fontSize);
+        };
+        text("A comment or rating, a star or a", ctx.labelX);
+        text("Setup, every setting", helpX);
+        ctx.nextLine();
+        text("coffee helps. All optional.", ctx.labelX);
+        text("and the web overlay.", helpX);
+        ctx.nextLine();
+        // Columns with room to spare past each name, so no font runs one into the next.
+        ctx.addLinkCell(ctx.labelX, "mxb-mods", SettingsHud::ClickRegion::OPEN_LINK_COMMUNITY);
+        ctx.addLinkCell(ctx.labelX + cw * 12.0f, "GitHub", SettingsHud::ClickRegion::OPEN_LINK_GITHUB);
+        ctx.addLinkCell(ctx.labelX + cw * 22.0f, "Ko-fi", SettingsHud::ClickRegion::OPEN_LINK_KOFI);
+        ctx.addLinkCell(helpX, "Docs & guides", SettingsHud::ClickRegion::OPEN_LINK_DOCS);
+        ctx.nextLine();
+        // The rule, centred in the gap, from the headings down to the last line.
+        const float ruleX = ctx.labelX + cw * (static_cast<float>(THANKS_CHARS) + GAP_CHARS * 0.5f);
+        ctx.addSolidQuad(ruleX, headingY + ctx.lineHeightNormal * 0.15f, cw * 0.08f,
+                         ctx.currentY - headingY - ctx.lineHeightNormal * 0.3f,
+                         PluginUtils::applyOpacity(colors.getMuted(), 0.5f));
+    }
 
     return nullptr;   // no backing HUD
 }

@@ -127,8 +127,11 @@
  * 'FuzzyBubbles-Regular', 'Tiny5-Regular', 'PermanentMarker-Regular',
  * 'RockSalt-Regular', 'CaveatBrush-Regular', 'ReenieBeanie-Regular',
  * 'GloriaHallelujah-Regular', 'IBMPlexSans-Regular',
- * 'IBMPlexSans-SemiBold', 'IBMPlexMono-Regular'. For a font of your own, add an
- * @font-face here (drop the file in this folder) and reference it. */
+ * 'IBMPlexSans-SemiBold', 'IBMPlexMono-Regular', 'LCD14-Regular',
+ * 'LCD14-Bold', 'Doto-Regular', 'Doto-Bold', 'ChakraPetch-BoldItalic',
+ * 'ChakraPetch-SemiBoldItalic', 'Quantico-BoldItalic', 'Tomorrow-BoldItalic',
+ * 'Tomorrow-SemiBoldItalic', 'LCD7-BoldItalic'. For a font of your own,
+ * add an @font-face here (drop the file in this folder) and reference it. */
 /*
 :root {
     --font:         'RobotoMono-Regular', monospace !important;   body / data

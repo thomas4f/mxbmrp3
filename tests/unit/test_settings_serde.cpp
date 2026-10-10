@@ -162,6 +162,10 @@ TEST_CASE("every enum<->string converter round-trips") {
 
     checkRoundTrip<DisplayTarget>("displayTarget", displayTargetToString, stringToDisplayTarget,
         { DisplayTarget::IN_GAME, DisplayTarget::COMPANION, DisplayTarget::BOTH });
+    checkRoundTrip<CompanionBackground>("companionBackground",
+        companionBackgroundToString, stringToCompanionBackground,
+        { CompanionBackground::DARK, CompanionBackground::GREEN,
+          CompanionBackground::BLUE, CompanionBackground::MAGENTA });
 }
 
 TEST_CASE("the uint8_t-coded converters round-trip too") {
@@ -226,6 +230,8 @@ TEST_CASE("unknown text falls back to the CALLER's default, not a hardcoded one"
         PBScope::BIKE, PBScope::CATEGORY);
     checkUnknownFallsBackToDefault<DisplayTarget>("displayTarget", stringToDisplayTarget,
         DisplayTarget::COMPANION, DisplayTarget::BOTH);
+    checkUnknownFallsBackToDefault<CompanionBackground>("companionBackground",
+        stringToCompanionBackground, CompanionBackground::GREEN, CompanionBackground::DARK);
     checkUnknownFallsBackToDefault<uint8_t>("pitboardGapCompareMode", stringToPitboardGapCompareMode,
         PitboardHud::GAP_LEADER, PitboardHud::GAP_IDEAL);
 

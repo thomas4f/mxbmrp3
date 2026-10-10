@@ -41,24 +41,21 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
     ctx.addSectionHeading("Layout");
+    ctx.beginColumns(2, 6);   // side by side (beginColumns)
 
     ctx.addToggleControl("Show icons", hud->m_showIcons,
         SettingsHud::ClickRegion::EVENT_LOG_ICONS_TOGGLE, hud,
         nullptr, 0, true, "event_log.icons");
 
     // Display mode: Off / Always / Auto-hide (matches RadarHud's "Show mode" wording)
-    const char* modeStr = "Always";
-    bool isOff = false;
-    switch (hud->m_displayMode) {
-    case EventLogHud::DisplayMode::OFF:       modeStr = "Off"; isOff = true; break;
-    case EventLogHud::DisplayMode::ON:        modeStr = "Always"; break;
-    case EventLogHud::DisplayMode::AUTO_HIDE: modeStr = "Auto-hide"; break;
-    }
+    static const char* const kModes[] = { "Off", "Always", "Auto-hide" };
+    const char* modeStr = cycleName(kModes, static_cast<int>(hud->m_displayMode));
+    const bool isOff = (hud->m_displayMode == EventLogHud::DisplayMode::OFF);
     // tooltipOnArrows=false on all three cycles below: these arrows have no
     // per-type tooltip fallback (no TAB_EVENT_LOG section in
     // getTooltipIdForRegion), so keep the tooltip on the row region only.
     ctx.addCycleControl("Show mode", modeStr,
-        SettingsHud::CycleControl::enumMember(hud, &EventLogHud::m_displayMode, 3, hud),
+        SettingsHud::CycleControl::enumMember(hud, &EventLogHud::m_displayMode, 3, hud, kModes),
         hud, true, isOff, "event_log.display_mode", /*tooltipOnArrows=*/false);
 
     // Auto-hide duration (only meaningful in auto-hide mode)
@@ -90,21 +87,20 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
         hud, true, false, "event_log.max_events", /*tooltipOnArrows=*/false);
 
     // Timestamp mode: Off / Session / Clock
-    const char* timestampStr = "Off";
-    bool tsOff = false;
-    switch (hud->m_timestampMode) {
-    case EventLogHud::TimestampMode::OFF:     timestampStr = "Off"; tsOff = true; break;
-    case EventLogHud::TimestampMode::SESSION: timestampStr = "Session"; break;
-    case EventLogHud::TimestampMode::CLOCK:   timestampStr = "Clock"; break;
-    }
+    static const char* const kStamps[] = { "Off", "Session", "Clock" };
+    const char* timestampStr = cycleName(kStamps, static_cast<int>(hud->m_timestampMode));
+    const bool tsOff = (hud->m_timestampMode == EventLogHud::TimestampMode::OFF);
     ctx.addCycleControl("Timestamp", timestampStr,
-        SettingsHud::CycleControl::enumMember(hud, &EventLogHud::m_timestampMode, 3, hud),
+        SettingsHud::CycleControl::enumMember(hud, &EventLogHud::m_timestampMode, 3, hud, kStamps),
         hud, true, tsOff, "event_log.timestamp", /*tooltipOnArrows=*/false);
     // === EVENTS SECTION ===
     // Group related events into single toggles to keep the UI concise.
     // Each toggle controls multiple bitfield flags via the CHECKBOX handler's
     // multi-bit support (set all / clear all).
+    ctx.endColumns();
+
     ctx.addSectionHeading("Events");
+    ctx.beginColumns(2, 10);
 
     // Session: started + state changes
     constexpr uint32_t SESSION_GROUP = EVENT_SESSION_STARTED | EVENT_SESSION_STATE;
@@ -180,6 +176,7 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledEvents, EVENT_DIRECTOR, true,
         "event_log.director");
+    ctx.endColumns();
 
     return hud;
 }

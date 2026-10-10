@@ -226,7 +226,8 @@ float BaseHud::planBodyHeight(const ScaledDimensions& dim, const PanelWant& want
     return static_cast<float>(g.bands.back().bot - g.bands.front().top) * dim.cellH;
 }
 
-void BaseHud::addPlanBackground(PanelPlan& p, float x, float y) {
+void BaseHud::addPlanBackground(PanelPlan& p, float x, float y,
+                                const PanelBox::SectionGeom* bare) {
     auto& bmBg = PluginData::getInstance().getBenchmarkMetrics();
     const long long bgStart = bmBg.active ? DrawHandler::getCurrentTimeUs() : 0;
     struct BgTimer {
@@ -286,6 +287,7 @@ void BaseHud::addPlanBackground(PanelPlan& p, float x, float y) {
         for (const PanelBox::BandGeom& band : p.g.bands) {
             for (const PanelBox::ColumnGeom& col : band.columns) {
                 for (const PanelBox::SectionGeom& sec : col.sections) {
+                    if (&sec == bare) continue;
                     addThemedCard(p.X(col.cardLeft), p.Y(sec.top),
                                   p.W(col.cardW), p.H(sec.bot - sec.top));
                 }

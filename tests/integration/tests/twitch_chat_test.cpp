@@ -33,6 +33,10 @@
 //  11. The log stays anonymous: a Twitch channel loaded from the INI, a YouTube
 //      channel typed in, and a NOTICE naming the channel never reach it (logs
 //      get shared; through the 1.31 pre-release every one of them did).
+//  12. Display order Newest flips the messages (newest on top) but not a wrapped
+//      message's own rows, keeps a partly-fitting message's HEAD, moves the
+//      status line to the bottom (still away from new messages), and persists
+//      as [StreamChat] displayOrder.
 //
 // Headless runs stay offline: no case sets a channel while the HUD is visible,
 // except case 8, whose forced status keeps the worker from ever starting.
@@ -392,6 +396,84 @@ TEST_CASE("twitch chat: the panel shows the connection status while it is not co
     host.draw();
     host.twitchForceStatus(-1);
     host.shutdown();
+}
+
+TEST_CASE("twitch chat: Display order Newest puts the newest message on top") {
+    {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        host.startup(kSaveWin);
+        host.shutdown();
+    }
+    std::string text = ini::readFile(kIniWin);
+    setChatKey(text, "channel", "testchan");
+    setChatKey(text, "enabled", "1");  // on -- the forced status below keeps it offline
+    setChatKey(text, "width", "43");
+    setChatKey(text, "showMode", "1");
+    setChatKey(text, "rows", "4");
+    setChatKey(text, "displayOrder", "1");
+    REQUIRE(ini::writeFile(kIniWin, text));
+
+    {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        host.startup(kSaveWin);
+        REQUIRE(host.hasTwitchHooks());
+        host.twitchForceStatus(3);  // connected, and forced: no socket is opened
+        chatOnly(host, false);
+
+        const std::string longText =
+            "this is a deliberately long chat message that cannot possibly fit on one row of the hud";
+        host.twitchInject(privmsg("alice", "hello chat", "", "o1").c_str());
+        host.twitchInject(privmsg("bob", "gg", "", "o2").c_str());
+        host.twitchInject(privmsg("carol", longText.c_str(), "", "o3").c_str());
+        host.draw();
+
+        // Newest message first, but carol's own rows still read top to bottom.
+        const int rows = host.chatRowCount();
+        REQUIRE(rows == 4);
+        const int carolRows = rows - 1;  // what is left after bob, at the bottom
+        REQUIRE(carolRows >= 2);
+        CHECK(host.chatRow(0).rfind("carol:|this is", 0) == 0);
+        for (int i = 1; i < carolRows; ++i) {
+            CHECK_MESSAGE(host.chatRow(i).rfind("|", 0) == 0, "not a continuation: " << host.chatRow(i));
+        }
+        CHECK(host.chatRow(carolRows) == "bob:|gg");  // alice no longer fits
+
+        SUBCASE("a message that only partly fits keeps its head") {
+            // Two rows for dave leave carol two of her three.
+            host.twitchInject(privmsg("dave", "a message just long enough to wrap onto a second row", "", "o4").c_str());
+            host.draw();
+            REQUIRE(host.chatRowCount() == 4);
+            CHECK(host.chatRow(0).rfind("dave:|", 0) == 0);
+            CHECK(host.chatRow(1).rfind("|", 0) == 0);
+            CHECK(host.chatRow(2).rfind("carol:|this is", 0) == 0);  // tail cut, not head
+            CHECK(host.chatRow(3).rfind("|", 0) == 0);
+        }
+
+        SUBCASE("the status line moves to the bottom, away from new messages") {
+            host.twitchForceStatus(5);  // retrying
+            host.draw();
+            REQUIRE(host.chatRowCount() == 4);
+            CHECK(host.chatRow(0).rfind("carol:|this is", 0) == 0);
+            CHECK(host.chatRow(3) == "~|Connection lost - retrying...");
+        }
+
+        // Hide before releasing the forced status, so no draw ever wants a socket.
+        REQUIRE(host.setHudVisible("stream_chat_hud", false));
+        host.draw();
+        host.twitchForceStatus(-1);
+        host.shutdown();
+    }
+
+    const ini::Map saved = ini::parse(ini::readFile(kIniWin));
+    CHECK(saved.at({"StreamChat", "displayOrder"}) == "1");
+
+    // Later cases share this settings file and expect the defaults.
+    text = ini::readFile(kIniWin);
+    setChatKey(text, "rows", "6");
+    setChatKey(text, "displayOrder", "0");
+    REQUIRE(ini::writeFile(kIniWin, text));
 }
 
 TEST_CASE("twitch chat: every role shows its own icon") {

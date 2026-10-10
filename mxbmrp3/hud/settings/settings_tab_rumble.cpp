@@ -122,6 +122,7 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
 
     // === RUMBLE SECTION ===
     ctx.addSectionHeading("Rumble");
+    ctx.beginColumns(2, 4);   // side by side (beginColumns)
 
     // Master rumble enable (always from global config)
     ctx.addToggleControl("Enabled", globalConfig.enabled,
@@ -140,31 +141,40 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Effect profile", true,
         SettingsHud::ClickRegion::RUMBLE_EFFECT_PROFILE_TOGGLE, hud, nullptr, 0, true, "rumble.effect_profile",
         globalConfig.usePerBikeEffects ? "Per-Bike" : "Global");
+    ctx.endColumns();
 
     // === EFFECTS SECTION ===
     const float headingY = ctx.addSectionHeading("Effects");
 
-    // Table columns: [gutter] Effect | Light | Heavy | Min | Max. The column labels
-    // ride on the "Effects" heading row, as on the Hotkeys and Widgets tabs; the
-    // heading itself captions the effect-name column, so it has no label of its own.
-    // The gutter holds the [+]/[-] split disclosure on splittable effects (Bumps, Lockup).
-    // We shift the whole table right rather than adding a column on the right edge, which
-    // would overflow the panel.
-    float markerX = ctx.labelX;
-    float gutterW = PluginUtils::calculateMonospaceTextWidth(4, ctx.fontSize);
-    float effectX = ctx.labelX + gutterW;
-    float lightX = effectX + PluginUtils::calculateMonospaceTextWidth(8, ctx.fontSize);
-    float heavyX = lightX + PluginUtils::calculateMonospaceTextWidth(9, ctx.fontSize);
-    float minX = heavyX + PluginUtils::calculateMonospaceTextWidth(9, ctx.fontSize);
-    float maxX = minX + PluginUtils::calculateMonospaceTextWidth(10, ctx.fontSize);
+    // Table columns: [gutter] Effect | Light | Heavy | Min | Max, across the full
+    // content width. The column labels ride on the "Effects" heading row, as on the
+    // Hotkeys and Widgets tabs, over their values; the heading itself captions the
+    // effect-name column. The gutter holds the split disclosure caret on splittable
+    // effects (Bumps, Lockup). Every value is a slider cell: its arrows step it,
+    // the track under it drags it.
+    const float charW = PluginUtils::calculateMonospaceTextWidth(1, ctx.fontSize);
+    constexpr int GUTTER_CHARS = 2;
+    constexpr int NAME_CHARS = 12;      // "Rev limiter", "- Front"
+    constexpr int CELL_GAP_CHARS = 2;
+    const int tableChars = static_cast<int>(std::floor(rowWidth / charW + 0.01f));
+    const int cellChars = std::max(9,
+        (tableChars - GUTTER_CHARS - NAME_CHARS - 3 * CELL_GAP_CHARS) / 4);
+    const int valueChars = cellChars - 4;   // "< " + value + " >"
+    const float markerX = ctx.labelX;
+    const float gutterW = charW * GUTTER_CHARS;
+    const float effectX = ctx.labelX + gutterW;
+    const float lightX = effectX + charW * NAME_CHARS;
+    const float heavyX = lightX + charW * (cellChars + CELL_GAP_CHARS);
+    const float minX = heavyX + charW * (cellChars + CELL_GAP_CHARS);
+    const float maxX = minX + charW * (cellChars + CELL_GAP_CHARS);
 
-    ctx.parent->addString("Light", lightX, headingY, PluginConstants::Justify::LEFT,
+    ctx.parent->addString("Light", lightX + charW * 2.0f, headingY, PluginConstants::Justify::LEFT,
         PluginConstants::Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
-    ctx.parent->addString("Heavy", heavyX, headingY, PluginConstants::Justify::LEFT,
+    ctx.parent->addString("Heavy", heavyX + charW * 2.0f, headingY, PluginConstants::Justify::LEFT,
         PluginConstants::Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
-    ctx.parent->addString("Min", minX, headingY, PluginConstants::Justify::LEFT,
+    ctx.parent->addString("Min", minX + charW * 2.0f, headingY, PluginConstants::Justify::LEFT,
         PluginConstants::Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
-    ctx.parent->addString("Max", maxX, headingY, PluginConstants::Justify::LEFT,
+    ctx.parent->addString("Max", maxX + charW * 2.0f, headingY, PluginConstants::Justify::LEFT,
         PluginConstants::Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
 
     // The stepped descriptors below bind raw pointers into the ACTIVE rumble
@@ -172,57 +182,40 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
     // the player swaps bikes — which can happen while this menu sits open — and
     // a click through the stale layout would then edit the PREVIOUS bike's
     // profile. Capture the bound config's identity here and validate it at
-    // click time (SteppedControl::valid): on mismatch the click is swallowed
-    // and the layout rebuilt against the right profile. The const getRumbleConfig
-    // overload is used deliberately — it never auto-creates a profile, and it
-    // falls back to the global config when the new bike has no profile yet
-    // (which also compares unequal to a stale per-bike binding, as required).
-    // Per-bike profiles live in a node-based map, so the bound pointer stays
-    // valid (just no longer active) after a swap.
+    // click time (SteppedControl::valid, which the slider inherits): on mismatch
+    // the click is swallowed and the layout rebuilt against the right profile.
+    // The const getRumbleConfig overload is used deliberately — it never
+    // auto-creates a profile, and it falls back to the global config when the new
+    // bike has no profile yet (which also compares unequal to a stale per-bike
+    // binding, as required). Per-bike profiles live in a node-based map, so the
+    // bound pointer stays valid (just no longer active) after a swap.
     RumbleConfig* boundConfig = &rumbleConfig;
     auto configStillActive = [boundConfig]() {
         const XInputReader& reader = XInputReader::getInstance();
         return &reader.getRumbleConfig() == boundConfig;
     };
 
-    // Register a stepped descriptor (with the rumble post-step work and the
-    // profile-binding guard above) and return its index into m_steppedControls
-    // (rebuilt in lockstep with m_clickRegions).
-    auto registerStepped = [&](SettingsHud::SteppedControl control,
-                               const std::function<void()>& postStep) -> int {
+    // One slider cell over a descriptor, with the rumble post-step work and the
+    // profile-binding guard above.
+    auto addEffectCell = [&](float x, const char* value, SettingsHud::SteppedControl control,
+                             const std::function<void()>& postStep, bool muted) {
         control.postStep = postStep;
         control.valid = configStillActive;
-        ctx.parent->m_steppedControls.push_back(std::move(control));
-        return static_cast<int>(ctx.parent->m_steppedControls.size()) - 1;
+        ctx.addInlineSteppedControl(x, value, valueChars, control, nullptr, true, nullptr, muted);
     };
 
-    // One "< value >" stepper cell (the shared inline cell), with its registered
-    // descriptor's index stamped on both arrow regions -- the Achievements pattern.
-    auto addStepperCell = [&](float x, const char* value, int valueChars,
-                              int steppedIndex, bool muted) {
-        const size_t first = ctx.addInlineCycle(x, value, valueChars,
-            SettingsHud::ClickRegion::STEPPED_DOWN, SettingsHud::ClickRegion::STEPPED_UP,
-            nullptr, /*enabled=*/true, muted);
-        for (size_t r = first; r < ctx.parent->m_clickRegions.size(); ++r) {
-            ctx.parent->m_clickRegions[r].steppedIndex = steppedIndex;
-        }
-    };
-
-    // Lambda for rumble effect rows. The arrows are shared STEPPED_UP/STEPPED_DOWN
-    // controls: Light/Heavy are accelerated 1% strength steppers (percentFloat);
-    // Min/Max step by the fixed inputStep (no hold acceleration) up to inputLimit,
-    // with Max clamping down at the effect's live Min (fixedFloatDynamicLo) - all
-    // copied verbatim from the old per-effect click handlers.
+    // Lambda for rumble effect rows. Light/Heavy are accelerated 1% strength
+    // steppers (percentFloat); Min/Max step by the fixed inputStep (no hold
+    // acceleration) up to inputLimit, with Max clamping down at the effect's live
+    // Min (fixedFloatDynamicLo).
     // splitInitializedFlag (front/rear rows only) latches "user has set the split
     // values" on any step so they are never reseeded from the combined effect.
     auto addRumbleRow = [&](const char* name, RumbleEffect& effect,
                             float inputStep, float inputLimit,
                             bool useIntegers = false,
-                            const char* unit = "",
                             float displayFactor = 1.0f,
                             const char* tooltipId = nullptr,
                             bool* splitInitializedFlag = nullptr) {
-        (void)unit;  // Unit is described in the tooltip instead of displayed inline
         // Every rumble stepper marks the per-bike profile dirty when per-bike mode
         // is active (checked at click time, exactly like the old handler did).
         std::function<void()> postStep = [splitInitializedFlag]() {
@@ -243,82 +236,66 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
         ctx.parent->addString(name, effectX, ctx.currentY, PluginConstants::Justify::LEFT,
             PluginConstants::Fonts::getNormal(), colors.getSecondary(), ctx.fontSize);
 
-        // Light motor strength control
-        {
-            int lightIndex = registerStepped(
-                SettingsHud::SteppedControl::percentFloat(&effect.lightStrength, nullptr), postStep);
+        // Light / Heavy motor strength: "Off" at 0, else a percentage. Muted from
+        // the percent, not the float, to match the text (no FP edge).
+        auto strengthCell = [&](float x, float& strength) {
             char valueStr[8];
-            int percent = static_cast<int>(std::round(effect.lightStrength * 100.0f));
+            const int percent = static_cast<int>(std::round(strength * 100.0f));
             if (percent <= 0) {
                 snprintf(valueStr, sizeof(valueStr), "Off");
             } else {
                 snprintf(valueStr, sizeof(valueStr), "%d%%", percent);
             }
-            // Muted from percent, not the float, to match the text (no FP edge).
-            addStepperCell(lightX, valueStr, 4, lightIndex, percent <= 0);
-        }
+            addEffectCell(x, valueStr, SettingsHud::SteppedControl::percentFloat(&strength, nullptr),
+                postStep, percent <= 0);
+        };
+        strengthCell(lightX, effect.lightStrength);
+        strengthCell(heavyX, effect.heavyStrength);
 
-        // Heavy motor strength control
-        {
-            int heavyIndex = registerStepped(
-                SettingsHud::SteppedControl::percentFloat(&effect.heavyStrength, nullptr), postStep);
-            char valueStr[8];
-            int percent = static_cast<int>(std::round(effect.heavyStrength * 100.0f));
-            if (percent <= 0) {
-                snprintf(valueStr, sizeof(valueStr), "Off");
-            } else {
-                snprintf(valueStr, sizeof(valueStr), "%d%%", percent);
-            }
-            // Muted from percent, not the float, to match the text (no FP edge).
-            addStepperCell(heavyX, valueStr, 4, heavyIndex, percent <= 0);
-        }
-
-        // Min input control (fixed step, clamped to [0, inputLimit])
-        {
-            int minIndex = registerStepped(
-                SettingsHud::SteppedControl::fixedFloat(&effect.minInput,
-                    inputStep, 0.0f, inputLimit, nullptr), postStep);
-            char valueStr[8];
-            float displayValue = effect.minInput * displayFactor;
+        // Min / Max input thresholds, in the effect's display unit
+        auto formatInput = [&](char* out, size_t size, float value) {
+            const float displayValue = value * displayFactor;
             if (displayFactor != 1.0f) {
-                int rounded = static_cast<int>(std::round(displayValue / 5.0f)) * 5;
-                snprintf(valueStr, sizeof(valueStr), "%d", rounded);
+                const int rounded = static_cast<int>(std::round(displayValue / 5.0f)) * 5;
+                snprintf(out, size, "%d", rounded);
             } else if (useIntegers) {
-                snprintf(valueStr, sizeof(valueStr), "%d", static_cast<int>(std::round(displayValue)));
+                snprintf(out, size, "%d", static_cast<int>(std::round(displayValue)));
             } else {
-                snprintf(valueStr, sizeof(valueStr), "%.1f", displayValue);
+                snprintf(out, size, "%.2f", displayValue);
             }
-            addStepperCell(minX, valueStr, 5, minIndex, !effect.isEnabled());
-        }
-
-        // Max input control (fixed step, up to inputLimit; down clamps at live Min)
-        {
-            int maxIndex = registerStepped(
-                SettingsHud::SteppedControl::fixedFloatDynamicLo(&effect.maxInput,
-                    inputStep, &effect.minInput, inputLimit, nullptr), postStep);
-            char valueStr[8];
-            float displayValue = effect.maxInput * displayFactor;
-            if (displayFactor != 1.0f) {
-                int rounded = static_cast<int>(std::round(displayValue / 5.0f)) * 5;
-                snprintf(valueStr, sizeof(valueStr), "%d", rounded);
-            } else if (useIntegers) {
-                snprintf(valueStr, sizeof(valueStr), "%d", static_cast<int>(std::round(displayValue)));
-            } else {
-                snprintf(valueStr, sizeof(valueStr), "%.1f", displayValue);
-            }
-            addStepperCell(maxX, valueStr, 5, maxIndex, !effect.isEnabled());
-            // Unit is now described in tooltip instead of displayed inline
-        }
+        };
+        char minStr[12];
+        formatInput(minStr, sizeof(minStr), effect.minInput);
+        addEffectCell(minX, minStr, SettingsHud::SteppedControl::fixedFloat(&effect.minInput,
+            inputStep, 0.0f, inputLimit, nullptr), postStep, !effect.isEnabled());
+        char maxStr[12];
+        formatInput(maxStr, sizeof(maxStr), effect.maxInput);
+        addEffectCell(maxX, maxStr, SettingsHud::SteppedControl::fixedFloatDynamicLo(&effect.maxInput,
+            inputStep, &effect.minInput, inputLimit, nullptr), postStep, !effect.isEnabled());
 
         ctx.currentY += ctx.lineHeightNormal;
     };
 
-    // Draw the [+]/[-] split disclosure in the gutter (with a click region) on a splittable row.
-    auto drawSplitMarker = [&](bool split, SettingsHud::ClickRegion::Type toggleType) {
-        ctx.parent->addString(split ? "[-]" : "[+]", markerX, ctx.currentY, PluginConstants::Justify::LEFT,
-            PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
+    // Draw the split disclosure caret in the gutter on a splittable row, the same
+    // caret-up the dropdowns use: right = merged, down = split. With UI icons off,
+    // ">"/"v" in its place, as the dropdowns do (the gutter has no room for "[+]").
+    // Returns the row's y for addSplitRegion, which runs AFTER the row: hover takes
+    // the first region that matches, so a caret region ahead of the row's tooltip
+    // region dropped the row band and its description under the cursor (clicks skip
+    // TOOLTIP_ROW, so the caret still wins the click).
+    auto drawSplitMarker = [&](bool split) {
+        const float caretX = markerX + charW * 0.75f;
+        if (!ctx.parent->addDisclosureCaret(caretX,
+                ctx.currentY + ctx.lineHeightNormal * 0.5f - (2.0f / 1080.0f) * ctx.scale,
+                ctx.fontSize * 0.25f, split, colors.getAccent())) {
+            ctx.parent->addString(split ? "v" : ">", caretX, ctx.currentY, PluginConstants::Justify::CENTER,
+                PluginConstants::Fonts::getNormal(), colors.getAccent(), ctx.fontSize);
+        }
+        return ctx.currentY;
+    };
+    auto addSplitRegion = [&](float rowY, SettingsHud::ClickRegion::Type toggleType) {
         ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            markerX, ctx.currentY, gutterW, ctx.lineHeightNormal, toggleType, nullptr));
+            markerX, rowY, gutterW, ctx.lineHeightNormal, toggleType, nullptr));
     };
 
     // Draw a bare effect-name row (the parent header above the Front/Rear rows when split).
@@ -332,67 +309,76 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
         ctx.currentY += ctx.lineHeightNormal;
     };
 
+    // The panel's height is measured with both groups OPEN (the tallest state of
+    // this tab), so opening one never outgrows the panel.
+    const bool measuringTallest = ctx.parent->m_measuringTallest;
+    const bool bumpsSplit = rumbleConfig.suspensionSplit || measuringTallest;
+    const bool lockupSplit = rumbleConfig.brakeLockupSplit || measuringTallest;
+
     // Effect rows
     // Bumps (front/rear splittable). The marker shares the row with the single linked
     // row, or with the "Bumps" header above the Front/Rear rows when expanded.
-    drawSplitMarker(rumbleConfig.suspensionSplit, SettingsHud::ClickRegion::RUMBLE_SUSP_SPLIT_TOGGLE);
-    if (rumbleConfig.suspensionSplit) {
+    const float bumpsY = drawSplitMarker(bumpsSplit);
+    if (bumpsSplit) {
         drawEffectHeader("Bumps", "rumble.bumps");
+        addSplitRegion(bumpsY, SettingsHud::ClickRegion::RUMBLE_SUSP_SPLIT_TOGGLE);
         addRumbleRow("- Front", rumbleConfig.suspensionEffectFront,
-            1.0f, 50.0f, true, "m/s", 1.0f, "rumble.bumps",
+            1.0f, 50.0f, true, 1.0f, "rumble.bumps",
             &rumbleConfig.suspensionSplitInitialized);
         addRumbleRow("- Rear", rumbleConfig.suspensionEffectRear,
-            1.0f, 50.0f, true, "m/s", 1.0f, "rumble.bumps",
+            1.0f, 50.0f, true, 1.0f, "rumble.bumps",
             &rumbleConfig.suspensionSplitInitialized);
     } else {
         addRumbleRow("Bumps", rumbleConfig.suspensionEffect,
-            1.0f, 50.0f, true, "m/s", 1.0f, "rumble.bumps");
+            1.0f, 50.0f, true, 1.0f, "rumble.bumps");
+        addSplitRegion(bumpsY, SettingsHud::ClickRegion::RUMBLE_SUSP_SPLIT_TOGGLE);
     }
     addRumbleRow("Slide", rumbleConfig.slideEffect,
-        1.0f, 90.0f, true, "deg", 1.0f, "rumble.slide");
-    addRumbleRow("Spin", rumbleConfig.wheelspinEffect,
-        1.0f, 50.0f, true, "x", 1.0f, "rumble.spin");
+        1.0f, 90.0f, true, 1.0f, "rumble.slide");
+    addRumbleRow("Wheelspin", rumbleConfig.wheelspinEffect,
+        1.0f, 50.0f, true, 1.0f, "rumble.spin");
     // Lockup (front/rear splittable)
-    drawSplitMarker(rumbleConfig.brakeLockupSplit, SettingsHud::ClickRegion::RUMBLE_LOCKUP_SPLIT_TOGGLE);
-    if (rumbleConfig.brakeLockupSplit) {
+    const float lockupY = drawSplitMarker(lockupSplit);
+    if (lockupSplit) {
         drawEffectHeader("Lockup", "rumble.lockup");
+        addSplitRegion(lockupY, SettingsHud::ClickRegion::RUMBLE_LOCKUP_SPLIT_TOGGLE);
         addRumbleRow("- Front", rumbleConfig.brakeLockupEffectFront,
-            0.05f, 1.0f, false, "ratio", 1.0f, "rumble.lockup",
+            0.05f, 1.0f, false, 1.0f, "rumble.lockup",
             &rumbleConfig.brakeLockupSplitInitialized);
         addRumbleRow("- Rear", rumbleConfig.brakeLockupEffectRear,
-            0.05f, 1.0f, false, "ratio", 1.0f, "rumble.lockup",
+            0.05f, 1.0f, false, 1.0f, "rumble.lockup",
             &rumbleConfig.brakeLockupSplitInitialized);
     } else {
         addRumbleRow("Lockup", rumbleConfig.brakeLockupEffect,
-            0.05f, 1.0f, false, "ratio", 1.0f, "rumble.lockup");
+            0.05f, 1.0f, false, 1.0f, "rumble.lockup");
+        addSplitRegion(lockupY, SettingsHud::ClickRegion::RUMBLE_LOCKUP_SPLIT_TOGGLE);
     }
     addRumbleRow("Wheelie", rumbleConfig.wheelieEffect,
-        1.0f, 90.0f, true, "deg", 1.0f, "rumble.wheelie");
-    addRumbleRow("Steer", rumbleConfig.steerEffect,
-        1.0f, 200.0f, true, "Nm", 1.0f, "rumble.steer");
+        1.0f, 90.0f, true, 1.0f, "rumble.wheelie");
+    addRumbleRow("Steering", rumbleConfig.steerEffect,
+        1.0f, 200.0f, true, 1.0f, "rumble.steer");
     addRumbleRow("RPM", rumbleConfig.rpmEffect,
-        100.0f, 20000.0f, true, "rpm", 1.0f, "rumble.rpm");
+        100.0f, 20000.0f, true, 1.0f, "rumble.rpm");
 
     // Rev Limiter: Min/Max are a percentage of the bike's real limiter RPM (auto
     // per-bike); 1% steps, allow buffer past 100
-    addRumbleRow("Rev Lim", rumbleConfig.revLimiterEffect,
-        1.0f, 110.0f, true, "%", 1.0f, "rumble.revlimiter");
+    addRumbleRow("Rev limiter", rumbleConfig.revLimiterEffect,
+        1.0f, 110.0f, true, 1.0f, "rumble.revlimiter");
 
 #if GAME_HAS_PIT_LIMITER
     // Pit Limiter: binary effect; Light/Heavy set intensity (only games that report it)
-    addRumbleRow("Pit Lim", rumbleConfig.pitLimiterEffect,
-        0.05f, 1.0f, false, "", 1.0f, "rumble.pitlimiter");
+    addRumbleRow("Pit limiter", rumbleConfig.pitLimiterEffect,
+        0.05f, 1.0f, false, 1.0f, "rumble.pitlimiter");
 #endif
 
     // Surface uses user's speed unit preference (m/s internally, max 200 ~720km/h;
-    // 1.39 m/s step = ~5 km/h)
+    // 1.39 m/s step = ~5 km/h); the unit is described in the tooltip
     {
         SpeedWidget* speedWidget = ctx.parent->getSpeedWidget();
         bool isKmh = speedWidget && speedWidget->getSpeedUnit() == SpeedWidget::SpeedUnit::KMH;
-        const char* surfaceUnit = isKmh ? "km/h" : "mph";
         float surfaceFactor = isKmh ? 3.6f : 2.23694f;  // m/s to km/h or mph
         addRumbleRow("Surface", rumbleConfig.surfaceEffect,
-            1.39f, 200.0f, true, surfaceUnit, surfaceFactor, "rumble.surface");
+            1.39f, 200.0f, true, surfaceFactor, "rumble.surface");
     }
 
     ctx.addNote("Tip: select your controller in the General tab.");

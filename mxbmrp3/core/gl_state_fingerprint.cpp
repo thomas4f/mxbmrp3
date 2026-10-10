@@ -7,12 +7,12 @@
 #include <cstdio>
 #include <cstdlib>
 
-namespace glprobe {
+namespace glstate {
 namespace {
 
 // The widest possible sample: every token in the table, all values. If this
 // exceeds the fixed budget, capture() would silently stop mid-table and the
-// probe would check less state than it reports — so it is a compile error
+// leak check would cover less state than it reports — so it is a compile error
 // instead. Adding a 4-value token to the table is what this guards.
 constexpr int totalTableValues() {
     int n = 0;
@@ -85,4 +85,4 @@ int parseVersion(const char* s) {
     return major * 10 + minor;
 }
 
-}  // namespace glprobe
+}  // namespace glstate

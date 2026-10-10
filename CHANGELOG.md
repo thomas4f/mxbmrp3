@@ -16,6 +16,111 @@ is. Entries up to and including `v1.27.7` came the other way, compiled from the
 [GitHub Releases](https://github.com/thomas4f/mxbmrp3/releases) that predate this
 file; their wording is preserved too.
 
+## [Unreleased]
+
+## [1.32.0] - 2026-10-10
+
+A Delta Trace and Map colours that show where you gain and lose time, a Map you
+can tilt, HUDs that fade in, and a shorter settings menu.
+
+### Added
+- **Motion** (Settings > Appearance > Motion): HUDs, notices and the settings
+  menu fade and slide into place instead of popping in, and the gear and the
+  speedo's odometer and trip roll to their new value. Subtle by default; Normal
+  adds a small spring, and Off draws everything as before
+- **Delta Trace** (Settings > Delta Trace): your gap to your session PB,
+  all-time PB or last lap drawn across the whole lap, green where you gained
+  and red where you lost
+- **Lap delta** on the Map (Settings > Map > Lap delta): the track turns green
+  where you are gaining on the chosen lap and red where you are losing, fading
+  with how fast, with the previous lap still shown ahead of you
+- A **Gap** on the Timing panel (Settings > Timing > Gap): your live gap to
+  your session PB, all-time PB or last lap, large under the time in green or
+  red, exactly as the Gap Bar shows it but without the bar
+- **Tilt** (Settings > Map > Tilt, Off to 50 degrees): the Follow map lies
+  down so you see it from behind, best with Rotate map on. **Adaptive range**
+  (Settings > Map > Adaptive range) shows more track the faster you go, up to
+  twice Range
+- An **RPM** widget (Settings > Widgets > RPM): shift lights under Gear and
+  Speed that turn green, amber, then red from your bike's shift point, the red
+  ones flashing on the limiter
+- **UI scale** (Settings > Appearance > UI scale, 50 to 150%): sizes every HUD
+  and the settings menu at once; each HUD's own Scale is relative to it
+- **Reference** and **Freeze** defaults on the General tab: the Gap Bar, Lap
+  Log, Delta Trace, Timing and the Map's Lap delta follow them when set to
+  Default
+- **Companion bg** (Settings > Appearance > Companion bg): Green, Blue or
+  Magenta lets you key the companion window over your game in OBS with a
+  Chroma Key filter. Dark stays the default
+- A hotkey for every HUD's on/off switch (Settings > Hotkeys, Delta Trace
+  included), listed in the same order as the menu
+- Ten new fonts for any font slot in Appearance and the web overlay: the
+  LCD-style LCD14, Doto and LCD7, and Chakra Petch, Quantico and Tomorrow in
+  italic
+- A **Display order** on the Stream Chat tab, like the Event Log's and Lap
+  Log's: Newest puts the latest message at the top instead of the bottom
+- Hiding a HUD with its hotkey shows a short card naming the key that brings it
+  back, and the hide-all and Widgets hotkeys do the same; clicking the card
+  opens that HUD's settings
+- Starting the game with every HUD switched off shows one card saying so,
+  with the key that opens settings, once per game session. Settings >
+  Appearance > Messages turns it off
+- In every game, short cards also confirm a profile auto-switch, a config
+  reload, a copied profile and a tab reset, and a failed settings save shows a
+  warning card. Settings > Appearance > Messages turns these cards off
+- Copy profile and each tab's Reset ask "Confirm?" before acting
+- After an update, the Version widget says "Updated to 1.32. Open settings to
+  see what's new", with a button to the new settings. A fresh install gets a
+  welcome naming the key under Esc; it stays until you dismiss it or open
+  settings
+
+### Changed
+- The Gear widget's limiter circle takes your Negative colour (Settings >
+  Appearance > Colors), like the gear at the shift point, instead of a fixed
+  red. A gear_circle_1.tga you coloured yourself is now tinted by it too
+- The settings menu is about a fifth shorter: short settings sit two to a row
+  and each section has its own box
+- Settings use standard controls everywhere: a slider for any number, a
+  dropdown for any list of three or more, and input boxes for hotkeys and
+  channel names. Icon, colour and font lists show the icon, swatch or font
+  itself
+- The Map's zoom is a **Mode** (Overview or Follow) with a **Range** for Follow
+- The settings menu lists the per-profile tabs most-used first, with Widgets
+  at the top; the rest open from a **More** row, a page where each one can be
+  turned on or off and opened, with **Back** to return
+- The Appearance tab's colours sit in two columns of five and its fonts two to
+  a row; HUD display and Companion bg have their own Companion window section
+  with a one-line OBS tip
+- The Widgets tab lists each section's widgets most-used first, and Clock
+  moved to Misc
+- Rumble effects are a full-width table of sliders, and split effects open
+  with the same caret as the More row
+- When the plugin's fonts or icons are missing, it says "MXBMRP3 is not
+  installed correctly" on screen instead of leaving blank panels, in the
+  Version widget's panel and place
+- In Follow mode (Settings > Map > Mode) the Map is cut exactly at its edge and
+  fades out over the last stretch inside it, riders and markers included
+- The Gap Bar's **Range** (Settings > Gap Bar > Range) has an **Auto** setting,
+  scaling the bar to the largest gap of the current lap like the Delta Trace.
+  It is the default on a fresh install; an existing setup keeps its range
+- A fresh install starts the **Map** (Settings > Map) in Follow mode with
+  Rotate map, 30 degrees of Tilt and 150% Track width; an existing setup keeps
+  its Mode, rotation and width. Lap delta starts on Default for everyone
+- Crash reports from an access violation also carry the address it tried to
+  touch, which tells a null pointer apart from a freed or corrupted one; see the
+  privacy table in the README
+- The **Prestige** badge (Settings > Widgets > Prestige) is off until you turn
+  it on, and taking a prestige level marks it New. A badge you already earned
+  stays as it is; the usage survey counts it only when it is on and earned
+
+### Fixed
+- The controller name on the General tab is no longer cut short
+- The settings sidebar card keeps the same height on every tab with a theme
+- Keymaster and Interior Decorator are no longer granted on a fresh install:
+  only a hotkey you bind or a colour, font or theme you pick counts
+- In Kart Racing Pro, the Bars widget's R column and the Telemetry RPM line now
+  follow the revs on karts without a rev limiter
+
 ## [1.31.0] - 2026-10-03
 
 Stream Chat for Twitch and YouTube, and a Gap Bar that races your all-time PB
@@ -1107,7 +1212,8 @@ Pre-release. Its contents shipped in 1.26.0.0, minus the analytics addition.
 
 Initial public release.
 
-[Unreleased]: https://github.com/thomas4f/mxbmrp3/compare/v1.31.0...HEAD
+[Unreleased]: https://github.com/thomas4f/mxbmrp3/compare/v1.32.0...HEAD
+[1.32.0]: https://github.com/thomas4f/mxbmrp3/compare/v1.31.0...v1.32.0
 [1.31.0]: https://github.com/thomas4f/mxbmrp3/compare/v1.30.3...v1.31.0
 [1.30.3]: https://github.com/thomas4f/mxbmrp3/compare/v1.30.1...v1.30.3
 [1.30.1]: https://github.com/thomas4f/mxbmrp3/compare/v1.30.0...v1.30.1

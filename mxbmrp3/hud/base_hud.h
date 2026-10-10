@@ -19,10 +19,13 @@
 #include "../core/plugin_data.h"
 #include "../core/color_config.h"
 #include "../core/font_config.h"
+#include "../core/ui_config.h"     // the UI scale (applyUiScale)
 #include "../core/asset_manager.h"   // ThemeAsset (panel themes)
 #include "../core/plugin_utils.h"    // isColorDark (chipGlyphColor)
 #include "nine_slice.h"
 #include "panel_plan.h"
+
+namespace DigitRoll { class Roller; }
 
 // Which of the three panel FAMILIES a HUD belongs to, so a theme can style them
 // separately ([card] widget-content, settings-title-band, ...).
@@ -96,6 +99,15 @@ public:
     // travel. Excluding it here also keeps the settings UI honest -- the tab bar
     // treats the helmet as a shared global toggle rather than a per-surface one.
     virtual bool rendersOnCompanion() const { return true; }
+
+    // How Motion (core/motion.h) brings this HUD in and out. A HUD drawn from
+    // overlapping layers cannot fade cleanly quad by quad - the layer underneath
+    // shows through mid-fade - so it either marks the under layer
+    // (m_motionUnderQuadFirst) or takes NONE and pops as before. FADE is for what
+    // must not move: the helmet covers the screen. The pointer takes NONE: it
+    // shows the instant the mouse moves.
+    enum class MotionStyle : uint8_t { FADE_SLIDE, FADE, NONE };
+    virtual MotionStyle motionStyle() const { return MotionStyle::FADE_SLIDE; }
     bool isVisible() const { return m_bVisible; }
 
     // True if this HUD is shown on ANY active surface — the game, or the companion
@@ -329,6 +341,11 @@ public:
     // the settings carry no theme key -- see settings_serde.h for why absence has to
     // be authoritative rather than ignored.
     void clearThemeOverride() { setThemeOverride(std::string()); }
+    // A HUD whose shipped override is not "" (Radar, Gamepad: THEME_NONE) states it
+    // here, from resetToDefaults(), so Interior Decorator can tell the player's
+    // choice from the factory's.
+    void setDefaultThemeOverride(const std::string& v) { m_defaultThemeOverride = v; setThemeOverride(v); }
+    bool isThemeOverrideCustomised() const { return m_themeOverride != m_defaultThemeOverride; }
 
     // THE ONE STABLE NAME FOR THIS REGISTERED ELEMENT (e.g. "standings_hud"),
     // set at registration and never after -- see HudManager::registerHud, which
@@ -361,9 +378,6 @@ public:
     // Texture variant: 0 = Off (solid color), 1+ = variant number
     void setTextureVariant(int variant);
     int getTextureVariant() const { return m_textureVariant; }
-
-    // Cycle through available variants: Off -> 1 -> 2 -> ... -> Off
-    void cycleTextureVariant(bool forward = true);
 
     // THE ONE SPELLING of a panel's padding, per axis: the base padding this HUD's
     // scale earns, widened to whatever the theme makes its content clear. These are
@@ -498,14 +512,24 @@ public:
         }
     }
 
+    // SCALE: the HUD's own setting (getOwnScale, what its Scale row shows and the
+    // INI stores) times Appearance's UI scale is what it draws at (getScale, and
+    // m_fScale, which every renderer reads). Set the own value; the product
+    // follows, and refreshes when the UI scale changes (applyUiScale).
     virtual void setScale(float scale) {
         if (scale <= 0.0f) scale = 0.1f;
+        m_fOwnScale = scale;
+        applyUiScale();
+    }
+    float getOwnScale() const { return m_fOwnScale; }
+    float getScale() const { return m_fScale; }
+    void applyUiScale() {
+        const float scale = m_fOwnScale * UiConfig::getInstance().getUiScale();
         if (m_fScale != scale) {
             m_fScale = scale;
             setDataDirty();
         }
     }
-    float getScale() const { return m_fScale; }
 
     void validatePosition();
 
@@ -624,6 +648,10 @@ protected:
     // skipShadow: set true to exclude this string from drop shadow effect
     void addString(const char* text, float x, float y, int justify, int fontIndex,
                    unsigned long color, float fontSize, bool skipShadow = false);
+    // addString for a rolling readout (Motion, digit_roll.h): its text settled, or
+    // the old and new text of its roll, faded and offset, each in its own colour.
+    void addRolledString(const DigitRoll::Roller& roll, float x, float y, int justify, int fontIndex,
+                         float fontSize, bool skipShadow = false);
 
     // Clear strings and associated shadow flags (use instead of m_strings.clear()).
     // Also invalidates the title-icon/string indices so a rebuild path that clears
@@ -1496,7 +1524,10 @@ public:
     // fill-strip and drag fast-path records are the same as ever), then the
     // title band and one card PER SECTION at the plan's coordinates. Call before
     // any content — cards must sit behind the rows (quads draw in order).
-    void addPlanBackground(PanelPlan& p, float x, float y);
+    // `bare` names one section that keeps its box but gets no card (the settings
+    // panel's Back row, which sits on the panel's own background).
+    void addPlanBackground(PanelPlan& p, float x, float y,
+                           const PanelBox::SectionGeom* bare = nullptr);
     // The caption glyph at the plan's column, always in the TITLE font (fixed here so a
     // caption cannot drift to another category). No-op when the title is off.
     void addPlanTitle(const PanelPlan& p, const char* text, unsigned long color);
@@ -1872,7 +1903,8 @@ public:
     std::vector<SPluginQuad_t> m_quads;
     std::vector<SPluginString_t> m_strings;
     std::vector<bool> m_stringSkipShadow;  // Parallel to m_strings: true = skip drop shadow for this string
-    float m_fScale;
+    float m_fScale;           // what it draws at: m_fOwnScale x the UI scale (setScale)
+    float m_fOwnScale = 1.0f; // its own Scale setting
 
     // Title icon tracking (set by addPlanTitle). The icon is a quad whose position is
     // derived from the title string, so the layout fast path (rebuildLayout) can keep it
@@ -1883,7 +1915,25 @@ public:
     // Per-HUD panel-theme override; see setThemeOverride(). Empty = follow the
     // global Appearance theme, which is what every HUD ships as.
     std::string m_themeOverride;
+    std::string m_defaultThemeOverride;   // the shipped value; see setDefaultThemeOverride()
     int m_titleIconQuadIndex = -1;     // index into m_quads of the title icon
+    // Motion (core/motion.h): a sub-range of m_quads / m_strings, [first, end),
+    // that fades in on its own over the unchanged panel each time the HUD bumps
+    // m_motionPartEpoch - the settings menu's tab body on a tab switch. -1 = none.
+    int m_motionPartQuadFirst = -1, m_motionPartQuadEnd = -1;
+    int m_motionPartStringFirst = -1, m_motionPartStringEnd = -1;
+    uint32_t m_motionPartEpoch = 0;
+    int m_motionPartKey = -1;   // what the range showed last build (the tab)
+    // Marks what the range shows this build; a change bumps the epoch.
+    void setMotionPartKey(int key) {
+        if (key != m_motionPartKey) { m_motionPartKey = key; ++m_motionPartEpoch; }
+    }
+    // Motion: a sub-range of m_quads, [first, end), that sits UNDER other quads of
+    // this HUD and would show through them mid-fade - the map's wide outline under
+    // its track fill, which lit the track up as it faded. It fades on a steeper
+    // curve (alpha cubed), so it is nearly gone wherever the layer over it is
+    // part-transparent. -1 = none.
+    int m_motionUnderQuadFirst = -1, m_motionUnderQuadEnd = -1;
     // Span of m_quads written by the last addBackgroundQuad: 1 quad normally, 9
     // when a panel theme is active. updateBackgroundQuadPosition rewrites exactly
     // this span (not m_quads[0], which a themed panel breaks).

@@ -259,6 +259,27 @@ public:
         return makeColor(r, g, b, a);
     }
 
+    // Blend RGB from `from` toward `to` (factor 0 = from, 1 = to), keeping
+    // `from`'s alpha.
+    static constexpr unsigned long mixColor(unsigned long from, unsigned long to, float factor) {
+        const auto ch = [](unsigned long a, unsigned long b, int shift, float f) {
+            const float x = static_cast<float>((a >> shift) & 0xFF);
+            const float y = static_cast<float>((b >> shift) & 0xFF);
+            return static_cast<uint8_t>(x + (y - x) * f + 0.5f);
+        };
+        return makeColor(ch(from, to, 0, factor), ch(from, to, 8, factor), ch(from, to, 16, factor),
+                         static_cast<uint8_t>((from >> 24) & 0xFF));
+    }
+
+    // A round scale (ms) for drawing a gap: the next of these at or above `ms`.
+    // The Delta Trace's plot height and the Gap Bar's Auto range both step
+    // through it, so the two read alike.
+    static constexpr int niceGapScaleMs(int ms) {
+        constexpr int kSteps[] = { 250, 500, 1000, 2000, 5000, 10000, 30000 };
+        for (int s : kSteps) if (ms <= s) return s;
+        return kSteps[sizeof(kSteps) / sizeof(kSteps[0]) - 1];
+    }
+
     // Darken a color by multiplying RGB values
     // factor: 1.0 = original color, 0.0 = black
     static constexpr unsigned long darkenColor(unsigned long baseColor, float factor) {

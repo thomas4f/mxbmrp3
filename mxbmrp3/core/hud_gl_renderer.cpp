@@ -10,7 +10,7 @@
 
 #include "render_batch.h"
 #include "render_asset_decode.h"
-#include "gl_state_fingerprint.h"   // glprobe::parseVersion
+#include "gl_state_fingerprint.h"   // glstate::parseVersion
 #include "../diagnostics/logger.h"
 
 #include <windows.h>
@@ -22,11 +22,11 @@
 namespace hudgl {
 namespace {
 
-// GL types and constants, spelled out rather than #included, for the same two
-// reasons as core/gl_probe.cpp: this must not create an opengl32 import (the
-// whole fallback design depends on the loader having nothing to fail on, and
-// check_lazy_module_imports.sh enforces it), and <GL/gl.h> differs between the
-// MSVC and mingw toolchains this builds under.
+// GL types and constants, spelled out rather than #included, for two reasons:
+// this must not create an opengl32 import (the whole fallback design depends on
+// the loader having nothing to fail on, and check_lazy_module_imports.sh
+// enforces it), and <GL/gl.h> differs between the MSVC and mingw toolchains
+// this builds under.
 typedef unsigned int GLenum;
 typedef unsigned int GLbitfield;
 typedef int GLint;
@@ -491,7 +491,7 @@ bool Renderer::init() {
         const GLubyte* p = im.gl.GetString(n);
         return p ? reinterpret_cast<const char*>(p) : "(null)";
     };
-    im.version = glprobe::parseVersion(str(GL_VERSION));
+    im.version = glstate::parseVersion(str(GL_VERSION));
     DEBUG_INFO_F("hudgl: GL 1.1 backend ready - vendor='%s' renderer='%s' version='%s' (parsed %d)",
                  str(GL_VENDOR), str(GL_RENDERER), str(GL_VERSION), im.version);
 

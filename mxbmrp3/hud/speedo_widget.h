@@ -7,6 +7,7 @@
 #include <string>
 
 #include "base_hud.h"
+#include "digit_roll.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
@@ -78,4 +79,15 @@ private:
     // Odometer/Trip meter visibility
     bool m_showOdometer = true;   // Default: ON
     bool m_showTripmeter = false; // Default: OFF
+
+    // Digit roll (Motion, digit_roll.h) per readout: the white digits, the
+    // inverted last one, and the reading they last showed (-1 = none yet).
+    struct OdometerRoll {
+        DigitRoll::Roller main;
+        DigitRoll::Roller last;
+        int lastValue = -1;
+        void reset() { main.reset(); last.reset(); lastValue = -1; }
+    };
+    OdometerRoll m_odometerRoll;
+    OdometerRoll m_tripRoll;
 };

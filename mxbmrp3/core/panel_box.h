@@ -466,10 +466,16 @@ inline Geom layoutPanel(const Spec& spec) {
     // The floor, spent once under the whole body -- after the bands, before the
     // button row picks up from y. A band's own geometry is untouched, which is
     // the point: the extra is air the panel carries, not height any card grew by.
+    bool floorBinds = false;
     if (spec.minBodyH > 0.0) {
         const double bodyTop = g.bands.empty() ? y : g.bands.front().top;
         const double shortfall = spec.minBodyH - (y - bodyTop);
         if (shortfall > 0.0) y += shortfall;
+        // Not > 0: a floor that a body exactly MEETS (the tallest settings tab)
+        // round-trips cells -> screen -> cells on the way in and comes back a few
+        // 1e-6 cells high, and a "binding" floor there would stop that tab's last
+        // card short of the panel's bottom. 1e-4 cells is far below a pixel.
+        floorBinds = shortfall > 1e-4;
     }
     // THE FLATTENED VIEW, first column of every band, top to bottom — what every
     // reader in the tree walks today, and identical to the old list while every
@@ -518,6 +524,13 @@ inline Geom layoutPanel(const Spec& spec) {
     // as the settings panel's bottom clearance varying by thirds of a cell
     // with [card] size the moment uiLineHeight moved. One-column panels are
     // untouched: front IS the column that set the bottom. Ties keep front.
+    //
+    // NOBODY absorbs it while the FLOOR binds: then no card reaches the body's
+    // bottom (the floor's air is already below every card), so growing one only
+    // makes that card's height depend on which body is showing. The settings
+    // sidebar did exactly that -- its card was a fraction of a cell taller on
+    // every tab whose content ended above it, so the air under More changed
+    // between tabs on a themed panel. The remainder joins the floor's air instead.
     BandGeom& lastBand = g.bands.back();
     size_t tallCol = 0;
     double tallBot = lastBand.columns.front().sections.back().bot;
@@ -527,16 +540,17 @@ inline Geom layoutPanel(const Spec& spec) {
         const double colBot = lastBand.columns[ci].sections.back().bot;
         if (colBot > tallBot + 1e-9) { tallBot = colBot; tallCol = ci; }
     }
+    const double absorbed = floorBinds ? 0.0 : g.slackY;
     SectionGeom& lastInBand = lastBand.columns[tallCol].sections.back();
-    lastInBand.h += g.slackY;
-    lastInBand.bot += g.slackY;
+    lastInBand.h += absorbed;
+    lastInBand.bot += absorbed;
     // The flattened view holds COPIES of the FIRST column's sections, so it
     // grows only when the first column is the absorber. (The JS mirror's
     // flattened list holds references, so it needs no copy step — the parity
     // fixture is what catches the two diverging.)
     if (tallCol == 0) {
-        g.sections.back().h += g.slackY;
-        g.sections.back().bot += g.slackY;
+        g.sections.back().h += absorbed;
+        g.sections.back().bot += absorbed;
     }
     if (nBtn > 0) g.btnTop += g.slackY;
 

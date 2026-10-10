@@ -559,7 +559,7 @@ void LeanWidget::resetToDefaults() {
     m_bShowTitle = false;  // No title for gauge widgets
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 1.0f;  // Full opacity (100%)
-    m_fScale = 1.0f;
+    setScale(1.0f);
     m_enabledRows = ROW_DEFAULT;  // All rows enabled
     m_bShowMaxMarkers = true;     // Max markers ON by default for lean/steer
     m_maxMarkerLingerFrames = 60; // ~1 second at 60fps

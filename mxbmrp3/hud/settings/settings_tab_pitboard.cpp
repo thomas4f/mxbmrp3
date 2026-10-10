@@ -32,17 +32,12 @@ BaseHud* SettingsHud::renderTabPitboard(SettingsLayoutContext& ctx) {
     ctx.addSectionHeading("Layout");
 
     // Display mode control (Always/Pit/Splits)
-    const char* displayModeText = "";
-    if (hud->m_displayMode == PitboardHud::MODE_ALWAYS) {
-        displayModeText = "Always";
-    } else if (hud->m_displayMode == PitboardHud::MODE_PIT) {
-        displayModeText = "At pit";
-    } else if (hud->m_displayMode == PitboardHud::MODE_SPLITS) {
-        displayModeText = "At splits";
-    }
-    ctx.addCycleControl("Show mode", displayModeText,
+    static const char* const kShowModes[] = { "Always", "At pit", "At splits" };
+    static_assert(sizeof(kShowModes) / sizeof(kShowModes[0]) == PitboardHud::MODE_COUNT,
+                  "one name per display mode");
+    ctx.addCycleControl("Show mode", cycleName(kShowModes, hud->m_displayMode),
         SettingsHud::CycleControl::enumMember(hud, &PitboardHud::m_displayMode,
-            PitboardHud::MODE_COUNT, hud),
+            PitboardHud::MODE_COUNT, hud, kShowModes),
         hud, true, false, "pitboard.show_mode");
 
     // Freeze: how long At Splits shows the board (the shared freeze range, no Off)
@@ -75,21 +70,15 @@ BaseHud* SettingsHud::renderTabPitboard(SettingsLayoutContext& ctx) {
         "pitboard.gap");
 
     // Gap compare mode (Auto/Leader/Session PB/Ideal/All-time/Overall/Record)
-    const char* gapModeText = "";
-    switch (hud->m_gapCompareMode) {
-        case PitboardHud::GAP_AUTO:       gapModeText = "Auto"; break;
-        case PitboardHud::GAP_LEADER:     gapModeText = "Leader"; break;
-        case PitboardHud::GAP_SESSION_PB: gapModeText = "Session PB"; break;
-        case PitboardHud::GAP_IDEAL:      gapModeText = "Ideal"; break;
-        case PitboardHud::GAP_ALLTIME_PB: gapModeText = "All-time"; break;
-        case PitboardHud::GAP_OVERALL:    gapModeText = "Overall"; break;
-        case PitboardHud::GAP_RECORD:     gapModeText = "Record"; break;
-        default: gapModeText = "Auto"; break;
-    }
+    static const char* const kGapModes[] = {
+        "Auto", "Leader", "Session PB", "Ideal", "All-time", "Overall", "Record" };
+    static_assert(sizeof(kGapModes) / sizeof(kGapModes[0]) == PitboardHud::GAP_COUNT,
+                  "one name per gap mode");
+    const char* gapModeText = cycleName(kGapModes, hud->m_gapCompareMode);
     bool gapEnabled = (hud->m_enabledRows & PitboardHud::ROW_GAP) != 0;
     ctx.addCycleControl("Gap compare", gapModeText,
         SettingsHud::CycleControl::enumMember(hud, &PitboardHud::m_gapCompareMode,
-            PitboardHud::GAP_COUNT, hud),
+            PitboardHud::GAP_COUNT, hud, kGapModes),
         hud, gapEnabled, false, "pitboard.gap_compare");
 
     return hud;

@@ -11,6 +11,7 @@
 #include "../clock_widget.h"
 #include "../compass_widget.h"
 #include "../crash_widget.h"
+#include "../rpm_widget.h"
 #include "../fuel_widget.h"
 #include "../gamepad_widget.h"
 #include "../gear_widget.h"
@@ -37,13 +38,8 @@
 BaseHud* SettingsHud::renderTabWidgets(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("widgets");
 
-    // Column positions -- must match addWidgetRow's exactly.
-    float nameX = ctx.labelX;
-    float visX = nameX + PluginUtils::calculateMonospaceTextWidth(10, ctx.fontSize);
-    float titleX = visX + PluginUtils::calculateMonospaceTextWidth(8, ctx.fontSize);
-    float bgTexX = titleX + PluginUtils::calculateMonospaceTextWidth(8, ctx.fontSize);
-    float opacityX = bgTexX + PluginUtils::calculateMonospaceTextWidth(8, ctx.fontSize);
-    float scaleX = opacityX + PluginUtils::calculateMonospaceTextWidth(9, ctx.fontSize);
+    // Column positions -- the same ones addWidgetRow draws its cells at.
+    const SettingsLayoutContext::WidgetColumns cols = ctx.widgetColumns();
 
     // The column labels ride on the FIRST section's heading row, in the columns they
     // caption -- the same shape settings_tab_hotkeys.cpp uses, and for the same
@@ -57,72 +53,75 @@ BaseHud* SettingsHud::renderTabWidgets(SettingsLayoutContext& ctx) {
     // Parameters: name, hud, enableVisibility, enableBgTexture, enableOpacity,
     // enableScale, tooltipId. There is no enableTitle -- the Title column reads
     // BaseHud::m_titleSupported, so this list cannot disagree with the widgets.
-    const float headingY = ctx.addSectionHeading("Timing");
+    const float headingY = ctx.addSectionHeading("Readouts");
     const auto columnLabel = [&](const char* text, float x) {
         ctx.parent->addString(text, x, headingY, PluginConstants::Justify::LEFT,
             PluginConstants::Fonts::getStrong(),
             ColorConfig::getInstance().getPrimary(), ctx.fontSize);
     };
-    columnLabel("Visible", visX);
-    columnLabel("Title", titleX);
-    columnLabel("Texture", bgTexX);
-    columnLabel("Opacity", opacityX);
-    columnLabel("Scale", scaleX);
+    columnLabel("Visible", cols.visX);
+    columnLabel("Title", cols.titleX);
+    columnLabel("Texture", cols.texX);
+    columnLabel("Opacity", cols.opacityX);
+    columnLabel("Scale", cols.scaleX);
 
-    ctx.addWidgetRow("Position", ctx.parent->getPositionWidget(), true, true, true, true, "widgets.position");
-    ctx.addWidgetRow("Lap", ctx.parent->getLapWidget(), true, true, true, true, "widgets.lap");
-    ctx.addWidgetRow("Time", ctx.parent->getTimeWidget(), true, true, true, true, "widgets.time");
-    ctx.addWidgetRow("Clock", ctx.parent->getClockWidget(), true, true, true, true, "widgets.clock");
-    // Note: SessionHud has its own dedicated tab with row configuration
-    // "Big Readouts" rather than "Speed & Gear": the three below share one content
-    // box on purpose (see crash_widget.cpp), so they are grouped by the shape they
-    // draw, not by what they are about. Crashes is here for that reason alone -- it
-    // has nothing to do with the bike, and everything to do with tiling beside them.
-    ctx.addSectionHeading("Big Readouts");
-    ctx.addWidgetRow("Gear", ctx.parent->getGearWidget(), true, true, true, true, "widgets.gear");
+    // Each section lists its rows most-used first, the way the sidebar orders its
+    // tabs (public usage report); Prestige stays last because it only appears once
+    // earned, and Pointer, always on, is not measured.
     ctx.addWidgetRow("Speed", ctx.parent->getSpeedWidget(), true, true, true, true, "widgets.speed");
+    ctx.addWidgetRow("Gear", ctx.parent->getGearWidget(), true, true, true, true, "widgets.gear");
+    ctx.addWidgetRow("Lap", ctx.parent->getLapWidget(), true, true, true, true, "widgets.lap");
+    ctx.addWidgetRow("Position", ctx.parent->getPositionWidget(), true, true, true, true, "widgets.position");
+    ctx.addWidgetRow("Time", ctx.parent->getTimeWidget(), true, true, true, true, "widgets.time");
+    // Note: SessionHud has its own dedicated tab with row configuration
+    // THREE SECTIONS, not five: a heading and its card seam cost the panel more
+    // than a row, and this tab is among the tallest. Crashes stays with the riding
+    // readouts it shares one content box with (see crash_widget.cpp); Clock, the
+    // real-world time, sits under Misc.
     ctx.addWidgetRow("Crashes", ctx.parent->getCrashWidget(), true, true, true, true, "widgets.crashes");
-    ctx.addSectionHeading("Telemetry");
-    ctx.addWidgetRow("Bars", ctx.parent->getBarsWidget(), true, true, true, true, "widgets.bars");
-    ctx.addWidgetRow("Lean", ctx.parent->getLeanWidget(), true, true, true, true, "widgets.lean");
-    ctx.addWidgetRow("G-Force", ctx.parent->getGForceWidget(), true, true, true, true, "widgets.gforce");
+    ctx.addSectionHeading("Gauges");
     ctx.addWidgetRow("Fuel", ctx.parent->getFuelWidget(), true, true, true, true, "widgets.fuel");
-#if GAME_HAS_TYRE_TEMP
-    ctx.addWidgetRow("Tyre Temp", ctx.parent->getTyreTempWidget(), true, true, true, true, "widgets.tyre_temp");
-#endif
-#if GAME_HAS_ECU
-    ctx.addWidgetRow("ECU", ctx.parent->getEcuWidget(), true, true, true, true, "widgets.ecu");
-#endif
-    // The Title column is greyed from here down (Speedo, Tacho, Gamepad, Pointer,
-    // Settings), and that is the WIDGET's statement, not this list's: each sets
+    ctx.addWidgetRow("Bars", ctx.parent->getBarsWidget(), true, true, true, true, "widgets.bars");
+    // The Title column is greyed on Speedo, Tacho, Gamepad, Pointer and
+    // Settings, and that is the WIDGET's statement, not this list's: each sets
     // m_titleSupported = false because a TEXTURE is its panel, so a band would land
     // on the artwork rather than above it -- or, for the last three, because a cursor
     // and a button have nothing to caption.
     //
     // Tyre Temp and ECU are NOT in that list: they are plan panels with a content
-    // card, exactly like Lean, G-Force and Compass beside them, and nothing about
+    // card, exactly like Lean, G-Force and Compass in this section, and nothing about
     // their readout stops a band sitting above it. A bool per row could offer a
     // toggle the widget does not honour, which is invisible until someone tries it.
-    ctx.addSectionHeading("Gauges");
-    ctx.addWidgetRow("Speedo", ctx.parent->getSpeedoWidget(), true, true, true, true, "widgets.speedo");
     ctx.addWidgetRow("Tacho", ctx.parent->getTachoWidget(), true, true, true, true, "widgets.tacho");
+    // Fetched from HudManager like Prestige: nothing tab-specific to hold.
+    ctx.addWidgetRow("RPM", &HudManager::getInstance().getRpmWidget(), true, true, true, true, "widgets.rpm");
+    ctx.addWidgetRow("Lean", ctx.parent->getLeanWidget(), true, true, true, true, "widgets.lean");
+    ctx.addWidgetRow("Speedo", ctx.parent->getSpeedoWidget(), true, true, true, true, "widgets.speedo");
+    ctx.addWidgetRow("G-Force", ctx.parent->getGForceWidget(), true, true, true, true, "widgets.gforce");
     // The compass is the one gauge that BUILDS a title (through the caption path, so it
     // gets the themed band and reserves a row for it). A row disagreeing with the
     // widget would make it the only captionable panel a user cannot caption -- the
     // disagreement m_titleSupported makes impossible. Speedo and Tacho draw no title
     // and say so themselves.
     ctx.addWidgetRow("Compass", ctx.parent->getCompassWidget(), true, true, true, true, "widgets.compass");
+#if GAME_HAS_TYRE_TEMP
+    ctx.addWidgetRow("Tyre Temp", ctx.parent->getTyreTempWidget(), true, true, true, true, "widgets.tyre_temp");
+#endif
+#if GAME_HAS_ECU
+    ctx.addWidgetRow("ECU", ctx.parent->getEcuWidget(), true, true, true, true, "widgets.ecu");
+#endif
     ctx.addSectionHeading("Misc");
+    ctx.addWidgetRow("Settings", ctx.parent->getSettingsButtonWidget(), true, true, true, true, "widgets.settings_button");
+    ctx.addWidgetRow("Version", ctx.parent->getVersionWidget(), true, true, true, true, "widgets.version");
     // The Gamepad's Texture column picks the PAD (gamepads/<name>/) rather than a
     // texture variant; addWidgetRow routes on BaseHud::m_packKind, so there is no
     // flag to pass here and no way for this call site to disagree with it.
     ctx.addWidgetRow("Gamepad", ctx.parent->getGamepadWidget(), true, true, true, true, "widgets.gamepad");
+    ctx.addWidgetRow("Clock", ctx.parent->getClockWidget(), true, true, true, true, "widgets.clock");
     // Pointer: the visibility toggle drives the menu-only-cursor mode (On = shown while
     // racing, Off = only in the settings menu). It can't toggle the widget's real
     // visibility because the pointer must stay drawable to appear in the menu.
     ctx.addWidgetRow("Pointer", ctx.parent->getPointerWidget(), false, true, false, true, "widgets.pointer", /*menuOnlyPointerRow=*/true);
-    ctx.addWidgetRow("Settings", ctx.parent->getSettingsButtonWidget(), true, true, true, true, "widgets.settings_button");
-    ctx.addWidgetRow("Version", ctx.parent->getVersionWidget(), true, true, true, true, "widgets.version");
     // Prestige is the one row in this table that is EARNED. Left out entirely
     // rather than greyed: a greyed row is a control you have not found yet, and
     // this one you have not got. Fetched from HudManager rather than through a
@@ -134,8 +133,6 @@ BaseHud* SettingsHud::renderTabWidgets(SettingsLayoutContext& ctx) {
             ctx.addWidgetRow("Prestige", badge, true, true, true, true, "widgets.prestige");
         }
     }
-
-    ctx.addNote("Tip: more options are available in mxbmrp3_settings.ini.");
 
     // No active HUD for multi-widget tab
     return nullptr;

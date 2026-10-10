@@ -178,3 +178,56 @@ TEST_CASE("a padded theme grows the panel rather than overflowing it") {
     host.clearTheme();
     host.showSettings(false);
 }
+
+// ---------------------------------------------------------------------------
+// RUMBLE'S OPEN GROUPS FIT TOO. Opening Bumps or Lockup (the gutter caret) adds a
+// header and a Front/Rear pair each, four rows between them, and the panel used to
+// grow to take them. The tallest-tab measure now lays the tab out with both open
+// (SettingsHud::m_measuringTallest), so opening them changes neither the height
+// nor the fit.
+//
+// The caret's x comes from the Rumble section's two cells: Enabled (left column)
+// and When crashed (right column), each region exactly its 29-character cell with
+// 3 between, so their centres are 32 characters apart.
+TEST_CASE("Rumble's Bumps and Lockup groups open inside the panel") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\settings_fit_rumble\\");
+    REQUIRE(host.hasSettingsOverflow());
+    host.showSettings(true);
+    host.setActiveTab("Rumble");
+    host.draw();
+
+    float lx = 0.0f, ly = 0.0f, rx = 0.0f, ry = 0.0f;
+    REQUIRE(host.settingsRegionCenter("rumble.enabled", &lx, &ly));
+    REQUIRE(host.settingsRegionCenter("rumble.crashed", &rx, &ry));
+    const float cw = (rx - lx) / 32.0f;
+    const float caretX = lx - 14.5f * cw + 0.75f * cw;
+
+    const auto before = host.hudScreenEdges(PluginHost::HUD_SETTINGS);
+    CHECK(host.settingsOverflowRows() <= 0.0);
+
+    float x = 0.0f, y = 0.0f, slideY = 0.0f;
+    REQUIRE(host.settingsRegionCenter("rumble.slide", &x, &slideY));
+    REQUIRE(host.settingsRegionCenter("rumble.bumps", &x, &y));
+    const float rowH = slideY - y;   // closed: Bumps is the row above Slide
+    REQUIRE(rowH > 0.0f);
+    host.clickAt(caretX, y);
+    host.draw();
+    REQUIRE(host.settingsRegionCenter("rumble.lockup", &x, &y));
+    host.clickAt(caretX, y);
+    host.draw();
+
+    // Both open: Bumps and Lockup are a header and two rows each now.
+    float bumpsY = 0.0f;
+    REQUIRE(host.settingsRegionCenter("rumble.slide", &x, &slideY));
+    REQUIRE(host.settingsRegionCenter("rumble.bumps", &x, &bumpsY));
+    CHECK(slideY - bumpsY == doctest::Approx(3.0f * rowH).epsilon(0.02));
+
+    CHECK(host.settingsOverflowRows() <= 0.0);
+    const auto after = host.hudScreenEdges(PluginHost::HUD_SETTINGS);
+    CHECK(after.t == before.t);
+    CHECK(after.b == before.b);
+
+    host.showSettings(false);
+}

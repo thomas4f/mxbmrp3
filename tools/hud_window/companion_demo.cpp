@@ -12,6 +12,7 @@
 // ============================================================================
 #include "plugin_host.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <string>
@@ -41,7 +42,17 @@ int main(int argc, char** argv) {
     if (!host.loaded()) { fprintf(stderr, "failed to load %s\n", dll); return 1; }
 
     host.startup("Z:\\tmp\\mxbmrp3-tests\\companion\\");
-    host.eventInit("Southwick", "Thomas");
+    // "rpm N": the gear scene riding at N rpm, with a bike that shifts at 10500
+    // and hits the limiter at 12000 -- for eyeballing the RPM widget's strip
+    // (turn it on with EXTRA_INI=$'[RpmWidget]\nvisible=1'). At or past 12000 the
+    // limiter flash is held in its lit phase ("rpmdark": its dark phase).
+    int rpmDemo = -1;
+    for (int a = 1; a + 1 < argc; ++a)
+        if (std::string(argv[a]) == "rpm") rpmDemo = std::atoi(argv[a + 1]);
+    if (rpmDemo >= 0)
+        host.eventInit("Southwick", "Thomas", 1600.0f, 2, "Test 450", "MX1", "", 0, "", 0.0f, 10500, 12000);
+    else
+        host.eventInit("Southwick", "Thomas");
     host.raceEvent("Southwick", /*type=*/1);  // Testing
     host.session(1, 0, 0);
     host.runInit(1);
@@ -98,10 +109,24 @@ int main(int argc, char** argv) {
     // lap after it abandoned for the pits mid-lap, S1 crossed -- the Lap Log rows that
     // say INVALID and PIT. Pair it with EXTRA_INI=$'[LapLogHud]\nvisible=1'.
     bool pitlapMode = false;
+    // "deltatrace": a reference lap, a second one at a varying pace and a third
+    // under way, ridden on a simulated lap clock, with the Delta Trace shown and
+    // the Map's lap delta on (Session PB): the new lap drawing over the old.
+    bool deltaMode = false;
+    // "motion N": Motion at Normal, the settings menu opening N ms ago, the clock
+    // then held so the capture is that instant of the fade. "motiontab N": the
+    // same, for the Appearance tab's body fading in over the General tab's panel.
+    // A row of N gives the frames of an animation (see TESTING.md Layer 6).
+    int motionMs = -1;
+    bool motionTab = false;
+    // "motionhud NAME N": the same for one HUD (by harness id) coming in - pair
+    // it with a scene that shows it, e.g. "flags motionhud map_hud 120".
+    const char* motionHud = nullptr;
     for (int a = 1; a < argc; ++a) {
         if (std::string(argv[a]) == "flags") flagsMode = true;
         if (std::string(argv[a]) == "gamepad") gamepadMode = true;
         if (std::string(argv[a]) == "gear") gearMode = true;
+        if (std::string(argv[a]) == "rpm") gearMode = true;
         if (std::string(argv[a]) == "toast") { gearMode = true; toastMode = true; }
         if (std::string(argv[a]) == "timing") timingMode = true;
         if (std::string(argv[a]) == "pitlap") { timingMode = true; pitlapMode = true; }
@@ -119,6 +144,29 @@ int main(int argc, char** argv) {
         if (std::string(argv[a]) == "maplost") mapLostMode = true;
         if (std::string(argv[a]) == "update")  updateMode = true;
         if (std::string(argv[a]) == "fmx")     fmxMode = true;
+        if (std::string(argv[a]) == "deltatrace") deltaMode = true;
+        if ((std::string(argv[a]) == "motion" || std::string(argv[a]) == "motiontab") && a + 1 < argc) {
+            motionMs = std::atoi(argv[a + 1]);
+            motionTab = std::string(argv[a]) == "motiontab";
+        }
+        if (std::string(argv[a]) == "motionhud" && a + 2 < argc) {
+            motionHud = argv[a + 1];
+            motionMs = std::atoi(argv[a + 2]);
+        }
+        // The missing-assets warning, built as if discovery found nothing (test builds
+        // never build it themselves); the staged assets still draw behind it.
+        // "brokeninstall real" draws the same panel with the real font instead of
+        // the block letters, for a pixel diff of the two.
+        if (std::string(argv[a]) == "brokeninstall") {
+            gearMode = true;
+            const bool real = a + 1 < argc && std::string(argv[a + 1]) == "real";
+            host.installWarning(0, 0, true, real);
+        }
+        // "welcome" / "updated": the gear scene with the Version widget's startup
+        // popup up (a fresh install, or a new release line), the default setup
+        // notice held back under it.
+        if (std::string(argv[a]) == "welcome") { gearMode = true; host.messagesStartup(true, "1.32"); }
+        if (std::string(argv[a]) == "updated") { gearMode = true; host.messagesStartup(false, "1.32", "1.31"); }
     }
     if (gamepadMode) {
         host.fakeGamepad(true);
@@ -191,6 +239,43 @@ int main(int argc, char** argv) {
             // Start/finish and two splits (meters along the ~1417 m stadium), so the
             // split ticks (on by default) have somewhere to go.
             host.trackCenterline(stadium(), { 10.0f, 480.0f, 950.0f, 0.0f });
+        }
+    } else if (deltaMode) {
+        auto setNowUs = host.sym<void (*)(long long)>("MXBMRP3_Test_LapTimerSetNowUs");
+        auto mapLapDelta = host.sym<void (*)(int)>("MXBMRP3_Test_MapSetLapDelta");
+        if (setNowUs && mapLapDelta) {
+            host.setHudVisible("delta_trace_hud", true);
+            mapLapDelta(1);
+            host.trackCenterline(stadium(), { 10.0f, 480.0f, 950.0f, 0.0f });
+            long long lapStart = 1000000000LL;
+            int lapMs = 0;
+            // One sample per 0.5% of the lap; `wave` swings the pace around 60 s.
+            auto ride = [&](int to, float wave) {
+                double t = 0.0;
+                for (int p = 1; p <= to; ++p) {
+                    t += 300.0 + wave * std::sin(p * 0.035 + 2.0) + wave * 0.4 * std::sin(p * 0.12);
+                    setNowUs(lapStart + static_cast<long long>(t * 1000.0));
+                    host.raceTrackPosition({ { 4, p / 200.0f } });
+                }
+                lapMs = static_cast<int>(t + 300.0);
+            };
+            setNowUs(lapStart - 20000);
+            host.raceTrackPosition({ { 4, 0.99f } });
+            setNowUs(lapStart);
+            host.raceTrackPosition({ { 4, 0.00f } });
+            ride(197, 0.0f);
+            lapStart += static_cast<long long>(lapMs) * 1000LL;
+            setNowUs(lapStart);
+            host.classify(1, 0, { { .num = 4, .best = lapMs, .laps = 1, .gap = 0 } });
+            host.raceTrackPosition({ { 4, 0.00f } });
+            host.raceLap(1, 4, /*lapNum=*/1, lapMs, /*best=*/1, lapMs / 3, lapMs * 2 / 3);
+            ride(197, 14.0f);
+            lapStart += static_cast<long long>(lapMs) * 1000LL;
+            setNowUs(lapStart);
+            host.classify(1, 0, { { .num = 4, .best = lapMs, .laps = 2, .gap = 0 } });
+            host.raceTrackPosition({ { 4, 0.00f } });
+            host.raceLap(1, 4, /*lapNum=*/2, lapMs, /*best=*/0, lapMs / 3, lapMs * 2 / 3);
+            ride(80, -10.0f);   // the clock stays put: the capture is of this moment
         }
     } else if (recordsMode) {
         // A TRACK ID, which the default scene has no reason to set: the player PB row
@@ -378,6 +463,18 @@ int main(int argc, char** argv) {
     } else if (gearMode) {
         // nothing: the HUD renders its default-visible widgets over the empty scene
         if (toastMode) host.configReloaded();   // Tinkerer - Bronze, taken on the next draw
+        if (rpmDemo >= 0) {
+            // The limiter flash's lit phase, or its dark one with "rpmdark".
+            bool dark = false;
+            for (int a = 1; a < argc; ++a) if (std::string(argv[a]) == "rpmdark") dark = true;
+            host.setMotionNowUs(dark ? 100000 : 0);
+            TelemetryRow r;
+            r.speed = 20.0f;
+            r.gear = 3;
+            r.rpm = rpmDemo;
+            r.trackPos = 0.30f;
+            host.telemetryFrame(r);
+        }
     } else {
         // Default (or a specific tab named on the command line, e.g. "Timing").
         const char* tab = "General";
@@ -401,7 +498,19 @@ int main(int argc, char** argv) {
             if (!host.settingsRegionCenter("pager.next", &nx, &ny)) break;
             host.clickAt(nx, ny);
         }
-        host.injectMouse(false);
+        // "hover <tooltip id>": leave the mouse stand-in over that row, so the
+        // capture shows its hover band and tooltip.
+        const char* hover = nullptr;
+        for (int a = 1; a + 1 < argc; ++a) {
+            if (std::string(argv[a]) == "hover") hover = argv[a + 1];
+        }
+        float hx = 0.0f, hy = 0.0f;
+        if (hover) host.draw();   // the regions exist once the tab has drawn
+        if (hover && host.settingsRegionCenter(hover, &hx, &hy)) {
+            host.injectMouse(true, hx, hy, 0);
+        } else {
+            host.injectMouse(false);
+        }
     }
     // Pin the companion as the active surface so surface-scoped chrome (the settings
     // menu, the pointer) renders on the companion window we screenshot — it never
@@ -484,8 +593,37 @@ int main(int argc, char** argv) {
     bool closeTest = (argc > 3 && std::string(argv[3]) == "close");
 
     int seconds = argc > 2 ? atoi(argv[2]) : 10;
+    // Motion: settle with the menu closed (or on General), then open it (or switch
+    // tab) once the window is up and step the clock to motionMs, at most a frame's
+    // worth per draw, and hold it there.
+    long long motionNow = 1000000000ll, motionEnd = 0;
+    int motionHeld = 0;
+    if (motionMs >= 0) {
+        host.setMotion(2);
+        host.setMotionNowUs(motionNow);
+        if (motionHud) host.setHudVisibleBoth(motionHud, false);
+        else if (motionTab) host.setActiveTab("General");
+        else host.showSettings(false);
+    }
     for (int i = 0; i < seconds * 50; ++i) {
+        if (motionMs >= 0 && i == 25) {
+            if (motionHud) host.setHudVisibleBoth(motionHud, true);
+            else if (motionTab) host.setActiveTab("Appearance");
+            else { host.showSettings(true); host.setActiveTab("Appearance"); }
+            motionEnd = motionNow + motionMs * 1000ll;
+        }
+        if (motionEnd > motionNow) {
+            motionNow = std::min(motionEnd, motionNow + 16000ll);
+            host.setMotionNowUs(motionNow);
+        }
         host.draw();
+        // The frame to photograph is on screen once the clock has reached its
+        // target and the companion has drawn it: tell companion_demo.sh, whose
+        // poll would otherwise take the first frame with any content - from before
+        // the change it is meant to show.
+        if (motionEnd > 0 && motionNow == motionEnd && ++motionHeld == 10) {
+            if (FILE* f = fopen("motion.ready", "w")) fclose(f);
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
         if (closeTest && i == seconds * 25) {  // halfway: simulate the X button
             HWND hwnd = FindWindowW(L"MXBMRP3CompanionWindow", nullptr);

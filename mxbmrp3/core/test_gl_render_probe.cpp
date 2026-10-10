@@ -1,12 +1,13 @@
 // ============================================================================
 // core/test_gl_render_probe.cpp
-// Body of the GL render probe - see test_gl_render_probe.h for why it is not
-// in test_hooks.cpp. Moved verbatim; only the export became a plain function.
+// Body of the GL render probe and the state-leak check - see
+// test_gl_render_probe.h for why they are not in test_hooks.cpp.
 // ============================================================================
 #include "test_gl_render_probe.h"
 
 #if defined(MXBMRP3_TEST_BUILD)
 
+#include "gl_state_fingerprint.h"
 #include "hud_gl_renderer.h"
 #include "hud_manager.h"
 #include "hud_sw_renderer.h"
@@ -57,36 +58,26 @@ int glFrameAssetName(int kind, int index, char* out, int cap) {
     return len;
 }
 
-// thread and read one pixel back. The harness makes that context (see
-// PluginHost::glMakeContext), so gl_render_test.cpp can assert the backend's
-// actual rendered OUTPUT - colour, position, z-order, text - which is coverage
-// no GPU backend in this repo has ever had.
-//
-// scenario: 0 = one white-through-colour quad covering the left half;
-//           1 = two overlapping quads, second on top (z-order);
-//           2 = a string;
-//           3 = a NESTED PACK SPRITE, the case a hand-rolled path join missed.
-// Returns packed 0xRRGGBBAA, or -1 if the render failed.
-int glRenderProbe(int wIgnored, int hIgnored, int pctX, int pctY, int scenario) {
-    // The render must match the framebuffer it lands in, so the size comes from
-    // the CURRENT GL viewport rather than from the caller - a mismatch renders
-    // to one coordinate space and reads back from another, which is exactly the
-    // false "the quad bled past its edge" this test first produced. px/py are
-    // PERCENTAGES so the test never has to know the harness window's size.
-    (void)wIgnored; (void)hIgnored;
+namespace {
+// The current GL viewport's size - the render must match the framebuffer it
+// lands in, so the size comes from the context rather than from a caller.
+void glViewportSize(int& w, int& h) {
     int vp[4] = { 0, 0, 0, 0 };
     if (HMODULE glLib = GetModuleHandleA("opengl32.dll")) {
         if (auto getIv = reinterpret_cast<void (WINAPI*)(unsigned, int*)>(
                 reinterpret_cast<void*>(GetProcAddress(glLib, "glGetIntegerv"))))
             getIv(0x0BA2 /*GL_VIEWPORT*/, vp);
     }
-    const int w = vp[2] > 0 ? vp[2] : 320;
-    const int h = vp[3] > 0 ? vp[3] : 240;
-    const int px = pctX * w / 100;
-    const int py = pctY * h / 100;
+    w = vp[2] > 0 ? vp[2] : 320;
+    h = vp[3] > 0 ? vp[3] : 240;
+}
+
+// Render one scenario frame (see glRenderProbe) through a static
+// hudgl::Renderer at w,h. False if the backend could not render.
+bool renderScenario(int w, int h, int scenario) {
     static hudgl::Renderer* r = nullptr;
-    if (!r) { r = new hudgl::Renderer(); if (!r->init()) return -1; }
-    if (!r->ok()) return -1;
+    if (!r) { r = new hudgl::Renderer(); if (!r->init()) return false; }
+    if (!r->ok()) return false;
 
     std::vector<SPluginQuad_t> quads;
     std::vector<SPluginString_t> strings;
@@ -155,9 +146,73 @@ int glRenderProbe(int wIgnored, int hIgnored, int pctX, int pctY, int scenario) 
     f.assetRoot = "plugins/mxbmrp3_data";
     if (!hudsw::readFile(f.assetRoot + need).size())
         f.assetRoot = MXB_REPO_DATA_DIR;
-    if (!r->render(f, w, h, 0.0f, 0.0f, static_cast<float>(w), static_cast<float>(h)))
-        return -1;
+    return r->render(f, w, h, 0.0f, 0.0f, static_cast<float>(w), static_cast<float>(h));
+}
+}  // namespace
+
+// Render a synthetic frame through hudgl::Renderer into the context current on
+// this thread and read one pixel back. The harness makes that context (see
+// PluginHost::glMakeContext), so gl_render_test.cpp can assert the backend's
+// actual rendered OUTPUT - colour, position, z-order, text - which is coverage
+// no GPU backend in this repo has ever had.
+//
+// scenario: 0 = one white-through-colour quad covering the left half;
+//           1 = two overlapping quads, second on top (z-order);
+//           2 = a string;
+//           3 = a NESTED PACK SPRITE, the case a hand-rolled path join missed.
+// Returns packed 0xRRGGBBAA, or -1 if the render failed.
+int glRenderProbe(int wIgnored, int hIgnored, int pctX, int pctY, int scenario) {
+    // The size comes from the CURRENT GL viewport rather than from the caller -
+    // a mismatch renders to one coordinate space and reads back from another,
+    // which is exactly the false "the quad bled past its edge" this test first
+    // produced. px/py are PERCENTAGES so the test never has to know the harness
+    // window's size.
+    (void)wIgnored; (void)hIgnored;
+    int w = 0, h = 0;
+    glViewportSize(w, h);
+    const int px = pctX * w / 100;
+    const int py = pctY * h / 100;
+    if (!renderScenario(w, h, scenario)) return -1;
     return glReadPixelTopDown(px, py, h);
+}
+
+int glRenderStateDiffs(int* glErrors) {
+    if (glErrors) *glErrors = 0;
+    HMODULE gl = GetModuleHandleA("opengl32.dll");
+    if (!gl) return -1;
+    auto getIv = reinterpret_cast<void (WINAPI*)(unsigned, int*)>(
+        reinterpret_cast<void*>(GetProcAddress(gl, "glGetIntegerv")));
+    auto getStr = reinterpret_cast<const unsigned char* (WINAPI*)(unsigned)>(
+        reinterpret_cast<void*>(GetProcAddress(gl, "glGetString")));
+    auto getErr = reinterpret_cast<unsigned (WINAPI*)()>(
+        reinterpret_cast<void*>(GetProcAddress(gl, "glGetError")));
+    auto curCtx = reinterpret_cast<void* (WINAPI*)()>(
+        reinterpret_cast<void*>(GetProcAddress(gl, "wglGetCurrentContext")));
+    if (!getIv || !getStr || !getErr || !curCtx || !curCtx()) return -1;
+
+    const int ver = glstate::parseVersion(
+        reinterpret_cast<const char*>(getStr(0x1F02 /*GL_VERSION*/)));
+    // Below 3.2 there is no profile query, and every such context is a
+    // compatibility one.
+    bool compat = ver > 0;
+    if (ver >= 32) {
+        int mask = 0;
+        getIv(0x9126 /*GL_CONTEXT_PROFILE_MASK*/, &mask);
+        compat = (mask & 0x0002 /*COMPATIBILITY_PROFILE_BIT*/) != 0;
+    }
+    auto reader = [&](unsigned token, int, int* out) { getIv(token, out); };
+
+    for (int i = 0; i < 32 && getErr() != 0; ++i) {}   // start from a clean error queue
+    const glstate::Fingerprint before = glstate::capture(ver, compat, reader);
+    int w = 0, h = 0;
+    glViewportSize(w, h);
+    if (!renderScenario(w, h, 1)) return -1;
+    const glstate::Fingerprint after = glstate::capture(ver, compat, reader);
+    if (glErrors) {
+        for (int i = 0; i < 32 && getErr() != 0; ++i) ++*glErrors;
+    }
+    std::vector<std::string> lines;
+    return glstate::diff(before, after, lines);
 }
 
 }  // namespace mxbtest

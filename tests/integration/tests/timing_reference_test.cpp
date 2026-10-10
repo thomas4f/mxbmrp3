@@ -739,6 +739,98 @@ TEST_CASE("timing: the readout rows are off by default and appear when enabled")
     host.shutdown();
 }
 
+// The Gap section: the Gap Bar's reading (PluginData's live gap to the chosen
+// reference), large in its own card under the big time. Off by default; "gapRow"
+// holds -1 for off, else the reference as the Gap Bar stores its own (3 = Default).
+// The gap is planted (MXBMRP3_Test_GapBarForceGap) -- the value the Gap Bar would
+// print -- so this asserts the section shows it, "-" when there is none, and that
+// it is a section of its own: one large band, not a comparison row.
+TEST_CASE("timing: the gap section shows the gap bar's live gap when enabled") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    const char* save = "Z:\\tmp\\mxbmrp3-tests\\timing_gap_row\\";
+    host.startup(save);
+    REQUIRE(host.hasStringRows());
+
+    host.eventInit("TestTrack", "Player");
+    host.raceEvent("TestTrack");
+    host.addEntry(12, "Player");
+    host.session(6, /*numLaps=*/5, /*lengthMs=*/480000);
+    host.classify(6, 400000, { { .num = 12, .best = 108500, .laps = 1, .gap = 0 } });
+    REQUIRE_MESSAGE(host.gapBarForceGap(-1234, true), "MXBMRP3_Test_GapBarForceGap not exported");
+    host.draw();
+
+    auto texts = [&]() {
+        std::vector<std::string> t;
+        for (const auto& r : host.hudStringRows(PluginHost::HUD_TIMING)) t.push_back(r.text);
+        return t;
+    };
+    auto joined = [](const std::vector<std::string>& t) {
+        std::string s;
+        for (const auto& x : t) s += "[" + x + "]";
+        return s;
+    };
+
+    // Off by default.
+    const std::vector<std::string> plain = texts();
+    const PluginHost::TimingGeom plainGeom = host.timingGeometry();
+    INFO("default strings: " << joined(plain));
+    REQUIRE(!plain.empty());
+
+    // The gap is the one string the section adds: the first place the panel's
+    // strings differ from the plain panel's (it draws right after the big time).
+    auto gapValue = [&]() -> std::string {
+        const auto t = texts();
+        if (t.size() != plain.size() + 1) return "";
+        for (size_t i = 0; i < t.size(); ++i) {
+            if (i >= plain.size() || t[i] != plain[i]) return t[i];
+        }
+        return "";
+    };
+    auto shows = [&](char sign, const char* digits) {
+        const std::string v = gapValue();
+        INFO("gap value: " << v << "  strings: " << joined(texts()));
+        return !v.empty() && v[0] == sign && v.find(digits) != std::string::npos;
+    };
+
+    // On, following General's reference. Sign and milliseconds; the minutes field
+    // follows the global time format.
+    host.writeSettingsFile(save,
+        "[Settings]\nversion=6\n\n[TimingHud]\nvisible=1\ngapRow=3\n");
+    host.loadSettings(save);
+    host.draw();
+    CHECK(shows('-', "1.234"));
+    // Its own section, one big-value band like the time's: the stack grew by a
+    // normal row's worth or more (the band plus the seam to the next card).
+    const PluginHost::TimingGeom withGap = host.timingGeometry();
+    CHECK((withGap.contentBot - withGap.contentTop) - (plainGeom.contentBot - plainGeom.contentTop)
+          >= plainGeom.lineNormal - 3);
+    // No label: it reads like the time above it, not like a comparison row.
+    CHECK(joined(texts()).find("[Gap]") == std::string::npos);
+
+    // ...and a reference of its own reads the same live gap.
+    host.writeSettingsFile(save,
+        "[Settings]\nversion=6\n\n[TimingHud]\nvisible=1\ngapRow=2\n");
+    host.loadSettings(save);
+    host.gapBarForceGap(2500, true);
+    host.draw();
+    CHECK(shows('+', "2.500"));
+
+    // No gap to show: the placeholder, not a stale number.
+    host.gapBarForceGap(0, false);
+    host.draw();
+    CHECK(gapValue() == "-");
+
+    // Off again.
+    host.writeSettingsFile(save,
+        "[Settings]\nversion=6\n\n[TimingHud]\nvisible=1\ngapRow=-1\n");
+    host.loadSettings(save);
+    host.draw();
+    CHECK(texts() == plain);
+
+    host.shutdown();
+}
+
 // ---------------------------------------------------------------------------
 // THE TWO TEXT READOUTS: Server and Track.
 //

@@ -1,6 +1,6 @@
 // ============================================================================
 // mxbmrp3/core/settings_hud_registry_widgets.cpp
-// Per-HUD settings serializers (cap_*/app_*), group 2: widgets, simpler HUDs, and Global. The registry TABLE and group-1 (full-HUD) serializers stay in settings_hud_registry.cpp.
+// Per-HUD settings serializers (cap_*/app_*), group 2: widgets, simpler HUDs, and Global. The registry TABLE and group-1 (full-HUD) serializers stay in settings_hud_registry.cpp; the riding readouts (Speed, Gear, Crashes, RPM) are in settings_hud_registry_readouts.cpp.
 // ============================================================================
 
 #include "settings_hud_registry.h"
@@ -29,9 +29,6 @@
 #include "../hud/position_widget.h"
 #include "../hud/lap_widget.h"
 #include "../hud/session_hud.h"
-#include "../hud/speed_widget.h"
-#include "../hud/gear_widget.h"
-#include "../hud/crash_widget.h"
 #include "../hud/speedo_widget.h"
 #include "../hud/tacho_widget.h"
 #include "../hud/timing_hud.h"
@@ -244,80 +241,6 @@ void SettingsManager::app_SessionHud(HudManager& hudManager, const SettingsManag
         }
 }
 
-void SettingsManager::cap_SpeedWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
-        HudSettings settings;
-        const auto& hud = hudManager.getSpeedWidget();
-        captureBaseHudSettings(settings, hud);
-        saveSpeedRows(settings, hud.m_enabledRows);  // Named keys instead of bitmask
-        cache[name] = std::move(settings);
-}
-
-void SettingsManager::app_SpeedWidget(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
-        auto it = cache.find(name);
-        if (it != cache.end()) {
-            auto& hud = hudManager.getSpeedWidget();
-            applyBaseHudSettings(hud, it->second);
-
-            const auto& settings = it->second;
-            try {
-                loadSpeedRows(settings, hud.m_enabledRows);  // Named keys instead of bitmask
-            } catch (const std::exception& e) {
-                DEBUG_WARN_F("SpeedWidget: Failed to parse settings: %s", e.what());
-            }
-            hud.setDataDirty();
-        }
-}
-
-void SettingsManager::cap_GearWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
-        HudSettings settings;
-        const auto& hud = hudManager.getGearWidget();
-        captureBaseHudSettings(settings, hud);
-        settings[IniOnly::Gear::SHOW_SHIFT_COLOR.key] = hud.m_bShowShiftColor ? "1" : "0";
-        settings[IniOnly::Gear::SHOW_LIMITER_CIRCLE.key] = hud.m_bShowLimiterCircle ? "1" : "0";
-        cache[name] = std::move(settings);
-}
-
-void SettingsManager::app_GearWidget(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
-        auto it = cache.find(name);
-        if (it != cache.end()) {
-            auto& hud = hudManager.getGearWidget();
-            applyBaseHudSettings(hud, it->second);
-
-            const auto& settings = it->second;
-            try {
-                if (auto v = readBool(settings, IniOnly::Gear::SHOW_SHIFT_COLOR.key)) hud.m_bShowShiftColor = *v;
-                if (auto v = readBool(settings, IniOnly::Gear::SHOW_LIMITER_CIRCLE.key)) hud.m_bShowLimiterCircle = *v;
-            } catch (const std::exception& e) {
-                DEBUG_WARN_F("GearWidget: Failed to parse settings: %s", e.what());
-            }
-            hud.setDataDirty();
-        }
-}
-
-void SettingsManager::cap_CrashWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
-        HudSettings settings;
-        const auto& hud = hudManager.getCrashWidget();
-        captureBaseHudSettings(settings, hud);
-        settings[IniOnly::Crash::SHOW_RESET_BUTTON.key] = hud.m_bShowResetButton ? "1" : "0";
-        cache[name] = std::move(settings);
-}
-
-void SettingsManager::app_CrashWidget(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
-        auto it = cache.find(name);
-        if (it != cache.end()) {
-            auto& hud = hudManager.getCrashWidget();
-            applyBaseHudSettings(hud, it->second);
-
-            const auto& settings = it->second;
-            try {
-                if (auto v = readBool(settings, IniOnly::Crash::SHOW_RESET_BUTTON.key)) hud.m_bShowResetButton = *v;
-            } catch (const std::exception& e) {
-                DEBUG_WARN_F("CrashWidget: Failed to parse settings: %s", e.what());
-            }
-            hud.setDataDirty();
-        }
-}
-
 // The needleColor value for a gauge that has not been given one: the literal
 // `pack`, not an omitted key and not the factory hex.
 //
@@ -419,6 +342,9 @@ void SettingsManager::cap_TimingHud(const HudManager& hudManager, SettingsManage
         // Comparison rows (one bit per gap type) — reuses the per-key bitmask serializer.
         saveTimingSecondaryGaps(settings, hud.m_enabledComparisons);
         saveTimingReadouts(settings, hud.m_enabledReadouts);
+        // Gap section: -1 off, else its reference as the Gap Bar stores one.
+        settings["gapRow"] = std::to_string(!hud.m_liveGapOn ? -1
+            : hud.m_liveGapDefault ? HudDefaults::REFERENCE_FOLLOW : static_cast<int>(hud.m_liveGapRef));
         cache[name] = std::move(settings);
 }
 
@@ -437,12 +363,25 @@ void SettingsManager::app_TimingHud(HudManager& hudManager, const SettingsManage
                     hud.m_showTime = settings.at("showTime") == "1";
                 }
                 if (auto v = readInt(settings, "displayDuration")) {
-                    if (*v >= FreezeDuration::MIN_MS && *v <= FreezeDuration::MAX_MS) {
+                    if (*v == FreezeDuration::FOLLOW_DEFAULT ||
+                        (*v >= FreezeDuration::MIN_MS && *v <= FreezeDuration::MAX_MS)) {
                         hud.m_displayDurationMs = *v;
                     }
                 }
                 loadTimingSecondaryGaps(settings, hud.m_enabledComparisons);
                 loadTimingReadouts(settings, hud.m_enabledReadouts);
+                if (auto v = readInt(settings, "gapRow")) {
+                    if (*v == -1) {
+                        hud.m_liveGapOn = false;
+                    } else if (*v == HudDefaults::REFERENCE_FOLLOW) {
+                        hud.m_liveGapOn = true;
+                        hud.m_liveGapDefault = true;
+                    } else if (*v >= 0 && *v < PbGapTracker::REF_COUNT) {
+                        hud.m_liveGapOn = true;
+                        hud.m_liveGapDefault = false;
+                        hud.m_liveGapRef = static_cast<PbGapTracker::Ref>(*v);
+                    }
+                }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("TimingHud: Failed to parse settings: %s", e.what());
             }
@@ -456,7 +395,8 @@ void SettingsManager::cap_GapBarHud(const HudManager& hudManager, SettingsManage
         captureBaseHudSettings(settings, hud);
         settings["freezeDuration"] = std::to_string(hud.m_freezeDurationMs);
         settings["markerMode"] = std::to_string(static_cast<int>(hud.m_markerMode));
-        settings["reference"] = std::to_string(static_cast<int>(hud.m_reference));
+        settings["reference"] = std::to_string(hud.m_referenceDefault ? HudDefaults::REFERENCE_FOLLOW
+                                                                      : static_cast<int>(hud.m_reference));
         // Persist by filename (not positional index) so the choice survives icon-set
         // reordering, matching map/radar. 0 = "use default icon" serializes as "Off".
         settings["riderIcon"] = shapeIndexToFilename(hud.m_riderIconIndex);
@@ -483,7 +423,8 @@ void SettingsManager::app_GapBarHud(HudManager& hudManager, const SettingsManage
             const auto& settings = it->second;
             try {
                 if (auto v = readInt(settings, "freezeDuration")) {
-                    if (*v >= FreezeDuration::MIN_MS && *v <= FreezeDuration::MAX_MS) {
+                    if (*v == FreezeDuration::FOLLOW_DEFAULT ||
+                        (*v >= FreezeDuration::MIN_MS && *v <= FreezeDuration::MAX_MS)) {
                         hud.m_freezeDurationMs = *v;
                     }
                 }
@@ -503,8 +444,11 @@ void SettingsManager::app_GapBarHud(HudManager& hudManager, const SettingsManage
                     hud.m_markerMode = GapBarHud::MarkerMode::GHOST;
                 }
                 if (auto v = readInt(settings, "reference")) {
-                    if (*v >= 0 && *v < GapBarHud::REFERENCE_COUNT) {
+                    if (*v == HudDefaults::REFERENCE_FOLLOW) {
+                        hud.m_referenceDefault = true;
+                    } else if (*v >= 0 && *v < GapBarHud::REFERENCE_COUNT) {
                         hud.m_reference = static_cast<GapBarHud::Reference>(*v);
+                        hud.m_referenceDefault = false;
                     }
                 }
                 // Rider icon (name-based; 0/"Off" = use default icon)
@@ -521,7 +465,7 @@ void SettingsManager::app_GapBarHud(HudManager& hudManager, const SettingsManage
                 }
                 // Gap range
                 if (auto v = readInt(settings, "gapRange")) {
-                    if (*v >= GapBarHud::MIN_RANGE_MS && *v <= GapBarHud::MAX_RANGE_MS) {
+                    if (*v >= GapBarHud::RANGE_AUTO && *v <= GapBarHud::MAX_RANGE_MS) {
                         hud.m_gapRangeMs = *v;
                     }
                 } else if (auto w = readInt(settings, "legacyRange")) {
@@ -597,16 +541,19 @@ void SettingsManager::app_BarsWidget(HudManager& hudManager, const SettingsManag
 
 void SettingsManager::cap_VersionWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
     HudSettings settings;
-    const BaseHud& hud = hudManager.getVersionWidget();
+    const VersionWidget& hud = hudManager.getVersionWidget();
     captureBaseHudSettings(settings, hud);
+    // A popup forces the widget on; the profile keeps the player's own value.
+    settings[Keys::Base::VISIBLE] = std::to_string(hud.visibleSetting() ? 1 : 0);
     cache[name] = std::move(settings);
 }
 
 void SettingsManager::app_VersionWidget(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
     auto it = cache.find(name);
     if (it == cache.end()) return;
-    BaseHud& hud = hudManager.getVersionWidget();
+    VersionWidget& hud = hudManager.getVersionWidget();
     applyBaseHudSettings(hud, it->second);
+    hud.onVisibilityApplied();
     hud.setDataDirty();
 }
 

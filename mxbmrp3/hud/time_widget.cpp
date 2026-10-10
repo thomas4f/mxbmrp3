@@ -129,7 +129,7 @@ void TimeWidget::resetToDefaults() {
     m_bShowTitle = true;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.0f;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     setPosition(cellsX(35), cellsY(1));
     setDataDirty();
 }

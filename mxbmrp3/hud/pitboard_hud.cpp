@@ -561,7 +561,7 @@ void PitboardHud::resetToDefaults() {
     setShowBackgroundTexture(true);
     m_pitboardPack = AssetManager::DEFAULT_PITBOARD;
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
-    m_fScale = 1.0f;  // 100% default scale
+    setScale(1.0f);  // 100% default scale
     setPosition(cellsX(1), cellsY(11));
     m_enabledRows = ROW_DEFAULT;
     m_displayMode = MODE_SPLITS;  // Show at splits by default

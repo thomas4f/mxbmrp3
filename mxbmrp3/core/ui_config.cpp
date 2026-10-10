@@ -21,6 +21,9 @@ void UiConfig::resetToDefaults() {
     m_bAutoSave = true;
     m_temperatureUnit = TemperatureUnit::CELSIUS;
     m_pbScope = PBScope::CATEGORY;
+    m_defaultReference = 0;
+    m_defaultFreezeMs = 5000;
+    m_fUiScale = 1.0f;
     m_bSnapSegmentsToSplits = true;
     m_fSegmentSnapThreshold = 0.02f;
     m_holdRepeatFastMs = 50;
@@ -34,6 +37,7 @@ void UiConfig::resetToDefaults() {
     m_fDropShadowOffsetX = 0.03f;
     m_fDropShadowOffsetY = 0.04f;
     m_ulDropShadowColor = 0xAA000000;
+    m_motion = Motion::DEFAULT_LEVEL;
 }
 
 void UiConfig::setThemeName(const std::string& name) {

@@ -11,6 +11,8 @@
 #include "../../core/plugin_constants.h"
 
 #include <algorithm>
+#include <chrono>
+#include <string>
 
 // Static member function of SettingsHud - handles click events for Standings tab
 bool SettingsHud::handleClickTabStandings(const ClickRegion& region) {
@@ -20,48 +22,6 @@ bool SettingsHud::handleClickTabStandings(const ClickRegion& region) {
     switch (region.type) {
         // Gap column (Off/Player/Adjacent/All) is a data-driven CYCLE control
         // now - registered in renderTabStandings via ctx.addCycleControl.
-
-        case ClickRegion::GAP_REFERENCE_TOGGLE:
-            // Cycle forward: Leader → Player → Auto → Leader
-            if (standingsHud) {
-                switch (standingsHud->m_gapReferenceMode) {
-                    case StandingsHud::GapReferenceMode::LEADER:
-                        standingsHud->m_gapReferenceMode = StandingsHud::GapReferenceMode::PLAYER;
-                        break;
-                    case StandingsHud::GapReferenceMode::PLAYER:
-                        standingsHud->m_gapReferenceMode = StandingsHud::GapReferenceMode::ALTERNATING;
-                        standingsHud->m_lastGapRefToggle = std::chrono::steady_clock::now();
-                        standingsHud->m_alternatingCurrent = StandingsHud::GapReferenceMode::LEADER;
-                        break;
-                    default:
-                        standingsHud->m_gapReferenceMode = StandingsHud::GapReferenceMode::LEADER;
-                        break;
-                }
-                standingsHud->setDataDirty();
-                rebuildRenderData();
-            }
-            return true;
-
-        case ClickRegion::GAP_REFERENCE_BACK:
-            // Cycle backward: Leader → Auto → Player → Leader
-            if (standingsHud) {
-                switch (standingsHud->m_gapReferenceMode) {
-                    case StandingsHud::GapReferenceMode::LEADER:
-                        standingsHud->m_gapReferenceMode = StandingsHud::GapReferenceMode::ALTERNATING;
-                        standingsHud->m_lastGapRefToggle = std::chrono::steady_clock::now();
-                        standingsHud->m_alternatingCurrent = StandingsHud::GapReferenceMode::LEADER;
-                        break;
-                    case StandingsHud::GapReferenceMode::ALTERNATING:
-                        standingsHud->m_gapReferenceMode = StandingsHud::GapReferenceMode::PLAYER;
-                        break;
-                    default:
-                        standingsHud->m_gapReferenceMode = StandingsHud::GapReferenceMode::LEADER;
-                        break;
-                }
-                standingsHud->setDataDirty();
-                rebuildRenderData();
-            }
-            return true;
 
         case ClickRegion::LIVE_GAPS_TOGGLE:
             if (standingsHud) {
@@ -117,6 +77,7 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
     ctx.addSectionHeading("Layout");
+    ctx.beginColumns(2, 6);   // side by side (beginColumns)
 
     // Row count: a plain +-2 clamped stepper with no hold acceleration (fixedInt),
     // the same control the Charts tab builds. postStep keeps the pinned top-N no
@@ -160,9 +121,20 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
             // Not a real mode — listed so the switch stays EXHAUSTIVE.
             case StandingsHud::GapReferenceMode::COUNT:                               break;
         }
-        ctx.addCycleControl("Gap reference", gapRefValue,
-            SettingsHud::ClickRegion::GAP_REFERENCE_BACK,
-            SettingsHud::ClickRegion::GAP_REFERENCE_TOGGLE,
+        // Auto starts on Leader with a fresh timer, whichever way it is reached.
+        static const char* const kGapRefs[] = { "Leader", "Player", "Auto" };
+        static_assert(sizeof(kGapRefs) / sizeof(kGapRefs[0]) ==
+                      static_cast<size_t>(StandingsHud::GapReferenceMode::COUNT), "one name per reference");
+        SettingsHud::CycleControl gapRefCycle = SettingsHud::CycleControl::enumMember(
+            hud, &StandingsHud::m_gapReferenceMode,
+            static_cast<int>(StandingsHud::GapReferenceMode::COUNT), hud, kGapRefs);
+        gapRefCycle.postStep = [hud]() {
+            if (hud->m_gapReferenceMode == StandingsHud::GapReferenceMode::ALTERNATING) {
+                hud->m_lastGapRefToggle = std::chrono::steady_clock::now();
+                hud->m_alternatingCurrent = StandingsHud::GapReferenceMode::LEADER;
+            }
+        };
+        ctx.addCycleControl("Gap reference", gapRefValue, gapRefCycle,
             hud, refRelevant, false, "standings.gap_reference");
     }
 
@@ -176,15 +148,10 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
 
     // Animate position changes (Off / Basic / Colored)
     {
-        const char* animModeValue;
-        switch (hud->m_animationMode) {
-            case StandingsHud::AnimationMode::OFF:     animModeValue = "Off";     break;
-            case StandingsHud::AnimationMode::BASIC:   animModeValue = "Basic";   break;
-            case StandingsHud::AnimationMode::COLORED: animModeValue = "Colored"; break;
-            default: animModeValue = "Basic"; break;
-        }
+        static const char* const kAnimModes[] = { "Off", "Basic", "Colored" };
+        const char* animModeValue = cycleName(kAnimModes, static_cast<int>(hud->m_animationMode));
         SettingsHud::CycleControl animCycle = SettingsHud::CycleControl::enumMember(
-            hud, &StandingsHud::m_animationMode, 3, hud);
+            hud, &StandingsHud::m_animationMode, 3, hud, kAnimModes);
         // Stop any in-flight animations immediately when transitioning to OFF;
         // otherwise rows would keep sliding until the cleanup timer drains.
         animCycle.postStep = [hud]() {
@@ -192,7 +159,7 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
                 hud->m_activeAnimations.clear();
             }
         };
-        ctx.addCycleControl("Animate positions", animModeValue, animCycle,
+        ctx.addCycleControl("Animation", animModeValue, animCycle,
             hud, true, hud->m_animationMode == StandingsHud::AnimationMode::OFF,
             "standings.animate_positions");
     }
@@ -204,8 +171,11 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::FILTER_DNS_TOGGLE, hud,
         static_cast<bool*>(nullptr), true,
         "standings.filter_dns", nullptr);
+    ctx.endColumns();
     // === CONTENT SECTION ===
     ctx.addSectionHeading("Content");
+    // Two columns, like Layout: the labels are kept to the cell's 15 characters.
+    ctx.beginColumns(2, 13);
 
     // Session-info row (live clock / leader laps / overtime label) below the title.
     // nullptr boolPtr: SESSION_INFO_TOGGLE handler flips hud->m_bShowSessionInfo directly.
@@ -224,10 +194,10 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
         "standings.headers", nullptr);
 
     // Column toggles - using addToggleControl with tooltips
-    ctx.addToggleControl("Rider status icon", (hud->m_enabledColumns & StandingsHud::COL_TRACKED) != 0,
+    ctx.addToggleControl("Status icon", (hud->m_enabledColumns & StandingsHud::COL_TRACKED) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_TRACKED, true,
         "standings.col_tracked");
-    ctx.addToggleControl("Position number", (hud->m_enabledColumns & StandingsHud::COL_POS) != 0,
+    ctx.addToggleControl("Position", (hud->m_enabledColumns & StandingsHud::COL_POS) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_POS, true,
         "standings.col_pos");
     // Positions gained/lost mode cycle (Off < > Sector < > Lap < > Race). Labels name the
@@ -254,8 +224,12 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
             hud->m_posGainMode = static_cast<StandingsHud::PosGainMode>((4 - v) % 4);
         };
         posGainCycle.count = 4;
+        posGainCycle.nameOf = [](int v) {
+            static const char* const kNames[] = { "Off", "Sector", "Lap", "Race" };
+            return std::string(kNames[v]);
+        };
         posGainCycle.dirtyHud = hud;
-        ctx.addCycleControl("Positions gained/lost", posGainValue, posGainCycle,
+        ctx.addCycleControl("Gained/lost", posGainValue, posGainCycle,
             hud, true, hud->m_posGainMode == StandingsHud::PosGainMode::OFF,
             "standings.col_posgain", /*tooltipOnArrows=*/false);
     }
@@ -264,15 +238,9 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
         "standings.col_racenum");
     // Rider name mode (Off/Short/Long) - uses toggle with display value like gap scope
     {
-        const char* nameModeValue;
-        switch (hud->m_nameMode) {
-            case StandingsHud::NameMode::OFF:   nameModeValue = "Off"; break;
-            case StandingsHud::NameMode::SHORT: nameModeValue = "Short"; break;
-            case StandingsHud::NameMode::LONG:  nameModeValue = "Long"; break;
-            default: nameModeValue = "Short"; break;
-        }
-        ctx.addCycleControl("Rider name", nameModeValue,
-            SettingsHud::CycleControl::enumMember(hud, &StandingsHud::m_nameMode, 3, hud),
+        static const char* const kNameModes[] = { "Off", "Short", "Long" };
+        ctx.addCycleControl("Rider name", cycleName(kNameModes, static_cast<int>(hud->m_nameMode)),
+            SettingsHud::CycleControl::enumMember(hud, &StandingsHud::m_nameMode, 3, hud, kNameModes),
             hud, true, hud->m_nameMode == StandingsHud::NameMode::OFF,
             "standings.col_name");
     }
@@ -291,31 +259,23 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
 
     // Gap mode cycle (Off < > Player < > Adjacent < > All)
     {
-        const char* gapModeValue = nullptr;
-        bool isOff = (hud->m_gapMode == StandingsHud::GapMode::OFF);
-        switch (hud->m_gapMode) {
-            case StandingsHud::GapMode::OFF:      gapModeValue = "Off"; break;
-            case StandingsHud::GapMode::PLAYER:   gapModeValue = "Player"; break;
-            case StandingsHud::GapMode::ADJACENT: gapModeValue = "Adjacent"; break;
-            case StandingsHud::GapMode::ALL:      gapModeValue = "All"; break;
-            // Not a real mode — listed so the switch stays EXHAUSTIVE and a
-            // future mode still trips -Wswitch here instead of silently
-            // rendering a null label.
-            case StandingsHud::GapMode::COUNT:    gapModeValue = "All"; break;
-        }
-        ctx.addCycleControl("Gap column", gapModeValue,
+        static const char* const kGapModes[] = { "Off", "Player", "Adjacent", "All" };
+        // One name per mode, so a new mode trips here instead of drawing blank.
+        static_assert(sizeof(kGapModes) / sizeof(kGapModes[0]) ==
+                      static_cast<size_t>(StandingsHud::GapMode::COUNT), "one name per gap mode");
+        const bool isOff = (hud->m_gapMode == StandingsHud::GapMode::OFF);
+        ctx.addCycleControl("Gap column", cycleName(kGapModes, static_cast<int>(hud->m_gapMode)),
             // Modulus from the enum, not a literal, so a new mode cannot leave a
             // stale count behind with nothing to catch it.
             SettingsHud::CycleControl::enumMember(hud, &StandingsHud::m_gapMode,
-                static_cast<int>(StandingsHud::GapMode::COUNT), hud),
+                static_cast<int>(StandingsHud::GapMode::COUNT), hud, kGapModes),
             hud, true, isOff, "standings.gap_mode");
     }
 
-    ctx.addToggleControl("Penalty indicator", (hud->m_enabledColumns & StandingsHud::COL_PENALTY) != 0,
+    ctx.addToggleControl("Penalty", (hud->m_enabledColumns & StandingsHud::COL_PENALTY) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_PENALTY, true,
         "standings.col_penalty");
-
-    ctx.addNote("Tip: toggle compact times in the Appearance tab.");
+    ctx.endColumns();
 
     return hud;
 }

@@ -94,6 +94,10 @@ __declspec(dllexport) int MXBMRP3_Test_Prestige() {
 __declspec(dllexport) void MXBMRP3_Test_SetPrestige(int level) {
     StatsManager::getInstance().setPrestige(level);
 }
+// Pretend the last stats load hit a file it could not open or parse.
+__declspec(dllexport) void MXBMRP3_Test_SetStatsUnreadable(int on) {
+    StatsManager::getInstance().testSetLoadUnreadable(on != 0);
+}
 // 1 if the trade happened; 0 if it was refused (see StatsManager::prestige).
 __declspec(dllexport) int MXBMRP3_Test_TakePrestige() {
     return StatsManager::getInstance().prestige() ? 1 : 0;
@@ -125,6 +129,14 @@ __declspec(dllexport) int MXBMRP3_Test_SetHudVisible(const char* name, int visib
         }
     }
     return 0;
+}
+// One HUD's game-surface visibility by harness id: 1 on, 0 off, -1 no such HUD.
+__declspec(dllexport) int MXBMRP3_Test_HudVisible(const char* name) {
+    for (const auto& hud : HudManager::getInstance().getHuds()) {
+        if (hud && name && std::strcmp(hud->getHarnessId(), name) == 0)
+            return hud->isVisible() ? 1 : 0;
+    }
+    return -1;
 }
 // Every registered HUD's game-surface visibility at once (Tyre Kicker counts
 // the ones ever seen on at a settings save).

@@ -113,16 +113,18 @@ void PrestigeWidget::rebuildRenderData() {
 }
 
 void PrestigeWidget::resetToDefaults() {
-    // ON by default, because the default only ever applies to someone who has
-    // just earned it: a locked badge renders nothing whatever this says, and
-    // the reward for the trade appearing on screen is the reward.
-    m_bVisible = true;
+    // OFF by default. It was on, on the grounds that a locked badge renders
+    // nothing whatever this says -- but every INI then carried visible=1 and the
+    // usage survey counted the widget as used on nearly every install. The
+    // trade is announced by the Widgets tab's "New" marker instead (whats_new.cpp,
+    // Gate::Unlocked), which bands this row the moment it appears.
+    m_bVisible = false;
     m_bShowTitle = false;
     // The artwork is mandatory here, so 0 ("Off") is not a state this widget
     // has -- setTextureVariant snaps it up to the first available.
     setTextureVariant(1);
     m_fBackgroundOpacity = 1.0f;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     setPosition(0.5f, 0.05f);
     setDataDirty();
 }

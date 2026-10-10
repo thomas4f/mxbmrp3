@@ -93,25 +93,6 @@ bool SettingsHud::handleClickTabUpdates(const ClickRegion& region) {
             }
             return true;
 
-        case ClickRegion::UPDATE_CHANNEL_UP:
-        case ClickRegion::UPDATE_CHANNEL_DOWN:
-            {
-                UpdateChecker& checker = UpdateChecker::getInstance();
-                auto current = checker.getChannel();
-                auto newChannel = (current == UpdateChecker::UpdateChannel::STABLE)
-                    ? UpdateChecker::UpdateChannel::PRERELEASE
-                    : UpdateChecker::UpdateChannel::STABLE;
-                checker.setChannel(newChannel);
-                DEBUG_INFO_F("Update channel: %s", newChannel == UpdateChecker::UpdateChannel::PRERELEASE ? "prerelease" : "stable");
-                // Trigger new check with updated channel
-                if (checker.isEnabled() && !checker.isChecking()) {
-                    checker.setCompletionCallback([this]() { setDataDirty(); });
-                    checker.checkForUpdates();
-                }
-                setDataDirty();
-            }
-            return true;
-
         default:
             return false;
     }
@@ -141,9 +122,24 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
         // Update channel selector (Stable / Prerelease)
         bool isPrerelease = UpdateChecker::getInstance().isPrereleaseChannel();
         const char* channelText = isPrerelease ? "Prerelease" : "Stable";
-        ctx.addCycleControl("Update channel", channelText,
-                            SettingsHud::ClickRegion::UPDATE_CHANNEL_DOWN,
-                            SettingsHud::ClickRegion::UPDATE_CHANNEL_UP,
+        // Stable / Prerelease; a switch re-checks on the new channel.
+        SettingsHud* settings = ctx.parent;
+        SettingsHud::CycleControl channel;
+        channel.count = 2;
+        channel.get = []() { return UpdateChecker::getInstance().isPrereleaseChannel() ? 1 : 0; };
+        channel.set = [](int i) {
+            UpdateChecker::getInstance().setChannel(i == 1 ? UpdateChecker::UpdateChannel::PRERELEASE
+                                                           : UpdateChecker::UpdateChannel::STABLE);
+        };
+        channel.postStep = [settings]() {
+            UpdateChecker& checker = UpdateChecker::getInstance();
+            if (checker.isEnabled() && !checker.isChecking()) {
+                checker.setCompletionCallback([settings]() { settings->setDataDirty(); });
+                checker.checkForUpdates();
+            }
+        };
+        channel.repeat = false;   // a step starts an update check
+        ctx.addCycleControl("Update channel", channelText, channel,
                             nullptr, true, false, "updates.channel");
     }
 

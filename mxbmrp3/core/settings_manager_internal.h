@@ -32,7 +32,11 @@ inline constexpr const char* SETTINGS_FILENAME = "mxbmrp3_settings.ini";
 // 8: the Radar joins them. Its offsetX meant a LEFT EDGE, so unlike 7 the shift
 //    is half the panel's width and depends on the stored scale -- hence its own
 //    version: a file already stamped 7 would skip the shift.
-inline constexpr int SETTINGS_VERSION = 9;
+// 10: the Prestige widget defaults to OFF. Every older file carries the old
+//    default visible=1 in its base section, so the migration in loadSettings()
+//    switches it off for a player with no prestige level -- see
+//    settlePrestigeDefault(), which has to wait for the stats file.
+inline constexpr int SETTINGS_VERSION = 10;
 
 // The on-disk shape has been stable since v4 (base [HudName] sections + sparse
 // [HudName:Profile] overrides). The load dispatch keys off THIS floor, not off

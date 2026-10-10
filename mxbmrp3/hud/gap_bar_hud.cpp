@@ -22,7 +22,7 @@ using namespace PluginConstants;
 GapBarHud::GapBarHud()
     : m_cachedDisplayRaceNum(-1)
     , m_cachedSessionGeneration(-1)
-    , m_freezeDurationMs(FreezeDuration::DEFAULT_MS)
+    , m_freezeDurationMs(FreezeDuration::FOLLOW_DEFAULT)
     , m_markerMode(MarkerMode::GHOST)
     , m_labelMode(LabelMode::NONE)
     , m_riderColorMode(RiderColorMode::RELATIVE_POS)
@@ -86,6 +86,7 @@ void GapBarHud::update() {
             m_learnSplitCache[i] = -1;
         }
         m_cachedSessionGeneration = currentGeneration;
+        m_autoPeakMs = 0;
         if (isVisibleAnySurface()) setDataDirty();
     }
 
@@ -96,6 +97,7 @@ void GapBarHud::update() {
         DEBUG_INFO_F("GapBarHud: Spectate target changed from %d to %d",
             m_cachedDisplayRaceNum, currentDisplayRaceNum);
         m_cachedDisplayRaceNum = currentDisplayRaceNum;
+        m_autoPeakMs = 0;
         const CurrentLapData* currentLap = pluginData.getCurrentLapData();
         if (currentLap) {
             m_learnSplitCache[0] = currentLap->split1;
@@ -105,8 +107,19 @@ void GapBarHud::update() {
         if (isVisibleAnySurface()) setDataDirty();
     }
 
-    // Official splits and the line: freeze on their gap against m_reference
-    if (m_freeze.update(m_reference, m_freezeDurationMs) && isVisibleAnySurface()) {
+    // The Auto range's peak belongs to one lap against one reference: start it
+    // over when the gap comes back live (the next timed lap after the pits, or
+    // after a session reset) and when the Reference changes. A committed lap
+    // restarts it too (effectiveRangeMs); the out-lap from the pits is never
+    // committed, which is why the live flip is needed as well.
+    const Reference reference = getReference();
+    const bool live = pluginData.hasValidLiveGap(reference);
+    if ((live && !m_autoLive) || reference != m_autoReference) m_autoPeakMs = 0;
+    m_autoLive = live;
+    m_autoReference = reference;
+
+    // Official splits and the line: freeze on their gap against the reference
+    if (m_freeze.update(reference, HudDefaults::freezeMs(m_freezeDurationMs)) && isVisibleAnySurface()) {
         setDataDirty();
     }
     // Always, not only while shown: switching the ticks on mid-lap must not take
@@ -272,13 +285,13 @@ void GapBarHud::rebuildRenderData() {
         int gap = 0;
         const PluginData& data = PluginData::getInstance();
 
-        if (data.hasValidLiveGap(m_reference)) {
-            gap = data.getLiveGap(m_reference);
+        if (data.hasValidLiveGap(getReference())) {
+            gap = data.getLiveGap(getReference());
         }
 
         // Calculate bar extent: gap / range = percentage of half-bar
         // Positive gap (behind) = grow left (red), negative gap (ahead) = grow right (green)
-        float gapRatio = static_cast<float>(gap) / static_cast<float>(m_gapRangeMs);
+        float gapRatio = static_cast<float>(gap) / static_cast<float>(effectiveRangeMs(gap));
         gapRatio = std::max(-1.0f, std::min(1.0f, gapRatio));  // Clamp to -1..1
 
         // THE FILL'S TRAVEL SPANS THE CARD'S DRAWN BOX, the horizontal half of the
@@ -386,9 +399,8 @@ void GapBarHud::rebuildRenderData() {
     unsigned long gapColor;
 
     // The frozen official gap from a split/lap crossing, else the live one (full precision)
-    const PluginData& data = PluginData::getInstance();
-    if (m_freeze.isFrozen() || data.hasValidLiveGap(m_reference)) {
-        const int gap = m_freeze.isFrozen() ? m_freeze.frozenGap() : data.getLiveGap(m_reference);
+    int gap = 0;
+    if (m_freeze.shownGap(getReference(), &gap)) {
         PluginUtils::formatTimeDiff(gapBuffer, sizeof(gapBuffer), gap);
         gapColor = this->deltaColor(gap);
     } else {
@@ -438,6 +450,7 @@ void GapBarHud::setBarWidth(int percent) {
 void GapBarHud::resetToDefaults() {
     m_bVisible = false;  // Disabled by default
     m_reference = Reference::SESSION_PB;
+    m_referenceDefault = true;
     // Off by DEFAULT, not unavailable -- the toggle is in the Gap Bar tab. Switching
     // it on grows the box DOWNWARD, so the bar and everything under it move down by
     // the band's height; center_stack.h derives the two panels below from box heights
@@ -445,7 +458,7 @@ void GapBarHud::resetToDefaults() {
     m_bShowTitle = false;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     // First box of the center-top stack; see hud/center_stack.h for the whole
     // specification. One cell down from the screen edge, aligning with the
     // settings/camera buttons' row.
@@ -455,7 +468,7 @@ void GapBarHud::resetToDefaults() {
     setPosition(CENTER_ANCHOR_X, CenterStack::stackBoxTop());
 
     // Settings
-    m_freezeDurationMs = FreezeDuration::DEFAULT_MS;
+    m_freezeDurationMs = FreezeDuration::FOLLOW_DEFAULT;
     m_markerMode = MarkerMode::GHOST;  // Default to ghost-only
     m_labelMode = LabelMode::NONE;     // No labels by default (like MapHud default)
     m_labelAnchor = LabelAnchor::BELOW;  // ...and under the marker, like the other two
@@ -464,12 +477,26 @@ void GapBarHud::resetToDefaults() {
     m_showGapText = true;              // Show gap text by default
     m_showGapBar = true;               // Show gap visualization bars by default
     m_gapRangeMs = DEFAULT_RANGE_MS;
+    m_autoPeakMs = 0;
     m_barWidthPercent = DEFAULT_WIDTH_PERCENT;
     m_fMarkerScale = DEFAULT_MARKER_SCALE;
     m_showSplits = true;
 
     m_freeze.reset();
     setDataDirty();
+}
+
+// The fill's range: the setting, or under Auto the round step that holds the
+// lap's largest gap so far. A new lap (a lap committed) starts the peak over.
+int GapBarHud::effectiveRangeMs(int gapMs) {
+    if (m_gapRangeMs != RANGE_AUTO) return m_gapRangeMs;
+    const unsigned stamp = PluginData::getInstance().getPbGapTracker().lastLapStamp();
+    if (stamp != m_autoLapStamp) {
+        m_autoLapStamp = stamp;
+        m_autoPeakMs = 0;
+    }
+    m_autoPeakMs = std::max(m_autoPeakMs, std::abs(gapMs));
+    return std::max(MIN_RANGE_MS, PluginUtils::niceGapScaleMs(m_autoPeakMs));
 }
 
 // ============================================================================
@@ -684,8 +711,8 @@ void GapBarHud::renderRiderMarkers(float innerX, float innerY, float innerWidth,
 
     // === Render ghost (best lap) marker ===
     if ((m_markerMode == MarkerMode::GHOST || m_markerMode == MarkerMode::GHOST_OPPONENTS) &&
-        PluginData::getInstance().hasValidLiveGap(m_reference)) {
-        float bestLapProgress = PluginData::getInstance().getPbGhostProgress(m_reference);
+        PluginData::getInstance().hasValidLiveGap(getReference())) {
+        float bestLapProgress = PluginData::getInstance().getPbGhostProgress(getReference());
         if (bestLapProgress >= 0.0f && bestLapProgress <= 1.0f) {
             float markerX = innerX + (innerWidth * bestLapProgress);
 

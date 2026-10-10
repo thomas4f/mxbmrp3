@@ -111,10 +111,25 @@ def _fmt(v):
     return "{:,}".format(int(round(v)))
 
 
-def _fmt_share(v):
-    """A percentage for a tooltip: '<1%' for a nonzero share below 1% (as the
-    report's pctstr), so a sliver held by two installs does not read '0%'."""
-    return "<1%" if 0 < v < 1 else "{:.0f}%".format(v)
+def pctstr(count, total):
+    """'46%', '<1%' for a nonzero share below 1%, '>99%' for a share above 99%
+    that isn't the whole (so '100%' only ever means literally all)."""
+    p = (100.0 * count / total) if total else 0.0
+    if count > 0 and p < 1.0:
+        return "<1%"
+    if count < total and p > 99.0:
+        return ">99%"
+    return "{:.0f}%".format(p)
+
+
+def pc(count, total):
+    """'46% (1,606)' - share, then its count: THE report's one shape for a count
+    with its share, in charts, tables, text and hover readouts alike. (Count
+    charts used to lead with the count, "1,606 (46%)", on the grounds that their
+    bar is a count; the reader saw two orders for the same pair, not the reason.)
+    When the base differs from row to row, the report's adoption_annot adds it:
+    '46% (1,606 of 3,491)'."""
+    return "{} ({:,})".format(pctstr(count, total), int(count))
 
 
 def _value_pad(annotations):
@@ -166,7 +181,7 @@ def hbar(title, rows, subtitle="", value_fmt=_fmt, width=760, label_w=210):
     return _svg(width, h, "".join(parts), title)
 
 
-def stacked_hbar(title, rows, legend, subtitle="", width=760, label_w=210,
+def stacked_hbar(title, rows, legend, base, subtitle="", width=760, label_w=210,
                  icon_size=15):
     """Horizontal bars split into ordered segments, one row per category.
 
@@ -181,6 +196,9 @@ def stacked_hbar(title, rows, legend, subtitle="", width=760, label_w=210,
             each row sits.
     legend: [(css_class, name)] - always drawn, because identity must never rest
             on colour alone, and a static SVG has no hover to fall back on.
+    base:   what a segment's value is a share OF. Values are counts; a segment's
+            hover readout gives its share of base and the count, as pc() does
+            ("Bronze 5% (217)"), the same shape as the row's annotation.
 
     Segments are separated by a 2px gap of surface rather than butted together,
     and the whole bar is clipped to one rounded rect so only the outer end is
@@ -239,7 +257,7 @@ def stacked_hbar(title, rows, legend, subtitle="", width=760, label_w=210,
                 '<rect x="{x:.1f}" y="{y}" width="{w:.1f}" height="{h}" class="{c}"{t}/>'.format(
                     x=sx, y=y, w=max(0.0, sw - 2), h=row_h, c=cls,
                     t=_tip(label, "{} {}".format(seg[3] if len(seg) > 3 else names.get(cls, cls),
-                                                 _fmt_share(val)).strip(),
+                                                 pc(val, base)).strip(),
                            note=seg[2] if len(seg) > 2 else None)))
             sx += sw
         parts.append("</g>")
@@ -249,7 +267,9 @@ def stacked_hbar(title, rows, legend, subtitle="", width=760, label_w=210,
 
 
 def vbars(title, cats, subtitle="", value_fmt=_fmt, width=760, height=300):
-    """Vertical bar chart / histogram. cats: list of (label, value)."""
+    """Vertical bar chart / histogram. cats: list of (label, count). The buckets
+    partition one population, so a bar's hover readout gives its share of the
+    total and its count, as pc() does."""
     # The axis top is rounded and the ticks are exact, like the line chart's:
     # the raw maximum used to be the top, so the top label collided with the
     # subtitle and the half-way label read "26,309.5". The left pad grows with
@@ -263,6 +283,7 @@ def vbars(title, cats, subtitle="", value_fmt=_fmt, width=760, height=300):
     n = len(cats)
     plot_w = width - pad_l - pad_r
     plot_h = height - pad_t - pad_b
+    total = sum(c[1] for c in cats)
     slot = plot_w / max(1, n)
     bw = max(3, slot * 0.72)
     parts = ['<text x="12" y="20" class="title">{}</text>'.format(escape(title))]
@@ -282,7 +303,7 @@ def vbars(title, cats, subtitle="", value_fmt=_fmt, width=760, height=300):
         bh = plot_h * (val / vmax)
         y = base - bh
         parts.append('<rect x="{x:.1f}" y="{y:.1f}" width="{bw:.1f}" height="{bh:.1f}" rx="2" fill="{c}"{t}/>'.format(
-            x=x, y=y, bw=bw, bh=bh, c=PALETTE[0], t=_tip(label, value_fmt(val))))
+            x=x, y=y, bw=bw, bh=bh, c=PALETTE[0], t=_tip(label, pc(val, total))))
         parts.append('<text x="{x:.1f}" y="{y}" class="sub" text-anchor="middle">{v}</text>'.format(
             x=x + bw / 2, y=base + 14, v=escape(str(label))))
     return _svg(width, height, "".join(parts), title)
@@ -566,7 +587,7 @@ def stacked_bar(title, segments, subtitle="", width=760, value_fmt=_fmt):
         w = plot_w * (val / total)
         parts.append('<rect x="{x:.1f}" y="{y}" width="{w:.1f}" height="{h}" fill="{c}"{t}/>'.format(
             x=x, y=bar_y, w=w, h=bar_h, c=color,
-            t=_tip(label, "{} ({:.0f}%)".format(value_fmt(val), 100.0 * val / total))))
+            t=_tip(label, pc(val, total))))
         if w > 44:
             pct = 100.0 * val / total
             parts.append('<text x="{x:.1f}" y="{y}" class="val" text-anchor="middle" '

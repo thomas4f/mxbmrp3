@@ -253,6 +253,11 @@ int main(int argc, char** argv) {
 
     // Map ON, default view (no rotate/zoom): ribbon-quad cache SHOULD hit every
     // frame; the residual cost is the per-rebuild bounds traversals + riders.
+    // The zoom and rotate+zoom scenarios below measure the FLAT zoomed map;
+    // the factory Tilt is 30 deg since 1.32, so pin it off here (the tilted
+    // scenarios further down set their own).
+    auto MapTilt = (PFN_MapI)S("MXBMRP3_Test_MapSetTilt");
+    if (MapTilt) MapTilt(0);
     MapVisible(1); MapRotate(0); MapZoom(0); MapDetail(0);
     resetProf(); Stat def; runScenario(def, FRAMES);
     report("map ON, default (AUTO)", def, baseAvg); reportProfile("default");
@@ -286,6 +291,21 @@ int main(int argc, char** argv) {
     MapRotate(1);
     resetProf(); Stat both; runScenario(both, FRAMES);
     report("map ON, rotate+zoom", both, baseAvg); reportProfile("rotate+zoom");
+
+    // The tilted view (Map > Tilt at its most, zoomed only): every ribbon point also goes
+    // through the tilt, and the cull reaches the farther ground the top of the
+    // map shows. Zoom alone, then with rotate (the way it is meant to be used).
+    if (MapTilt) {
+        MapTilt(50); MapRotate(0);
+        resetProf(); Stat tilt; runScenario(tilt, FRAMES);
+        report("map ON, tilted zoom", tilt, baseAvg); reportProfile("tilted zoom");
+        free(tilt.us);
+        MapRotate(1);
+        resetProf(); Stat tiltBoth; runScenario(tiltBoth, FRAMES);
+        report("map ON, tilted rotate+zoom", tiltBoth, baseAvg); reportProfile("tilted rotate+zoom");
+        free(tiltBoth.us);
+        MapTilt(0);
+    }
     MapRotate(0); MapZoom(0);
 
     // Detail-scale sweep in ROTATE mode (the cache-defeated path, where the

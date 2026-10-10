@@ -9,6 +9,8 @@
 // no Off (a zero hold would hide the board for good) and its own 10 s default,
 // the fixed hold it had before it was a setting.
 // All four tabs draw the row with SettingsLayoutContext::addFreezeControl.
+// The three gap holds also take FOLLOW_DEFAULT: the General tab's Freeze
+// (UiConfig::getDefaultFreezeMs, resolved in hud_defaults.h).
 // ============================================================================
 #pragma once
 
@@ -17,6 +19,9 @@ namespace FreezeDuration {
     constexpr int MAX_MS = 10000;     // 10 seconds maximum
     constexpr int DEFAULT_MS = 5000;  // 5 seconds default
     constexpr int STEP_MS = 1000;     // 1 second steps
+    // "Default": follow the General tab's Freeze. One step below Off, so the
+    // slider runs Default, Off, 1 s ... 10 s and the arrows step through it too.
+    constexpr int FOLLOW_DEFAULT = MIN_MS - STEP_MS;
 
     // The Pitboard's At Splits hold: no Off, and its own default
     constexpr int PITBOARD_MIN_MS = STEP_MS;

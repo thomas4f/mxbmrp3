@@ -49,7 +49,6 @@ current="${major}.${minor}"
 # line for it to fall behind. The pattern needs a quoted third field, so those
 # rows are skipped here by construction rather than by a special case.
 mapfile -t versions < <(grep -oP '\{\s*SettingsHud::TAB_\w+\s*,\s*"[^"]*"\s*,\s*"\K[^"]+' "${TABLE}")
-
 fail=0
 for v in "${versions[@]:-}"; do
     [ -z "$v" ] && continue

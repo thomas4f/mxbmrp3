@@ -750,7 +750,7 @@ void GamepadWidget::resetToDefaults() {
     // TEXTURE with the buttons lit on top of it, so the art is the panel and a themed
     // frame around it is decoration around decoration. See the note there for why this
     // is the override rather than deleted code paths.
-    setThemeOverride(THEME_NONE);
+    setDefaultThemeOverride(THEME_NONE);
     m_bVisible = false;  // Hidden by default
     m_bShowTitle = false;  // No title (overlays gamepad texture)
     // The pad artwork IS this widget. Through the setter, not the member: it owns the
@@ -760,7 +760,7 @@ void GamepadWidget::resetToDefaults() {
     m_gamepadPack = AssetManager::DEFAULT_GAMEPAD;
     m_triggerFillMode = 0;
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
-    m_fScale = 1.0f;
+    setScale(1.0f);
     setPosition(cellsX(68), cellsY(62));
     setDataDirty();
 }

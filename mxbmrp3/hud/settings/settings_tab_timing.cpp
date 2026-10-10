@@ -78,17 +78,22 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
     }
 
     // Freeze duration: how long to hold official times / gaps after crossing a split
-    ctx.addFreezeControl("Freeze", &hud->m_displayDurationMs, true, hud, true, "timing.freeze");
+    ctx.addFreezeControl("Freeze", &hud->m_displayDurationMs, true, hud, true, "timing.freeze", true);
 
     // Big time row toggle
     ctx.addToggleControl("Time", hud->isTimeEnabled(),
         SettingsHud::ClickRegion::TIMING_TIME_TOGGLE, hud, nullptr, 0, true,
         "timing.time");
 
+    // Gap: the Gap Bar's gap without the bar, large under the time, against a reference of its own
+    // choosing (Off, then the same list the Gap Bar's Gap reference offers).
+    ctx.addReferenceControl("Gap", &hud->m_liveGapDefault, &hud->m_liveGapRef, hud,
+        "timing.gap", &hud->m_liveGapOn);
+
     // === COMPARISONS SECTION ===
     // Each enabled comparison is one row (name + value). No primary/secondary distinction.
     ctx.addSectionHeading("Comparisons");
-
+    ctx.beginColumns(2, 6);
     ctx.addToggleControl("Session PB", hud->isComparisonEnabled(GAP_TO_PB),
         SettingsHud::ClickRegion::TIMING_GAP_PB_TOGGLE, hud, nullptr, 0, true, "timing.gap_pb");
     ctx.addToggleControl("All-time PB", hud->isComparisonEnabled(GAP_TO_ALLTIME),
@@ -101,6 +106,7 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::TIMING_GAP_LASTLAP_TOGGLE, hud, nullptr, 0, true, "timing.gap_lastlap");
     ctx.addToggleControl("Record", hud->isComparisonEnabled(GAP_TO_RECORD),
         SettingsHud::ClickRegion::TIMING_GAP_RECORD_TOGGLE, hud, nullptr, 0, true, "timing.gap_record");
+    ctx.endColumns();
 
     // === READOUTS SECTION ===
     // The figures people otherwise run a whole widget to see. One row each, all
@@ -111,6 +117,7 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
     // columns do it: a toggle per readout would otherwise want a ClickRegion enum
     // value and a handler case each, one per readout, for identical behaviours.
     ctx.addSectionHeading("Readouts");
+    ctx.beginColumns(2, READOUT_COUNT);
     for (int i = 0; i < READOUT_COUNT; i++) {
         const ReadoutInfo& info = READOUT_INFO[i];
         // ONE tooltip id shared by all seven rows: they are one feature (the extra
@@ -121,6 +128,7 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
             SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledReadouts, info.flag,
             true, "timing.readouts");
     }
+    ctx.endColumns();
 
     // No tips here. Two lines ("PB scope lives in General", "bind Segment Add/Remove
     // in Hotkeys") pointed at other tabs from the bottom of this one, and the readout

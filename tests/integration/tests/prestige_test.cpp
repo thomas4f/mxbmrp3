@@ -516,3 +516,34 @@ TEST_CASE("prestige: a measurement in flight does not land on the new ladder") {
     host.runDeinit();
     host.eventDeinit();
 }
+
+// The v9 -> v10 migration switches the badge off for a player with no prestige
+// level, read from the stats file loaded after the settings. A stats file that
+// will not parse reads as level 0 too, so it must leave the badge as stored
+// (StatsManager::lastLoadUnreadable) rather than switch off one the player may
+// have earned; a missing file is a genuine "no level" and still switches it off.
+TEST_CASE("prestige: an unreadable stats file leaves the v9 badge as stored") {
+    const char* saveWin = "Z:\\tmp\\mxbmrp3-tests\\prestige_unreadable\\";
+    const std::string dir = "Z:\\tmp\\mxbmrp3-tests\\prestige_unreadable\\mxbmrp3\\";
+    const std::string iniPath = dir + "mxbmrp3_settings.ini";
+    const std::string statsPath = dir + "mxbmrp3_stats.json";
+    CreateDirectoryA("Z:\\tmp\\mxbmrp3-tests\\prestige_unreadable", nullptr);
+    CreateDirectoryA(dir.c_str(), nullptr);
+    const std::string v9 = "[Settings]\nversion=9\n\n[PrestigeWidget]\nvisible=1\n";
+
+    auto badgeAfterStartup = [&](const char* statsText) {
+        ini::writeFile(iniPath, v9);
+        if (statsText) ini::writeFile(statsPath, statsText);
+        else std::remove(statsPath.c_str());
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        host.startup(saveWin);
+        REQUIRE(host.save());
+        host.shutdown();
+        const ini::Map out = ini::parse(ini::readFile(iniPath));
+        auto it = out.find({"PrestigeWidget", "visible"});
+        return it == out.end() ? std::string() : it->second;
+    };
+    CHECK(badgeAfterStartup("{ \"prestige\": 2, \"global\": { ") == "1");   // truncated JSON
+    CHECK(badgeAfterStartup(nullptr) == "0");
+}

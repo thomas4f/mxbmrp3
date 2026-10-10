@@ -27,11 +27,11 @@ A pack's payload is its own `.tga` art, or `.wav` audio for a voice, alongside i
 
 **`base = <pack>` is one rule for every pack type.** Your ini layers over the named pack: whatever your folder and ini state wins, and everything they leave out - art, geometry, colors, offsets - is answered from the base. So a reskin is a folder holding a `<type>.ini` with a `base` line and the one or two files you actually changed. A base must itself be a pack with no `base` of its own.
 
-**What needs a restart and what does not.** ADDING or REMOVING a `.tga` needs one: sprites are handed to the game once at startup and everything holds them by number afterwards. Everything else the **Reload Config** hotkey picks up - a changed `.ini` (theme, gamepad, pit board, gauges), and a voice pack's `.wav` outright, since audio is opened by path as it plays. Redrawn `.tga` art is the case in between: the companion window re-reads it on the hotkey, while the game keeps the old art until you relaunch.
+**What needs a restart and what does not.** ADDING or REMOVING a `.tga` needs one: sprites are handed to the game once at startup and everything holds them by number afterwards. Everything else the **Reload** hotkey picks up - a changed `.ini` (theme, gamepad, pit board, gauges), and a voice pack's `.wav` outright, since audio is opened by path as it plays. Redrawn `.tga` art is the case in between: the companion window re-reads it on the hotkey, while the game keeps the old art until you relaunch.
 
 ## Panel themes
 
-A theme draws a frame, a header band and a body card around every HUD and the settings menu. Pick one with **Panel Theme** (Settings > Appearance), or run with none.
+A theme draws a frame, a header band and a body card around every HUD and the settings menu. Pick one with **Panel theme** (Settings > Appearance), or run with none.
 
 A light theme is worth a note: its text is near-black, so a HUD you run with its background switched off will draw dark text straight onto the track. Turn those backgrounds on, or keep a dark theme for on-track HUDs.
 

@@ -58,11 +58,13 @@ enum class HotkeyAction : uint8_t {
     DIRECTOR_LOCK,               // Auto-director: lock onto the current rider (pin subject)
     SPOTTER_CUE,                 // Spotter: speak the pack's `hotkey_triggered` line
     CRASH_RESET,                 // Crash widget: zero the streaming tally
-    TOGGLE_STREAM_CHAT,          // Stream chat HUD on/off (INI-only: stream_chat_key=)
+    TOGGLE_STREAM_CHAT,          // Stream chat HUD on/off
+    TOGGLE_DELTA_TRACE,          // Delta Trace HUD on/off
     COUNT  // Must be last
 };
 
-// Get display name for an action
+// Display name for an action: the Hotkeys tab's name column, which holds 9
+// characters (two bindings share a row there; HotkeysNamesFit pins it).
 inline const char* getActionDisplayName(HotkeyAction action) {
     switch (action) {
         case HotkeyAction::TOGGLE_STANDINGS:    return "Standings";
@@ -73,15 +75,15 @@ inline const char* getActionDisplayName(HotkeyAction action) {
         case HotkeyAction::TOGGLE_TELEMETRY:    return "Telemetry";
         case HotkeyAction::TOGGLE_INPUT:        return "Input";
         case HotkeyAction::TOGGLE_RECORDS:      return "Records";
-        case HotkeyAction::TOGGLE_WIDGETS:      return "All Widgets";
+        case HotkeyAction::TOGGLE_WIDGETS:      return "Widgets";
         case HotkeyAction::TOGGLE_PITBOARD:     return "Pitboard";
         case HotkeyAction::TOGGLE_TIMING:       return "Timing";
         case HotkeyAction::TOGGLE_GAP_BAR:      return "Gap Bar";
-        case HotkeyAction::TOGGLE_PERFORMANCE:  return "Performance";
+        case HotkeyAction::TOGGLE_PERFORMANCE:  return "Perf";
         case HotkeyAction::TOGGLE_RUMBLE:       return "Rumble";
-        case HotkeyAction::TOGGLE_ALL_HUDS:     return "All Elements";
-        case HotkeyAction::TOGGLE_SETTINGS:     return "Settings Menu";
-        case HotkeyAction::RELOAD_CONFIG:          return "Reload Config";
+        case HotkeyAction::TOGGLE_ALL_HUDS:     return "All HUDs";
+        case HotkeyAction::TOGGLE_SETTINGS:     return "Settings";
+        case HotkeyAction::RELOAD_CONFIG:          return "Reload";
         case HotkeyAction::TOGGLE_SESSION_CHARTS:     return "Charts";
         case HotkeyAction::TOGGLE_FMX:             return "FMX";
         case HotkeyAction::TOGGLE_STATS:           return "Stats";
@@ -91,17 +93,18 @@ inline const char* getActionDisplayName(HotkeyAction action) {
         case HotkeyAction::TOGGLE_HELMET:          return "Helmet";
         case HotkeyAction::TOGGLE_FRIENDS:         return "Friends";
         case HotkeyAction::OVERLAY_FORCE_LAST_LAP:    return "Last Lap";
-        case HotkeyAction::OVERLAY_FORCE_FASTEST_LAP: return "Fastest Lap";
-        case HotkeyAction::OVERLAY_FORCE_DOWN_ORDER:  return "Down Order";
+        case HotkeyAction::OVERLAY_FORCE_FASTEST_LAP: return "Fastest";
+        case HotkeyAction::OVERLAY_FORCE_DOWN_ORDER:  return "Rundown";
         case HotkeyAction::OVERLAY_FORCE_SECTORS:     return "Sectors";
         case HotkeyAction::OVERLAY_FORCE_CHARTS:      return "Charts";
-        case HotkeyAction::SPOTTER_CUE:               return "Spotter Cue";
-        case HotkeyAction::CRASH_RESET:               return "Reset Crashes";
-        case HotkeyAction::SEGMENT_ADD:               return "Segment Add";
-        case HotkeyAction::SEGMENT_REMOVE:            return "Segment Remove";
+        case HotkeyAction::SPOTTER_CUE:               return "Spotter";
+        case HotkeyAction::CRASH_RESET:               return "Crashes 0";
+        case HotkeyAction::SEGMENT_ADD:               return "Segment +";
+        case HotkeyAction::SEGMENT_REMOVE:            return "Segment -";
         case HotkeyAction::DIRECTOR_TOGGLE:           return "Director";
-        case HotkeyAction::DIRECTOR_LOCK:             return "Director Lock";
-        case HotkeyAction::TOGGLE_STREAM_CHAT:        return "Stream Chat";
+        case HotkeyAction::DIRECTOR_LOCK:             return "Cam Lock";
+        case HotkeyAction::TOGGLE_STREAM_CHAT:        return "Chat";
+        case HotkeyAction::TOGGLE_DELTA_TRACE:        return "Delta";
         default: return "Unknown";
     }
 }
@@ -149,6 +152,7 @@ inline const char* getActionConfigName(HotkeyAction action) {
         case HotkeyAction::DIRECTOR_TOGGLE:           return "director_toggle";
         case HotkeyAction::DIRECTOR_LOCK:             return "director_lock";
         case HotkeyAction::TOGGLE_STREAM_CHAT:        return "stream_chat";
+        case HotkeyAction::TOGGLE_DELTA_TRACE:        return "delta_trace";
         default: return "unknown";
     }
 }
@@ -259,7 +263,21 @@ struct HotkeyBinding {
     void clearKeyboard() { keyboard.clear(); }
     void clearController() { controller = ControllerButton::NONE; }
     void clearAll() { clearKeyboard(); clearController(); }
+
+    bool operator==(const HotkeyBinding& other) const {
+        return keyboard == other.keyboard && controller == other.controller;
+    }
+    bool operator!=(const HotkeyBinding& other) const { return !(*this == other); }
 };
+
+// The shipped binding for an action: only the settings menu has one. ONE table,
+// read by HotkeyManager::resetToDefaults() and by Keymaster (a binding the
+// player made is one that differs from this, so the shipped key earns nothing).
+inline HotkeyBinding defaultHotkeyBinding(HotkeyAction action) {
+    // VK_OEM_3 is ` on US keyboards, § on some EU layouts
+    if (action == HotkeyAction::TOGGLE_SETTINGS) return HotkeyBinding(VK_OEM_3);
+    return HotkeyBinding();
+}
 
 // ============================================================================
 // Key Name Utilities

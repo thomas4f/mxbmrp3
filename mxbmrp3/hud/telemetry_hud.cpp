@@ -469,7 +469,7 @@ void TelemetryHud::resetToDefaults() {
     m_bShowTitle = true;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     m_graphRows = DEFAULT_GRAPH_ROWS;
     setPosition(cellsX(133), cellsY(38));
     m_enabledElements = ELEM_DEFAULT;

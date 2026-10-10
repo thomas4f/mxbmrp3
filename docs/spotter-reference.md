@@ -49,7 +49,7 @@ shipped ini - the three deliberately agree.
 | `fuel_critical` | on | ...and now about two, where it turns red; falls back to fuel_low |
 | `pit_entry_you` | on | you entered the pits |
 | `pit_exit_you` | on | you left the pits |
-| `hotkey_triggered` | on | the Spotter Cue hotkey was pressed |
+| `hotkey_triggered` | on | the Spotter hotkey was pressed |
 | `voice_preview` | on | cycling onto this pack in the settings. Optional even for a recorded pack - absent, the plugin builds a preview from the number clips every pack has - and it never reaches the subtitle |
 
 ### Timing

@@ -170,7 +170,14 @@ namespace {
 // 2.28.0 = added feat_youtube (YouTube chat connection in use: enabled AND a
 //          channel set), feat_twitch's twin. hud_stream_chat is still the one
 //          chat HUD, whichever platforms feed it.
-constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.28.0";
+// 2.29.0 = crash event and error report carry av_addr: the address an access
+//          violation tried to touch, as null+0x<off> / <module>+0x<off> / 0x<addr>
+//          (CrashStack::formatAvAddress). Tells a null-pointer bug, a use-after-free
+//          and a corrupted pointer apart. Absent for other exceptions.
+// 2.30.0 = widget_prestige is 1 only when the badge is on AND unlocked (a prestige
+//          level taken, or developer mode). It used to read the stored switch
+//          alone, which defaulted on, so nearly every install reported it.
+constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.30.0";
 
 // The two Aptabase ingest paths a queued POST can name.
 constexpr const wchar_t* PATH_EVENTS = L"/api/v0/events";
@@ -609,8 +616,8 @@ std::string AnalyticsManager::buildSessionEventBody(const std::string& eventName
 }
 
 std::string AnalyticsManager::buildErrorReportBody(const std::string& fault, const std::string& code,
-        const std::string& avType, const std::string& gameBuild, const std::string& pluginVer,
-        const std::string& stack) const {
+        const std::string& avType, const std::string& avAddr, const std::string& gameBuild,
+        const std::string& pluginVer, const std::string& stack) const {
     using nlohmann::json;
     // errorType: the faulting module alone, so the Errors page groups by where
     // it faulted; the offset (which moves with every game build) is in the message.
@@ -623,8 +630,12 @@ std::string AnalyticsManager::buildErrorReportBody(const std::string& fault, con
     if (!avType.empty()) message += " " + avType;
     if (!gameBuild.empty()) message += " game " + gameBuild;
     if (!pluginVer.empty()) message += " plugin " + pluginVer;
-    // One frame per line, leaf first, as the dashboard renders a stack trace.
+    // One frame per line, leaf first, as the dashboard renders a stack trace. The
+    // access-violation target (2.29.0) leads it, NOT the message: the dashboard
+    // groups on type + message, and a heap address differs on every launch, so in
+    // the message it would give each crash a group of its own.
     std::string trace;
+    if (!avAddr.empty()) trace = "accessed " + avAddr;
     for (size_t i = 0; i < stack.size();) {
         const size_t sp = stack.find(' ', i);
         const std::string frame = stack.substr(i, sp == std::string::npos ? std::string::npos : sp - i);
@@ -673,7 +684,7 @@ void AnalyticsManager::sendPendingCrashReport() {
         return;  // no crash since the last launch
     }
 
-    std::string fault, code, pluginVer, gameBuild, host, stack, stackFull, avType;
+    std::string fault, code, pluginVer, gameBuild, host, stack, stackFull, avType, avAddr;
     unsigned long long crashTime = 0;
     try {
         std::ifstream in(m_pendingCrashPath);
@@ -698,6 +709,9 @@ void AnalyticsManager::sendPendingCrashReport() {
             // Access-violation sub-type (read/write/execute). Absent on older markers
             // or for non-access-violation exceptions.
             avType = j.value("av_type", "");
+            // The address it tried to touch (2.29.0), already labelled by the crash
+            // handler. Absent on older markers or for other exceptions.
+            avAddr = j.value("av_addr", "");
         }
     } catch (const std::exception& e) {
         DEBUG_WARN_F("AnalyticsManager: unreadable crash marker: %s", e.what());
@@ -718,10 +732,11 @@ void AnalyticsManager::sendPendingCrashReport() {
                 {"fault", fault}, {"code", code},
                 {"crash_plugin_version", pluginVer}, {"game_build", gameBuild},
                 {"host", host}, {"stack", stack}, {"av_type", avType},
+                {"av_addr", avAddr},
             };
             std::string body = buildSessionEventBody("crash", duration, props);
             // 2.22.0: the same fault once more, for the Errors page.
-            std::string report = buildErrorReportBody(fault, code, avType, gameBuild, pluginVer,
+            std::string report = buildErrorReportBody(fault, code, avType, avAddr, gameBuild, pluginVer,
                                                       stackFull.empty() ? stack : stackFull);
             {
                 MutexLock lock(m_eventMutex);

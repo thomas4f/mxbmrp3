@@ -79,6 +79,7 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
 
     // === CONTENT SECTION ===
     ctx.addSectionHeading("Content");
+    ctx.beginColumns(2, 3);   // side by side (beginColumns)
 
     // Column toggles
     ctx.addToggleControl("Last lap", hud->m_showLap,
@@ -93,6 +94,7 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::STATS_SHOW_ALLTIME_TOGGLE,
         hud, nullptr, 0, true, "stats.show_alltime");
 
+    ctx.endColumns();
 
     // Colors and fonts
     ColorConfig& colors = ColorConfig::getInstance();
@@ -105,6 +107,8 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
     ctx.addSectionHeading("Overall");
 
     const GlobalStats global = stats.getGlobalStats();
+    // Two columns of read-only figures: short labels, short values.
+    ctx.beginColumns(2, 11);
 
     // A read-only stat: label at labelX, value in the CONTROL column, so these rows
     // line up with every other tab's cyclers -- and in their colours too (secondary
@@ -160,8 +164,7 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
 
     snprintf(valueBuf, sizeof(valueBuf), "%d", global.breakoutHighScore);
     addGlobalRow("Breakout score", valueBuf);
-
-    ctx.addNote("Tip: your stats are saved to mxbmrp3_stats.json.");
+    ctx.endColumns();
 
     return hud;
 }

@@ -53,18 +53,30 @@ TMP="$(mktemp -d)"; trap 'rm -rf "${TMP}"' EXIT
 NORMALISED=(
   "Audiowide Regular|Audiowide-Regular"
   "Caveat Brush Regular|CaveatBrush-Regular"
+  "Chakra Petch Bold Italic|ChakraPetch-BoldItalic"
+  "Chakra Petch SemiBold Italic|ChakraPetch-SemiBoldItalic"
+  "Doto Bold|Doto-Bold"
+  "Doto Regular|Doto-Regular"
   "Enter Sansman Italic|EnterSansman-Italic"
   "Fuzzy Bubbles Regular|FuzzyBubbles-Regular"
   "Gloria Hallelujah Regular|GloriaHallelujah-Regular"
   "IBM Plex Mono Regular|IBMPlexMono-Regular"
   "IBM Plex Sans Regular|IBMPlexSans-Regular"
   "IBM Plex Sans SemiBold|IBMPlexSans-SemiBold"
+  # LCD14-*.ttf is derived from DSEG14 Classic, not downloaded: derive_lcd14.py
+  "LCD14 Bold|LCD14-Bold"
+  "LCD14 Regular|LCD14-Regular"
+  # LCD7-*.ttf likewise, from DSEG7 Classic: derive_lcd7.py
+  "LCD7 Bold Italic|LCD7-BoldItalic"
   "Permanent Marker Regular|PermanentMarker-Regular"
+  "Quantico Bold Italic|Quantico-BoldItalic"
   "Reenie Beanie Regular|ReenieBeanie-Regular"
   "Roboto Mono Bold|RobotoMono-Bold"
   "Roboto Mono Regular|RobotoMono-Regular"
   "Rock Salt Regular|RockSalt-Regular"
   "Tiny5 Regular|Tiny5-Regular"
+  "Tomorrow Bold Italic|Tomorrow-BoldItalic"
+  "Tomorrow SemiBold Italic|Tomorrow-SemiBoldItalic"
 )
 for entry in "${NORMALISED[@]}"; do
     name="${entry%%|*}"; file="${entry##*|}"

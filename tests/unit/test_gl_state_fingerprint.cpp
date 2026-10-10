@@ -1,8 +1,8 @@
 // ============================================================================
 // tests/unit/test_gl_state_fingerprint.cpp
-// core/gl_state_fingerprint.h — the comparison half of the Phase 0 GL probe.
+// core/gl_state_fingerprint.h — the comparison half of the GL state-leak check.
 //
-// WHY THIS TEST EARNS ITS PLACE. The probe's whole safety claim is "we drew in
+// WHY THIS TEST EARNS ITS PLACE. The GL backend's whole safety claim is "we drew in
 // the game's context and left it exactly as we found it", and the evidence for
 // that claim is diff() returning 0. A diff() that fails to notice a changed
 // value would print "state restored clean" for a renderer that leaks a bound
@@ -11,8 +11,8 @@
 // it be seen; the clean case alone would pass against a function that returns 0
 // unconditionally.
 //
-// The GL side (a real context, a real draw) cannot be reached headlessly at
-// all; that is the manual half of Phase 0, and gl_probe.h says so.
+// The GL side (a real context, a real draw) is gl_render_test.cpp under Xvfb,
+// which runs this same diff() around a backend render.
 // ============================================================================
 #include "doctest.h"
 #include "core/gl_state_fingerprint.h"
@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-using namespace glprobe;
+using namespace glstate;
 
 namespace {
 
@@ -41,7 +41,7 @@ struct FakeGl {
 };
 
 // A GL 4.6 compatibility context: every token in the table is supported, which
-// is the configuration the probe most likely meets in the field.
+// is the configuration the backend most likely meets in the field.
 constexpr int kVer46 = 46;
 
 }  // namespace
@@ -67,7 +67,7 @@ TEST_CASE("fingerprint: identical samples differ in nothing") {
 }
 
 TEST_CASE("fingerprint: a leaked binding is caught and named") {
-    // The exact production failure this guards: the probe unbinds the game's
+    // The exact failure this guards: a renderer unbinds the game's
     // shader program to draw with fixed function and fails to put it back.
     FakeGl before;
     Fingerprint a = capture(kVer46, true, before);

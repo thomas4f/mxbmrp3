@@ -38,46 +38,6 @@ bool SettingsHud::handleClickTabRiders(const ClickRegion& region) {
             }
             return true;
 
-        case ClickRegion::RIDER_COLOR_PREV:
-            {
-                auto* namePtr = std::get_if<std::string>(&region.targetPointer);
-                if (namePtr) {
-                    TrackedRidersManager::getInstance().cycleTrackedRiderColor(*namePtr, false);
-                    rebuildRenderData();
-                }
-            }
-            return true;
-
-        case ClickRegion::RIDER_COLOR_NEXT:
-            {
-                auto* namePtr = std::get_if<std::string>(&region.targetPointer);
-                if (namePtr) {
-                    TrackedRidersManager::getInstance().cycleTrackedRiderColor(*namePtr, true);
-                    rebuildRenderData();
-                }
-            }
-            return true;
-
-        case ClickRegion::RIDER_SHAPE_PREV:
-            {
-                auto* namePtr = std::get_if<std::string>(&region.targetPointer);
-                if (namePtr) {
-                    TrackedRidersManager::getInstance().cycleTrackedRiderShape(*namePtr, false);
-                    rebuildRenderData();
-                }
-            }
-            return true;
-
-        case ClickRegion::RIDER_SHAPE_NEXT:
-            {
-                auto* namePtr = std::get_if<std::string>(&region.targetPointer);
-                if (namePtr) {
-                    TrackedRidersManager::getInstance().cycleTrackedRiderShape(*namePtr, true);
-                    rebuildRenderData();
-                }
-            }
-            return true;
-
         case ClickRegion::SERVER_PAGE_PREV:
             if (m_serverPlayersPage > 0) {
                 m_serverPlayersPage--;
@@ -113,7 +73,7 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
 
     // Tracked Riders tab - two-section layout:
     // Top: Server players grid (clickable to add)
-    // Bottom: Tracked riders with icon (left=color, right=shape), hover shows remove on right
+    // Bottom: Tracked riders, each with colour and icon dropdowns; hover shows remove on right
     TrackedRidersManager& trackedMgr = TrackedRidersManager::getInstance();
     const PluginData& pluginData = PluginData::getInstance();
     float charWidth = PluginUtils::calculateMonospaceTextWidth(1, ctx.fontSize);
@@ -125,14 +85,15 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
     float gridCharWidth = charWidth;
 
     // Grid layout constants - 3 columns with pagination.
-    // Row counts fill the panel height (sized to the tallest tab, Rumble): the ~8 rows of
-    // slack over the old 6+12 are split evenly between the two sections (+4 each).
+    // Row counts keep this tab under the panel height the other tabs set (the
+    // Widgets table binds it): a full page of either list used to make Riders the
+    // tallest tab.
     constexpr int SERVER_PLAYERS_PER_ROW = 3;
-    constexpr int SERVER_PLAYERS_ROWS = 10;
-    constexpr int SERVER_PLAYERS_PER_PAGE = SERVER_PLAYERS_PER_ROW * SERVER_PLAYERS_ROWS;  // 30 per page
-    constexpr int TRACKED_PER_ROW = 3;
-    constexpr int TRACKED_ROWS = 16;
-    constexpr int TRACKED_PER_PAGE = TRACKED_PER_ROW * TRACKED_ROWS;  // 48 per page
+    constexpr int SERVER_PLAYERS_ROWS = 8;
+    constexpr int SERVER_PLAYERS_PER_PAGE = SERVER_PLAYERS_PER_ROW * SERVER_PLAYERS_ROWS;  // 24 per page
+    constexpr int TRACKED_PER_ROW = 2;   // two: room for a whole name after the dropdowns
+    constexpr int TRACKED_ROWS = 13;
+    constexpr int TRACKED_PER_PAGE = TRACKED_PER_ROW * TRACKED_ROWS;  // 26 per page
 
     // Calculate available content width (same method as version number)
     float rightEdgeX = ctx.contentAreaStartX + ctx.panelWidth - ctx.paddingH - ctx.paddingH;
@@ -150,8 +111,10 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
     int serverNameChars = serverCellChars - 6;  // 5 = "#" + 3 digits + space, +1 buffer
     if (serverNameChars < 5) serverNameChars = 5;  // Minimum name length
 
-    // Tracked cell format: "[ico] Name-" - icon takes 3 chars, remove takes 2, 1 char buffer
-    int trackedNameChars = trackedCellChars - 6;  // 3 for icon, 2 for remove, 1 buffer
+    // Tracked cell format: "[colour v] [icon v] Name x" - two swatch dropdowns of
+    // SWATCH_BOX_CHARS with a char after each, remove takes 2, 1 char buffer
+    constexpr int SWATCH_BOX_CHARS = 3;
+    int trackedNameChars = trackedCellChars - 2 * (SWATCH_BOX_CHARS + 1) - 3;
     if (trackedNameChars < 5) trackedNameChars = 5;  // Minimum name length
 
     float cellHeight = gridLineHeight;
@@ -227,7 +190,7 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
     // =====================================================
     // SECTION 2: Tracked Riders Grid
     // =====================================================
-    ctx.addSectionHeading("Tracked Riders", "(L-click: color/plate, R-click: icon)");
+    ctx.addSectionHeading("Tracked Riders");
 
     // Get tracked riders
     const auto& allTracked = trackedMgr.getAllTrackedRiders();
@@ -281,18 +244,41 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
 
             float x = cellX;
 
-            // Icon sprite (clickable for color on left-click, icon on right-click)
+            // Two swatch dropdowns ahead of the name: the rider's colour, then its
+            // icon (in that colour), each a box with a caret opening its list --
+            // the Appearance tab's colour cells, small.
             {
-                float spriteHalfSize = baseHalfSize;
-                int spriteIndex = AssetManager::getInstance().iconSpriteForShape(shapeIndex);
+                const int colorIdx = static_cast<int>(ctx.parent->m_cycleControls.size());
+                ctx.parent->m_cycleControls.push_back(paletteCycle(
+                    [riderName]() {
+                        const TrackedRiderConfig* r = TrackedRidersManager::getInstance().getTrackedRider(riderName);
+                        return r ? r->color : 0UL;
+                    },
+                    [riderName](unsigned long c) { TrackedRidersManager::getInstance().setTrackedRiderColor(riderName, c); },
+                    nullptr));
+                const int shapeIdx = static_cast<int>(ctx.parent->m_cycleControls.size());
+                ctx.parent->m_cycleControls.push_back(iconCycle(
+                    [riderName]() {
+                        const TrackedRiderConfig* r = TrackedRidersManager::getInstance().getTrackedRider(riderName);
+                        return r ? r->shapeIndex : 1;
+                    },
+                    [riderName](int v) { TrackedRidersManager::getInstance().setTrackedRiderShape(riderName, v); },
+                    nullptr, /*allowOff=*/false));
 
-                float spriteCenterX = x + gridCharWidth * 1.5f;  // Center icon in 3-char space
-                float spriteCenterY = rowY + cellHeight * 0.5f;
-                float spriteHalfWidth = spriteHalfSize / UI_ASPECT_RATIO;
+                const float boxW = gridCharWidth * SWATCH_BOX_CHARS;
+                const float swatchH = cellHeight * 0.5f;
+                ctx.addDropdownBox(x, rowY, boxW, colorIdx, true, "riders.color");
+                ctx.addSolidQuad(x + gridCharWidth * 0.1f, rowY + (cellHeight - swatchH) * 0.5f, gridCharWidth, swatchH, riderColor);
+                x += boxW + gridCharWidth;
 
-                SPluginQuad_t sprite;
-                float sx = spriteCenterX, sy = spriteCenterY;
+                // Sprite sizing - match StandingsHud icon size (0.006f base)
+                ctx.addDropdownBox(x, rowY, boxW, shapeIdx, true, "riders.icon");
+                const float spriteHalfSize = baseHalfSize;
+                const int spriteIndex = AssetManager::getInstance().iconSpriteForShape(shapeIndex);
+                const float spriteHalfWidth = spriteHalfSize / UI_ASPECT_RATIO;
+                float sx = x + gridCharWidth * 0.6f, sy = rowY + cellHeight * 0.5f;
                 ctx.parent->applyOffset(sx, sy);
+                SPluginQuad_t sprite;
                 sprite.m_aafPos[0][0] = sx - spriteHalfWidth;
                 sprite.m_aafPos[0][1] = sy - spriteHalfSize;
                 sprite.m_aafPos[1][0] = sx - spriteHalfWidth;
@@ -304,15 +290,8 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
                 sprite.m_iSprite = spriteIndex;
                 sprite.m_ulColor = riderColor;
                 ctx.parent->m_quads.push_back(sprite);
-
-                // Click region for color cycling (left-click) and shape cycling (right-click)
-                // Covers icon + name area (icon3 + nameChars = trackedCellChars - 2 for remove)
-                ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                    x, rowY, gridCharWidth * (3 + trackedNameChars), cellHeight,
-                    SettingsHud::ClickRegion::RIDER_COLOR_NEXT, riderName
-                ));
+                x += boxW + gridCharWidth;
             }
-            x += gridCharWidth * 3;  // Space for icon (3 chars)
 
             // Name (dynamic width based on available space)
             char truncName[48];
@@ -320,9 +299,10 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
             ctx.parent->addString(truncName, x, rowY, Justify::LEFT,
                 Fonts::getNormal(), colors.getSecondary(), gridFontSize);
 
-            // Remove "x" only shown on hover, fixed at right edge of cell
+            // Remove "x" only shown on hover, a space after the name
             if (isHovered) {
-                float removeX = cellX + trackedCellWidth - gridCharWidth * 2;
+                const int shownChars = std::min(static_cast<int>(riderName.size()), trackedNameChars);
+                float removeX = x + gridCharWidth * static_cast<float>(shownChars + 1);
                 ctx.parent->addString("x", removeX, rowY, Justify::LEFT,
                     Fonts::getNormal(), colors.getNegative(), gridFontSize);
                 ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
@@ -338,8 +318,6 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
     if (trackedTotalPages > 1) ctx.addSpacing();
     ctx.addPager(ctx.parent->m_trackedRidersPage, trackedTotalPages,
                  SettingsHud::ClickRegion::TRACKED_PAGE_PREV, SettingsHud::ClickRegion::TRACKED_PAGE_NEXT);
-
-    ctx.addNote("Tip: tracked riders are saved to mxbmrp3_tracked_riders.json.");
 
     // No active HUD for riders settings
     return nullptr;

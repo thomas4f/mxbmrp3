@@ -75,8 +75,14 @@
 #include "../hud/stats_hud.h"
 #include "../hud/event_log_hud.h"
 #include "../hud/stream_chat_hud.h"
+#include "../hud/delta_trace_hud.h"
 #include "../hud/benchmark_widget.h"
+#include "../hud/achievement_widget.h"
+#include "../hud/spotter_widget.h"
+#include "../hud/gl_confirm_hud.h"
 #include "hotkey_manager.h"
+#include "system_messages.h"
+#include "settings_manager_internal.h"
 #if GAME_HAS_HTTP_SERVER
 #include "http_server.h"
 #endif
@@ -178,36 +184,43 @@ void HudManager::processKeyboardInput() {
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_ALL_HUDS)) {
         m_bAllHudsToggledOff = !m_bAllHudsToggledOff;
         DEBUG_INFO_F("Hotkey: All HUDs temporarily %s", m_bAllHudsToggledOff ? "hidden" : "shown");
+        announceMasterToggle(HotkeyAction::TOGGLE_ALL_HUDS, !m_bAllHudsToggledOff);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_STANDINGS) && m_pStandings) {
         m_pStandings->setVisible(!m_pStandings->isVisible());
         DEBUG_INFO_F("Hotkey: Standings %s", m_pStandings->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_STANDINGS, *m_pStandings, SettingsHud::TAB_STANDINGS);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_MAP) && m_pMapHud) {
         m_pMapHud->setVisible(!m_pMapHud->isVisible());
         DEBUG_INFO_F("Hotkey: Map %s", m_pMapHud->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_MAP, *m_pMapHud, SettingsHud::TAB_MAP);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_RADAR) && m_pRadarHud) {
         m_pRadarHud->setVisible(!m_pRadarHud->isVisible());
         DEBUG_INFO_F("Hotkey: Radar %s", m_pRadarHud->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_RADAR, *m_pRadarHud, SettingsHud::TAB_RADAR);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_LAP_LOG) && m_pLapLog) {
         m_pLapLog->setVisible(!m_pLapLog->isVisible());
         DEBUG_INFO_F("Hotkey: Lap Log %s", m_pLapLog->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_LAP_LOG, *m_pLapLog, SettingsHud::TAB_LAP_LOG);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_IDEAL_LAP) && m_pIdealLap) {
         m_pIdealLap->setVisible(!m_pIdealLap->isVisible());
         DEBUG_INFO_F("Hotkey: Ideal Lap %s", m_pIdealLap->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_IDEAL_LAP, *m_pIdealLap, SettingsHud::TAB_IDEAL_LAP);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_TELEMETRY) && m_pTelemetry) {
         m_pTelemetry->setVisible(!m_pTelemetry->isVisible());
         DEBUG_INFO_F("Hotkey: Telemetry %s", m_pTelemetry->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_TELEMETRY, *m_pTelemetry, SettingsHud::TAB_TELEMETRY);
     }
 
     // TOGGLE_INPUT removed - individual widget toggles not supported (use TOGGLE_WIDGETS)
@@ -216,83 +229,105 @@ void HudManager::processKeyboardInput() {
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_RECORDS) && m_pRecords) {
         m_pRecords->setVisible(!m_pRecords->isVisible());
         DEBUG_INFO_F("Hotkey: Records %s", m_pRecords->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_RECORDS, *m_pRecords, SettingsHud::TAB_RECORDS);
     }
 #endif
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_WIDGETS)) {
         m_bAllWidgetsToggledOff = !m_bAllWidgetsToggledOff;
         DEBUG_INFO_F("Hotkey: Widgets temporarily %s", m_bAllWidgetsToggledOff ? "hidden" : "shown");
+        announceMasterToggle(HotkeyAction::TOGGLE_WIDGETS, !m_bAllWidgetsToggledOff);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_PITBOARD) && m_pPitboard) {
         m_pPitboard->setVisible(!m_pPitboard->isVisible());
         DEBUG_INFO_F("Hotkey: Pitboard %s", m_pPitboard->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_PITBOARD, *m_pPitboard, SettingsHud::TAB_PITBOARD);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_TIMING) && m_pTiming) {
         m_pTiming->setVisible(!m_pTiming->isVisible());
         DEBUG_INFO_F("Hotkey: Timing %s", m_pTiming->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_TIMING, *m_pTiming, SettingsHud::TAB_TIMING);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_GAP_BAR) && m_pGapBar) {
         m_pGapBar->setVisible(!m_pGapBar->isVisible());
         DEBUG_INFO_F("Hotkey: Gap Bar %s", m_pGapBar->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_GAP_BAR, *m_pGapBar, SettingsHud::TAB_GAP_BAR);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_PERFORMANCE) && m_pPerformance) {
         m_pPerformance->setVisible(!m_pPerformance->isVisible());
         DEBUG_INFO_F("Hotkey: Performance %s", m_pPerformance->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_PERFORMANCE, *m_pPerformance, SettingsHud::TAB_PERFORMANCE);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_RUMBLE) && m_pRumble) {
         m_pRumble->setVisible(!m_pRumble->isVisible());
         DEBUG_INFO_F("Hotkey: Rumble %s", m_pRumble->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_RUMBLE, *m_pRumble, SettingsHud::TAB_RUMBLE);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_SESSION_CHARTS) && m_pSessionCharts) {
         m_pSessionCharts->setVisible(!m_pSessionCharts->isVisible());
         DEBUG_INFO_F("Hotkey: Session Charts %s", m_pSessionCharts->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_SESSION_CHARTS, *m_pSessionCharts, SettingsHud::TAB_SESSION_CHARTS);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_FMX) && m_pFmxHud) {
         m_pFmxHud->setVisible(!m_pFmxHud->isVisible());
         DEBUG_INFO_F("Hotkey: FMX %s", m_pFmxHud->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_FMX, *m_pFmxHud, SettingsHud::TAB_FMX);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_STATS) && m_pStatsHud) {
         m_pStatsHud->setVisible(!m_pStatsHud->isVisible());
         DEBUG_INFO_F("Hotkey: Stats %s", m_pStatsHud->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_STATS, *m_pStatsHud, SettingsHud::TAB_STATS);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_SESSION) && m_pSession) {
         m_pSession->setVisible(!m_pSession->isVisible());
         DEBUG_INFO_F("Hotkey: Session %s", m_pSession->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_SESSION, *m_pSession, SettingsHud::TAB_SESSION);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_NOTICES) && m_pNotices) {
         m_pNotices->setVisible(!m_pNotices->isVisible());
         DEBUG_INFO_F("Hotkey: Notices %s", m_pNotices->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_NOTICES, *m_pNotices, SettingsHud::TAB_NOTICES);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_EVENT_LOG) && m_pEventLog) {
         m_pEventLog->setVisible(!m_pEventLog->isVisible());
         DEBUG_INFO_F("Hotkey: Event Log %s", m_pEventLog->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_EVENT_LOG, *m_pEventLog, SettingsHud::TAB_EVENT_LOG);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_HELMET) && m_pHelmetOverlay) {
         m_pHelmetOverlay->setVisible(!m_pHelmetOverlay->isVisible());
         DEBUG_INFO_F("Hotkey: Helmet %s", m_pHelmetOverlay->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_HELMET, *m_pHelmetOverlay, SettingsHud::TAB_HELMET);
     }
 
     // Hiding only hides: the chat stays connected (each platform manager's switch).
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_STREAM_CHAT) && m_pStreamChat) {
         m_pStreamChat->setVisible(!m_pStreamChat->isVisible());
         DEBUG_INFO_F("Hotkey: Stream Chat %s", m_pStreamChat->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_STREAM_CHAT, *m_pStreamChat, SettingsHud::TAB_STREAM_CHAT);
+    }
+
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_DELTA_TRACE) && m_pDeltaTrace) {
+        m_pDeltaTrace->setVisible(!m_pDeltaTrace->isVisible());
+        DEBUG_INFO_F("Hotkey: Delta Trace %s", m_pDeltaTrace->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_DELTA_TRACE, *m_pDeltaTrace, SettingsHud::TAB_DELTA_TRACE);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_FRIENDS) && m_pFriends) {
         m_pFriends->setVisible(!m_pFriends->isVisible());
         DEBUG_INFO_F("Hotkey: Friends %s", m_pFriends->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_FRIENDS, *m_pFriends, SettingsHud::TAB_FRIENDS);
     }
 
     // A HUD switched on by hotkey counts for Tyre Kicker as it is switched on,
@@ -307,6 +342,7 @@ void HudManager::processKeyboardInput() {
             HotkeyAction::TOGGLE_EVENT_LOG, HotkeyAction::TOGGLE_FRIENDS, HotkeyAction::TOGGLE_HELMET,
             HotkeyAction::TOGGLE_SESSION_CHARTS, HotkeyAction::TOGGLE_FMX, HotkeyAction::TOGGLE_STATS,
             HotkeyAction::TOGGLE_SESSION, HotkeyAction::TOGGLE_NOTICES, HotkeyAction::TOGGLE_STREAM_CHAT,
+            HotkeyAction::TOGGLE_DELTA_TRACE,
         };
         for (HotkeyAction a : kHudToggles) {
             if (!hotkeyMgr.wasActionTriggered(a)) continue;
@@ -382,6 +418,13 @@ void HudManager::processKeyboardInput() {
         if (!savePath.empty()) {
             DEBUG_INFO("Hotkey: Reloading config from file");
             settingsMgr.loadSettings(*this, savePath.c_str());
+            // Nothing on screen says a reload happened unless a value changed.
+            SystemMessages::Toast t;
+            snprintf(t.title, sizeof(t.title), "Settings reloaded");
+            snprintf(t.detail, sizeof(t.detail), "From %s", SettingsInternal::SETTINGS_FILENAME);
+            snprintf(t.icon, sizeof(t.icon), "arrow-rotate-right");
+            t.key = SystemMessages::KEY_SETTINGS_RELOADED;
+            SystemMessages::getInstance().post(t);
         }
 
         // The reload is itself an achievement feed (Tinkerer), and -- with the
@@ -466,4 +509,89 @@ void HudManager::processKeyboardInput() {
 
 bool HudManager::isSettingsVisible() const {
     return m_pSettingsHud && m_pSettingsHud->isVisible();
+}
+
+// ---- system toasts for hotkeys (core/system_messages.h) --------------------
+
+// "Press F3 to show it again": the binding that just fired, keyboard first.
+// Empty when the action has no binding (a test hook can fire one).
+static void formatHotkeyHint(HotkeyAction action, const char* what, char* out, size_t cap) {
+    const HotkeyBinding& b = HotkeyManager::getInstance().getBinding(action);
+    char key[32] = {};
+    if (b.hasKeyboard()) formatKeyBinding(b.keyboard, key, sizeof(key));
+    else if (b.hasController()) snprintf(key, sizeof(key), "%s", getControllerButtonName(b.controller));
+    if (key[0]) snprintf(out, cap, "Press %s to %s", key, what);
+    else out[0] = '\0';
+}
+
+// A HUD switched OFF by its hotkey vanishes, which leaves a player wondering
+// what they pressed, so it gets a card naming the HUD and the way back. One
+// switched ON appears, which is its own confirmation: no card, and a "hidden"
+// card still up for it is withdrawn.
+void HudManager::announceHudToggle(HotkeyAction action, const BaseHud& hud, int tab) {
+    SystemMessages& sys = SystemMessages::getInstance();
+    const int key = SystemMessages::KEY_HOTKEY_BASE + static_cast<int>(action);
+    if (hud.isVisible()) {   // vis-gate: the hotkey toggles the game-surface flag
+        sys.cancel(key);
+        return;
+    }
+    SystemMessages::Toast t;
+    const char* name = m_pSettingsHud ? m_pSettingsHud->tabTitle(tab) : "HUD";
+    snprintf(t.title, sizeof(t.title), "%s hidden", name);
+    formatHotkeyHint(action, "show it again", t.detail, sizeof(t.detail));
+    snprintf(t.icon, sizeof(t.icon), "eye-slash");   // every "hidden" card wears the same glyph
+    t.key = key;
+    t.tab = tab;
+    sys.post(t);
+}
+
+// The Widgets and hide-all hotkeys, the same rule: a card on hide, none on show.
+// The hide-all card is the one toast drawn through that hotkey (see
+// SystemMessages::Toast::throughHideAll), and points at no tab: the menu is not
+// what brings the HUD back, the key is.
+void HudManager::announceMasterToggle(HotkeyAction action, bool nowShown) {
+    SystemMessages& sys = SystemMessages::getInstance();
+    const int key = SystemMessages::KEY_HOTKEY_BASE + static_cast<int>(action);
+    if (nowShown) {
+        sys.cancel(key);
+        return;
+    }
+    const bool all = action == HotkeyAction::TOGGLE_ALL_HUDS;
+    SystemMessages::Toast t;
+    snprintf(t.title, sizeof(t.title), "%s", all ? "All HUDs hidden" : "Widgets hidden");
+    formatHotkeyHint(action, "show them again", t.detail, sizeof(t.detail));
+    snprintf(t.icon, sizeof(t.icon), "eye-slash");
+    t.key = key;
+    t.tab = all ? -1 : SettingsHud::TAB_WIDGETS;
+    t.throughHideAll = all;
+    sys.post(t);
+}
+
+// A game started with every HUD switched off draws nothing at all, which reads
+// as the plugin not loading. It may be deliberate, so this is said ONCE per
+// game session, at the first Draw, never on later returns to the track.
+// "Every HUD" is what the player switches on to see something while riding:
+// the settings chrome and pointer are how the HUDs come back (the hide-all
+// hotkey spares them too), and the card, Notices, Spotter subtitles, Director,
+// Version popups and the GL confirm only appear when something happens. A
+// widget under the Widgets master switch (saved) draws nothing either. The
+// companion counts: a HUD shown only there is a deliberate setup.
+void HudManager::announceAllHiddenAtStart() {
+    for (const auto& hud : m_huds) {
+        const BaseHud* h = hud.get();
+        if (!h || h == m_pSettingsHud || h == m_pSettingsButton || h == m_pPointer ||
+            h == m_pAchievement || h == m_pNotices || h == m_pSpotter || h == m_pDirector ||
+            h == m_pVersion || h == m_pGlConfirm) continue;
+        if (m_bAllWidgetsToggledOff && isWidgetHud(h)) continue;   // the saved Widgets master switch
+        if (h->isVisibleAnySurface()) return;
+    }
+    SystemMessages::Toast t;
+    snprintf(t.title, sizeof(t.title), "All HUDs hidden");
+    HotkeyManager::getInstance().formatOpenSettingsHint(t.detail, sizeof(t.detail));
+    snprintf(t.icon, sizeof(t.icon), "eye-slash");
+    t.key = SystemMessages::KEY_ALL_HIDDEN_AT_START;
+    t.tab = SettingsHud::TAB_GENERAL;
+    t.durationMs = SystemMessages::WARNING_DURATION_MS;   // said once, so held a little longer
+    SystemMessages::getInstance().post(t);
+    DEBUG_INFO("Startup: every HUD is switched off");
 }

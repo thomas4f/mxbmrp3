@@ -38,6 +38,11 @@
 //      and Gear row, never over them -- and a longer toast grows LEFT from that
 //      edge (the card is right-anchored, like the centre stack is centre-
 //      anchored), so a fixed-left default could not have hugged the corner.
+//  12. A fresh install earns neither Keymaster nor Interior Decorator from the
+//      shipped setup: the settings key ships bound and Radar/Gamepad ship with
+//      a "none" theme override, and both used to count, so every new player
+//      got the two rows at the first settings save (1.32, MX Bikes). A key the
+//      player binds and a theme they pick still earn them.
 //
 // Player = first active RaceAddEntry after EventInit. Self-contained doctest;
 // see run_tests.sh.
@@ -1403,4 +1408,28 @@ TEST_CASE("achievements: the toast widget's theme survives a save and reload") {
     REQUIRE(s2 != std::string::npos);
     CHECK(saved.find("hudTheme=none", s2) < saved.find("\n[", s2 + 1));
     host.shutdown();
+}
+
+TEST_CASE("achievements: the shipped setup earns neither Keymaster nor Interior Decorator") {
+    cleanSaveDir();
+    {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        host.startup(kSaveWin);
+        REQUIRE(host.save());   // a settings save observes the setup
+        CHECK(host.achievementTier("keymaster") == 0);
+        CHECK(host.achievementTier("decorator") == 0);
+        host.shutdown();
+    }
+    cleanSaveDir();
+    REQUIRE(ini::writeFile(kIniPath, "[Hotkeys]\nmap_key=77\n[StandingsHud]\ntheme=none\n"));
+    {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        host.startup(kSaveWin);
+        REQUIRE(host.save());
+        CHECK(host.achievementTier("keymaster") == 1);
+        CHECK(host.achievementTier("decorator") == 1);
+        host.shutdown();
+    }
 }

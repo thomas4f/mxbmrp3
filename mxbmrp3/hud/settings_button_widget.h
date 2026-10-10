@@ -1,7 +1,8 @@
 // ============================================================================
 // hud/settings_button_widget.h
 // Settings button widget - draggable button to toggle settings menu
-// Shows "[=]" when settings closed, "[x]" when settings open
+// Shows a menu icon when settings closed, a close icon when settings open
+// ("[=]" / "[x]" with UI icons off)
 // ============================================================================
 #pragma once
 
@@ -25,7 +26,7 @@ public:
 private:
     void rebuildRenderData() override;
 
-    // Display constants
+    // Text stand-ins for the menu/close glyphs while UI icons are off
     static constexpr const char* TEXT_CLOSED = "[=]";
     static constexpr const char* TEXT_OPEN = "[x]";
 };

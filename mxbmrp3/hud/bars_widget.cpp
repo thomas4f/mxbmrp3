@@ -200,8 +200,8 @@ void BarsWidget::rebuildRenderData() {
     // RPM normalized to 0-1 range (always available)
     float rpmValue = 0.0f;
     int rpm = std::max(0, bikeTelemetry.rpm);
-    int limiterRPM = sessionData.limiterRPM;
-    rpmValue = (limiterRPM > 0) ? static_cast<float>(rpm) / limiterRPM : 0.0f;
+    const int topRPM = sessionData.rpmRangeTop();
+    rpmValue = (topRPM > 0) ? static_cast<float>(rpm) / static_cast<float>(topRPM) : 0.0f;
 
     // Fuel normalized to 0-1 range (only available when ON_TRACK)
     float fuelValue = 0.0f;
@@ -544,7 +544,7 @@ void BarsWidget::resetToDefaults() {
     m_bShowTitle = false;  // No title by default
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 1.0f;  // Full opacity
-    m_fScale = 1.0f;
+    setScale(1.0f);
     setPosition(cellsX(109), cellsY(74));
 #if GAME_HAS_TYRE_TEMP
     // GP Bikes: include engine temp by default (has reliable temp data)

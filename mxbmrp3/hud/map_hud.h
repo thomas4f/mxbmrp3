@@ -7,7 +7,10 @@
 #include "base_hud.h"
 #include "marker_label.h"
 #include "rider_flag_icons.h"
+#include "../core/lap_delta_profile.h"
+#include "hud_defaults.h"
 #include "../game/unified_types.h"
+#include <algorithm>
 #include <array>
 #include <vector>
 
@@ -103,6 +106,53 @@ public:
     }
     RiderColorMode getRiderColorMode() const { return m_riderColorMode; }
 
+    // Lap delta: colours the track green where the display rider is gaining on
+    // the reference lap and red where they are losing, fading with how fast.
+    // Ahead of the rider the previous lap stays on, fainter, until the new lap
+    // draws over it (LapDeltaProfile).
+    // OFF, or the lap it compares against (the Gap Bar's references, in its order),
+    // or DEFAULT: General's reference (hud_defaults.h). DEFAULT is last so the
+    // stored values of the others never moved.
+    enum class LapDelta : uint8_t {
+        OFF = 0,
+        SESSION_PB = 1,
+        ALLTIME_PB = 2,
+        LAST_LAP = 3,
+        DEFAULT = 4
+    };
+    static constexpr int LAP_DELTA_COUNT = 5;
+    // The reference lap delta compares against (meaningless while OFF).
+    PbGapTracker::Ref lapDeltaReference() const {
+        return HudDefaults::reference(m_lapDelta == LapDelta::DEFAULT,
+            static_cast<PbGapTracker::Ref>(static_cast<int>(m_lapDelta) - 1));
+    }
+    void setLapDelta(LapDelta mode) {
+        if (m_lapDelta != mode) {
+            m_lapDelta = mode;
+            setDataDirty();
+        }
+    }
+    LapDelta getLapDelta() const { return m_lapDelta; }
+
+    // Tilt: how far the zoomed map is laid on the ground, in degrees from
+    // straight down. 0 is the flat map; more lays it down further, seen from
+    // above and behind, farther track smaller, the rider below the centre with
+    // the track ahead running into the distance, like a racing game's minimap.
+    // Zoomed only: with Mode Overview the map is flat whatever this says. See
+    // map_hud_view.cpp.
+    static constexpr int MAX_TILT_DEG = 50;
+    static constexpr int TILT_STEP_DEG = 5;
+    void setTilt(int degrees) {
+        // Snapped to the step, so a hand-edited INI value still steps 5, 10, ...
+        degrees = std::clamp(degrees, 0, MAX_TILT_DEG);
+        degrees = (degrees + TILT_STEP_DEG / 2) / TILT_STEP_DEG * TILT_STEP_DEG;
+        if (m_tiltDeg != degrees) {
+            m_tiltDeg = degrees;
+            setDataDirty();
+        }
+    }
+    int getTilt() const { return m_tiltDeg; }
+
     // Track line width scale (percentage multiplier, 0.5-2.0)
     void setTrackWidthScale(float scale);
     float getTrackWidthScale() const { return m_fTrackWidthScale; }
@@ -152,7 +202,7 @@ public:
     void updatePositionFromAnchor();
 
     // Public constants for settings UI
-    static constexpr float DEFAULT_TRACK_WIDTH_SCALE = 1.0f;  // Default 100%
+    static constexpr float DEFAULT_TRACK_WIDTH_SCALE = 1.5f;  // Default 150%
     static constexpr float MIN_TRACK_WIDTH_SCALE = 0.5f;      // Min 50%
     static constexpr float MAX_TRACK_WIDTH_SCALE = 3.0f;      // Max 300%
 
@@ -235,6 +285,23 @@ public:
     void setZoomDistance(float meters);
     float getZoomDistance() const { return m_fZoomDistance; }
 
+    // Adaptive range: Follow shows more ground the faster the rider goes - Range
+    // up to ADAPTIVE_RANGE_SLOW, rising to ADAPTIVE_RANGE_MAX x Range (never
+    // past MAX_ZOOM_DISTANCE) by
+    // ADAPTIVE_RANGE_FAST, eased over ADAPTIVE_RANGE_EASE_US so it breathes
+    // rather than twitches. See updateRangeNow().
+    static constexpr float ADAPTIVE_RANGE_MAX = 2.0f;
+    static constexpr float ADAPTIVE_RANGE_SLOW = 30.0f / 3.6f;    // m/s
+    static constexpr float ADAPTIVE_RANGE_FAST = 120.0f / 3.6f;   // m/s
+    static constexpr long long ADAPTIVE_RANGE_EASE_US = 600000;
+    void setAdaptiveRange(bool on) {
+        if (m_bAdaptiveRange != on) {
+            m_bAdaptiveRange = on;
+            setDataDirty();
+        }
+    }
+    bool getAdaptiveRange() const { return m_bAdaptiveRange; }
+
     // Marker scale - independently scale rider icons and labels
     void setMarkerScale(float scale);
     float getMarkerScale() const { return m_fMarkerScale; }
@@ -242,6 +309,12 @@ public:
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
     friend class SettingsManager;
+    // Test-only: counts the lap delta's tinted ribbon quads, which only the ribbon
+    // cache tells apart from rider markers in the same colours. See
+    // core/test_hooks.cpp, which is excluded from every shipping target.
+    friend int MXBMRP3_Test_MapLapDeltaQuadsImpl(int*, int*, int*);
+    // Test-only: reads the ribbon cache and the clip rect (test_hooks_map_view.cpp).
+    friend int MXBMRP3_Test_MapViewQuadsImpl(float*, int*, int*, float*);
 
 protected:
     void rebuildRenderData() override;
@@ -331,6 +404,56 @@ private:
     // Rider colorization
     RiderColorMode m_riderColorMode;  // How to color other riders on the map
 
+    // Lap delta colouring of the track fill (see LapDelta). m_deltaRate holds the
+    // rate per profile point; it is rebuilt only when the rider reaches the next
+    // point, the gap's validity flips, the reference changes or a lap is
+    // committed, and the stamp moves with it so the ribbon cache re-renders
+    // exactly then.
+    LapDelta m_lapDelta = LapDelta::DEFAULT;
+    LapDeltaProfile m_deltaProfile;
+    LapDeltaRate m_deltaRate;
+    int m_deltaPoint = -1;
+    int m_deltaRef = -1;
+    bool m_deltaLive = false;
+    unsigned m_deltaLastLap = 0;   // PbGapTracker::lastLapStamp() at the last refresh
+    int m_deltaStamp = 0;
+    // Refresh m_deltaRate if stale; returns whether any point has a rate.
+    bool refreshDeltaRate();
+
+    // The tilted view (map_hud_view.cpp). m_tiltDeg is the setting; m_tiltMode
+    // is what worldToScreen applies while rebuildRenderData draws - the tilt in
+    // degrees while a tilted map is zoomed, else 0. It is 0 during layout, so
+    // the panel's size and the zoom fit never see the tilt. m_tilt holds the
+    // projection for m_tiltMode, recomputed only when the angle changes.
+    int m_tiltDeg = 30;
+    int m_tiltMode = 0;
+    struct TiltView {
+        int deg = -1;                 // the angle these were computed for
+        float sin = 0.0f, cos = 1.0f;
+        float drop = 0.0f;            // the rider sits this many half-heights below centre
+        float gMax = 0.0f;            // nearest ground offset before the horizon flip
+        float ahead = 0.0f, behind = 0.0f, across = 0.0f;   // the ground shown, zoom half-spans
+    };
+    TiltView m_tilt;
+    void setTiltMode(int degrees);   // m_tiltMode, and m_tilt when the angle changed
+    void tiltPoint(float& screenX, float& screenY) const;
+    // A directional icon's heading (cos/sin as addRotatedSpriteQuad takes them)
+    // turned to follow the tilt at flat screen point (flatX, flatY).
+    void tiltHeading(float flatX, float flatY, float& cosYaw, float& sinYaw) const;
+    // The world rect the map can show, grown by margin: the zoom bounds, or
+    // tilted, the farther and wider ground the far half of the map shows.
+    // Every world-space cull (track, markers) uses it, so they agree.
+    void viewCullRect(const RotationCache& rotation, float margin,
+                      float& minX, float& minY, float& maxX, float& maxY) const;
+
+    // Zoomed, the track runs off the map: the ribbon is cut exactly at the clip
+    // rect and track, markers and riders fade out over the last stretch inside
+    // it instead of popping. m_fadeEdges is set while a zoomed map draws, with
+    // the clip rect it fades toward; edgeFade is 1 everywhere otherwise.
+    bool m_fadeEdges = false;
+    float m_fadeClip[4] = {};   // left, top, right, bottom
+    float edgeFade(float x, float y) const;
+
     // Rider label display mode
     LabelMode m_labelMode;
 
@@ -348,6 +471,14 @@ private:
     // Zoom mode configuration
     bool m_bZoomEnabled;         // Follow player with limited view distance
     float m_fZoomDistance;       // Total view distance in meters (Range setting)
+    // The view distance this rebuild draws: m_fZoomDistance, or with Adaptive
+    // range on, eased toward the speed's share of it (updateRangeNow). The LOD
+    // spacing keeps the setting, so a changing range never rebuilds the world
+    // ribbon (WorldRibbonKey); only the screen ribbon follows it.
+    bool m_bAdaptiveRange = false;
+    float m_fRangeNow = 0.0f;
+    long long m_rangeStampUs = -1;
+    void updateRangeNow();
 
     // Marker scale (independent of HUD scale)
     float m_fMarkerScale;        // Scale factor for rider icons and labels
@@ -381,7 +512,7 @@ private:
         float clipLeft = 0.0f, clipTop = 0.0f, clipRight = 0.0f, clipBottom = 0.0f;
         float trackWidthScale = 0.0f;
         float outlineWidthScale = 0.0f;
-        float zoomDistance = 0.0f;
+        float zoomDistance = 0.0f;   // m_fRangeNow at the rebuild
         float detailScale = 0.0f;
         bool adaptiveDetail = false;
         float detailBaseline = 0.0f;
@@ -390,6 +521,13 @@ private:
         bool showTitle = false;
         unsigned long outlineColor = 0;
         unsigned long fillColor = 0;
+        // Lap delta: the fill pass is tinted from m_deltaRate (whose stamp moves
+        // whenever it is rebuilt), in these two colours.
+        bool lapDelta = false;
+        int deltaStamp = 0;
+        unsigned long gainColor = 0;
+        unsigned long lossColor = 0;
+        int tilt = 0;   // m_tiltMode (degrees) at the rebuild
 
         bool operator==(const TrackRibbonKey& o) const {
             return angle == o.angle
@@ -411,11 +549,17 @@ private:
                 && showOutline == o.showOutline
                 && showTitle == o.showTitle
                 && outlineColor == o.outlineColor
-                && fillColor == o.fillColor;
+                && fillColor == o.fillColor
+                && lapDelta == o.lapDelta
+                && deltaStamp == o.deltaStamp
+                && gainColor == o.gainColor
+                && lossColor == o.lossColor
+                && tilt == o.tilt;
         }
     };
     TrackRibbonKey m_ribbonKey;
     std::vector<SPluginQuad_t> m_ribbonQuads;
+    size_t m_ribbonOutlineQuads = 0;   // how many of m_ribbonQuads are the outline pass (first)
     bool m_ribbonCacheValid = false;
 
     // World-space ribbon centerline cache: one sample point per ribbon vertex along
@@ -436,17 +580,22 @@ private:
     // m_worldRibbonValid in updateTrackData(). NOTE (maintenance invariant): if you
     // make the emitted world points depend on a NEW input, add it to WorldRibbonKey
     // — miss it and the ribbon serves stale geometry in rotate/zoom.
-    struct WorldRibbonPoint { float cx, cy, upx, upy; };  // center + UNIT perpendicular
+    // center + UNIT perpendicular, and the sample's track position (0..1 from the
+    // S/F line, as the game's trackPos counts; from the data start when the track
+    // gave no S/F line) - what the lap delta colours by. The S/F offset is set by
+    // updateTrackData(), which also invalidates this cache, so it needs no key field.
+    struct WorldRibbonPoint { float cx, cy, upx, upy, pos; };
     // Key fields: detail scale/baseline are FOLDED into the resolved lodSpacing
     // (they act only through it), so they don't appear separately; adaptiveDetail
     // also drives curveMinSteps, so it must be keyed in its own right.
     struct WorldRibbonKey {
         bool adaptiveDetail = false;
         bool zoomEnabled = false;
+        bool lapDelta = false;   // subdivides straights, like zoom (only with a reference to tint by)
         float lodSpacing = 0.0f;
         bool operator==(const WorldRibbonKey& o) const {
             return adaptiveDetail == o.adaptiveDetail && zoomEnabled == o.zoomEnabled
-                && lodSpacing == o.lodSpacing;
+                && lapDelta == o.lapDelta && lodSpacing == o.lodSpacing;
         }
     };
     std::vector<WorldRibbonPoint> m_worldRibbon;
@@ -455,14 +604,14 @@ private:
     // (Re)build m_worldRibbon for the current track/LOD if its key changed. Called
     // from renderTrack (twice per rebuild, for the outline+fill passes — the second
     // call is a cheap key-check hit).
-    void ensureWorldRibbon(float lodSpacing, int curveMinSteps);
+    void ensureWorldRibbon(float lodSpacing, int curveMinSteps, bool lapDelta);
 
     // Calculate track bounds from segments
     void calculateTrackBounds();
 
     // Calculate zoom bounds centered on player position
     // Returns true if player found, false otherwise (falls back to full track)
-    bool calculateZoomBounds(float& zoomMinX, float& zoomMaxX, float& zoomMinY, float& zoomMaxY) const;
+    bool calculateZoomBounds(float& zoomMinX, float& zoomMaxX, float& zoomMinY, float& zoomMaxY);
 
     // Calculate which corner to anchor to based on current position
     AnchorPoint calculateAnchorFromPosition() const;
@@ -481,10 +630,17 @@ private:
     // Convert world coordinates to map screen coordinates
     // Uses pre-calculated rotation cache to avoid redundant trig in loops
     void worldToScreen(float worldX, float worldY, float& screenX, float& screenY, const RotationCache& rotation) const;
+    // worldToScreen before the tilt (the same point when m_tiltMode is 0).
+    void worldToScreenFlat(float worldX, float worldY, float& screenX, float& screenY, const RotationCache& rotation) const;
 
     // Render the track as quads (takes pre-calculated rotation cache, color, and width multiplier)
+    // lapDelta: a reference resolved, which subdivides the world ribbon. BOTH
+    // passes pass the same value, or they ask ensureWorldRibbon() for different
+    // keys and re-tessellate the track twice per rebuild.
+    // tint: blend each quad from m_deltaRate (the fill pass only).
     void renderTrack(const RotationCache& rotation, unsigned long trackColor, float widthMultiplier,
-                     float clipLeft, float clipTop, float clipRight, float clipBottom);
+                     float clipLeft, float clipTop, float clipRight, float clipBottom,
+                     bool lapDelta = false, bool tint = false);
 
     // Render start marker (takes pre-calculated rotation cache and clip bounds)
     void renderStartMarker(const RotationCache& rotation,

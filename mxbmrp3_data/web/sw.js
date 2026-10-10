@@ -37,18 +37,28 @@ var PRECACHE_URLS = [
     "icons/wrench.svg",
     "fonts/Audiowide-Regular.ttf",
     "fonts/CaveatBrush-Regular.ttf",
+    "fonts/ChakraPetch-BoldItalic.ttf",
+    "fonts/ChakraPetch-SemiBoldItalic.ttf",
+    "fonts/Doto-Bold.ttf",
+    "fonts/Doto-Regular.ttf",
     "fonts/EnterSansman-Italic.ttf",
     "fonts/FuzzyBubbles-Regular.ttf",
     "fonts/GloriaHallelujah-Regular.ttf",
     "fonts/IBMPlexMono-Regular.ttf",
     "fonts/IBMPlexSans-Regular.ttf",
     "fonts/IBMPlexSans-SemiBold.ttf",
+    "fonts/LCD14-Bold.ttf",
+    "fonts/LCD14-Regular.ttf",
+    "fonts/LCD7-BoldItalic.ttf",
     "fonts/PermanentMarker-Regular.ttf",
+    "fonts/Quantico-BoldItalic.ttf",
     "fonts/ReenieBeanie-Regular.ttf",
     "fonts/RobotoMono-Bold.ttf",
     "fonts/RobotoMono-Regular.ttf",
     "fonts/RockSalt-Regular.ttf",
-    "fonts/Tiny5-Regular.ttf"
+    "fonts/Tiny5-Regular.ttf",
+    "fonts/Tomorrow-BoldItalic.ttf",
+    "fonts/Tomorrow-SemiBoldItalic.ttf"
 ];
 
 console.log("[MXBMRP3 SW]", CACHE_NAME, "loaded");

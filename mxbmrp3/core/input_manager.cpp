@@ -98,6 +98,10 @@ void InputManager::updateFrame() {
         m_cursorPosition.isValid = true;
         m_leftButton.isPressed = (m_testButtons & 1) != 0;
         m_rightButton.isPressed = (m_testButtons & 2) != 0;
+        // A pinned surface holds here too, or the injected mouse would drop the
+        // settings menu back to the game surface (companion_demo's "hover").
+        if (m_testForceSurface >= 0)
+            m_activeSurface = m_testForceSurface ? Surface::Companion : Surface::Game;
         return;
     }
 #endif

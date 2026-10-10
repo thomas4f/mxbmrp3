@@ -64,10 +64,14 @@ struct SessionData {
     bool isServerKnown() const { return serverType >= 0; }
     bool isOnline() const { return serverType > 0; }
     bool isOffline() const { return serverType == 0; }
+    // Top of the rev range RPM displays measure against: the limiter, else the
+    // max rpm (a vehicle without a limiter, like KRP's direct-drive karts), else 0.
+    int rpmRangeTop() const { return limiterRPM > 0 ? limiterRPM : maxRPM; }
 
     // Bike setup data
     int shiftRPM;           // RPM threshold for shift warning (recommended shift point)
-    int limiterRPM;         // RPM limiter threshold
+    int limiterRPM;         // RPM limiter threshold (0 = none: KRP's direct-drive karts)
+    int maxRPM;             // Top of the rev range, 0 = unknown (the range when there is no limiter)
     float steerLock;        // Maximum steering angle in degrees
     float engineOptTemperature;   // Optimal engine temperature in Celsius
     float engineTempAlarmLow;     // Engine temperature low alarm threshold in Celsius
@@ -95,7 +99,7 @@ struct SessionData {
     bool sessionTimeExpired; // True when sessionTime goes negative in non-race sessions
 
     SessionData() : trackLength(0.0f), eventType(2), serverType(-1),
-        shiftRPM(13500), limiterRPM(14000), steerLock(30.0f),
+        shiftRPM(13500), limiterRPM(14000), maxRPM(0), steerLock(30.0f),
         engineOptTemperature(85.0f), engineTempAlarmLow(60.0f), engineTempAlarmHigh(110.0f),
         session(-1), sessionSeries(0), sessionGeneration(0), sessionState(-1), sessionLength(-1), sessionNumLaps(-1),
         conditions(-1), airTemperature(-1.0f), trackTemperature(-1.0f), overtimeStarted(false), finishLap(-1), lastSessionTime(0), leaderFinishTime(-1),
@@ -121,6 +125,7 @@ struct SessionData {
         serverName[0] = '\0';
         shiftRPM = 13500;  // Default fallback value
         limiterRPM = 14000;  // Default fallback value
+        maxRPM = 0;
         steerLock = 30.0f;  // Default fallback value
         engineOptTemperature = 85.0f;  // Default fallback value
         engineTempAlarmLow = 60.0f;    // Default fallback value

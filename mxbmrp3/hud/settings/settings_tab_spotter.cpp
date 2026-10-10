@@ -26,31 +26,52 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <memory>
 #include <string>
 #include <vector>
 
+#if defined(MXBMRP3_TEST_BUILD)
+// How many times the lists below were read (MXBMRP3_Test_SpotterListReads).
+int g_spotterListReads = 0;
+#endif
+
 namespace {
-// Step the pack choice through the installed pack folders. There is no "None"
-// entry: the shipped `default` pack is the wording, so "None" would mean
-// silence, which is what the Spoken audio switch is for.
+// The installed pack folders, a directory scan, are read once per menu opening
+// (SettingsHud::m_openSerial), not on each rebuild (the panel rebuilds on every
+// hover change, twice: the measure pass, then the draw); a pack installed while
+// the menu is open shows the next time it opens. The SAPI voices are the
+// session list SpotterManager read at plugin load (getTtsVoices).
 //
-// The CURRENT name is honored even when its folder is missing: it still
-// occupies its sorted slot, so cycling away and back never rewrites a
-// temporarily-absent pack out of the INI.
-void cyclePack(SpotterManager& spotter, bool forward) {
-    std::vector<std::string> options = spotter.listAvailablePacks();
-    const std::string& current = spotter.getPackName();
-    if (!current.empty() &&
-        std::find(options.begin(), options.end(), current) == options.end()) {
-        options.push_back(current);
-        std::sort(options.begin(), options.end());
+// NOT while the panel measures its tallest tab: every opening lays out every
+// tab for its height, Spotter included, and the lists change no row's height,
+// so the measure gets empty ones and the scan waits until the tab is drawn.
+struct SpotterLists {
+    bool read = false;
+    unsigned serial = 0;
+    std::shared_ptr<const std::vector<std::string>> packs, voices;
+};
+const SpotterLists& spotterLists(unsigned openSerial, bool measuring) {
+    static SpotterLists s_lists;
+    if (measuring) {
+        static const SpotterLists s_empty = [] {
+            SpotterLists e;
+            e.packs = std::make_shared<const std::vector<std::string>>();
+            e.voices = e.packs;
+            return e;
+        }();
+        return s_empty;
     }
-    if (options.empty()) return;   // nothing installed: nothing to cycle
-    const auto it = std::find(options.begin(), options.end(), current);
-    size_t idx = (it == options.end()) ? 0 : (it - options.begin());
-    idx = forward ? (idx + 1) % options.size()
-                  : (idx + options.size() - 1) % options.size();
-    spotter.setPackName(options[idx]);
+    if (!s_lists.read || s_lists.serial != openSerial) {
+        const SpotterManager& spotter = SpotterManager::getInstance();
+        s_lists.packs = std::make_shared<const std::vector<std::string>>(spotter.listAvailablePacks());
+        s_lists.voices = SpotterManager::getInstance().getTtsVoices();   // once per session
+        s_lists.serial = openSerial;
+        s_lists.read = true;
+#if defined(MXBMRP3_TEST_BUILD)
+        ++g_spotterListReads;
+#endif
+    }
+    return s_lists;
 }
 }  // namespace
 
@@ -62,27 +83,6 @@ bool SettingsHud::handleClickTabSpotter(const ClickRegion& region) {
     // runs while its own tab is open — so it lives in dispatchRegion's
     // common switch (settings_hud_input.cpp), like the director's.
     switch (region.type) {
-        // Both cyclers play the sample line after switching: a pack is a folder
-        // name until you hear it, and the difference between two voices (or two
-        // Windows TTS voices) is not something a label can carry.
-        case ClickRegion::SPOTTER_PACK_PREV:
-        case ClickRegion::SPOTTER_PACK_NEXT:
-            cyclePack(spotter, region.type == ClickRegion::SPOTTER_PACK_NEXT);
-            spotter.previewVoice();
-            setDataDirty();
-            markSettingsDirty();
-            return true;
-
-        case ClickRegion::SPOTTER_TTSVOICE_PREV:
-        case ClickRegion::SPOTTER_TTSVOICE_NEXT:
-            spotter.setTtsVoice(SpotterTtsVoice::cycle(
-                spotter.listTtsVoices(), spotter.getTtsVoice(),
-                region.type == ClickRegion::SPOTTER_TTSVOICE_NEXT));
-            spotter.previewVoice(/*ttsOnly=*/true);
-            setDataDirty();
-            markSettingsDirty();
-            return true;
-
         case ClickRegion::SPOTTER_SUBTITLES_TOGGLE:
             spotter.setSubtitlesEnabled(!spotter.isSubtitlesEnabled());
             HudManager::getInstance().getSpotterWidget().setDataDirty();
@@ -126,7 +126,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     //
     // Lines do not wrap: each is its own row, broken by hand inside the content
     // column's budget (settingsContentAreaChars - settingsLabelColumn, one narrower
-    // with a themed card -- so 50 at the shipped 53). Each line is written to that
+    // with a themed card -- so 58 at the shipped 61). Each line is written to that
     // length, not trimmed to one.
     //
     // THREE LINES, and the ceiling is real rather than taste: every tab shares one
@@ -169,21 +169,14 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
 
     // --- Subtitles: the on-screen text widget (also the testing surface). ---
     ctx.addSectionHeading("Subtitles");
+    ctx.beginColumns(2, 3);   // side by side (beginColumns)
     ctx.addToggleControl("Subtitles", spotter.isSubtitlesEnabled(),
         SettingsHud::ClickRegion::SPOTTER_SUBTITLES_TOGGLE, nullptr,
         nullptr, 0, true, "spotter.subtitles");
-    snprintf(buf, sizeof(buf), "%d%%",
-             static_cast<int>(widget.getBackgroundOpacity() * 100.0f + 0.5f));
-    ctx.addCycleControl("Opacity", buf,
-        SettingsHud::ClickRegion::BACKGROUND_OPACITY_DOWN,
-        SettingsHud::ClickRegion::BACKGROUND_OPACITY_UP,
-        &widget, spotter.isSubtitlesEnabled(), false, "common.opacity");
-    snprintf(buf, sizeof(buf), "%d%%",
-             static_cast<int>(widget.getScale() * 100.0f + 0.5f));
-    ctx.addCycleControl("Scale", buf,
-        SettingsHud::ClickRegion::SCALE_DOWN,
-        SettingsHud::ClickRegion::SCALE_UP,
-        &widget, spotter.isSubtitlesEnabled(), false, "common.scale");
+    ctx.addOpacityControl(&widget, spotter.isSubtitlesEnabled());
+    ctx.addScaleControl(&widget, spotter.isSubtitlesEnabled());
+
+    ctx.endColumns();
 
     // --- Voice: the audio side. ---
     ctx.addSectionHeading("Voice");
@@ -221,9 +214,32 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     // Shown by its title, cycled and stored by its folder name -- see
     // SpotterManager::getPackDisplayName.
     const std::string& packName = spotter.getPackName();
-    ctx.addCycleControl("Voice pack", spotter.getPackDisplayName().c_str(),
-        SettingsHud::ClickRegion::SPOTTER_PACK_PREV,
-        SettingsHud::ClickRegion::SPOTTER_PACK_NEXT,
+    //
+    // The list is the installed pack folders. There is no "None" entry: the
+    // shipped `default` pack is the wording, so "None" would mean silence, which
+    // is what the Spoken audio switch is for. The CURRENT name stays in the list
+    // even when its folder is missing (at its sorted place), so picking away and
+    // back never rewrites a temporarily-absent pack out of the INI.
+    //
+    // Both lists play the sample line after a pick: a pack is a folder name until
+    // you hear it, and two voices differ in a way no label can carry.
+    const SpotterLists& lists = spotterLists(ctx.parent->m_openSerial, ctx.parent->m_measuringTallest);
+    auto packs = std::make_shared<std::vector<std::string>>(*lists.packs);
+    if (!packName.empty() && std::find(packs->begin(), packs->end(), packName) == packs->end()) {
+        packs->push_back(packName);
+        std::sort(packs->begin(), packs->end());
+    }
+    SettingsHud::CycleControl pack;
+    pack.count = static_cast<int>(packs->size());
+    pack.get = [packs]() {
+        const auto it = std::find(packs->begin(), packs->end(), SpotterManager::getInstance().getPackName());
+        return it == packs->end() ? 0 : static_cast<int>(it - packs->begin());
+    };
+    pack.set = [packs](int i) { SpotterManager::getInstance().setPackName((*packs)[static_cast<size_t>(i)]); };
+    pack.nameOf = [packs](int i) { return (*packs)[static_cast<size_t>(i)]; };
+    pack.postStep = []() { SpotterManager::getInstance().previewVoice(); };
+    pack.repeat = false;   // a step loads the pack and plays a preview
+    ctx.addCycleControl("Voice pack", spotter.getPackDisplayName().c_str(), pack,
         nullptr, true, packName == "default", "spotter.pack");
 
     // TTS voice: which Windows voice speaks the text-to-speech cues. Enabled
@@ -236,9 +252,31 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     const std::string ttsShown = ttsVoice.empty()
         ? std::string("System default")
         : SpotterTtsVoice::displayName(ttsVoice);
-    ctx.addCycleControl("TTS voice", ttsShown.c_str(),
-        SettingsHud::ClickRegion::SPOTTER_TTSVOICE_PREV,
-        SettingsHud::ClickRegion::SPOTTER_TTSVOICE_NEXT,
+    // [System default] + the installed voices -- SpotterTtsVoice::cycle's ring,
+    // whose step the arrows keep.
+    const std::shared_ptr<const std::vector<std::string>> voices = lists.voices;
+    SettingsHud::CycleControl voice;
+    voice.count = static_cast<int>(voices->size()) + 1;
+    voice.get = [voices]() {
+        const std::string& cur = SpotterManager::getInstance().getTtsVoice();
+        for (size_t i = 0; i < voices->size(); ++i) {
+            if ((*voices)[i] == cur) return static_cast<int>(i) + 1;
+        }
+        return 0;
+    };
+    voice.set = [voices](int i) {
+        SpotterManager::getInstance().setTtsVoice(i <= 0 ? std::string() : (*voices)[static_cast<size_t>(i) - 1]);
+    };
+    voice.step = [voices](bool forward) {
+        SpotterManager& s = SpotterManager::getInstance();
+        s.setTtsVoice(SpotterTtsVoice::cycle(*voices, s.getTtsVoice(), forward));
+    };
+    voice.nameOf = [voices](int i) {
+        return i <= 0 ? std::string("System default") : SpotterTtsVoice::displayName((*voices)[static_cast<size_t>(i) - 1]);
+    };
+    voice.postStep = []() { SpotterManager::getInstance().previewVoice(/*ttsOnly=*/true); };
+    voice.repeat = false;  // a step plays a preview
+    ctx.addCycleControl("TTS voice", ttsShown.c_str(), voice,
         nullptr, on, ttsVoice.empty(), "spotter.tts_voice");
 
     // --- Callouts: which cue categories are announced (audio AND subtitle —
@@ -259,12 +297,15 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
         { "Proximity", SpotterPhrase::Category::Proximity, "spotter.cat_proximity" },
         { "Hazards",   SpotterPhrase::Category::Hazard,    "spotter.cat_hazard" },
     };
+    ctx.beginColumns(2, 5);
     for (const auto& row : kRows) {
         const uint32_t bit = 1u << static_cast<unsigned>(row.cat);
         ctx.addToggleControl(row.label, (mask & bit) != 0,
             SettingsHud::ClickRegion::CHECKBOX, &widget,
             spotter.categoryMaskPtr(), bit, true, row.tip);
     }
+
+    ctx.endColumns();
 
     // --- Proximity: how close a rider has to be before the PROXIMITY
     // category's cues fire at all — the distances behind the switch of the
@@ -288,6 +329,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     // not a release.
     ctx.addSectionHeading("Proximity");
     const bool proxLive = on || spotter.isSubtitlesEnabled();
+    ctx.beginColumns(2, 4);
 
     snprintf(buf, sizeof(buf), "%.0fm", spotter.hazardConfig().behindOnMeters);
     {
@@ -344,6 +386,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
         ctx.addSteppedControl("Width", buf, sc, nullptr, proxLive, false,
                               "spotter.lateral_m");
     }
+    ctx.endColumns();
 
     return nullptr;  // No specific HUD for this tab
 }

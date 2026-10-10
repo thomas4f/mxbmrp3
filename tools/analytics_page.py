@@ -165,16 +165,16 @@ def demo(out_dir):
              ("Other", [35, 39, 42, 43, 40, 36, 32, 31, 30, 30], "#57606a")],
             subtitle="share of each day's active installs", annotate="legend",
             value_fmt=lambda v: "{:.0f}%".format(v)),
-        "bars.svg": svg.hbar("Operating system", [("Windows 11", 78, None, "10,116 (78%)"),
-                                                  ("Windows 10", 21, None, "2,779 (21%)")]),
+        "bars.svg": svg.hbar("Operating system", [("Windows 11", 78, None, "78% (10,116)"),
+                                                  ("Windows 10", 21, None, "21% (2,779)")]),
         "stacked.svg": svg.stacked_hbar(
             "Achievements by tier reached",
-            [("Racer", None, [("t1", 40, "Finish a race"), ("t2", 20, "Finish 10 races"),
-                              ("t3", 0.5, "Finish 100 races")], "60%",
+            [("Racer", None, [("t1", 400, "Finish a race"), ("t2", 200, "Finish 10 races"),
+                              ("t3", 5, "Finish 100 races")], "61% (605)",
               "Bronze: Finish a race\nSilver: Finish 10 races\nGold: Finish 100 races"),
-             ("Metronome", None, [("t1", 3, "Five laps in a row, all within a tenth", "")], "3%",
+             ("Metronome", None, [("t1", 30, "Five laps in a row, all within a tenth", "")], "3% (30)",
               "Five laps in a row, all within a tenth")],
-            [("t1", "Bronze"), ("t2", "Silver"), ("t3", "Gold")]),
+            [("t1", "Bronze"), ("t2", "Silver"), ("t3", "Gold")], 1000),
     }
     for name, text in charts.items():
         with open(os.path.join(out_dir, "charts", name), "w", encoding="utf-8") as f:

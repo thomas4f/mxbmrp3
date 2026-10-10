@@ -40,7 +40,7 @@ namespace {
 }
 
 TimingHud::TimingHud()
-    : m_displayDurationMs(FreezeDuration::DEFAULT_MS)
+    : m_displayDurationMs(FreezeDuration::FOLLOW_DEFAULT)
     , m_showTime(true)
     , m_enabledComparisons(GAP_DEFAULT_ENABLED)
     , m_cachedDisplayRaceNum(-1)
@@ -85,6 +85,13 @@ bool TimingHud::handlesDataType(DataChangeType dataType) const {
 }
 
 void TimingHud::update() {
+    // The Gap section's freeze watches the crossings whether or not the panel or the row
+    // is shown (see OfficialGapFreeze): a split crossed while hidden must not read as
+    // new the moment it is shown.
+    if (m_liveGapFreeze.update(getLiveGapReference(), freezeMs()) && m_liveGapOn) {
+        setDataDirty();
+    }
+
     // OPTIMIZATION: Skip all processing when not visible
     // State tracking (splits, gaps) is only meaningful when displaying
     if (!isVisibleAnySurface()) {
@@ -149,6 +156,16 @@ void TimingHud::update() {
         m_cachedPitState = currentPitState;
     }
 
+    // The Gap section ticks while its gap is live (needsFrequentUpdates); the flips into
+    // and out of having one must redraw too, or the last number outlives the gap.
+    if (m_liveGapOn) {
+        const bool live = pluginData.hasValidLiveGap(getLiveGapReference());
+        if (live != m_liveGapWasLive) {
+            m_liveGapWasLive = live;
+            setDataDirty();
+        }
+    }
+
     // Process any split/lap completion updates
     processTimingUpdates();
 
@@ -175,12 +192,12 @@ void TimingHud::update() {
         // screen for the display duration). With duration 0, no freeze - just live.
         if (seg.completionCounter != m_segCachedCompletion) {
             m_segCachedCompletion = seg.completionCounter;
-            if (m_displayDurationMs > 0 && seg.lastSeg >= 0) {
+            if (freezeMs() > 0 && seg.lastSeg >= 0) {
                 m_segHold.start();
             }
             setDataDirty();
         }
-        if (m_segHold.expire(m_displayDurationMs)) setDataDirty();
+        if (m_segHold.expire(freezeMs())) setDataDirty();
         if (seg.segmentCount() < 1) m_segHold.stop();  // no segments -> nothing to hold
     }
 
@@ -223,7 +240,7 @@ void TimingHud::processTimingUpdates() {
 
         // Freeze display (if freeze is enabled). Skip the freeze entirely for a pit-interrupted
         // lap - there's nothing meaningful to hold, so the live timer keeps counting the new lap.
-        if (m_displayDurationMs > 0 && !pitLap) {
+        if (freezeMs() > 0 && !pitLap) {
             m_hold.start();
         }
 
@@ -250,7 +267,7 @@ void TimingHud::processTimingUpdates() {
         calculateAllGaps(crossing.splitTime, crossing.splitIndex, false);
 
         // Freeze display (if freeze is enabled)
-        if (m_displayDurationMs > 0) {
+        if (freezeMs() > 0) {
             m_hold.start();
         }
 
@@ -260,7 +277,7 @@ void TimingHud::processTimingUpdates() {
 }
 
 void TimingHud::checkFreezeExpiration() {
-    if (m_hold.expire(m_displayDurationMs)) setDataDirty();
+    if (m_hold.expire(freezeMs())) setDataDirty();
 }
 
 bool TimingHud::segmentModeActive() const {
@@ -301,6 +318,13 @@ bool TimingHud::needsFrequentUpdates() const {
     // timer state (including after a session finish — it's a training tool that keeps
     // going on the cool-down lap), but not while spectating/replaying another rider.
     if (segmentModeActive() && data.getSegmentTimer().runningSeg >= 0) return true;
+
+    // The Gap section moves with the clock while it reads live (not while it holds an
+    // official gap, and not in segment mode, which has its own single reference).
+    if (m_liveGapOn && !segmentModeActive() && !m_liveGapFreeze.isFrozen() && contentVisible() &&
+        data.hasValidLiveGap(getLiveGapReference())) {
+        return true;
+    }
 
     // Need frequent updates when the ticking time is shown (ALWAYS mode), not frozen, timer valid.
     if (m_hold.active()) return false;
@@ -365,7 +389,11 @@ void TimingHud::rebuildRenderData() {
     Readout readouts[READOUT_COUNT];
     const int readoutCount = buildReadouts(readouts);
 
-    if (!m_showTime && rowCount == 0 && readoutCount == 0) {
+    // The Gap section: the Gap Bar's reading, large, in its own card under the time.
+    // Not in segment mode, which compares against its own single reference.
+    const bool showGap = m_liveGapOn && !sv.active;
+
+    if (!m_showTime && !showGap && rowCount == 0 && readoutCount == 0) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
@@ -381,6 +409,7 @@ void TimingHud::rebuildRenderData() {
     // line up: the stack's shared width rides as the panel MINIMUM.
     wantCenterStackWidth(want, dim);   // the stack minimum owns the width
     if (m_showTime) want.sectionH.push_back(bigValueRowHeight(dim));
+    if (showGap) want.sectionH.push_back(bigValueRowHeight(dim));
     if (rowCount > 0) want.sectionH.push_back(rowCount * dim.lineHeightNormal);
     if (readoutCount > 0) want.sectionH.push_back(readoutCount * dim.lineHeightNormal);
     want.captionW = planTitleWidth(dim, "Timing", TitleTier::Large);
@@ -413,6 +442,11 @@ void TimingHud::rebuildRenderData() {
     size_t section = 0;
     if (m_showTime) {
         addTimeSection(p, section, timeCell, centerX, dim);
+        section++;
+    }
+
+    if (showGap) {
+        addGapSection(p, section, centerX, dim);
         section++;
     }
 
@@ -773,6 +807,25 @@ void TimingHud::addTimeSection(const PanelPlan& p, size_t section, const TimeCel
         this->getFont(timeInvalid ? FontCategory::NORMAL : FontCategory::DIGITS), timeColor, dim.fontSizeLarge);
 }
 
+void TimingHud::addGapSection(const PanelPlan& p, size_t section, float centerX,
+                              const ScaledDimensions& dim) {
+    // Exactly the Gap Bar's text: the shown gap (OfficialGapFreeze::shownGap) as a
+    // delta in its colour, else a MUTED placeholder -- drawn like the big time above.
+    char text[32];
+    unsigned long color;
+    int gapMs = 0;
+    if (m_liveGapFreeze.shownGap(getLiveGapReference(), &gapMs)) {
+        PluginUtils::formatTimeDiff(text, sizeof(text), gapMs);
+        color = this->deltaColor(gapMs);
+    } else {
+        strcpy_s(text, sizeof(text), Placeholders::GENERIC);
+        color = this->getColor(ColorSlot::MUTED);
+    }
+    const float y = inkCenteredY(p.sectionBoxY(section), p.sectionBoxH(section), dim.fontSizeLarge);
+    addString(text, centerX, y, Justify::CENTER,
+        this->getFont(FontCategory::DIGITS), color, dim.fontSizeLarge);
+}
+
 void TimingHud::addComparisonRows(const Row* rows, int rowCount, float y, float leftTextX, float rightTextX,
                                   const ScaledDimensions& dim) {
     auto valueColor = [&](const RowValue& g) -> unsigned long {
@@ -856,19 +909,24 @@ void TimingHud::resetToDefaults() {
     m_bShowTitle = false;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     setPosition(CENTER_ANCHOR_X, CenterStack::stackBoxTop());
 
     // Show mode: Always show by default (content shows continuously, references passive)
     m_displayMode = ColumnMode::ALWAYS;
     m_showTime = true;                           // big time row on by default
-    m_displayDurationMs = FreezeDuration::DEFAULT_MS;
+    m_displayDurationMs = FreezeDuration::FOLLOW_DEFAULT;
 
     // Comparison rows: Session PB + All-Time PB by default
     m_enabledComparisons = GAP_DEFAULT_ENABLED;
     // Readout rows: none. This panel is read at a glance mid-corner, so extra
     // rows are opt-in rather than a new default (see ReadoutFlags).
     m_enabledReadouts = READOUT_DEFAULT_ENABLED;
+    // Gap section: off, following General's reference once switched on.
+    m_liveGapOn = false;
+    m_liveGapDefault = true;
+    m_liveGapRef = GapRef::SESSION_PB;
+    m_liveGapFreeze.reset();
 
     // Reset live timing state
     resetLiveTimingState();

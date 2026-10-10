@@ -14,6 +14,9 @@ public:
     PointerWidget();
     virtual ~PointerWidget() = default;
 
+    // Shows the instant the mouse moves: see BaseHud::motionStyle().
+    MotionStyle motionStyle() const override { return MotionStyle::NONE; }
+
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
     void resetToDefaults();

@@ -431,6 +431,64 @@ TEST_CASE("settings migration: HUD settings survive a version-mismatched INI") {
     }
 
     // ------------------------------------------------------------------------
+    // v9 -> v10: the Prestige widget's default went OFF.
+    //
+    // Every older file carries visible=1 in its base [PrestigeWidget] section,
+    // written there by the old default rather than by anyone: the badge draws
+    // nothing and has no settings row until a prestige level is taken. So a player
+    // WITHOUT one follows the new default, and one WITH one keeps the badge they
+    // have seen on screen. Asserted on every place the re-saved file states it,
+    // base section and profile overrides alike -- a profile left at 1 would bring
+    // the badge back the moment that profile came up.
+    {
+        auto prestigeVisible = [](const ini::Map& m) {
+            std::vector<std::string> found;
+            for (const auto& kv : m) {
+                const std::string& sec = kv.first.first;
+                if (sec != "PrestigeWidget" && sec.rfind("PrestigeWidget:", 0) != 0) continue;
+                if (kv.first.second == "visible") found.push_back(kv.second);
+            }
+            return found;
+        };
+        auto allAre = [](const std::vector<std::string>& v, const char* want) {
+            if (v.empty()) return false;
+            for (const std::string& s : v) if (s != want) return false;
+            return true;
+        };
+        REQUIRE(host.hasPrestige());
+
+        // A fresh install writes the new default.
+        CHECK(allAre(prestigeVisible(D), "0"));
+
+        const std::string v9 =
+            "[Settings]\nversion=9\n\n"
+            "[PrestigeWidget]\nvisible=1\n\n[PrestigeWidget:Race]\nvisible=1\n";
+
+        // No prestige level: the old default carried no choice, so it goes off.
+        host.setPrestige(0);
+        CHECK(allAre(prestigeVisible(roundTrip(host, saveWin, iniPath, v9)), "0"));
+
+        // A prestige level taken: the player has seen the badge, so it stays.
+        host.setPrestige(1);
+        CHECK(allAre(prestigeVisible(roundTrip(host, saveWin, iniPath, v9)), "1"));
+
+        // A stats file that would not load reads as no level; the badge is left
+        // as stored rather than switched off for a player who may have earned it.
+        REQUIRE(host.hasStatsUnreadable());
+        host.setPrestige(0);
+        host.setStatsUnreadable(true);
+        CHECK(allAre(prestigeVisible(roundTrip(host, saveWin, iniPath, v9)), "1"));
+        host.setStatsUnreadable(false);
+
+        // A v10 file is past the migration: a switched-on badge is a choice made
+        // under the new default (developer mode can make it), and is kept.
+        host.setPrestige(0);
+        const std::string v10 =
+            "[Settings]\nversion=10\n\n[PrestigeWidget]\nvisible=1\n";
+        CHECK(allAre(prestigeVisible(roundTrip(host, saveWin, iniPath, v10)), "1"));
+    }
+
+    // ------------------------------------------------------------------------
     // v8 -> v9: the row-pitch DEFAULT moves, conservatively.
     //
     // The writer emits uiLineHeight into every INI whether or not anyone chose it,

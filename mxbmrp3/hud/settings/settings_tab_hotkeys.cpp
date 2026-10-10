@@ -9,6 +9,7 @@
 #include "../../core/hotkey_manager.h"
 #include "../../core/color_config.h"
 #include "../../game/game_config.h"
+#include <cstring>
 
 using namespace PluginConstants;
 
@@ -35,28 +36,54 @@ bool SettingsHud::handleClickTabHotkeys(const ClickRegion& region) {
             }
             return true;
 
-        case ClickRegion::HOTKEY_KEYBOARD_CLEAR:
-            {
-                auto* actionPtr = std::get_if<HotkeyAction>(&region.targetPointer);
-                if (actionPtr) {
-                    HotkeyManager::getInstance().clearKeyboardBinding(*actionPtr);
-                    setDataDirty();
-                }
-            }
-            return true;
-
-        case ClickRegion::HOTKEY_CONTROLLER_CLEAR:
-            {
-                auto* actionPtr = std::get_if<HotkeyAction>(&region.targetPointer);
-                if (actionPtr) {
-                    HotkeyManager::getInstance().clearControllerBinding(*actionPtr);
-                    setDataDirty();
-                }
-            }
-            return true;
-
         default:
             return false;
+    }
+}
+
+// A right-click on a binding field clears it: the fields sit two bindings to a
+// row, with no room for a clear button beside each. True when it was one.
+bool SettingsHud::handleRightClickTabHotkeys(const ClickRegion& region) {
+    if (region.type != ClickRegion::HOTKEY_KEYBOARD_BIND &&
+        region.type != ClickRegion::HOTKEY_CONTROLLER_BIND) {
+        return false;
+    }
+    if (auto* actionPtr = std::get_if<HotkeyAction>(&region.targetPointer)) {
+        HotkeyManager& hotkeys = HotkeyManager::getInstance();
+        if (region.type == ClickRegion::HOTKEY_KEYBOARD_BIND) {
+            hotkeys.clearKeyboardBinding(*actionPtr);
+        } else {
+            hotkeys.clearControllerBinding(*actionPtr);
+        }
+        setDataDirty();
+        markSettingsDirty();
+    }
+    return true;
+}
+
+// The binding fields are short (two bindings share a row), so a long chord drops
+// its modifiers to initials: "Ctrl+Shift+F12" reads "C+S+F12". Short ones keep
+// the words.
+static void formatCompactKeyBinding(const KeyBinding& binding, char* buffer, size_t bufferSize,
+                                    size_t fieldChars) {
+    formatKeyBinding(binding, buffer, bufferSize);
+    if (strlen(buffer) <= fieldChars) return;
+    snprintf(buffer, bufferSize, "%s%s%s%s",
+        hasModifier(binding.modifiers, ModifierFlags::CTRL) ? "C+" : "",
+        hasModifier(binding.modifiers, ModifierFlags::SHIFT) ? "S+" : "",
+        hasModifier(binding.modifiers, ModifierFlags::ALT) ? "A+" : "",
+        getKeyName(binding.keyCode));
+}
+
+// The pad field holds eight characters: the D-pad directions drop "D-Pad", which
+// the column needs no reminder of -- nothing else on a pad is a direction.
+static const char* compactButtonName(ControllerButton button) {
+    switch (button) {
+        case ControllerButton::DPAD_UP:    return "Up";
+        case ControllerButton::DPAD_DOWN:  return "Down";
+        case ControllerButton::DPAD_LEFT:  return "Left";
+        case ControllerButton::DPAD_RIGHT: return "Right";
+        default: return getControllerButtonName(button);
     }
 }
 
@@ -68,35 +95,26 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     ColorConfig& colorConfig = ColorConfig::getInstance();
     float charWidth = PluginUtils::calculateMonospaceTextWidth(1, ctx.fontSize);
 
-    // Column layout - wider fields for better readability
-    float actionX = ctx.labelX;
-    float keyboardX = actionX + charWidth * 15;  // After action name (longest label "Segment Remove" is 14 chars; +1 keeps a gap before the "[" column)
-    float controllerX = keyboardX + charWidth * 21;  // After keyboard binding (wider);
-                                                     // 21 (not 22) keeps the clear "x" inside the row highlight
-
-    // Field widths (characters inside brackets)
-    constexpr int kbFieldWidth = 16;   // Fits "Ctrl+Shift+F12"
-    constexpr int ctrlFieldWidth = 12; // Fits "D-Pad Right", the longest button name
-
+    // TWO BINDINGS TO A ROW. Each cell is a name, a keyboard field and a pad field: a 9-character
+    // name column (the action names are kept that short in getActionDisplayName),
+    // then two input boxes of the same width, filling the grid cell exactly.
+    constexpr int NAME_CHARS = 10;
+    constexpr int kbFieldWidth = HOTKEY_KEY_FIELD;
+    constexpr int ctrlFieldWidth = HOTKEY_PAD_FIELD;
+    const auto keyboardXAt = [&](float cellLeft) { return cellLeft + charWidth * NAME_CHARS; };
+    const auto controllerXAt = [&](float cellLeft) {
+        return keyboardXAt(cellLeft) + charWidth * (kbFieldWidth + 2);
+    };
 
     // Store layout info for hover detection in update()
-    ctx.parent->m_hotkeyContentStartY = ctx.currentY;
     ctx.parent->m_hotkeyRowHeight = ctx.lineHeightNormal;
-    ctx.parent->m_hotkeyRowTops.clear();  // Refilled per row below (handles the spacer gaps)
-    ctx.parent->m_hotkeyKeyboardX = keyboardX;
-    ctx.parent->m_hotkeyControllerX = controllerX;
+    ctx.parent->m_hotkeyCells.clear();  // Refilled per binding below
     ctx.parent->m_hotkeyFieldCharWidth = charWidth;
 
     // Check if we're in capture mode
     bool isCapturing = hotkeyMgr.isCapturing();
     HotkeyAction captureAction = hotkeyMgr.getCaptureAction();
     CaptureType captureType = hotkeyMgr.getCaptureType();
-
-    // Track row index for hover detection
-    int currentRowIndex = 0;
-
-    // panelWidth is actually contentAreaWidth (from contentAreaStartX to right edge)
-    float rowWidth = ctx.rowSpanWidth();
 
     // Helper to get tooltip ID for an action
     auto getTooltipId = [](HotkeyAction action) -> const char* {
@@ -134,6 +152,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
             case HotkeyAction::DIRECTOR_TOGGLE:           return "hotkeys.director_toggle";
             case HotkeyAction::DIRECTOR_LOCK:             return "hotkeys.director_lock";
             case HotkeyAction::TOGGLE_STREAM_CHAT:        return "hotkeys.stream_chat";
+            case HotkeyAction::TOGGLE_DELTA_TRACE:        return "hotkeys.delta_trace";
             case HotkeyAction::TOGGLE_RUMBLE:      return "hotkeys.rumble";
             case HotkeyAction::TOGGLE_WIDGETS:     return "hotkeys.widgets";
             case HotkeyAction::TOGGLE_ALL_HUDS:    return "hotkeys.all_huds";
@@ -142,213 +161,166 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
         }
     };
 
-    // A bracketed binding field (SettingsLayoutContext::addBracketField: brackets
-    // pinned to the monospace grid, text cut to the field). The matching click
-    // region spans the full field at each call site below.
-    auto drawField = [&](float columnX, int fieldWidth, const char* text, unsigned long color) {
-        ctx.addBracketField(columnX, fieldWidth, text, color);
-    };
-
-    // Helper to add a hotkey row
+    // Helper to add one binding: a cell of the current two-column run
     auto addHotkeyRow = [&](HotkeyAction action) {
         const HotkeyBinding& binding = hotkeyMgr.getBinding(action);
+        const int cellIndex = static_cast<int>(ctx.parent->m_hotkeyCells.size());
+        const float kbX = keyboardXAt(ctx.labelX);
+        const float ctrlX = controllerXAt(ctx.labelX);
+        ctx.parent->m_hotkeyCells.push_back({ctx.currentY, kbX, ctrlX});
 
-        // Record this row's top Y so hover detection maps cursor->row exactly,
-        // regardless of the half-row spacers inserted between groups.
-        ctx.parent->m_hotkeyRowTops.push_back(ctx.currentY);
-
-        // Add row-wide tooltip region
+        // Tooltip region (endRow trims it to the cell)
         const char* tooltipId = getTooltipId(action);
         if (tooltipId) {
             ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                ctx.labelX, ctx.currentY, rowWidth, ctx.lineHeightNormal, tooltipId
+                ctx.labelX, ctx.currentY, ctx.rowSpanWidth(), ctx.lineHeightNormal, tooltipId
             ));
         }
 
-        // Check if this row is hovered (using tracked row index)
-        bool isRowHovered = (currentRowIndex == ctx.parent->m_hoveredHotkeyRow);
+        const bool isCellHovered = (cellIndex == ctx.parent->m_hoveredHotkeyRow);
 
         // Action name
-        ctx.parent->addString(getActionDisplayName(action), actionX, ctx.currentY, Justify::LEFT,
+        ctx.parent->addString(getActionDisplayName(action), ctx.labelX, ctx.currentY, Justify::LEFT,
             Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
 
         // Keyboard binding
-        bool isCapturingKeyboard = isCapturing && captureAction == action && captureType == CaptureType::KEYBOARD;
-        float kbX = keyboardX;
-
-        if (isCapturingKeyboard) {
-            // Show capture prompt with real-time modifier feedback (accent color)
+        if (isCapturing && captureAction == action && captureType == CaptureType::KEYBOARD) {
+            // Capture prompt with real-time modifier feedback (accent color)
             ModifierFlags currentMods = hotkeyMgr.getCurrentModifiers();
-            std::string modPrefix;
-            if (hasModifier(currentMods, ModifierFlags::CTRL)) modPrefix += "Ctrl+";
-            if (hasModifier(currentMods, ModifierFlags::SHIFT)) modPrefix += "Shift+";
-            if (hasModifier(currentMods, ModifierFlags::ALT)) modPrefix += "Alt+";
-
-            char prompt[40];
-            if (modPrefix.empty()) {
-                snprintf(prompt, sizeof(prompt), "Press Key...");
-            } else {
-                snprintf(prompt, sizeof(prompt), "%s...", modPrefix.c_str());
-            }
-            drawField(kbX, kbFieldWidth, prompt, colorConfig.getAccent());
+            char mods[8];
+            snprintf(mods, sizeof(mods), "%s%s%s",
+                hasModifier(currentMods, ModifierFlags::CTRL) ? "C+" : "",
+                hasModifier(currentMods, ModifierFlags::SHIFT) ? "S+" : "",
+                hasModifier(currentMods, ModifierFlags::ALT) ? "A+" : "");
+            char prompt[16];
+            if (mods[0]) snprintf(prompt, sizeof(prompt), "%s...", mods);
+            else snprintf(prompt, sizeof(prompt), "Press key");
+            ctx.addInputField(kbX, kbFieldWidth, prompt, colorConfig.getAccent(), true);
         } else {
-            // Show current binding
             char keyStr[32];
-            formatKeyBinding(binding.keyboard, keyStr, sizeof(keyStr));
-
+            formatCompactKeyBinding(binding.keyboard, keyStr, sizeof(keyStr), kbFieldWidth);
             // Determine color: hovered > bound > unbound
-            bool isKbHovered = (ctx.parent->m_hoveredHotkeyRow == currentRowIndex &&
-                               ctx.parent->m_hoveredHotkeyColumn == HotkeyColumn::KEYBOARD);
             unsigned long keyColor;
-            if (isKbHovered) {
+            if (isCellHovered && ctx.parent->m_hoveredHotkeyColumn == HotkeyColumn::KEYBOARD) {
                 keyColor = colorConfig.getAccent();
             } else if (binding.hasKeyboard()) {
                 keyColor = colorConfig.getPrimary();
             } else {
                 keyColor = colorConfig.getMuted();
             }
-            drawField(kbX, kbFieldWidth, keyStr, keyColor);
-
-            // Click region for keyboard binding (covers full field)
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                kbX, ctx.currentY, charWidth * (kbFieldWidth + 2), ctx.lineHeightNormal,
-                SettingsHud::ClickRegion::HOTKEY_KEYBOARD_BIND, action
-            ));
-
-            // Clear button if bound (only show on hover)
-            if (binding.hasKeyboard() && isRowHovered) {
-                float clearX = kbX + charWidth * (kbFieldWidth + 2.5f);
-                ctx.parent->addString("x", clearX, ctx.currentY, Justify::LEFT,
-                    Fonts::getNormal(), colorConfig.getNegative(), ctx.fontSize);
-                ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                    clearX, ctx.currentY, charWidth * 2, ctx.lineHeightNormal,
-                    SettingsHud::ClickRegion::HOTKEY_KEYBOARD_CLEAR, action
-                ));
-            }
+            ctx.addInputField(kbX, kbFieldWidth, keyStr, keyColor);
         }
+        // Click region for the keyboard field (covers the full field); a right-click
+        // on it clears the binding (SettingsHud::handleRightClick)
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            kbX, ctx.currentY, charWidth * (kbFieldWidth + 1), ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::HOTKEY_KEYBOARD_BIND, action
+        ));
 
         // Controller binding
-        bool isCapturingController = isCapturing && captureAction == action && captureType == CaptureType::CONTROLLER;
-        float ctrlX = controllerX;
-
-        if (isCapturingController) {
-            // Show capture prompt (accent color)
-            drawField(ctrlX, ctrlFieldWidth, "Press Btn...", colorConfig.getAccent());
+        if (isCapturing && captureAction == action && captureType == CaptureType::CONTROLLER) {
+            ctx.addInputField(ctrlX, ctrlFieldWidth, "Press", colorConfig.getAccent(), true);
         } else {
-            // Show current binding
-            const char* btnName = getControllerButtonName(binding.controller);
-
-            // Determine color: hovered > bound > unbound
-            bool isCtrlHovered = (ctx.parent->m_hoveredHotkeyRow == currentRowIndex &&
-                                 ctx.parent->m_hoveredHotkeyColumn == HotkeyColumn::CONTROLLER);
             unsigned long btnColor;
-            if (isCtrlHovered) {
+            if (isCellHovered && ctx.parent->m_hoveredHotkeyColumn == HotkeyColumn::CONTROLLER) {
                 btnColor = colorConfig.getAccent();
             } else if (binding.hasController()) {
                 btnColor = colorConfig.getPrimary();
             } else {
                 btnColor = colorConfig.getMuted();
             }
-            drawField(ctrlX, ctrlFieldWidth, btnName, btnColor);
-
-            // Click region for controller binding (covers full field)
-            ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                ctrlX, ctx.currentY, charWidth * (ctrlFieldWidth + 2), ctx.lineHeightNormal,
-                SettingsHud::ClickRegion::HOTKEY_CONTROLLER_BIND, action
-            ));
-
-            // Clear button if bound (only show on hover)
-            if (binding.hasController() && isRowHovered) {
-                float clearX = ctrlX + charWidth * (ctrlFieldWidth + 2.5f);
-                ctx.parent->addString("x", clearX, ctx.currentY, Justify::LEFT,
-                    Fonts::getNormal(), colorConfig.getNegative(), ctx.fontSize);
-                ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-                    clearX, ctx.currentY, charWidth * 2, ctx.lineHeightNormal,
-                    SettingsHud::ClickRegion::HOTKEY_CONTROLLER_CLEAR, action
-                ));
-            }
+            ctx.addInputField(ctrlX, ctrlFieldWidth, compactButtonName(binding.controller), btnColor);
         }
+        ctx.parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            ctrlX, ctx.currentY, charWidth * (ctrlFieldWidth + 1), ctx.lineHeightNormal,
+            SettingsHud::ClickRegion::HOTKEY_CONTROLLER_BIND, action
+        ));
 
-        ctx.currentY += ctx.lineHeightNormal;
-        ++currentRowIndex;
+        ctx.endRow();
     };
 
-    // Settings Menu pinned at the top (the master toggle for this menu). It gets its
-    // own section rather than sitting loose above the first card -- a single binding
-    // outside every card was the one row on this tab with no surface behind it.
-    //
-    // The column labels ride on this first card's heading row, in the columns they
-    // caption. They used to float above every card, which is the one place on this
-    // tab nothing else sits -- and it read as an accident next to the Riders tab,
-    // where the equivalent hint sits inside its section header.
-    const float headingY = ctx.addSectionHeading("Menu & HUDs");
-    ctx.parent->addString("Keyboard", keyboardX, headingY, Justify::LEFT,
-        Fonts::getStrong(), colorConfig.getPrimary(), ctx.fontSize);
-    ctx.parent->addString("Controller", controllerX, headingY, Justify::LEFT,
-        Fonts::getStrong(), colorConfig.getPrimary(), ctx.fontSize);
-    addHotkeyRow(HotkeyAction::TOGGLE_SETTINGS);
+    // A section of bindings, two to a row, filled down the left column first
+    auto addHotkeySection = [&](const HotkeyAction* actions, int count) {
+        ctx.beginColumns(2, count);
+        for (int i = 0; i < count; ++i) addHotkeyRow(actions[i]);
+        ctx.endColumns();
+    };
 
-    // NOTE: Several actions have no row here to keep the tab within the panel;
-    // they remain bindable by hand-editing the [Hotkeys] section of the INI
-    // (rumble_key=, timing_key=, notices_key=, stats_key=, friends_key=,
-    // event_log_key=, fmx_key=, helmet_key=, performance_key=, session_key=,
-    // stream_chat_key=, ...).
+    // The field captions ride on the first card's heading row, over both columns'
+    // fields, on their text column. "Gamepad" rather than "Controller": the
+    // caption has the pad field's eight characters to sit in.
+    const float headingY = ctx.addSectionHeading("Toggles");
+    for (int col = 0; col < 2; ++col) {
+        const float cellLeft = ctx.cellX(col, 2);
+        ctx.parent->addString("Keyboard", keyboardXAt(cellLeft) + charWidth, headingY, Justify::LEFT,
+            Fonts::getStrong(), colorConfig.getPrimary(), ctx.fontSize);
+        ctx.parent->addString("Gamepad", controllerXAt(cellLeft) + charWidth, headingY, Justify::LEFT,
+            Fonts::getStrong(), colorConfig.getPrimary(), ctx.fontSize);
+    }
 
-    // The HUD toggles used to open their own "HUDs" section here. Merged into this
-    // one: the section above it held a single row (the menu toggle) plus a heading and
-    // the column captions, so the tab opened with a card containing one binding and
-    // then started again -- two headings and two card borders to separate a row from
-    // the rows it belongs with. One card, one heading, and the tab is that much
-    // shorter for it.
-    addHotkeyRow(HotkeyAction::TOGGLE_STANDINGS);
-    addHotkeyRow(HotkeyAction::TOGGLE_MAP);
-    addHotkeyRow(HotkeyAction::TOGGLE_RADAR);
-    addHotkeyRow(HotkeyAction::TOGGLE_LAP_LOG);
-    addHotkeyRow(HotkeyAction::TOGGLE_IDEAL_LAP);
-    addHotkeyRow(HotkeyAction::TOGGLE_SESSION_CHARTS);
-    addHotkeyRow(HotkeyAction::TOGGLE_TELEMETRY);
-    addHotkeyRow(HotkeyAction::TOGGLE_RECORDS);
-    // Pitboard, Gap Bar and Reset Crashes are intentionally omitted from the GUI to
-    // save space; their INI keys (pitboard_key / gap_bar_key / crash_reset_key) still
-    // bind if hand-edited, like the Session toggle. The enumerators + config names
-    // live in hotkey_config.h.
-    //
-    // Reset Crashes is the newest of the three and the reason this list is a rule
-    // rather than an accident: the settings panel sizes itself to its TALLEST tab,
-    // this tab is it, and adding one more row here put the panel 2% past the bottom
-    // of the screen (theme_geometry_test caught it). A row costs the whole panel, so
-    // an action whose control already exists elsewhere -- the crash widget carries
-    // its own Reset button -- takes the INI key and leaves the row.
-
-    // Broadcast: the casting tools - auto-director + web-overlay panel forces.
-    ctx.addSectionHeading("Broadcast");
-    addHotkeyRow(HotkeyAction::DIRECTOR_TOGGLE);
-    addHotkeyRow(HotkeyAction::DIRECTOR_LOCK);
-#if GAME_HAS_HTTP_SERVER
-    // Web overlay broadcaster controls: force a bottom-slot panel to slide in now.
-    addHotkeyRow(HotkeyAction::OVERLAY_FORCE_LAST_LAP);
-    addHotkeyRow(HotkeyAction::OVERLAY_FORCE_FASTEST_LAP);
-    addHotkeyRow(HotkeyAction::OVERLAY_FORCE_SECTORS);
-    addHotkeyRow(HotkeyAction::OVERLAY_FORCE_CHARTS);
-    addHotkeyRow(HotkeyAction::OVERLAY_FORCE_DOWN_ORDER);
+    // Every HUD's toggle, in the sidebar's order (its own tabs, then the More
+    // page's, then the global ones). Only the crash widget's Reset stays INI-only
+    // (crash_reset_key=): the widget carries its own Reset button.
+    static const HotkeyAction kHuds[] = {
+        HotkeyAction::TOGGLE_SETTINGS,
+        HotkeyAction::TOGGLE_MAP,
+        HotkeyAction::TOGGLE_NOTICES,
+        HotkeyAction::TOGGLE_STANDINGS,
+#if GAME_HAS_STEAM_FRIENDS
+        HotkeyAction::TOGGLE_FRIENDS,
 #endif
+        HotkeyAction::TOGGLE_TIMING,
+        HotkeyAction::TOGGLE_LAP_LOG,
+        HotkeyAction::TOGGLE_GAP_BAR,
+        HotkeyAction::TOGGLE_DELTA_TRACE,
+        HotkeyAction::TOGGLE_PITBOARD,
+        HotkeyAction::TOGGLE_RADAR,
+        HotkeyAction::TOGGLE_IDEAL_LAP,
+        HotkeyAction::TOGGLE_SESSION,
+        HotkeyAction::TOGGLE_PERFORMANCE,
+        HotkeyAction::TOGGLE_STATS,
+        HotkeyAction::TOGGLE_TELEMETRY,
+#if GAME_HAS_RECORDS_PROVIDER
+        HotkeyAction::TOGGLE_RECORDS,
+#endif
+#if GAME_HAS_FMX
+        HotkeyAction::TOGGLE_FMX,
+#endif
+        HotkeyAction::TOGGLE_EVENT_LOG,
+        HotkeyAction::TOGGLE_SESSION_CHARTS,
+        HotkeyAction::TOGGLE_RUMBLE,
+        HotkeyAction::TOGGLE_HELMET,
+        HotkeyAction::TOGGLE_STREAM_CHAT,
+    };
+    addHotkeySection(kHuds, static_cast<int>(sizeof(kHuds) / sizeof(kHuds[0])));
 
-    // Speaks whatever the active spotter pack defines as `hotkey_triggered`,
-    // so what it says is the user's line rather than ours — which also makes
-    // it the way to hear a template you are editing without waiting for the
-    // race to produce the event it belongs to.
-    addHotkeyRow(HotkeyAction::SPOTTER_CUE);
+    // Broadcast: the casting tools - auto-director + web-overlay panel forces. The
+    // spotter cue speaks whatever the active pack defines as `hotkey_triggered`, so
+    // it is also the way to hear a template you are editing.
+    static const HotkeyAction kBroadcast[] = {
+        HotkeyAction::DIRECTOR_TOGGLE,
+        HotkeyAction::DIRECTOR_LOCK,
+#if GAME_HAS_HTTP_SERVER
+        HotkeyAction::OVERLAY_FORCE_LAST_LAP,
+        HotkeyAction::OVERLAY_FORCE_FASTEST_LAP,
+        HotkeyAction::OVERLAY_FORCE_SECTORS,
+        HotkeyAction::OVERLAY_FORCE_CHARTS,
+        HotkeyAction::OVERLAY_FORCE_DOWN_ORDER,
+#endif
+        HotkeyAction::SPOTTER_CUE,
+    };
+    ctx.addSectionHeading("Broadcast");
+    addHotkeySection(kBroadcast, static_cast<int>(sizeof(kBroadcast) / sizeof(kBroadcast[0])));
 
-    ctx.addSectionHeading("Segments");
-    addHotkeyRow(HotkeyAction::SEGMENT_ADD);
-    addHotkeyRow(HotkeyAction::SEGMENT_REMOVE);
-
+    static const HotkeyAction kOther[] = {
+        HotkeyAction::SEGMENT_ADD,
+        HotkeyAction::SEGMENT_REMOVE,
+        HotkeyAction::TOGGLE_WIDGETS,
+        HotkeyAction::TOGGLE_ALL_HUDS,
+        HotkeyAction::RELOAD_CONFIG,
+    };
     ctx.addSectionHeading("Other");
-    addHotkeyRow(HotkeyAction::TOGGLE_WIDGETS);
-    addHotkeyRow(HotkeyAction::TOGGLE_ALL_HUDS);
-    addHotkeyRow(HotkeyAction::RELOAD_CONFIG);
-
-    ctx.addNote("Tip: click to rebind, ESC to cancel.");
+    addHotkeySection(kOther, static_cast<int>(sizeof(kOther) / sizeof(kOther[0])));
 
     // No active HUD for hotkeys settings
     return nullptr;

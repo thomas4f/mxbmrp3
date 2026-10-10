@@ -451,7 +451,7 @@ void SessionHud::resetToDefaults() {
     m_bShowTitle = true;   // Captioned like every other full HUD -- see rebuildRenderData
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.8f;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     m_enabledRows = ROW_DEFAULT;  // Reset row visibility
     m_bShowIcons = true;  // Icons enabled by default
     setPosition(cellsX(1), cellsY(11));

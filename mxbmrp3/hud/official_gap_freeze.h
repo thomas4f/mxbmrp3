@@ -1,8 +1,10 @@
 // ============================================================================
 // hud/official_gap_freeze.h
-// The freeze the Gap Bar and the Lap Log's gap row share: after each split and
-// the line, hold the OFFICIAL gap (the game's own split/lap time against the
-// reference lap's) on screen for a while before going back to the live reading.
+// The freeze the Gap Bar, the Lap Log's gap row and the Timing panel's Gap section
+// share: after each split and the line, hold the OFFICIAL gap (the game's own
+// split/lap time against the reference lap's) on screen for a while before going
+// back to the live reading. shownGap() is the one place that choice is made, so
+// the three cannot print different numbers for the same moment.
 //
 // AGAINST THE HUD'S OWN REFERENCE. Each HUD reads its live gap against the lap
 // its Reference setting names (PbGapTracker::Ref), so the held gap is measured
@@ -48,7 +50,10 @@ public:
     void reset();
 
     bool isFrozen() const { return m_hold.active(); }
-    int frozenGap() const { return m_frozenGap; }
+
+    // The gap a HUD shows against `ref` now: the held official one during a
+    // freeze, else PluginData's live one, else none (false -> the placeholder).
+    bool shownGap(Ref ref, int* gapMs) const;
 
 private:
     static constexpr int NUM_SPLITS = SplitCrossingDetector::NUM_SPLITS;

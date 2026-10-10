@@ -456,7 +456,9 @@ void ExplorationStats::observeSettings(const HudManager& hudManager) {
             if (h->isVisibleAnySurface()) setGrew |= m_huds.insert(h->getHarnessId()).second;
             if (m_huds.count(h->getHarnessId())) ++hudsTried;
         }
-        if (!h->getThemeOverride().empty()) ++customisations;
+        // Against the HUD's shipped value: Radar and Gamepad ship THEME_NONE, and
+        // counting that gave every fresh install Interior Decorator.
+        if (h->isThemeOverrideCustomised()) ++customisations;
         bool colour = false, font = false;
         for (int i = 0; i < static_cast<int>(ColorSlot::COUNT); ++i) colour |= h->hasColorOverride(static_cast<ColorSlot>(i));
         for (int i = 0; i < static_cast<int>(FontCategory::COUNT); ++i) font |= h->hasFontOverride(static_cast<FontCategory>(i));
@@ -470,8 +472,11 @@ void ExplorationStats::observeSettings(const HudManager& hudManager) {
     }
     int hotkeysBound = 0;
     for (int i = 0; i < static_cast<int>(HotkeyAction::COUNT); ++i) {
-        const HotkeyBinding& b = HotkeyManager::getInstance().getBinding(static_cast<HotkeyAction>(i));
-        if (b.keyboard.keyCode != 0 || b.controller != ControllerButton::NONE) ++hotkeysBound;
+        // A binding the PLAYER made: set, and not the shipped one. The settings
+        // key ships bound, and counting it gave every fresh install Keymaster.
+        const HotkeyAction a = static_cast<HotkeyAction>(i);
+        const HotkeyBinding& b = HotkeyManager::getInstance().getBinding(a);
+        if (b.isSet() && b != defaultHotkeyBinding(a)) ++hotkeysBound;
     }
     if (setGrew) m_dirty = true;
     const bool experimental = UiConfig::getInstance().getPluginThread() || UiConfig::getInstance().getGlInGame();

@@ -963,7 +963,7 @@ void SessionChartsHud::resetToDefaults() {
     m_bShowTitle = true;
     setTextureVariant(0);
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     m_graphRows = DEFAULT_GRAPH_ROWS;
     // Upper-right by default. A single chart fits comfortably here; multi-chart
     // stacks are tall (each chart is 10 rows) and a full stack exceeds the screen,

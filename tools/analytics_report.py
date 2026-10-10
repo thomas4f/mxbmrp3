@@ -112,7 +112,7 @@ FEATURE_LABELS = {
 # ----------------------------------------------------------------------------
 
 
-_ACRONYMS = {"Fmx": "FMX", "Ecu": "ECU", "G Force": "G-Force", "Hud": "HUD"}
+_ACRONYMS = {"Fmx": "FMX", "Ecu": "ECU", "G Force": "G-Force", "Hud": "HUD", "Rpm": "RPM"}
 
 
 # Rows of docs/achievements.md: | # | `id` | <img … title="icon"> | Title | Bronze |
@@ -698,24 +698,10 @@ def adoption_annot(enabled, reporting):
     return "{} ({:,} of {:,})".format(pctstr(enabled, reporting), enabled, reporting)
 
 
-def pctstr(count, total):
-    """'46%', '<1%' for a nonzero share below 1%, '>99%' for a share above 99%
-    that isn't the whole (so '100%' only ever means literally all)."""
-    p = pct(count, total)
-    if count > 0 and p < 1.0:
-        return "<1%"
-    if count < total and p > 99.0:
-        return ">99%"
-    return "{:.0f}%".format(p)
-
-
-def pc(count, total):
-    """'46% (1,606)' - share, then its count: THE report's one shape for a count
-    with its share, in charts, tables and text alike. (Count charts used to lead
-    with the count, "1,606 (46%)", on the grounds that their bar is a count; the
-    reader saw two orders for the same pair, not the reason.) When the base
-    differs from row to row, adoption_annot adds it: '46% (1,606 of 3,491)'."""
-    return "{} ({:,})".format(pctstr(count, total), int(count))
+# One definition, in the chart module, so a hover readout and the label beside
+# it cannot drift into two shapes for the same pair.
+pctstr = svg.pctstr
+pc = svg.pc
 
 
 def ranked(series):
@@ -1724,11 +1710,11 @@ def _achievements(r, snap):
 
             def segments(i, by):
                 # Each tier carries its requirement, worded as the toast words it,
-                # for the Pages copy's hover readout ("Racer: Silver 20%" /
+                # for the Pages copy's hover readout ("Racer: Silver 20% (2,868)" /
                 # "Finish 10 races"). A one-shot has no tiers to name, so its one
-                # segment reads "Rule Bender: 18%", not "Bronze 18%".
+                # segment reads "Rule Bender: 18% (2,581)", not "Bronze 18%".
                 shot = one_shot(i)
-                return [("t{}".format(t), pct(by[i][t], base), reqs(i)[t - 1]) + (("",) if shot else ())
+                return [("t{}".format(t), by[i][t], reqs(i)[t - 1]) + (("",) if shot else ())
                         for t in range(1, TIERS + 1)]
 
             def about(i):
@@ -1760,7 +1746,7 @@ def _achievements(r, snap):
                           # convention for precisely this.
                           pc(counts.get(i, 0), base), about(i))
                          for i in ranked],
-                        [("t{}".format(t), TIER_NAMES[t - 1]) for t in range(1, TIERS + 1)],
+                        [("t{}".format(t), TIER_NAMES[t - 1]) for t in range(1, TIERS + 1)], base,
                         subtitle="% of installs reporting achievements; bar length is "
                                  "how many hold it, the split is how far they have taken it"),
                     "Achievements by tier reached")
@@ -1775,7 +1761,7 @@ def _achievements(r, snap):
                             [(label(i), icon(i), segments(i, by_tier),
                               pc(hidden_counts.get(i, 0), base), about(i))
                              for i in hranked],
-                            [("t{}".format(t), TIER_NAMES[t - 1]) for t in range(1, TIERS + 1)],
+                            [("t{}".format(t), TIER_NAMES[t - 1]) for t in range(1, TIERS + 1)], base,
                             subtitle="% of installs reporting achievements; same reading as the "
                                      "chart above"),
                         "Hidden achievements by tier reached", html=True)
@@ -2294,6 +2280,15 @@ def selftest():
     # catalogue words it (the fixture's Racer sits at tier 2: "Finish 10 races").
     assert "&#10;Finish 10 races" in glob_svg, \
         "an achievement tier's hover readout lost its requirement"
+    # EVERY HOVER READOUT IS "share (count)", the shape of the labels beside it.
+    # The tier segments used to read a bare share ("Bronze 5%") and the histograms
+    # a bare count ("0%: 1,052"), so the reader got half the pair on hover.
+    assert re.search(r'<rect [^>]*data-tip="Racer: \w+ (<1|\d+)% \([\d,]+\)', glob_svg), \
+        "an achievement tier's hover readout lost its share or count"
+    prog_svg = open(os.path.join(out, "charts", "achievement_progress.svg")).read()
+    tips = re.findall(r'<rect [^>]*data-tip="([^"]*)"', prog_svg)
+    assert tips and all(re.fullmatch(r'.+: (<1|>99|\d+)% \([\d,]+\)', t) for t in tips), \
+        "a histogram bar's hover readout is not share (count): {}".format(tips)
     # The row's name reads out the whole ladder.
     assert 'class="lbl" data-tip="Racer&#10;Bronze: Finish a race&#10;Silver: Finish 10 races' in glob_svg, \
         "an achievement's name lost its requirement readout"

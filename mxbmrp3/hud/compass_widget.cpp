@@ -307,7 +307,7 @@ void CompassWidget::resetToDefaults() {
     m_bShowTitle = false;         // No title for gauge widgets
     setTextureVariant(0);         // No texture by default
     m_fBackgroundOpacity = 1.0f;  // Full opacity (100%)
-    m_fScale = 1.0f;
+    setScale(1.0f);
     m_style = Style::Classic;
     // Bottom gauge row (evenly spaced, pitch 0.0715, same y). G-Force is the leftmost
     // all-game gauge at 0.5995 (Bars/Lean/Fuel sit to its right); the compass takes the

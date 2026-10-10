@@ -255,7 +255,7 @@ void TyreTempWidget::resetToDefaults() {
     m_bShowTitle = false;  // No title for gauge widgets
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 1.0f;  // Full opacity (100%)
-    m_fScale = 1.0f;
+    setScale(1.0f);
     // GP-only widget: sits left of the Compass in the bottom gauge row (pitch 0.0715).
     setPosition(cellsX(70), cellsY(74));
     m_coldThreshold = DEFAULT_COLD_THRESHOLD;

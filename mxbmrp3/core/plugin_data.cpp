@@ -107,6 +107,12 @@ void PluginData::setLimiterRPM(int limiterRPM) {
     }
 }
 
+void PluginData::setMaxRPM(int maxRPM) {
+    if (setValue(m_sessionData.maxRPM, maxRPM)) {
+        notifyHudManager(DataChangeType::SessionData);
+    }
+}
+
 void PluginData::setSteerLock(float steerLock) {
     if (setValue(m_sessionData.steerLock, steerLock)) {
         notifyHudManager(DataChangeType::SessionData);

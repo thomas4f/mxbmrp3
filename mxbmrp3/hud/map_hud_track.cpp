@@ -24,8 +24,15 @@ using namespace PluginConstants::Math;
 
 using namespace map_hud_detail;
 
+#if defined(MXBMRP3_TEST_BUILD)
+// World-ribbon rebuilds (the arc walk), read by MXBMRP3_Test_MapWorldRibbonBuilds:
+// the outline and fill passes must share one key, or each rebuild walks twice.
+long long g_mapWorldRibbonBuilds = 0;
+#endif
+
 void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor, float widthMultiplier,
-                         float clipLeft, float clipTop, float clipRight, float clipBottom) {
+                         float clipLeft, float clipTop, float clipRight, float clipBottom,
+                         bool lapDelta, bool tint) {
     if (m_trackSegments.empty()) {
         return;
     }
@@ -43,11 +50,8 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
 
     // --- Spatial culling setup ---
     // Expand bounds by track width + some margin to ensure we don't clip visible track
-    float cullMargin = effectiveWidthMeters * 2.0f;
-    float cullMinX = m_minX - cullMargin;
-    float cullMaxX = m_maxX + cullMargin;
-    float cullMinY = m_minY - cullMargin;
-    float cullMaxY = m_maxY + cullMargin;
+    float cullMinX, cullMinY, cullMaxX, cullMaxY;
+    viewCullRect(rotation, effectiveWidthMeters * 2.0f, cullMinX, cullMinY, cullMaxX, cullMaxY);
 
     // Resolve detail scale/adaptive/baseline to ribbon subdivision spacing
     // (meters per quad). Quad density scales linearly with the 20-200% detail
@@ -87,7 +91,10 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
     // the expensive arc walk; it's cached across the per-frame rebuilds that
     // rotate/zoom trigger (see WorldRibbonPoint in the header) so those modes only
     // pay the cheap transform below, not a full re-tessellation.
-    ensureWorldRibbon(lodSpacing, curveMinSteps);
+    ensureWorldRibbon(lodSpacing, curveMinSteps, lapDelta);
+    // Zoomed, the outline fades out a little ahead of the fill (the square of
+    // its fade), so it does not show through the fading fill as a lighter band.
+    const bool outlinePass = widthMultiplier > 1.0f;
 
     // Lambda to check if a point is within culling bounds
     auto isPointInBounds = [&](float x, float y) -> bool {
@@ -120,6 +127,16 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
     // clip rect is skipped while continuity is preserved (as createRibbonQuad did).
     float prevLeftX = 0.0f, prevLeftY = 0.0f, prevRightX = 0.0f, prevRightY = 0.0f;
     bool hasPrevPoint = false;
+
+    // LAP DELTA: each quad takes the rate at its two ends, averaged, and blends
+    // the fill toward green (gaining) or red (losing) by it. The ribbon's samples
+    // are a few meters apart and the rate is interpolated between profile points,
+    // so the colour fades along the track rather than stepping.
+    const bool tintByDelta = lapDelta && tint;
+    const unsigned long gainColor = tintByDelta ? this->getColor(ColorSlot::POSITIVE) : 0;
+    const unsigned long lossColor = tintByDelta ? this->getColor(ColorSlot::NEGATIVE) : 0;
+    float prevRate = 0.0f;
+    bool prevHasRate = false;
     for (const auto& p : m_worldRibbon) {
         // World-space cull: outside bounds breaks the ribbon (matches the old
         // per-segment cull; anything culled here maps outside the clip rect anyway).
@@ -142,19 +159,66 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
         applyOffset(screenLeftX, screenLeftY);
         applyOffset(screenRightX, screenRightY);
 
-        if (hasPrevPoint &&
-            isQuadCenterlineInside(prevLeftX, prevLeftY, screenLeftX, screenLeftY,
-                                   screenRightX, screenRightY, prevRightX, prevRightY)) {
-            // Quad connecting previous edges to current (counter-clockwise to match engine)
-            SPluginQuad_t quad;
-            quad.m_aafPos[0][0] = prevLeftX;   quad.m_aafPos[0][1] = prevLeftY;
-            quad.m_aafPos[1][0] = screenLeftX; quad.m_aafPos[1][1] = screenLeftY;
-            quad.m_aafPos[2][0] = screenRightX; quad.m_aafPos[2][1] = screenRightY;
-            quad.m_aafPos[3][0] = prevRightX;  quad.m_aafPos[3][1] = prevRightY;
-            quad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-            quad.m_ulColor = trackColor;
-            m_quads.push_back(quad);
+        float curRate = 0.0f;
+        const bool curHasRate = tintByDelta && m_deltaRate.at(p.pos, curRate);
+
+        if (hasPrevPoint) {
+            // The quad's colour: the track's, or blended by the lap delta.
+            unsigned long color = trackColor;
+            if (prevHasRate || curHasRate) {
+                const float r = (prevHasRate && curHasRate) ? (prevRate + curRate) * 0.5f
+                              : (curHasRate ? curRate : prevRate);
+                color = PluginUtils::mixColor(trackColor, r > 0.0f ? lossColor : gainColor,
+                                              LapDeltaRate::weight(r));
+            }
+            // The part of the quad from ta to tb along it (0 = previous edge, 1 =
+            // current), counter-clockwise to match the engine.
+            auto emitPart = [&](float ta, float tb, unsigned long c) {
+                SPluginQuad_t quad;
+                quad.m_aafPos[0][0] = prevLeftX + (screenLeftX - prevLeftX) * ta;
+                quad.m_aafPos[0][1] = prevLeftY + (screenLeftY - prevLeftY) * ta;
+                quad.m_aafPos[1][0] = prevLeftX + (screenLeftX - prevLeftX) * tb;
+                quad.m_aafPos[1][1] = prevLeftY + (screenLeftY - prevLeftY) * tb;
+                quad.m_aafPos[2][0] = prevRightX + (screenRightX - prevRightX) * tb;
+                quad.m_aafPos[2][1] = prevRightY + (screenRightY - prevRightY) * tb;
+                quad.m_aafPos[3][0] = prevRightX + (screenRightX - prevRightX) * ta;
+                quad.m_aafPos[3][1] = prevRightY + (screenRightY - prevRightY) * ta;
+                quad.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
+                quad.m_ulColor = c;
+                m_quads.push_back(quad);
+            };
+            if (m_fadeEdges) {
+                // Zoomed: cut the quad where its centreline crosses the clip rect,
+                // and fade it by how close it is to the edge - in slices where the
+                // fade changes along it, so the fade has no visible steps.
+                const float pcx = (prevLeftX + prevRightX) * 0.5f, pcy = (prevLeftY + prevRightY) * 0.5f;
+                const float ccx = (screenLeftX + screenRightX) * 0.5f, ccy = (screenLeftY + screenRightY) * 0.5f;
+                float t0, t1;
+                if (clipSegment(pcx, pcy, ccx, ccy, clipLeft, clipTop, clipRight, clipBottom, t0, t1)) {
+                    auto fadeAt = [&](float tt) {
+                        const float f = edgeFade(pcx + (ccx - pcx) * tt, pcy + (ccy - pcy) * tt);
+                        return outlinePass ? f * f : f;
+                    };
+                    const float f0 = fadeAt(t0), f1 = fadeAt(t1);
+                    constexpr float FADE_STEP = 0.08f;   // the most the fade changes within one slice
+                    const int slices = std::clamp(static_cast<int>(std::fabs(f1 - f0) / FADE_STEP) + 1, 1, 8);
+                    float ta = t0, fa = f0;
+                    for (int s = 1; s <= slices; ++s) {
+                        const float tb = s == slices ? t1 : t0 + (t1 - t0) * static_cast<float>(s) / static_cast<float>(slices);
+                        const float fb = s == slices ? f1 : fadeAt(tb);
+                        const float fade = 0.5f * (fa + fb);
+                        if (fade > 0.0f) emitPart(ta, tb, fadeAlpha(color, fade));
+                        ta = tb;
+                        fa = fb;
+                    }
+                }
+            } else if (isQuadCenterlineInside(prevLeftX, prevLeftY, screenLeftX, screenLeftY,
+                                              screenRightX, screenRightY, prevRightX, prevRightY)) {
+                emitPart(0.0f, 1.0f, color);
+            }
         }
+        prevRate = curRate;
+        prevHasRate = curHasRate;
 
         // Continuity is preserved even when the quad was clipped (matches old behavior).
         prevLeftX = screenLeftX; prevLeftY = screenLeftY;
@@ -170,14 +234,18 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
 // exact advanceAlongArc positions, same per-point heading), but unconditionally
 // (no view cull, no screen conversion) so the result depends only on the track
 // shape and LOD. renderTrack() then culls + transforms these per frame.
-void MapHud::ensureWorldRibbon(float lodSpacing, int curveMinSteps) {
+void MapHud::ensureWorldRibbon(float lodSpacing, int curveMinSteps, bool lapDelta) {
     WorldRibbonKey key;
     key.adaptiveDetail = m_bAdaptiveDetail;   // scale/baseline are folded into lodSpacing
     key.zoomEnabled = m_bZoomEnabled;
+    key.lapDelta = lapDelta;   // resolved (a reference to tint by), not the setting
     key.lodSpacing = lodSpacing;
     if (m_worldRibbonValid && key == m_worldRibbonKey) {
         return;  // Same track + LOD: reuse (the win in rotate/zoom)
     }
+#if defined(MXBMRP3_TEST_BUILD)
+    ++g_mapWorldRibbonBuilds;
+#endif
 
     m_worldRibbon.clear();
     // The off-track pointer's hysteresis holds a ribbon INDEX, and an index means
@@ -199,13 +267,24 @@ void MapHud::ensureWorldRibbon(float lodSpacing, int curveMinSteps) {
     // the game still pays per-quad overhead for. Skip a sample identical to the
     // previous one (the perpendicular is continuous across a joint, so keeping
     // the first is exact).
-    auto emit = [&](float cx, float cy, float headingDeg) {
+    // `meters` is the distance along the centerline from the data start, stored
+    // as an S/F-relative track position.
+    float totalLength = 0.0f;
+    for (const auto& s : m_trackSegments) totalLength += s.length;
+    const float sfOffset = (m_sfMeters > 0.0f) ? m_sfMeters : 0.0f;
+    auto emit = [&](float cx, float cy, float headingDeg, float meters) {
         if (!m_worldRibbon.empty()) {
             const auto& last = m_worldRibbon.back();
             if (last.cx == cx && last.cy == cy) return;
         }
         float perpRad = (headingDeg + 90.0f) * DEG_TO_RAD;
-        m_worldRibbon.push_back({ cx, cy, std::sin(perpRad), std::cos(perpRad) });
+        float pos = 0.0f;
+        if (totalLength > 0.0f) {
+            pos = std::fmod(meters - sfOffset, totalLength);
+            if (pos < 0.0f) pos += totalLength;
+            pos /= totalLength;
+        }
+        m_worldRibbon.push_back({ cx, cy, std::sin(perpRad), std::cos(perpRad), pos });
     };
 
     float currentX = m_trackSegments[0].startX;
@@ -221,9 +300,12 @@ void MapHud::ensureWorldRibbon(float lodSpacing, int curveMinSteps) {
     // `carry` accumulates the skipped length so a RUN of short segments still
     // gets a sample roughly every lodSpacing meters, not zero forever.
     float carry = 0.0f;
+    float walked = 0.0f;   // meters from the data start to this segment's start
     for (const auto& segment : m_trackSegments) {
         float startX = currentX;
         float startY = currentY;
+        const float startMeters = walked;
+        walked += segment.length;
 
         if (segment.length + carry < lodSpacing) {
             // Too short for its own samples: advance exactly, emit nothing.
@@ -240,14 +322,15 @@ void MapHud::ensureWorldRibbon(float lodSpacing, int curveMinSteps) {
             float dy = std::cos(angleRad) * segment.length;
 
             // 1 quad when not zoomed (optimal); subdivide with LOD when zoomed for
-            // clean clipping at close range. Perpendicular is constant on a straight.
+            // clean clipping at close range, and with the lap delta on, whose
+            // colour is one per quad. Perpendicular is constant on a straight.
             int numSteps = 1;
-            if (m_bZoomEnabled) {
+            if (m_bZoomEnabled || key.lapDelta) {
                 numSteps = std::max(1, static_cast<int>(segment.length / lodSpacing));
             }
             for (int i = 0; i <= numSteps; ++i) {
                 float t = static_cast<float>(i) / numSteps;
-                emit(startX + dx * t, startY + dy * t, currentAngle);
+                emit(startX + dx * t, startY + dy * t, currentAngle, startMeters + segment.length * t);
             }
             currentX += dx;
             currentY += dy;
@@ -261,7 +344,7 @@ void MapHud::ensureWorldRibbon(float lodSpacing, int curveMinSteps) {
             for (int i = 0; i <= numSteps; ++i) {
                 float tempX = startX, tempY = startY, tempAngle = currentAngle;
                 advanceAlongArc(tempX, tempY, tempAngle, segRadius, stepLength * i);
-                emit(tempX, tempY, tempAngle);
+                emit(tempX, tempY, tempAngle, startMeters + stepLength * i);
             }
             advanceAlongArc(currentX, currentY, currentAngle, segRadius, arcLength);
         }
@@ -269,7 +352,7 @@ void MapHud::ensureWorldRibbon(float lodSpacing, int curveMinSteps) {
     // Close the walk: if the track ended inside a merged run, the endpoint was
     // never emitted — the ribbon would stop short of the start/finish seam.
     // (emit() dedupes, so this is a no-op when the last segment emitted it.)
-    emit(currentX, currentY, currentAngle);
+    emit(currentX, currentY, currentAngle, walked);
 
     m_worldRibbonKey = key;
     m_worldRibbonValid = true;
@@ -302,9 +385,9 @@ void MapHud::renderStartMarker(const RotationCache& rotation,
     }
 
     // Cull if start marker is outside current bounds (with margin for marker size)
-    float cullMargin = effectiveWidthMeters;
-    if (startX < m_minX - cullMargin || startX > m_maxX + cullMargin ||
-        startY < m_minY - cullMargin || startY > m_maxY + cullMargin) {
+    float cullMinX, cullMinY, cullMaxX, cullMaxY;
+    viewCullRect(rotation, effectiveWidthMeters, cullMinX, cullMinY, cullMaxX, cullMaxY);
+    if (startX < cullMinX || startX > cullMaxX || startY < cullMinY || startY > cullMaxY) {
         return;
     }
 
@@ -368,7 +451,8 @@ void MapHud::renderStartMarker(const RotationCache& rotation,
     triangle.m_aafPos[3][1] = screenBaseLeftY;
 
     triangle.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-    triangle.m_ulColor = this->getColor(ColorSlot::PRIMARY);  // White start/finish indicator
+    triangle.m_ulColor = fadeAlpha(this->getColor(ColorSlot::PRIMARY),   // White start/finish indicator
+                                   edgeFade(screenPointX, screenPointY));
     m_quads.push_back(triangle);
 }
 
@@ -388,12 +472,12 @@ void MapHud::drawDirectionMarker(const RaceMarker& marker, unsigned long color,
     // point extends forward in travel direction.
     float baseHalfWidth = effectiveWidthMeters * 0.5f;
     float pointLength   = effectiveWidthMeters * 0.5f;
-    float cullMargin = effectiveWidthMeters;
 
-
-    // Cull if marker is outside current bounds
-    if (marker.worldX < m_minX - cullMargin || marker.worldX > m_maxX + cullMargin ||
-        marker.worldY < m_minY - cullMargin || marker.worldY > m_maxY + cullMargin) {
+    // Cull if marker is outside what the map can show
+    float cullMinX, cullMinY, cullMaxX, cullMaxY;
+    viewCullRect(rotation, effectiveWidthMeters, cullMinX, cullMinY, cullMaxX, cullMaxY);
+    if (marker.worldX < cullMinX || marker.worldX > cullMaxX ||
+        marker.worldY < cullMinY || marker.worldY > cullMaxY) {
         return;
     }
 
@@ -437,7 +521,7 @@ void MapHud::drawDirectionMarker(const RaceMarker& marker, unsigned long color,
     triangle.m_aafPos[2][0] = sLeftX;    triangle.m_aafPos[2][1] = sLeftY;
     triangle.m_aafPos[3][0] = sLeftX;    triangle.m_aafPos[3][1] = sLeftY;
     triangle.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
-    triangle.m_ulColor = color;
+    triangle.m_ulColor = fadeAlpha(color, edgeFade(sPointX, sPointY));
     m_quads.push_back(triangle);
 }
 
@@ -489,4 +573,31 @@ void MapHud::renderSegmentMarkers(const RotationCache& rotation,
             drawDirectionMarker(m, segColor, rotation, clipLeft, clipTop, clipRight, clipBottom);
         }
     }
+}
+
+// Lap delta: rebuild m_deltaRate from the gap profile when the rider has reached
+// the next profile point, the gap's validity flipped, the reference changed or
+// a lap was committed - a few times a second at most, never per frame.
+bool MapHud::refreshDeltaRate() {
+    const PluginData& pd = PluginData::getInstance();
+    const auto ref = lapDeltaReference();
+    const bool live = pd.hasValidLiveGap(ref);
+    const PbGapTracker& tracker = pd.getPbGapTracker();
+    const int point = static_cast<int>(tracker.trackPos() * PbGapTracker::NUM_POINTS) / LapDeltaProfile::STEP;
+    const unsigned lastLap = tracker.lastLapStamp();
+    if (point == m_deltaPoint && live == m_deltaLive && static_cast<int>(ref) == m_deltaRef &&
+        lastLap == m_deltaLastLap && m_deltaStamp != 0) {
+        return m_deltaRate.any;
+    }
+    m_deltaPoint = point;
+    m_deltaLastLap = lastLap;
+    m_deltaLive = live;
+    m_deltaRef = static_cast<int>(ref);
+    ++m_deltaStamp;
+    if (m_deltaProfile.sample(ref)) {
+        m_deltaRate.build(m_deltaProfile);
+    } else {
+        m_deltaRate = LapDeltaRate{};
+    }
+    return m_deltaRate.any;
 }

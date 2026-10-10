@@ -43,11 +43,11 @@ void PluginData::updateSpeedometer(float speedometer, int gear, int rpm, float f
     // OPTIMIZATION: Only add to history buffers if TelemetryHud is visible
     // This saves ~200 deque operations/second at 100Hz physics rate
     if (HudManager::getInstance().isTelemetryHistoryNeeded()) {
-        // Add RPM to history (normalize to 0-1 range using limiterRPM as max, clamp to non-negative)
-        // Safety: Only normalize if limiterRPM is valid to avoid division by zero
+        // Add RPM to history (normalize to 0-1 range using the rev range top, clamp to non-negative)
+        // Safety: Only normalize if the range is known to avoid division by zero
         float normalizedRpm = 0.0f;
-        if (m_sessionData.limiterRPM > 0) {
-            normalizedRpm = static_cast<float>(std::max(0, rpm)) / static_cast<float>(m_sessionData.limiterRPM);
+        if (const int topRPM = m_sessionData.rpmRangeTop(); topRPM > 0) {
+            normalizedRpm = static_cast<float>(std::max(0, rpm)) / static_cast<float>(topRPM);
         }
         m_historyBuffers.addSample(m_historyBuffers.rpm, normalizedRpm);
 
@@ -191,8 +191,8 @@ void PluginData::updateRaceVehicleTelemetry(float speedometer, int gear, int rpm
     // Other buffers (rearBrake, clutch, steer, fuel, suspension) are not updated
     if (HudManager::getInstance().isTelemetryHistoryNeeded()) {
         float normalizedRpm = 0.0f;
-        if (m_sessionData.limiterRPM > 0) {
-            normalizedRpm = static_cast<float>(std::max(0, rpm)) / static_cast<float>(m_sessionData.limiterRPM);
+        if (const int topRPM = m_sessionData.rpmRangeTop(); topRPM > 0) {
+            normalizedRpm = static_cast<float>(std::max(0, rpm)) / static_cast<float>(topRPM);
         }
         m_historyBuffers.addSample(m_historyBuffers.rpm, normalizedRpm);
 

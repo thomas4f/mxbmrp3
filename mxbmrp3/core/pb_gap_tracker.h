@@ -90,6 +90,13 @@ public:
     };
     using Table = std::array<Point, NUM_POINTS>;
 
+    // A lap's gap to a reference at each slot (see lastLapGaps).
+    struct GapPoint {
+        int gapMs = 0;
+        bool valid = false;
+    };
+    using GapTable = std::array<GapPoint, NUM_POINTS>;
+
     // Which reference a read compares against. Saved by value in the Gap Bar's
     // INI section, so new entries are appended.
     enum class Ref : uint8_t {
@@ -117,6 +124,7 @@ public:
         m_trackPos = 0.0f;
         m_lastTrackPos = 0.0f;
         m_haveLastTrackPos = false;
+        clearLastLapGaps();
     }
 
     // The session's laps are gone (lap logs cleared) but the in-progress lap is
@@ -125,6 +133,7 @@ public:
     void forgetBestLap() {
         m_refs[at(Ref::SESSION_PB)] = Reference{};
         m_refs[at(Ref::LAST_LAP)] = Reference{};
+        clearLastLapGaps();
     }
 
     // Plant a reference from outside -- the persisted all-time table.
@@ -216,6 +225,7 @@ public:
         const bool endedObserved = usePending ? m_pendingObserved : m_currentObserved;
         const bool committed = endedObserved && !m_gridStartLap && lapTimeMs > 0;
         if (committed) {
+            recordLastLapGaps(ended);   // before the lap replaces the references it was ridden against
             setReference(Ref::LAST_LAP, ended, lapTimeMs);
             if (isPersonalBest) setReference(Ref::SESSION_PB, ended, lapTimeMs);
             if (isAllTimeBest) setReference(Ref::ALLTIME_PB, ended, lapTimeMs);
@@ -241,6 +251,20 @@ public:
     bool hasBestLap(Ref ref = Ref::SESSION_PB) const { return m_refs[at(ref)].has; }
     int bestLapTimeMs(Ref ref = Ref::SESSION_PB) const { return m_refs[at(ref)].lapTimeMs; }
     float trackPos() const { return m_trackPos; }
+    // The lap in progress as sampled so far (the lap delta profile reads it next
+    // to referenceTable()). Slots the lap has not reached are invalid.
+    const Table& currentTable() const { return m_current; }
+    // The lap last committed, as its gap to each reference AS IT STOOD while
+    // that lap was ridden - taken at the commit, before the lap replaces any of
+    // them, so a PB lap reads against the PB it beat rather than as a flat line
+    // against itself. What the lap delta displays keep showing of the previous
+    // lap while the next one draws over it. An uncommitted lap end (the run
+    // from the pits, a grid-start lap) leaves it alone: it is still the last
+    // lap ridden whole.
+    const GapTable& lastLapGaps(Ref ref) const { return m_lastLapGaps[at(ref)].table; }
+    bool hasLastLapGaps(Ref ref) const { return m_lastLapGaps[at(ref)].has; }
+    // Changes whenever lastLapGaps() does: a reader's cache key.
+    unsigned lastLapStamp() const { return m_lastLapStamp; }
     // Whether the lap now in progress can become the reference when it ends.
     bool currentLapObserved() const { return m_currentObserved && !m_gridStartLap; }
     // THE LINE WINDOW: the frames between the two ends of a lap, in either order.
@@ -374,12 +398,49 @@ private:
 
     static constexpr size_t at(Ref ref) { return static_cast<size_t>(ref); }
 
+    // Once per committed lap: NUM_POINTS gapAt() reads per reference.
+    void recordLastLapGaps(const Table& ended) {
+        for (int r = 0; r < REF_COUNT; ++r) {
+            LapGaps& out = m_lastLapGaps[static_cast<size_t>(r)];
+            out.table.fill(GapPoint{});
+            out.has = false;
+            for (int i = 0; i < NUM_POINTS; ++i) {
+                if (!ended[i].valid) continue;
+                bool ok = false;
+                const int gap = gapAt(static_cast<float>(i) / static_cast<float>(NUM_POINTS),
+                                      ended[i].elapsedMs, &ok, static_cast<Ref>(r));
+                if (!ok) continue;
+                out.table[i] = GapPoint{ gap, true };
+                out.has = true;
+            }
+        }
+        ++m_lastLapStamp;
+    }
+
+    void clearLastLapGaps() {
+        bool any = false;
+        for (auto& g : m_lastLapGaps) {
+            if (!g.has) continue;
+            g.table.fill(GapPoint{});
+            g.has = false;
+            any = true;
+        }
+        if (any) ++m_lastLapStamp;
+    }
+
     struct Reference {
         Table table{};
         int lapTimeMs = 0;
         bool has = false;
     };
     std::array<Reference, REF_COUNT> m_refs{};
+
+    struct LapGaps {
+        GapTable table{};
+        bool has = false;
+    };
+    std::array<LapGaps, REF_COUNT> m_lastLapGaps{};   // see lastLapGaps()
+    unsigned m_lastLapStamp = 0;
 
     Table m_current{};                 // the lap in progress
     bool m_currentObserved = false;

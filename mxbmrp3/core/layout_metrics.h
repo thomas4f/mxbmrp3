@@ -291,7 +291,7 @@ struct LayoutMetrics {
     // COMPOSED from the columns — sidebar + trough + this + the theme/padding
     // chrome — growing outward with the terms like any plan panel's, not a
     // fixed total the columns carve.
-    int settingsContentColumnChars = 53;
+    int settingsContentColumnChars = 61;
     // settings.label-column -- where labels start, in characters from the content
     // area's left edge. Also the inset a section card is drawn at, so the card wraps
     // its content: one number, because a second key holding a copy of it unwraps

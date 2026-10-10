@@ -10,6 +10,7 @@
 #include "../../core/font_config.h"
 #include "../../core/plugin_utils.h"
 #include "../../core/plugin_constants.h"
+#include "../../core/pb_gap_tracker.h"
 #include <string>
 
 // Forward declarations
@@ -19,8 +20,7 @@ class BaseHud;
 // Layout context for settings panel rendering
 // An explicit context object rather than lambda captures, so tab rendering lives in
 // separate files while keeping access to shared state.
-// Where a row's control starts, in characters from its label: the label column. The
-// longest label ("Copy current profile to") is one character shorter.
+// Where a row's control starts, in characters from its label: the label column.
 constexpr int SETTINGS_CONTROL_COLUMN = 24;
 
 struct SettingsLayoutContext {
@@ -116,7 +116,7 @@ struct SettingsLayoutContext {
     // the edge. The row's LEFT edge is the label text either way -- the label column
     // is an indent, not a margin, and only the card turns it into one.
     float rowSpanWidth() const {
-        const float inset = labelX - contentAreaStartX;
+        const float inset = ((m_gridCols > 0) ? m_rowLabelX : labelX) - contentAreaStartX;
         return panelWidth - (parent->hasThemedCard() ? 2.0f * inset : inset);
     }
 
@@ -166,6 +166,25 @@ struct SettingsLayoutContext {
     // One flat rectangle in the given colour: the band's quads, a tile behind an
     // icon. Solid by definition (a fill level, a swatch), not a themed control.
     void addSolidQuad(float x, float y, float width, float height, unsigned long color);
+    // A SLIDER under a cycle row's value field (x..x+width on the row at rowY):
+    // a thin track along the foot of the row, the filled part and a knob, plus a
+    // SLIDER region over the field to click or drag. The arrows either side stay
+    // for single steps, which a short track cannot give over a wide range.
+    // A HUD's background Opacity (0-100%) and Scale (10-300%) rows: stepped
+    // descriptors over its own getter/setter, so they draw as sliders. Every tab
+    // that shows them comes through here (addStandardHudControls, Director).
+    void addOpacityControl(BaseHud* hud, bool enabled = true);
+    void addScaleControl(BaseHud* hud, bool enabled = true);
+    // Where descriptor cycleIndex's list opens from, when it is the open one: a
+    // dropdown box's own rect, or a cell that opens a list without one (a rider).
+    void anchorDropdown(int cycleIndex, float x, float rowY, float width, float textX,
+                        float rowH, float listFontSize);
+    void addSliderTrack(float x, float rowY, float width, const SliderControl& control, bool enabled,
+                        const char* tooltipId);
+    // A DROPDOWN box around a cycle row's value field and the cell after it (the
+    // caret's), opening the control's list (SettingsHud::buildDropdownPopup).
+    void addDropdownBox(float x, float rowY, float width, int cycleIndex, bool enabled,
+                        const char* tooltipId);
 
     // A LABEL + VALUE row, the value starting `valueColumn` characters right of
     // labelX: "Current:   v1.2.3", "Available: 1.3.0 (PRE)", a download step and
@@ -184,17 +203,58 @@ struct SettingsLayoutContext {
     // also mutes an enabled value (an Off toggle). Does NOT
     // advance the row -- table rows put several side by side. Returns the index of
     // the first region pushed, so a data-driven caller can stamp both arrows.
+    // The same cell over a shared descriptor (CYCLE_* / STEPPED_* regions), with
+    // the row's dropdown box or slider track over its value.
+    size_t addInlineCycleControl(float x, const char* value, int valueChars,
+                                 const SettingsHud::CycleControl& control,
+                                 BaseHud* target, bool enabled, const char* tooltipId);
+    size_t addInlineSteppedControl(float x, const char* value, int valueChars,
+                                   const SettingsHud::SteppedControl& control,
+                                   BaseHud* target, bool enabled, const char* tooltipId,
+                                   bool muted = false);
     size_t addInlineCycle(float x, const char* value, int valueChars,
                           SettingsHud::ClickRegion::Type downType,
                           SettingsHud::ClickRegion::Type upType,
                           BaseHud* target, bool enabled, bool muted = false);
 
-    // A BRACKETED TEXT FIELD "[text]" at x on the current row, the brackets pinned
-    // to the monospace grid (fieldChars apart) so field columns stay aligned for any
-    // Normal font. The text is cut to the field. cursorColumn >= 0 draws a '_' under
-    // that column (a running text edit). No click region: the caller owns it.
-    void addBracketField(float x, int fieldChars, const char* text, unsigned long color,
-                         int cursorColumn = -1);
+    // SIDE-BY-SIDE ROWS. Between beginColumns and endColumns, the next `items`
+    // rows (addCycleControl / addSteppedControl / addToggleControl and everything
+    // built on them) are laid out in `columns` columns of equal cells, filled
+    // COLUMN by column: down the left, then down the right, so they are emitted in
+    // the order they are called. Each cell is "label  < value >" with the control
+    // `labelChars` characters in and the closing arrow on the cell's right edge, so
+    // a column's arrows line up -- across sections too, since every run but the
+    // colour swatches takes the one default (a 15-character label, a 9-character
+    // value); its tooltip region is marked with its cell, so
+    // the hover band lights the cell rather than the row. The callers are
+    // unchanged -- inside a run, labelX, controlX, valueChars() and rowSpanWidth()
+    // describe the current cell, and a row's advance moves to the next one.
+    // endColumns leaves currentY under the taller column.
+    void beginColumns(int columns, int items, int labelChars = 16);
+    void endColumns();
+    // Full-width rows with a beginColumns run's label column: the controls start
+    // where the run's do, and the value takes the rest of the row. For a row that
+    // shares a section with cells (General's Controller under its switches), so
+    // the section's arrows stand in one column. 0 restores the standard column.
+    void setRowLabelChars(int labelChars);
+    // Where cell `cellIndex` of `cellCount` starts on the row, and how many
+    // characters wide each cell is.
+    float cellX(int cellIndex, int cellCount) const;
+    int cellChars(int cellCount) const;
+    // A row is done: down one row, or into the next cell of a beginColumns run. The
+    // row helpers call it; a tab drawing its own row (Hotkeys) calls it in their place.
+    void endRow();
+
+    // AN INPUT FIELD at x on the current row: a box in the dropdown's style with
+    // the text one cell in, fieldChars wide, so field columns stay on the monospace
+    // grid for any Normal font. The text is cut to the field. `active` (a running
+    // capture or edit) lights the box in the accent with a line under it, and
+    // cursorColumn >= 0 draws a caret before that column. The box spans
+    // [x + 0.7 cell, x + fieldChars + 1 cells], so a field at controlX - one cell
+    // with valueChars + 1 characters lines up with a row's dropdown box. No click
+    // region: the caller owns it.
+    void addInputField(float x, int fieldChars, const char* text, unsigned long color,
+                       bool active = false, int cursorColumn = -1);
 
     // Background for a button drawn INSIDE a tab's content: takes the theme's button
     // slices when there are any, a solid quad otherwise, and fills its row. `color`
@@ -255,16 +315,22 @@ struct SettingsLayoutContext {
     // where one is destructive is the point.
     // A "label: url" row where only the URL is clickable and lights on hover.
     //
-    // ONE OWNER for that styling and hit-testing, because there are two callers
-    // in different sections -- the Help & Community footer and the web server's own
-    // "live overlay at ..." line, which is a link the moment the server is actually
-    // serving. A second hand-rolled copy is how the two would drift into looking like
-    // different kinds of thing.
+    // ONE OWNER for that styling and hit-testing (with addLinkCell, the About page's
+    // links): the web server's "live overlay at ..." line is a link the moment the
+    // server is actually serving, and a second hand-rolled copy is how links would
+    // drift into looking like different kinds of thing.
     //
     // `prefix` is drawn muted at labelX and `url` in the accent colour after it;
-    // prefixChars fixes the column so a group of rows aligns.
+    // prefixChars fixes the column so a group of rows aligns. A disabled link is
+    // drawn muted with no region: the row keeps its place while what it points at
+    // is off, so the rows below it do not move.
     void addLinkRow(const char* prefix, const char* url, int prefixChars,
-                    SettingsHud::ClickRegion::Type type, float fontScale = 0.9f);
+                    SettingsHud::ClickRegion::Type type, float fontScale = 0.9f,
+                    bool enabled = true);
+    // One link at x on the current row, styled and hit-tested like addLinkRow's
+    // URL; does not advance, so several can share a row. Returns its width.
+    float addLinkCell(float x, const char* text, SettingsHud::ClickRegion::Type type,
+                      float fontScale = 1.0f, bool enabled = true);
 
     // A PAGER: two row-height buttons flanking "Page x/y", centred in the content
     // column -- the same button emitter as the action buttons (themed fill, hover,
@@ -285,10 +351,16 @@ struct SettingsLayoutContext {
     PlanButtonTerms bt{};
     // Close the final section's card; earlier ones close at the next header.
     void finishSections();
+    // A section with no heading, below the last one (the More tabs' Back): its
+    // own box, so it reads as under the content rather than part of it. The
+    // settings panel draws no card for it (SettingsHud::rebuildRenderData).
+    void beginUntitledSection();
 
     // Add tab tooltip area (string sourced from TooltipManager)
     // tabId is the lowercase tab name (e.g., "standings", "map")
     void addTabTooltip(const char* tabId);
+    // The row-wide hover region for a labelled row (nothing when tooltipId is empty).
+    void addRowTooltip(const char* label, const char* tooltipId);
 
     // Add a cycle control with < value > pattern
     // If enabled is false, no click regions are added and muted color is used
@@ -342,7 +414,8 @@ struct SettingsLayoutContext {
         bool enabled = true,
         bool isOff = false,
         const char* tooltipId = nullptr,
-        bool tooltipOnArrows = true
+        bool tooltipOnArrows = true,
+        unsigned long valueColor = 0
     );
 
     // Add a cycle control whose arrows step a numeric HUD member through the
@@ -367,14 +440,24 @@ struct SettingsLayoutContext {
     // The freeze-duration row the Timing, Gap Bar, Lap Log and Pitboard tabs
     // share: "Off" / "N s" on FreezeDuration's range and step, wrapping.
     // allowOff=false is the Pitboard's At Splits hold, which starts at one step.
+    // allowDefault adds "Default" one step below Off: General's Freeze
+    // (FreezeDuration::FOLLOW_DEFAULT, hud_defaults.h).
     void addFreezeControl(
         const char* label,
         int* durationMs,
         bool allowOff,
         BaseHud* targetHud,
         bool enabled,
-        const char* tooltipId
+        const char* tooltipId,
+        bool allowDefault = false
     );
+
+    // The reference-lap row the Gap Bar, Lap Log and Delta Trace tabs share:
+    // Default (General's Reference, hud_defaults.h), then the three references
+    // in the tracker's order. With `enabled`, "Off" comes first and switches the
+    // feature the reference belongs to (the Timing tab's Gap).
+    void addReferenceControl(const char* label, bool* followDefault, PbGapTracker::Ref* ref,
+                             BaseHud* targetHud, const char* tooltipId, bool* enabled = nullptr);
 
     // Add a toggle control with < On/Off > pattern
     // Both arrows trigger the same toggle action
@@ -441,6 +524,17 @@ struct SettingsLayoutContext {
     // If center is true, centers the value within maxWidth
     static std::string formatValue(const char* value, int maxWidth, bool center = false);
 
+    // THE WIDGETS TABLE'S COLUMNS, in one place so the heading labels and every
+    // row cannot drift apart. Each control is "< value >" (value + 4 characters)
+    // with the same two-character gap after it; the Texture value takes whatever
+    // the content width leaves, so the table spans the full row and a theme or
+    // pad name is spelled out rather than cut to three letters.
+    struct WidgetColumns {
+        float visX, titleX, texX, opacityX, scaleX;
+        int texChars;
+    };
+    WidgetColumns widgetColumns() const;
+
     // Add a widget row for the Widgets tab table
     // The enable* parameters follow the visual column order:
     //   Name | Visible | Title | Texture | Opacity | Scale
@@ -497,7 +591,35 @@ private:
 
     // Helper to calculate character width at current scale
     float charWidth() const;
+
+    void placeCell();
+    int m_gridCols = 0;          // 0 = no run
+    int m_gridRows = 0;
+    int m_gridItem = 0;
+    int m_gridLabelChars = 0;
+    int m_rowLabelChars = 0;     // setRowLabelChars; 0 = SETTINGS_CONTROL_COLUMN
+    float m_defaultControlX = -1.0f;
+    float m_gridTop = 0.0f;
+    float m_rowLabelX = 0.0f;    // labelX / controlX outside the run
+    float m_rowControlX = 0.0f;
+    size_t m_cellFirstRegion = 0;
 };
+
+// CYCLE DESCRIPTORS for the lists a manager owns, so those rows draw as dropdowns
+// like every other named choice (CycleControl::nameOf). Each maps the list's
+// 0-based position to the stored value and back; `set` receives the VALUE.
+//   textureVariantCycle: Off, then the discovered variants ("1", "2", ...).
+//   paletteCycle: ColorPalette::ALL_COLORS, by name.
+//   iconCycle: Off (allowOff), then every icon but the HUD ones (getShapeDisplayName);
+//     the list opens as a grid of the icons. zeroIcon names the icon a stored 0
+//     stands for when 0 means a default rather than Off (the Gap Bar marker).
+SettingsHud::CycleControl textureVariantCycle(std::vector<int> variants, std::function<int()> get,
+                                              std::function<void(int)> set, BaseHud* dirtyHud);
+SettingsHud::CycleControl paletteCycle(std::function<unsigned long()> get,
+                                       std::function<void(unsigned long)> set, BaseHud* dirtyHud);
+SettingsHud::CycleControl iconCycle(std::function<int()> get, std::function<void(int)> set,
+                                    BaseHud* dirtyHud, bool allowOff = true,
+                                    const char* zeroIcon = nullptr);
 
 // Utility function for icon/shape display names
 // Gets the display name for an icon shape index (0 = Off, 1-N = icon names)

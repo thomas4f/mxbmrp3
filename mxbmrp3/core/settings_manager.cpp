@@ -37,12 +37,15 @@
 #include "../hud/version_widget.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/radar_hud.h"
+#include "../hud/prestige_widget.h"
 #include "fmx_manager.h"
 #include "color_config.h"
 #include "font_config.h"
 #include "ui_config.h"
 #include "update_checker.h"
 #include "update_downloader.h"
+#include "system_messages.h"
+#include "../hud/settings/whats_new.h"
 #if GAME_HAS_DISCORD
 #include "discord_manager.h"
 #endif
@@ -664,6 +667,10 @@ void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* saveP
                      migratedFill);
     }
 
+    // PRESTIGE WIDGET DEFAULT (files written at version <= 9): see SETTINGS_VERSION
+    // and settlePrestigeDefault(), which does the work once the stats are loaded.
+    m_prestigeDefaultPending = (loadedVersion > 0 && loadedVersion < 10);
+
     // Check if we need to reset to defaults due to old version
     // We support v3+ (v3 used numeric profile indices, v4+ uses named profiles)
     if (loadedVersion > 0 && loadedVersion < 3) {
@@ -757,8 +764,18 @@ void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* saveP
 // nothing at all.
 void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath) {
     const bool reload = m_settingsLoaded;   // any load after the first is RELOAD_CONFIG
+    // Read before the load, which is what decides it: no file is a fresh install.
+    const bool freshInstall = !reload && !std::ifstream(getSettingsFilePath(savePath)).is_open();
     loadSettingsImpl(hudManager, savePath);
     applyInstallPrefs();
+    if (!reload) {
+        // The startup popups (welcome, "Updated to") are decided once per
+        // launch, from what the file says was already told.
+        SystemMessages::getInstance().onStartup(freshInstall, WhatsNew::currentLine());
+    }
+    // A reload has the stats already (a startup's arrive after this returns,
+    // and PluginManager settles it then).
+    if (reload) settlePrestigeDefault(hudManager);
     if (reload) {   // Under the Hood, Developer, and the setup the file now says
         StatsManager::getInstance().exploration().onSettingsReloaded();
         StatsManager::getInstance().exploration().observeSettings(hudManager);
@@ -773,6 +790,56 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
             *reinterpret_cast<volatile int*>(s_null) = 1;   // the point of the knob
         }
     }
+}
+
+// THE PRESTIGE WIDGET'S DEFAULT WENT OFF (v10), and the old default is in every
+// older file: the base [PrestigeWidget] section is written in full, so visible=1
+// sits there whether or not anyone chose it. Left alone, nobody's widget would
+// ever pick up the new default.
+//
+// Keyed on the PRESTIGE LEVEL, which is why this cannot run inside the load: the
+// stats file is read after the settings. With no level taken the widget has never
+// drawn and its row has never been on the Widgets tab, so a stored 1 cannot be a
+// choice and goes to 0. With a level taken the player has seen the badge on
+// screen, and whatever the file says is kept. Developer mode is not consulted: it
+// unlocks the widget, but a developer re-enabling it is one click.
+//
+// Rewrites every profile and the base section the save writes back, then the live
+// widget -- the same three places the other migrations above touch, the last
+// directly rather than through applyActiveProfile(), which would re-apply every
+// HUD for one flag.
+void SettingsManager::settlePrestigeDefault(HudManager& hudManager) {
+    if (!m_prestigeDefaultPending) return;
+    m_prestigeDefaultPending = false;
+#if GAME_HAS_ACHIEVEMENTS
+    const StatsManager& stats = StatsManager::getInstance();
+    if (stats.getPrestige() > 0) return;
+    // A stats file that would not load reads as level 0 too; leave the badge as
+    // stored rather than switch off one the player may have earned.
+    if (stats.lastLoadUnreadable()) {
+        DEBUG_INFO_F("Settings -> v%d: Prestige widget left as stored (stats file unreadable)",
+                     SettingsInternal::SETTINGS_VERSION);
+        return;
+    }
+    int switchedOff = 0;
+    auto offIfOn = [&switchedOff](HudSettings& section) {
+        auto it = section.find(Keys::Base::VISIBLE);
+        if (it == section.end() || it->second != "1") return;
+        it->second = "0";
+        ++switchedOff;
+    };
+    for (auto& cache : m_profileCache) {
+        auto it = cache.find("PrestigeWidget");
+        if (it != cache.end()) offIfOn(it->second);
+    }
+    auto defIt = m_hudDefaults.find("PrestigeWidget");
+    if (defIt != m_hudDefaults.end()) offIfOn(defIt->second);
+    if (PrestigeWidget* badge = hudManager.getPrestigeWidget()) badge->setVisible(false);
+    DEBUG_INFO_F("Settings -> v%d: Prestige widget switched off in %d place(s) (no prestige level)",
+                 SettingsInternal::SETTINGS_VERSION, switchedOff);
+#else
+    (void)hudManager;
+#endif
 }
 
 // See the declaration and core/install_prefs.h. Reads the marker Setup may have

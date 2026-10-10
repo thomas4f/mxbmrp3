@@ -239,7 +239,7 @@ TEST_CASE("box terms: an in-section button spends them, not just the footer") {
         double anchor = -1.0, copy = -1.0;
         for (const auto& s : host.hudStringRows(PluginHost::HUD_SETTINGS)) {
             if (s.text == "Copy") copy = s.y;
-            else if (s.text.rfind("Copy current profile", 0) == 0) anchor = s.y;
+            else if (s.text.rfind("Copy profile to", 0) == 0) anchor = s.y;
         }
         return (anchor < 0.0 || copy < 0.0) ? -1.0 : copy - anchor;
     };

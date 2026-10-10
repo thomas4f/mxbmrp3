@@ -9,10 +9,10 @@
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include "hud_manager.h"
+#include "settings_manager.h"
 #include "input_manager.h"
 #include "hotkey_manager.h"
 #include "plugin_thread.h"
-#include "gl_probe.h"
 #include "asset_manager.h"
 #include "../handlers/draw_handler.h"
 #include "../handlers/event_handler.h"
@@ -171,6 +171,10 @@ void PluginManager::initialize(const char* savePath) {
     InputManager::getInstance().initialize();
     HotkeyManager::getInstance().initialize();
     HudManager::getInstance().initialize();   // loads settings (sets the [Recorder] enabled flag)
+    // The installed Windows voices, read here at load rather than by the settings
+    // menu on a game frame (see SpotterManager::getTtsVoices). Already read when
+    // the settings named a voice; this covers the system-default case.
+    SpotterManager::getInstance().getTtsVoices();
 
 #if GAME_HAS_RECORDER
     // Hidden dev tool: if [Recorder] enabled=1, open a fresh session tape now —
@@ -365,6 +369,8 @@ int PluginManager::handleStartup(const char* savePath) {
 
     // Load unified stats from disk (includes PB, odometer, and track/bike stats)
     StatsManager::getInstance().load(m_savePath);
+    // The settings migration that needs the prestige level (settings_manager.h).
+    SettingsManager::getInstance().settlePrestigeDefault(HudManager::getInstance());
     // The all-time PB gap traces live beside the stats file (core/pb_trace_store.h).
     PbTraceStore::getInstance().load(m_savePath);
 
@@ -504,13 +510,6 @@ int PluginManager::handleDrawInit(int* piNumSprites, char** pszSpriteName, int* 
 }
 
 void PluginManager::handleDraw(int iState, int* piNumQuads, void** ppQuad, int* piNumString, void** ppString) {
-    // Phase 0 GL feasibility probe ([Advanced] glProbe, off by default -- see
-    // core/gl_probe.h). It lives HERE, above the threaded-mode early return,
-    // because a GL context is per-THREAD: this function is the game's Draw
-    // callback thread in both render modes, and the pluginThread worker would
-    // answer "no context" for reasons that have nothing to do with the game.
-    GlProbe::onDraw(iState);
-
     // Apply any live mode switch first (game thread). A RELOAD_CONFIG hotkey that
     // flipped [Advanced] pluginThread starts/stops the worker here, so legacy<->threaded
     // can change without a game restart. No-op when the flag already matches.

@@ -4,8 +4,9 @@
 //
 // Sized and laid out like EventLogHud (same default 43-character body, same row
 // height, same Show mode / row-count controls), so the two read as one family
-// and a streamer can stack them. Newest message at the bottom, as on both
-// platforms -- deliberately not an option. Configured on the GLOBAL Stream Chat
+// and a streamer can stack them. Newest message at the bottom by default, as on
+// both platforms; Display order flips it (newest on top), with the Event Log's
+// and Lap Log's wording. Configured on the GLOBAL Stream Chat
 // tab and persisted in [StreamChat] (layout), [Twitch] and [YouTube] (each
 // platform's switch and channel), never per profile: a profile switch must not move the
 // chat or drop a channel.
@@ -60,6 +61,13 @@ public:
         OFF = 0,        // Hidden (the connections stay up)
         ON = 1,         // Always visible
         AUTO_HIDE = 2   // Shown when a message arrives, hidden after a timeout
+    };
+
+    // Display order, as on EventLogHud/LapLogHud. Either way a wrapped message
+    // reads top to bottom; only the order of the messages flips.
+    enum class DisplayOrder : uint8_t {
+        OLDEST_FIRST = 0,  // Newest at the bottom, as on both platforms (default)
+        NEWEST_FIRST = 1   // Newest at the top
     };
 
     // The per-line platform icon. Auto shows it while more than one platform
@@ -153,6 +161,7 @@ private:
     int m_maxRows = DEFAULT_ROWS;
     int m_widthChars = DEFAULT_WIDTH_CHARS;
     int m_autoHideDurationMs = DEFAULT_AUTO_HIDE_MS;
+    DisplayOrder m_displayOrder = DisplayOrder::OLDEST_FIRST;
     bool m_showTimestamps = true;
     bool m_nameColors = true;         // off: names in the palette's primary colour
     bool m_textColors = false;        // on: message text in the sender's colour too

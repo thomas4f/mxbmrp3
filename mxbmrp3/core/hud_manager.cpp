@@ -17,6 +17,7 @@
 #include "spotter_manager.h"
 #include "director_manager.h"
 #include "profile_manager.h"
+#include "system_messages.h"
 #include "ui_config.h"
 #include "../hud/base_hud.h"
 #include "../hud/standings_hud.h"
@@ -33,6 +34,7 @@
 #include "../hud/speed_widget.h"
 #include "../hud/gear_widget.h"
 #include "../hud/crash_widget.h"
+#include "../hud/rpm_widget.h"
 #include "../hud/gl_confirm_hud.h"
 #include "../hud/speedo_widget.h"
 #include "../hud/tacho_widget.h"
@@ -50,6 +52,7 @@
 #include "../hud/records_hud.h"
 #endif
 #include "../hud/gap_bar_hud.h"
+#include "../hud/delta_trace_hud.h"
 #include "../hud/pointer_widget.h"
 #include "../hud/rumble_hud.h"
 #include "../hud/director_widget.h"
@@ -152,6 +155,7 @@ void HudManager::initialize() {
     createHud(m_pIdealLap, "ideal_lap_hud");
     createHud(m_pTelemetry, "telemetry_hud");
     createHud(m_pPerformance, "performance_hud");
+    createHud(m_pDeltaTrace, "delta_trace_hud");
     // Pitboard and Gamepad declare no texture stem in their constructors: their
     // background is a PACK (art + the geometry that places content on it), resolved
     // by name through AssetManager rather than through the texture-variant machinery.
@@ -180,6 +184,7 @@ void HudManager::initialize() {
     createHud(m_pSpeed, "speed_widget");
     createHud(m_pGear, "gear_widget");
     createHud(m_pCrash, "crash_widget");
+    createHud(m_pRpm, "rpm_widget");
     // Registered like any other HUD so it gets update(), visibility and the dirty
     // machinery for free - but SKIPPED by collectSurface, because its primitives
     // are routed to the engine instead. See collectGlConfirm.
@@ -195,9 +200,10 @@ void HudManager::initialize() {
     createHud(m_pFuel, "fuel_widget");
     createHud(m_pRumble, "rumble_hud");
     createHud(m_pDirector, "director_widget");
-#if GAME_HAS_ACHIEVEMENTS
-    createHud(m_pAchievement, "achievement_widget");  // toasts; content-gated on [Achievements] visible
-#endif
+    // Every game: the card also carries the system toasts (core/system_messages.h).
+    // Without achievements (GAME_HAS_ACHIEVEMENTS) the manager queues none, so
+    // the card only ever shows those, and the Achievements tab stays gated.
+    createHud(m_pAchievement, "achievement_widget");
     createHud(m_pGamepad, "gamepad_widget");
     createHud(m_pLean, "lean_widget");
     createHud(m_pGforce, "gforce_widget");
@@ -290,6 +296,19 @@ void HudManager::initialize() {
             }
         }
     }
+
+    // The broken-install warning is the Version widget's panel, so it waits for
+    // the HUDs; and it comes before the settings, so it takes the widget's
+    // factory place and size rather than wherever a player moved theirs.
+#ifdef MXBMRP3_TEST_BUILD
+    // The suite runs with no asset tree; see testBuildInstallWarning().
+    m_installWarning.clear();
+#else
+    {
+        const AssetManager& assets = AssetManager::getInstance();
+        buildInstallWarning(assets.getFontCount(), assets.getIconCount(), requiredIconsPresent());
+    }
+#endif
 
     // Load settings from disk (must happen after HUD registration)
     SettingsManager::getInstance().loadSettings(*this, PluginManager::getInstance().getSavePath());
@@ -393,6 +412,8 @@ void HudManager::clear(bool allowCrossSingleton) {
     m_huds.clear();
     m_quads.clear();
     m_strings.clear();
+    m_motionGame = MotionSurface{};
+    m_motionCompanion = MotionSurface{};
 
     // Clean up resource name storage
     // The in-context GL renderer. Its destructor deliberately does NOT delete GL
@@ -560,7 +581,9 @@ void HudManager::onDataChanged(DataChangeType changeType) {
             // changes when the session type hasn't actually changed.
             if (targetProfile != profileMgr.getLastAutoSwitchTarget()) {
                 profileMgr.setLastAutoSwitchTarget(targetProfile);
-                SettingsManager::getInstance().switchProfile(*this, targetProfile);
+                if (SettingsManager::getInstance().switchProfile(*this, targetProfile)) {
+                    announceProfileSwitch(targetProfile);
+                }
                 // Notify SettingsHud to refresh if visible (shows current profile name)
                 if (m_pSettingsHud) {
                     m_pSettingsHud->setDataDirty();
@@ -584,6 +607,11 @@ void HudManager::markAllHudsDirty() {
             hud->setDataDirty();
         }
     }
+}
+
+void HudManager::setUiScale(float scale) {
+    UiConfig::getInstance().setUiScale(scale);
+    for (auto& hud : m_huds) if (hud) hud->applyUiScale();
 }
 
 void HudManager::rebuildAllIfDirty() {
@@ -871,4 +899,46 @@ void HudManager::updateRiderPositions(int numVehicles, Unified::TrackPositionDat
             break;
         }
     }
+}
+
+// The auto-switch changes the whole layout with nothing else on screen saying
+// why, so it names the profile and the reason. A switch made in the menu needs
+// no card: the player is looking at the profile name as it changes.
+void HudManager::announceProfileSwitch(ProfileType profile) {
+    const char* why = "Switched for practice";
+    switch (profile) {
+        case ProfileType::QUALIFY:  why = "Switched for qualifying"; break;
+        case ProfileType::RACE:     why = "Switched for the race"; break;
+        case ProfileType::SPECTATE: why = "Switched for spectating"; break;
+        default: break;
+    }
+    SystemMessages::Toast t;
+    snprintf(t.title, sizeof(t.title), "%s profile", ProfileManager::getProfileName(profile));
+    snprintf(t.detail, sizeof(t.detail), "%s", why);
+    snprintf(t.icon, sizeof(t.icon), "circle-user");
+    t.key = SystemMessages::KEY_PROFILE_SWITCH;
+    t.tab = SettingsHud::TAB_GENERAL;
+    SystemMessages::getInstance().post(t);
+}
+
+// Overlap, not a fixed pair of positions: the player may have moved either.
+// Per frame for every HUD, so the pointer tests come first and the rects are
+// read only for Notices and Timing while a popup is actually up.
+bool HudManager::coveredByPopup(const BaseHud* hud) const {
+    if (!hud || (hud != m_pNotices && hud != m_pTiming)) return false;
+    float pl, pt, pr, pb, l, t, r, b;
+    // The broken-install warning takes the Version widget's place (and holds it
+    // back), so it covers them the same way; its rect is already on screen.
+    if (!m_installWarning.empty()) {
+        hud->panelRect(l, t, r, b);
+        const auto& w = m_installWarningBox;
+        const float x = hud->getOffsetX(), y = hud->getOffsetY();
+        return l + x < w.right && r + x > w.left && t + y < w.bottom && b + y > w.top;
+    }
+    if (!m_pVersion || m_pVersion->popupKind() == 0) return false;
+    m_pVersion->panelRect(pl, pt, pr, pb);
+    hud->panelRect(l, t, r, b);
+    const float dx = hud->getOffsetX() - m_pVersion->getOffsetX();
+    const float dy = hud->getOffsetY() - m_pVersion->getOffsetY();
+    return l + dx < pr && r + dx > pl && t + dy < pb && b + dy > pt;
 }

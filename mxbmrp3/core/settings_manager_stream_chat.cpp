@@ -38,13 +38,14 @@ void SettingsManager::writeStreamChatSettings(std::ostream& out, const HudManage
     // theme", and the key-by-key apply below needs to see it to clear a pin.
     out << THEME << "=" << hud.getThemeOverride() << "\n";
     out << BG_OPACITY << "=" << hud.getBackgroundOpacity() << "\n";
-    out << SCALE << "=" << hud.getScale() << "\n";
+    out << SCALE << "=" << hud.getOwnScale() << "\n";
     out << OFFSET_X << "=" << hud.getOffsetX() << "\n";
     out << OFFSET_Y << "=" << hud.getOffsetY() << "\n";
     out << "showMode=" << static_cast<int>(hud.m_displayMode) << " ; 0=off 1=always 2=auto-hide\n";
     out << "rows=" << hud.m_maxRows << "\n";
     out << "width=" << hud.m_widthChars << " ; characters\n";
     out << "autoHideMs=" << hud.m_autoHideDurationMs << "\n";
+    out << "displayOrder=" << static_cast<int>(hud.m_displayOrder) << " ; 0=newest at the bottom 1=newest at the top\n";
     out << "timestamps=" << (hud.m_showTimestamps ? 1 : 0) << "\n";
     out << "nameColors=" << (hud.m_nameColors ? 1 : 0) << "\n";
     out << "textColors=" << (hud.m_textColors ? 1 : 0) << "\n";
@@ -71,7 +72,7 @@ void SettingsManager::applyStreamChatLine(const std::string& key, const std::str
         } else if (key == BG_OPACITY) {
             hud.setBackgroundOpacity(validateOpacity(parseFiniteFloat(value, hud.getBackgroundOpacity())));
         } else if (key == SCALE) {
-            hud.setScale(validateScale(parseFiniteFloat(value, hud.getScale())));
+            hud.setScale(validateScale(parseFiniteFloat(value, hud.getOwnScale())));
         } else if (key == OFFSET_X) {
             hud.setPosition(validateOffset(parseFiniteFloat(value, hud.getOffsetX())), hud.getOffsetY());
         } else if (key == OFFSET_Y) {
@@ -86,6 +87,10 @@ void SettingsManager::applyStreamChatLine(const std::string& key, const std::str
         } else if (key == "autoHideMs") {
             hud.m_autoHideDurationMs = std::clamp(std::stoi(value),
                 StreamChatHud::MIN_AUTO_HIDE_MS, StreamChatHud::MAX_AUTO_HIDE_MS);
+        } else if (key == "displayOrder") {
+            hud.m_displayOrder = (std::stoi(value) == 1)
+                ? StreamChatHud::DisplayOrder::NEWEST_FIRST
+                : StreamChatHud::DisplayOrder::OLDEST_FIRST;
         } else if (key == "timestamps") {
             hud.m_showTimestamps = std::stoi(value) != 0;
         } else if (key == "nameColors") {

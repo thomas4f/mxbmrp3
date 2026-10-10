@@ -59,6 +59,8 @@ class HelmetOverlayHud : public BaseHud {
 public:
     // In-game immersion effect, not a panel: see BaseHud::rendersOnCompanion().
     bool rendersOnCompanion() const override { return false; }
+    // Full screen: fades in place, see BaseHud::motionStyle().
+    MotionStyle motionStyle() const override { return MotionStyle::FADE; }
 
     HelmetOverlayHud();
     virtual ~HelmetOverlayHud() = default;
@@ -97,10 +99,6 @@ public:
 
     void setHelmetUpperVariant(int variant);
     void setHelmetLowerVariant(int variant);
-
-    // Cycle helpers: Off -> 1 -> 2 -> ... -> Off
-    void cycleHelmetUpperVariant(bool forward);
-    void cycleHelmetLowerVariant(bool forward);
 
     // Public for settings access (config-style fields, same pattern as RumbleHud/LeanWidget)
     bool m_helmetEnabled = true;

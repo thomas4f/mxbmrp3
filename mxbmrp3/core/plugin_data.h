@@ -32,6 +32,7 @@ public:
     const char* getServerName() const { return m_sessionData.serverName; }
     void setShiftRPM(int shiftRPM);
     void setLimiterRPM(int limiterRPM);
+    void setMaxRPM(int maxRPM);
     void setSteerLock(float steerLock);
     void setEngineTemperatureThresholds(float optTemp, float alarmLow, float alarmHigh);
     void setMaxFuel(float maxFuel);
@@ -597,6 +598,10 @@ public:
     // `ref` picks the reference lap (the Gap Bar's and the Lap Log's own Reference
     // settings): the session PB, the persisted all-time PB, or the last lap.
     using GapRef = PbGapTracker::Ref;
+    // Whether the lap timer (and so the PB gap tracker) follows the rider on
+    // display: false between a spectate switch and the new rider's first
+    // position sample, when the tracker's tables are still the old rider's.
+    bool lapTimerFollowsDisplayRider() const { return m_displayLapTimerRaceNum == getDisplayRaceNum(); }
     bool hasValidLiveGap(GapRef ref = GapRef::SESSION_PB) const;
     int getLiveGap(GapRef ref = GapRef::SESSION_PB) const;
     // Where the reference lap was at the current elapsed time (0..1), -1 when
@@ -604,6 +609,9 @@ public:
     float getPbGhostProgress(GapRef ref = GapRef::SESSION_PB) const;
     // The display rider's last sampled track position (0..1): the self marker.
     float getDisplayRiderTrackPos() const;
+    // The tracker itself, read-only: the current lap's and each reference's
+    // samples, for displays that draw the whole lap rather than one gap.
+    const PbGapTracker& getPbGapTracker() const { return m_pbGap; }
     // TEST ONLY (test_hooks.cpp): plant a sticky live gap so the bar's fill can be
     // measured headlessly; a real one needs a full lap of samples. Outranks the
     // computed gap until clear().

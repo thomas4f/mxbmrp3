@@ -7,6 +7,7 @@
 
 #include "base_hud.h"
 #include "../core/layout_metrics.h"
+#include "settings/settings_controls.h"
 #include <variant>
 #include <string>
 #include <cmath>
@@ -123,6 +124,14 @@ public:
     // holding that row (the tab finds it as it lays the page out); no row
     // (the summary card) opens the first page.
     void showAchievementsTab(int catalogueIndex = -1);
+    // The menu, on `tabId` (a system toast's click). An unavailable tab opens
+    // the menu where it was.
+    void showTab(int tabId);
+    // The Version popup's "What's New": the menu on the first tab with a live
+    // "New" marker (WhatsNew::firstTabWithNews), else where it was.
+    void showWhatsNew();
+    // A tab's sidebar name, for a system toast about it ("Standings hidden").
+    const char* tabTitle(int tabId) const { return getTabName(tabId); }
 
     // Persisted active-tab restore. The last-focused tab is saved to the INI
     // ([Profiles] activeTab) and restored on load, so reopening the settings menu lands on
@@ -153,35 +162,19 @@ public:
             // Cycles never hold-accelerate (repeat steps are always ±1).
             CYCLE_UP,                  // Cycle the descriptor's value forward
             CYCLE_DOWN,                // Cycle the descriptor's value backward
-            GAP_REFERENCE_TOGGLE,      // Cycle gap reference forward (Leader→Player→Auto)
-            GAP_REFERENCE_BACK,        // Cycle gap reference backward (Auto→Player→Leader)
             RESET_BUTTON,              // Unified reset button (General tab) - action depends on checkbox
             RESET_TAB_BUTTON,          // Reset current tab to defaults (footer)
-            COPY_TARGET_UP,            // Cycle copy target forward
-            COPY_TARGET_DOWN,          // Cycle copy target backward
             COPY_BUTTON,               // Execute copy to selected target profile(s)
             RESET_PROFILE_CHECKBOX,    // Radio-style checkbox for Reset Profile
             RESET_ALL_CHECKBOX,        // Radio-style checkbox for Reset All Profiles
             HUD_TOGGLE,                // Toggle entire HUD visibility
             TITLE_TOGGLE,              // Toggle HUD title
-            TEXTURE_VARIANT_UP,        // Cycle texture variant forward (Off, 1, 2, ...)
-            TEXTURE_VARIANT_DOWN,      // Cycle texture variant backward
             // GamepadWidget only: its background is a PACK (art + geometry), not a
             // variant of a shared texture, so its Texture column cycles pack names.
-            GAMEPAD_PACK_UP,
-            GAMEPAD_PACK_DOWN,
             // PitboardHud only, same reasoning: its background is a board PACK.
-            PITBOARD_PACK_UP,
-            PITBOARD_PACK_DOWN,
             // TachoWidget and SpeedoWidget, same reasoning again: the dial FACE is a
             // pack (art plus the range and sweep that place the needle on it), and
             // each widget carries its own selection so a set can be mixed.
-            GAUGES_PACK_UP,
-            GAUGES_PACK_DOWN,
-            BACKGROUND_OPACITY_UP,     // Increase background opacity
-            BACKGROUND_OPACITY_DOWN,   // Decrease background opacity
-            SCALE_UP,                  // Increase scale
-            SCALE_DOWN,                // Decrease scale
             LAP_LOG_GAP_ROW_TOGGLE,    // Toggle gap row display (LapLogHud)
             LAP_LOG_HEADERS_TOGGLE,    // Toggle column-header row (LapLogHud)
             FRIENDS_HEADERS_TOGGLE,    // Toggle column-header row (FriendsHud)
@@ -189,21 +182,11 @@ public:
             // (Session Charts: Rows to show / Top positions are data-driven
             // STEPPED controls; Colors is a data-driven CYCLE control.)
             MAP_ROTATION_TOGGLE,       // Toggle map rotation mode (MapHud)
-            MAP_OUTLINE_UP,            // Increase outline width; from Off enables at min (MapHud)
-            MAP_OUTLINE_DOWN,          // Decrease outline width; below min disables (MapHud)
             MAP_MARKERS_TOGGLE,        // Toggle S/F, sector markers and segment lines (MapHud)
             // (Track width / Detail / Marker scale are data-driven STEPPED controls.)
-            MAP_RANGE_UP,              // Increase map range / decrease zoom (MapHud)
-            MAP_RANGE_DOWN,            // Decrease map range / increase zoom (MapHud)
-            MAP_RIDER_SHAPE_UP,        // Cycle rider shape forward (MapHud)
-            MAP_RIDER_SHAPE_DOWN,      // Cycle rider shape backward (MapHud)
             MAP_DETAIL_ADAPTIVE_TOGGLE, // Toggle adaptive (screen-normalized) detail (MapHud)
             // (Radar range / Alert distance / Arrow scale / Marker scale are
             // data-driven STEPPED controls.)
-            RADAR_PROXIMITY_SHAPE_UP,  // Cycle proximity arrow shape forward (RadarHud)
-            RADAR_PROXIMITY_SHAPE_DOWN, // Cycle proximity arrow shape backward (RadarHud)
-            RADAR_RIDER_SHAPE_UP,      // Cycle rider shape forward (RadarHud)
-            RADAR_RIDER_SHAPE_DOWN,    // Cycle rider shape backward (RadarHud)
             // (Records to show is a data-driven STEPPED control.)
             RECORDS_AUTO_FETCH_TOGGLE, // Toggle auto-fetch on event start (RecordsHud)
             RECORDS_HEADERS_TOGGLE,    // Toggle column-header row (RecordsHud)
@@ -215,24 +198,13 @@ public:
             TIMING_GAP_ALLTIME_TOGGLE, // Toggle "All-Time PB" comparison row (TimingHud)
             TIMING_GAP_RECORD_TOGGLE,  // Toggle "Record" comparison row (TimingHud)
             TIMING_GAP_LASTLAP_TOGGLE, // Toggle "Last Lap" comparison row (TimingHud)
-            GAPBAR_ICON_UP,            // Cycle marker icon forward (GapBarHud)
-            GAPBAR_ICON_DOWN,          // Cycle marker icon backward (GapBarHud)
             GAPBAR_GAP_TEXT_TOGGLE,    // Toggle gap text visibility (GapBarHud)
             // (Range / Width / Freeze / Marker scale are data-driven STEPPED controls.)
             GAPBAR_GAP_BAR_TOGGLE,     // Toggle gap bar visualization (green/red bars)
-            COLOR_CYCLE_PREV,          // Cycle color backward (Appearance tab)
-            COLOR_CYCLE_NEXT,          // Cycle color forward (Appearance tab)
-            FONT_CATEGORY_PREV,        // Cycle font backward for category (Appearance tab)
-            FONT_CATEGORY_NEXT,        // Cycle font forward for category (Appearance tab)
             SPEED_UNIT_TOGGLE,         // Toggle speed unit (mph/km/h)
             FUEL_UNIT_TOGGLE,          // Toggle fuel unit (L/gal)
             TEMP_UNIT_TOGGLE,          // Toggle temperature unit (C/F)
             PB_SCOPE_TOGGLE,           // Toggle personal best scope (Bike/Category)
-            DISPLAY_TARGET_TOGGLE,     // Cycle HUD display: In-game / Companion / Both
-            THEME_PREV,                // Cycle the global 9-slice panel theme backwards
-            THEME_NEXT,                // ...and forwards (None + each discovered theme)
-            HUD_THEME_DOWN,            // Per-HUD theme override (Default/None/named)
-            HUD_THEME_UP,
             GRID_SNAP_TOGGLE,          // Toggle grid snapping for HUD positioning
             SCREEN_CLAMP_TOGGLE,       // Toggle screen clamping for HUD positioning
             MENU_ONLY_CURSOR_TOGGLE,   // Toggle menu-only cursor (controller-as-mouse fix)
@@ -267,8 +239,6 @@ public:
             // STEPPED_UP/STEPPED_DOWN controls - see SteppedControl and
             // settings_tab_rumble.cpp. Only the toggles keep dedicated types.)
             RUMBLE_TOGGLE,             // Toggle rumble master enable
-            RUMBLE_CONTROLLER_UP,      // Cycle controller index up
-            RUMBLE_CONTROLLER_DOWN,    // Cycle controller index down
             RUMBLE_BLEND_TOGGLE,       // Toggle blend mode (max vs additive)
             RUMBLE_CRASH_TOGGLE,       // Toggle disable on crash
             RUMBLE_EFFECT_PROFILE_TOGGLE, // Toggle effect profile (global vs per-bike)
@@ -278,40 +248,12 @@ public:
             // Helmet Overlay settings
             HELMET_OVERLAY_TOGGLE,     // Master toggle: enable helmet overlay
             HELMET_HELMET_TOGGLE,      // Toggle helmet section on/off
-            HELMET_VISOR_MODE_DOWN,    // Cycle visor mode backward (Off/Visor/Goggles)
-            HELMET_VISOR_MODE_UP,      // Cycle visor mode forward
-            HELMET_UPPER_TEX_DOWN,     // Cycle helmet upper texture variant backward
-            HELMET_UPPER_TEX_UP,       // Cycle helmet upper texture variant forward
-            HELMET_LOWER_TEX_DOWN,     // Cycle helmet lower texture variant backward
-            HELMET_LOWER_TEX_UP,       // Cycle helmet lower texture variant forward
-            HELMET_UPPER_OFFSET_DOWN,  // Decrease upper helmet Y offset
-            HELMET_UPPER_OFFSET_UP,    // Increase upper helmet Y offset
-            HELMET_LOWER_OFFSET_DOWN,  // Decrease lower helmet Y offset
-            HELMET_LOWER_OFFSET_UP,    // Increase lower helmet Y offset
-            HELMET_TILT_DOWN,          // Decrease helmet tilt strength
-            HELMET_TILT_UP,            // Increase helmet tilt strength
-            HELMET_VIBRATION_DOWN,     // Decrease helmet vibration strength
-            HELMET_VIBRATION_UP,       // Increase helmet vibration strength
-            HELMET_VIB_SENS_DOWN,      // Decrease helmet vibration sensitivity
-            HELMET_VIB_SENS_UP,        // Increase helmet vibration sensitivity
-            HELMET_ZOOM_DOWN,          // Decrease helmet zoom
-            HELMET_ZOOM_UP,            // Increase helmet zoom
-            HELMET_VISOR_TINT_COLOR_DOWN,   // Cycle visor tint color backward
-            HELMET_VISOR_TINT_COLOR_UP,     // Cycle visor tint color forward
-            HELMET_VISOR_TINT_OPACITY_DOWN, // Decrease visor tint opacity
-            HELMET_VISOR_TINT_OPACITY_UP,   // Increase visor tint opacity
             // Hotkey settings
             HOTKEY_KEYBOARD_BIND,      // Click to capture keyboard binding
             HOTKEY_CONTROLLER_BIND,    // Click to capture controller binding
-            HOTKEY_KEYBOARD_CLEAR,     // Clear keyboard binding
-            HOTKEY_CONTROLLER_CLEAR,   // Clear controller binding
             // Tracked Riders settings
             RIDER_ADD,                 // Add rider to tracking list
             RIDER_REMOVE,              // Remove rider from tracking list
-            RIDER_COLOR_PREV,          // Cycle rider color backward
-            RIDER_COLOR_NEXT,          // Cycle rider color forward
-            RIDER_SHAPE_PREV,          // Cycle rider shape backward
-            RIDER_SHAPE_NEXT,          // Cycle rider shape forward
             // Pagination for Riders tab
             SERVER_PAGE_PREV,          // Previous page of server players
             SERVER_PAGE_NEXT,          // Next page of server players
@@ -324,31 +266,11 @@ public:
             UPDATE_INSTALL,            // Install available update
             UPDATE_SKIP_VERSION,       // Skip this version (acts as Retry)
             UPDATE_DEBUG_MODE,         // Toggle debug mode for testing
-            UPDATE_CHANNEL_UP,         // Cycle update channel forward (Stable -> Pre-release)
-            UPDATE_CHANNEL_DOWN,       // Cycle update channel backward (Pre-release -> Stable)
             // Director (auto-director, spectate broadcast tool)
             DIRECTOR_ENABLE_TOGGLE,    // Master enable for the auto-director
-            DIRECTOR_MINSHOT_UP,       // Increase minimum shot length
-            DIRECTOR_MINSHOT_DOWN,     // Decrease minimum shot length
-            DIRECTOR_MAXSHOT_UP,       // Increase maximum shot length
-            DIRECTOR_MAXSHOT_DOWN,     // Decrease maximum shot length
-            DIRECTOR_BATTLEGAP_UP,     // Increase battle gap threshold
-            DIRECTOR_BATTLEGAP_DOWN,   // Decrease battle gap threshold
-            DIRECTOR_BATTLEMAXPOS_UP,  // Increase battle max-position cutoff
-            DIRECTOR_BATTLEMAXPOS_DOWN,// Decrease battle max-position cutoff
-            DIRECTOR_RESUME_UP,        // Increase manual-resume timeout
-            DIRECTOR_RESUME_DOWN,      // Decrease manual-resume timeout
             SPOTTER_ENABLED_TOGGLE,    // Spotter master enable (audio callouts)
-            SPOTTER_TTSVOICE_PREV,     // Cycle the Windows TTS voice
-            SPOTTER_TTSVOICE_NEXT,
             SPOTTER_SUBTITLES_TOGGLE,  // Spotter subtitle widget content on/off
-            SPOTTER_PACK_PREV,         // Cycle voice pack backward
-            SPOTTER_PACK_NEXT,         // Cycle voice pack forward
             DIRECTOR_GAMEPAD_TAKEOVER, // Toggle stick-push gamepad takeover
-            DIRECTOR_CAM_FENDER_UP,    // Cycle Fender cam: Off > Front > Rear > Both
-            DIRECTOR_CAM_FENDER_DOWN,  // Cycle Fender cam (reverse)
-            DIRECTOR_CAM_HELMET_UP,    // Cycle Helmet cam: Off > Helmet 1 > Helmet 2 > Both
-            DIRECTOR_CAM_HELMET_DOWN,  // Cycle Helmet cam (reverse)
             // (Forks is an INI-only tunable - no click region.)
             DIRECTOR_FOLLOW_BATTLES,   // Toggle following on-track battles
             DIRECTOR_FOLLOW_INCIDENTS, // Toggle crash/incident interrupts
@@ -358,10 +280,6 @@ public:
             DIRECTOR_CATCH_OVERTAKES,  // Toggle on-track overtake rewards
             DIRECTOR_FOLLOW_LAPPERS,   // Toggle following a front-runner lapping backmarkers
             DIRECTOR_FOLLOW_DROPS,     // Toggle following a rider tumbling down the order
-            DIRECTOR_VARIETY_UP,       // Increase variety cadence (more solo before an onboard)
-            DIRECTOR_VARIETY_DOWN,     // Decrease variety cadence
-            DIRECTOR_HOLD_UP,          // Increase the shared story hold
-            DIRECTOR_HOLD_DOWN,        // Decrease the shared story hold
             // (Incident hold cap is an INI-only tunable - no click region.)
             DIRECTOR_HUD_VISIBLE,      // Toggle the on-screen director status button
             // FMX HUD
@@ -384,7 +302,7 @@ public:
             FILTER_DNS_TOGGLE,         // Toggle DNS rider filtering (PluginData global)
             HEADERS_TOGGLE,            // Toggle column-header row in the standings (StandingsHud)
             SESSION_INFO_TOGGLE,       // Toggle session-info row (clock/laps/overtime) in the standings (StandingsHud)
-            // Help & Community links (General tab footer)
+            // Help & Community links (About page)
             OPEN_LINK_DOCS,            // Open documentation site
             OPEN_LINK_COMMUNITY,       // Open community forum
             OPEN_LINK_KOFI,            // Open Ko-fi donation page
@@ -400,6 +318,11 @@ public:
             TWITCH_ENABLED_TOGGLE,     // Stream Chat tab: the Twitch connection on/off (its Status row)
             YOUTUBE_CHANNEL_EDIT,      // Stream Chat tab: start/commit typing the YouTube channel
             YOUTUBE_ENABLED_TOGGLE,    // Stream Chat tab: the YouTube connection on/off (its Status row)
+            SLIDER,                    // A slider's track: click or drag to set (steppedIndex = m_sliders)
+            DROPDOWN,                  // A dropdown's box: opens its list (cycleIndex)
+            DROPDOWN_OPTION,           // One entry of the open list (cycleIndex, flagBit = entry)
+            // Appended, not grouped with the Map's other toggles: see COUNT.
+            MAP_RANGE_ADAPTIVE_TOGGLE, // Toggle Follow's range growing with speed (MapHud)
 
             // Sentinel, always last. settings_layout_test.cpp's golden encodes
             // region types as raw ORDINALS, and this enum is unnumbered and
@@ -417,8 +340,6 @@ public:
             std::monostate,                              // Empty state (for types that don't need a pointer)
             uint32_t*,                                   // For CHECKBOX (targetBitfield)
             bool*,                                       // For bool toggle regions
-            ColorSlot,                                   // For COLOR_CYCLE_PREV/NEXT
-            FontCategory,                                // For FONT_CATEGORY_PREV/NEXT
             HotkeyAction,                                // For HOTKEY_* controls
             std::string                                  // For RIDER_* controls (rider name)
         >;
@@ -429,8 +350,9 @@ public:
         BaseHud* targetHud;        // HUD to mark dirty after toggle
         int tabIndex;              // Which tab to switch to (for TAB type)
         std::string tooltipId;     // Tooltip ID for hover display (Phase 3)
-        int steppedIndex = -1;     // Index into m_steppedControls (for STEPPED_UP/STEPPED_DOWN)
-        int cycleIndex = -1;       // Index into m_cycleControls (for CYCLE_UP/CYCLE_DOWN)
+        int steppedIndex = -1;     // Index into m_steppedControls (STEPPED_*), or m_sliders (SLIDER)
+        int cycleIndex = -1;       // Index into m_cycleControls (CYCLE_*, DROPDOWN, DROPDOWN_OPTION)
+        int cellIndex = 0, cellCount = 1;  // TOOLTIP_ROW grid cell (see rowBandSpan)
 
         // Constructor for simple regions (no pointer needed)
         ClickRegion(float _x, float _y, float _width, float _height, Type _type,
@@ -460,20 +382,6 @@ public:
               targetPointer(boolPtr), flagBit(0), isRequired(false),
               targetHud(_targetHud), tabIndex(0), tooltipId() {}
 
-        // Constructor for COLOR_CYCLE regions
-        ClickRegion(float _x, float _y, float _width, float _height, Type _type,
-                   ColorSlot colorSlot)
-            : x(_x), y(_y), width(_width), height(_height), type(_type),
-              targetPointer(colorSlot), flagBit(0), isRequired(false),
-              targetHud(nullptr), tabIndex(0), tooltipId() {}
-
-        // Constructor for FONT_CATEGORY regions
-        ClickRegion(float _x, float _y, float _width, float _height, Type _type,
-                   FontCategory fontCategory)
-            : x(_x), y(_y), width(_width), height(_height), type(_type),
-              targetPointer(fontCategory), flagBit(0), isRequired(false),
-              targetHud(nullptr), tabIndex(0), tooltipId() {}
-
         // Constructor for HOTKEY_* regions
         ClickRegion(float _x, float _y, float _width, float _height, Type _type,
                    HotkeyAction hotkeyAction)
@@ -494,14 +402,11 @@ public:
                        targetHud(nullptr), tabIndex(0), tooltipId() {}
     };
 
-    // Descriptor for the shared STEPPED_UP/STEPPED_DOWN click regions: what to
-    // step, how, within which bounds, and which HUD to mark dirty. Registered by
-    // SettingsLayoutContext::addSteppedControl during rebuildRenderData (layout
-    // time) into m_steppedControls, which is cleared and rebuilt together with
-    // m_clickRegions - so the index stored in ClickRegion::steppedIndex is stable
-    // for exactly as long as the region itself is. The value pointers follow the
-    // same lifetime rules as ClickRegion's bitfield/bool pointers (they point at
-    // long-lived HUD members).
+    // Descriptor for the shared STEPPED_UP/STEPPED_DOWN click regions (and the
+    // slider a bounded one draws as): what to step, how, within which bounds, and
+    // which HUD to mark dirty. Registered by addSteppedControl into
+    // m_steppedControls, rebuilt with m_clickRegions; the value pointers point at
+    // long-lived HUD members.
     struct SteppedControl {
         enum class Kind {
             WRAP_INT,      // applyAcceleratedWrap  (wraps at the bounds)
@@ -513,8 +418,10 @@ public:
             PERCENT_FLOAT, // Rumble-strength stepper: accelerated 1% step, clamp
                            // [flo,fhi], then round to hundredths (NOT the STEP_FLOAT
                            // snap-to-accelerated-grid - preserves the legacy sequences)
-            FIXED_FLOAT    // Fixed step, deliberately NO hold acceleration, clamped to
+            FIXED_FLOAT,   // Fixed step, deliberately NO hold acceleration, clamped to
                            // [flo,fhi]; loLink (when set) overrides flo with a live value
+            ACCESSOR       // get/set instead of a pointer (a setter that clamps, a manager):
+                           // accelerated fstep, clamped to [flo,fhi], snapped to the fstep grid
         };
         Kind kind = Kind::WRAP_INT;
         int* intValue = nullptr;      // WRAP_INT / CLAMP_INT target
@@ -538,7 +445,20 @@ public:
         // edit the PREVIOUS bike's profile). Swallowing is correct: the control
         // the user clicked no longer shows the truth.
         std::function<bool()> valid;
+        std::function<float()> get;        // ACCESSOR only
+        std::function<void(float)> set;
+        // ACCESSOR only, optional: a slider drag calls dragSet instead of set and
+        // onRelease once the button comes up (or the panel closes mid-drag). For a
+        // value that resizes the panel under the cursor (UI scale), which would
+        // otherwise slide the track away from the pointer while it is held.
+        std::function<void(float)> dragSet;
+        std::function<void()> onRelease;
 
+        static SteppedControl accessor(std::function<float()> g, std::function<void(float)> s,
+                                       float step, float lo, float hi, BaseHud* dirtyHud) {
+            SteppedControl c; c.kind = Kind::ACCESSOR; c.get = std::move(g); c.set = std::move(s);
+            c.fstep = step; c.flo = lo; c.fhi = hi; c.dirtyHud = dirtyHud; return c;
+        }
         static SteppedControl wrapInt(int* value, int step, int lo, int hi, BaseHud* dirtyHud) {
             SteppedControl c; c.kind = Kind::WRAP_INT; c.intValue = value;
             c.step = step; c.lo = lo; c.hi = hi; c.dirtyHud = dirtyHud; return c;
@@ -569,15 +489,11 @@ public:
         }
     };
 
-    // Descriptor for the shared CYCLE_UP/CYCLE_DOWN click regions: a plain mod-N
-    // state cycle ("value = (value ± 1) mod N; mark dirty"). Registered by the
-    // SettingsLayoutContext::addCycleControl descriptor overload during
-    // rebuildRenderData into m_cycleControls, which is cleared and rebuilt in
-    // lockstep with m_clickRegions — ClickRegion::cycleIndex is stable exactly as
-    // long as the region itself is. get/set use a 0-based state index; enums whose
-    // VISUAL cycle order differs from their numeric order (e.g. StandingsHud's
-    // PosGainMode) map inside their get/set lambdas. Deliberately NO hold
-    // acceleration: cycles step ±1 per click/repeat, whatever the hold tier.
+    // Descriptor for the shared CYCLE_UP/CYCLE_DOWN click regions (and the dropdown
+    // a labelled one draws as): a mod-N state cycle, registered by addCycleControl
+    // into m_cycleControls, rebuilt with m_clickRegions. get/set use a 0-based state
+    // index; enums whose VISUAL order differs from their numeric order (StandingsHud's
+    // PosGainMode) map inside get/set. NO hold acceleration: cycles step ±1.
     struct CycleControl {
         std::function<int()> get;        // current 0-based state index
         std::function<void(int)> set;    // store the new state index
@@ -588,6 +504,15 @@ public:
         // ON_JOIN state, Standings stopping in-flight animations on OFF). Same
         // lifetime rules as the get/set captures.
         std::function<void()> postStep;
+        std::function<std::string(int)> nameOf;  // a state's name; with 3+ states it draws as a dropdown
+        std::function<int(int)> spriteOf;        // a state's icon sprite (0 = none): the list opens as a grid of icons
+        std::function<unsigned long(int)> swatchOf;  // a state's colour: the list shows a swatch before each name
+        std::function<int(int)> fontOf;          // a state's font index (0 = the menu's): the list draws each name in it
+        std::function<void(bool)> step;          // the arrows' own step, where the owner defines one (else get/set wrap)
+        // Holding an arrow repeats the step. False for a step that does heavy
+        // work (opens a window, loads a pack, previews a voice): it fires once,
+        // on release, as a button does, so the press can still slide off.
+        bool repeat = true;
 
         // The common case: cycle an enum (or integral) member of a HUD through
         // its full 0..count-1 numeric range. Works for any enum whose visual
@@ -595,8 +520,8 @@ public:
         // access rights of SettingsHud (nested class of a friend).
         template <typename OwnerT, typename EnumT>
         static CycleControl enumMember(OwnerT* owner, EnumT OwnerT::* member,
-                                       int count, BaseHud* dirtyHud) {
-            CycleControl c;
+                                       int count, BaseHud* dirtyHud, const char* const* names = nullptr) {
+            CycleControl c; if (names) c.nameOf = [names](int i) { return std::string(names[i]); };
             c.get = [owner, member]() { return static_cast<int>(owner->*member); };
             c.set = [owner, member](int v) { owner->*member = static_cast<EnumT>(v); };
             c.count = count;
@@ -620,6 +545,7 @@ public:
     static BaseHud* renderTabSession(SettingsLayoutContext& ctx);
     static BaseHud* renderTabTiming(SettingsLayoutContext& ctx);
     static BaseHud* renderTabGapBar(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabDeltaTrace(SettingsLayoutContext& ctx);
     static BaseHud* renderTabStandings(SettingsLayoutContext& ctx);
     static BaseHud* renderTabMap(SettingsLayoutContext& ctx);
     static BaseHud* renderTabRadar(SettingsLayoutContext& ctx);
@@ -642,11 +568,11 @@ public:
     static BaseHud* renderTabSpotter(SettingsLayoutContext& ctx);
     // The About page. Hidden from the tab list; opened by the footer's About button.
     static BaseHud* renderTabAbout(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabMore(SettingsLayoutContext& ctx);   // hidden; a More row opens it
 
     // Static click handler functions (implemented in tab files)
     // Return true if the click was handled, false otherwise
     bool handleClickTabMap(const ClickRegion& region);
-    bool handleClickTabRadar(const ClickRegion& region);
     bool handleClickTabTiming(const ClickRegion& region);
     bool handleClickTabGapBar(const ClickRegion& region);
     bool handleClickTabStandings(const ClickRegion& region);
@@ -675,6 +601,8 @@ public:
         m_resetProfileConfirmed = false;
         m_resetAllConfirmed = false;
         m_prestigeConfirmed = false;
+        m_resetTabConfirmed = false;
+        m_copyConfirmed = false;
     }
     bool handleClickTabSpotter(const ClickRegion& region);
     bool handleClickTabFmx(const ClickRegion& region);
@@ -745,7 +673,6 @@ protected:
     // open at the sides of the settings title when the band uses one spelling and
     // the cards the other. One engine, one answer, no spellings.
 
-
 #if defined(MXBMRP3_TEST_BUILD)
 public:
     // Headless click seam (never in a shipping build): the settings-click path is
@@ -757,14 +684,15 @@ public:
     // Regions are counted in layout order on the ACTIVE tab. Returns false when
     // no such region exists (e.g. wrong tab, index out of range).
     int testSteppedRegionCount(bool up) const;
-    // The open tab, and a NAME -> index lookup, for the what's-new hooks: a test
-    // naming "Widgets" should not have to know it is tab 14, and getTabName is
-    // private. Test-build only, like everything else in this block.
+    // The open tab, a NAME -> index lookup and whether a tab sits in a More group,
+    // for the what's-new hooks: a test naming "Widgets" should not have to know it is tab 14.
     int testActiveTab() const { return m_activeTab; }
     const char* testTabNameForIndex(int t) const { return getTabName(t); }
+    bool testTabInGroup(int t) const { return groupRowOf(t) >= 0; }
     // Does the LAST-BUILT tab carry a row registering this tooltip id? The
     // what's-new markers key on those ids, and one naming a row that does not
     // exist draws nothing and says nothing.
+    std::vector<std::string>& testUntippedRows() { return m_testUntippedRows; }
     bool testHasRegionWithTooltip(const char* tooltipId) const {
         if (!tooltipId) return false;
         for (const ClickRegion& r : m_clickRegions) {
@@ -780,10 +708,12 @@ public:
         if (group) *group = m_achievementsPageGroup;
         return m_achievementsPage;
     }
-    bool testRegionCenter(const char* tooltipId, float* x, float* y) const {
+    bool testRegionCenter(const char* tooltipId, float* x, float* y,   // `only`: one type (a slider)
+                          ClickRegion::Type only = ClickRegion::COUNT, float* width = nullptr) const {
         if (!tooltipId || !x || !y) return false;
         for (const ClickRegion& r : m_clickRegions) {
-            if (r.tooltipId != tooltipId) continue;
+            if (r.tooltipId != tooltipId || (only != ClickRegion::COUNT && r.type != only)) continue;
+            if (width) *width = r.width;
             *x = r.x + r.width * 0.5f;
             *y = r.y + r.height * 0.5f;
             return true;
@@ -843,6 +773,12 @@ public:
     // Same seam for the shared CYCLE_UP/CYCLE_DOWN regions (no hold tier — cycles
     // never accelerate).
     int testCycleRegionCount(bool up) const;
+    // CYCLE_UP arrows on the active tab that fire once on release (a heavy
+    // step: CycleControl::repeat false) rather than repeating while held.
+    int testOnceCycleCount() const;
+    // Lists on the active tab with 3+ states but no names, which therefore still
+    // draw as bare arrows instead of a dropdown. Zero on every tab is the rule.
+    int testUnnamedListCount() const;
     // Whether holding a profile arrow auto-repeats. It must not: see the comment
     // on isRepeatableRegionType. Asked by name rather than by passing a
     // ClickRegion::Type across the DLL boundary, where the enum's values are not
@@ -869,7 +805,7 @@ public:
     int testPerturbActiveTab();
     // Press the footer's "Reset <tab>" button through the real click path (the
     // perturbation sweep deliberately skips it).
-    bool testClickResetTab();
+    bool testClickResetTab(int clicks = 2);
 
     // Click the Director tab's "Visible" row through the REAL path. Named rather
     // than taking a ClickRegion::Type ordinal: that enum is unnumbered and grouped
@@ -950,6 +886,10 @@ private:
                               float sidebarAsk, float contentAsk,
                               const std::vector<float>& tabGroups);
     float m_tallestContentRows = -1.0f;
+    // True while measureTallestBodyH lays a tab out: a tab with an expandable
+    // part (Rumble's Bumps/Lockup groups) renders its TALLEST state, so opening
+    // it never outgrows the panel.
+    bool m_measuringTallest = false;
     // What one dry layout pass over a tab learned: where its cursor ended, and the
     // content height of every section it opened, in order. See measureTab.
     struct TabMeasure {
@@ -1004,8 +944,10 @@ public:
     // disagree about some tab. See MXBMRP3_Test_SettingsOverflowRows and
     // settings_fit_test.
     float testOverflowRows() const { return m_testOverflowRows; }
+    int testWhatsNewBands() const { return m_testWhatsNewBands; }   // last build's row bands
 private:
     float m_testOverflowRows = 0.0f;
+    int m_testWhatsNewBands = 0;
 #endif
 
     // Tab-bar build, split out of rebuildRenderData(); see their definitions in
@@ -1040,7 +982,6 @@ private:
     // THE PANEL'S OWN PAD and the caption block's, resolved from the box terms
     // (theme key → [Advanced] built-in) and converted the BOX way — one stated
     // cell square on screen, as PanelBox::Spec::unit spends every vertical term.
-    //
     // Not basePaddingY()/dim.paddingH: those resolve the LEGACY
     // panelPadding{X,Y}Cells on a different lattice, a pair unreachable from any
     // ini, which would leave [Advanced] panelPadding, titleMargin and titlePadding
@@ -1051,6 +992,9 @@ private:
     // the gutter measures what the air between two cards measures.
     // (Characters and cells are the same width at the shipped
     // one-cell-per-char grid.)
+    bool addDisclosureCaret(float cx, float cy, float halfSize, bool open, unsigned long color);  // right = closed, down = open; false = UI icons off
+    void buildMoreRow(const ScaledDimensions& dim, const PanelPlan& plan, const PanelBox::ColumnGeom& col,
+                      int groupRow, float tabStartX, float& tabStartY, float tabWidth, float checkboxWidth);
     void buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan,
                      const PanelBox::ColumnGeom& col, float tabStartX,
                      float tabWidth, float checkboxWidth);
@@ -1066,13 +1010,13 @@ private:
     void addAboutButton(const ScaledDimensions& dim, const PanelPlan& plan, const PanelBox::ColumnGeom& mainCol, const PlanButtonTerms& bt, float buttonRowY, float buttonBoxH);
     bool drawTabIcon(float x, float y, const char* iconName, unsigned long color,
                      const ScaledDimensions& dim, float checkboxWidth);
-    // `onBand` = this row is the SELECTED tab, so the icon is drawn over the accent
-    // band rather than the panel. See the definition for what that changes.
+    // `onBand` = the icon is on the SELECTED tab's accent band (see the definition).
     void drawTabToggle(float x, float y, const char* iconName, bool enabled, bool onBand,
                        const ScaledDimensions& dim, float checkboxWidth);
     void handleClick(float mouseX, float mouseY);
     void dispatchRegion(const ClickRegion& region, bool skipSave = false);  // Dispatch a click region directly
-    void handleRightClick(float mouseX, float mouseY);  // Right-click for shape cycling
+    void handleRightClick(float mouseX, float mouseY);  // hotkey clearing
+    bool handleRightClickTabHotkeys(const ClickRegion& region);  // settings_tab_hotkeys.cpp
     void resetToDefaults();        // Reset all profiles to defaults
     void resetCurrentTab();        // Reset current tab for current profile
     void resetCurrentProfile();    // Reset all HUDs for current profile
@@ -1085,24 +1029,20 @@ private:
     // setVisible() in a click handler is a bug on the companion surface.
     void toggleHudOnActiveSurface(class BaseHud* hud);
     void handleHudToggleClick(const ClickRegion& region);
-    // Step a HUD through [Default, None, <installed themes>].
-    void cycleHudThemeOverride(BaseHud* hud, bool forward);
-    // Step a HUD's pack cycle: [Off, <installed packs>]. PUBLIC so test_hooks.cpp
-    // can drive them: the Off entry in these cycles is the
-    // only control over each HUD's showBackgroundTexture, and shipping without it
-    // stranded users with the art switched off and no way back. That is a UI-
-    // reachability bug, which no headless test could see through the widgets alone.
-    // See asset_pack_test.cpp.
 public:
+    // The lists a HUD's look row picks from (settings_controls.cpp): its texture
+    // variants, its panel-theme override, and a pack HUD's installed packs.
+    static CycleControl textureCycle(BaseHud* hud);
+    static CycleControl themeOverrideCycle(BaseHud* hud);
+    static CycleControl packCycle(BaseHud* hud);
+    static void stepCycle(const CycleControl& c, bool forward);
+    // One arrow step of the gamepad's / pit board's pack row. PUBLIC so
+    // test_hooks.cpp can drive the row a player reaches (asset_pack_test.cpp):
+    // widget state no control reaches is invisible through the widgets alone.
     void cycleGamepadPack(bool forward);
-    // Pitboard tab: step through the installed board packs by name.
     void cyclePitboardPack(bool forward);
-    // Takes the HUD because the two gauges each select their own pack.
-    void cycleGaugesPack(BaseHud* hud, bool forward);
 private:
     void handleTitleToggleClick(const ClickRegion& region);
-    void handleOpacityClick(const ClickRegion& region, bool increase);
-    void handleScaleClick(const ClickRegion& region, bool increase);
     void handleTabClick(const ClickRegion& region);
     void handleCloseButtonClick();
     const char* getTabName(int tabIndex) const;  // Get display name for a tab
@@ -1152,38 +1092,36 @@ private:
         // rename the "Reset <tab>" button with it. null = no badge.
         const char* badge;
         // NOT IN THE SIDEBAR LIST, but still a real selectable tab: the About page,
-        // which is reached from the footer's About button instead of a row of its
-        // own. The sidebar is ~31 rows and at or near what sets the panel's height,
-        // so a listed row is not free; a page nobody needs to find twice does not
-        // have to cost one.
-        //
-        // LAST in the aggregate, with a DEFAULT MEMBER INITIALISER. The build runs
-        // -Werror=missing-field-initializers, so simply omitting the field in the
-        // thirty rows above is an error, not a silent false -- the default is what
-        // makes "every existing row is listed" hold without touching any of them.
-        //
-        // isTabAvailable() deliberately still returns true for a hidden tab -- it
-        // gates SELECTABILITY (and the persisted-tab restore, so the menu reopens on
-        // About if that is where it was closed). Only the list/measure loops read
-        // this.
+        // reached from the footer's About button instead of a row of its own.
+        // LAST in the aggregate, with a DEFAULT MEMBER INITIALISER: the build runs
+        // -Werror=missing-field-initializers, so the rows that omit it need one.
+        // isTabAvailable() still returns true for a hidden tab -- it gates
+        // SELECTABILITY (and the persisted-tab restore); only the list/measure
+        // loops read this.
         bool hidden = false;
-        // THE HUD THIS TAB CONFIGURES, when it is not the one `hud` names. `hud` is
-        // the tab-list CHECKBOX's HUD, and two tabs have controls for a HUD that
-        // carries no checkbox there: Achievements owns the toast widget, Spotter
-        // owns the subtitle widget. activeTabHud() prefers this, so the positioning
-        // preview reaches them. LAST, and defaulted, for the same reason `hidden`
-        // is: the thirty rows that do not set it must not have to mention it.
+        // THE HUD THIS TAB CONFIGURES when it is not the checkbox's `hud`: the
+        // Achievements toast and the Spotter subtitles. activeTabHud() prefers it,
+        // so the positioning preview reaches them. Defaulted, like `hidden`.
         BaseHud* (*previewHud)(const SettingsHud&) = nullptr;
     };
     // Rows are in VISUAL ORDER - the tab-list render loop iterates this table
     // directly, so row position = position in the tab column. The negative
-    // TAB_SECTION_* rows render the section headers/controls between groups.
+    // TAB_SECTION_* / TAB_GROUP rows render the section and group headers.
     static const TabDescriptor s_tabRegistry[];
     static const TabDescriptor* findTabDescriptor(int tabId);
 
-    // Section markers used in s_tabRegistry (negative = not a real tab)
-    static constexpr int TAB_SECTION_GLOBAL = -1;
-    static constexpr int TAB_SECTION_PROFILE = -2;
+    static constexpr int TAB_SECTION_GLOBAL = -1;    // s_tabRegistry section markers
+    static constexpr int TAB_SECTION_PROFILE = -2;   // (negative = not a real tab)
+    // A "More" group (tab rows up to the next marker): one sidebar row opening TAB_MORE.
+    static constexpr int TAB_GROUP = -3;
+    static constexpr uint32_t GROUP_HEADER = 1;   // a TAB region's flagBit on a More row
+    static int groupRowOf(int tabId);   // the owning TAB_GROUP row's index, or -1
+    void addBackButton(SettingsLayoutContext& ctx);   // under a More tab's content
+    int moreGroupTabs(int* tabs, int cap, int* groupRow) const;   // what the More page lists
+    // Whether the tab's row has an on/off toggle; its state goes to *enabled.
+    bool tabToggleState(int tabId, BaseHud* tabHud, bool* enabled) const;
+    ClickRegion::Type tabToggleType(int tabId, BaseHud* tabHud, BaseHud** target) const;  // its region
+    const char* tabIconName(int tabId, BaseHud* tabHud) const;                             // identity icon
 
     // Per-tab custom reset bodies (referenced by s_tabRegistry rows; the simple
     // "reset this HUD's section" tabs use TabDescriptor::resetHud instead).
@@ -1279,6 +1217,10 @@ private:
     // above (disarmResets clears all three): trading the ladder in is the least
     // undoable act in the panel.
     bool m_prestigeConfirmed = false;
+    // The footer's "Reset <tab>" and General's Copy, armed the same way: a tab's
+    // whole tuning, or another profile overwritten, from one stray click.
+    bool m_resetTabConfirmed = false;
+    bool m_copyConfirmed = false;
 
     // Easter egg click detection (version string)
     static constexpr int EASTER_EGG_CLICKS = 5;
@@ -1345,34 +1287,35 @@ public:
         TAB_ABOUT = 28,        // About (hidden from the tab list; opened from the footer)
         TAB_ACHIEVEMENTS = 29, // Achievements (global: lifetime numbers as tiered progress)
         TAB_STREAM_CHAT = 30,       // "Stream Chat": (global: Twitch + YouTube channels, the chat HUD)
-        TAB_COUNT = 31
+        TAB_DELTA_TRACE = 31,  // Delta Trace HUD (gap to a reference lap across the lap)
+        TAB_MORE = 32,         // A section's More page (hidden; its sidebar row opens it)
+        TAB_COUNT = 33
     };
 private:
     int m_activeTab;
+    int m_moreGroupRow = -1;   // the More row last clicked; -1 = none (see moreGroupTabs)
 
-    // Mark settings dirty after a settings-panel edit (always — independent of auto-save, so
-    // the Save button reflects unsaved changes in manual mode too). The write is deferred to a
-    // leave-track transition (auto-save) or the Save button, so it never spikes a gameplay frame.
+    // Mark settings dirty after a settings-panel edit (always, so the Save button reflects
+    // unsaved changes in manual mode too). The write waits for leave-track or Save.
     void markSettingsDirty();
 
-    // Last-seen SettingsManager dirty state, so update() can rebuild the Save button the frame
-    // the unsaved-changes state flips (e.g. a HUD dragged while the panel is open).
+    // Last-seen SettingsManager dirty state: update() rebuilds the Save button when it flips.
     bool m_lastSettingsDirty = false;
     // Stats tab periodic refresh timer (epoch default triggers immediate first refresh)
     std::chrono::steady_clock::time_point m_lastStatsRefresh{};
 
     // Hover tracking for button backgrounds
     int m_hoveredRegionIndex;  // -1 = none hovered
-    int m_hoveredHotkeyRow;    // -1 = none, tracks which hotkey row is hovered
+    int m_hoveredHotkeyRow;    // -1 = none, index into m_hotkeyCells of the hovered binding
     enum class HotkeyColumn { NONE, KEYBOARD, CONTROLLER };
-    HotkeyColumn m_hoveredHotkeyColumn;  // Which column is hovered
-    float m_hotkeyContentStartY;  // Y position where hotkey rows start (set during rebuild)
+    HotkeyColumn m_hoveredHotkeyColumn;  // Which field of that binding is hovered
     float m_hotkeyRowHeight;      // Row height for hotkey tab (set during rebuild)
-    std::vector<float> m_hotkeyRowTops;  // Top Y of each rendered hotkey row (set during rebuild);
-                                         // indexed to match the hover row index, accounts for spacer gaps
-    float m_hotkeyKeyboardX;      // X position of keyboard column (set during rebuild)
-    float m_hotkeyControllerX;    // X position of controller column (set during rebuild)
+    // Where each binding's two fields were drawn, in draw order (set during rebuild); the
+    // bindings sit in two columns, so a row index alone no longer places them.
+    struct HotkeyCell { float top, keyboardX, controllerX; };
+    std::vector<HotkeyCell> m_hotkeyCells;
     float m_hotkeyFieldCharWidth; // Character width for field calculations (set during rebuild)
+    static constexpr int HOTKEY_KEY_FIELD = 8, HOTKEY_PAD_FIELD = 8;  // characters in each input box
 
     // Tracked Riders tab hover tracking
     int m_hoveredTrackedRiderIndex;    // -1 = none, tracks which tracked rider cell is hovered
@@ -1415,6 +1358,8 @@ private:
 
     // Returns true if a click region type supports hold-to-repeat
     static bool isRepeatableRegionType(ClickRegion::Type type);
+    // The region's type repeats, and a cycle's own descriptor allows it.
+    bool isRepeatableRegion(const ClickRegion& region) const;
 
     // Returns step multiplier for hold-to-repeat acceleration:
     // repeats 0-5: 1x (1%), repeats 6-15: 5x (5%), repeats 16+: 10x (10%)
@@ -1480,20 +1425,26 @@ private:
     float m_testLabelX = 0.0f;
     float m_testControlX = 0.0f;
     float m_testRowRightX = 0.0f;
+    // Rows built without a tooltip id, as "tab: label" (addRowTooltip).
+    std::vector<std::string> m_testUntippedRows;
 #endif
 
     std::vector<ClickRegion> m_clickRegions;
 
-    // Stepped-control descriptors referenced by ClickRegion::steppedIndex.
-    // Rebuilt in lockstep with m_clickRegions (rebuildRenderData / hide), never
-    // touched per frame - see SteppedControl.
+    // Descriptors referenced by ClickRegion::steppedIndex / cycleIndex, rebuilt in
+    // lockstep with m_clickRegions (rebuildRenderData / hide), never touched per
+    // frame - see SteppedControl, CycleControl and settings_controls.h.
     std::vector<SteppedControl> m_steppedControls;
-
-    // Cycle-control descriptors referenced by ClickRegion::cycleIndex. Same
-    // lifecycle as m_steppedControls - see CycleControl.
     std::vector<CycleControl> m_cycleControls;
+    // Counts the menu's openings: a tab that reads something too heavy to read
+    // per rebuild (the Spotter's packs and SAPI voices) reads it once per open.
+    unsigned m_openSerial = 0;   // mt-plain: game thread only
+    std::vector<SliderControl> m_sliders;
+    SliderDrag m_sliderDrag;
+    DropdownState m_dropdown;
+    bool handleControlPress(int regionIndex, float cursorX);  // settings_controls.cpp, all four
+    void updateSliderDrag(float cursorX, bool pressed); void endSliderDrag(); void handleControlRegion(const ClickRegion& region); void buildDropdownPopup(float l, float t, float r, float b);
 
-    // Get tooltip ID for a click region type and current active tab
-    // Returns empty string if no tooltip is available
+    // Tooltip ID for a click region type on the active tab ("" when none)
     static const char* getTooltipIdForRegion(ClickRegion::Type type, int activeTab);
 };

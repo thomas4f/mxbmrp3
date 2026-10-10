@@ -342,3 +342,36 @@ TEST_CASE("reload config: re-reads every pack type, not just gamepads") {
     host.clearPitboards();
     host.clearGamepads();
 }
+
+// A data folder that never arrived leaves the plugin with no fonts, so no string
+// can say what went wrong. The warning is the Version widget's panel with its
+// text in SOLID_COLOR block letters, and drawn only when discovery came back empty.
+TEST_CASE("install warning: drawn from plain quads only when fonts or icons are missing") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\asset_pack\\");
+
+    CHECK(host.installWarning(12, 40) == 0);   // a working install draws nothing
+
+    host.draw();
+    const int baseline = host.lastGameQuads();
+    const int warning = host.installWarning(0, 0);
+    CHECK(warning > 1);                        // the backdrop plus the letters
+    CHECK(host.installWarning(0, 40) > 1);     // fonts alone are enough to warn
+    CHECK(host.installWarning(12, 0) > 1);     // and so are icons
+    CHECK(host.installWarning(12, 40, false) > 1);   // and so is a button's icon
+    host.draw();
+    CHECK(host.lastGameQuads() >= baseline + host.installWarning(12, 0));
+
+    // The real-font twin companion_demo diffs against: the same panel, its rows
+    // as strings instead of block letters, so far fewer quads and three strings.
+    const int realQuads = host.installWarning(0, 0, true, /*realText=*/true);
+    CHECK(realQuads >= 1);
+    CHECK(realQuads < warning);
+    host.draw();
+    CHECK(host.lastGameStrings() >= 3);
+
+    CHECK(host.installWarning(12, 40) == 0);
+    host.draw();
+    CHECK(host.lastGameQuads() == baseline);
+}

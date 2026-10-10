@@ -550,6 +550,11 @@ __declspec(dllexport) void MXBMRP3_Test_GapBarShowSplits(int on) {
     HudManager::getInstance().getGapBarHud().setShowSplits(on != 0);
 }
 
+// The Gap Bar's range in ms, GapBarHud::RANGE_AUTO for Auto (gap_bar_auto_range_test).
+__declspec(dllexport) void MXBMRP3_Test_GapBarRange(int ms) {
+    HudManager::getInstance().getGapBarHud().setRangeMs(ms);
+}
+
 // Whether a HUD's background TEXTURE is switched on, by registration name:
 // 1 = on, 0 = off, -1 = no such HUD.
 //
@@ -1047,6 +1052,8 @@ __declspec(dllexport) int MXBMRP3_Test_SettingsClosingArrowRightX(int* minRight,
 __declspec(dllexport) void MXBMRP3_Test_GapBarForceGap(int ms, int valid) {
     PluginData::getInstance().testForceLiveGap(ms, valid != 0);
     HudManager::getInstance().getGapBarHud().setDataDirty();
+    // ...and the Timing panel's Gap section, which prints the same gap.
+    HudManager::getInstance().getTimingHud().setDataDirty();
 }
 
 // The computed live gap to PB (pb_gap_test): returns validity, writes the gap.
@@ -1297,6 +1304,12 @@ __declspec(dllexport) int MXBMRP3_Test_SettingsClickResetTab() {
 __declspec(dllexport) int MXBMRP3_Test_SettingsCycleCount(int up) {
     return HudManager::getInstance().getSettingsHud().testCycleRegionCount(up != 0);
 }
+// Lists of 3+ states on the active tab that have no names and so draw as arrows
+// rather than a dropdown. A list without names is one wired around the shared
+// descriptor's naming, so settings_layout_test asks every tab for zero.
+__declspec(dllexport) int MXBMRP3_Test_SettingsUnnamedLists() {
+    return HudManager::getInstance().getSettingsHud().testUnnamedListCount();
+}
 __declspec(dllexport) int MXBMRP3_Test_SettingsClickCycle(int index, int up) {
     return HudManager::getInstance().getSettingsHud().testClickCycle(index, up != 0) ? 1 : 0;
 }
@@ -1339,6 +1352,17 @@ __declspec(dllexport) int MXBMRP3_Test_SettingsRegionCenter(const char* tooltipI
     return HudManager::getInstance().getSettingsHud().testRegionCenter(tooltipId, x, y) ? 1 : 0;
 }
 
+// A settings slider's track (dropdown 0) or dropdown's box (1), by its row's
+// tooltip id: left edge, centre line and width, so a test can press, drag or click.
+__declspec(dllexport) int MXBMRP3_Test_SettingsControlSpan(const char* tooltipId, int dropdown,
+                                                           float* x0, float* y, float* w) {
+    float cx = 0.0f;
+    if (!x0 || !w || !HudManager::getInstance().getSettingsHud().testRegionCenter(tooltipId, &cx, y,
+            dropdown ? SettingsHud::ClickRegion::DROPDOWN : SettingsHud::ClickRegion::SLIDER, w)) return 0;
+    *x0 = cx - *w * 0.5f;
+    return 1;
+}
+
 // Whether the settings menu is open (a toast click opens it).
 __declspec(dllexport) int MXBMRP3_Test_SettingsVisible() {
     return HudManager::getInstance().isSettingsVisible() ? 1 : 0;
@@ -1364,6 +1388,11 @@ __declspec(dllexport) void MXBMRP3_Test_HotkeyStartCapture(int action) {
 
 __declspec(dllexport) int MXBMRP3_Test_HotkeyCapturing() {
     return HotkeyManager::getInstance().isCapturing() ? 1 : 0;
+}
+
+// Whether an action has a keyboard binding: a right-click on its field clears it.
+__declspec(dllexport) int MXBMRP3_Test_HotkeyHasKeyboard(int action) {
+    return HotkeyManager::getInstance().getBinding(static_cast<HotkeyAction>(action)).hasKeyboard() ? 1 : 0;
 }
 
 // Open/close the standalone companion window (renders the HUD off-game). Lets a
@@ -1712,6 +1741,14 @@ __declspec(dllexport) int MXBMRP3_Test_WhatsNewMarkerResolves(int index) {
     sh.testClickTab(m.tabId);
     sh.update();
     return sh.testHasRegionWithTooltip(m.rowTooltipId) ? 1 : 0;
+}
+
+// Does marker `i`'s tab sit inside a section's More group? The More header has no
+// "New" tag, so news there draws nowhere while the group is closed.
+__declspec(dllexport) int MXBMRP3_Test_WhatsNewMarkerInGroup(int index) {
+    if (index < 0 || index >= WhatsNew::MARKER_COUNT) return -1;
+    const SettingsHud& sh = HudManager::getInstance().getSettingsHud();
+    return sh.testTabInGroup(WhatsNew::MARKERS[index].tabId) ? 1 : 0;
 }
 
 // The marker's tab, by name, so a failure names the tab rather than an index.
@@ -2277,6 +2314,18 @@ __declspec(dllexport) int MXBMRP3_Test_SpriteOrderMismatches(void) {
     return HudManager::getInstance().spriteOrderMismatches();
 }
 
+// Build the broken-install warning as if discovery had found these counts (and,
+// with iconsComplete, every icon a button needs; with realText, in the real font
+// for comparison); returns its quad count (0 = no warning). Test builds never
+// build it on their own: the suite runs with no asset tree at all.
+__declspec(dllexport) int MXBMRP3_Test_InstallWarning(int fontCount, int iconCount, int iconsComplete,
+                                                      int realText) {
+    HudManager& hm = HudManager::getInstance();
+    hm.testBuildInstallWarning(static_cast<size_t>(fontCount), static_cast<size_t>(iconCount),
+                               iconsComplete != 0, realText != 0);
+    return static_cast<int>(hm.testInstallWarningQuads());
+}
+
 // Must-catch probe for the same checker: re-run it with two table entries
 // swapped (restored before returning). Non-zero proves the check is not
 // vacuously green on the staged tree.
@@ -2646,12 +2695,11 @@ __declspec(dllexport) void MXBMRP3_Test_SetRenderProbeTextChars(int n) {
 // Front truncation is fine here: the derived block sits mid-report and the
 // buffer callers pass outgrows the whole report anyway.
 __declspec(dllexport) void MXBMRP3_Test_ProbeSweepReport(double fillUs, double alpha0Us,
-                                                         double degenUs, double glUs,
-                                                         int glPaintState,
+                                                         double degenUs,
                                                          char* out, int cap) {
     if (!out || cap <= 0) return;
     const std::string s = RenderProbeSweep::getInstance().testReportSynthetic(
-        fillUs, alpha0Us, degenUs, glUs, glPaintState);
+        fillUs, alpha0Us, degenUs);
     const int n = static_cast<int>(s.size()) < cap - 1 ? static_cast<int>(s.size()) : cap - 1;
     for (int i = 0; i < n; ++i) out[i] = s[i];
     out[n] = '\0';
@@ -2685,6 +2733,24 @@ __declspec(dllexport) int MXBMRP3_Test_SetHudOffset(const char* name, float x, f
     for (const auto& hud : HudManager::getInstance().getHuds()) {
         if (!hud || std::strcmp(hud->getHarnessId(), name) != 0) continue;
         hud->setPosition(x, y);
+        return 1;
+    }
+    return 0;
+}
+
+// Appearance's UI scale, through the HudManager call the slider and the INI make.
+__declspec(dllexport) void MXBMRP3_Test_SetUiScale(float scale) {
+    HudManager::getInstance().setUiScale(scale);
+}
+
+// A named panel's own Scale (what the INI stores) and the scale it draws at
+// (own x UI scale), x1000. Returns 1 if a HUD matched.
+__declspec(dllexport) int MXBMRP3_Test_HudScales(const char* name, int* own, int* drawn) {
+    if (!name) return 0;
+    for (const auto& hud : HudManager::getInstance().getHuds()) {
+        if (!hud || std::strcmp(hud->getHarnessId(), name) != 0) continue;
+        if (own) *own = static_cast<int>(std::lround(hud->getOwnScale() * 1000.0f));
+        if (drawn) *drawn = static_cast<int>(std::lround(hud->getScale() * 1000.0f));
         return 1;
     }
     return 0;

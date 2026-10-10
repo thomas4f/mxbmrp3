@@ -67,6 +67,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -316,10 +317,14 @@ public:
     // without rewriting the setting (see spotter_tts_voice.h).
     const std::string& getTtsVoice() const { return m_ttsVoice; }
     void setTtsVoice(const std::string& name);
-    // Installed SAPI voice names, sorted (tab picker). Reads the registry —
-    // cheap (a handful of keys) and only called by the settings UI. Empty on
-    // a machine with no SAPI voices, which includes every Wine prefix.
-    std::vector<std::string> listTtsVoices() const;
+    // Installed SAPI voice names (tab picker, setTtsVoice's check), read ONCE
+    // per session: the first call enumerates, and PluginManager::initialize()
+    // makes that call at plugin load, so the game thread never pays it while
+    // driving. Not cheap -- SAPI's enumeration is a COM round trip worth tens
+    // of ms on Windows (a ~40 ms frame each time the settings menu opened in
+    // 1.32 before release). A voice installed mid-session shows after a game
+    // restart. Empty on a machine with no SAPI voices (every Wine prefix).
+    const std::shared_ptr<const std::vector<std::string>>& getTtsVoices();
 
 #if defined(MXBMRP3_TEST_BUILD)
     // Inject pack CONTENT directly (parsed from text) — the harness stages no
@@ -667,6 +672,8 @@ private:
     // can't ride an atomic, so the published one is guarded like the cue log
     // and copied under the lock at each utterance.
     std::string m_ttsVoice;
+    // getTtsVoices()' session list (game thread); null until first asked.
+    std::shared_ptr<const std::vector<std::string>> m_ttsVoices;
     // The chosen voice's DISPLAY NAME (empty = system default), which the
     // worker matches against a live SAPI enumeration before SetVoice. Not a
     // resolved registry key: an engine that produces its tokens through an

@@ -28,6 +28,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 static const char* SAVE = "Z:\\tmp\\mxbmrp3-tests\\settings_click\\";
 static const char* INI  =
@@ -88,6 +89,18 @@ static std::string iniStr(const char* path, const std::string& section, const st
 // and wrapping, so they keep their modular arithmetic and this does the translation.
 // -1 for an unknown or absent value, which fails the REQUIRE below rather than
 // quietly reading as NONE.
+// Every HUD tab opens with the standard Opacity and Scale sliders, which are
+// stepped controls too, so a tab's own steppers start at this index.
+static const int kStd = 2;
+
+// The Gap Bar's Reference cycle position from the saved key: Default (written
+// as HudDefaults::REFERENCE_FOLLOW, 3) is state 0, then Session PB, All-time
+// and Last lap.
+static int iniRefState(const char* path, const std::string& section) {
+    const int v = iniInt(path, section, "reference");
+    return v == 3 ? 0 : v + 1;
+}
+
 static int iniLabelMode(const char* path, const std::string& section) {
     const std::string v = iniStr(path, section, "labelMode");
     if (v == "NONE") return 0;
@@ -107,52 +120,58 @@ TEST_CASE("settings clicks: stepped controls step, accelerate, clamp, and persis
     host.setActiveTab("Gap Bar");
     host.draw();
 
-    // Four stepped controls on this tab, up and down arrows for each.
-    REQUIRE(host.steppedCount(true) == 4);
-    REQUIRE(host.steppedCount(false) == 4);
+    // Six stepped controls on this tab, up and down arrows for each: the
+    // standard Opacity and Scale lead (kStd), then Width, Range, Freeze and
+    // Marker scale.
+    REQUIRE(host.steppedCount(true) == kStd + 4);
+    REQUIRE(host.steppedCount(false) == kStd + 4);
 
     // Baseline from the real save path.
     host.save();
     const int width0 = iniInt(INI, "GapBarHud", "barWidth");
     const int range0 = iniInt(INI, "GapBarHud", "gapRange");
     REQUIRE(width0 >= 50);
-    REQUIRE(range0 >= 1000);
+    REQUIRE(range0 == 750);   // GapBarHud::RANGE_AUTO, the default
 
-    // --- 1. Width (index 0, clampInt, 1% step, accelerated) -----------------
-    REQUIRE(host.clickStepped(0, /*up=*/true));                    // +1
-    REQUIRE(host.clickStepped(0, /*up=*/true, /*holdRepeats=*/16)); // +10 (x10 tier)
+    // --- 1. Width (index kStd, clampInt, 1% step, accelerated) -----------------
+    REQUIRE(host.clickStepped(kStd, /*up=*/true));                    // +1
+    REQUIRE(host.clickStepped(kStd, /*up=*/true, /*holdRepeats=*/16)); // +10 (x10 tier)
     host.save();
     CHECK(iniInt(INI, "GapBarHud", "barWidth") == width0 + 11);
 
     // Clamp at the 400% max: hammer accelerated ups, then verify the ceiling
     // holds and a single down steps back off it.
-    for (int i = 0; i < 60; ++i) host.clickStepped(0, true, 16);
+    for (int i = 0; i < 60; ++i) host.clickStepped(kStd, true, 16);
     host.save();
     CHECK(iniInt(INI, "GapBarHud", "barWidth") == 400);
-    REQUIRE(host.clickStepped(0, /*up=*/false));
+    REQUIRE(host.clickStepped(kStd, /*up=*/false));
     host.save();
     CHECK(iniInt(INI, "GapBarHud", "barWidth") == 399);
 
-    // --- 2. Range (index 1): the modernized 250ms accelerated stepper -------
-    REQUIRE(host.clickStepped(1, /*up=*/true));                    // +250
+    // --- 2. Range (index kStd + 1): the modernized 250ms accelerated stepper -------
+    // Auto is the step below 1s: down from it clamps, up from it is 1s.
+    host.clickStepped(kStd + 1, /*up=*/false);
     host.save();
-    CHECK(iniInt(INI, "GapBarHud", "gapRange") == range0 + 250);
-    for (int i = 0; i < 20; ++i) host.clickStepped(1, true, 16);   // accelerate to the cap
+    CHECK(iniInt(INI, "GapBarHud", "gapRange") == range0);         // clamped at Auto
+    REQUIRE(host.clickStepped(kStd + 1, /*up=*/true));                    // +250
+    host.save();
+    CHECK(iniInt(INI, "GapBarHud", "gapRange") == 1000);
+    for (int i = 0; i < 20; ++i) host.clickStepped(kStd + 1, true, 16);   // accelerate to the cap
     host.save();
     CHECK(iniInt(INI, "GapBarHud", "gapRange") == 5000);           // clamped, not wrapped
-    REQUIRE(host.clickStepped(1, /*up=*/false));
+    REQUIRE(host.clickStepped(kStd + 1, /*up=*/false));
     host.save();
     CHECK(iniInt(INI, "GapBarHud", "gapRange") == 4750);
 
     // --- 3. Records count (FIXED_INT): +/-1 per click, NEVER accelerates ----
     host.setActiveTab("Records");
     host.draw();
-    REQUIRE(host.steppedCount(true) == 1);
+    REQUIRE(host.steppedCount(true) == kStd + 1);
     host.save();
     const int recs0 = iniInt(INI, "RecordsHud", "recordsToShow");
     REQUIRE(recs0 >= 3);
-    REQUIRE(host.clickStepped(0, /*up=*/true, /*holdRepeats=*/16)); // held: still +1
-    REQUIRE(host.clickStepped(0, /*up=*/true));                     // +1
+    REQUIRE(host.clickStepped(kStd, /*up=*/true, /*holdRepeats=*/16)); // held: still +1
+    REQUIRE(host.clickStepped(kStd, /*up=*/true));                     // +1
     host.save();
     CHECK(iniInt(INI, "RecordsHud", "recordsToShow") == recs0 + 2);
 
@@ -165,11 +184,10 @@ TEST_CASE("settings clicks: stepped controls step, accelerate, clamp, and persis
 // ============================================================================
 // The shared CYCLE controls (CycleControl descriptors): plain mod-N enum/mode
 // cycles converted from dedicated enum pairs. Pinned through the real click
-// path on the Gap Bar tab, which carries four of them in layout order:
-//   cycle 0 = Reference (N=3), 1 = Mode (marker mode, N=4),
-//   2 = Marker colors (N=3), 3 = Marker labels (N=4).
-// (Marker icon stays a dedicated pair - it steps through AssetManager - so it
-// must NOT be counted as a CYCLE region.) Wrap is asserted in BOTH directions,
+// path on the Gap Bar tab, which carries six of them in layout order:
+//   cycle 0 = Reference (N=4, Default first), 1 = Splits (N=2),
+//   2 = Mode (marker mode, N=4), 3 = Marker colors (N=3), 4 = Marker icon,
+//   5 = Marker labels (N=4). Wrap is asserted in BOTH directions,
 // and persistence goes through the real save path like the stepped test above.
 // ============================================================================
 // (Reuses the runner-created save dir - the runner pre-creates only
@@ -191,32 +209,32 @@ TEST_CASE("settings clicks: cycle controls wrap both directions and persist") {
     host.showSettings(true);
     host.draw();
 
-    // Five cycle controls on this tab (icon is NOT one), arrows both sides:
-    // Reference, Splits, Mode, Marker colors, Marker labels.
-    REQUIRE(host.cycleCount(true) == 5);
-    REQUIRE(host.cycleCount(false) == 5);
+    // Six cycle controls on this tab, arrows both sides: Reference, Splits,
+    // Mode, Marker colors, Marker icon, Marker labels.
+    REQUIRE(host.cycleCount(true) == 6);
+    REQUIRE(host.cycleCount(false) == 6);
 
     host.save();
-    const int ref0    = iniInt(INI_CYCLE, "GapBarHud", "reference");
+    const int ref0    = iniRefState(INI_CYCLE, "GapBarHud");
     const int marker0 = iniInt(INI_CYCLE, "GapBarHud", "markerMode");
     const int label0  = iniLabelMode(INI_CYCLE, "GapBarHud");
     REQUIRE(ref0 >= 0);
     REQUIRE(marker0 >= 0);
     REQUIRE(label0 >= 0);
 
-    // --- Marker labels (index 4, N=4): full forward wrap ---------------------
-    REQUIRE(host.clickCycle(4, /*up=*/true));
+    // --- Marker labels (index 5, N=4): full forward wrap ---------------------
+    REQUIRE(host.clickCycle(5, /*up=*/true));
     host.save();
     CHECK(iniLabelMode(INI_CYCLE, "GapBarHud") == (label0 + 1) % 4);
-    for (int i = 0; i < 3; ++i) REQUIRE(host.clickCycle(4, true));
+    for (int i = 0; i < 3; ++i) REQUIRE(host.clickCycle(5, true));
     host.save();
     CHECK(iniLabelMode(INI_CYCLE, "GapBarHud") == label0);   // wrapped home
 
     // Backward from the base value wraps through the top end.
-    REQUIRE(host.clickCycle(4, /*up=*/false));
+    REQUIRE(host.clickCycle(5, /*up=*/false));
     host.save();
     CHECK(iniLabelMode(INI_CYCLE, "GapBarHud") == (label0 + 3) % 4);
-    REQUIRE(host.clickCycle(4, /*up=*/true));                       // back home
+    REQUIRE(host.clickCycle(5, /*up=*/true));                       // back home
     host.save();
     CHECK(iniLabelMode(INI_CYCLE, "GapBarHud") == label0);
 
@@ -238,19 +256,19 @@ TEST_CASE("settings clicks: cycle controls wrap both directions and persist") {
     host.save();
     CHECK(iniInt(INI_CYCLE, "GapBarHud", "showSplits") == splits0);
 
-    // --- Reference (index 0, N=3): Session PB / All-time / Last lap -------
+    // --- Reference (index 0, N=4): Default / Session PB / All-time / Last lap
     REQUIRE(host.clickCycle(0, true));
     host.save();
-    CHECK(iniInt(INI_CYCLE, "GapBarHud", "reference") == (ref0 + 1) % 3);
-    for (int i = 0; i < 2; ++i) REQUIRE(host.clickCycle(0, true));
+    CHECK(iniRefState(INI_CYCLE, "GapBarHud") == (ref0 + 1) % 4);
+    for (int i = 0; i < 3; ++i) REQUIRE(host.clickCycle(0, true));
     host.save();
-    CHECK(iniInt(INI_CYCLE, "GapBarHud", "reference") == ref0);   // wrapped home
+    CHECK(iniRefState(INI_CYCLE, "GapBarHud") == ref0);   // wrapped home
     REQUIRE(host.clickCycle(0, false));
     host.save();
-    CHECK(iniInt(INI_CYCLE, "GapBarHud", "reference") == (ref0 + 2) % 3);
+    CHECK(iniRefState(INI_CYCLE, "GapBarHud") == (ref0 + 3) % 4);
     REQUIRE(host.clickCycle(0, true));
     host.save();
-    CHECK(iniInt(INI_CYCLE, "GapBarHud", "reference") == ref0);
+    CHECK(iniRefState(INI_CYCLE, "GapBarHud") == ref0);
 
     // Out-of-range index is a clean miss, not a crash.
     CHECK_FALSE(host.clickCycle(99, true));
@@ -281,11 +299,12 @@ TEST_CASE("rumble steppers: bike swap under an open menu can't edit the stale pr
     host.setActiveTab("Rumble");
     host.showSettings(true);
     host.draw();                                  // layout binds bike A's profile
-    REQUIRE(host.steppedCount(true) >= 4);        // 4 steppers per effect row
+    REQUIRE(host.steppedCount(true) >= kStd + 4); // 4 steppers per effect row
 
-    // Stepper 0 = Bumps Light (percentFloat, default Off = 0.00).
+    // Stepper kStd = Bumps Light (percentFloat, default Off = 0.00), after the
+    // standard Opacity and Scale.
     CHECK(host.rumbleActiveBumpsLight() == doctest::Approx(0.0f));
-    REQUIRE(host.clickStepped(0, /*up=*/true));   // +1% edits bike A's profile
+    REQUIRE(host.clickStepped(kStd, /*up=*/true));   // +1% edits bike A's profile
     CHECK(host.rumbleActiveBumpsLight() == doctest::Approx(0.01f));
 
     // Swap to bike B WITHOUT redrawing: the menu still shows bike A's layout.
@@ -293,7 +312,7 @@ TEST_CASE("rumble steppers: bike swap under an open menu can't edit the stale pr
     CHECK(host.rumbleActiveBumpsLight() == doctest::Approx(0.0f));  // B at default
 
     // A click on the stale layout must be swallowed: bike B stays untouched...
-    REQUIRE(host.clickStepped(0, /*up=*/true));
+    REQUIRE(host.clickStepped(kStd, /*up=*/true));
     CHECK(host.rumbleActiveBumpsLight() == doctest::Approx(0.0f));
     // ...and bike A keeps exactly its one deliberate edit (no stray +1%).
     host.eventInit("Guard Track", "Guard Rider", 1600.0f, 2, "Bike A");
@@ -302,7 +321,7 @@ TEST_CASE("rumble steppers: bike swap under an open menu can't edit the stale pr
     // After a redraw the layout rebinds to the active profile and edits it.
     host.eventInit("Guard Track", "Guard Rider", 1600.0f, 2, "Bike B");
     host.draw();                                  // swallowed click dirtied the layout
-    REQUIRE(host.clickStepped(0, /*up=*/true));
+    REQUIRE(host.clickStepped(kStd, /*up=*/true));
     CHECK(host.rumbleActiveBumpsLight() == doctest::Approx(0.01f)); // edits B now
 
     // Bike A's tune survives the whole exchange.
@@ -368,7 +387,9 @@ TEST_CASE("settings clicks: Gap Bar marker mode Off removes the marker row from 
 // ============================================================================
 // Every "hold the time after a split or the line" setting shares one default
 // and range (hud/freeze_duration.h): Timing's Freeze, the Gap Bar's Freeze and
-// the Lap Log's Gap freeze, 5 s. They had drifted to 5 s / 3 s / 3 s. The
+// the Lap Log's Gap freeze, 5 s. They had drifted to 5 s / 3 s / 3 s. Those
+// three now follow the General tab's Freeze default out of the box (written as
+// FreezeDuration::FOLLOW_DEFAULT, -1000), which holds that 5 s. The
 // Pitboard's At Splits Freeze (a fixed 10 s until it became a setting) keeps
 // 10 s and has no Off (a zero hold would hide the board for good): it wraps
 // from 10 s to 1 s.
@@ -379,28 +400,83 @@ TEST_CASE("freeze settings share one default, and the Pitboard's wraps 1-10 s an
     host.startup(SAVE);
 
     host.save();
-    CHECK(iniInt(INI, "TimingHud",   "displayDuration") == 5000);
-    CHECK(iniInt(INI, "GapBarHud",   "freezeDuration")  == 5000);
-    CHECK(iniInt(INI, "LapLogHud",   "freezeDuration")  == 5000);
+    CHECK(iniInt(INI, "General",     "defaultFreeze")   == 5000);
+    CHECK(iniInt(INI, "TimingHud",   "displayDuration") == -1000);
+    CHECK(iniInt(INI, "GapBarHud",   "freezeDuration")  == -1000);
+    CHECK(iniInt(INI, "LapLogHud",   "freezeDuration")  == -1000);
     CHECK(iniInt(INI, "PitboardHud", "freezeDuration")  == 10000);
 
-    // Pitboard tab: Freeze is its one stepped control (default mode At Splits,
-    // so it is live).
+    // Pitboard tab: Freeze is its one stepped control after the standard
+    // Opacity and Scale (default mode At Splits, so it is live).
     host.showSettings(true);
     host.setActiveTab("Pitboard");
     host.draw();
-    REQUIRE(host.steppedCount(true) == 1);
+    REQUIRE(host.steppedCount(true) == kStd + 1);
 
     // Past 10 s it wraps to 1 s, never to 0, and back down to 10 s.
-    REQUIRE(host.clickStepped(0, /*up=*/true));
+    REQUIRE(host.clickStepped(kStd, /*up=*/true));
     host.save();
     CHECK(iniInt(INI, "PitboardHud", "freezeDuration") == 1000);
-    REQUIRE(host.clickStepped(0, /*up=*/true));
+    REQUIRE(host.clickStepped(kStd, /*up=*/true));
     host.save();
     CHECK(iniInt(INI, "PitboardHud", "freezeDuration") == 2000);
-    for (int i = 0; i < 2; ++i) REQUIRE(host.clickStepped(0, /*up=*/false));
+    for (int i = 0; i < 2; ++i) REQUIRE(host.clickStepped(kStd, /*up=*/false));
     host.save();
     CHECK(iniInt(INI, "PitboardHud", "freezeDuration") == 10000);
 
+    host.shutdown();
+}
+
+// ============================================================================
+// Rumble's split caret (Bumps, Lockup) sits in its row's gutter, and hovering it
+// must still read as hovering the row: the row's description shows. Its click
+// region used to be pushed BEFORE the row's tooltip region, and hover takes the
+// first match, so the caret swallowed the hover and the description reset to the
+// tab's. A click on it must still split the row (clicks skip tooltip regions).
+// ============================================================================
+TEST_CASE("rumble split caret: hovering it shows the row's description, clicking it splits") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(SAVE_RUMBLE);
+    REQUIRE(host.hasInjectedMouse());
+    REQUIRE(host.hasStringRows());
+
+    host.setActiveTab("Rumble");
+    host.showSettings(true);
+    host.draw();
+
+    auto strings = [&]() {
+        std::vector<std::string> out;
+        for (const auto& r : host.hudStringRows("settings_hud")) out.push_back(r.text);
+        return out;
+    };
+    auto shows = [&](const char* needle) {
+        for (const auto& t : strings()) if (t.find(needle) != std::string::npos) return true;
+        return false;
+    };
+
+    // The gutter starts at the table's left edge, where the "Effects" heading is
+    // drawn; the row's centre line comes from its own tooltip region.
+    double gutterX = -1.0;
+    for (const auto& r : host.hudStringRows("settings_hud")) {
+        if (r.text == "Effects") { gutterX = r.x; break; }
+    }
+    REQUIRE(gutterX >= 0.0);
+    float rowCx = 0.0f, rowCy = 0.0f;
+    REQUIRE(host.settingsRegionCenter("rumble.bumps", &rowCx, &rowCy));
+    const float caretX = static_cast<float>(gutterX) + 0.004f;
+
+    REQUIRE_FALSE(shows("suspension travel"));
+    host.injectMouse(true, caretX, rowCy, 0);
+    host.draw();
+    host.draw();
+    CHECK(shows("suspension travel"));
+
+    REQUIRE_FALSE(shows("- Front"));
+    host.clickAt(caretX, rowCy);
+    host.draw();
+    CHECK(shows("- Front"));
+
+    host.injectMouse(false);
     host.shutdown();
 }

@@ -349,7 +349,7 @@ void FuelWidget::resetToDefaults() {
     m_bShowTitle = false;  // No title by default
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 1.0f;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     m_enabledRows = ROW_DEFAULT;  // Reset row visibility
     // Note: fuelUnit is NOT reset here - it's a global preference, not per-profile
     setPosition(cellsX(148), cellsY(74));

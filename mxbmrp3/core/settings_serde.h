@@ -27,6 +27,7 @@
 #include "profile_manager.h"
 #include "plugin_constants.h"
 #include "ui_config.h"
+#include "companion_window.h"
 #include "color_config.h"
 #include "font_config.h"
 #include "asset_manager.h"
@@ -92,6 +93,45 @@ namespace Settings {
         if (str == "COMPANION") return DisplayTarget::COMPANION;
         if (str == "BOTH")      return DisplayTarget::BOTH;
         DEBUG_WARN_F("Unknown DisplayTarget '%s', using default", str.c_str());
+        return defaultVal;
+    }
+
+    // CompanionBackground (what fills the companion window behind the HUD)
+    inline const char* companionBackgroundToString(CompanionBackground b) {
+        switch (b) {
+            case CompanionBackground::GREEN:   return "GREEN";
+            case CompanionBackground::BLUE:    return "BLUE";
+            case CompanionBackground::MAGENTA: return "MAGENTA";
+            case CompanionBackground::DARK:  return "DARK";
+            default: return "DARK";
+        }
+    }
+
+    inline CompanionBackground stringToCompanionBackground(const std::string& str,
+            CompanionBackground defaultVal = CompanionBackground::DARK) {
+        if (str == "DARK")        return CompanionBackground::DARK;
+        if (str == "GREEN")       return CompanionBackground::GREEN;
+        if (str == "BLUE")        return CompanionBackground::BLUE;
+        if (str == "MAGENTA")     return CompanionBackground::MAGENTA;
+        DEBUG_WARN_F("Unknown CompanionBackground '%s', using default", str.c_str());
+        return defaultVal;
+    }
+
+    // Motion level (HUDs fade and slide in and out; core/motion.h)
+    inline const char* motionLevelToString(Motion::Level l) {
+        switch (l) {
+            case Motion::Level::OFF:    return "OFF";
+            case Motion::Level::NORMAL: return "NORMAL";
+            case Motion::Level::SUBTLE: return "SUBTLE";
+            default: return "SUBTLE";
+        }
+    }
+
+    inline Motion::Level stringToMotionLevel(const std::string& str, Motion::Level defaultVal = Motion::DEFAULT_LEVEL) {
+        if (str == "OFF")    return Motion::Level::OFF;
+        if (str == "SUBTLE") return Motion::Level::SUBTLE;
+        if (str == "NORMAL") return Motion::Level::NORMAL;
+        DEBUG_WARN_F("Unknown Motion level '%s', using default", str.c_str());
         return defaultVal;
     }
 
@@ -431,7 +471,7 @@ namespace Settings {
         // base value and the diff drops it.
         settings[THEME] = hud.getThemeOverride();
         settings[BG_OPACITY] = std::to_string(hud.getBackgroundOpacity());
-        settings[SCALE] = std::to_string(hud.getScale());
+        settings[SCALE] = std::to_string(hud.getOwnScale());
         if (includePosition) {
             settings[OFFSET_X] = std::to_string(hud.getOffsetX());
             settings[OFFSET_Y] = std::to_string(hud.getOffsetY());
@@ -612,6 +652,12 @@ namespace Settings {
 #endif
         else if (hudName == "CrashWidget") {
             if (key == Crash::SHOW_RESET_BUTTON.key) return Crash::SHOW_RESET_BUTTON.description;
+        }
+        else if (hudName == "RpmWidget") {
+            if (key == Rpm::SEGMENTS.key) return Rpm::SEGMENTS.description;
+            if (key == Rpm::SEGMENT_GAPS.key) return Rpm::SEGMENT_GAPS.description;
+            if (key == Rpm::WIDTH.key) return Rpm::WIDTH.description;
+            if (key == Rpm::VERTICAL.key) return Rpm::VERTICAL.description;
         }
         else if (hudName == "GamepadWidget") {
             if (key == Gamepad::TRIGGER_FILL_MODE.key) return Gamepad::TRIGGER_FILL_MODE.description;

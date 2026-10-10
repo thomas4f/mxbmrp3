@@ -1,7 +1,8 @@
 // ============================================================================
 // hud/settings_hud_footer.cpp
 // The settings panel's footer button row: [Reset <Tab>] on the left, [Save /
-// Saved] [Close] centred, [About] on the right. Part of SettingsHud::
+// Saved] [Close] centred, [Back] (a tab from a More page) and [About] on the
+// right. Part of SettingsHud::
 // rebuildRenderData() (settings_hud_render.cpp), split out so that file keeps
 // to its budget; click handling is settings_hud_input.cpp.
 // ============================================================================
@@ -10,6 +11,7 @@
 #include "../core/plugin_utils.h"
 #include "../core/settings_manager.h"
 #include <cstdio>
+#include <algorithm>
 #include <cstring>
 
 void SettingsHud::buildFooterButtons(const ScaledDimensions& dim, const PanelPlan& plan,
@@ -78,6 +80,7 @@ void SettingsHud::buildFooterButtons(const ScaledDimensions& dim, const PanelPla
             ? ButtonState::Hovered : ButtonState::Idle);
 
     addResetTabButton(dim, plan, sideCol, bt, buttonRowY, buttonBoxH);
+
     addAboutButton(dim, plan, mainCol, bt, buttonRowY, buttonBoxH);
 }
 
@@ -98,7 +101,11 @@ void SettingsHud::addResetTabButton(const ScaledDimensions& dim, const PanelPlan
     float resetTabButtonY = buttonRowY;
     char resetTabButtonText[32];
     snprintf(resetTabButtonText, sizeof(resetTabButtonText), "Reset %s", getTabName(m_activeTab));
-    int resetTabButtonChars = static_cast<int>(strlen(resetTabButtonText));
+    // ARMED, like General's Reset pair: the first click asks, the second resets.
+    // Sized to the wider of the two labels so the button does not jump.
+    const int idleChars = static_cast<int>(strlen(resetTabButtonText));
+    if (m_resetTabConfirmed) snprintf(resetTabButtonText, sizeof(resetTabButtonText), "Confirm?");
+    int resetTabButtonChars = std::max(idleChars, static_cast<int>(strlen("Confirm?")));
     // The [button] insets pad the label.
     float resetTabButtonWidth = PluginUtils::calculateMonospaceTextWidth(resetTabButtonChars, dim.fontSize)
         + bt.insetL + bt.insetR;

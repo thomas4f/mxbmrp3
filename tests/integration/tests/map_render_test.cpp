@@ -8,7 +8,9 @@
 //   * the map emits a non-empty, all-finite quad set in every view mode, and
 //   * the default-view geometry is bit-for-bit reproducible across a detail-LOD
 //     round-trip (which forces the world cache to rebuild) and across visiting
-//     rotate / zoom (which must not corrupt the cache).
+//     rotate / zoom / the tilted view (which must not corrupt the cache), and
+//     the flat zoomed map comes back unchanged after the tilted one (the tilt
+//     is a TrackRibbonKey field; without it the tilted ribbon would be served).
 // It also guards the degenerate-track NaN path: a valid 2D loop must never
 // produce a non-finite vertex.
 // Self-contained doctest; see run_tests.sh / TESTING.md.
@@ -67,6 +69,7 @@ TEST_CASE("map: world-ribbon cache is transparent across LOD + view-mode round-t
     auto MapRotate  = host.sym<PFN_MapI>("MXBMRP3_Test_MapSetRotate");
     auto MapZoom    = host.sym<PFN_MapI>("MXBMRP3_Test_MapSetZoom");
     auto MapDetail  = host.sym<PFN_MapI>("MXBMRP3_Test_MapSetDetail");
+    auto MapTilt    = host.sym<PFN_MapI>("MXBMRP3_Test_MapSetTilt");
     auto MapStatsFn = host.sym<PFN_MapQuadStats>("MXBMRP3_Test_MapQuadStats");
     REQUIRE(MapVisible);
     REQUIRE(MapRotate);
@@ -98,6 +101,7 @@ TEST_CASE("map: world-ribbon cache is transparent across LOD + view-mode round-t
     });
 
     MapVisible(1);
+    host.mapFlatOverview();
 
     auto read = [&]() -> MapStats {
         host.draw();  // state 1 (spectate) — the map renders in all view states
@@ -158,6 +162,21 @@ TEST_CASE("map: world-ribbon cache is transparent across LOD + view-mode round-t
     CHECK(afterZoom.sumX == doctest::Approx(base.sumX));
     CHECK(afterZoom.sumY == doctest::Approx(base.sumY));
 
+    // --- Tilted view round-trip (zoomed, with and without rotation) ------------
+    REQUIRE(MapTilt);
+    MapTilt(40);
+    MapStats tiltFull = read(); finiteNonEmpty(tiltFull, "tilted-full");
+    CHECK(tiltFull.sumX == doctest::Approx(base.sumX));          // Full range: flat
+    MapZoom(1); MapStats tilt = read(); finiteNonEmpty(tilt, "tilted-zoom");
+    CHECK(tilt.sumY != doctest::Approx(zoom.sumY));               // the tilt took effect
+    MapRotate(1); MapStats tiltRot = read(); finiteNonEmpty(tiltRot, "tilted-zoom-rotate");
+    MapRotate(0);
+    MapTilt(0); MapStats flatAgain = read(); finiteNonEmpty(flatAgain, "flat-zoom-again");
+    CHECK(flatAgain.count == zoom.count);
+    CHECK(flatAgain.sumX == doctest::Approx(zoom.sumX));
+    CHECK(flatAgain.sumY == doctest::Approx(zoom.sumY));
+    MapZoom(0);
+
     host.shutdown();
 }
 
@@ -182,6 +201,7 @@ TEST_CASE("map: detail scale drives quad count; adaptive normalizes across track
     host.classify(6, 120000, { { .num = 1, .best = 90000, .gap = 0 } });
     host.raceTrackPosition({ { .num = 1, .trackPos = 0.10f, .posX = 100.0f, .posZ = 50.0f, .yaw = 45.0f } });
     MapVisible(1);
+    host.mapFlatOverview();
 
     auto count = [&]() {
         host.draw();
@@ -333,6 +353,7 @@ TEST_CASE("map: degenerate 1D track renders finite (worldToScreen divide-by-zero
     host.raceTrackPosition({ { .num = 1, .trackPos = 0.10f, .posX = 0.0f, .posZ = 160.0f, .yaw = 0.0f } });
 
     MapVisible(1);
+    host.mapFlatOverview();
     auto checkFinite = [&](const char* what) {
         host.draw();
         double sx = 0, sy = 0; int bad = 0;
@@ -386,6 +407,7 @@ TEST_CASE("map: the player's marker clamps to the edge when off-map") {
     host.trackCenterline(circleTrack(), {});
     host.classify(6, 120000, { { .num = 1, .best = 90000, .gap = 0 } });
     MapVisible(1);
+    host.mapFlatOverview();
 
     auto quadCount = [&]() {
         host.draw();
@@ -468,6 +490,7 @@ TEST_CASE("map: zoom mode points back at the track when the track is off-view") 
     host.trackCenterline(circleTrack(), {});
     host.classify(6, 120000, { { .num = 1, .best = 90000, .gap = 0 } });
     MapVisible(1);
+    host.mapFlatOverview();
     MapZoom(1);
 
     auto quadCount = [&]() {
@@ -626,6 +649,7 @@ TEST_CASE("map: the off-track pointer sweeps smoothly along a parallel run") {
     host.trackCenterline(circleTrack(), {});
     host.classify(6, 120000, { { .num = 1, .best = 90000, .gap = 0 } });
     MapVisible(1);
+    host.mapFlatOverview();
     MapZoom(1);
 
     const auto panel = host.hudScreenEdges("map_hud");

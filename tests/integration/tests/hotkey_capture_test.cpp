@@ -86,3 +86,31 @@ TEST_CASE("hotkeys: closing the settings menu disarms an in-progress capture") {
 
     host.shutdown();
 }
+
+// The Hotkeys tab sets two bindings to a row, which left no room for the clear
+// button that used to follow each field: a RIGHT-click on a field clears it
+// (SettingsHud::handleRightClick), while a left-click still arms a capture.
+static constexpr int ACTION_TOGGLE_SETTINGS = 15;   // HotkeyAction::TOGGLE_SETTINGS, bound by default
+
+TEST_CASE("hotkeys: a right-click on a binding field clears it, a left-click still rebinds") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\hotkey_clear\\");
+    host.showSettings(true);
+    host.setActiveTab("Hotkeys");
+    host.draw();
+    REQUIRE(host.hotkeyHasKeyboard(ACTION_TOGGLE_SETTINGS));
+
+    // The cell's centre falls on its keyboard field (name 10, field 11, of 29).
+    float x = 0.0f, y = 0.0f;
+    REQUIRE(host.settingsRegionCenter("hotkeys.settings", &x, &y));
+    host.clickAt(x, y);
+    CHECK(host.hotkeyCapturing());
+    host.showSettings(false);            // disarms (the case above)
+    host.showSettings(true);
+    host.draw();
+
+    host.rightClickAt(x, y);
+    CHECK_FALSE(host.hotkeyCapturing());
+    CHECK_FALSE(host.hotkeyHasKeyboard(ACTION_TOGGLE_SETTINGS));
+}

@@ -414,6 +414,18 @@ void CompanionWindow::threadMain() {
         lastFrameId = frameId;
         paintedOnce = true;
 
+        // Backdrop for this frame (CompanionBackground): dark, or a chroma-key colour.
+        // The key colours are OBS's Chroma Key presets exactly (chroma-key-filter.c:
+        // green 0x00FF00, blue 0xFF9900, magenta 0xFF00FF, packed 0xBBGGRR), so the
+        // filter's default Similarity removes them with nothing to tune.
+        static constexpr uint8_t kBackdrops[][3] = {
+            { 12, 15, 20 }, { 0, 255, 0 }, { 0, 153, 255 }, { 255, 0, 255 } };
+        static_assert(sizeof(kBackdrops) / sizeof(kBackdrops[0]) ==
+                      static_cast<size_t>(CompanionBackground::COUNT),
+                      "one backdrop colour per CompanionBackground");
+        const uint8_t* bg = kBackdrops[static_cast<size_t>(getBackground())];
+        const uint8_t bgR = bg[0], bgG = bg[1], bgB = bg[2];
+
         if (!gpuTried && m_hwAccel.load(std::memory_order_relaxed)) {
             gpuTried = true;
             gpuOn = gpu.init(hwnd);
@@ -430,7 +442,7 @@ void CompanionWindow::threadMain() {
             const int hzNow = m_refreshHz.load(std::memory_order_relaxed);
             if (gpu.renderSwapchain(f, clientW, clientH,
                                     (float)vp.x, (float)vp.y, (float)vp.w, (float)vp.h,
-                                    12, 15, 20, /*vsync=*/hzNow == 0)) {
+                                    bgR, bgG, bgB, /*vsync=*/hzNow == 0)) {
                 // Present(1) paced this thread at V-Sync; a fixed cap still sleeps.
                 if (hzNow > 0) Sleep(1000 / hzNow);
                 continue;
@@ -450,7 +462,7 @@ void CompanionWindow::threadMain() {
             f.fontNames = &fontBases; f.spriteNames = &spriteBases;
             f.firstIcon = firstIcon; f.assetRoot = root;
             try {
-                renderer.render(img, f, 12, 15, 20);  // dark backdrop for legibility (fills the whole client)
+                renderer.render(img, f, bgR, bgG, bgB);  // opaque backdrop (fills the whole client)
             } catch (...) {
                 // A throwing render (e.g. bad_alloc from a corrupt user-supplied
                 // asset) would otherwise repeat every frame. Close the window
@@ -464,7 +476,7 @@ void CompanionWindow::threadMain() {
                 break;  // cleanup below destroys the window
             }
         } else {
-            img.fill(12, 15, 20, 255);
+            img.fill(bgR, bgG, bgB, 255);
         }
 
         // Present: swizzle RGBA -> BGRA a word at a time, then ONE StretchDIBits

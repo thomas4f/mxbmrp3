@@ -86,6 +86,10 @@ const char* currentLine();
 // Has this marker not yet been dismissed, and does it belong to this release?
 bool isLive(const Marker& m);
 
+// The first tab with news on it, in table order (the release's headline item
+// goes first), or -1: where the "What's New" button opens the menu.
+int firstTabWithNews();
+
 // Any live marker on this tab -- drives the sidebar's "New" tag.
 bool tabHasLive(int tabId);
 

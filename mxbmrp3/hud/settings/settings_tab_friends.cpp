@@ -60,9 +60,14 @@ BaseHud* SettingsHud::renderTabFriends(SettingsLayoutContext& ctx) {
         hud, true, false, "friends.rows");
 
     {
+        using SM = FriendsHud::ShowMode;   // the HUD's own names, in state order
+        static const char* const kShowModes[] = { FriendsHud::getShowModeName(SM::ALWAYS),
+            FriendsHud::getShowModeName(SM::WITH_FRIENDS), FriendsHud::getShowModeName(SM::ON_JOIN) };
+        static_assert(sizeof(kShowModes) / sizeof(kShowModes[0]) == static_cast<size_t>(SM::COUNT),
+                      "one name per show mode");
         SettingsHud::CycleControl showCycle = SettingsHud::CycleControl::enumMember(
             hud, &FriendsHud::m_showMode,
-            static_cast<int>(FriendsHud::ShowMode::COUNT), hud);
+            static_cast<int>(FriendsHud::ShowMode::COUNT), hud, kShowModes);
         // Reset transient ON_JOIN state on mode change (exactly what the old
         // dedicated handler did).
         showCycle.postStep = [hud]() { hud->m_activityShowing = false; };

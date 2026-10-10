@@ -640,7 +640,7 @@ void NoticesHud::resetToDefaults() {
     m_bShowTitle = false;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.1f;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     // The stack's shared anchor: offsetX is the CENTRE (all four centred elements
     // agree since settings v7), offsetY the shared top.
     setPosition(CENTER_ANCHOR_X, CenterStack::stackBoxTop());

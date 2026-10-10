@@ -99,7 +99,5 @@ BaseHud* SettingsHud::renderTabRecords(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, RecordsHud::COL_DATE, true,
         "records.col_date");
 
-    ctx.addNote("Tip: your records are saved to mxbmrp3_stats.json.");
-
     return hud;
 }

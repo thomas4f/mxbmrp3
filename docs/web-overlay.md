@@ -10,8 +10,8 @@ browser - useful for checking it, or for a second screen without OBS.
 
 ## Setting it up in OBS
 
-1. Turn on **Web Server** (Settings > General). The port is shown next to the
-   setting while it is running.
+1. Turn on **Web server** (Settings > General). The address is in the row
+   below it, a clickable link while it is running.
 2. In OBS, add a **Browser Source** with the URL `http://localhost:8080`
    (the default - use the port from step 1 if you changed it).
 3. Set width and height to match your stream resolution, e.g., 1920x1080.

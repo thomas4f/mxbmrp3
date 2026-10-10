@@ -764,12 +764,12 @@ void RadarHud::resetToDefaults() {
     // unthemed anyway -- this covers the case where the user switches the texture OFF,
     // which would otherwise let a theme in. It stays a per-HUD SETTING, so anyone who
     // wants the frame can name a theme for this HUD and get it back.
-    setThemeOverride(THEME_NONE);
+    setDefaultThemeOverride(THEME_NONE);
     m_bVisible = false;
     m_bShowTitle = false;  // No title for radar (compact display)
     setTextureVariant(1);  // Use first texture variant by default
     m_fBackgroundOpacity = 0.1f;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     m_fRadarRangeMeters = DEFAULT_RADAR_RANGE;
     m_riderColorMode = RiderColorMode::BRAND;  // Default to bike brand colors
     m_radarMode = RadarMode::ON;  // Default to always visible

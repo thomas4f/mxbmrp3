@@ -1,12 +1,31 @@
 // ============================================================================
 // hud/version_widget.h
 // Version widget - displays plugin name and version
+//
+// POPUPS. The same panel turns into a one-line message with its buttons for the
+// messages that wait for the player, highest first:
+//   update available  "MXBMRP3 1.33 available!"     View in Settings / Dismiss
+//   updated           "Updated to 1.32. Open ..."   What's New / Dismiss
+//   welcome           "Welcome! The key under ..."  Dismiss
+// The first is UpdateChecker's; the other two are owed by SystemMessages
+// (core/system_messages.h), which also remembers which were answered.
+//
+// THE COUNTDOWN: Dismiss reads "Dismiss (5)" and counts down; at zero the
+// popup goes on its own. It counts only while the popup is actually drawn and
+// the settings menu is shut, so a popup that appears in a menu or behind the
+// panel is not spent unseen. Running out is NOT a Dismiss: an update notice
+// comes back at the next launch, while "Updated to" is told once either way.
+// The welcome has no countdown and no settings button: it stays up, on track
+// too, until the player answers it (Dismiss, or the settings menu opened the
+// way they will open it from then on - its button or its key). The button is sized to its widest label so it
+// does not shrink as the number falls.
 // ============================================================================
 #pragma once
 
 #include "base_hud.h"
 #include "../core/plugin_constants.h"
 #include <array>
+#include <chrono>
 
 class VersionWidget : public BaseHud {
 public:
@@ -29,10 +48,40 @@ public:
     // with the font. See MXBMRP3_Test_VersionRowTerms.
     float testRowHeight() const { return getScaledDimensions().lineHeightNormal; }
     float testJunctionY() const { return panelGapY(getScaledDimensions()); }
+    // The popup countdown: the second the Dismiss label shows (-1 before the
+    // first tick), time on screen added without waiting it out, and a Dismiss
+    // click without a cursor to aim.
+    int testCountdown() const { return m_countdownShown; }
+    void testAdvancePopup(float ms) { m_popupShownMs += ms; }
+    void testDismiss() { m_hoveredButton = NotificationButton::DISMISS; endPopup(/*answered=*/true); }
 #endif
+
+    // THE BROKEN-INSTALL NOTICE (HudManager::buildInstallWarning): `count` rows
+    // laid out as this panel lays out its popup message, first row in the
+    // NEGATIVE colour, into `outQuads`. Without fonts no string can draw, so the
+    // text is core/pixel_text.h blocks placed on the real font's character cell:
+    // the same width per character, the cap height of the shipped NORMAL font.
+    // `realText` writes the rows as strings into `outStrings` instead, so the
+    // two can be compared (companion_demo "brokeninstall real"). The widget's
+    // own view is rebuilt on its next update; panelRect() holds the notice's
+    // until then.
+    void buildInstallNotice(const char* const* rows, int count, bool realText,
+                            std::vector<SPluginQuad_t>& outQuads,
+                            std::vector<SPluginString_t>& outStrings);
 
     // Update notification mode - auto-enables widget when update is available
     void showUpdateNotification();
+    // A popup is up (for the tests): 0 none, 1 update, 2 updated, 3 welcome.
+    int popupKind() const { return static_cast<int>(m_popup); }
+    // The player's own on/off for this widget. A popup forces the widget on;
+    // this is the value it goes back to, and what a profile captures, so a save
+    // or a profile switch mid-popup never stores the popup's switch.
+    bool visibleSetting() const {  // vis-gate: the setting itself, popup aside
+        return m_popup != Popup::None ? m_visibleBeforePopup : m_bVisible.load();
+    }
+    // A profile applied (a switch, a reset, a load) while a popup is up: its
+    // value is what the popup restores, and the popup stays on screen.
+    void onVisibilityApplied();
 
     // Allow SettingsManager to access private members
     friend class SettingsManager;
@@ -50,6 +99,11 @@ private:
     PanelPlan notifyPlan(const ScaledDimensions& dim, float contentWidth,
                          int rows, float extraH = 0.0f,
                          bool stackMember = false) const;
+
+    // One row of block text, centred on centerX with its ink centred in the row
+    // the font would give the same string. See buildInstallNotice.
+    void addPixelText(const char* text, float centerX, float rowTop,
+                      float fontSize, unsigned long color);
 
     // Mini-game constants
     static constexpr int BRICK_COLS = 8;
@@ -69,9 +123,11 @@ private:
     static constexpr float GAME_AREA_WIDTH = 0.40f;
     static constexpr float GAME_AREA_HEIGHT = 0.35f;
 
-    // Notification button constants (char counts for width calculation)
-    static constexpr int VIEW_BUTTON_CHARS = 18;     // "View in Settings" (16) + 1-char padding each side
-    static constexpr int DISMISS_BUTTON_CHARS = 9;   // "Dismiss" (7) + 1-char padding each side
+    // Popup buttons: each sized to its label plus a character of padding each
+    // side; Dismiss to its widest countdown label, "Dismiss (5)".
+    static constexpr int BUTTON_PAD_CHARS = 2;
+    static constexpr int DISMISS_BUTTON_CHARS = 11 + BUTTON_PAD_CHARS;
+    static constexpr int POPUP_COUNTDOWN_MS = 5000;
 
     // Click detection for game input (ball launch / exit)
     bool m_wasLeftPressed = false;
@@ -80,15 +136,36 @@ private:
     // UpdateChecker worker thread while the game thread reads it every frame.
     std::atomic<bool> m_showingUpdateNotification = false;  // True when auto-enabled for update notification
 
+    // The popup showing (see the header comment), and the visibility to restore
+    // when the last one ends: the panel is switched on for a popup.
+    enum class Popup : uint8_t { None, Update, Updated, Welcome };
+    Popup m_popup = Popup::None;
+    bool m_visibleBeforePopup = false;   // mt-plain: game thread (update/sync) only
+    // Countdown: drawn time spent, the clock of the last tick, and the second
+    // last drawn on the Dismiss label (a rebuild only when it changes).
+    float m_popupShownMs = 0.0f;
+    std::chrono::steady_clock::time_point m_popupLastTick{};
+    int m_countdownShown = -1;
+
+    Popup choosePopup() const;
+    // Move to the popup now owed (or none): visibility and countdown follow.
+    void syncPopup();
+    // The countdown tick, and the welcome's goal (the menu opened).
+    void tickPopup();
+    // The popup ends: `answered` (a button, or the welcome's goal) records it for
+    // good; a timeout records only what is told once.
+    void endPopup(bool answered);
+    void onPrimaryClicked();
+
     // Notification button state
-    enum class NotificationButton { NONE, VIEW, DISMISS };
+    enum class NotificationButton { NONE, PRIMARY, DISMISS };
     NotificationButton m_hoveredButton = NotificationButton::NONE;
 
     // Button bounds (screen coordinates, before offset applied)
-    float m_viewButtonLeft = 0.0f;
-    float m_viewButtonTop = 0.0f;
-    float m_viewButtonWidth = 0.0f;
-    float m_viewButtonHeight = 0.0f;
+    float m_primaryButtonLeft = 0.0f;
+    float m_primaryButtonTop = 0.0f;
+    float m_primaryButtonWidth = 0.0f;
+    float m_primaryButtonHeight = 0.0f;
     float m_dismissButtonLeft = 0.0f;
     float m_dismissButtonTop = 0.0f;
     float m_dismissButtonWidth = 0.0f;

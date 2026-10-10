@@ -13,11 +13,15 @@
 #include "../../core/ui_config.h"
 #include "../../core/asset_manager.h"
 #include "../../core/input_manager.h"
+#include "../../core/tooltip_manager.h"
 #include "../gamepad_widget.h"   // the Gamepad row's pack cycle reads activePack()
 #include "../freeze_duration.h"
 #include "../pitboard_hud.h"     // ...and the Pitboard row's
 #include "../tacho_widget.h"     // ...and both gauge rows'
 
+#include <algorithm>
+#include <memory>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include "../speedo_widget.h"
@@ -84,8 +88,11 @@ SettingsLayoutContext::ButtonRowGeom SettingsLayoutContext::buttonRow(int labelC
 
 int SettingsLayoutContext::valueChars() const {
     // The row runs the whole content column (labelX == contentAreaStartX; see
-    // rowSpanWidth), so its width in characters is the column's stated ask.
-    return layout().settingsContentAreaChars() - SETTINGS_CONTROL_COLUMN - 4;
+    // rowSpanWidth), so its width in characters is the column's stated ask. In a
+    // beginColumns run it is the cell's.
+    if (m_gridCols > 0) return cellChars(m_gridCols) - m_gridLabelChars - 4;
+    return layout().settingsContentAreaChars()
+        - (m_rowLabelChars > 0 ? m_rowLabelChars : SETTINGS_CONTROL_COLUMN) - 4;
 }
 
 float SettingsLayoutContext::charWidth() const {
@@ -218,7 +225,10 @@ size_t SettingsLayoutContext::addInlineCycle(float x, const char* value, int val
     parent->addString(formatted.c_str(), currentX, currentY, Justify::LEFT,
         Fonts::getNormal(), valueColor, fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(valueChars, fontSize);
-    parent->addString(" >", currentX, currentY, Justify::LEFT,
+    // ">" placed one cell past the value, not " >" at it: in game a value that
+    // filled its field ("100%" in four) read "100%>", so the gap is the grid's
+    // rather than a leading space's.
+    parent->addString(">", currentX + cw, currentY, Justify::LEFT,
         Fonts::getNormal(), arrowColor, fontSize);
     if (enabled) {
         parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
@@ -227,19 +237,151 @@ size_t SettingsLayoutContext::addInlineCycle(float x, const char* value, int val
     return first;
 }
 
-void SettingsLayoutContext::addBracketField(float x, int fieldChars, const char* text,
-                                            unsigned long color, int cursorColumn) {
+static SliderControl sliderFor(const SettingsHud::SteppedControl& c);   // below, with the rows
+
+// The inline cell over a descriptor: the cell's arrows step it, and like a row it
+// draws as a dropdown (3+ named states) or a slider (a bounded number) over the value.
+size_t SettingsLayoutContext::addInlineCycleControl(float x, const char* value, int valueChars,
+                                                    const SettingsHud::CycleControl& control,
+                                                    BaseHud* target, bool enabled, const char* tooltipId) {
+    const int cycleIndex = static_cast<int>(parent->m_cycleControls.size());
+    parent->m_cycleControls.push_back(control);
+    const size_t first = addInlineCycle(x, value, valueChars, SettingsHud::ClickRegion::CYCLE_DOWN,
+                                        SettingsHud::ClickRegion::CYCLE_UP, target, enabled);
+    for (size_t r = first; r < parent->m_clickRegions.size(); ++r) {
+        parent->m_clickRegions[r].cycleIndex = cycleIndex;
+        if (tooltipId) parent->m_clickRegions[r].tooltipId = tooltipId;
+    }
+    if (control.nameOf && control.count >= 3) {
+        addDropdownBox(x + charWidth() * 2.0f, currentY,
+            PluginUtils::calculateMonospaceTextWidth(valueChars + 1, fontSize), cycleIndex, enabled, tooltipId);
+    }
+    return first;
+}
+
+size_t SettingsLayoutContext::addInlineSteppedControl(float x, const char* value, int valueChars,
+                                                      const SettingsHud::SteppedControl& control,
+                                                      BaseHud* target, bool enabled, const char* tooltipId,
+                                                      bool muted) {
+    const int steppedIndex = static_cast<int>(parent->m_steppedControls.size());
+    parent->m_steppedControls.push_back(control);
+    const size_t first = addInlineCycle(x, value, valueChars, SettingsHud::ClickRegion::STEPPED_DOWN,
+                                        SettingsHud::ClickRegion::STEPPED_UP, target, enabled, muted);
+    for (size_t r = first; r < parent->m_clickRegions.size(); ++r) {
+        parent->m_clickRegions[r].steppedIndex = steppedIndex;
+        if (tooltipId) parent->m_clickRegions[r].tooltipId = tooltipId;
+    }
+    if (control.kind != SettingsHud::SteppedControl::Kind::WRAP_INT) {
+        addSliderTrack(x + charWidth() * 2.0f, currentY,
+            PluginUtils::calculateMonospaceTextWidth(valueChars, fontSize), sliderFor(control), enabled, tooltipId);
+    }
+    return first;
+}
+
+// Three characters between neighbouring cells, so one cell's closing ">" reads as
+// the end of its own control rather than a marker on the next cell's label (at one,
+// "> Accent" did).
+static constexpr int GRID_CELL_GAP_CHARS = 3;
+
+int SettingsLayoutContext::cellChars(int cellCount) const {
+    const int cells = (cellCount < 1) ? 1 : cellCount;
+    return (layout().settingsContentAreaChars() - (cells - 1) * GRID_CELL_GAP_CHARS) / cells;
+}
+
+float SettingsLayoutContext::cellX(int cellIndex, int cellCount) const {
+    const float left = (m_gridCols > 0) ? m_rowLabelX : labelX;
+    return left + charWidth() * static_cast<float>(cellIndex * (cellChars(cellCount) + GRID_CELL_GAP_CHARS));
+}
+
+void SettingsLayoutContext::beginColumns(int columns, int items, int labelChars) {
+    if (columns < 2 || items < 1) return;   // one column: the rows as they are
+    m_gridCols = columns;
+    m_gridRows = (items + columns - 1) / columns;
+    m_gridItem = 0;
+    m_gridLabelChars = labelChars;
+    m_gridTop = currentY;
+    m_rowLabelX = labelX;
+    m_rowControlX = controlX;
+    placeCell();
+}
+
+void SettingsLayoutContext::setRowLabelChars(int labelChars) {
+    if (m_defaultControlX < 0.0f) m_defaultControlX = controlX;
+    m_rowLabelChars = labelChars > 0 ? labelChars : 0;
+    controlX = m_rowLabelChars > 0 ? labelX + charWidth() * static_cast<float>(m_rowLabelChars)
+                                   : m_defaultControlX;
+}
+
+void SettingsLayoutContext::endColumns() {
+    if (m_gridCols == 0) return;
+    currentY = m_gridTop + lineHeightNormal * static_cast<float>(m_gridRows);
+    labelX = m_rowLabelX;
+    controlX = m_rowControlX;
+    m_gridCols = 0;
+}
+
+void SettingsLayoutContext::placeCell() {
+    const int col = m_gridItem / m_gridRows;
+    currentY = m_gridTop + lineHeightNormal * static_cast<float>(m_gridItem % m_gridRows);
+    labelX = cellX(col, m_gridCols);
+    controlX = labelX + charWidth() * static_cast<float>(m_gridLabelChars);
+    m_cellFirstRegion = parent->m_clickRegions.size();
+}
+
+// The blank part of the closing ">"'s character cell, right of its ink.
+static constexpr float CLOSING_ARROW_TRAIL_CHARS = 0.4f;
+
+void SettingsLayoutContext::endRow() {
+    if (m_gridCols == 0) {
+        currentY += lineHeightNormal;
+        return;
+    }
+    // The cell's tooltip region was emitted at the row's width; make it the
+    // cell's own span, label to closing arrow. SettingsHud::rowBandSpan grows it
+    // by the margin a whole row's band has past its rows, so a cell's hover band
+    // sits on the cell the way a row's sits on the row.
+    // It ends at the closing arrow's INK, not its character cell: the ">" glyph
+    // fills the left part of its cell, and the rest plus the margin read as a
+    // band running on past the control into the gap (Appearance's colours).
+    const int col = m_gridItem / m_gridRows;
     const float cw = charWidth();
+    for (size_t r = m_cellFirstRegion; r < parent->m_clickRegions.size(); ++r) {
+        SettingsHud::ClickRegion& region = parent->m_clickRegions[r];
+        if (region.type != SettingsHud::ClickRegion::TOOLTIP_ROW) continue;
+        region.x = labelX;
+        region.width = cw * (static_cast<float>(cellChars(m_gridCols)) - CLOSING_ARROW_TRAIL_CHARS);
+        region.cellIndex = col;
+        region.cellCount = m_gridCols;
+    }
+    ++m_gridItem;
+    if (m_gridItem < m_gridRows * m_gridCols) placeCell();
+}
+
+void SettingsLayoutContext::addInputField(float x, int fieldChars, const char* text,
+                                          unsigned long color, bool active, int cursorColumn) {
+    ColorConfig& colors = ColorConfig::getInstance();
+    const float cw = charWidth();
+    // The dropdown box's fill and height (addDropdownBox), so the two read as one
+    // family; a field being typed into takes the accent instead.
+    const float boxX = x + cw * 0.7f;
+    const float boxW = cw * (static_cast<float>(fieldChars) + 0.3f);
+    const float boxY = currentY + lineHeightNormal * 0.06f;
+    const float boxH = lineHeightNormal * 0.88f;
+    addSolidQuad(boxX, boxY, boxW, boxH, active
+        ? PluginUtils::applyOpacity(colors.getAccent(), 0.18f)
+        : PluginUtils::applyOpacity(colors.getPrimary(), 0.10f));
+    if (active) {
+        const float line = lineHeightNormal * 0.06f;
+        addSolidQuad(boxX, boxY + boxH - line, boxW, line, colors.getAccent());
+    }
+    if (cursorColumn >= 0) {
+        // A bar before the column (quads draw under strings, so it never hides a glyph).
+        addSolidQuad(x + cw * (static_cast<float>(cursorColumn) + 1.0f) - cw * 0.06f,
+            currentY + lineHeightNormal * 0.18f, cw * 0.12f, lineHeightNormal * 0.62f, color);
+    }
     char inner[64];
     snprintf(inner, sizeof(inner), "%.*s", fieldChars, text);  // cut to the field
-    parent->addString("[", x, currentY, Justify::LEFT, Fonts::getNormal(), color, fontSize);
     parent->addString(inner, x + cw, currentY, Justify::LEFT, Fonts::getNormal(), color, fontSize);
-    if (cursorColumn >= 0) {
-        parent->addString("_", x + cw * (cursorColumn + 1), currentY, Justify::LEFT,
-            Fonts::getNormal(), color, fontSize);
-    }
-    parent->addString("]", x + cw * (fieldChars + 1), currentY, Justify::LEFT,
-        Fonts::getNormal(), color, fontSize);
 }
 
 void SettingsLayoutContext::addTextRow(const char* text, unsigned long color) {
@@ -262,7 +404,7 @@ void SettingsLayoutContext::addLabelValueRow(
         parent->addString(value, valueX, currentY, Justify::LEFT,
             Fonts::getNormal(), valueColor, fontSize);
     }
-    currentY += lineHeightNormal;
+    endRow();   // the next row, or the next cell of a beginColumns run
 }
 
 // The track and the fill of a band: two solid quads in the given rect.
@@ -317,27 +459,39 @@ void SettingsLayoutContext::addButtonBackground(float x, float y, float width, f
 // button uses, so a tab mixing the two keeps one button axis.
 // See the declaration: one owner for link styling and hit-testing.
 void SettingsLayoutContext::addLinkRow(const char* prefix, const char* url, int prefixChars,
-                                       SettingsHud::ClickRegion::Type type, float fontScale) {
-    ColorConfig& colors = ColorConfig::getInstance();
+                                       SettingsHud::ClickRegion::Type type, float fontScale,
+                                       bool enabled) {
     const float fs = fontSize * fontScale;
-    const float urlX = labelX + PluginUtils::calculateMonospaceTextWidth(prefixChars, fs);
-    const float urlW = PluginUtils::calculateMonospaceTextWidth(
-        static_cast<int>(std::strlen(url)), fs);
-
+    parent->addString(prefix, labelX, currentY, PluginConstants::Justify::LEFT,
+                      Fonts::getNormal(), ColorConfig::getInstance().getMuted(), fs);
     // The region covers the URL ONLY, not the muted label, so only the link lights up
     // and only clicking the link opens a browser.
+    addLinkCell(labelX + PluginUtils::calculateMonospaceTextWidth(prefixChars, fs), url, type,
+                fontScale, enabled);
+    nextLine();
+}
+
+float SettingsLayoutContext::addLinkCell(float x, const char* text,
+                                         SettingsHud::ClickRegion::Type type, float fontScale,
+                                         bool enabled) {
+    ColorConfig& colors = ColorConfig::getInstance();
+    const float fs = fontSize * fontScale;
+    const float w = PluginUtils::calculateMonospaceTextWidth(
+        static_cast<int>(std::strlen(text)), fs);
+    if (!enabled) {
+        parent->addString(text, x, currentY, PluginConstants::Justify::LEFT,
+                          Fonts::getNormal(), colors.getMuted(), fs);
+        return w;
+    }
     parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-        urlX, currentY, urlW, lineHeightNormal, type, nullptr));
+        x, currentY, w, lineHeightNormal, type, nullptr));
     const bool hovered = parent->m_hoveredRegionIndex >= 0 &&
         parent->m_hoveredRegionIndex == static_cast<int>(parent->m_clickRegions.size()) - 1;
-
-    parent->addString(prefix, labelX, currentY, PluginConstants::Justify::LEFT,
-                      Fonts::getNormal(), colors.getMuted(), fs);
-    parent->addString(url, urlX, currentY, PluginConstants::Justify::LEFT,
+    parent->addString(text, x, currentY, PluginConstants::Justify::LEFT,
                       Fonts::getNormal(),
                       hovered ? PluginUtils::lightenColor(colors.getAccent(), 0.25f)
                               : colors.getAccent(), fs);
-    nextLine();
+    return w;
 }
 
 void SettingsLayoutContext::addActionButtonPair(
@@ -442,7 +596,8 @@ void SettingsLayoutContext::addPager(int page, int pageCount,
     const float gap = cw;
     float x = labelX + (rowSpanWidth() - (btnW + gap + textW + gap + btnW)) * 0.5f;
     const float y = currentY;
-    const int chevron = AssetManager::getInstance().getIconSpriteIndex("hud-angle");   // the flat identity copy of angle-up
+    const bool useIcons = UiConfig::getInstance().getTitleIcons();
+    const int chevron = useIcons ? AssetManager::getInstance().getIconSpriteIndex("hud-angle") : 0;   // flat angle-up; "<"/">" with UI icons off
     const float halfIcon = lineHeightNormal * 0.3f;
 
     // One end: region (only while it can be pressed), the state fill, the chevron
@@ -467,6 +622,9 @@ void SettingsLayoutContext::addPager(int page, int pageCount,
         if (chevron > 0) {
             parent->addRotatedSpriteQuad(bx + btnW * 0.5f, y + btnH * 0.5f, halfIcon,
                                          0.0f, sinYaw, chevron, ink);
+        } else if (!useIcons) {
+            parent->addString(sinYaw < 0.0f ? "<" : ">", bx + btnW * 0.5f, y,
+                              PluginConstants::Justify::CENTER, Fonts::getNormal(), ink, fontSize);
         }
     };
     end(x, page > 0, prevType, "pager.prev", -1.0f);
@@ -533,6 +691,28 @@ void SettingsLayoutContext::finishSections() {
     closeSectionCard();
 }
 
+void SettingsLayoutContext::beginUntitledSection() {
+    closeSectionCard();
+    m_lastWasNote = false;
+    openSectionCard();
+    m_hadSection = true;
+}
+
+// The row-wide hover region every labelled row carries. Test builds record a
+// row with no id, or an id with no text: tooltip_coverage_test asks for none.
+void SettingsLayoutContext::addRowTooltip([[maybe_unused]] const char* label, const char* tooltipId) {
+    const bool hasId = tooltipId && tooltipId[0] != '\0';
+    if (hasId) {
+        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
+            labelX, currentY, rowSpanWidth(), lineHeightNormal, tooltipId));
+    }
+#if defined(MXBMRP3_TEST_BUILD)
+    if (!hasId || !TooltipManager::getInstance().getControlTooltip(tooltipId)[0])
+        parent->m_testUntippedRows.push_back(currentTabId + ": " + (label ? label : "") +
+                                             (hasId ? std::string(" (") + tooltipId + ")" : ""));
+#endif
+}
+
 void SettingsLayoutContext::addTabTooltip(const char* tabId) {
     // Store tabId and Y position for later - tooltip will be rendered by settings_hud.cpp
     // This allows control tooltips to replace tab tooltip when hovering
@@ -572,14 +752,7 @@ void SettingsLayoutContext::addCycleControl(
     float cw = charWidth();
     ColorConfig& colors = ColorConfig::getInstance();
 
-    // Add row-wide tooltip region if tooltipId is provided (for Phase 3 hover)
-    if (tooltipId && tooltipId[0] != '\0') {
-        // panelWidth is actually contentAreaWidth (from contentAreaStartX to right edge)
-        float rowWidth = rowSpanWidth();
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            labelX, currentY, rowWidth, lineHeightNormal, tooltipId
-        ));
-    }
+    addRowTooltip(label, tooltipId);
 
     // Render label
     parent->addString(label, labelX, currentY, Justify::LEFT,
@@ -616,8 +789,9 @@ void SettingsLayoutContext::addCycleControl(
         Fonts::getNormal(), valueColor, fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(valueWidth, fontSize);
 
-    // Right arrow " >" - always visible, muted when disabled, clickable only when enabled
-    parent->addString(" >", currentX, currentY, Justify::LEFT,
+    // Right arrow, one cell past the value - always visible, muted when disabled,
+    // clickable only when enabled
+    parent->addString(">", currentX + cw, currentY, Justify::LEFT,
         Fonts::getNormal(), enabled ? colors.getAccent() : colors.getMuted(), fontSize);
     if (enabled) {
         parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
@@ -626,7 +800,7 @@ void SettingsLayoutContext::addCycleControl(
         ));
     }
 
-    currentY += lineHeightNormal;
+    endRow();
 }
 
 #if defined(MXBMRP3_TEST_BUILD)
@@ -684,7 +858,8 @@ void SettingsLayoutContext::addCycleControl(
     bool enabled,
     bool isOff,
     const char* tooltipId,
-    bool tooltipOnArrows
+    bool tooltipOnArrows,
+    unsigned long valueColor
 ) {
     // Register the descriptor for this rebuild (m_cycleControls is cleared in
     // lockstep with m_clickRegions, so the index stays valid exactly as long as
@@ -697,10 +872,13 @@ void SettingsLayoutContext::addCycleControl(
     // regions it created with the descriptor index (and optionally the row
     // tooltip).
     const size_t firstRegion = parent->m_clickRegions.size();
+    const float rowY = currentY;   // the field, before the row moves on
+    const float fieldX = controlX + charWidth() * 2.0f;
+    const float fieldW = PluginUtils::calculateMonospaceTextWidth(valueChars(), fontSize);
     addCycleControl(label, value,
         SettingsHud::ClickRegion::CYCLE_DOWN,
         SettingsHud::ClickRegion::CYCLE_UP,
-        targetHud, enabled, isOff, tooltipId);
+        targetHud, enabled, isOff, tooltipId, valueColor);
     for (size_t r = firstRegion; r < parent->m_clickRegions.size(); ++r) {
         auto& region = parent->m_clickRegions[r];
         if (region.type == SettingsHud::ClickRegion::CYCLE_UP ||
@@ -708,6 +886,12 @@ void SettingsLayoutContext::addCycleControl(
             region.cycleIndex = cycleIndex;
             if (tooltipOnArrows && tooltipId) region.tooltipId = tooltipId;
         }
+    }
+    // Three or more NAMED states read better as a list than as a cycle: the
+    // value field becomes a dropdown box (the arrows still step). Two states
+    // are a toggle in all but name, and a list of two is no help.
+    if (control.nameOf && control.count >= 3) {
+        addDropdownBox(fieldX, rowY, fieldW + charWidth(), cycleIndex, enabled, tooltipId);
     }
 }
 
@@ -717,19 +901,183 @@ void SettingsLayoutContext::addFreezeControl(
     bool allowOff,
     BaseHud* targetHud,
     bool enabled,
-    const char* tooltipId
+    const char* tooltipId,
+    bool allowDefault
 ) {
     const bool isOff = (*durationMs == 0);
     char value[16];
-    if (isOff) {
+    if (allowDefault && *durationMs < FreezeDuration::MIN_MS) {
+        strcpy_s(value, sizeof(value), "Default");
+    } else if (isOff) {
         strcpy_s(value, sizeof(value), "Off");
     } else {
         snprintf(value, sizeof(value), "%ds", *durationMs / 1000);
     }
-    const int lo = allowOff ? FreezeDuration::MIN_MS : FreezeDuration::PITBOARD_MIN_MS;
+    const int lo = allowDefault ? FreezeDuration::FOLLOW_DEFAULT
+                 : allowOff ? FreezeDuration::MIN_MS : FreezeDuration::PITBOARD_MIN_MS;
     addSteppedControl(label, value,
         SettingsHud::SteppedControl::wrapInt(durationMs, FreezeDuration::STEP_MS, lo, FreezeDuration::MAX_MS, targetHud),
         targetHud, enabled, isOff, tooltipId);
+}
+
+void SettingsLayoutContext::addReferenceControl(const char* label, bool* followDefault,
+                                               PbGapTracker::Ref* ref, BaseHud* targetHud,
+                                               const char* tooltipId, bool* enabled) {
+    static const char* const kNames[] = { "Off", "Default", "Session PB", "All-time", "Last lap" };
+    static_assert(sizeof(kNames) / sizeof(kNames[0]) == PbGapTracker::REF_COUNT + 2,
+                  "Off, Default and one name per reference");
+    // Without `enabled` the list starts at Default: kNames + 1.
+    const int first = enabled ? 0 : 1;
+    SettingsHud::CycleControl c;
+    c.count = PbGapTracker::REF_COUNT + 2 - first;
+    c.get = [followDefault, ref, enabled]() {
+        if (enabled && !*enabled) return 0;
+        const int on = enabled ? 1 : 0;
+        return on + (*followDefault ? 0 : 1 + static_cast<int>(*ref));
+    };
+    c.set = [followDefault, ref, enabled](int v) {
+        if (enabled) {
+            *enabled = (v != 0);
+            if (v == 0) return;
+            --v;
+        }
+        *followDefault = (v == 0);
+        if (v > 0) *ref = static_cast<PbGapTracker::Ref>(v - 1);
+    };
+    c.nameOf = [first](int i) { return std::string(kNames[first + i]); };
+    c.dirtyHud = targetHud;
+    const bool off = enabled && !*enabled;
+    addCycleControl(label, kNames[first + c.get()], c, targetHud, true, off, tooltipId);
+}
+
+// The slider a SteppedControl draws as: the same target, bounds and step, set
+// directly rather than stepped. Integer kinds round to a whole value; the
+// rumble-strength percent keeps its hundredths; a linked lower bound (a rumble
+// effect's Max input) is read now, as the layout is.
+static SliderControl sliderFor(const SettingsHud::SteppedControl& c) {
+    using Kind = SettingsHud::SteppedControl::Kind;
+    SliderControl s;
+    s.postStep = c.postStep;
+    s.dirtyHud = c.dirtyHud;
+    s.valid = c.valid;
+    if (c.kind == Kind::WRAP_INT || c.kind == Kind::CLAMP_INT || c.kind == Kind::FIXED_INT) {
+        int* v = c.intValue;
+        s.lo = static_cast<float>(c.lo);
+        s.hi = static_cast<float>(c.hi);
+        s.step = static_cast<float>(c.step > 0 ? c.step : 1);
+        s.get = [v]() { return v ? static_cast<float>(*v) : 0.0f; };
+        s.set = [v](float x) { if (v) *v = static_cast<int>(std::lround(x)); };
+        return s;
+    }
+    if (c.kind == Kind::ACCESSOR) {
+        s.lo = c.flo; s.hi = c.fhi; s.step = c.fstep;
+        s.get = c.get; s.set = c.set;
+        if (c.dragSet) { s.set = c.dragSet; s.onRelease = c.onRelease; }   // held: pending until release
+        return s;
+    }
+    float* v = c.floatValue;
+    s.lo = c.loLink ? *c.loLink : c.flo;
+    s.hi = c.fhi;
+    s.step = c.fstep;
+    s.get = [v]() { return v ? *v : 0.0f; };
+    if (c.kind == Kind::PERCENT_FLOAT) {
+        s.set = [v](float x) { if (v) *v = std::round(x * 100.0f) / 100.0f; };
+    } else {
+        s.set = [v](float x) { if (v) *v = x; };
+    }
+    return s;
+}
+
+void SettingsLayoutContext::addSliderTrack(float x, float rowY, float width,
+                                           const SliderControl& control, bool enabled,
+                                           const char* tooltipId) {
+    const int sliderIndex = static_cast<int>(parent->m_sliders.size());
+    parent->m_sliders.push_back(control);
+    if (width <= 0.0f) return;
+    ColorConfig& colors = ColorConfig::getInstance();
+    const float fraction = control.get ? control.fractionOf(control.get()) : 0.0f;
+    // Along the foot of the row, under the value: the row keeps its height and
+    // the value its place, so a slider costs no layout.
+    const float trackH = lineHeightNormal * 0.08f;
+    const float trackY = rowY + lineHeightNormal * 0.90f;
+    const unsigned long fill = enabled ? colors.getAccent() : colors.getMuted();
+    // A signed range (a tilt, an offset) fills from its zero, not its left end.
+    const float zero = (control.lo < 0.0f && control.hi > 0.0f) ? control.fractionOf(0.0f) : 0.0f;
+    addSolidQuad(x, trackY, width, trackH, PluginUtils::applyOpacity(colors.getMuted(), 0.45f));
+    const float from = std::min(zero, fraction), to = std::max(zero, fraction);
+    addSolidQuad(x + width * from, trackY, width * (to - from), trackH, fill);
+    const float knobW = charWidth() * 0.45f;
+    const float knobH = lineHeightNormal * 0.30f;
+    float knobX = x + width * fraction - knobW * 0.5f;
+    knobX = std::max(x, std::min(knobX, x + width - knobW));
+    addSolidQuad(knobX, trackY + trackH * 0.5f - knobH * 0.5f, knobW, knobH, fill);
+    if (enabled) {
+        SettingsHud::ClickRegion region(x, rowY, width, lineHeightNormal,
+            SettingsHud::ClickRegion::SLIDER, control.dirtyHud);
+        region.steppedIndex = sliderIndex;
+        if (tooltipId) region.tooltipId = tooltipId;   // the row's, as on its arrows
+        parent->m_clickRegions.push_back(region);
+    }
+}
+
+void SettingsLayoutContext::addDropdownBox(float x, float rowY, float width, int cycleIndex,
+                                           bool enabled, const char* tooltipId) {
+    ColorConfig& colors = ColorConfig::getInstance();
+    const float cw = charWidth();
+    const float boxX = x - cw * 0.3f;
+    const float boxW = width + cw * 0.3f;
+    addSolidQuad(boxX, rowY + lineHeightNormal * 0.06f, boxW, lineHeightNormal * 0.88f,
+        PluginUtils::applyOpacity(colors.getPrimary(), enabled ? 0.10f : 0.05f));
+    const bool open = enabled && parent->m_dropdown.open == cycleIndex &&
+                      parent->m_dropdown.tab == parent->m_activeTab;
+    // Down while closed, up while open: the caret Rumble's split effects use,
+    // in the cell after the value (unturned, the sprite points up), centred on
+    // the box's height and kept off its right edge by the air the text has on
+    // the left, so a value that fills the field never runs under it.
+    const float caretHalf = fontSize * 0.2f;
+    const float caretX = x + width - cw * 0.3f - caretHalf;
+    const float caretY = rowY + lineHeightNormal * 0.5f;
+    const unsigned long caretColor = enabled ? colors.getAccent() : colors.getMuted();
+    // Unturned (up) while open, turned 180 (down) while closed; "^"/"v" with UI icons off.
+    const bool useIcons = UiConfig::getInstance().getTitleIcons();
+    const int caret = useIcons ? AssetManager::getInstance().getIconSpriteIndex("caret-up") : 0;
+    if (caret > 0) parent->addRotatedSpriteQuad(caretX, caretY, caretHalf, open ? 1.0f : -1.0f, 0.0f, caret, caretColor);
+    else if (!useIcons) parent->addString(open ? "^" : "v", caretX, rowY, PluginConstants::Justify::CENTER,
+                                          Fonts::getNormal(), caretColor, fontSize);
+    if (!enabled) return;
+    // The row's arrow regions are two cells wide and were pushed first, so the
+    // up arrow's already covers the caret's cell (and the down arrow's the box's
+    // left air): hit-testing takes the first match, and a click on the caret
+    // would step the value instead of opening the list. Trim them to the box.
+    const float boxR = boxX + boxW;
+    for (size_t i = parent->m_clickRegions.size(); i-- > 0;) {
+        auto& r = parent->m_clickRegions[i];
+        if (r.y != rowY) break;   // only this row's, which are the last pushed
+        if (r.type != SettingsHud::ClickRegion::CYCLE_UP &&
+            r.type != SettingsHud::ClickRegion::CYCLE_DOWN) continue;
+        const float rR = r.x + r.width;
+        if (r.x < boxR && rR > boxR) { r.x = boxR; r.width = rR - boxR; }
+        else if (r.x < boxX && rR > boxX) { r.width = boxX - r.x; }
+    }
+    SettingsHud::ClickRegion region(boxX, rowY, boxW, lineHeightNormal,
+        SettingsHud::ClickRegion::DROPDOWN);
+    region.cycleIndex = cycleIndex;
+    if (tooltipId) region.tooltipId = tooltipId;   // the row's, as on its arrows
+    parent->m_clickRegions.push_back(region);
+    anchorDropdown(cycleIndex, boxX, rowY, boxW, x, lineHeightNormal, fontSize);
+}
+
+void SettingsLayoutContext::anchorDropdown(int cycleIndex, float x, float rowY, float width,
+                                           float textX, float rowH, float listFontSize) {
+    DropdownState& d = parent->m_dropdown;
+    if (d.open != cycleIndex || d.tab != parent->m_activeTab) return;
+    d.anchored = true;
+    d.x = x;
+    d.y = rowY;
+    d.w = width;   // the list's narrowest; buildDropdownPopup widens it to its entries
+    d.textX = textX;
+    d.rowH = rowH;
+    d.fontSize = listFontSize;
 }
 
 void SettingsLayoutContext::addSteppedControl(
@@ -753,10 +1101,18 @@ void SettingsLayoutContext::addSteppedControl(
     // created with the descriptor index (and optionally the row tooltip, which is
     // what the old per-type tooltip fallback resolved to for these controls).
     const size_t firstRegion = parent->m_clickRegions.size();
+    const float rowY = currentY;   // the field, before the row moves on
+    const float fieldX = controlX + charWidth() * 2.0f;
+    const float fieldW = PluginUtils::calculateMonospaceTextWidth(valueChars(), fontSize);
     addCycleControl(label, value,
         SettingsHud::ClickRegion::STEPPED_DOWN,
         SettingsHud::ClickRegion::STEPPED_UP,
         targetHud, enabled, isOff, tooltipId);
+    // A bounded number is a slider; a wrapping one (a duration that runs back
+    // round to Off) has no ends for a track to show, so it stays a cycle.
+    if (control.kind != SettingsHud::SteppedControl::Kind::WRAP_INT) {
+        addSliderTrack(fieldX, rowY, fieldW, sliderFor(control), enabled, tooltipId);
+    }
     for (size_t r = firstRegion; r < parent->m_clickRegions.size(); ++r) {
         auto& region = parent->m_clickRegions[r];
         if (region.type == SettingsHud::ClickRegion::STEPPED_UP ||
@@ -781,14 +1137,7 @@ void SettingsLayoutContext::addToggleControl(
     float cw = charWidth();
     ColorConfig& colors = ColorConfig::getInstance();
 
-    // Add row-wide tooltip region if tooltipId is provided (for Phase 3 hover)
-    if (tooltipId && tooltipId[0] != '\0') {
-        // panelWidth is actually contentAreaWidth (from contentAreaStartX to right edge)
-        float rowWidth = rowSpanWidth();
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            labelX, currentY, rowWidth, lineHeightNormal, tooltipId
-        ));
-    }
+    addRowTooltip(label, tooltipId);
 
     // Render label
     parent->addString(label, labelX, currentY, Justify::LEFT,
@@ -825,8 +1174,9 @@ void SettingsLayoutContext::addToggleControl(
         Fonts::getNormal(), valueColor, fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(valueWidth, fontSize);
 
-    // Right arrow " >" - always visible, muted when disabled, clickable only when enabled
-    parent->addString(" >", currentX, currentY, Justify::LEFT,
+    // Right arrow, one cell past the value - always visible, muted when disabled,
+    // clickable only when enabled
+    parent->addString(">", currentX + cw, currentY, Justify::LEFT,
         Fonts::getNormal(), enabled ? colors.getAccent() : colors.getMuted(), fontSize);
     if (enabled) {
         if (bitfield != nullptr) {
@@ -842,7 +1192,7 @@ void SettingsLayoutContext::addToggleControl(
         }
     }
 
-    currentY += lineHeightNormal;
+    endRow();
 }
 
 void SettingsLayoutContext::addToggleControl(
@@ -858,13 +1208,7 @@ void SettingsLayoutContext::addToggleControl(
     float cw = charWidth();
     ColorConfig& colors = ColorConfig::getInstance();
 
-    // Add row-wide tooltip region if tooltipId is provided
-    if (tooltipId && tooltipId[0] != '\0') {
-        float rowWidth = rowSpanWidth();
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            labelX, currentY, rowWidth, lineHeightNormal, tooltipId
-        ));
-    }
+    addRowTooltip(label, tooltipId);
 
     // Render label
     parent->addString(label, labelX, currentY, Justify::LEFT,
@@ -893,8 +1237,9 @@ void SettingsLayoutContext::addToggleControl(
         Fonts::getNormal(), valueColor, fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(valueWidth, fontSize);
 
-    // Right arrow " >" - always visible, muted when disabled, clickable only when enabled
-    parent->addString(" >", currentX, currentY, Justify::LEFT,
+    // Right arrow, one cell past the value - always visible, muted when disabled,
+    // clickable only when enabled
+    parent->addString(">", currentX + cw, currentY, Justify::LEFT,
         Fonts::getNormal(), enabled ? colors.getAccent() : colors.getMuted(), fontSize);
     if (enabled) {
         parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
@@ -903,7 +1248,7 @@ void SettingsLayoutContext::addToggleControl(
         ));
     }
 
-    currentY += lineHeightNormal;
+    endRow();
 }
 
 // The per-HUD panel-theme row: Default / None / <each installed theme>.
@@ -925,8 +1270,7 @@ void SettingsLayoutContext::addPerHudThemeControl(BaseHud* hud) {
         label = "Default";
     }
 
-    addCycleControl("Theme", label.c_str(),
-        SettingsHud::ClickRegion::HUD_THEME_DOWN, SettingsHud::ClickRegion::HUD_THEME_UP,
+    addCycleControl("Theme", label.c_str(), SettingsHud::themeOverrideCycle(hud),
         hud, /*enabled=*/true, /*isOff=*/false, "common.theme");
 }
 
@@ -966,22 +1310,18 @@ void SettingsLayoutContext::addPackControl(BaseHud* hud) {
     // everywhere without one line failing to compile.
     std::string label = "None";
     size_t count = 0;
-    SettingsHud::ClickRegion::Type down = SettingsHud::ClickRegion::PITBOARD_PACK_DOWN;
-    SettingsHud::ClickRegion::Type up = SettingsHud::ClickRegion::PITBOARD_PACK_UP;
     const char* tip = "pitboard.pack";
     switch (hud->m_packKind) {
         case BaseHud::PackKind::Gamepad:
             if (const GamepadAsset* a = static_cast<GamepadWidget*>(hud)->activePack())
                 label = a->displayName;
             count = assets.getGamepadCount();
-            down = SettingsHud::ClickRegion::GAMEPAD_PACK_DOWN;
-            up = SettingsHud::ClickRegion::GAMEPAD_PACK_UP;
             tip = "gamepad.pack";
             break;
         case BaseHud::PackKind::Gauges:
             // NOT REACHED TODAY, and kept anyway. The gauges have no per-HUD tab --
             // they are rows in the Widgets table, which builds its own compact
-            // pack cycle further down this file. What makes this arm load-bearing
+            // pack cell further down this file. What makes this arm load-bearing
             // rather than dead is the arm BELOW it: Pitboard and None share a
             // branch that static_casts to PitboardHud*, so deleting this one does
             // not remove a case, it silently routes a gauge into the wrong cast.
@@ -989,8 +1329,6 @@ void SettingsLayoutContext::addPackControl(BaseHud* hud) {
             // it is what a Gauges tab would want on the day one exists.)
             label = activeGaugesDisplayName(hud);
             count = assets.getGaugesCount();
-            down = SettingsHud::ClickRegion::GAUGES_PACK_DOWN;
-            up = SettingsHud::ClickRegion::GAUGES_PACK_UP;
             tip = "gauges.pack";
             break;
         case BaseHud::PackKind::Pitboard:
@@ -1001,9 +1339,9 @@ void SettingsLayoutContext::addPackControl(BaseHud* hud) {
             break;
     }
 
-    // Greyed with nothing to cycle -- one pack is a legitimate install, and with the
-    // Off entry gone there is genuinely nowhere for the arrows to go.
-    addCycleControl("Texture", label.c_str(), down, up,
+    // Greyed with nothing to pick -- one pack is a legitimate install, and with no
+    // Off entry there is genuinely nowhere for the arrows to go.
+    addCycleControl("Texture", label.c_str(), SettingsHud::packCycle(hud),
         hud, /*enabled=*/count > 1, /*isOff=*/false, tip);
 }
 
@@ -1016,6 +1354,12 @@ void SettingsLayoutContext::addStandardHudControls(BaseHud* hud) {
     // HUD_TOGGLE, which edits whichever surface the menu is on, so displaying
     // isVisible() would show the game's state while the click changed the
     // companion's. (The inline variant further down already reads it this way.)
+    // TWO COLUMNS (beginColumns): Visible, Title and the look down the left,
+    // Opacity and Scale on the right. Every HUD tab opens with this block, so
+    // three rows instead of five is two rows off nearly every tab. Its labels are
+    // at most seven characters, so a 9-character label column leaves the values
+    // room for a theme or pack name in full ("Carbon Light", "DualShock 4").
+    beginColumns(2, hud->m_titleSupported ? 5 : 4, 9);
     addToggleControl("Visible", hud->isVisibleOnActiveSurface(),
         SettingsHud::ClickRegion::HUD_TOGGLE, hud, nullptr, 0, true, "common.visible");
 
@@ -1059,28 +1403,39 @@ void SettingsLayoutContext::addStandardHudControls(BaseHud* hud) {
         } else {
             snprintf(textureValue, sizeof(textureValue), "%d", variant);
         }
-        addCycleControl("Texture", textureValue,
-            SettingsHud::ClickRegion::TEXTURE_VARIANT_DOWN,
-            SettingsHud::ClickRegion::TEXTURE_VARIANT_UP,
+        addCycleControl("Texture", textureValue, SettingsHud::textureCycle(hud),
             hud, /*enabled=*/hasTextures, /*isOff=*/false, "common.texture");
     }
 
-    // Background opacity
-    char opacityValue[16];
-    snprintf(opacityValue, sizeof(opacityValue), "%d%%",
-        static_cast<int>(std::round(hud->getBackgroundOpacity() * 100.0f)));
-    addCycleControl("Opacity", opacityValue,
-        SettingsHud::ClickRegion::BACKGROUND_OPACITY_DOWN,
-        SettingsHud::ClickRegion::BACKGROUND_OPACITY_UP,
-        hud, true, false, "common.opacity");
+    addOpacityControl(hud);
+    addScaleControl(hud);
+    endColumns();
+}
 
-    // Scale
-    char scaleValue[16];
-    snprintf(scaleValue, sizeof(scaleValue), "%d%%",
-        static_cast<int>(std::round(hud->getScale() * 100.0f)));
-    addCycleControl("Scale", scaleValue,
-        SettingsHud::ClickRegion::SCALE_DOWN, SettingsHud::ClickRegion::SCALE_UP,
-        hud, true, false, "common.scale");
+// A HUD's background opacity (0-100%) and scale (10-300%), 1% a step: one pair of
+// descriptors for the rows and the Widgets table's cells.
+static SettingsHud::SteppedControl opacityStepper(BaseHud* hud) {
+    return SettingsHud::SteppedControl::accessor(
+        [hud]() { return hud->getBackgroundOpacity(); },
+        [hud](float v) { hud->setBackgroundOpacity(v); }, 0.01f, 0.0f, 1.0f, hud);
+}
+
+static SettingsHud::SteppedControl scaleStepper(BaseHud* hud) {
+    return SettingsHud::SteppedControl::accessor(
+        [hud]() { return hud->getOwnScale(); },
+        [hud](float v) { hud->setScale(v); }, 0.01f, 0.1f, 3.0f, hud);
+}
+
+void SettingsLayoutContext::addOpacityControl(BaseHud* hud, bool enabled) {
+    char value[16];
+    snprintf(value, sizeof(value), "%d%%", static_cast<int>(std::round(hud->getBackgroundOpacity() * 100.0f)));
+    addSteppedControl("Opacity", value, opacityStepper(hud), hud, enabled, false, "common.opacity");
+}
+
+void SettingsLayoutContext::addScaleControl(BaseHud* hud, bool enabled) {
+    char value[16];
+    snprintf(value, sizeof(value), "%d%%", static_cast<int>(std::round(hud->getOwnScale() * 100.0f)));
+    addSteppedControl("Scale", value, scaleStepper(hud), hud, enabled, false, "common.scale");
 }
 
 void SettingsLayoutContext::nextLine() {
@@ -1098,6 +1453,26 @@ void SettingsLayoutContext::addSpacing() {
               * layout().cellW * PluginConstants::UI_ASPECT_RATIO * parent->getScale();
 }
 
+SettingsLayoutContext::WidgetColumns SettingsLayoutContext::widgetColumns() const {
+    // Name, then Visible / Title (3-char values), Texture (the remainder),
+    // Opacity / Scale (4-char percentages): every control is value + 4 wide.
+    constexpr int NAME_CHARS = 10;
+    constexpr int GAP_CHARS = 2;
+    constexpr int TOGGLE_CHARS = 3 + 4;
+    constexpr int PERCENT_CHARS = 4 + 4;
+    const int fixedChars = NAME_CHARS + 2 * (TOGGLE_CHARS + GAP_CHARS)
+        + 4 + GAP_CHARS + (PERCENT_CHARS + GAP_CHARS) + PERCENT_CHARS;
+    WidgetColumns cols;
+    cols.texChars = std::max(3, layout().settingsContentAreaChars() - fixedChars);
+    const float cw = charWidth();
+    cols.visX = labelX + cw * NAME_CHARS;
+    cols.titleX = cols.visX + cw * (TOGGLE_CHARS + GAP_CHARS);
+    cols.texX = cols.titleX + cw * (TOGGLE_CHARS + GAP_CHARS);
+    cols.opacityX = cols.texX + cw * (cols.texChars + 4 + GAP_CHARS);
+    cols.scaleX = cols.opacityX + cw * (PERCENT_CHARS + GAP_CHARS);
+    return cols;
+}
+
 void SettingsLayoutContext::addWidgetRow(
     const char* name,
     BaseHud* hud,
@@ -1110,22 +1485,10 @@ void SettingsLayoutContext::addWidgetRow(
 ) {
     ColorConfig& colors = ColorConfig::getInstance();
 
-    // Column positions (spacing for table layout with toggle controls)
-    float nameX = labelX;
-    float visX = nameX + PluginUtils::calculateMonospaceTextWidth(10, fontSize);   // After name
-    float titleX = visX + PluginUtils::calculateMonospaceTextWidth(8, fontSize);   // After Vis toggle (< On >)
-    float bgTexX = titleX + PluginUtils::calculateMonospaceTextWidth(8, fontSize); // After Title toggle
-    float opacityX = bgTexX + PluginUtils::calculateMonospaceTextWidth(8, fontSize); // After BG Tex toggle
-    float scaleX = opacityX + PluginUtils::calculateMonospaceTextWidth(9, fontSize); // After Opacity cycle
+    const float nameX = labelX;
+    const WidgetColumns cols = widgetColumns();
 
-    // Add row-wide tooltip region if tooltipId is provided
-    if (tooltipId && tooltipId[0] != '\0') {
-        // panelWidth is actually contentAreaWidth (from contentAreaStartX to right edge)
-        float rowWidth = rowSpanWidth();
-        parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
-            labelX, currentY, rowWidth, lineHeightNormal, tooltipId
-        ));
-    }
+    addRowTooltip(name, tooltipId);
 
     // Widget name, in the row-label colour every other settings row uses
     parent->addString(name, nameX, currentY, Justify::LEFT,
@@ -1139,7 +1502,7 @@ void SettingsLayoutContext::addWidgetRow(
     // settings menu, so it can't be the toggle target.
     if (menuOnlyPointerRow) {
         bool pointerOn = !UiConfig::getInstance().getMenuOnlyCursor();
-        addInlineCycle(visX, pointerOn ? "On" : "Off", 3,
+        addInlineCycle(cols.visX, pointerOn ? "On" : "Off", 3,
             SettingsHud::ClickRegion::MENU_ONLY_CURSOR_TOGGLE,
             SettingsHud::ClickRegion::MENU_ONLY_CURSOR_TOGGLE, hud, true, !pointerOn);
     } else {
@@ -1148,7 +1511,7 @@ void SettingsLayoutContext::addWidgetRow(
         // active surface), so the displayed On/Off must read it too — otherwise a widget
         // enabled only on the companion still shows the game's state.
         bool visOn = hud->isVisibleOnActiveSurface();
-        addInlineCycle(visX, visOn ? "On" : "Off", 3,
+        addInlineCycle(cols.visX, visOn ? "On" : "Off", 3,
             SettingsHud::ClickRegion::HUD_TOGGLE, SettingsHud::ClickRegion::HUD_TOGGLE,
             hud, enableVisibility, !visOn);
     }
@@ -1160,7 +1523,7 @@ void SettingsLayoutContext::addWidgetRow(
     // BaseHud::m_titleSupported), so there is no stale value to mask.
     const bool enableTitle = hud->m_titleSupported;
     const bool titleOn = hud->getShowTitle();
-    addInlineCycle(titleX, titleOn ? "On" : "Off", 3,
+    addInlineCycle(cols.titleX, titleOn ? "On" : "Off", 3,
         SettingsHud::ClickRegion::TITLE_TOGGLE, SettingsHud::ClickRegion::TITLE_TOGGLE,
         hud, enableTitle, !titleOn);
 
@@ -1177,10 +1540,6 @@ void SettingsLayoutContext::addWidgetRow(
         // theme cycle on a panel whose entire body is a photograph, and leaving no way
         // to choose a pad. m_packKind is the same flag the per-HUD tabs route on, so
         // the two can't disagree about which HUDs are pack HUDs.
-        //
-        // Abbreviated to three characters for the same reason the theme cycle below
-        // is: this column is shared with every other widget row and cannot widen for
-        // one of them.
         const AssetManager& assets = AssetManager::getInstance();
         // No "Off": the pack artwork IS the widget, so the cycle is packs only (see
         // BaseHud::m_textureRequired).
@@ -1189,70 +1548,51 @@ void SettingsLayoutContext::addWidgetRow(
         const bool isGauges = (hud->m_packKind == BaseHud::PackKind::Gauges);
         const size_t packCount =
             isGauges ? assets.getGaugesCount() : assets.getGamepadCount();
-        // Both branches must LEAVE the sentinel alone when there is no pack, which
-        // is why this reads as two guards rather than one assignment: the gauges
-        // helper answers "None" itself, and truncating that to three characters
-        // renders the no-packs state as "Non".
         std::string packValue = "None";
         if (isGauges) {
-            const std::string active = activeGaugesDisplayName(hud);
-            if (active != "None") packValue = active.substr(0, 3);
+            packValue = activeGaugesDisplayName(hud);
         } else if (const GamepadAsset* active =
                        static_cast<const GamepadWidget*>(hud)->activePack()) {
-            packValue = active->displayName.substr(0, 3);
+            packValue = active->displayName;
         }
         // Needs somewhere to GO now: with one pack installed and no Off entry the
         // arrows would step from a pack to itself.
-        addInlineCycle(bgTexX, packValue.c_str(), 3,
-            isGauges ? SettingsHud::ClickRegion::GAUGES_PACK_DOWN
-                     : SettingsHud::ClickRegion::GAMEPAD_PACK_DOWN,
-            isGauges ? SettingsHud::ClickRegion::GAUGES_PACK_UP
-                     : SettingsHud::ClickRegion::GAMEPAD_PACK_UP,
-            hud, enableBgTexture && packCount > 1);
+        addInlineCycleControl(cols.texX, packValue.c_str(), cols.texChars,
+            SettingsHud::packCycle(hud), hud, enableBgTexture && packCount > 1,
+            isGauges ? "gauges.pack" : "gamepad.pack");
     } else if (!hasTextures && AssetManager::getInstance().getThemeCount() > 0) {
         const std::string& ov = hud->getThemeOverride();
-        // Abbreviated to fit the table column; the per-HUD tab spells it out.
         std::string themeValue;
         if (ov.empty()) {
-            themeValue = "Def";
+            themeValue = "Default";
         } else if (ov == BaseHud::THEME_NONE) {
-            themeValue = "Off";
+            themeValue = "None";
         } else if (const ThemeAsset* t = AssetManager::getInstance().getThemeByName(ov)) {
-            themeValue = t->displayName.substr(0, 3);
+            themeValue = t->displayName;
         } else {
-            themeValue = "Def";   // unknown name renders as the global theme
+            themeValue = "Default";   // unknown name renders as the global theme
         }
-        addInlineCycle(bgTexX, themeValue.c_str(), 3,
-            SettingsHud::ClickRegion::HUD_THEME_DOWN,
-            SettingsHud::ClickRegion::HUD_THEME_UP,
-            hud, enableBgTexture);
+        addInlineCycleControl(cols.texX, themeValue.c_str(), cols.texChars,
+            SettingsHud::themeOverrideCycle(hud), hud, enableBgTexture, "common.theme");
     } else {
         char texValue[8];
         int texVariant = hud->getTextureVariant();
         snprintf(texValue, sizeof(texValue), (!hasTextures || texVariant == 0) ? "Off" : "%d", texVariant);
-        addInlineCycle(bgTexX, texValue, 3,
-            SettingsHud::ClickRegion::TEXTURE_VARIANT_DOWN,
-            SettingsHud::ClickRegion::TEXTURE_VARIANT_UP,
-            hud, enableBgTexture && hasTextures);
+        addInlineCycleControl(cols.texX, texValue, cols.texChars,
+            SettingsHud::textureCycle(hud), hud, enableBgTexture && hasTextures, "common.texture");
     }
 
     // BG Opacity (shows muted value without arrows when disabled)
     char opacityValue[16];
     int opacityPercent = static_cast<int>(std::round(hud->getBackgroundOpacity() * 100.0f));
     snprintf(opacityValue, sizeof(opacityValue), "%d%%", opacityPercent);
-    addInlineCycle(opacityX, opacityValue, 4,
-        SettingsHud::ClickRegion::BACKGROUND_OPACITY_DOWN,
-        SettingsHud::ClickRegion::BACKGROUND_OPACITY_UP,
-        hud, enableOpacity);
+    addInlineSteppedControl(cols.opacityX, opacityValue, 4, opacityStepper(hud), hud, enableOpacity, "common.opacity");
 
     // Scale (shows muted value without arrows when disabled)
     char scaleValue[16];
-    int scalePercent = static_cast<int>(std::round(hud->getScale() * 100.0f));
+    int scalePercent = static_cast<int>(std::round(hud->getOwnScale() * 100.0f));
     snprintf(scaleValue, sizeof(scaleValue), "%d%%", scalePercent);
-    addInlineCycle(scaleX, scaleValue, 4,
-        SettingsHud::ClickRegion::SCALE_DOWN,
-        SettingsHud::ClickRegion::SCALE_UP,
-        hud, enableScale);
+    addInlineSteppedControl(cols.scaleX, scaleValue, 4, scaleStepper(hud), hud, enableScale, "common.scale");
 
     currentY += lineHeightNormal;
 }

@@ -91,6 +91,8 @@ void AnalyticsManager::testSeedAndReportCrash(const std::string& markerPath,
         j["stack_full"] = fault + " mxbmrp3.dlo+0xeaab4 mxbmrp3.dlo+0x1234 ntdll.dll+0x1234 kernel32.dll+0x5678";
         // Access-violation sub-type, as the crash handler writes it for a 0xC0000005.
         j["av_type"] = "read";
+        // ...and the address it tried to read (2.29.0), labelled as the handler does.
+        j["av_addr"] = "null+0x28";
         out << j.dump();
     } catch (...) { /* no marker → sendPendingCrashReport() no-ops */ }
     sendPendingCrashReport();

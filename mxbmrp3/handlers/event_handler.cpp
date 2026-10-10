@@ -26,6 +26,11 @@ void Handlers::handleEventInit(Unified::VehicleEventData* psEventData) {
     PluginData::getInstance().setEventType(static_cast<int>(psEventData->eventType));
     PluginData::getInstance().setShiftRPM(psEventData->shiftRPM);
     PluginData::getInstance().setLimiterRPM(psEventData->limiterRPM);
+    PluginData::getInstance().setMaxRPM(psEventData->maxRPM);
+    // Once per event: which of the three a vehicle reports decides how the RPM
+    // widget scales (a kart can report no limiter).
+    DEBUG_INFO_F("Event rpm: shift %d, limiter %d, max %d",
+                 psEventData->shiftRPM, psEventData->limiterRPM, psEventData->maxRPM);
     PluginData::getInstance().setSteerLock(psEventData->steerLock);
     PluginData::getInstance().setMaxFuel(psEventData->maxFuel);
     PluginData::getInstance().setNumberOfGears(psEventData->numberOfGears);

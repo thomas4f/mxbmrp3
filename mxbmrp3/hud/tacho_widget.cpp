@@ -190,7 +190,7 @@ void TachoWidget::resetToDefaults() {
     // the member directly.
     setShowBackgroundTexture(true);
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
-    m_fScale = 1.0f;  // 100% default scale
+    setScale(1.0f);  // 100% default scale
     setPosition(cellsX(112), cellsY(71));
     m_smoothedRpm = 0.0f;
     // EMPTY, not "classic": empty means "whatever the default pack resolves to",

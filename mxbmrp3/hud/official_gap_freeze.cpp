@@ -1,6 +1,6 @@
 // ============================================================================
 // hud/official_gap_freeze.cpp
-// The Gap Bar's and Lap Log's shared split/lap freeze -- see the header.
+// The shared split/lap freeze of the Gap Bar, Lap Log and Timing -- see the header.
 // ============================================================================
 #include "official_gap_freeze.h"
 
@@ -143,4 +143,17 @@ bool OfficialGapFreeze::update(Ref ref, int durationMs) {
 
     if (m_hold.expire(durationMs)) changed = true;
     return changed;
+}
+
+bool OfficialGapFreeze::shownGap(Ref ref, int* gapMs) const {
+    if (m_hold.active()) {
+        *gapMs = m_frozenGap;
+        return true;
+    }
+    const PluginData& data = PluginData::getInstance();
+    if (data.hasValidLiveGap(ref)) {
+        *gapMs = data.getLiveGap(ref);
+        return true;
+    }
+    return false;
 }

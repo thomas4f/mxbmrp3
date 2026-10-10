@@ -37,6 +37,7 @@
 #include "../hud/session_charts_hud.h"
 #include "../hud/standings_hud.h"
 #include "../hud/performance_hud.h"
+#include "../hud/delta_trace_hud.h"
 #include "../hud/telemetry_hud.h"
 #include "../hud/time_widget.h"
 #include "../hud/clock_widget.h"
@@ -282,6 +283,8 @@ void SettingsManager::cap_MapHud(const HudManager& hudManager, SettingsManager::
         settings["showOutline"] = std::to_string(hud.getShowOutline() ? 1 : 0);
         settings["outlineWidthScale"] = std::to_string(hud.getOutlineWidthScale());
         settings["showTrackMarkers"] = std::to_string(hud.getShowTrackMarkers() ? 1 : 0);
+        settings["lapDelta"] = std::to_string(static_cast<int>(hud.getLapDelta()));
+        settings["tilt"] = std::to_string(hud.getTilt());
         settings["riderColorMode"] = riderColorModeToString(hud.getRiderColorMode());
         settings["trackWidthScale"] = std::to_string(hud.getTrackWidthScale());
         settings["labelMode"] = labelModeToString(hud.getLabelMode());
@@ -292,6 +295,7 @@ void SettingsManager::cap_MapHud(const HudManager& hudManager, SettingsManager::
         settings["anchorY"] = std::to_string(hud.m_fAnchorY);
         settings["zoomEnabled"] = std::to_string(hud.getZoomEnabled() ? 1 : 0);
         settings["zoomDistance"] = std::to_string(hud.getZoomDistance());
+        settings["zoomAdaptive"] = std::to_string(hud.getAdaptiveRange() ? 1 : 0);
         settings["markerScale"] = std::to_string(hud.getMarkerScale());
         settings["detailScale"] = std::to_string(hud.getDetailScale());
         settings["detailAdaptive"] = std::to_string(hud.getAdaptiveDetail() ? 1 : 0);
@@ -314,6 +318,10 @@ void SettingsManager::app_MapHud(HudManager& hudManager, const SettingsManager::
                     hud.setOutlineWidthScale(*v);
                 }
                 if (auto v = readBool(settings, "showTrackMarkers")) hud.setShowTrackMarkers(*v);
+                if (auto v = readInt(settings, "lapDelta")) {
+                    if (*v >= 0 && *v < MapHud::LAP_DELTA_COUNT) hud.setLapDelta(static_cast<MapHud::LapDelta>(*v));
+                }
+                if (auto v = readInt(settings, "tilt")) hud.setTilt(*v);
                 if (auto v = readStr(settings, "riderColorMode")) hud.setRiderColorMode(stringToRiderColorMode(*v));
                 if (auto v = readFloat(settings, "trackWidthScale")) hud.setTrackWidthScale(validateTrackWidthScale(*v));
                 if (auto v = readStr(settings, "labelMode")) hud.setLabelMode(stringToLabelMode(*v));
@@ -321,6 +329,7 @@ void SettingsManager::app_MapHud(HudManager& hudManager, const SettingsManager::
                 if (auto v = readStr(settings, "riderShape")) hud.setRiderShape(filenameToShapeIndex(*v, 1));
                 if (auto v = readBool(settings, "zoomEnabled")) hud.setZoomEnabled(*v);
                 if (auto v = readFloat(settings, "zoomDistance")) hud.setZoomDistance(validateZoomDistance(*v));
+                if (auto v = readBool(settings, "zoomAdaptive")) hud.setAdaptiveRange(*v);
                 if (auto v = readFloat(settings, "markerScale")) hud.setMarkerScale(*v);
                 // Detail: new scale/adaptive keys, with legacy `detail=AUTO|HIGH|LOW`
                 // migration for pre-1.27.6 INIs (only when the new keys are absent, so
@@ -507,7 +516,8 @@ void SettingsManager::cap_LapLogHud(const HudManager& hudManager, SettingsManage
         settings["maxDisplayLaps"] = std::to_string(hud.m_maxDisplayLaps);
         settings["displayOrder"] = std::to_string(static_cast<int>(hud.m_displayOrder));
         settings["showGapRow"] = hud.m_showGapRow ? "1" : "0";
-        settings["reference"] = std::to_string(static_cast<int>(hud.m_gapReference));
+        settings["reference"] = std::to_string(hud.m_gapReferenceDefault ? HudDefaults::REFERENCE_FOLLOW
+                                                                         : static_cast<int>(hud.m_gapReference));
         settings["freezeDuration"] = std::to_string(hud.m_freezeDurationMs);
         settings["showHeaders"] = hud.m_bShowHeaders ? "1" : "0";
         cache[name] = std::move(settings);
@@ -529,12 +539,16 @@ void SettingsManager::app_LapLogHud(HudManager& hudManager, const SettingsManage
                 }
                 if (auto v = readStr(settings, "showGapRow")) hud.m_showGapRow = (*v == "1");
                 if (auto v = readInt(settings, "reference")) {
-                    if (*v >= 0 && *v < PbGapTracker::REF_COUNT) {
+                    if (*v == HudDefaults::REFERENCE_FOLLOW) {
+                        hud.m_gapReferenceDefault = true;
+                    } else if (*v >= 0 && *v < PbGapTracker::REF_COUNT) {
                         hud.m_gapReference = static_cast<PbGapTracker::Ref>(*v);
+                        hud.m_gapReferenceDefault = false;
                     }
                 }
                 if (auto v = readInt(settings, "freezeDuration")) {
-                    if (*v >= FreezeDuration::MIN_MS && *v <= FreezeDuration::MAX_MS) {
+                    if (*v == FreezeDuration::FOLLOW_DEFAULT ||
+                        (*v >= FreezeDuration::MIN_MS && *v <= FreezeDuration::MAX_MS)) {
                         hud.m_freezeDurationMs = *v;
                     }
                 }
@@ -905,6 +919,41 @@ void SettingsManager::app_TelemetryHud(HudManager& hudManager, const SettingsMan
         }
 }
 
+void SettingsManager::cap_DeltaTraceHud(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
+        HudSettings settings;
+        const auto& hud = hudManager.getDeltaTraceHud();
+        captureBaseHudSettings(settings, hud);
+        settings["reference"] = std::to_string(hud.m_referenceDefault ? HudDefaults::REFERENCE_FOLLOW
+                                                                      : static_cast<int>(hud.m_reference));
+        settings["graphRows"] = std::to_string(hud.m_graphRows);
+        cache[name] = std::move(settings);
+}
+
+void SettingsManager::app_DeltaTraceHud(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
+        auto it = cache.find(name);
+        if (it != cache.end()) {
+            auto& hud = hudManager.getDeltaTraceHud();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (auto v = readInt(settings, "reference")) {
+                    if (*v == HudDefaults::REFERENCE_FOLLOW) {
+                        hud.m_referenceDefault = true;
+                    } else if (*v >= 0 && *v < DeltaTraceHud::REFERENCE_COUNT) {
+                        hud.m_reference = static_cast<DeltaTraceHud::Reference>(*v);
+                        hud.m_referenceDefault = false;
+                    }
+                }
+                if (auto v = readInt(settings, "graphRows")) hud.m_graphRows = std::clamp(*v,
+                    DeltaTraceHud::MIN_GRAPH_ROWS, DeltaTraceHud::MAX_GRAPH_ROWS);
+            } catch (const std::exception& e) {
+                DEBUG_WARN_F("DeltaTraceHud: Failed to parse settings: %s", e.what());
+            }
+            hud.setDataDirty();
+        }
+}
+
 void SettingsManager::cap_PerformanceHud(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
         HudSettings settings;
         const auto& hud = hudManager.getPerformanceHud();
@@ -958,6 +1007,7 @@ const std::vector<HudSectionSerializer>& hudSectionRegistry() {
         { "IdealLapHud", &SettingsManager::cap_IdealLapHud, &SettingsManager::app_IdealLapHud },
         { "TelemetryHud", &SettingsManager::cap_TelemetryHud, &SettingsManager::app_TelemetryHud },
         { "PerformanceHud", &SettingsManager::cap_PerformanceHud, &SettingsManager::app_PerformanceHud },
+        { "DeltaTraceHud", &SettingsManager::cap_DeltaTraceHud, &SettingsManager::app_DeltaTraceHud },
         { "LapWidget", &SettingsManager::cap_LapWidget, &SettingsManager::app_LapWidget },
         { "PositionWidget", &SettingsManager::cap_PositionWidget, &SettingsManager::app_PositionWidget },
         { "TimeWidget", &SettingsManager::cap_TimeWidget, &SettingsManager::app_TimeWidget },
@@ -968,6 +1018,7 @@ const std::vector<HudSectionSerializer>& hudSectionRegistry() {
         { "SpeedWidget", &SettingsManager::cap_SpeedWidget, &SettingsManager::app_SpeedWidget },
         { "GearWidget", &SettingsManager::cap_GearWidget, &SettingsManager::app_GearWidget },
         { "CrashWidget", &SettingsManager::cap_CrashWidget, &SettingsManager::app_CrashWidget },
+        { "RpmWidget", &SettingsManager::cap_RpmWidget, &SettingsManager::app_RpmWidget },
         { "SpeedoWidget", &SettingsManager::cap_SpeedoWidget, &SettingsManager::app_SpeedoWidget },
         { "TachoWidget", &SettingsManager::cap_TachoWidget, &SettingsManager::app_TachoWidget },
         { "TimingHud", &SettingsManager::cap_TimingHud, &SettingsManager::app_TimingHud },

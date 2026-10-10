@@ -27,6 +27,8 @@ inline void mxbBumpThemeGeneration() { ++mxbThemeGenerationRef(); }
 #include <cmath>
 #include <string>
 
+#include "motion.h"
+
 // Temperature unit options (SessionHud weather, TyreTempWidget values)
 enum class TemperatureUnit : uint8_t {
     CELSIUS = 0,
@@ -110,6 +112,32 @@ public:
     PBScope getPBScope() const { return m_pbScope; }
     void setPBScope(PBScope scope) { m_pbScope = scope; }
 
+    // The General tab's DEFAULTS for the HUDs that compare against a reference lap
+    // (Gap Bar, Lap Log, Delta Trace, Map lap delta) and that freeze on an official
+    // gap (Gap Bar, Lap Log, Timing). A HUD set to "Default" follows these
+    // (hud_defaults.h); one set to a value keeps its own. The reference is a
+    // PbGapTracker::Ref as an int, so this header needs none of the gap tracker.
+    int getDefaultReference() const { return m_defaultReference; }
+    void setDefaultReference(int ref) { m_defaultReference = (ref < 0 || ref > 2) ? 0 : ref; }
+    int getDefaultFreezeMs() const { return m_defaultFreezeMs; }
+    // Whole seconds, like the rows that show it: a hand-edited 2500 would read
+    // "2s" and hold 2.5.
+    void setDefaultFreezeMs(int ms) {
+        ms = (ms < 0) ? 0 : (ms > 10000) ? 10000 : ms;
+        m_defaultFreezeMs = (ms + 500) / 1000 * 1000;
+    }
+
+    // UI SCALE: one multiplier on every HUD's and widget's own Scale, the settings
+    // panel's included -- what each draws at is own x this (BaseHud::getScale).
+    // Changed through HudManager::setUiScale, which refreshes every HUD's drawn
+    // scale (BaseHud::applyUiScale).
+    static constexpr float UI_SCALE_MIN = 0.5f;
+    static constexpr float UI_SCALE_MAX = 1.5f;
+    float getUiScale() const { return m_fUiScale; }
+    void setUiScale(float s) {
+        m_fUiScale = !(s == s) ? 1.0f : (s < UI_SCALE_MIN) ? UI_SCALE_MIN : (s > UI_SCALE_MAX) ? UI_SCALE_MAX : s;
+    }
+
     DisplayTarget getDisplayTarget() const { return m_displayTarget; }
     void setDisplayTarget(DisplayTarget target) { m_displayTarget = target; }
 
@@ -161,45 +189,6 @@ public:
     // thread runs produceFrame).
     bool getGlInGame() const { return m_bGlInGame.load(std::memory_order_relaxed); }
     void setGlInGame(bool on) { m_bGlInGame.store(on, std::memory_order_relaxed); }
-
-    // GL feasibility probe ([Advanced] glProbe, INI-only, off by default):
-    // 0 = off, 1 = report the game's GL context read-only, 2 = also draw one
-    // conservatively state-saved quad and verify it. Phase 0 of the in-context
-    // renderer spike -- see core/gl_probe.h. Atomic for the same reason as the
-    // flags above: a RELOAD_CONFIG in threaded mode writes it off the game thread
-    // while the Draw callback reads it.
-    int  getGlProbe() const { return m_glProbe.load(std::memory_order_relaxed); }
-    void setGlProbe(int mode) {
-        m_glProbe.store(std::clamp(mode, 0, 2), std::memory_order_relaxed);
-    }
-    // Where the probe's two bars sit, in normalized HUD coords (top-left of the
-    // pair). Configurable because the z-order test needs them ON TOP OF a native
-    // game UI element, and only the player knows where those are on their
-    // layout - a compiled-in position would mean a rebuild per attempt.
-    // Deliberately unclamped to [0,1]: HUD coordinates legitimately go outside
-    // it, and a probe you cannot park off-screen is harder to use, not safer.
-    float getGlProbeX() const { return m_glProbeX.load(std::memory_order_relaxed); }
-    float getGlProbeY() const { return m_glProbeY.load(std::memory_order_relaxed); }
-    void setGlProbeX(float v) { m_glProbeX.store(std::clamp(v, -1.0f, 2.0f), std::memory_order_relaxed); }
-    void setGlProbeY(float v) { m_glProbeY.store(std::clamp(v, -1.0f, 2.0f), std::memory_order_relaxed); }
-
-    // PHASE 1 measurement: N extra quads drawn IN-CONTEXT each frame, the GL
-    // counterpart of renderProbeQuads (which measures the same load through the
-    // ENGINE). Sweep the two at equal N and the difference is the whole question
-    // the spike is asking. Geometry and alpha are deliberately taken from the
-    // renderProbe* keys so the two sides cannot drift out of comparability.
-    static constexpr int MAX_GL_PROBE_QUADS = 100000;
-    int  getGlProbeQuads() const { return m_glProbeQuads.load(std::memory_order_relaxed); }
-    void setGlProbeQuads(int n) {
-        m_glProbeQuads.store(std::clamp(n, 0, MAX_GL_PROBE_QUADS), std::memory_order_relaxed);
-    }
-    // 0 = immediate mode (glBegin/glEnd), the SLOWEST GL path and therefore a
-    // floor; 1 = one glDrawArrays over a client-side vertex array, far closer to
-    // what a real backend does. Both are measured because reporting only the
-    // floor would understate GL, and reporting only the batch would overstate
-    // how little work Phase 2 is.
-    int  getGlProbeBatch() const { return m_glProbeBatch.load(std::memory_order_relaxed); }
-    void setGlProbeBatch(int m) { m_glProbeBatch.store((m != 0) ? 1 : 0, std::memory_order_relaxed); }
 
     // Render-load probe (INI-only debug aid, off by default). Emit N extra synthetic
     // quads each frame for the ENGINE to draw so its per-primitive render cost — which
@@ -276,6 +265,10 @@ public:
     void setDropShadowOffsetY(float offset) { m_fDropShadowOffsetY = offset; }
     void setDropShadowColor(unsigned long color) { m_ulDropShadowColor = color; }
 
+    // Motion: HUDs fade and slide in and out (core/motion.h).
+    Motion::Level getMotion() const { return m_motion; }
+    void setMotion(Motion::Level level) { m_motion = level; }
+
     // Reset all settings to defaults
     void resetToDefaults();
 
@@ -292,6 +285,9 @@ private:
     bool m_bAutoSave = true;         // Auto-save enabled by default
     TemperatureUnit m_temperatureUnit = TemperatureUnit::CELSIUS;  // Celsius by default
     PBScope m_pbScope = PBScope::CATEGORY;  // Per-category PB tracking by default
+    int m_defaultReference = 0;             // Session PB (PbGapTracker::Ref::SESSION_PB)
+    int m_defaultFreezeMs = 5000;           // FreezeDuration::DEFAULT_MS
+    float m_fUiScale = 1.0f;                // UI scale: 100%
     DisplayTarget m_displayTarget = DisplayTarget::IN_GAME;  // HUD in the game by default
     bool m_bSnapSegmentsToSplits = true;    // Snap segment boundaries to nearby splits by default
     float m_fSegmentSnapThreshold = 0.02f;  // Snap distance: 2% of the lap
@@ -299,12 +295,7 @@ private:
     float m_fCursorActivationThreshold = 0.015f;  // Mouse travel from rest before cursor appears (~29px horiz on 1080p)
     bool m_bTitleIcons = true;       // HUD title identity icons enabled by default
     std::atomic<bool> m_bPluginThread{ false };  // Experimental plugin worker thread (INI-only, off by default; live-toggle via reconcileEnabled)
-    std::atomic<float> m_glProbeX{ 0.02f };          // DEBUG: probe bar position, normalized HUD coords
-    std::atomic<float> m_glProbeY{ 0.02f };
-    std::atomic<int>  m_glProbeQuads{ 0 };           // DEBUG: N in-context GL quads/frame (Phase 1 measurement)
-    std::atomic<int>  m_glProbeBatch{ 1 };           // DEBUG: 0=immediate mode, 1=one glDrawArrays batch
     std::atomic<bool> m_bGlInGame{ false };          // EXPERIMENTAL in-context GL renderer (INI-only, off by default)
-    std::atomic<int>  m_glProbe{ 0 };                // DEBUG: GL feasibility probe (INI-only, off by default; 0=off, 1=report, 2=report+draw)
     std::atomic<int>  m_renderProbeQuads{ 0 };       // DEBUG: extra synthetic quads/frame for engine render-cost measurement (INI-only, off by default)
     std::atomic<bool> m_renderProbeFullscreen{ false };  // DEBUG: probe quads full-screen (fill-rate) vs tiny (submit cost)
     std::atomic<int>  m_renderProbeType{ 0 };        // DEBUG: 0=fill quad, 1=sprite quad, 2=text string
@@ -323,4 +314,5 @@ private:
     float m_fDropShadowOffsetX = 0.03f;              // 3% of font size
     float m_fDropShadowOffsetY = 0.04f;              // 4% of font size
     unsigned long m_ulDropShadowColor = 0xAA000000;  // Semi-transparent black
+    Motion::Level m_motion = Motion::DEFAULT_LEVEL;
 };

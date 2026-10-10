@@ -5,6 +5,7 @@
 #include "gear_widget.h"
 
 #include "gear_geometry.h"
+#include "digit_roll.h"
 
 #include <cstdio>
 
@@ -22,7 +23,7 @@ GearWidget::GearWidget()
     m_bContentCard = true;
     setDraggable(true);
     m_quads.reserve(2);    // Background + gear circle
-    m_strings.reserve(2);  // Title (optional) + gear value
+    m_strings.reserve(3);  // Title (optional) + gear value (two while it rolls)
 
     setTextureBaseName("gear_widget");
 
@@ -138,7 +139,7 @@ void GearWidget::rebuildRenderData() {
         applyOffset(circleX, circleTopY);
         setQuadPositions(circleQuad, circleX, circleTopY, circleWidth, circleHeight);
         circleQuad.m_iSprite = m_circleSprite;
-        circleQuad.m_ulColor = ColorPalette::WHITE;
+        circleQuad.m_ulColor = this->getColor(ColorSlot::NEGATIVE);   // white art, tinted like the shift colour
         m_quads.push_back(circleQuad);
     }
 
@@ -164,8 +165,21 @@ void GearWidget::rebuildRenderData() {
     // for the ink's position in an arbitrary box at an arbitrary font size, which is
     // exactly this case, and it also undoes addString's own row centring, which grows
     // with uiLineHeight and would otherwise drift on its own.
-    addString(gearValueBuffer, centerX, inkCenteredY(currentY, gearRowDrawnH, gearFontSize),
-        Justify::CENTER, this->getFont(FontCategory::TITLE), gearColor, gearFontSize);
+    // DIGIT ROLL (Motion, digit_roll.h): a change of gear on the same rider rolls;
+    // the placeholder, "D", a spectate switch or Motion off just switch. The
+    // widget rebuilds every frame, so the roll costs one more string while it
+    // runs and nothing otherwise.
+    const long long nowUs = DigitRoll::nowUs();
+    const int raceNum = pluginData.getDisplayRaceNum();
+    const int from = DigitRoll::gearRank(m_gearRoll.shown()), to = DigitRoll::gearRank(gearValueBuffer);
+    const bool rolls = DigitRoll::enabled() && from >= 0 && to >= 0 && raceNum == m_rollRaceNum;
+    // The opposite way to the odometer's drum: up a gear the old digit drops and
+    // the new one arrives from above, as if the next gear comes down into place.
+    m_gearRoll.update(gearValueBuffer, rolls ? (to > from ? -1 : 1) : 0, nowUs, gearColor);
+    m_rollRaceNum = raceNum;
+    const float gearY = inkCenteredY(currentY, gearRowDrawnH, gearFontSize);
+    addRolledString(m_gearRoll, centerX, gearY, Justify::CENTER, this->getFont(FontCategory::TITLE),
+        gearFontSize);
 
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 }
@@ -175,7 +189,7 @@ void GearWidget::resetToDefaults() {
     m_bShowTitle = false;
     setTextureVariant(0);
     m_fBackgroundOpacity = 0.0f;  // Transparent by default
-    m_fScale = 1.0f;
+    setScale(1.0f);
     m_bShowShiftColor = true;
     m_bShowLimiterCircle = true;
     setPosition(cellsX(161), cellsY(74));

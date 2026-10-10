@@ -216,13 +216,23 @@ var availableFonts = {
     "FuzzyBubbles-Regular": true,
     "Tiny5-Regular": true,
     "PermanentMarker-Regular": true,
+    "ChakraPetch-BoldItalic": true,
+    "ChakraPetch-SemiBoldItalic": true,
+    "Quantico-BoldItalic": true,
+    "Tomorrow-BoldItalic": true,
+    "Tomorrow-SemiBoldItalic": true,
     "RockSalt-Regular": true,
     "CaveatBrush-Regular": true,
     "ReenieBeanie-Regular": true,
     "GloriaHallelujah-Regular": true,
     "IBMPlexSans-Regular": true,
     "IBMPlexSans-SemiBold": true,
-    "IBMPlexMono-Regular": true
+    "IBMPlexMono-Regular": true,
+    "LCD14-Regular": true,
+    "LCD14-Bold": true,
+    "LCD7-BoldItalic": true,
+    "Doto-Regular": true,
+    "Doto-Bold": true
 };
 
 function applyFonts(fonts) {

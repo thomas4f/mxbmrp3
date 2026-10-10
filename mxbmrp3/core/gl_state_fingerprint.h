@@ -1,6 +1,6 @@
 // ============================================================================
 // core/gl_state_fingerprint.h
-// The pure half of the GL probe: WHICH GL state is sampled, and how two samples
+// The pure half of the GL state-leak check: WHICH GL state is sampled, and how two samples
 // are compared. No GL headers, no Win32, no I/O — so the comparison can be
 // unit-tested headlessly, which is the whole reason it is a separate file.
 //
@@ -31,7 +31,7 @@
 #include <string>
 #include <vector>
 
-namespace glprobe {
+namespace glstate {
 
 // One piece of GL state worth checking for leaks.
 struct StateToken {
@@ -154,4 +154,4 @@ int diff(const Fingerprint& before, const Fingerprint& after,
 // which callers treat as "assume nothing" (see tokenSupported).
 int parseVersion(const char* glVersionString);
 
-}  // namespace glprobe
+}  // namespace glstate

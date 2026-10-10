@@ -10,7 +10,9 @@
 // members, and public API are unchanged — only where method bodies live moves.
 // ============================================================================
 #include "base_hud.h"
+#include "digit_roll.h"
 #include "../diagnostics/call_counters.h"
+#include "../core/motion.h"
 #include <cstring>
 
 
@@ -43,6 +45,19 @@ void BaseHud::addString(const char* text, float x, float y, int justify, int fon
 
     m_strings.push_back(stringEntry);
     m_stringSkipShadow.push_back(skipShadow);  // Track shadow flag (shadow generated at collection time)
+}
+
+// Settled, exactly the addString the readout always made; rolling, up to
+// DigitRoll::MAX_PIECES of them.
+void BaseHud::addRolledString(const DigitRoll::Roller& roll, float x, float y, int justify, int fontIndex,
+                              float fontSize, bool skipShadow) {
+    DigitRoll::Piece pieces[DigitRoll::MAX_PIECES];
+    const int count = roll.pieces(DigitRoll::nowUs(), pieces);
+    for (int i = 0; i < count; ++i) {
+        const DigitRoll::Piece& pc = pieces[i];
+        addString(pc.text, x, y + pc.dy * fontSize, justify, fontIndex,
+                  pc.alpha < 1.0f ? Motion::scaleAlpha(pc.color, pc.alpha) : pc.color, fontSize, skipShadow);
+    }
 }
 
 // Themed band behind the title row.

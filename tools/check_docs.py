@@ -89,7 +89,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #   (to 47.9 / 98.7 / 93.0 KB) and each ceiling reset to that size plus ~2%.
 DOC_BUDGETS = {
     "CLAUDE.md": 48_900,
-    "TESTING.md": 100_700,
+    "TESTING.md": 101_100,
     "ARCHITECTURE.md": 94_900,
 }
 
@@ -983,7 +983,11 @@ def read_tab_registry(failures, check_name):
         if tab == "TAB_SECTION_PROFILE":
             in_profile = True
         elif tab == "TAB_SECTION_GLOBAL":
-            pass
+            in_profile = False
+        elif tab == "TAB_GROUP":
+            pass  # a purpose-group header inside a section, not a tab
+        elif tab == "TAB_MORE":
+            pass  # the More page a group's row opens, not a tab of its own
         elif in_profile:
             prof.append(name)
         else:
@@ -1129,9 +1133,10 @@ def check_readme_menu_tables(failures):
             ("global settings tabs", glob,
              documented("| Icon | Tab | Description |", "### Profiles"),
              "s_tabRegistry (settings_hud_render.cpp)"),
-            ("HUDs", prof, documented("### HUDs", "### Widgets"),
+            # Widgets come first, as the Widgets tab heads the Profile section.
+            ("HUDs", prof, documented("### HUDs", "## More Features"),
              "s_tabRegistry (settings_hud_render.cpp)"),
-            ("Widgets", widgets, documented("### Widgets", "## More Features"),
+            ("Widgets", widgets, documented("### Widgets", "### HUDs"),
              "addWidgetRow calls (settings_tab_widgets.cpp)")):
         if doc is None:
             continue          # documented() already reported the bad anchor

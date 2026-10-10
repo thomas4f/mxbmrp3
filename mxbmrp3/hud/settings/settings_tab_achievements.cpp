@@ -161,6 +161,9 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
     // Every row but Visible greys out with the toasts off: live arrows under an
     // Off switch read as a control that does nothing.
 
+    // Two columns (beginColumns), like every HUD tab's Appearance block.
+    ctx.beginColumns(2, widget ? 6 : 2);
+
     // Visible: the toast master (common handler, shared with the tab-list checkbox).
     ctx.addToggleControl("Visible", toastsOn,
         SettingsHud::ClickRegion::ACHIEVEMENTS_TOASTS_TOGGLE, nullptr, nullptr, 0, true,
@@ -184,29 +187,18 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
                     themeValue = t->displayName;
                 }
             }
-            ctx.addCycleControl("Theme", themeValue.c_str(),
-                SettingsHud::ClickRegion::HUD_THEME_DOWN, SettingsHud::ClickRegion::HUD_THEME_UP,
+            ctx.addCycleControl("Theme", themeValue.c_str(), SettingsHud::themeOverrideCycle(widget),
                 widget, toastsOn, false, "common.theme");
         } else {
             char texValue[8];
             const int variant = widget->getTextureVariant();
             snprintf(texValue, sizeof(texValue), (!hasTextures || variant == 0) ? "Off" : "%d", variant);
-            ctx.addCycleControl("Texture", texValue,
-                SettingsHud::ClickRegion::TEXTURE_VARIANT_DOWN,
-                SettingsHud::ClickRegion::TEXTURE_VARIANT_UP,
+            ctx.addCycleControl("Texture", texValue, SettingsHud::textureCycle(widget),
                 widget, toastsOn && hasTextures, !hasTextures || variant == 0, "common.texture");
         }
 
-        snprintf(buf, sizeof(buf), "%d%%", static_cast<int>(widget->getBackgroundOpacity() * 100.0f + 0.5f));
-        ctx.addCycleControl("Opacity", buf,
-            SettingsHud::ClickRegion::BACKGROUND_OPACITY_DOWN,
-            SettingsHud::ClickRegion::BACKGROUND_OPACITY_UP,
-            widget, toastsOn, false, "common.opacity");
-
-        snprintf(buf, sizeof(buf), "%d%%", static_cast<int>(widget->getScale() * 100.0f + 0.5f));
-        ctx.addCycleControl("Scale", buf,
-            SettingsHud::ClickRegion::SCALE_DOWN, SettingsHud::ClickRegion::SCALE_UP,
-            widget, toastsOn, false, "common.scale");
+        ctx.addOpacityControl(widget, toastsOn);
+        ctx.addScaleControl(widget, toastsOn);
     }
 
     // Duration: the manager's own value, a data-driven stepped control.
@@ -217,6 +209,7 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
             AchievementManager::MIN_TOAST_DURATION_MS, AchievementManager::MAX_TOAST_DURATION_MS,
             widget),
         nullptr, toastsOn, false, "achievements.toast_duration", /*tooltipOnArrows=*/false);
+    ctx.endColumns();
 
     // === ENTRY GEOMETRY, shared by the summary block and the list ===
     const bool useIcons = UiConfig::getInstance().getTitleIcons();

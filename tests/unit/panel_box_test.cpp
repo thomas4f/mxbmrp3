@@ -465,3 +465,62 @@ TEST_CASE("panel box: cols reports the laid-out row column, not the ask") {
         CHECK(g.cols == doctest::Approx(g.bands.front().columns.front().rowsW));
     }
 }
+
+// THE FLOOR KEEPS EVERY CARD ITS OWN HEIGHT. A panel that floors its body
+// (Spec::minBodyH -- the settings menu, sized to its tallest tab) swaps the
+// content column under a fixed sidebar. The ceil remainder used to go to
+// whichever column reached lowest, so the sidebar's card grew by it on every
+// tab whose content ended above the sidebar and not on the others: the air
+// under the sidebar's More row changed as you flicked tabs on a themed panel.
+TEST_CASE("panel box: a floored body never grows a card with the ceil remainder") {
+    PanelBox::Spec s;
+    s.unit = 0.8333333333333334;
+    s.panel = {PanelBox::Sides{}, PanelBox::parseSides("2"), PanelBox::parseSides("2")};
+    s.content = {PanelBox::parseSides("0.5"), PanelBox::parseSides("1"), PanelBox::parseSides("0")};
+    s.button = {PanelBox::parseSides("0.5"), PanelBox::parseSides("1"), PanelBox::parseSides("0.5")};
+    s.themed = true; s.card = true;
+    s.buttons = 3; s.buttonW = 7.0; s.buttonH = 2.0;
+
+    // A fixed sidebar beside one of three content columns: the tallest, one
+    // that still outgrows the sidebar, and one the sidebar outgrows.
+    const std::vector<double> sidebar = {2.0, 9.3};
+    const auto layout = [&](std::vector<double> content, double floorH) {
+        PanelBox::Spec x = s;
+        PanelBox::BandAsk band;
+        band.columns.push_back({ 12.0, sidebar });
+        band.columns.push_back({ 30.0, std::move(content) });
+        x.bands.push_back(std::move(band));
+        x.minBodyH = floorH;
+        return PanelBox::layoutPanel(x);
+    };
+    const PanelBox::Geom tallest = layout({4.0, 14.6}, 0.0);
+    const double floorH = tallest.bands.back().bot - tallest.bands.front().top;
+    const PanelBox::Geom tall = layout({4.0, 10.2}, floorH);
+    const PanelBox::Geom shortTab = layout({3.1}, floorH);
+
+    const auto sideBot = [](const PanelBox::Geom& g) {
+        return g.bands.back().columns.front().sections.back().bot;
+    };
+    // The case is only worth anything if there IS a remainder to misplace, and
+    // the sidebar really does end below one content column and above the other.
+    REQUIRE(tall.slackY > 1e-6);
+    REQUIRE(tall.bands.back().columns.back().sections.back().bot > sideBot(tall));
+    REQUIRE(shortTab.bands.back().columns.back().sections.back().bot < sideBot(shortTab));
+
+    // Same panel, same sidebar card, whichever content is showing.
+    CHECK(tall.panelH == doctest::Approx(tallest.panelH));
+    CHECK(shortTab.panelH == doctest::Approx(tallest.panelH));
+    CHECK(sideBot(shortTab) == doctest::Approx(sideBot(tall)));
+    CHECK(sideBot(shortTab) == doctest::Approx(sideBot(tallest)));
+    // The button row still lands on the panel's bottom chrome.
+    CHECK(shortTab.btnTop + shortTab.btnH + shortTab.B.m.b + shortTab.P.p.b + shortTab.P.b.b
+          == doctest::Approx(shortTab.panelH));
+    // Unfloored, the tallest column still absorbs it, as every other panel does.
+    CHECK(tallest.bands.back().columns.back().sections.back().h
+          == doctest::Approx(14.6 + tallest.slackY));
+    // ...and so does the tallest body under its OWN floor, which arrives from
+    // the settings panel through a float round trip, a hair above the exact body.
+    const PanelBox::Geom met = layout({4.0, 14.6}, floorH * (1.0 + 1e-7));
+    CHECK(met.bands.back().columns.back().sections.back().h
+          == doctest::Approx(14.6 + met.slackY));
+}

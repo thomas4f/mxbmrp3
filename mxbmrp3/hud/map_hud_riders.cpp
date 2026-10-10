@@ -178,6 +178,13 @@ void MapHud::renderRiders(const RotationCache& rotation,
         if (offMap && !isLocalPlayer) {
             return;
         }
+        // Zoomed, other riders fade out at the map's edge with the track under
+        // them (MapHud::edgeFade; 1 when not zoomed). The player is the zoom's
+        // centre, so they never reach the edge.
+        const float edgeAlpha = isLocalPlayer ? 1.0f : edgeFade(centerXClip, centerYClip);
+        if (edgeAlpha <= 0.0f) {
+            return;
+        }
 
         // Determine sprite index and shape index for rotation check
         int spriteIndex;
@@ -227,6 +234,11 @@ void MapHud::renderRiders(const RotationCache& rotation,
             float yawRad = adjustedYaw * DEG_TO_RAD;
             cosYaw = std::cos(yawRad);
             sinYaw = std::sin(yawRad);
+            if (m_tiltMode != 0) {
+                float flatX, flatY;
+                worldToScreenFlat(renderX, renderZ, flatX, flatY, rotation);
+                tiltHeading(flatX, flatY, cosYaw, sinYaw);
+            }
         }
 
         // THE CLAMP, here rather than at the clip test above because the inset owed is
@@ -260,7 +272,7 @@ void MapHud::renderRiders(const RotationCache& rotation,
 
         // Render rider sprite (outline baked into sprite asset)
         addRotatedSpriteQuad(screenX, screenY, spriteHalfSize, cosYaw, sinYaw,
-                             spriteIndex, riderColor);
+                             spriteIndex, fadeAlpha(riderColor, edgeAlpha));
 
         // Add click region for this rider (for spectator switching). Gated like every other
         // surface: the map draws a marker for anyone with a track position, which includes
@@ -301,8 +313,8 @@ void MapHud::renderRiders(const RotationCache& rotation,
             if (MarkerLabel::format(m_labelMode, position, pos.raceNum,
                                     labelStr, sizeof(labelStr))) {
                 // Podium colors for position labels (P1/P2/P3)
-                unsigned long labelColor =
-                    MarkerLabel::color(m_labelMode, position, this->getColor(ColorSlot::PRIMARY));
+                unsigned long labelColor = fadeAlpha(
+                    MarkerLabel::color(m_labelMode, position, this->getColor(ColorSlot::PRIMARY)), edgeAlpha);
 
                 // Render the label with the standard drop shadow (single bottom-right
                 // offset from [Display] dropShadowOffsetX/Y, honoring the global

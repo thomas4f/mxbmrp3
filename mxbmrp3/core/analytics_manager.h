@@ -133,10 +133,12 @@ private:
     // no custom props - so the fault, the access-violation type and the game
     // build go into errorType/errorMessage as text, and the backtrace goes
     // whole into stackTrace (10,000 characters, against the 180 a string prop
-    // allows the crash event). Grouped by the dashboard on type + message.
+    // allows the crash event). Grouped by the dashboard on type + message, so the
+    // access-violation target (avAddr, per-launch) heads stackTrace instead.
     std::string buildErrorReportBody(const std::string& fault, const std::string& code,
-                                     const std::string& avType, const std::string& gameBuild,
-                                     const std::string& pluginVer, const std::string& stack) const;
+                                     const std::string& avType, const std::string& avAddr,
+                                     const std::string& gameBuild, const std::string& pluginVer,
+                                     const std::string& stack) const;
 
     // Queue the session_end event (with this session's duration) at shutdown so a
     // clean exit's length is tracked. Crashed sessions are covered by the crash

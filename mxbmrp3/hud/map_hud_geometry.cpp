@@ -24,7 +24,7 @@ using namespace PluginConstants::Math;
 
 using namespace map_hud_detail;
 
-bool MapHud::calculateZoomBounds(float& zoomMinX, float& zoomMaxX, float& zoomMinY, float& zoomMaxY) const {
+bool MapHud::calculateZoomBounds(float& zoomMinX, float& zoomMaxX, float& zoomMinY, float& zoomMaxY) {
     // Find the local player position
     const PluginData& pluginData = PluginData::getInstance();
     int displayRaceNum = pluginData.getDisplayRaceNum();
@@ -55,8 +55,10 @@ bool MapHud::calculateZoomBounds(float& zoomMinX, float& zoomMaxX, float& zoomMi
 
     // Center zoom bounds on the PLAYER position
     // This ensures the player arrow is always visible and centered
-    // Use a square viewport based on zoom distance (100m = 50m each direction)
-    float halfBounds = m_fZoomDistance * 0.5f;
+    // Use a square viewport based on zoom distance (100m = 50m each direction):
+    // the range this rebuild draws, Range or Adaptive range's (map_hud_view.cpp)
+    updateRangeNow();
+    float halfBounds = m_fRangeNow * 0.5f;
 
     zoomMinX = playerX - halfBounds;
     zoomMaxX = playerX + halfBounds;
@@ -137,6 +139,11 @@ MapHud::RotationCache MapHud::createRotationCache(float rotationAngle) const {
 }
 
 void MapHud::worldToScreen(float worldX, float worldY, float& screenX, float& screenY, const RotationCache& rotation) const {
+    worldToScreenFlat(worldX, worldY, screenX, screenY, rotation);
+    if (m_tiltMode != 0) tiltPoint(screenX, screenY);   // the tilted view (map_hud_view.cpp)
+}
+
+void MapHud::worldToScreenFlat(float worldX, float worldY, float& screenX, float& screenY, const RotationCache& rotation) const {
     // Normalize to world space using the same scale for both axes (preserves aspect ratio)
     float trackWidth = m_maxX - m_minX;
     float trackHeight = m_maxY - m_minY;

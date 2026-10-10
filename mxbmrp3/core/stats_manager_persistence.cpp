@@ -75,6 +75,7 @@ void StatsManager::load(const char* savePath) {
     m_bikeCategories.clear();   // a reload must not keep stale bike->category mappings
     m_trackNames.clear();
     m_prestige = 0;
+    m_loadUnreadable = false;
     m_globalStats = GlobalStats();
     m_fmx = FmxLifetimeStats();
     m_exploration.clear();
@@ -88,6 +89,8 @@ void StatsManager::load(const char* savePath) {
 
     std::ifstream file(filePath);
     if (!file.is_open()) {
+        // There but not openable (locked, permissions) is not "no stats".
+        m_loadUnreadable = GetFileAttributesA(filePath.c_str()) != INVALID_FILE_ATTRIBUTES;
         DEBUG_INFO_F("[StatsManager] No stats file found at %s", filePath.c_str());
         migrateOldFiles();
         m_exploration.onStartup(m_savePath);
@@ -293,6 +296,7 @@ void StatsManager::load(const char* savePath) {
 
     } catch (const nlohmann::json::exception& e) {
         DEBUG_INFO_F("[StatsManager] Failed to parse JSON: %s — starting fresh", e.what());
+        m_loadUnreadable = true;
         m_trackBikeStats.clear();
         m_personalBests.clear();
         m_bikeOdometers.clear();
@@ -303,6 +307,7 @@ void StatsManager::load(const char* savePath) {
         achievements.clearStates();
     } catch (const std::exception& e) {
         DEBUG_INFO_F("[StatsManager] Error loading stats: %s — starting fresh", e.what());
+        m_loadUnreadable = true;
         m_trackBikeStats.clear();
         m_personalBests.clear();
         m_bikeOdometers.clear();

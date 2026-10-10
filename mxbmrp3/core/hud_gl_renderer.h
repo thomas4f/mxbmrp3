@@ -60,7 +60,8 @@
 // STATE, IN BOTH DIRECTIONS - and the second direction is the one that shipped
 // a bug. Leaking state OUT corrupts the game's next draw, so every bit this
 // touches is saved and restored and the restore is verified, not assumed
-// (Phase 0: 51 sampled values identical before and after, zero GL errors).
+// (gl_render_test samples the gl_state_fingerprint before and after a render:
+// identical values, zero GL errors).
 // But state left by the GAME flows IN just as freely, and fixed-function GL has
 // a long list of it that silently changes what our calls mean - which texture
 // unit they address, whether our UVs are even used, whether blending happens at

@@ -226,7 +226,7 @@ bool PluginData::hasValidLiveGap(GapRef ref) const {
     // The tracker follows the timer's rider; between a spectate switch and the
     // next position sample the two can disagree, and the stale reference must
     // not be read for the new rider.
-    if (m_displayLapTimerRaceNum != getDisplayRaceNum()) return false;
+    if (!lapTimerFollowsDisplayRider()) return false;
     // In the pits, or on a lap that went through them: the lap is void, so there
     // is no gap to show, the same as the Timing panel's (pinned by pb_gap_test).
     // The set covers pit entry up to the line; the pit flag covers a pit lane

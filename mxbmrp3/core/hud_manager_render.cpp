@@ -26,7 +26,6 @@
 #include "profile_manager.h"
 #include "ui_config.h"
 #include "render_probe_sweep.h"
-#include "gl_probe.h"
 #include "hud_gl_renderer.h"
 #include "ui_viewport.h"
 #include "../hud/base_hud.h"
@@ -48,7 +47,9 @@
 #include "../hud/bars_widget.h"
 #include "../hud/version_widget.h"
 #include "../hud/crash_widget.h"
+#include "../hud/rpm_widget.h"
 #include "../hud/prestige_widget.h"
+#include "../hud/achievement_widget.h"
 #include "../hud/notices_hud.h"
 #include "../hud/settings_hud.h"
 #include "../hud/settings_button_widget.h"
@@ -142,18 +143,21 @@ bool HudManager::isWidgetHud(const BaseHud* hud) const {
            hud == m_pSpeed || hud == m_pGear || hud == m_pSpeedo || hud == m_pTacho ||
            hud == m_pBars || hud == m_pVersion || hud == m_pFuel ||
            hud == m_pGamepad || hud == m_pLean || hud == m_pGforce || hud == m_pCompass ||
-           hud == m_pClock || hud == m_pCrash || hud == m_pPrestige;
+           hud == m_pClock || hud == m_pCrash || hud == m_pPrestige || hud == m_pRpm;
 }
 
 bool HudManager::isHeldBack(const BaseHud* hud) const {
     if (!hud) return false;
-    if (standsDown(hud)) return true;
+    if (standsDown(hud) || coveredByPopup(hud)) return true;
     const bool versionGame = hud == m_pVersion && m_pVersion && m_pVersion->isGameActive();
     if (versionGame) return false;
-    // The hide-all hotkey spares the settings chrome and the pointer: they are
-    // how the HUD comes back.
+    // A broken install's warning IS the Version widget's panel, in its place.
+    if (hud == m_pVersion && !m_installWarning.empty()) return true;
+    // The hide-all hotkey spares the settings chrome and the pointer (how the
+    // HUD comes back), and its own "All HUDs hidden" card for its few seconds.
     const bool chrome = hud == m_pSettingsHud || hud == m_pSettingsButton || hud == m_pPointer;
-    if (m_bAllHudsToggledOff && !chrome) return true;
+    const bool hideAllNotice = hud == m_pAchievement && m_pAchievement->isShowingThroughHideAll();
+    if (m_bAllHudsToggledOff && !chrome && !hideAllNotice) return true;
     return m_bAllWidgetsToggledOff && isWidgetHud(hud);
 }
 
@@ -198,6 +202,7 @@ void HudManager::produceFrame(int iState) {
             if (m_pDirector) m_pDirector->reveal(PluginConstants::WIDGET_REVEAL_MS);
         }
         m_lastDrawTime = now;
+        if (firstDraw) announceAllHiddenAtStart();   // m_lastDrawTime never resets: once per session
     }
 
     auto& bm = PluginData::getInstance().getBenchmarkMetrics();
@@ -212,6 +217,7 @@ void HudManager::produceFrame(int iState) {
         const long long pollStart = bm.active ? DrawHandler::getCurrentTimeUs() : 0;
         InputManager::getInstance().updateFrame();
         HotkeyManager::getInstance().update();
+        SettingsManager::getInstance().pollSaveResult();   // a writer-thread save's outcome
         if (bm.active) bm.framePollTimeUs += DrawHandler::getCurrentTimeUs() - pollStart;
     }
 
@@ -265,32 +271,6 @@ void HudManager::produceFrame(int iState) {
             st.m_ulColor = 0xFF00FFFFul;    // ABGR: yellow, so it reads as instrumentation
             m_strings.push_back(st);
         }
-    }
-
-    // GL feasibility probe ([Advanced] glProbe=2, off by default): one ENGINE-drawn
-    // reference bar, flush under the bar the probe draws itself in the game's GL
-    // context (core/gl_probe.cpp, kQuadX0..kRefY1).
-    //
-    // The pairing is the point. We do not know what mapping the engine applies to
-    // these normalized coordinates, so a GL bar drawn alone could only ever answer
-    // "something appeared" - never "it appeared in the right place". Two bars of
-    // the same width, stacked flush, say the two mappings agree; any horizontal
-    // offset or width difference measures the disagreement directly, in one look,
-    // on the single game launch this whole phase gets. Cyan against the probe's
-    // magenta so which is which is never in doubt.
-    if (UiConfig::getInstance().getGlProbe() >= 2) {
-        SPluginQuad_t q{};
-        q.m_iSprite = 0;                 // solid fill
-        q.m_ulColor = 0xFFFFFF00ul;      // ABGR: opaque cyan
-        // From GlProbe, never restated here: if the two sides disagreed, the
-        // misalignment would read as "the engine's coordinate mapping differs
-        // from ours" when it was only our own arithmetic - indistinguishable
-        // from the real finding this pair exists to produce.
-        float x0 = 0.0f, y0 = 0.0f, x1 = 0.0f, y1 = 0.0f;
-        GlProbe::referenceBarRect(x0, y0, x1, y1);
-        q.m_aafPos[0][0]=x0; q.m_aafPos[0][1]=y0; q.m_aafPos[1][0]=x0; q.m_aafPos[1][1]=y1;
-        q.m_aafPos[2][0]=x1; q.m_aafPos[2][1]=y1; q.m_aafPos[3][0]=x1; q.m_aafPos[3][1]=y0;
-        m_quads.push_back(q);
     }
 
     // Render-load probe ([Advanced] renderProbeQuads, off by default): append N
@@ -612,6 +592,9 @@ void HudManager::collectRenderData() {
         for (auto& hud : m_huds)
             if (hud) hud->snapshotCompanionFromGame();
         collectSurface(m_companionQuads, m_companionStrings, /*companion=*/true);
+    } else if (!m_motionCompanion.slots.empty()) {
+        // Its last frame is stale by the time the window reopens: start it settled.
+        m_motionCompanion = MotionSurface{};
     }
 }
 
@@ -630,6 +613,21 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
     float shadowOffsetYPct = uiConfig.getDropShadowOffsetY();
     unsigned long shadowColor = uiConfig.getDropShadowColor();
 
+    // The interactive chrome — the mouse pointer and the OPEN settings menu — belongs
+    // to the surface the user is actually on, not both. Otherwise the companion
+    // mirrors the game's pointer/menu and the user sees a cursor and a settings menu
+    // in both windows. The settings BUTTON stays on every surface so settings can be
+    // opened from either window. In single-window mode the active surface is Game, so
+    // this leaves the game frame unchanged.
+    bool activeCompanion =
+        InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion;
+    bool surfaceIsActive = (companion == activeCompanion);
+
+    // Motion (hud_manager_motion.cpp): step every HUD and keep the ghost of any
+    // that just stopped drawing, read from last frame's output - so BEFORE that
+    // is cleared below. Null with Motion off, and then nothing here changes.
+    MotionSurface* motion = motionBeginFrame(companion, surfaceIsActive, outQuads, outStrings);
+
     // Calculate total capacity needed to minimize allocations
     size_t totalQuads = 0;
     size_t totalStrings = 0;
@@ -638,6 +636,14 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
         if (hud) {
             totalQuads += hud->getQuads().size();
             totalStrings += hud->getStrings().size();
+        }
+    }
+    // A HUD fading out draws its ghost.
+    if (motion) {
+        for (const MotionSlot& slot : motion->slots) {
+            if (!slot.ghostLive) continue;
+            totalQuads += slot.ghostQuads.size();
+            totalStrings += slot.ghostStrings.size();
         }
     }
 
@@ -667,6 +673,8 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
     if (UiConfig::getInstance().getGridOverlay()) {
         totalQuads += gridOverlayQuadCount();
     }
+    totalQuads += m_installWarning.size();   // empty on every working install
+    totalStrings += m_installWarningStrings.size();
 
     // If drop shadow is enabled, we may need up to 2x the strings
     if (dropShadowEnabled) {
@@ -694,45 +702,30 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
     outQuads.resize(0);
     outStrings.resize(0);
 
-    // The interactive chrome — the mouse pointer and the OPEN settings menu — belongs
-    // to the surface the user is actually on, not both. Otherwise the companion
-    // mirrors the game's pointer/menu and the user sees a cursor and a settings menu
-    // in both windows. The settings BUTTON stays on every surface so settings can be
-    // opened from either window. In single-window mode the active surface is Game, so
-    // this leaves the game frame unchanged.
-    bool activeCompanion =
-        InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion;
-    bool surfaceIsActive = (companion == activeCompanion);
-
     // Collect from all visible HUDs using efficient vector operations
     // Settings and settings button are always rendered (even when toggle key pressed)
-    for (const auto& hud : m_huds) {
+    bool warningAppended = false;
+    for (size_t hudIndex = 0; hudIndex < m_huds.size(); ++hudIndex) {
+        const auto& hud = m_huds[hudIndex];
+        // A broken install's warning goes over every HUD but under the pointer,
+        // which is registered last, so the pointer stays visible over its box.
+        if (!warningAppended && hud.get() == m_pPointer && !m_installWarning.empty()) {
+            outQuads.insert(outQuads.end(), m_installWarning.begin(), m_installWarning.end());
+            warningAppended = true;
+        }
+        // A HUD fading out draws its ghost in its own place in the order.
+        MotionSlot* motionSlot = motion ? &motion->slots[hudIndex] : nullptr;
+        if (motionSlot && motionSlot->ghostLive) motionEmitGhost(*motionSlot, outQuads, outStrings);
         // Guard the deref: m_huds provably holds no nulls (registerHud filters
         // them), but this file is written defensively, so don't dereference before
-        // the null check. visible is false for a null hud, so the body is safe.
-        // rendersOnCompanion() gates the companion pass BEFORE its on/off: a HUD that
-        // is an in-game effect rather than a panel never belongs on the second
-        // surface, whatever its companion visibility says. See BaseHud.
-        bool visible = hud && (companion ? (hud->rendersOnCompanion() && hud->getCompanionVisible())
-                                         : hud->isVisible());
-        // Not drawn for a reason other than its own flag (the Direct GL prompt
-        // holding the menu back, the hide-all hotkey, the widgets toggle): the
-        // same answer the input pass reads, so what is off screen takes nothing.
-        if (isHeldBack(hud.get())) continue;
-        if (visible) {
+        // the null check. drawsOnSurface is false for a null hud.
+        if (drawsOnSurface(hud.get(), companion, surfaceIsActive)) {
             // Where this HUD's primitives start, so we can translate them to the
             // companion position afterward (delta is 0 for the game / a mirrored HUD).
             size_t quadStart = outQuads.size();
             size_t stringStart = outStrings.size();
             float deltaX = companion ? (hud->getCompanionOffsetX() - hud->getOffsetX()) : 0.0f;
             float deltaY = companion ? (hud->getCompanionOffsetY() - hud->getOffsetY()) : 0.0f;
-            // Pointer and the open settings MENU render only on the active surface
-            // (the settings BUTTON stays on both — it's how you open settings there).
-            bool isPointer = (hud.get() == m_pPointer);
-            bool isMenu = (hud.get() == m_pSettingsHud);
-            if ((isPointer || isMenu) && !surfaceIsActive) {
-                continue;
-            }
 
             // A HUD that rebuilt DIRECTLY (a widget setter, the settings panel's
             // click paths) rather than through processDirtyFlags arrives here with
@@ -831,6 +824,10 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
                     outStrings[k].m_afPos[0] += deltaX; outStrings[k].m_afPos[1] += deltaY;
                 }
             }
+
+            if (motionSlot)
+                motionFinishHud(*motionSlot, *hud, outQuads, quadStart, outStrings, stringStart,
+                                shadowTitleIcon ? titleIconIdx : -1, hudShadow);
         }
     }
 
@@ -839,6 +836,62 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
     if (UiConfig::getInstance().getGridOverlay()) {
         appendGridOverlay(outQuads);
     }
+
+    // The warning on both surfaces, if no pointer took it above. Strings always
+    // draw after quads, so any HUD text anchored inside its box is dropped:
+    // fonts can be present while icons are missing, and that text would cover it.
+    if (!m_installWarning.empty()) {
+        if (!warningAppended)
+            outQuads.insert(outQuads.end(), m_installWarning.begin(), m_installWarning.end());
+        const auto& box = m_installWarningBox;
+        outStrings.erase(std::remove_if(outStrings.begin(), outStrings.end(),
+            [&](const SPluginString_t& str) {
+                return str.m_afPos[0] >= box.left && str.m_afPos[0] <= box.right &&
+                       str.m_afPos[1] >= box.top && str.m_afPos[1] <= box.bottom;
+            }), outStrings.end());
+        // Empty outside the real-font comparison; see buildInstallWarning().
+        outStrings.insert(outStrings.end(), m_installWarningStrings.begin(), m_installWarningStrings.end());
+    }
+}
+
+bool HudManager::requiredIconsPresent() {
+    // The icons that buttons and carets draw with no text stand-in. A stale or
+    // partial icons folder that lacks one gets the warning too, or the settings
+    // button would be an empty chip.
+    static const char* const kRequiredIcons[] = { "hud-menu", "hud-close", "hud-video", "caret-up" };
+    for (const char* name : kRequiredIcons)
+        if (AssetManager::getInstance().getIconSpriteIndex(name) <= 0) return false;
+    return true;
+}
+
+void HudManager::buildInstallWarning(size_t fontCount, size_t iconCount, bool iconsComplete,
+                                     bool realText) {
+    m_installWarning.clear();
+    m_installWarningStrings.clear();
+    if (fontCount > 0 && iconCount > 0 && iconsComplete) return;
+    if (!m_pVersion) return;
+
+    // Pixel text cannot read DISCOVERY_DIR's casing or the subdir constants into a
+    // sentence without allocating, and this runs once: plain literals are clearer.
+    const char* what = fontCount == 0 && iconCount == 0
+        ? "No fonts or icons found in plugins\\mxbmrp3_data"
+        : fontCount == 0 ? "No fonts found in plugins\\mxbmrp3_data\\fonts"
+        : iconCount == 0 ? "No icons found in plugins\\mxbmrp3_data\\icons"
+                         : "Icons missing from plugins\\mxbmrp3_data\\icons";
+    const char* const rows[] = {
+        "MXBMRP3 is not installed correctly",
+        what,
+        "Reinstall it with its mxbmrp3_data folder",
+    };
+    m_pVersion->buildInstallNotice(rows, 3, realText, m_installWarning, m_installWarningStrings);
+    // The panel rect is the widget's, before its offset; read now, before the
+    // widget rebuilds its own view over it.
+    float l, t, r, b;
+    m_pVersion->panelRect(l, t, r, b);
+    m_installWarningBox = { l + m_pVersion->getOffsetX(), t + m_pVersion->getOffsetY(),
+                            r + m_pVersion->getOffsetX(), b + m_pVersion->getOffsetY() };
+    DEBUG_WARN_F("HudManager: install looks broken (%zu fonts, %zu icons) - drawing the warning",
+                 fontCount, iconCount);
 }
 
 // Grid line spacing = the snap lattice itself: vertical lines every cellW across X,

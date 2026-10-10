@@ -66,7 +66,7 @@ BaseHud* SettingsHud::renderTabLapLog(SettingsLayoutContext& ctx) {
         hud, true, false, "lap_log.order");
 
     // How long the gap row holds the official gap after a split or the line
-    ctx.addFreezeControl("Gap freeze", &hud->m_freezeDurationMs, true, hud, true, "lap_log.freeze");
+    ctx.addFreezeControl("Gap freeze", &hud->m_freezeDurationMs, true, hud, true, "lap_log.freeze", true);
 
     // === CONTENT SECTION ===
     ctx.addSectionHeading("Content");
@@ -90,15 +90,8 @@ BaseHud* SettingsHud::renderTabLapLog(SettingsLayoutContext& ctx) {
 
     // Which lap the gap row measures against (its own setting, not the Gap Bar's):
     // after the row it qualifies, as on the Gap Bar tab
-    const char* referenceStr = "";
-    switch (hud->m_gapReference) {
-        case PbGapTracker::Ref::SESSION_PB: referenceStr = "Session PB"; break;
-        case PbGapTracker::Ref::ALLTIME_PB: referenceStr = "All-time"; break;
-        case PbGapTracker::Ref::LAST_LAP:   referenceStr = "Last lap"; break;
-    }
-    ctx.addCycleControl("Gap reference", referenceStr,
-        SettingsHud::CycleControl::enumMember(hud, &LapLogHud::m_gapReference, PbGapTracker::REF_COUNT, hud),
-        hud, true, false, "lap_log.reference");
+    ctx.addReferenceControl("Gap reference", &hud->m_gapReferenceDefault, &hud->m_gapReference, hud,
+        "lap_log.reference");
 
     return hud;
 }

@@ -2,7 +2,7 @@
 
 Every achievement in the plugin, with its tiers worded the way the toast words them (a one-shot has one). **MX Bikes only.**
 
-A **Hidden** row does not appear in Settings > Achievements until it is earned, and the pages marked *(does not count towards progress)* sit outside the Unlocked figure and the Completion rows. The leading number is a row's place in its GROUP, which the tab pages 8 at a time; a row switched off reads **off** instead.
+A **Hidden** row does not appear in Settings > Achievements until it is earned, and the pages marked *(does not count towards progress)* sit outside the Unlocked figure and the Completion rows. The leading number is a row's place in its GROUP, which the tab pages 6 at a time; a row switched off reads **off** instead.
 
 <sub>Generated from `mxbmrp3/core/achievements.h` by `tests/unit/test_achievements.cpp` - do not edit. Run the unit gate and copy `/tmp/achievements.new.md` over this file.</sub>
 

@@ -36,6 +36,11 @@
 //   - bestLapProgressAt(): the ghost's position, interpolated, -1 without a
 //     reference and clamped to the finish once the PB would be done
 //   - non-finite positions are ignored (a NaN in the slot math is UB)
+//   - lastLapGaps(): the committed lap's gap to each reference as it stood
+//     while the lap was ridden - a new PB reads against the PB it beat, not
+//     flat against itself (what the lap delta displays show of the previous
+//     lap); an uncommitted lap end (the out-lap) keeps it, reset() clears
+//     it, and the stamp moves with every change
 // Elapsed times are fed directly, so nothing here depends on the wall clock.
 // ============================================================================
 #include "doctest.h"
@@ -376,6 +381,38 @@ TEST_CASE("forget / clear / reset drop exactly what they say") {
         // No wrap is inferred against a position from before the reset.
         t.onTrackPosition(0.02f, 0, true);
         CHECK(t.trackPos() == doctest::Approx(0.02f));
+    }
+}
+
+TEST_CASE("lastLapGaps: the lap just committed against the references it was ridden against") {
+    PbGapTracker t = withReference(60000);
+    CHECK_FALSE(t.hasLastLapGaps(PbGapTracker::Ref::SESSION_PB));   // the first lap had nothing to beat
+    const unsigned before = t.lastLapStamp();
+
+    driveLap(t, 54000);                    // 10% faster: a new session PB
+    t.onLapCompleted(54000, /*isPersonalBest=*/true);
+    CHECK(t.lastLapStamp() != before);
+    REQUIRE(t.hasLastLapGaps(PbGapTracker::Ref::SESSION_PB));
+    REQUIRE(t.hasLastLapGaps(PbGapTracker::Ref::LAST_LAP));
+    CHECK_FALSE(t.hasLastLapGaps(PbGapTracker::Ref::ALLTIME_PB));   // none planted
+    // Half way round it was 3 s up on the old PB - not 0 against itself.
+    const auto& session = t.lastLapGaps(PbGapTracker::Ref::SESSION_PB);
+    REQUIRE(session[500].valid);
+    CHECK(session[500].gapMs == -3000);
+    CHECK(t.lastLapGaps(PbGapTracker::Ref::LAST_LAP)[500].gapMs == -3000);
+    CHECK(session[100].gapMs == -600);
+
+    SUBCASE("an uncommitted lap end leaves it: still the last lap ridden whole") {
+        t.clearCurrentLap();
+        const unsigned committed = t.lastLapStamp();
+        t.onLapCompleted(50000, false);    // the partial run from the pits
+        REQUIRE(t.hasLastLapGaps(PbGapTracker::Ref::SESSION_PB));
+        CHECK(t.lastLapGaps(PbGapTracker::Ref::SESSION_PB)[500].gapMs == -3000);
+        CHECK(t.lastLapStamp() == committed);
+    }
+    SUBCASE("reset clears it") {
+        t.reset();
+        CHECK_FALSE(t.hasLastLapGaps(PbGapTracker::Ref::LAST_LAP));
     }
 }
 

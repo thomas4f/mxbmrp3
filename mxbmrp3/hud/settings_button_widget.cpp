@@ -1,7 +1,8 @@
 // ============================================================================
 // hud/settings_button_widget.cpp
 // Settings button widget - draggable button to toggle settings menu
-// Shows "[=]" when settings closed, "[x]" when settings open
+// Shows a menu icon when settings closed, a close icon when settings open
+// ("[=]" / "[x]" with UI icons off)
 // ============================================================================
 #include "settings_button_widget.h"
 #include "corner_buttons.h"
@@ -121,12 +122,7 @@ void SettingsButtonWidget::rebuildRenderData() {
     // that exact size (not fontSize * 0.63, which is smaller) for a consistent glyph.
     float iconSize = dim.fontSizeLarge * layout().titleIconSize;
 
-    // Vertically center the "[=]"/"[x]" text fallback (icons off) in the box.
-    float contentStartY = startY + (backgroundHeight - dim.fontSize) * 0.5f;
-
-    // Determine button text based on whether settings menu is visible
     bool settingsVisible = HudManager::getInstance().isSettingsVisible();
-    const char* buttonText = settingsVisible ? TEXT_OPEN : TEXT_CLOSED;
 
     // Check if cursor is hovering for color change
     // (Cursor is guaranteed to be visible at this point)
@@ -175,21 +171,25 @@ void SettingsButtonWidget::rebuildRenderData() {
     // glyph no longer changes hue under the cursor.
     unsigned long textColor = this->chipGlyphColor(chipColor);
 
-    // Button content: when UI icons are enabled, a flat "menu" icon while closed and a
-    // flat "close" icon while open; otherwise the legacy "[=]"/"[x]" text. The flat icons
-    // get the (togglable) drop shadow via the title-icon path, so they read like the text
-    // they replace. addIcon centers on the point and applies the offset itself.
-    int iconSprite = UiConfig::getInstance().getTitleIcons()
-        ? AssetManager::getInstance().getIconSpriteIndex(settingsVisible ? "hud-close" : "hud-menu")
-        : 0;
+    // Button content: a flat "menu" icon while closed and a flat "close" icon while
+    // open, with the (togglable) title-icon drop shadow; with UI icons off, the
+    // "[=]"/"[x]" text stand-in. An install without its icons gets the broken-install
+    // warning (HudManager::buildInstallWarning), so a missing sprite with UI icons on
+    // leaves the chip empty rather than falling back. addIcon centers on the point and
+    // applies the offset itself.
     m_titleIconQuadIndex = -1;   // reset each rebuild; set below so the icon is shadowed
     m_titleStringIndex = -1;
-    if (iconSprite > 0) {
-        m_titleIconQuadIndex = static_cast<int>(m_quads.size());
-        addIcon(startX + backgroundWidth * 0.5f, startY + backgroundHeight * 0.5f,
-            iconSprite, textColor, iconSize);
+    if (UiConfig::getInstance().getTitleIcons()) {
+        const int iconSprite =
+            AssetManager::getInstance().getIconSpriteIndex(settingsVisible ? "hud-close" : "hud-menu");
+        if (iconSprite > 0) {
+            m_titleIconQuadIndex = static_cast<int>(m_quads.size());
+            addIcon(startX + backgroundWidth * 0.5f, startY + backgroundHeight * 0.5f,
+                iconSprite, textColor, iconSize);
+        }
     } else {
-        addString(buttonText, startX + backgroundWidth * 0.5f, contentStartY, Justify::CENTER,
+        addString(settingsVisible ? TEXT_OPEN : TEXT_CLOSED, startX + backgroundWidth * 0.5f,
+            startY + (backgroundHeight - dim.fontSize) * 0.5f, Justify::CENTER,
             this->getFont(FontCategory::NORMAL), textColor, dim.fontSize);
     }
 
@@ -221,7 +221,7 @@ void SettingsButtonWidget::resetToDefaults() {
     // BOTH: isClicked() is a const edge test that consumes nothing, and HudManager polls
     // each button unconditionally on the same frame, so one click toggled the auto
     // director AND opened the settings panel.
-    m_fScale = 1.0f;
+    setScale(1.0f);
     setPosition(cellsX(CornerButtons::SETTINGS_X), cellsY(CornerButtons::BUTTON_Y));
     setDataDirty();
 }

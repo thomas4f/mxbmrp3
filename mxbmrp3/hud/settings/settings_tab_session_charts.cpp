@@ -33,6 +33,7 @@ BaseHud* SettingsHud::renderTabSessionCharts(SettingsLayoutContext& ctx) {
     ctx.addStandardHudControls(hud);
     // === CHARTS SECTION === (independent checkboxes; any combination stacks vertically)
     ctx.addSectionHeading("Charts");
+    ctx.beginColumns(2, 4);   // side by side (beginColumns)
     ctx.addToggleControl("Lap chart", (hud->m_enabledCharts & SessionChartsHud::CHART_LAP) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledCharts, SessionChartsHud::CHART_LAP, true,
         "session_charts.chart_lap");
@@ -46,7 +47,10 @@ BaseHud* SettingsHud::renderTabSessionCharts(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledCharts, SessionChartsHud::CHART_PACE, true,
         "session_charts.chart_pace");
     // === LAYOUT SECTION ===
+    ctx.endColumns();
+
     ctx.addSectionHeading("Layout");
+    ctx.beginColumns(2, 4);
 
     // Rider line colours
     ctx.addCycleControl("Colors", getColorModeName(hud->m_riderColorMode),
@@ -95,7 +99,10 @@ BaseHud* SettingsHud::renderTabSessionCharts(SettingsLayoutContext& ctx) {
     }
 
     // === CONTENT SECTION ===
+    ctx.endColumns();
+
     ctx.addSectionHeading("Content");
+    ctx.beginColumns(2, 7);
 
     ctx.addToggleControl("Grid lines", (hud->m_enabledElements & SessionChartsHud::ELEM_GRID) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, SessionChartsHud::ELEM_GRID, true,
@@ -118,6 +125,7 @@ BaseHud* SettingsHud::renderTabSessionCharts(SettingsLayoutContext& ctx) {
     ctx.addToggleControl("Sector points", (hud->m_enabledElements & SessionChartsHud::ELEM_SECTOR_POINTS) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, SessionChartsHud::ELEM_SECTOR_POINTS, true,
         "session_charts.sector_points");
+    ctx.endColumns();
 
     return hud;
 }

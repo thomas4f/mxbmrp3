@@ -57,28 +57,28 @@ TEST_CASE("a malformed INI value defaults that key alone; later keys still apply
 
     const std::string defText = ini::readFile(iniPath);
     REQUIRE_MESSAGE(!defText.empty(), "no settings.ini at " << iniPath);
-    REQUIRE_FALSE(host.mapZoomEnabled());          // the probe key's factory default is off
+    REQUIRE(host.mapZoomEnabled());                // the probe key's factory default is on (Follow)
 
     // Applier order in app_MapHud: rotateToPlayer is read before zoomEnabled, so
     // a throw on the first used to skip the second.
     ini::writeFile(iniPath, defText + "\n"
                    "[MapHud:Practice]\n"
                    "rotateToPlayer=yes\n"
-                   "zoomEnabled=1\n");
+                   "zoomEnabled=0\n");
     host.loadSettings(saveWin);
 
-    CHECK_MESSAGE(host.mapZoomEnabled(),
-                  "zoomEnabled=1 was not applied: a malformed key earlier in the "
+    CHECK_MESSAGE(!host.mapZoomEnabled(),
+                  "zoomEnabled=0 was not applied: a malformed key earlier in the "
                   "Map section abandoned the rest of the applier");
 
     // The control: the same section with the bad line removed must give the same
     // answer, so the assertion above is about surviving the bad key and not about
     // profile sections being applied at all.
     host.resetAll();
-    REQUIRE_FALSE(host.mapZoomEnabled());
-    ini::writeFile(iniPath, defText + "\n[MapHud:Practice]\nzoomEnabled=1\n");
+    REQUIRE(host.mapZoomEnabled());
+    ini::writeFile(iniPath, defText + "\n[MapHud:Practice]\nzoomEnabled=0\n");
     host.loadSettings(saveWin);
-    CHECK(host.mapZoomEnabled());
+    CHECK_FALSE(host.mapZoomEnabled());
 }
 
 TEST_CASE("a malformed widget INI value defaults that key alone; later keys still apply") {

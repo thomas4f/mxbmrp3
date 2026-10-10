@@ -20,7 +20,8 @@
 // failures that would otherwise cost a game launch each to discover.
 //
 // Without a display these cases can do nothing and say so, rather than passing
-// silently. Xvfb recipe is in gl_probe_test.cpp's header.
+// silently. To run them locally:
+//   Xvfb :99 & DISPLAY=:99 WINEPREFIX=/tmp/px ./run_tests.sh gl_render
 // ============================================================================
 #include "doctest.h"
 #include "integration_main.h"
@@ -140,26 +141,19 @@ TEST_CASE("gl render: the fixed-function text path puts ink on the screen") {
 TEST_CASE("gl render: the game's context comes back exactly as it was found") {
     // The backend is a guest in someone else's context, so this is the property
     // that matters most: a leaked bit corrupts the GAME's next draw, not ours.
-    // The probe's own fingerprint is the instrument - same 51 sampled values
-    // Phase 0 used, now applied after a full HUD-shaped render rather than a
-    // single test quad.
+    // The glstate fingerprint is the instrument, sampled right before and right
+    // after a backend render with nothing in between.
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\\\tmp\\\\mxbmrp3-tests\\\\gl_render\\\\");
     if (!host.glMakeContext(true)) { MESSAGE("no GL context here"); return; }
 
-    host.glProbe(2);
-    for (int i = 0; i < 4; ++i) host.draw();
-    REQUIRE(host.glProbeStatus(3) == 1);            // contextCurrent
-
-    // Render through the GL backend, then let the probe re-measure the context.
-    REQUIRE(host.glRenderProbe(kW, kH, 1, 1, 1) != -1);
-    for (int i = 0; i < 4; ++i) host.draw();
-
-    CHECK_MESSAGE(host.glProbeStatus(8) == 0,       // stateDiffs
-                  "the GL backend leaked state into the context");
-    CHECK_MESSAGE(host.glProbeStatus(9) == 0, "GL errors after rendering");
-    host.glProbe(0);
+    int glErrors = -1;
+    const int diffs = host.glRenderStateDiffs(&glErrors);
+    REQUIRE_MESSAGE(diffs != -1, "the GL backend did not render");
+    CHECK_MESSAGE(diffs == 0, "the GL backend leaked " << diffs
+                              << " state value(s) into the context");
+    CHECK_MESSAGE(glErrors == 0, "GL errors after rendering");
 }
 
 TEST_CASE("gl in-game: suppression follows what drew, never the setting") {
@@ -330,36 +324,6 @@ TEST_CASE("gl render: the frame carries render names, not the game's asset paths
         CHECK_MESSAGE(n.find("mxbmrp3_data") == std::string::npos,
                       "sprite render name still carries the resource root: '" << n << "'");
     }
-}
-
-TEST_CASE("gl in-game: the probe wins, so its paired bars stay engine-vs-GL") {
-    // glProbe=2 draws ONE bar into the GL context and asks the ENGINE to draw a
-    // matching one flush beneath it; the pair is the whole method, because two
-    // mappings agreeing is the only thing that says our coordinates are right.
-    //
-    // glInGame=1 suppresses the engine frame - and the engine's reference bar is
-    // IN that frame, so it would be drawn through the GL backend too. The
-    // comparison silently becomes GL against GL: still looks like agreement,
-    // proves nothing. Third instance on this branch of an instrument that
-    // removes what it is measuring against and reports success, which is why it
-    // is pinned rather than left to the checklist.
-    PluginHost host(dllPath());
-    REQUIRE(host.loaded());
-    host.startup("Z:\\\\tmp\\\\mxbmrp3-tests\\\\gl_render\\\\");
-    host.glMakeContext(true);          // whether this succeeds is not the point here
-
-    host.glProbe(2);
-    host.glInGame(true);
-    for (int i = 0; i < 4; ++i) host.draw();
-
-    CHECK_MESSAGE(!host.glDrewLastFrame(),
-                  "glInGame drew while glProbe=2 - the probe's engine-drawn "
-                  "reference bar is being routed through GL, so its alignment "
-                  "comparison is measuring GL against itself");
-    CHECK_MESSAGE(host.lastGameQuads() > 0,
-                  "the engine got an empty frame, so the reference bar cannot appear");
-    host.glInGame(false);
-    host.glProbe(0);
 }
 
 TEST_CASE("gl in-game: glDrewLastFrame cannot report a stale true") {

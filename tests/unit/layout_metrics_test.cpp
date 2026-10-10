@@ -260,12 +260,12 @@ TEST_CASE("layout: settings defaults are the values SettingsMetrics used to hold
     CHECK(m.settingsSidebarWidth == 17);
     CHECK(m.settingsLabelColumn == 2);
     CHECK(m.settingsControlColumn == 28);
-    CHECK(m.settingsContentAreaChars() == 53);      // the stated column ask
+    CHECK(m.settingsContentAreaChars() == 61);      // the stated column ask
     // Unthemed the label column is an indent (off once); themed it is a margin inside
     // the section card (off twice), mirroring rowSpanWidth(). The themed number is the
     // tooltip guard's bound -- it is the narrower box.
-    CHECK(m.settingsTooltipCharsPerLine(/*themedCard=*/false) == 51);  // 53 - 2
-    CHECK(m.settingsTooltipCharsPerLine(/*themedCard=*/true)  == 50);  // ...less the card border
+    CHECK(m.settingsTooltipCharsPerLine(/*themedCard=*/false) == 59);  // 61 - 2
+    CHECK(m.settingsTooltipCharsPerLine(/*themedCard=*/true)  == 58);  // ...less the card border
 }
 
 // ---------------------------------------------------------------------------

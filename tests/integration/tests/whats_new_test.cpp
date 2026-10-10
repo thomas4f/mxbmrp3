@@ -79,6 +79,14 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         for (int i = 0; i < host.whatsNewMarkerCount(); ++i) {
             INFO("marker " << i << ": " << host.whatsNewMarkerName(i));
             CHECK(host.whatsNewMarkerResolves(i));
+            // One band per marked row. A cycler's arrows carry the row's id too,
+            // and banding them spanned the whole row, over the neighbouring
+            // cell of a two-column grid (Appearance > Messages, 1.32).
+            CHECK(host.whatsNewBandsMatch(i));
+            // A section's More header shows its on-count, never "New": a marked
+            // tab inside a closed More would draw its news nowhere. Move the tab
+            // above its section's More in s_tabRegistry while it carries news.
+            CHECK(host.whatsNewMarkerInGroup(i) == 0);
         }
         // Opening the tabs above dismissed their tags; put the set back for the
         // cases that follow (doctest re-runs the body per subcase, but the DLL's
@@ -88,7 +96,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
 
     SUBCASE("opening a tagged tab clears its tag and no row") {
         // The Gap Bar tab has room for the tag (unlike Achievements and Stream
-        // Chat, whose names fill the sidebar: WhatsNew::tabCanTag).
+        // Chat and Delta Trace, whose names fill the sidebar: WhatsNew::tabCanTag).
         REQUIRE(host.whatsNewTabTagged("Gap Bar"));
 
         REQUIRE(host.openSettingsTab("Gap Bar"));
@@ -98,10 +106,38 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         CHECK(host.whatsNewLiveCount() == total);
     }
 
+    SUBCASE("the Widgets tab tags again when the Prestige badge unlocks") {
+        // The badge defaults off, so this marker is how a player finds it. The
+        // unlock can land long after they opened the Widgets tab in this release
+        // line -- and that dismissal must not swallow the tag, or the trade
+        // announces itself with a band on a tab nothing points at.
+        host.setPrestige(0);
+        host.showSettings(true);
+        host.draw();
+        host.showSettings(false);
+        REQUIRE(host.openSettingsTab("Widgets"));
+        CHECK_FALSE(host.whatsNewTabTagged("Widgets"));
+        // Off the tab before the panel next closes: closing dismisses the tab
+        // it closes on, and the unlock is taken on the Achievements tab anyway.
+        REQUIRE(host.openSettingsTab("Gap Bar"));
+
+        host.setPrestige(1);
+        host.showSettings(true);
+        host.draw();
+        host.showSettings(false);
+        CHECK(host.whatsNewTabTagged("Widgets"));
+
+        // ...and opening it clears that tag like any other.
+        REQUIRE(host.openSettingsTab("Widgets"));
+        CHECK_FALSE(host.whatsNewTabTagged("Widgets"));
+    }
+
     SUBCASE("a tab whose name fills the sidebar bands its sidebar row instead of the tag, and its rows band") {
-        // "Stream Chat" is 11 of the sidebar's 13 label cells; the tag would
-        // overflow them. Its Status rows are still marked.
+        // "Stream Chat" and "Delta Trace" are 11 of the sidebar's 13 label cells;
+        // the tag would overflow them. Their rows are still marked.
         CHECK_FALSE(host.whatsNewTabTagged("Stream Chat"));
+        CHECK_FALSE(host.whatsNewTabTagged("Delta Trace"));
+        CHECK(host.whatsNewTabHighlighted("Delta Trace"));
         // Its sidebar row is banded instead, until hovered like any banded row.
         // A tab that has room keeps the tag, unbanded, and hovering it leaves the
         // tag alone (that one clears on open).
@@ -113,7 +149,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         CHECK_FALSE(host.whatsNewTabHighlighted("Stream Chat"));
         REQUIRE(host.openSettingsTab("Stream Chat"));
         const int before = host.whatsNewLiveCount();
-        host.hoverSettingsRow("twitch.status");
+        host.hoverSettingsRow("stream_chat.order");
         CHECK(host.whatsNewLiveCount() == before - 1);
     }
 
@@ -122,11 +158,11 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         const int before = host.whatsNewLiveCount();
         REQUIRE(before >= 1);
 
-        host.hoverSettingsRow("gap_bar.reference");
+        host.hoverSettingsRow("gap_bar.range");
         CHECK(host.whatsNewLiveCount() == before - 1);
 
         // Hovering it again is not a second dismissal.
-        host.hoverSettingsRow("gap_bar.reference");
+        host.hoverSettingsRow("gap_bar.range");
         CHECK(host.whatsNewLiveCount() == before - 1);
 
         // An unmarked row on the same tab dismisses nothing.
@@ -155,7 +191,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         host.save();
         REQUIRE_FALSE(host.isDirty());
 
-        host.hoverSettingsRow("gap_bar.reference");
+        host.hoverSettingsRow("gap_bar.range");
         const int afterDismiss = host.whatsNewLiveCount();
         REQUIRE(afterDismiss == total - 1);
         CHECK_MESSAGE(host.isDirty(),
@@ -225,7 +261,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // while checking half a button.
         REQUIRE_MESSAGE(host.hasResetGlobals(), "MXBMRP3_Test_ResetGlobals not exported");
         REQUIRE(host.openSettingsTab("Gap Bar"));
-        host.hoverSettingsRow("gap_bar.reference");
+        host.hoverSettingsRow("gap_bar.range");
         REQUIRE(host.whatsNewLiveCount() == total - 1);
         REQUIRE_FALSE(host.whatsNewTabTagged("Gap Bar"));
 

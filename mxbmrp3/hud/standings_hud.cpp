@@ -390,7 +390,7 @@ void StandingsHud::resetToDefaults() {
     m_bShowTitle = true;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     setPosition(cellsX(1), cellsY(26));
     m_gapMode = GapMode::ALL;
     m_gapReferenceMode = GapReferenceMode::PLAYER;

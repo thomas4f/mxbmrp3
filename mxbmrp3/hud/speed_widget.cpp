@@ -139,7 +139,7 @@ void SpeedWidget::resetToDefaults() {
     m_bShowTitle = false;  // Title disabled by default
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.0f;  // Transparent by default
-    m_fScale = 1.0f;
+    setScale(1.0f);
     m_enabledRows = ROW_DEFAULT;  // Reset row visibility
     // Note: speedUnit is NOT reset here - it's a global preference, not per-profile
     setPosition(cellsX(168), cellsY(74));

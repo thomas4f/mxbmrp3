@@ -117,6 +117,7 @@ public:
         m_spotHotkey = sym<void(*)()>("MXBMRP3_Test_SpotterHotkey");
         m_hkStartCapture = sym<void(*)(int)>("MXBMRP3_Test_HotkeyStartCapture");
         m_hkCapturing    = sym<int(*)()>("MXBMRP3_Test_HotkeyCapturing");
+        m_hkHasKeyboard  = sym<int(*)(int)>("MXBMRP3_Test_HotkeyHasKeyboard");
         m_spotParked = sym<int(*)()>("MXBMRP3_Test_SpotterWorkerParked");
         m_stTheme   = sym<void(*)(char*,int)>("MXBMRP3_Test_StandingsTheme");
         m_mapZoom   = sym<int(*)()>("MXBMRP3_Test_MapZoomEnabled");
@@ -159,6 +160,8 @@ public:
         m_setDevMode = sym<void(*)(int)>("MXBMRP3_Test_SetDeveloperMode");
         m_setHudOpacity = sym<int(*)(const char*,float)>("MXBMRP3_Test_SetHudOpacity");
         m_setHudOffset = sym<int(*)(const char*,float,float)>("MXBMRP3_Test_SetHudOffset");
+        m_setUiScale   = sym<void(*)(float)>("MXBMRP3_Test_SetUiScale");
+        m_hudScales    = sym<int(*)(const char*,int*,int*)>("MXBMRP3_Test_HudScales");
         m_maxQuadArea = sym<int(*)(const char*)>("MXBMRP3_Test_HudMaxQuadArea");
         m_eventLogEnableDirector = sym<void(*)(int)>("MXBMRP3_Test_EventLogEnableDirector");
         m_timingConfig = sym<void(*)(int,int,int)>("MXBMRP3_Test_TimingConfig");
@@ -191,7 +194,9 @@ public:
         m_wnClickTab   = sym<int(*)(const char*)>("MXBMRP3_Test_WhatsNewClickTab");
         m_wnMarkerCount    = sym<int(*)()>("MXBMRP3_Test_WhatsNewMarkerCount");
         m_wnMarkerResolves = sym<int(*)(int)>("MXBMRP3_Test_WhatsNewMarkerResolves");
+        m_wnBandsMatch = sym<int(*)(int)>("MXBMRP3_Test_WhatsNewBandsMatch");
         m_wnMarkerName     = sym<void(*)(int, char*, int)>("MXBMRP3_Test_WhatsNewMarkerName");
+        m_wnMarkerInGroup  = sym<int(*)(int)>("MXBMRP3_Test_WhatsNewMarkerInGroup");
         m_wnSerialize      = sym<void(*)(char*, int)>("MXBMRP3_Test_WhatsNewSerialize");
         m_clickAbout       = sym<void(*)()>("MXBMRP3_Test_ClickAbout");
         m_updateTagLive    = sym<int(*)()>("MXBMRP3_Test_UpdateTagLive");
@@ -207,20 +212,21 @@ public:
         m_stepClick    = sym<int(*)(int,int,int)>("MXBMRP3_Test_SettingsClickStepped");
         m_profileArrowRepeats = sym<int(*)()>("MXBMRP3_Test_SettingsProfileArrowRepeats");
         m_cycleCount   = sym<int(*)(int)>("MXBMRP3_Test_SettingsCycleCount");
+        m_unnamedLists = sym<int(*)()>("MXBMRP3_Test_SettingsUnnamedLists");
         m_regionSig    = sym<void(*)(char*,int)>("MXBMRP3_Test_SettingsRegionSignature");
         m_cycleClick   = sym<int(*)(int,int)>("MXBMRP3_Test_SettingsClickCycle");
         m_perturbTab   = sym<int(*)()>("MXBMRP3_Test_SettingsPerturbActiveTab");
         m_clickResetTab = sym<int(*)()>("MXBMRP3_Test_SettingsClickResetTab");
         m_ruBumpsLight = sym<float(*)()>("MXBMRP3_Test_RumbleActiveBumpsLight");
         m_companion = sym<void(*)(int)>("MXBMRP3_Test_CompanionWindow");
-        m_glProbeConfig = sym<void(*)(int)>("MXBMRP3_Test_GlProbeConfig");
-        m_glProbeStatus = sym<int(*)(int)>("MXBMRP3_Test_GlProbeStatus");
-        m_glProbeLoad = sym<void(*)(int,int)>("MXBMRP3_Test_GlProbeLoad");
+        m_glRenderStateDiffs = sym<int(*)(int*)>("MXBMRP3_Test_GlRenderStateDiffs");
         m_glRenderProbe = sym<int(*)(int,int,int,int,int)>("MXBMRP3_Test_GlRenderProbe");
         m_glInGame = sym<void(*)(int)>("MXBMRP3_Test_GlInGame");
         m_glConfirmArm = sym<void(*)(int)>("MXBMRP3_Test_GlConfirmArm");
         m_injectMouse = sym<void(*)(int,float,float,int)>("MXBMRP3_Test_InjectMouse");
         m_settingsRegionCenter = sym<int(*)(const char*,float*,float*)>("MXBMRP3_Test_SettingsRegionCenter");
+        m_settingsUntipped = sym<int(*)(char*,int)>("MXBMRP3_Test_SettingsUntippedRows");
+        m_settingsControlSpan = sym<int(*)(const char*,int,float*,float*,float*)>("MXBMRP3_Test_SettingsControlSpan");
         m_achievementsPage = sym<int(*)(char*,int)>("MXBMRP3_Test_AchievementsPage");
         m_glInGameGet = sym<int(*)()>("MXBMRP3_Test_GlInGameGet");
         m_glConfirmActive = sym<int(*)()>("MXBMRP3_Test_GlConfirmActive");
@@ -358,6 +364,7 @@ public:
         m_padStemName       = sym<void(*)(int, char*, int)>("MXBMRP3_Test_GamepadStemName");
         m_spriteOrderMism   = sym<int(*)()>("MXBMRP3_Test_SpriteOrderMismatches");
         m_spriteOrderSwap   = sym<int(*)(int, int)>("MXBMRP3_Test_SpriteOrderWithSwap");
+        m_installWarning    = sym<int(*)(int, int, int, int)>("MXBMRP3_Test_InstallWarning");
         m_setPackShowBg     = sym<void(*)(int, int)>("MXBMRP3_Test_SetPackShowBg");
         m_setPitboardPack   = sym<void(*)(const char*)>("MXBMRP3_Test_SetPitboardPack");
         m_pitboardStored    = sym<void(*)(char*, int)>("MXBMRP3_Test_PitboardPackStored");
@@ -387,6 +394,7 @@ public:
         m_achLeader         = sym<void(*)(const char*,char*,int)>("MXBMRP3_Test_AchievementLeader");
         m_prestige          = sym<int(*)()>("MXBMRP3_Test_Prestige");
         m_setPrestige       = sym<void(*)(int)>("MXBMRP3_Test_SetPrestige");
+        m_setStatsUnreadable = sym<void(*)(int)>("MXBMRP3_Test_SetStatsUnreadable");
         m_takePrestige      = sym<int(*)()>("MXBMRP3_Test_TakePrestige");
         m_explorationSet    = sym<void(*)(const char*, double)>("MXBMRP3_Test_ExplorationSet");
         m_achForceTiers     = sym<void(*)(int, const char*)>("MXBMRP3_Test_AchievementForceTiers");
@@ -396,11 +404,29 @@ public:
         m_achUnits          = sym<void(*)(int*,int*)>("MXBMRP3_Test_AchievementUnits");
         m_achRows           = sym<void(*)(int*,int*)>("MXBMRP3_Test_AchievementRows");
         m_achBonus          = sym<int(*)()>("MXBMRP3_Test_AchievementBonus");
+        m_hkInject          = sym<int(*)(const char*)>("MXBMRP3_Test_HotkeyInject");
+        m_setSettingsKey    = sym<void(*)(int, int)>("MXBMRP3_Test_SetSettingsKey");
+        m_msgPosted         = sym<unsigned int(*)()>("MXBMRP3_Test_MessagesPosted");
+        m_msgLast           = sym<void(*)(char*,int)>("MXBMRP3_Test_MessageLast");
+        m_msgShowing        = sym<int(*)(char*,int)>("MXBMRP3_Test_MessageShowing");
+        m_msgStartup        = sym<void(*)(int,const char*,const char*)>("MXBMRP3_Test_MessagesStartup");
+        m_verPopup          = sym<int(*)(int*)>("MXBMRP3_Test_VersionPopup");
+        m_hudHeldBack       = sym<int(*)(const char*)>("MXBMRP3_Test_HudHeldBack");
+        m_verPopupAdvance   = sym<void(*)(int)>("MXBMRP3_Test_VersionPopupAdvance");
+        m_verPopupDismiss   = sym<void(*)()>("MXBMRP3_Test_VersionPopupDismiss");
+        m_clickResetOnce    = sym<int(*)()>("MXBMRP3_Test_SettingsClickResetTabOnce");
+        m_msgSettle         = sym<void(*)()>("MXBMRP3_Test_MessagesSettle");
         m_trackRider        = sym<int(*)(const char*)>("MXBMRP3_Test_TrackRider");
         m_explorationTick   = sym<void(*)(int,int,int,int,int,unsigned int)>("MXBMRP3_Test_ExplorationTick");
         m_setHudsEnabled    = sym<void(*)(int)>("MXBMRP3_Test_SetHudsEnabled");
         m_setEveryHudVisible = sym<void(*)(int)>("MXBMRP3_Test_SetEveryHudVisible");
         m_setHudVisible = sym<int(*)(const char*,int)>("MXBMRP3_Test_SetHudVisible");
+        m_setMotion      = sym<void(*)(int)>("MXBMRP3_Test_SetMotion");
+        m_setMotionNowUs = sym<void(*)(long long)>("MXBMRP3_Test_SetMotionNowUs");
+        m_gameFrameHash  = sym<unsigned long long(*)()>("MXBMRP3_Test_GameFrameHash");
+        m_mapMotionLayers = sym<int(*)(int*,int*)>("MXBMRP3_Test_MapMotionLayers");
+        m_setHudVisibleBoth = sym<int(*)(const char*,int)>("MXBMRP3_Test_SetHudVisibleBoth");
+        m_hudVisible    = sym<int(*)(const char*)>("MXBMRP3_Test_HudVisible");
         m_twInject   = sym<void(*)(const char*)>("MXBMRP3_Test_TwitchInjectLine");
         m_twInjectStale = sym<void(*)(const char*)>("MXBMRP3_Test_TwitchInjectStaleLine");
         m_twChannel  = sym<void(*)(char*,int)>("MXBMRP3_Test_TwitchChannel");
@@ -491,11 +517,19 @@ public:
     // startup() re-arms the shutdown guard: several tests run start/shutdown
     // cycles (deinit, companion_decouple, director_*), and swallowing the second
     // shutdown would leave the plugin live across the next one.
+    //
+    // Startup also SETTLES the startup popups (the welcome a fresh save folder
+    // owes, an "Updated to"): every test folder is a fresh install, and a
+    // Version widget turned popup would sit in every layout assertion. A test
+    // about those popups asks for them with keepStartupPopups() first.
     int startup(const char* savePath) {
         m_shutdownDone = false;
         m_started = true;
-        return m_startup ? m_startup(const_cast<char*>(savePath)) : -1;
+        const int rc = m_startup ? m_startup(const_cast<char*>(savePath)) : -1;
+        if (!m_keepStartupPopups && m_msgSettle) m_msgSettle();
+        return rc;
     }
+    void keepStartupPopups(bool keep = true) { m_keepStartupPopups = keep; }
     // Idempotent within one startup, so an explicit call followed by the
     // destructor's does not Shutdown twice.
     //
@@ -577,7 +611,13 @@ public:
                    // which is what every test that says nothing about fuel
                    // wants: the fuel rows measure against capacity, so with
                    // none they stay put.
-                   float maxFuel = 0.0f) {
+                   float maxFuel = 0.0f,
+                   // The RPM the gear turns red at. 0 (the default) = none.
+                   int shiftRpm = 0,
+                   // The rev limiter. 0 (the default) = none.
+                   int limiterRpm = 0,
+                   // The top of the rev range. 0 (the default) = unknown.
+                   int maxRpm = 0) {
         SPluginsBikeEvent_t ev{};
         ev.m_iServerType = serverType;
         setStr(ev.m_szServerName, serverName);
@@ -588,6 +628,9 @@ public:
         setStr(ev.m_szTrackName, trackName);
         ev.m_fTrackLength = trackLength; ev.m_iType = type;
         ev.m_fMaxFuel = maxFuel;
+        ev.m_iShiftRPM = shiftRpm;
+        ev.m_iLimiter = limiterRpm;
+        ev.m_iMaxRPM = maxRpm;
         ev.m_iNumberOfGears = 6;   // a real bike has gears (so the gear widget shows a digit, not "D")
         if (m_eventInit) m_eventInit(&ev, (int)sizeof(ev));
     }
@@ -1179,6 +1222,13 @@ public:
     bool hasHotkeyCapture() const { return m_hkStartCapture && m_hkCapturing; }
     void hotkeyStartCapture(int action) { if (m_hkStartCapture) m_hkStartCapture(action); }
     bool hotkeyCapturing() { return m_hkCapturing && m_hkCapturing() != 0; }
+    bool hotkeyHasKeyboard(int action) { return m_hkHasKeyboard && m_hkHasKeyboard(action) != 0; }
+    // A right-click (bit 1 of the injected buttons), pressed and released over x,y.
+    void rightClickAt(float x, float y) {
+        injectMouse(true, x, y, 0); draw();
+        injectMouse(true, x, y, 2); draw();
+        injectMouse(true, x, y, 0); draw();
+    }
     // Block until the TTS worker is parked in its queue wait, or `timeoutMs`
     // elapses; returns whether it parked. Call it after a cue when the NEXT
     // thing the test does must not race the worker — the first speech cue
@@ -1219,6 +1269,19 @@ public:
     void setStandingsTheme(const char* v) { if (m_stSetTheme) m_stSetTheme(v); }
     // MapHud zoom toggle, read back after a settings load; see MXBMRP3_Test_MapZoomEnabled.
     bool mapZoomEnabled() { return m_mapZoom && m_mapZoom() != 0; }
+    // The flat Overview map the map tests measure against: Mode Overview, no
+    // rotation, no tilt, no lap delta. The factory default became Follow /
+    // Rotate / 30 deg tilt / lap delta Default in 1.32; these tests pin the
+    // plain map's geometry, so they ask for it rather than inherit a default.
+    void mapFlatOverview() {
+        for (const char* name : { "MXBMRP3_Test_MapSetZoom", "MXBMRP3_Test_MapSetRotate",
+                                  "MXBMRP3_Test_MapSetTilt", "MXBMRP3_Test_MapSetLapDelta" }) {
+            auto fn = sym<void(*)(int)>(name);
+            // Throws, not REQUIRE: see readShippedPack() for why this header can't assert.
+            if (!fn) throw std::runtime_error(std::string(name) + " not exported (test build?)");
+            fn(0);
+        }
+    }
     // RadarHud's, whose factory default is THEME_NONE -- see MXBMRP3_Test_RadarTheme
     // for why a non-empty default is the only way to test clearing one.
     std::string radarTheme() {
@@ -1297,15 +1360,12 @@ public:
     bool probeSweepRunning() { return m_sweepRunning && m_sweepRunning() != 0; }
     // The sweep's report text for a SYNTHETIC result set (supplied per-quad
     // costs, no wall-clock sweep) — see MXBMRP3_Test_ProbeSweepReport.
-    // glPaintState: -2 derive from glUs (default), else force -1/0/1.
-    std::string probeSweepReport(double fillUs, double alpha0Us, double degenUs,
-                                 double glUs = 0.0, int glPaintState = -2) {
-        auto fn = sym<void (*)(double, double, double, double, int, char*, int)>(
+    std::string probeSweepReport(double fillUs, double alpha0Us, double degenUs) {
+        auto fn = sym<void (*)(double, double, double, char*, int)>(
             "MXBMRP3_Test_ProbeSweepReport");
         if (!fn) return {};
         std::vector<char> buf(16384);
-        fn(fillUs, alpha0Us, degenUs, glUs, glPaintState,
-           buf.data(), static_cast<int>(buf.size()));
+        fn(fillUs, alpha0Us, degenUs, buf.data(), static_cast<int>(buf.size()));
         return std::string(buf.data());
     }
     // Glyphs per probe string. The engine bills per glyph, so the sweep steps this
@@ -1325,6 +1385,19 @@ public:
     }
     // Move a panel. LAYOUT-dirty only, so the next frame takes the reposition fast
     // path rather than a full rebuild -- the path that rewrites the background span.
+    // Appearance's UI scale.
+    bool setUiScale(float scale) {
+        if (!m_setUiScale) return false;
+        m_setUiScale(scale);
+        return true;
+    }
+    // A panel's own Scale and its drawn scale (own x UI scale), x1000.
+    struct HudScales { int own = 0, drawn = 0; };
+    HudScales hudScales(const char* name) {
+        HudScales s;
+        if (m_hudScales) m_hudScales(name, &s.own, &s.drawn);
+        return s;
+    }
     bool setHudOffset(const char* name, float x, float y) {
         return m_setHudOffset && m_setHudOffset(name, x, y) != 0;
     }
@@ -1436,6 +1509,10 @@ public:
     bool whatsNewMarkerResolves(int index) {
         return m_wnMarkerResolves && m_wnMarkerResolves(index) == 1;
     }
+    // Marker `index`'s tab draws one "New" band per live marked row, no more.
+    bool whatsNewBandsMatch(int index) {
+        return m_wnBandsMatch && m_wnBandsMatch(index) == 1;
+    }
     // The dismissed set exactly as the INI would carry it. Reading it directly is
     // the only way to see a dismissal of a key no marker names.
     std::string whatsNewSerialize() {
@@ -1456,6 +1533,10 @@ public:
     bool hasAboutRect() const { return m_aboutRect != nullptr; }
     bool aboutButtonRect(int& l, int& t, int& r, int& b) {
         return m_aboutRect && m_aboutRect(&l, &t, &r, &b) != 0;
+    }
+    // Does marker `i`'s tab sit inside a More group (-1 when the hook is missing)?
+    int whatsNewMarkerInGroup(int index) {
+        return m_wnMarkerInGroup ? m_wnMarkerInGroup(index) : -1;
     }
     std::string whatsNewMarkerName(int index) {
         char buf[128] = {0};
@@ -1504,6 +1585,19 @@ public:
             out.push_back(buf);
         return out;
     }
+    // Settings rows built since the last call with no tooltip, or an id with no
+    // text ("tab: label"), clearing the record. -1 entry count: hook missing.
+    int settingsUntippedRows(std::vector<std::string>* rows = nullptr) {
+        if (!m_settingsUntipped) return -1;
+        static char buf[16384];
+        const int n = m_settingsUntipped(buf, static_cast<int>(sizeof(buf)));
+        if (rows) {
+            std::string all(buf);
+            for (size_t p = 0, e; (e = all.find('\n', p)) != std::string::npos; p = e + 1)
+                rows->push_back(all.substr(p, e - p));
+        }
+        return n;
+    }
     void showSettings(bool v = true) { if (m_showSettings) m_showSettings(v ? 1 : 0); }
     bool settingsVisible() { return m_settingsVisible && m_settingsVisible() == 1; }
     // Stepped-control click seam: count/click STEPPED_UP (up=true) / STEPPED_DOWN
@@ -1520,6 +1614,8 @@ public:
     // regions on the active tab, in layout order (no hold tier - cycles never
     // accelerate).
     int cycleCount(bool up) { return m_cycleCount ? m_cycleCount(up ? 1 : 0) : -1; }
+    // Lists of 3+ states on the active tab drawn without names (so not as a dropdown).
+    int unnamedLists() { return m_unnamedLists ? m_unnamedLists() : -1; }
     // Signature of the active settings tab's emitted click regions (see the hook).
     std::string regionSignature() {
         if (!m_regionSig) return {};
@@ -1760,20 +1856,16 @@ public:
         return true;
     }
 
-    // Phase 0 GL feasibility probe (core/gl_probe.h). glProbe(0|1|2) sets the
-    // mode; the status fields are read by the index the hook documents:
-    //   0 ran, 1 moduleResident, 2 entryPointsOk, 3 contextCurrent,
-    //   4 glVersion (x10), 5 compatProfile, 6 drew, 7 readbackMatched,
-    //   8 stateDiffs (-1 = not measured), 9 glErrors.
-    void glProbe(int mode) { if (m_glProbeConfig) m_glProbeConfig(mode); }
-    int  glProbeStatus(int field) const { return m_glProbeStatus ? m_glProbeStatus(field) : 0; }
-    // Phase 1 measurement load: N in-context quads, batch 0=immediate 1=glDrawArrays.
-    void glProbeLoad(int quads, int batch) { if (m_glProbeLoad) m_glProbeLoad(quads, batch); }
     // Render a synthetic frame through the in-context GL backend into the
     // context glMakeContext() created, and read one pixel back (top-down
     // coords). Returns 0xRRGGBBAA, or -1 if the render failed.
     int glRenderProbe(int w, int h, int px, int py, int scenario) {
         return m_glRenderProbe ? m_glRenderProbe(w, h, px, py, scenario) : -1;
+    }
+    // GL state values a backend render changed (fingerprint before vs after),
+    // -1 if no context or no render; the render's GL errors go to *glErrors.
+    int glRenderStateDiffs(int* glErrors) {
+        return m_glRenderStateDiffs ? m_glRenderStateDiffs(glErrors) : -1;
     }
     // [Advanced] glInGame: the in-context GL renderer. glDrewLastFrame() reports
     // whether it ACTUALLY drew, which is what suppression must follow.
@@ -1805,6 +1897,20 @@ public:
         injectMouse(true, x, y, 0); draw();
         injectMouse(true, x, y, 1); draw();
         injectMouse(true, x, y, 0); draw();
+    }
+    // A settings slider's track, or a dropdown's box (left edge, centre line,
+    // width) by its row's tooltip id, and a LEFT-button drag: press, move, release.
+    bool settingsSliderSpan(const char* tooltipId, float* x0, float* y, float* w) {
+        return m_settingsControlSpan && m_settingsControlSpan(tooltipId, 0, x0, y, w) == 1;
+    }
+    bool settingsDropdownSpan(const char* tooltipId, float* x0, float* y, float* w) {
+        return m_settingsControlSpan && m_settingsControlSpan(tooltipId, 1, x0, y, w) == 1;
+    }
+    void leftDragAt(float x0, float y0, float x1, float y1) {
+        injectMouse(true, x0, y0, 0); draw();
+        injectMouse(true, x0, y0, 1); draw();
+        injectMouse(true, x1, y1, 1); draw();
+        injectMouse(true, x1, y1, 0); draw();
     }
     void dragAt(float x0, float y0, float x1, float y1) {
         injectMouse(true, x0, y0, 0); draw();
@@ -1980,6 +2086,11 @@ public:
     int spriteOrderWithSwap(int a, int b) {
         return m_spriteOrderSwap ? m_spriteOrderSwap(a, b) : -1;
     }
+    // Build the broken-install warning for these discovery counts; its quad
+    // count, 0 when the install looks fine (-1 = hook missing).
+    int installWarning(int fonts, int icons, bool iconsComplete = true, bool realText = false) {
+        return m_installWarning ? m_installWarning(fonts, icons, iconsComplete ? 1 : 0, realText ? 1 : 0) : -1;
+    }
 
     // GamepadSprite::kStems, read from the DLL so a fixture staging a real pack
     // tree cannot drift from the table discovery actually walks.
@@ -2096,6 +2207,9 @@ public:
     bool hasPrestige() const { return m_prestige && m_setPrestige && m_takePrestige; }
     int prestige() { return m_prestige ? m_prestige() : 0; }
     void setPrestige(int level) { if (m_setPrestige) m_setPrestige(level); }
+    // As if the last stats load met a file it could not open or parse.
+    bool hasStatsUnreadable() const { return m_setStatsUnreadable != nullptr; }
+    void setStatsUnreadable(bool on) { if (m_setStatsUnreadable) m_setStatsUnreadable(on ? 1 : 0); }
     bool takePrestige() { return m_takePrestige && m_takePrestige() == 1; }
     // Set an exploration signal by its persisted key and re-evaluate. For the
     // tier/toast/halfway machinery, which needs a four-tier row steppable to an
@@ -2135,6 +2249,39 @@ public:
     // The tab's "(+n)": earned rows outside the listed total (hidden page and
     // misfortunes alike), which neither figure above counts.
     int achievementBonus() { return m_achBonus ? m_achBonus() : -1; }
+
+    // --- System messages (core/system_messages.h) -----------------------------
+    // See MXBMRP3_Test_HotkeyInject and friends in core/test_hooks_messages.cpp.
+    bool hasMessages() const { return m_hkInject && m_msgPosted && m_msgLast && m_msgShowing && m_verPopup; }
+    // Fire a hotkey by its INI config name on the next draw(); false = unknown name.
+    bool injectHotkey(const char* name) { return m_hkInject && m_hkInject(name) == 1; }
+    // Rebind the settings menu's keyboard key (vk 0 = none; mods = ModifierFlags bits).
+    bool hasSetSettingsKey() const { return m_setSettingsKey != nullptr; }
+    void setSettingsKey(int vk, int mods) { if (m_setSettingsKey) m_setSettingsKey(vk, mods); }
+    unsigned int messagesPosted() { return m_msgPosted ? m_msgPosted() : 0u; }
+    // "title|detail|icon|tab|severity" of the last toast posted.
+    std::string lastMessage() {
+        char buf[256] = {0};
+        if (m_msgLast) m_msgLast(buf, static_cast<int>(sizeof(buf)));
+        return buf;
+    }
+    // The title of the system toast on the card, "" when none is showing.
+    std::string messageShowing() {
+        char buf[64] = {0};
+        if (m_msgShowing) m_msgShowing(buf, static_cast<int>(sizeof(buf)));
+        return buf;
+    }
+    void messagesStartup(bool fresh, const char* line, const char* storedLine = nullptr) {
+        if (m_msgStartup) m_msgStartup(fresh ? 1 : 0, line, storedLine);
+    }
+    // 0 none, 1 update, 2 updated, 3 welcome; *countdown = the second shown.
+    int versionPopup(int* countdown = nullptr) { return m_verPopup ? m_verPopup(countdown) : -1; }
+    // 1 while the frame holds the HUD back (hide-all, a popup over it), 0 if not.
+    int hudHeldBack(const char* name) { return m_hudHeldBack ? m_hudHeldBack(name) : -1; }
+    void versionPopupAdvance(int ms) { if (m_verPopupAdvance) m_verPopupAdvance(ms); }
+    void versionPopupDismiss() { if (m_verPopupDismiss) m_verPopupDismiss(); }
+    // One Reset click: arms "Confirm?" only (clickResetTab() is the full two).
+    bool clickResetTabOnce() { return m_clickResetOnce && m_clickResetOnce() != 0; }
     // The exploration signals' clock (Night Owl, Anniversary, Regular) and their
     // once-a-second tick (spectate and rumble time, Frame Perfect, On Air).
     void setLocalTime(int year, int month, int day, int hour) {
@@ -2154,6 +2301,22 @@ public:
     void setEveryHudVisible(bool on) { if (m_setEveryHudVisible) m_setEveryHudVisible(on ? 1 : 0); }
     // One HUD's game-surface visibility by harness id (MXBMRP3_Test_SetHudVisible).
     bool setHudVisible(const char* name, bool on) { return m_setHudVisible && m_setHudVisible(name, on ? 1 : 0) == 1; }
+    // Motion (core/motion.h): the level (0 Off, 1 Subtle, 2 Normal), its clock in
+    // microseconds (-1 = real), and a byte fingerprint of the last game frame.
+    bool hasMotion() const { return m_setMotion && m_setMotionNowUs && m_gameFrameHash; }
+    void setMotion(int level) { if (m_setMotion) m_setMotion(level); }
+    void setMotionNowUs(long long us) { if (m_setMotionNowUs) m_setMotionNowUs(us); }
+    unsigned long long gameFrameHash() { return m_gameFrameHash ? m_gameFrameHash() : 0; }
+    // A HUD on or off on both surfaces (setHudVisible is the game surface only).
+    bool setHudVisibleBoth(const char* name, bool on) {
+        return m_setHudVisibleBoth && m_setHudVisibleBoth(name, on ? 1 : 0) == 1;
+    }
+    // The Map's outline and the fill over it, highest alpha in the last game frame.
+    bool mapMotionLayers(int& under, int& over) {
+        return m_mapMotionLayers && m_mapMotionLayers(&under, &over) == 1;
+    }
+    // ...and read back: 1 on, 0 off, -1 no such HUD (or no hook).
+    int hudVisible(const char* name) { return m_hudVisible ? m_hudVisible(name) : -1; }
 
     // --- Twitch chat (core/test_hooks_twitch.cpp). Lines go through the real
     // parse-and-queue path with no network; the HUD drains them on its next draw.
@@ -3313,6 +3476,7 @@ private:
     void        (*m_spotHotkey)() = nullptr;
     void        (*m_hkStartCapture)(int) = nullptr;
     int         (*m_hkCapturing)() = nullptr;
+    int         (*m_hkHasKeyboard)(int) = nullptr;
     int         (*m_spotParked)() = nullptr;
     void        (*m_stTheme)(char*, int) = nullptr;
     int         (*m_mapZoom)() = nullptr;
@@ -3371,6 +3535,8 @@ private:
     void        (*m_setDevMode)(int) = nullptr;
     int         (*m_setHudOpacity)(const char*,float) = nullptr;
     int         (*m_setHudOffset)(const char*,float,float) = nullptr;
+    void        (*m_setUiScale)(float) = nullptr;
+    int         (*m_hudScales)(const char*,int*,int*) = nullptr;
     int         (*m_maxQuadArea)(const char*) = nullptr;
     long long   m_lastReplayTimeMs = 0;
     int         (*m_save)() = nullptr;
@@ -3389,7 +3555,9 @@ private:
     int         (*m_wnClickTab)(const char*) = nullptr;
     int  (*m_wnMarkerCount)() = nullptr;
     int  (*m_wnMarkerResolves)(int) = nullptr;
+    int  (*m_wnBandsMatch)(int) = nullptr;
     void (*m_wnMarkerName)(int, char*, int) = nullptr;
+    int  (*m_wnMarkerInGroup)(int) = nullptr;
     void (*m_wnSerialize)(char*, int) = nullptr;
     void (*m_clickAbout)() = nullptr;
     int  (*m_updateTagLive)() = nullptr;
@@ -3406,6 +3574,7 @@ private:
     bool        m_started = false;   // startup() was called at least once
     bool        m_skipShutdownOnDestroy = false;
     int         (*m_cycleCount)(int) = nullptr;
+    int         (*m_unnamedLists)() = nullptr;
     void        (*m_regionSig)(char*,int) = nullptr;
     int         (*m_cycleClick)(int,int) = nullptr;
     int         (*m_perturbTab)() = nullptr;
@@ -3415,14 +3584,14 @@ private:
     int         (*m_setThemeGap)(float) = nullptr;
     void        (*m_settingsGutter)(int*,int*,int*) = nullptr;
     void        (*m_companion)(int) = nullptr;
-    void        (*m_glProbeConfig)(int) = nullptr;
-    int         (*m_glProbeStatus)(int) = nullptr;
-    void        (*m_glProbeLoad)(int,int) = nullptr;
+    int         (*m_glRenderStateDiffs)(int*) = nullptr;
     int         (*m_glRenderProbe)(int,int,int,int,int) = nullptr;
     void        (*m_glInGame)(int) = nullptr;
     void        (*m_glConfirmArm)(int) = nullptr;
     void        (*m_injectMouse)(int,float,float,int) = nullptr;
     int         (*m_settingsRegionCenter)(const char*,float*,float*) = nullptr;
+    int         (*m_settingsUntipped)(char*,int) = nullptr;
+    int         (*m_settingsControlSpan)(const char*,int,float*,float*,float*) = nullptr;
     int         (*m_achievementsPage)(char*,int) = nullptr;
     int         (*m_glInGameGet)() = nullptr;
     int         (*m_glConfirmActive)() = nullptr;
@@ -3538,6 +3707,7 @@ private:
     void        (*m_padStemName)(int, char*, int) = nullptr;
     int         (*m_spriteOrderMism)() = nullptr;
     int         (*m_spriteOrderSwap)(int, int) = nullptr;
+    int         (*m_installWarning)(int, int, int, int) = nullptr;
     void        (*m_setPackShowBg)(int, int) = nullptr;
     void        (*m_setPitboardPack)(const char*) = nullptr;
     void        (*m_pitboardStored)(char*, int) = nullptr;
@@ -3564,6 +3734,8 @@ private:
     void        (*m_achLeader)(const char*,char*,int) = nullptr;
     int         (*m_prestige)() = nullptr;
     void        (*m_setPrestige)(int) = nullptr;
+    void        (*m_setSettingsKey)(int, int) = nullptr;
+    void        (*m_setStatsUnreadable)(int) = nullptr;
     int         (*m_takePrestige)() = nullptr;
     void        (*m_explorationSet)(const char*, double) = nullptr;
     int         (*m_achToastShowing)() = nullptr;
@@ -3571,6 +3743,18 @@ private:
     void        (*m_achUnits)(int*,int*) = nullptr;
     void        (*m_achRows)(int*,int*) = nullptr;
     int         (*m_achBonus)() = nullptr;
+    int         (*m_hkInject)(const char*) = nullptr;
+    unsigned int (*m_msgPosted)() = nullptr;
+    void        (*m_msgLast)(char*, int) = nullptr;
+    int         (*m_msgShowing)(char*, int) = nullptr;
+    void        (*m_msgStartup)(int, const char*, const char*) = nullptr;
+    int         (*m_verPopup)(int*) = nullptr;
+    int         (*m_hudHeldBack)(const char*) = nullptr;
+    void        (*m_verPopupAdvance)(int) = nullptr;
+    void        (*m_verPopupDismiss)() = nullptr;
+    int         (*m_clickResetOnce)() = nullptr;
+    void        (*m_msgSettle)() = nullptr;
+    bool        m_keepStartupPopups = false;
     int         (*m_trackRider)(const char*) = nullptr;
     void        (*m_explorationTick)(int,int,int,int,int,unsigned int) = nullptr;
     void        (*m_achForceTiers)(int, const char*) = nullptr;
@@ -3579,6 +3763,12 @@ private:
     void        (*m_setEveryHudVisible)(int) = nullptr;
     int         (*m_settingsVisible)() = nullptr;
     int         (*m_setHudVisible)(const char*,int) = nullptr;
+    void        (*m_setMotion)(int) = nullptr;
+    void        (*m_setMotionNowUs)(long long) = nullptr;
+    unsigned long long (*m_gameFrameHash)() = nullptr;
+    int         (*m_mapMotionLayers)(int*,int*) = nullptr;
+    int         (*m_setHudVisibleBoth)(const char*,int) = nullptr;
+    int         (*m_hudVisible)(const char*) = nullptr;
     void        (*m_twInject)(const char*) = nullptr;
     void        (*m_twInjectStale)(const char*) = nullptr;
     void        (*m_twChannel)(char*,int) = nullptr;

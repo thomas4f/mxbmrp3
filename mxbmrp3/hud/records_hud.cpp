@@ -590,7 +590,7 @@ void RecordsHud::addFilterRow(float contentStartX, float currentY, const ScaledD
               this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
     rowX += providerFixedWidth;  // Fixed width regardless of actual name length
 
-    addString(" >", rowX, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::ACCENT), dim.fontSize);
+    addString(">", rowX + charWidth, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::ACCENT), dim.fontSize);
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::PROVIDER_RIGHT});
     rowX += charWidth * 4;  // " > " + gap
 
@@ -607,7 +607,7 @@ void RecordsHud::addFilterRow(float contentStartX, float currentY, const ScaledD
               this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::PRIMARY), dim.fontSize);
     rowX += categoryFixedWidth;  // Fixed width regardless of actual name length
 
-    addString(" >", rowX, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::ACCENT), dim.fontSize);
+    addString(">", rowX + charWidth, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::ACCENT), dim.fontSize);
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::CATEGORY_RIGHT});
     rowX += charWidth * 4;  // " > " + gap
 }
@@ -1012,7 +1012,7 @@ void RecordsHud::resetToDefaults() {
     m_bShowTitle = true;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     setPosition(cellsX(133), cellsY(41));
     m_provider = DataProvider::CBR;
     m_categoryIndex = 0;

@@ -236,7 +236,7 @@ constexpr int TIER_COUNT = 4;
 // they actually land on without hardcoding a second copy of it.
 // Raising it makes the tab taller, which settings_fit_test / theme_geometry_test
 // gate against the shared panel height.
-constexpr int ENTRIES_PER_PAGE = 8;
+constexpr int ENTRIES_PER_PAGE = 6;
 // The Achievements tab's task row: the next tier's sentence and the progress
 // numbers share one row beside a 1.4-row icon, and this is the characters that
 // row holds (measured at the shipped layout). test_achievements.cpp holds every

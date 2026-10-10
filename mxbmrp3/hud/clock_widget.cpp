@@ -180,7 +180,7 @@ void ClockWidget::resetToDefaults() {
     m_bFormat24h = true;
     setTextureVariant(0);
     m_fBackgroundOpacity = 0.0f;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     setPosition(cellsX(52), cellsY(1));
     setDataDirty();
 }

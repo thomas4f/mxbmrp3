@@ -8,16 +8,14 @@ A free, [open-source](https://github.com/thomas4f/mxbmrp3) plugin for MX Bikes, 
 
 ## Features
 
-- Customizable HUD layouts with drag-and-drop positioning, hotkeys, themes, and auto-switching profiles
-- Live race data covering standings, timing, gap-to-PB bar, track map, radar, event log, and online records
-- Telemetry and lap analysis with splits, personal bests, race-progression charts, and fuel tracking
-- Spotter voice calling riders around you, your gaps, flags and hazards, with subtitles and voice packs
-- Social features including Steam friends, Discord Rich Presence, and rider tracking with colors/icons
-- Broadcasting features with auto-director, OBS overlay, controller visualization, and companion window
-- First-person helmet overlay with telemetry-driven tilt and vibration, plus controller rumble
-- Achievements from Bronze to Platinum for riding, racing, freestyle, and exploring the plugin itself
-- Persistent stats and personal bests across sessions, plus FMX freestyle trick scoring
-- Moddable panel themes, textures, fonts, icons, web overlay styling, and INI-level configuration
+- **Racing:** Live standings, timing, gap bar, track map, radar and online records
+- **Social:** Steam friends, Discord Rich Presence and tracked riders
+- **Progress:** Stats, personal bests, achievements and FMX trick scoring
+- **Layout:** Customizable HUDs with themes, hotkeys and auto-switching profiles
+- **Analysis:** Lap analysis with splits, a delta trace, telemetry and fuel tracking
+- **Immersion:** Spotter voice, first-person helmet overlay and controller rumble
+- **Streaming:** OBS overlay, auto-director, controller visualization and companion window
+- **Modding:** Moddable themes, fonts, icons and web overlay styling
 
 ## Get Started
 
@@ -116,14 +114,14 @@ The plugin is active in-game only - it does nothing in the main menus, so all co
 
 Hover over any setting for a tooltip explaining what it does.
 
-**Auto-Save** (Settings > General) writes your changes when you leave the track. To save sooner, use the **Save** button at the bottom of the menu - it lights up whenever you have unsaved changes.
+**Auto-save** (Settings > General) writes your changes when you leave the track. To save sooner, use the **Save** button at the bottom of the menu - it lights up whenever you have unsaved changes.
 
-The settings menu provides global settings that apply to all profiles, followed by per-element tabs for the individual HUDs and widgets:
+The settings menu provides global settings that apply to all profiles, followed by per-element tabs for the individual HUDs and widgets. The per-element tabs list the most-used first; the rest open from the **More** row at the bottom:
 
 | Icon | Tab | Description |
 |:----:|-----|-------------|
-| <img src="assets/icons/hud-general.svg" width="20" height="20" alt=""> | **General** | Profiles, preferences, web overlay, presence integrations, usage survey |
-| <img src="assets/icons/hud-appearance.svg" width="20" height="20" alt=""> | **Appearance** | Units, fonts, panel theme, colors, HUD placement, and which display it draws on |
+| <img src="assets/icons/hud-general.svg" width="20" height="20" alt=""> | **General** | Preferences with reference and freeze defaults, presence integrations, usage survey, web overlay, profiles |
+| <img src="assets/icons/hud-appearance.svg" width="20" height="20" alt=""> | **Appearance** | Panel theme, units, motion, messages, UI scale, fonts, colors, and which display the HUD draws on |
 | <img src="assets/icons/hud-hotkeys.svg" width="20" height="20" alt=""> | **Hotkeys** | Keyboard and controller bindings |
 | <img src="assets/icons/hud-riders.svg" width="20" height="20" alt=""> | **Riders** | Track specific riders with custom colors and icons |
 | <img src="assets/icons/hud-rumble.svg" width="20" height="20" alt=""> | **Rumble** | Controller vibration feedback effects |
@@ -148,72 +146,74 @@ Four separate profiles store complete HUD layout configurations:
 - **Race** - Race 1, Race 2, Straight Rhythm sessions
 - **Spectate** - Spectating or viewing replays
 
-**Auto-Switch** (Settings > General) changes profiles for you as the session type changes.
+**Auto-switch** (Settings > General) changes profiles for you as the session type changes.
 
 ## HUDs & Widgets
 
 **HUDs** are the larger data displays - each gets its own settings tab with options like column/row toggles, gap modes, and textures. **Widgets** are simpler, single-purpose readouts (one number, gauge, or dial); rather than a tab each, they're configured together under the shared **Widgets** tab, a row apiece for visibility, title, texture, opacity and scale (the two that belong to a feature - the Director's status button and the Spotter's subtitles - sit on that feature's own tab instead).
 
-### HUDs
-
-| Icon | HUD | Description |
-|:----:|-----|-------------|
-| <img src="assets/icons/hud-standings.svg" width="20" height="20" alt=""> | **Standings** | Live race positions with gaps, status, and tracked rider indicators |
-| <img src="assets/icons/hud-map.svg" width="20" height="20" alt=""> | **Map** | Top-down track map with rider positions (click to spectate) |
-| <img src="assets/icons/hud-radar.svg" width="20" height="20" alt=""> | **Radar** | Proximity radar with approach alerts and distance arrows |
-| <img src="assets/icons/hud-laplog.svg" width="20" height="20" alt=""> | **Lap Log** | Historical lap times with PB indicators |
-| <img src="assets/icons/hud-ideallap.svg" width="20" height="20" alt=""> | **Ideal Lap** | Best sector times and theoretical ideal lap |
-| <img src="assets/icons/hud-sessioncharts.svg" width="20" height="20" alt=""> | **Charts** | Session-progression charts: position, race trace, gap to leader, pace |
-| <img src="assets/icons/hud-telemetry.svg" width="20" height="20" alt=""> | **Telemetry** | Throttle, brake, suspension graphs |
-| <img src="assets/icons/hud-records.svg" width="20" height="20" alt=""> | **Records** | Online lap records (CBR or MXB-Ranked) with personal bests (MX Bikes only) |
-| <img src="assets/icons/hud-pitboard.svg" width="20" height="20" alt=""> | **Pitboard** | Pitboard-style lap information display |
-| <img src="assets/icons/hud-session.svg" width="20" height="20" alt=""> | **Session** | Session info (type, track, format, server, weather) |
-| <img src="assets/icons/hud-timing.svg" width="20" height="20" alt=""> | **Timing** | Split and lap times with gap comparisons |
-| <img src="assets/icons/hud-gapbar.svg" width="20" height="20" alt=""> | **Gap Bar** | Live gap to your all-time or session PB or last lap, with ghost and markers |
-| <img src="assets/icons/hud-notices.svg" width="20" height="20" alt=""> | **Notices** | Race status notices (wrong way, blue flag, PB alerts, last lap, finished) |
-| <img src="assets/icons/hud-eventlog.svg" width="20" height="20" alt=""> | **Event Log** | Timestamped feed of race events (laps, penalties, finishes, pit activity) |
-| <img src="assets/icons/hud-friends.svg" width="20" height="20" alt=""> | **Friends** | Steam friends in-game: their server/track and who's joined your session |
-| <img src="assets/icons/hud-fmx.svg" width="20" height="20" alt=""> | **FMX** | Freestyle trick detection, scoring and chain combos (MX Bikes and GP Bikes only) |
-| <img src="assets/icons/hud-stats.svg" width="20" height="20" alt=""> | **Stats** | Riding stats with columns for last lap, session, and all-time totals |
-| <img src="assets/icons/hud-performance.svg" width="20" height="20" alt=""> | **Performance** | FPS and the plugin's own per-frame time |
-
 ### Widgets
 
 | Widget | Description |
 |--------|-------------|
-| **Position** | Race position |
-| **Lap** | Current lap number |
-| **Time** | Session time/countdown |
-| **Clock** | Real-time clock |
-| **Gear** | Current gear |
 | **Speed** | Current speed |
+| **Gear** | Current gear |
+| **Lap** | Current lap number |
+| **Position** | Race position |
+| **Time** | Session time/countdown |
 | **Crashes** | Resettable crash tally |
-| **Bars** | Vertical telemetry bars (throttle, brake, suspension, etc.) |
-| **Lean** | Bike lean angle with arc gauge |
-| **G-Force** | Lateral/longitudinal G-force gauge with peak marker |
 | **Fuel** | Fuel calculator with consumption tracking |
+| **Bars** | Vertical telemetry bars (throttle, brake, suspension, etc.) |
+| **Tacho** | Analog tachometer |
+| **RPM** | Shift lights that turn red at the shift point, the red ones flashing on the limiter |
+| **Lean** | Bike lean angle with arc gauge |
+| **Speedo** | Analog speedometer with odometer and trip meter |
+| **G-Force** | Lateral/longitudinal G-force gauge with peak marker |
+| **Compass** | Heading dial (classic needle or modern rotating card) |
 | **Tyre Temp** | Front and rear tyre temperatures (GP Bikes only) |
 | **ECU** | Engine map, traction control, engine braking and anti-wheeling (GP Bikes only) |
-| **Speedo** | Analog speedometer with odometer and trip meter |
-| **Tacho** | Analog tachometer |
-| **Compass** | Heading dial (classic needle or modern rotating card) |
-| **Gamepad** | Controller visualization |
-| **Pointer** | The mouse cursor. Off = settings menu only, which helps if a pad reads as a mouse |
 | **Settings** | The button that opens this menu. Hide it if you prefer the Tilde hotkey |
 | **Version** | The plugin's version number |
+| **Gamepad** | Controller visualization |
+| **Clock** | Real-time clock |
+| **Pointer** | The mouse cursor. Off = settings menu only, which helps if a pad reads as a mouse |
 | **Prestige** | A badge earned by trading in a completed achievement ladder (MX Bikes only) |
+
+### HUDs
+
+| Icon | HUD | Description |
+|:----:|-----|-------------|
+| <img src="assets/icons/hud-map.svg" width="20" height="20" alt=""> | **Map** | Top-down track map with rider positions (click to spectate), a zoomed Follow view you can tilt and that can show more track the faster you go, and lap delta colours |
+| <img src="assets/icons/hud-notices.svg" width="20" height="20" alt=""> | **Notices** | Race status notices (wrong way, blue flag, PB alerts, last lap, finished) |
+| <img src="assets/icons/hud-standings.svg" width="20" height="20" alt=""> | **Standings** | Live race positions with gaps, status, and tracked rider indicators |
+| <img src="assets/icons/hud-friends.svg" width="20" height="20" alt=""> | **Friends** | Steam friends in-game: their server/track and who's joined your session |
+| <img src="assets/icons/hud-timing.svg" width="20" height="20" alt=""> | **Timing** | Split and lap times, a live gap and gap comparisons |
+| <img src="assets/icons/hud-laplog.svg" width="20" height="20" alt=""> | **Lap Log** | Historical lap times with PB indicators |
+| <img src="assets/icons/hud-gapbar.svg" width="20" height="20" alt=""> | **Gap Bar** | Live gap to your all-time or session PB or last lap, with ghost and markers |
+| <img src="assets/icons/hud-deltatrace.svg" width="20" height="20" alt=""> | **Delta Trace** | Your gap to your all-time or session PB or last lap across the whole lap |
+| <img src="assets/icons/hud-pitboard.svg" width="20" height="20" alt=""> | **Pitboard** | Pitboard-style lap information display |
+| <img src="assets/icons/hud-radar.svg" width="20" height="20" alt=""> | **Radar** | Proximity radar with approach alerts and distance arrows |
+| <img src="assets/icons/hud-ideallap.svg" width="20" height="20" alt=""> | **Ideal Lap** | Best sector times and theoretical ideal lap |
+| <img src="assets/icons/hud-session.svg" width="20" height="20" alt=""> | **Session** | Session info (type, track, format, server, weather) |
+| <img src="assets/icons/hud-performance.svg" width="20" height="20" alt=""> | **Performance** | FPS and the plugin's own per-frame time |
+| <img src="assets/icons/hud-stats.svg" width="20" height="20" alt=""> | **Stats** | Riding stats with columns for last lap, session, and all-time totals |
+| <img src="assets/icons/hud-telemetry.svg" width="20" height="20" alt=""> | **Telemetry** | Throttle, brake, suspension graphs |
+| <img src="assets/icons/hud-records.svg" width="20" height="20" alt=""> | **Records** | Online lap records (CBR or MXB-Ranked) with personal bests (MX Bikes only) |
+| <img src="assets/icons/hud-fmx.svg" width="20" height="20" alt=""> | **FMX** | Freestyle trick detection, scoring and chain combos (MX Bikes and GP Bikes only) |
+| <img src="assets/icons/hud-eventlog.svg" width="20" height="20" alt=""> | **Event Log** | Timestamped feed of race events (laps, penalties, finishes, pit activity) |
+| <img src="assets/icons/hud-sessioncharts.svg" width="20" height="20" alt=""> | **Charts** | Session-progression charts: position, race trace, gap to leader, pace |
 
 ## More Features
 
 Each of these has its own switch in the settings menu.
 
 ### Web Overlay
-Turn on **Web Server** (Settings > General) and the plugin serves a live browser overlay: a standings tower, event log, rider focus card, and periodic broadcast panels (fastest-lap boards, a "down the order" rundown, and on-track battles). Point an OBS **Browser Source** at `http://localhost:8080` (the port is shown beside the setting), or just open it in a browser. Colors and fonts follow your in-game settings, and a gear icon on the overlay sets tower size, filters and the rest per browser. Full guide: [Web overlay](docs/web-overlay.md).
+Turn on **Web server** (Settings > General) and the plugin serves a live browser overlay: a standings tower, event log, rider focus card, and periodic broadcast panels (fastest-lap boards, a "down the order" rundown, and on-track battles). Point an OBS **Browser Source** at `http://localhost:8080` (the address is in the row below the setting, a clickable link while it is serving), or just open it in a browser. Colors and fonts follow your in-game settings, and a gear icon on the overlay sets tower size, filters and the rest per browser. Full guide: [Web overlay](docs/web-overlay.md).
 
 ### Achievements (MX Bikes only)
-**Settings > Achievements**: a hundred-odd milestones, Bronze to Platinum, for riding, racing, freestyle, jumping and for trying out the plugin itself. A toast marks each tier earned, and a halfway card the long steps to Gold and Platinum (**Show toasts** turns the cards off; tracking continues either way). They read your existing stats, so an install starts with whatever its numbers already earn. A few are hidden until you stumble on them, and the ones about things going wrong have their own page, outside the completion figures.
+**Settings > Achievements**: a hundred-odd milestones, Bronze to Platinum, for riding, racing, freestyle, jumping and for trying out the plugin itself. A toast marks each tier earned, and a halfway card the long steps to Gold and Platinum (Toasts > **Visible** turns the cards off; tracking continues either way). They read your existing stats, so an install starts with whatever its numbers already earn. A few are hidden until you stumble on them, and the ones about things going wrong have their own page, outside the completion figures.
 
-Take every counted one to Platinum and a **Prestige** button appears, trading the whole ladder back - achievements and their counters to zero - for a level and the Prestige badge widget. Personal bests are untouched; there is no way back, so it asks twice. Full list: [Achievements](docs/achievements.md).
+Take every counted one to Platinum and a **Prestige** button appears, trading the whole ladder back - achievements and their counters to zero - for a level and the Prestige badge widget, which you then turn on under **Widgets**. Personal bests are untouched; there is no way back, so it asks twice. Full list: [Achievements](docs/achievements.md).
 
 ### Spotter (voice callouts)
 Turn on **Spoken audio** (Settings > Spotter, or the checkbox beside the tab) and the plugin talks to you while you ride: riders behind or alongside you, blue flags, a rider down, and - each time you cross the line - your position and the gaps ahead and behind. Windows text-to-speech reads it out of the box, with **TTS voice**, **Speed** and **Volume** to choose how; recorded voice packs are a separate download. Five **Callouts** switches decide what gets announced, and **Subtitles** puts every call on screen so you can run it silent. It follows whoever you're watching, so it works while spectating and in replays. Full guide: [Spotter voice](docs/spotter.md).
@@ -222,25 +222,28 @@ Turn on **Spoken audio** (Settings > Spotter, or the checkbox beside the tab) an
 Turn on the **Director** (Settings > Director, or its camera-icon status button) and it automatically cuts the spectate camera to the most interesting rider or battle, broadcast-style, so you don't have to switch riders by hand. It works while spectating live and in replays - a great way to re-watch or record a session and let it direct the action for you. It also drives the [Web Overlay](#web-overlay)'s battle panel.
 
 ### Second-monitor HUD (Companion window)
-Set **HUD Display** (Settings > Appearance) to **Companion** or **Both** to open a standalone window you can drag and maximize on a second monitor. Each HUD keeps its own on/off state and position there (drag or toggle it while your mouse is over that window), so you can run a minimal in-game layout and a full dashboard on the second screen at once.
+Set **HUD display** (Settings > Appearance > Companion window) to **Companion** or **Both** to open a standalone window you can drag and maximize on a second monitor. Each HUD keeps its own on/off state and position there (drag or toggle it while your mouse is over that window), so you can run a minimal in-game layout and a full dashboard on the second screen at once.
+
+**Companion bg** sets what is behind the HUD in that window. Set it to **Green**, **Blue** or **Magenta** to put just the HUD over your game in OBS: add a **Window Capture** of `[mxbikes.exe]: MXBMRP3` and give it a **Chroma Key** filter with the same Key Color Type. Pick a colour your HUD does not use, since the filter removes it from the HUD too.
 
 ### Track records
 The Records HUD fetches online lap records from CBR or MXB-Ranked. Turn on **Auto-fetch** (Settings > Records) to load them when you enter a track. Records also work while spectating.
 
 ### Custom segment timing (training tool)
-Bind the **Segment Add** and **Segment Remove** hotkeys (Settings > Hotkeys) to drop timing points on the track as you ride. Drop two and the Timing HUD times the section between them - live, with a delta to your best for it - so you can drill a single corner or rhythm section without completing a full lap. Remove the points to return to normal split/lap timing.
+Bind the **Segment +** and **Segment -** hotkeys (Settings > Hotkeys) to drop timing points on the track as you ride. Drop two and the Timing HUD times the section between them - live, with a delta to your best for it - so you can drill a single corner or rhythm section without completing a full lap. Remove the points to return to normal split/lap timing.
 
 ### See where friends are racing
-**Steam Friends** (Settings > General) is on by default on the Steam build. It broadcasts your session to friends and populates the Friends HUD: which of your Steam friends are in-game, the server and track they're on, and who's joined your session.
+**Steam** (Settings > General) is on by default on the Steam build. It broadcasts your session to friends and populates the Friends HUD: which of your Steam friends are in-game, the server and track they're on, and who's joined your session.
 
 ## Tips & Tricks
 
 ### Streaming setup
 - **Session info** - turn on the **Session** HUD (Settings > Session) to show the server name, track, and session format on screen for your viewers.
 - **Pitboard and Gamepad** - both widgets have [fully customizable textures](docs/modding.md#custom-textures), and the Gamepad widget shows your live controller inputs.
-- **Discord Rich Presence** (Settings > General) - shows your current session and track in your Discord profile.
+- **Discord** (Settings > General) - Rich Presence shows your current session and track in your Discord profile.
 - **Stream chat in game** (Settings > Stream Chat) - your Twitch and YouTube chat together on screen. Enter your Twitch channel and/or YouTube `@handle`, press Enter, and switch each **Status** on. Read-only, no login.
 - **Broadcast overlay** - for a browser/OBS overlay with standings and battles, see [Web Overlay](#web-overlay).
+- **Just the HUD over your game** - set **Companion bg** (Settings > Appearance > Companion window) to **Green**, **Blue** or **Magenta** and key it out in OBS, see [Second-monitor HUD](#second-monitor-hud-companion-window).
 
 ### Power-user INI tweaks
 More options are available by editing the [INI file](#advanced-settings) directly. It is organized by HUD section, and each section takes per-element color and font overrides. Colors use ABGR hex values; fonts use the font filename (without `.fnt`) of any file in the `fonts/` folder. For example:
@@ -257,16 +260,16 @@ Use the [Color Override Picker](https://thomas4f.github.io/mxbmrp3/tools/color_o
 ### Getting the most FPS
 Biggest wins first:
 
-1. Turn on **Direct GL Rendering** (Settings > General) - the plugin draws the HUD itself instead of handing every piece of it to the game
-2. Set **Panel Theme** to **None** (Settings > Appearance) - a theme puts artwork behind every panel
-3. Turn off **Drop Shadow** (Settings > Appearance) - every shadowed string is drawn twice
+1. Turn on **Direct GL** (Settings > General) - the plugin draws the HUD itself instead of handing every piece of it to the game
+2. Set **Panel theme** to **None** (Settings > Appearance) - a theme puts artwork behind every panel
+3. Turn off **Drop shadow** (Settings > Appearance) - every shadowed string is drawn twice
 4. Turn down **Detail**, and slim or turn off **Track outline** (Settings > Map) - the track ribbon is the plugin's largest single piece of drawing
 5. Turn off what you don't use (the checkbox beside each tab, or the Visible column in Settings > Widgets) - a hidden element builds and draws nothing
 
 Beyond the plugin: every other plugin in your `plugins` folder works every frame whether you use it or not, so removing ones you don't need is often the biggest win of all.
 
 ### Experimental: run the plugin on its own thread
-By default the plugin does its work during the game's frame. Set `pluginThread=1` in the `[Advanced]` section of the [INI file](#advanced-settings) to move the plugin's HUD building and event handling onto a separate thread, so a heavy HUD rebuild can't cost you frames. It's **experimental** - try it if you're chasing the smoothest possible frame times. Toggle it live with the **Reload Config** hotkey.
+By default the plugin does its work during the game's frame. Set `pluginThread=1` in the `[Advanced]` section of the [INI file](#advanced-settings) to move the plugin's HUD building and event handling onto a separate thread, so a heavy HUD rebuild can't cost you frames. It's **experimental** - try it if you're chasing the smoothest possible frame times. Toggle it live with the **Reload** hotkey.
 
 ### Game settings that pair with the plugin
 
@@ -292,9 +295,9 @@ Most settings are in the in-game menu; the power-user ones are INI-only, and car
 - `[HudName:Practice]`, `[HudName:Qualify]`, `[HudName:Race]`, `[HudName:Spectate]` - Profile-specific overrides (only values that differ from base)
 
 **Editing the INI file:** the simple way is with the game closed - edit `mxbmrp3_settings.ini`, then launch. To hot-reload while the game is running:
-1. Turn off **Auto-Save** (Settings > General), or it writes your in-game state back over the edits when you leave the track
+1. Turn off **Auto-save** (Settings > General), or it writes your in-game state back over the edits when you leave the track
 2. Edit the INI file
-3. Use the **Reload Config** hotkey to apply changes (bind it in Settings > Hotkeys)
+3. Use the **Reload** hotkey to apply changes (bind it in Settings > Hotkeys)
 
 ## Modding
 
@@ -344,6 +347,7 @@ Installing manually from the [ZIP archive](#manual-installation) avoids most of 
 - If you have multiple installations (e.g., standalone and Steam), the installer may pick the wrong one. Verify the plugin ended up in the `plugins\` folder next to the game `.exe` you actually launch. If not, run the installer again and select the correct path, or install manually.
 
 ### Text or Icons Not Appearing
+- The plugin shows "MXBMRP3 is not installed correctly" in block letters when it finds no fonts or icons
 - `mxbmrp3_data\` holds the fonts, textures and icons, and must sit in `plugins\` beside the DLO (see [directory structure](#manual-installation))
 - If you moved or renamed it, restore it from the release archive
 
@@ -359,12 +363,12 @@ Installing manually from the [ZIP archive](#manual-installation) avoids most of 
 - To restore: verify game files integrity (Steam) or reinstall the game
 
 ### Web Overlay Not Working
-- If **Web Server** reads **Error** (Settings > General), the plugin couldn't open the port - usually because another application already has it
-- Change **Web Server Port** (Settings > General) to a free one (e.g., 8081). When it's serving, the row below turns into a clickable `http://localhost:<port>` link
+- If **Web server** reads **Error** (Settings > General), the plugin couldn't open the port - usually because another application already has it
+- Change **Web server port** (Settings > General) to a free one (e.g., 8081). When it's serving, the row below turns into a clickable `http://localhost:<port>` link
 - Remember to update your OBS Browser Source URL to match the new port
 
 ### Stream Chat Shows Unavailable
-- YouTube chat is read through YouTube's public web chat without an API key, which is unofficial: when YouTube changes it, the **Status** reads **Unavailable** and its chat can't be read
+- YouTube chat is read through YouTube's public web chat without an API key, which is unofficial: when YouTube changes it, the chat panel shows **Unavailable**, the YouTube **Status** (Settings > Stream Chat) reads **Can't read**, and its chat can't be read
 - Twitch chat is unaffected. The plugin is not affiliated with Twitch or YouTube
 
 ### Game Fails to Launch, Crashes, or Shows Black Screen
@@ -390,7 +394,7 @@ What it sends:
 | Usage counters | How many times this install has launched, and how many days since it was first installed |
 | Achievement progress | Which achievements are unlocked and at what tier, plus two totals: the share of tiers earned, and how many are unlocked |
 | Session length | How long a play session lasted (start to clean exit), so the developer can gauge typical usage |
-| Crashes | If the game crashed last session: which module faulted and where, the error code and access type (read/write/execute), the plugin and game versions at the time, and a short backtrace of the faulting call stack (the top several module-and-offset frames, so a plugin fault can be told apart from a bystander to a game or driver crash) - enough to group similar crashes, but never the memory dump or its contents. Reported on the next launch |
+| Crashes | If the game crashed last session: which module faulted and where, the error code, the access type (read/write/execute) and the memory address it tried to access (different every launch, so it identifies nothing), the plugin and game versions at the time, and a short backtrace of the faulting call stack (the top several module-and-offset frames, so a plugin fault can be told apart from a bystander to a game or driver crash) - enough to group similar crashes, but never the memory dump or its contents. Reported on the next launch |
 | Link clicks | Which in-plugin link you click (documentation, community, or the thank-you link) - nothing else |
 | Prestige | That you traded a finished achievement ladder for a prestige level, and which level it reached |
 
@@ -466,14 +470,14 @@ Thanks to everyone in the MX Bikes community who tested, reported bugs, and shar
 
 ## About
 
-MXBMRP3 is a community project: one person's spare-time work, and much of what it has become comes from the people who use it - the riders who report problems, suggest features, test new ideas, and keep finding new ways to use it.
+MXBMRP3 is a community project: one person's spare-time work, and much of what it has become comes from the people who use it - the riders who report problems, suggest features, test new ideas and find new ways to use it.
 
 It started in 2024, after development of MaxHUD, the community's long-standing HUD, came to an end. The first version, **MXBMRP - MX Bikes Memory Reader Project**, was a small experiment I built before I really knew what I was doing. That grew through several versions into MXBMRP3, a full plugin built on the game's plugin API.
 
-Keeping MXBMRP3 open source is deliberate: it can be studied, changed and built on, and does not depend on me. It is free, with no paid tier, no locked features, no ads, and every release is built entirely from the public source (MIT).
+Keeping MXBMRP3 open source is deliberate: it can be studied, changed and built on, and does not depend on me. It is free, with no paid tier, no locked features and no ads, and every release is built from the public source.
 
-If MXBMRP3 makes the game a little better for you, or inspires something new, then it has done what I hoped it would.
+If MXBMRP3 makes the game a little better for you, or inspires something new, it has done what I hoped it would.
 
 ### Say thanks
 
-A comment or rating on [mxb-mods](https://mxb-mods.com/mxbmrp3) or a star on [GitHub](https://github.com/thomas4f/mxbmrp3) helps, and there is a [Ko-fi](https://ko-fi.com/thomas4f). All optional.
+A comment or rating on [mxb-mods](https://mxb-mods.com/mxbmrp3), a star on [GitHub](https://github.com/thomas4f/mxbmrp3) or a coffee on [Ko-fi](https://ko-fi.com/thomas4f) helps. All optional.

@@ -368,6 +368,13 @@ public:
     // action -- "wipe my stats" is not "I never did this".
     int getPrestige() const { return m_prestige; }
     void setPrestige(int n) { m_prestige = n < 0 ? 0 : n; }
+    // The last load() found a stats file it could not open or parse, so the
+    // level above reads 0 whatever the file says. A missing file is not this:
+    // that is a player who has never taken one.
+    bool lastLoadUnreadable() const { return m_loadUnreadable; }
+#if defined(MXBMRP3_TEST_BUILD)
+    void testSetLoadUnreadable(bool on) { m_loadUnreadable = on; }
+#endif
 
     // Trade every achievement and the lifetime counters they read for one
     // prestige level. PERSONAL BESTS SURVIVE: a lap time is a record of what
@@ -457,6 +464,7 @@ private:
 
     // Prestige levels taken. See prestige().
     int m_prestige = 0;
+    bool m_loadUnreadable = false;
 
     // Cached category PB (needed because getPersonalBest returns a pointer to synthesized data)
     mutable StatsPersonalBestData m_cachedCategoryPB;

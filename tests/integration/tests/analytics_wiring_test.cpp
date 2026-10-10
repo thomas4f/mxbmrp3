@@ -117,6 +117,8 @@ TEST_CASE("analytics wiring: app_started always built; sampling gates session_en
     CHECK(has(crash, "mxbmrp3.dlo+0xeaab4"));
     // Access-violation sub-type also rides along (2.13.0).
     CHECK(has(crash, "\"av_type\":\"read\""));
+    // ...and the address it tried to touch (2.29.0).
+    CHECK(has(crash, "\"av_addr\":\"null+0x28\""));
     // The same crash once more as an error report for the Errors page (2.22.0):
     // one object, grouped by module, the whole walk one frame per line - a frame
     // the event's 180-character stack could not carry is here.
@@ -126,6 +128,10 @@ TEST_CASE("analytics wiring: app_started always built; sampling gates session_en
     CHECK(has(report, "mxbikes.exe+0x2a42f0 0xC0000005 read game"));
     CHECK(has(report, "\"severity\":\"fatal\""));
     CHECK(has(report, "\"kind\":\"crash\""));
+    // The target heads the trace, not the message: the dashboard groups on the
+    // message, and a heap address would give every crash its own group.
+    CHECK(has(report, "\"stackTrace\":\"accessed null+0x28\\nmxbikes.exe+0x2a42f0"));
+    CHECK_FALSE(has(report, "read null+0x28"));
     CHECK(has(report, "mxbmrp3.dlo+0xeaab4\\nmxbmrp3.dlo+0x1234\\nntdll.dll+0x1234\\nkernel32.dll+0x5678"));
     CHECK(has(report, "\"appVersion\":\"9.9.9\""));   // the version that CRASHED, from the marker
     CHECK_FALSE(has(report, "\"eventName\""));         // not an event

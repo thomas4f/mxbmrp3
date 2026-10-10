@@ -839,7 +839,7 @@ bool BenchmarkWidget::exportReport(const char* savePath) const {
     // comparison rests on someone remembering which file was which - and a
     // mislabelled pair does not look wrong, it looks like a result. gl_drew is
     // the honest half: the setting can be on while the backend declined (a
-    // failed init, or glProbe winning), and what was measured is what DREW.
+    // failed init), and what was measured is what DREW.
     {
         char seg[256];
         snprintf(seg, sizeof(seg),
@@ -899,7 +899,7 @@ void BenchmarkWidget::resetToDefaults() {
     m_bShowTitle = true;
     setTextureVariant(0);
     m_fBackgroundOpacity = 0.90f;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     setPosition(0.01f, cellsY(26));  // Left side of screen
 
     m_frameCounter = 0;

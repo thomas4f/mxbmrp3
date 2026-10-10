@@ -2,8 +2,9 @@
 // hud/director_widget.cpp
 // Camera-icon status button for the auto-director. The camera glyph stays
 // constant; its tint alone encodes the state (off / manual / paused / running),
-// and clicking it (cursor-visible) pauses/resumes auto-direction. Mirrors
-// SettingsButtonWidget.
+// and clicking it (cursor-visible) pauses/resumes auto-direction. With UI icons
+// off, a one-word state ("auto", "lock", ...) in the same tint stands in for the
+// camera. Mirrors SettingsButtonWidget.
 // ============================================================================
 #include "director_widget.h"
 #include "corner_buttons.h"
@@ -21,7 +22,6 @@
 #include "../diagnostics/logger.h"
 
 #include <cstdio>
-#include <cstring>
 
 using namespace PluginConstants;
 
@@ -65,7 +65,7 @@ namespace {
         return ColorSlot::NEUTRAL;
     }
 
-    // One-word text shown when flat icons are disabled (UiConfig title icons off).
+    // One-word text shown instead of the camera while UI icons are off.
     const char* stateWord(DirState s) {
         switch (s) {
             case DirState::Off:      return "off";
@@ -117,7 +117,7 @@ void DirectorWidget::resetToDefaults() {
     // defaults share a header (computed apart, this button overlaps its neighbour by a
     // cell, and a click in the overlap toggles the director AND opens the settings
     // panel).
-    m_fScale = 1.0f;
+    setScale(1.0f);
     setPosition(cellsX(CornerButtons::DIRECTOR_X), cellsY(CornerButtons::BUTTON_Y));
     setDataDirty();
 }
@@ -180,103 +180,76 @@ void DirectorWidget::rebuildRenderData() {
         if (cursor.isValid) isHovering = isPointInActiveBounds(cursor.x, cursor.y);
     }
 
-    const bool useIcons = UiConfig::getInstance().getTitleIcons();
-    AssetManager& assets = AssetManager::getInstance();
     // Borderless "hud-" camera for the shadowed main glyph (the hud-* icons are the
     // no-outline variants meant to carry the drop shadow, like the settings button).
-    const int camSprite = useIcons ? assets.getIconSpriteIndex("hud-video") : 0;
+    // With UI icons off the state word below stands in for it. Without its icons the
+    // install gets the broken-install warning (HudManager::buildInstallWarning), and
+    // the chip simply stays empty.
+    const bool useIcons = UiConfig::getInstance().getTitleIcons();
+    const int camSprite = useIcons ? AssetManager::getInstance().getIconSpriteIndex("hud-video") : 0;
+    // Content + padding, like every other panel: the glyph is the content and the
+    // panel padding surrounds it, so panelPaddingXCells/panelPaddingYCells apply
+    // here as on every other panel.
+    //
+    // The box is only pixel-square when the padding makes it so (the grid cell is
+    // 10.56 x 12.672px, so equal cell counts are not equal pixels); a fixed
+    // pixel-square would let a 2x2 block fill one square gauge widget, and uniform
+    // padding is the explicit trade against it.
+    const float btnIcon = dim.fontSizeLarge * layout().titleIconSize;
+    // BOTH AXES ON THE LATTICE. Unlike a dial, this box is not art -- it is a chip
+    // (a themed button slice set, or a plain solid quad), which is MEANT to be sized to
+    // the box, so growing it to whole cells distorts nothing and the glyph stays centred
+    // in it. The box is not pixel-square, because a cell is not; it is a whole number
+    // of cells, which is what tiling actually needs. See fitPanelToGrid.
+    const GridFit btnFit = fitPanelToGrid(dim.paddingH + btnIcon + dim.paddingH,
+                                          panelHeight(dim, btnIcon));
+    const float bgW = btnFit.w;
+    const float bgH = btnFit.h;
+    // Camera glyph at the SAME size as a HUD title/identity icon. HUD titles draw at
+    // the LARGE font, so the identity icon is fontSizeLarge * 0.63 (~20px at 1080p) -
+    // use that exact size (not fontSize * 0.63, which is smaller) for a consistent glyph.
+    const float iconSize = dim.fontSizeLarge * layout().titleIconSize;
 
-    // Icon button when UI icons are on AND the camera glyph resolves; a missing asset
-    // (or icons disabled) degrades to the "DIR <state>" text button below - like
-    // SettingsButtonWidget, never a meaningless coloured square.
-    if (camSprite > 0) {
-        // Content + padding, like every other panel: the glyph is the content and the
-        // panel padding surrounds it, so panelPaddingXCells/panelPaddingYCells apply
-        // here as on every other panel.
-        //
-        // The box is only pixel-square when the padding makes it so (the grid cell is
-        // 10.56 x 12.672px, so equal cell counts are not equal pixels); a fixed
-        // pixel-square would let a 2x2 block fill one square gauge widget, and uniform
-        // padding is the explicit trade against it.
-        const float btnIcon = dim.fontSizeLarge * layout().titleIconSize;
-        // BOTH AXES ON THE LATTICE. Unlike a dial, this box is not art -- it is a chip
-        // (a themed button slice set, or a plain solid quad), which is MEANT to be sized to
-        // the box, so growing it to whole cells distorts nothing and the glyph stays centred
-        // in it. The box is not pixel-square, because a cell is not; it is a whole number
-        // of cells, which is what tiling actually needs. See fitPanelToGrid.
-        const GridFit btnFit = fitPanelToGrid(dim.paddingH + btnIcon + dim.paddingH,
-                                              panelHeight(dim, btnIcon));
-        const float bgW = btnFit.w;
-        const float bgH = btnFit.h;
-        // Camera glyph at the SAME size as a HUD title/identity icon. HUD titles draw at
-        // the LARGE font, so the identity icon is fontSizeLarge * 0.63 (~20px at 1080p) -
-        // use that exact size (not fontSize * 0.63, which is smaller) for a consistent glyph.
-        const float iconSize = dim.fontSizeLarge * layout().titleIconSize;
+    // Accent "chip" (full on hover, dimmed otherwise) - matches SettingsButtonWidget.
+    // Holds its normal weight at/above 10% opacity (unchanged), then fades with the
+    // slider below 10% so the whole box can vanish at 0%, leaving just the opaque glyph.
+    const float chipScale = (m_fBackgroundOpacity < 0.1f) ? (m_fBackgroundOpacity / 0.1f) : 1.0f;
+    const float chipAlpha = (isHovering ? 1.0f : 128.0f / 255.0f) * chipScale;
+    const unsigned long chipColor =
+        PluginUtils::applyOpacity(getColor(ColorSlot::ACCENT), chipAlpha);
 
-        // Accent "chip" (full on hover, dimmed otherwise) - matches SettingsButtonWidget.
-        // Holds its normal weight at/above 10% opacity (unchanged), then fades with the
-        // slider below 10% so the whole box can vanish at 0%, leaving just the opaque glyph.
-        const float chipScale = (m_fBackgroundOpacity < 0.1f) ? (m_fBackgroundOpacity / 0.1f) : 1.0f;
-        const float chipAlpha = (isHovering ? 1.0f : 128.0f / 255.0f) * chipScale;
-        const unsigned long chipColor =
-            PluginUtils::applyOpacity(getColor(ColorSlot::ACCENT), chipAlpha);
-
-        // A button, not a panel: takes the theme's BUTTON slices. See SettingsButtonWidget
-        // for why a frame-plus-opaque-chip pair reads as unthemed.
-        if (addThemedButton(startX, startY, bgW, bgH, chipColor)) {
-            // Same reason as SettingsButtonWidget: the themed branch skips
-            // addBackgroundQuad, which is what arms the panel rect and fill strips.
-            invalidatePanelRect();
-        } else {
-            addBackgroundQuad(startX, startY, bgW, bgH);
-            SPluginQuad_t chip;
-            float x = startX, y = startY;
-            applyOffset(x, y);
-            setQuadPositions(chip, x, y, bgW, bgH);
-            chip.m_iSprite = SpriteIndex::SOLID_COLOR;
-            chip.m_ulColor = chipColor;
-            m_quads.push_back(chip);
-        }
-
-        const float camCx = startX + bgW * 0.5f;
-        const float camCy = startY + bgH * 0.5f;
-
-        // Flag the camera as the "title icon" so it gets the same togglable drop shadow
-        // as the settings button's glyph (added in HudManager's collect path). The
-        // camera's TINT alone encodes the director state (off / manual / paused /
-        // running) - no corner badge, colours only.
-        m_titleIconQuadIndex = static_cast<int>(m_quads.size());
-        addIcon(camCx, camCy, camSprite, tint, iconSize);
-
-        setBounds(startX, startY, startX + bgW, startY + bgH);
-        return;
+    // A button, not a panel: takes the theme's BUTTON slices. See SettingsButtonWidget
+    // for why a frame-plus-opaque-chip pair reads as unthemed.
+    if (addThemedButton(startX, startY, bgW, bgH, chipColor)) {
+        // Same reason as SettingsButtonWidget: the themed branch skips
+        // addBackgroundQuad, which is what arms the panel rect and fill strips.
+        invalidatePanelRect();
+    } else {
+        addBackgroundQuad(startX, startY, bgW, bgH);
+        SPluginQuad_t chip;
+        float x = startX, y = startY;
+        applyOffset(x, y);
+        setQuadPositions(chip, x, y, bgW, bgH);
+        chip.m_iSprite = SpriteIndex::SOLID_COLOR;
+        chip.m_ulColor = chipColor;
+        m_quads.push_back(chip);
     }
 
-    // Text fallback (UI icons off, or the camera glyph missing): "DIR <state>" with a
-    // small state-tinted status dot. (addDot draws a solid quad - fine as a status dot
-    // here, but it's never used to stand in for an icon.)
-    char detail[24];
-    snprintf(detail, sizeof(detail), "DIR  %s", stateWord(st));
-    const float dotDia = dim.fontSize * 0.6f;
-    const float gap = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize) * 0.5f;
-    const float textW = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(std::strlen(detail)), dim.fontSize);
-    const float lineH = dim.lineHeightNormal;
-    // Whole cells, like the icon branch above. The height (paddingV + a row + paddingV)
-    // lands there by itself; the WIDTH does not, because the dot is 0.6 of the font and
-    // the gap is half a character -- neither has any reason to land on a cell. This box is
-    // a plain background quad, so growing it distorts nothing; the content is re-centred
-    // in it rather than left hugging one edge. See fitPanelToGrid.
-    const GridFit fit = fitPanelToGrid(dim.paddingH + dotDia + gap + textW + dim.paddingH,
-                                       panelHeight(dim, lineH));
-    const float bgW = fit.w;
-    const float bgH = fit.h;
-    const float contentX = startX + fit.padX;
-    const float contentY = startY + fit.padY;
-    const float textX = contentX + dim.paddingH + dotDia + gap;
+    const float camCx = startX + bgW * 0.5f;
+    const float camCy = startY + bgH * 0.5f;
 
-    addBackgroundQuad(startX, startY, bgW, bgH);
-    addDot(contentX + dim.paddingH + dotDia * 0.5f, contentY + dim.paddingV + lineH * 0.5f, tint, dotDia);
-    const unsigned long textColor = (st == DirState::Off) ? getColor(ColorSlot::MUTED) : getColor(ColorSlot::PRIMARY);
-    addString(detail, textX, contentY + dim.paddingV, Justify::LEFT, getFont(FontCategory::NORMAL), textColor, dim.fontSize);
+    // Flag the camera as the "title icon" so it gets the same togglable drop shadow
+    // as the settings button's glyph (added in HudManager's collect path). The
+    // camera's TINT alone encodes the director state (off / manual / paused /
+    // running) - no corner badge, colours only. The text stand-in keeps the box (so
+    // the corner row's spacing holds, see corner_buttons.h) and the tint.
+    if (camSprite > 0) {
+        m_titleIconQuadIndex = static_cast<int>(m_quads.size());
+        addIcon(camCx, camCy, camSprite, tint, iconSize);
+    } else if (!useIcons) {
+        addString(stateWord(st), camCx, startY + (bgH - dim.fontSize) * 0.5f, Justify::CENTER,
+            getFont(FontCategory::NORMAL), tint, dim.fontSize);
+    }
+
     setBounds(startX, startY, startX + bgW, startY + bgH);
 }

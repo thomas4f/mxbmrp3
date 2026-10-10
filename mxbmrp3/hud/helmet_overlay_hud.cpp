@@ -54,7 +54,7 @@ void HelmetOverlayHud::resetToDefaults() {
     m_bShowTitle = false;
     setTextureVariant(0);
     m_fBackgroundOpacity = 1.0f;
-    m_fScale = 1.0f;
+    setScale(1.0f);
 
     m_helmetEnabled = true;
     m_visorMode = VISOR_OFF;
@@ -101,43 +101,6 @@ void HelmetOverlayHud::setHelmetLowerVariant(int variant) {
         m_helmetLowerVariant = variant;
         setDataDirty();
     }
-}
-
-static void cycleVariantGeneric(int& currentVariant, const char* baseName, bool forward) {
-    auto variants = AssetManager::getInstance().getAvailableVariants(baseName);
-    if (variants.empty()) {
-        currentVariant = 0;
-        return;
-    }
-
-    // Cycle order: 0 (Off) then all variants in discovery order
-    std::vector<int> cycleOrder = {0};
-    cycleOrder.insert(cycleOrder.end(), variants.begin(), variants.end());
-
-    int currentIndex = 0;
-    for (size_t i = 0; i < cycleOrder.size(); ++i) {
-        if (cycleOrder[i] == currentVariant) {
-            currentIndex = static_cast<int>(i);
-            break;
-        }
-    }
-
-    const int cycleSize = static_cast<int>(cycleOrder.size());
-    int newIndex = forward
-        ? (currentIndex + 1) % cycleSize
-        : (currentIndex - 1 + cycleSize) % cycleSize;
-
-    currentVariant = cycleOrder[newIndex];
-}
-
-void HelmetOverlayHud::cycleHelmetUpperVariant(bool forward) {
-    cycleVariantGeneric(m_helmetUpperVariant, TEX_HELMET_UPPER, forward);
-    setDataDirty();
-}
-
-void HelmetOverlayHud::cycleHelmetLowerVariant(bool forward) {
-    cycleVariantGeneric(m_helmetLowerVariant, TEX_HELMET_LOWER, forward);
-    setDataDirty();
 }
 
 int HelmetOverlayHud::resolveSpriteIndex(const char* baseName, int variant) {

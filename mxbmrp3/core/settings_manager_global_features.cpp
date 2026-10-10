@@ -1,7 +1,7 @@
 // ============================================================================
 // core/settings_manager_global_features.cpp
 // The global INI sections each owned by one subsystem: [Rumble] (XInputReader),
-// [HelmetOverlay], [Spotter], [Director], [Achievements], [Recorder] (dev tool)
+// [HelmetOverlay], [Spotter], [Director], [Achievements], [Messages], [Recorder] (dev tool)
 // and [Hotkeys]. One writer/applier pair per section, registered as one row of
 // SettingsManager::globalSectionRegistry() in settings_manager_global.cpp, which
 // also holds the dispatchers and the UI/general sections' pairs.
@@ -16,6 +16,8 @@
 #include "spotter_manager.h"
 #include "director_manager.h"
 #include "achievement_manager.h"
+#include "system_messages.h"
+#include "../hud/settings/whats_new.h"
 #include "../hud/helmet_overlay_hud.h"
 #include "../hud/director_widget.h"
 #include "../hud/achievement_widget.h"
@@ -503,7 +505,7 @@ void SettingsManager::writeDirectorSettings(std::ostream& out, const HudManager&
         out << "hudVisible=" << (hud->isVisible() ? 1 : 0) << "\n";
         out << "hudX=" << hud->getOffsetX() << "\n";
         out << "hudY=" << hud->getOffsetY() << "\n";
-        out << "hudScale=" << hud->getScale() << "\n";
+        out << "hudScale=" << hud->getOwnScale() << "\n";
         out << "hudOpacity=" << hud->getBackgroundOpacity() << "\n";
     }
     out << "\n";
@@ -598,7 +600,7 @@ void SettingsManager::writeAchievementsSettings(std::ostream& out, const HudMana
     if (const AchievementWidget* hud = hudManager.getAchievementWidget()) {
         out << "hudX=" << hud->getOffsetX() << "\n";
         out << "hudY=" << hud->getOffsetY() << "\n";
-        out << "hudScale=" << hud->getScale() << "\n";
+        out << "hudScale=" << hud->getOwnScale() << "\n";
         out << "hudOpacity=" << hud->getBackgroundOpacity() << "\n";
         out << "hudTitle=" << (hud->getShowTitle() ? 1 : 0) << "\n";
         // The tab's Texture row edits one or the other (texture variants when the
@@ -653,6 +655,35 @@ void SettingsManager::applyAchievementsLine(const std::string& key, const std::s
         }
     } catch (const std::exception& e) {
         DEBUG_WARN_F("Achievements: Failed to parse setting '%s': %s", key.c_str(), e.what());
+    }
+}
+
+// Write Messages section: the system toasts' switch (Appearance > Messages) and
+// what the startup popups have already told (core/system_messages.h). The two
+// state keys are written unconditionally, so the factory snapshot carries them
+// and a full reset replays them to "nothing owed" rather than leaving them stale.
+void SettingsManager::writeMessagesSettings(std::ostream& out, const HudManager& /*hudManager*/) const {
+    const SystemMessages& msgs = SystemMessages::getInstance();
+    out << "[Messages]\n";
+    out << "enabled=" << (msgs.isEnabled() ? 1 : 0) << "\n";
+    out << "lastLine=" << msgs.lineToStore(WhatsNew::currentLine()) << "\n";
+    out << "welcomed=" << msgs.welcomeState() << "\n";
+    out << "\n";
+}
+
+// Handle Messages section (global, not per-profile)
+void SettingsManager::applyMessagesLine(const std::string& key, const std::string& value, HudManager& /*hudManager*/) {
+    SystemMessages& msgs = SystemMessages::getInstance();
+    try {
+        if (key == "enabled") {
+            msgs.setEnabled(std::stoi(value) != 0);
+        } else if (key == "lastLine") {
+            msgs.setStoredLine(value);
+        } else if (key == "welcomed") {
+            msgs.setWelcomeState(std::stoi(value));
+        }
+    } catch (const std::exception& e) {
+        DEBUG_WARN_F("Messages: Failed to parse setting '%s': %s", key.c_str(), e.what());
     }
 }
 

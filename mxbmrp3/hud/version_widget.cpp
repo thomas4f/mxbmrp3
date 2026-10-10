@@ -20,6 +20,9 @@
 #include "../core/settings_manager.h"
 #include "../core/hud_manager.h"
 #include "../core/plugin_manager.h"
+#include "../core/system_messages.h"
+#include "../core/hotkey_manager.h"
+#include "../core/pixel_text.h"
 #if GAME_HAS_ANALYTICS
 #include "../core/analytics_manager.h"
 #endif
@@ -27,14 +30,6 @@
 #include "../handlers/draw_handler.h"
 
 using namespace PluginConstants;
-
-namespace {
-}  // namespace
-
-namespace {
-}  // namespace
-
-
 
 VersionWidget::VersionWidget() {
     m_panelKind = PanelKind::Widget;
@@ -62,6 +57,13 @@ bool VersionWidget::handlesDataType(DataChangeType /*dataType*/) const {
 }
 
 void VersionWidget::update() {
+    // Popups first: which one is owed, and its countdown. Not during the game,
+    // which owns the panel until it exits.
+    if (!m_gameActive) {
+        syncPopup();
+        tickPopup();
+    }
+
     // Handle click detection for Easter egg trigger
     handleClickDetection();
 
@@ -115,10 +117,10 @@ void VersionWidget::handleClickDetection() {
     bool isLeftClick = isLeftPressed && !m_wasLeftPressed;
     m_wasLeftPressed = isLeftPressed;
 
-    // Handle notification button hover and clicks (not during game)
-    if (m_showingUpdateNotification && !m_gameActive) {
-        // Shift into build space so the View/Dismiss buttons line up when the widget is
-        // dragged to a different spot on the companion (no-op in-game).
+    // Handle popup button hover and clicks (not during game)
+    if (m_popup != Popup::None && !m_gameActive) {
+        // Shift into build space so the buttons line up when the widget is dragged
+        // to a different spot on the companion (no-op in-game).
         CursorPosition cursor = input.getCursorPosition();
         mapCursorToHudSpace(cursor.x, cursor.y);
 
@@ -126,16 +128,16 @@ void VersionWidget::handleClickDetection() {
         NotificationButton oldHover = m_hoveredButton;
         m_hoveredButton = NotificationButton::NONE;
 
-        if (cursor.isValid) {
-            // Check View button bounds (apply offset to button coords)
-            float viewLeft = m_viewButtonLeft + m_fOffsetX;
-            float viewTop = m_viewButtonTop + m_fOffsetY;
-            if (cursor.x >= viewLeft && cursor.x <= viewLeft + m_viewButtonWidth &&
-                cursor.y >= viewTop && cursor.y <= viewTop + m_viewButtonHeight) {
-                m_hoveredButton = NotificationButton::VIEW;
+        // The welcome has no primary button (hasPrimary in the popup layout).
+        if (cursor.isValid && m_popup != Popup::Welcome) {
+            float primaryLeft = m_primaryButtonLeft + m_fOffsetX;
+            float primaryTop = m_primaryButtonTop + m_fOffsetY;
+            if (cursor.x >= primaryLeft && cursor.x <= primaryLeft + m_primaryButtonWidth &&
+                cursor.y >= primaryTop && cursor.y <= primaryTop + m_primaryButtonHeight) {
+                m_hoveredButton = NotificationButton::PRIMARY;
             }
-
-            // Check Dismiss button bounds
+        }
+        if (cursor.isValid) {
             float dismissLeft = m_dismissButtonLeft + m_fOffsetX;
             float dismissTop = m_dismissButtonTop + m_fOffsetY;
             if (cursor.x >= dismissLeft && cursor.x <= dismissLeft + m_dismissButtonWidth &&
@@ -149,37 +151,18 @@ void VersionWidget::handleClickDetection() {
             setDataDirty();
         }
 
-        // Handle button clicks
         if (isLeftClick) {
-            if (m_hoveredButton == NotificationButton::VIEW) {
-                // Clear notification mode since they're going to settings
-                m_showingUpdateNotification = false;
-                m_bVisible = false;
-                m_hoveredButton = NotificationButton::NONE;
-                setDataDirty();
-
-                // Open settings panel to Updates tab
-                HudManager::getInstance().getSettingsHud().showUpdatesTab();
+            if (m_hoveredButton == NotificationButton::PRIMARY) {
+                onPrimaryClicked();
+                endPopup(/*answered=*/true);
                 return;
             }
-
             if (m_hoveredButton == NotificationButton::DISMISS) {
-                UpdateChecker& checker = UpdateChecker::getInstance();
-                std::string latestVersion = checker.getLatestVersion();
-                checker.setDismissedVersion(latestVersion);
-                DEBUG_INFO_F("VersionWidget: Update notification dismissed for version %s", latestVersion.c_str());
-
-                // Hide the widget and clear notification state
-                m_showingUpdateNotification = false;
-                m_bVisible = false;
-                m_hoveredButton = NotificationButton::NONE;
-
-                // Mark dirty to persist the dismissed version (deferred to leave-track / Save).
-                SettingsManager::getInstance().markDirty();
+                endPopup(/*answered=*/true);
                 return;
             }
         }
-        return;  // Don't process game input while notification is showing
+        return;  // Don't process game input while a popup is showing
     }
 
     // Only handle left clicks when game is active (for ball launch / exit)
@@ -206,9 +189,127 @@ void VersionWidget::showUpdateNotification() {
     DEBUG_INFO_F("VersionWidget: Showing update notification for version %s",
                 checker.getLatestVersion().c_str());
 
+    // Only the flag: this runs on the UpdateChecker worker, and the panel's
+    // visibility is switched on the game thread by syncPopup().
     m_showingUpdateNotification = true;
-    m_bVisible = true;
     setDataDirty();
+}
+
+VersionWidget::Popup VersionWidget::choosePopup() const {
+    if (m_showingUpdateNotification && UpdateChecker::getInstance().shouldShowUpdateNotification()) {
+        return Popup::Update;
+    }
+    switch (SystemMessages::getInstance().pendingPopup()) {
+        case SystemMessages::Popup::Updated: return Popup::Updated;
+        case SystemMessages::Popup::Welcome: return Popup::Welcome;
+        default:                             return Popup::None;
+    }
+}
+
+void VersionWidget::syncPopup() {
+    const Popup want = choosePopup();
+    if (want == m_popup) return;
+    // From none to a popup: remember the player's own setting. From one popup
+    // straight to the next: the remembered setting still stands.
+    if (m_popup == Popup::None) m_visibleBeforePopup = m_bVisible;  // vis-gate: save/restore around a popup
+    m_popup = want;
+    setVisible(want != Popup::None ? true : m_visibleBeforePopup);
+    m_popupShownMs = 0.0f;
+    m_popupLastTick = std::chrono::steady_clock::now();
+    m_countdownShown = -1;
+    m_hoveredButton = NotificationButton::NONE;
+    setDataDirty();
+}
+
+void VersionWidget::onVisibilityApplied() {
+    if (m_popup == Popup::None) return;
+    m_visibleBeforePopup = m_bVisible;  // vis-gate: the profile's value, restored at the end
+    if (!m_bVisible) setVisible(true);  // vis-gate: re-asserting the popup's own switch
+}
+
+void VersionWidget::tickPopup() {
+    if (m_popup == Popup::None) return;
+    // The widget switched off mid-popup some way other than a profile apply
+    // (which onVisibilityApplied handles): the popup stays up, and off is what
+    // it restores when it ends.
+    if (!m_bVisible) {  // vis-gate: re-asserting the popup's own switch
+        m_visibleBeforePopup = false;
+        setVisible(true);
+    }
+    const auto now = std::chrono::steady_clock::now();
+    float dtMs = std::chrono::duration<float, std::milli>(now - m_popupLastTick).count();
+    m_popupLastTick = now;
+    // A gap between Draws (a menu, a load) is not time on screen.
+    if (dtMs > 100.0f) dtMs = 100.0f;
+
+    const bool menuOpen = HudManager::getInstance().getSettingsHud().isVisible();  // vis-gate: the menu's own state
+    // The welcome's goal is the menu opening: reached any way (the key or the
+    // menu button), it is done.
+    if (m_popup == Popup::Welcome && menuOpen) {
+        endPopup(/*answered=*/true);
+        return;
+    }
+    // The welcome waits for the player: no countdown, plain "Dismiss".
+    if (m_popup == Popup::Welcome) return;
+    // Counts only while drawn and the menu is shut (see the header).
+    if (!menuOpen && isVisibleAnySurface() && !isHeldBack()) m_popupShownMs += dtMs;
+
+    const int remaining = static_cast<int>(std::ceil((POPUP_COUNTDOWN_MS - m_popupShownMs) / 1000.0f));
+    if (remaining <= 0) {
+        endPopup(/*answered=*/false);
+        return;
+    }
+    if (remaining != m_countdownShown) {
+        m_countdownShown = remaining;
+        setDataDirty();
+    }
+}
+
+void VersionWidget::onPrimaryClicked() {
+    SettingsHud& settings = HudManager::getInstance().getSettingsHud();
+    switch (m_popup) {
+        case Popup::Update:
+            settings.showUpdatesTab();
+            break;
+        case Popup::Updated:
+            settings.showWhatsNew();
+            break;
+        case Popup::Welcome:   // Dismiss only: the player learns the settings button
+        case Popup::None:
+            break;
+    }
+}
+
+void VersionWidget::endPopup(bool answered) {
+    switch (m_popup) {
+        case Popup::Update:
+            // Dismiss skips this version for good (the button's old meaning);
+            // View and a timeout only end it for this session.
+            if (answered && m_hoveredButton == NotificationButton::DISMISS) {
+                UpdateChecker& checker = UpdateChecker::getInstance();
+                checker.setDismissedVersion(checker.getLatestVersion());
+                DEBUG_INFO_F("VersionWidget: Update notification dismissed for version %s",
+                             checker.getLatestVersion().c_str());
+                SettingsManager::getInstance().markDirty();
+            }
+            m_showingUpdateNotification = false;
+            break;
+        case Popup::Updated:
+        case Popup::Welcome: {
+            const SystemMessages::Popup p = m_popup == Popup::Updated ? SystemMessages::Popup::Updated
+                                                                      : SystemMessages::Popup::Welcome;
+            SystemMessages& msgs = SystemMessages::getInstance();
+            if (answered) msgs.resolvePopup(p);
+            else msgs.expirePopup(p);
+            // What was told persists with the next save (leave-track or Save).
+            SettingsManager::getInstance().markDirty();
+            break;
+        }
+        case Popup::None:
+            break;
+    }
+    m_hoveredButton = NotificationButton::NONE;
+    syncPopup();   // the next one owed, or back to the player's own setting
 }
 
 
@@ -262,17 +363,39 @@ void VersionWidget::rebuildRenderData() {
 
     auto dim = getScaledDimensions();
 
-    // Check if we should show update notification
-    bool showNotification = m_showingUpdateNotification &&
-                           UpdateChecker::getInstance().shouldShowUpdateNotification();
+    if (m_popup != Popup::None) {
+        // ===== POPUP MODE: the message, with its two buttons on a separate row =====
+        // Formatted per rebuild, which is per change (a popup, a hover, a second
+        // of countdown), never per frame.
+        char displayText[112];
+        // The welcome has Dismiss only: a settings button inside it would teach
+        // a new player that button, not the real one in the top right.
+        const char* primaryLabel = nullptr;
+        switch (m_popup) {
+            case Popup::Update:
+                snprintf(displayText, sizeof(displayText), "MXBMRP3 %s available!",
+                         UpdateChecker::getInstance().getLatestVersion().c_str());
+                primaryLabel = "View in Settings";
+                break;
+            case Popup::Updated:
+                // One fixed line: the news itself is the "New" markers in the menu.
+                snprintf(displayText, sizeof(displayText), "Updated to %s. Open settings to see what's new",
+                         SystemMessages::getInstance().updatedLine());
+                primaryLabel = "What's New";
+                break;
+            case Popup::Welcome:
+            default: {
+                // The key that opens the menu, as bound; the menu button when none is.
+                char hint[80];
+                HotkeyManager::getInstance().formatOpenSettingsHint(hint, sizeof(hint));
+                snprintf(displayText, sizeof(displayText), "Welcome! %s", hint);
+                break;
+            }
+        }
+        char dismissLabel[16];
+        if (m_countdownShown > 0) snprintf(dismissLabel, sizeof(dismissLabel), "Dismiss (%d)", m_countdownShown);
+        else snprintf(dismissLabel, sizeof(dismissLabel), "Dismiss");
 
-    if (showNotification) {
-        // ===== NOTIFICATION MODE: Show update message with buttons on separate row =====
-        std::string latestVersion = UpdateChecker::getInstance().getLatestVersion();
-
-        // Calculate text width for update message
-        char displayText[64];
-        snprintf(displayText, sizeof(displayText), "MXBMRP3 %s available!", latestVersion.c_str());
         const int textLength = static_cast<int>(strlen(displayText));
         const float textWidth = PluginUtils::calculateMonospaceTextWidth(textLength, dim.fontSize);
 
@@ -282,12 +405,15 @@ void VersionWidget::rebuildRenderData() {
         // row, gap = the SUM of facing margins (1 char at shipped defaults).
         const PlanButtonTerms bt = planButtonTerms(dim);
         const float buttonGap = bt.gap;
-        const float viewButtonWidth = charWidth * VIEW_BUTTON_CHARS + bt.insetL + bt.insetR;
+        const bool hasPrimary = primaryLabel != nullptr;
+        const int primaryChars = hasPrimary ? static_cast<int>(strlen(primaryLabel)) + BUTTON_PAD_CHARS : 0;
+        const float viewButtonWidth = hasPrimary ? charWidth * primaryChars + bt.insetL + bt.insetR : 0.0f;
         const float dismissButtonWidth = charWidth * DISMISS_BUTTON_CHARS + bt.insetL + bt.insetR;
         const float buttonHeight = bt.insetT + dim.lineHeightNormal + bt.insetB;
 
         // Width is max of text row or button row
-        const float buttonRowWidth = viewButtonWidth + buttonGap + dismissButtonWidth;
+        const float buttonRowWidth = hasPrimary ? viewButtonWidth + buttonGap + dismissButtonWidth
+                                                : dismissButtonWidth;
         const float contentWidth = std::fmax(textWidth, buttonRowWidth);
         // BOX-MODEL: the plan owns padding, chrome and the content origin. The
         // centre-stack width is a MINIMUM on the panel (widthSetBy 'min'), not
@@ -314,7 +440,7 @@ void VersionWidget::rebuildRenderData() {
                      this->getColor(ColorSlot::PRIMARY));
         float currentY = placed.contentY();
 
-        // Render update available text (centered on first row)
+        // Render the message (centered on first row)
         float row1Y = currentY;
         // The CARD's centre, not the panel's (PanelPlan::sectionBoxCenterX).
         float centerX = placed.sectionBoxCenterX();
@@ -330,21 +456,23 @@ void VersionWidget::rebuildRenderData() {
         float viewBtnY = row2Y;
 
         // Store button bounds for click detection (before offset)
-        m_viewButtonLeft = viewBtnX;
-        m_viewButtonTop = viewBtnY;
-        m_viewButtonWidth = viewButtonWidth;
-        m_viewButtonHeight = buttonHeight;
+        m_primaryButtonLeft = viewBtnX;
+        m_primaryButtonTop = viewBtnY;
+        m_primaryButtonWidth = viewButtonWidth;
+        m_primaryButtonHeight = buttonHeight;
 
-        bool isViewHovered = (m_hoveredButton == NotificationButton::VIEW);
+        bool isViewHovered = (m_hoveredButton == NotificationButton::PRIMARY);
 
         // Hover is carried by the chip's alpha, not by a second label colour.
-        addStateButton(viewBtnX, viewBtnY, viewButtonWidth, buttonHeight,
-                       "View in Settings", viewBtnY + bt.insetT, dim.fontSize,
-                       this->getColor(ColorSlot::ACCENT),
-                       isViewHovered ? ButtonState::Hovered : ButtonState::Idle);
+        if (hasPrimary) {
+            addStateButton(viewBtnX, viewBtnY, viewButtonWidth, buttonHeight,
+                           primaryLabel, viewBtnY + bt.insetT, dim.fontSize,
+                           this->getColor(ColorSlot::ACCENT),
+                           isViewHovered ? ButtonState::Hovered : ButtonState::Idle);
+        }
 
         // ===== Dismiss Button (negative color) =====
-        float dismissBtnX = viewBtnX + viewButtonWidth + buttonGap;
+        float dismissBtnX = hasPrimary ? viewBtnX + viewButtonWidth + buttonGap : buttonsStartX;
         float dismissBtnY = row2Y;
 
         // Store button bounds for click detection (before offset)
@@ -356,7 +484,7 @@ void VersionWidget::rebuildRenderData() {
         bool isDismissHovered = (m_hoveredButton == NotificationButton::DISMISS);
 
         addStateButton(dismissBtnX, dismissBtnY, dismissButtonWidth, buttonHeight,
-                       "Dismiss", dismissBtnY + bt.insetT, dim.fontSize,
+                       dismissLabel, dismissBtnY + bt.insetT, dim.fontSize,
                        this->getColor(ColorSlot::NEGATIVE),
                        isDismissHovered ? ButtonState::Hovered : ButtonState::Idle);
 
@@ -365,11 +493,6 @@ void VersionWidget::rebuildRenderData() {
 
     } else {
         // ===== NORMAL MODE: Show plugin version =====
-
-        // Clear notification state if we're visible but notification no longer applies
-        if (m_showingUpdateNotification) {
-            m_showingUpdateNotification = false;
-        }
 
         char displayText[64];
         snprintf(displayText, sizeof(displayText), "MXBMRP3 v%s", PLUGIN_VERSION);
@@ -416,12 +539,80 @@ void VersionWidget::rebuildRenderData() {
     }
 }
 
+// The shipped NORMAL font's capital, in its own cell (fontSize high, one
+// charWidth wide), measured off the real string in the comparison capture
+// (companion_demo "brokeninstall real"). Ratios rather than pixels, so the
+// blocks follow the scale like the font does.
+namespace {
+    constexpr float PIXEL_CAP_TOP = 0.29f;   // cell top to cap top, of fontSize
+    constexpr float PIXEL_CAP_H   = 0.555f;  // cap height, of fontSize
+    constexpr float PIXEL_INK_W   = 0.80f;   // capital width, of charWidth
+}
+
+void VersionWidget::addPixelText(const char* text, float centerX, float rowTop,
+                                 float fontSize, unsigned long color) {
+    const float charW = PluginUtils::calculateMonospaceTextWidth(1, fontSize);
+    const float pw = charW * PIXEL_INK_W / static_cast<float>(PixelText::GLYPH_W);
+    const float ph = fontSize * PIXEL_CAP_H / static_cast<float>(PixelText::CAP_H);
+    // The string's cells, centred like Justify::CENTER; each glyph centred in its cell.
+    const float left = centerX - PluginUtils::calculateMonospaceTextWidth(
+                                     static_cast<int>(strlen(text)), fontSize) * 0.5f
+                     + (charW - pw * static_cast<float>(PixelText::GLYPH_W)) * 0.5f;
+    const float top = rowTop + fontSize * PIXEL_CAP_TOP;
+    PixelText::forEachRun(text, [&](int glyph, int col, int row, int len) {
+        float x = left + charW * static_cast<float>(glyph) + pw * static_cast<float>(col);
+        float y = top + ph * static_cast<float>(row);
+        applyOffset(x, y);
+        const float w = pw * static_cast<float>(len);
+        SPluginQuad_t q;
+        q.m_aafPos[0][0] = x;      q.m_aafPos[0][1] = y;
+        q.m_aafPos[1][0] = x;      q.m_aafPos[1][1] = y + ph;
+        q.m_aafPos[2][0] = x + w;  q.m_aafPos[2][1] = y + ph;
+        q.m_aafPos[3][0] = x + w;  q.m_aafPos[3][1] = y;
+        q.m_iSprite = SpriteIndex::SOLID_COLOR;
+        q.m_ulColor = color;
+        m_quads.push_back(q);
+    });
+}
+
+void VersionWidget::buildInstallNotice(const char* const* rows, int count, bool realText,
+                                       std::vector<SPluginQuad_t>& outQuads,
+                                       std::vector<SPluginString_t>& outStrings) {
+    // Once, at startup: the popup's layout with the message on `count` rows and
+    // no button row, at the widget's place.
+    clearStrings();
+    m_quads.clear();
+    const auto dim = getScaledDimensions();
+    int widest = 0;
+    for (int i = 0; i < count; ++i) widest = std::max(widest, static_cast<int>(strlen(rows[i])));
+    const float textWidth = PluginUtils::calculateMonospaceTextWidth(widest, dim.fontSize);
+    PanelPlan placed = notifyPlan(dim, textWidth, count);
+    const float startX = centerAnchoredPanelLeft(placed.width());
+    const float startY = 0.01f;
+    addPlanBackground(placed, startX, startY);
+    const float centerX = placed.sectionBoxCenterX();
+    float y = placed.contentY();
+    for (int i = 0; i < count; ++i) {
+        const unsigned long color = this->getColor(i == 0 ? ColorSlot::NEGATIVE : ColorSlot::SECONDARY);
+        if (realText)
+            addString(rows[i], centerX, y, Justify::CENTER,
+                      this->getFont(FontCategory::NORMAL), color, dim.fontSize);
+        else
+            addPixelText(rows[i], centerX, y, dim.fontSize, color);
+        y += dim.lineHeightNormal;
+    }
+    setBounds(startX, startY, startX + placed.width(), startY + placed.height());
+    outQuads = m_quads;
+    outStrings = m_strings;
+    setDataDirty();   // back to the widget's own view on its next update
+}
+
 void VersionWidget::resetToDefaults() {
     m_bVisible = false;    // Hidden by default
     m_bShowTitle = false;  // No title
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 1.0f;  // Full opacity
-    m_fScale = 1.0f;
+    setScale(1.0f);
     setPosition(CENTER_ANCHOR_X, cellsY(1));  // Top centre
 
     // Reset game state and restore cursor if game was active
@@ -443,8 +634,10 @@ void VersionWidget::resetToDefaults() {
     m_level = 1;
     m_lastUpdateTimeUs = 0;
 
-    // Reset notification state
+    // Reset notification state. A popup owed by SystemMessages comes back on
+    // the next update(); the update notice is UpdateChecker's to raise again.
     m_showingUpdateNotification = false;
+    m_popup = Popup::None;
     m_hoveredButton = NotificationButton::NONE;
 
     setDataDirty();

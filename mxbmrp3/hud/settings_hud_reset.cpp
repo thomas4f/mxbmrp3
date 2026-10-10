@@ -161,6 +161,8 @@ void SettingsHud::resetTabGeneral() {
     using GlobalKeyRef = SettingsManager::GlobalKeyRef;
     std::vector<GlobalKeyRef> keys = {
         { "General", "pbScope" },
+        { "General", "defaultReference" },
+        { "General", "defaultFreeze" },
         { "General", "controller" },
         { "General", "autoSave" },
         // Shown here, persisted in [Display] (the Appearance tab excludes them).
@@ -209,10 +211,13 @@ void SettingsHud::resetTabAppearance() {
     // path the full reset uses — instead of by hand. Adding a new [Display] key no
     // longer requires updating this tab's reset.
     // ...minus the two [Display] toggles the General tab shows and resets. A tab's
-    // Reset restores what that tab can change and nothing else.
+    // Reset restores what that tab can change and nothing else. [Messages] is the
+    // Messages row; its other keys are what the startup popups have told, not a
+    // setting, so they stay.
     SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
-        HudManager::getInstance(), {"Display", "Fonts", "Colors"},
-        {{ "Display", "gridSnapping" }, { "Display", "screenClamping" }});
+        HudManager::getInstance(), {"Display", "Fonts", "Colors", "Messages"},
+        {{ "Display", "gridSnapping" }, { "Display", "screenClamping" },
+         { "Messages", "lastLine" }, { "Messages", "welcomed" }});
     // Mark all HUDs dirty so they pick up new colors
     if (m_idealLap) m_idealLap->setDataDirty();
     if (m_lapLog) m_lapLog->setDataDirty();
@@ -270,7 +275,7 @@ void SettingsHud::resetTabWidgets() {
         "LapWidget", "PositionWidget", "TimeWidget", "SpeedWidget", "GearWidget",
         "SpeedoWidget", "TachoWidget", "BarsWidget", "VersionWidget", "FuelWidget",
         "GamepadWidget", "LeanWidget", "GForceWidget", "CompassWidget", "ClockWidget",
-        "PointerWidget", "SettingsButtonWidget", "CrashWidget", "PrestigeWidget"
+        "PointerWidget", "SettingsButtonWidget", "CrashWidget", "PrestigeWidget", "RpmWidget"
     };
 #if GAME_HAS_TYRE_TEMP
     widgets.push_back("TyreTempWidget");

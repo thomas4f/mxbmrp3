@@ -13,6 +13,7 @@
 #include "settings_serde.h"
 #include "settings_hud_registry.h"
 #include "atomic_file_writer.h"
+#include "system_messages.h"
 #include "exploration_stats.h"
 #include "hud_manager.h"
 #include "profile_manager.h"
@@ -22,6 +23,7 @@
 #include "../hud/settings_hud.h"
 #include "../diagnostics/logger.h"
 
+#include <cstdio>
 #include <sstream>
 #include <string>
 
@@ -166,10 +168,44 @@ bool SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     if (AtomicFileWriter::submit(filePath, serializeSettings(hudManager, savePath))) {
         DEBUG_INFO("Settings saved successfully");
         m_settingsDirty = false;   // persisted; nothing pending
+        // Handed over, not yet on disk: read the outcome back shortly.
+        m_saveCheckPending = true;
+        m_saveCheckAt = std::chrono::steady_clock::now() + std::chrono::milliseconds(1500);
         return true;
     }
     DEBUG_WARN_F("Failed to save settings: %s", filePath.c_str());
+    announceSaveResult(false);
     return false;
+}
+
+void SettingsManager::pollSaveResult() {
+    if (!m_saveCheckPending) return;
+    if (std::chrono::steady_clock::now() < m_saveCheckAt) return;
+    m_saveCheckPending = false;
+    announceSaveResult(!AtomicFileWriter::needsRetry(getSettingsFilePath(m_savePath.c_str())));
+}
+
+// A failed save is otherwise only a log line and a Save button that stays lit,
+// which reads as "not saved yet" rather than "cannot save". Once per run of
+// failures: the writer retries at every save point, and a toast per retry would
+// repeat what the player already knows.
+void SettingsManager::announceSaveResult(bool ok) {
+    if (ok) {
+        m_saveFailureAnnounced = false;
+        return;
+    }
+    if (m_saveFailureAnnounced) return;
+    m_saveFailureAnnounced = true;
+    SystemMessages::Toast t;
+    snprintf(t.title, sizeof(t.title), "Settings not saved");
+    snprintf(t.detail, sizeof(t.detail), "Could not write %s. Is it read-only?",
+             SettingsInternal::SETTINGS_FILENAME);
+    snprintf(t.icon, sizeof(t.icon), "triangle-exclamation");
+    t.key = SystemMessages::KEY_SAVE_FAILED;
+    t.tab = SettingsHud::TAB_GENERAL;
+    t.severity = SystemMessages::Severity::Warning;
+    t.durationMs = SystemMessages::WARNING_DURATION_MS;
+    SystemMessages::getInstance().post(t);
 }
 
 void SettingsManager::flushIfDirty(const HudManager& hudManager) {

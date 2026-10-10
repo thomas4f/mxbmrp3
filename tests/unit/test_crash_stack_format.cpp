@@ -19,6 +19,7 @@ using CrashStack::Frame;
 using CrashStack::formatFrame;
 using CrashStack::formatFrameList;
 using CrashStack::avTypeName;
+using CrashStack::formatAvAddress;
 
 namespace {
 Frame mk(const char* mod, unsigned long long off) {
@@ -63,6 +64,33 @@ TEST_CASE("avTypeName: ExceptionInformation[0] -> read/write/execute, else empty
     CHECK(std::string(avTypeName(8)) == "execute");   // the injector-at-launch tell
     CHECK(std::string(avTypeName(2)).empty());        // unknown/reserved -> omit
     CHECK(std::string(avTypeName(0xdeadULL)).empty());
+}
+
+TEST_CASE("formatAvAddress: null page, module, else raw address") {
+    char buf[96];
+    // A null pointer plus a field offset, whatever the resolver said.
+    CHECK(formatAvAddress(buf, sizeof(buf), 0x28ULL, "unknown", 0x28ULL) > 0);
+    CHECK(std::string(buf) == "null+0x28");
+    CHECK(formatAvAddress(buf, sizeof(buf), 0x0ULL, nullptr, 0) > 0);
+    CHECK(std::string(buf) == "null+0x0");
+    CHECK(formatAvAddress(buf, sizeof(buf), 0xffffULL, "mxbikes.exe", 0x1ULL) > 0);
+    CHECK(std::string(buf) == "null+0xffff");   // last null-page byte
+    // Inside a loaded module: the resolver's module + offset.
+    CHECK(formatAvAddress(buf, sizeof(buf), 0x7ffb12345678ULL, "nvoglv64.dll", 0x9db45eULL) > 0);
+    CHECK(std::string(buf) == "nvoglv64.dll+0x9db45e");
+    // No module (heap, freed or garbage): the raw address, first byte past the null page included.
+    CHECK(formatAvAddress(buf, sizeof(buf), 0x1f3a2c80010ULL, "unknown", 0x1f3a2c80010ULL) > 0);
+    CHECK(std::string(buf) == "0x1f3a2c80010");
+    CHECK(formatAvAddress(buf, sizeof(buf), 0x10000ULL, "", 0) > 0);
+    CHECK(std::string(buf) == "0x10000");
+}
+
+TEST_CASE("formatAvAddress: too-small or null buffer leaves empty and returns 0") {
+    char buf[96];
+    volatile size_t smallSize = 6;   // volatile: see the formatFrame case below
+    CHECK(formatAvAddress(buf, smallSize, 0x1f3a2c80010ULL, "unknown", 0) == 0);
+    CHECK(buf[0] == '\0');
+    CHECK(formatAvAddress(nullptr, sizeof(buf), 0x28ULL, nullptr, 0) == 0);
 }
 
 TEST_CASE("formatFrame: too-small outSize leaves empty string and returns 0") {

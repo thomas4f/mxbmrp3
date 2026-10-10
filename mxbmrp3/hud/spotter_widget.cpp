@@ -119,7 +119,7 @@ void SpotterWidget::resetToDefaults() {
     m_bShowTitle = false;
     setTextureVariant(0);
     m_fBackgroundOpacity = 0.55f;  // readable over track without a texture
-    m_fScale = 1.0f;
+    setScale(1.0f);
     // Lower-center: out of the racing line of sight, near where game chat
     // and subtitle conventions put text.
     setPosition(cellsX(20), cellsY(24));

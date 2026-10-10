@@ -380,7 +380,7 @@ void GForceWidget::resetToDefaults() {
     m_bShowTitle = false;
     setTextureVariant(0);
     m_fBackgroundOpacity = 1.0f;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     m_bShowMaxText = true;
     m_bShowMaxMarker = true;
     m_maxMarkerLingerFrames = 60;

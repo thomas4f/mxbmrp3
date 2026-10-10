@@ -253,3 +253,14 @@ TEST_CASE("fitTextInPlace cuts by code point, in place") {
     CHECK(fit("\x80" "abc", 3) == "\x80" "abc");
     CHECK(fit("\x80" "abcd", 3) == "abc");
 }
+
+TEST_CASE("niceGapScaleMs: the smallest round step that holds the gap, capped at 30 s") {
+    // Shared by the Delta Trace's scale and the Gap Bar's Auto range.
+    static_assert(PU::niceGapScaleMs(0) == 250);
+    CHECK(PU::niceGapScaleMs(250) == 250);
+    CHECK(PU::niceGapScaleMs(251) == 500);
+    CHECK(PU::niceGapScaleMs(1500) == 2000);
+    CHECK(PU::niceGapScaleMs(2001) == 5000);
+    CHECK(PU::niceGapScaleMs(29999) == 30000);
+    CHECK(PU::niceGapScaleMs(120000) == 30000);
+}

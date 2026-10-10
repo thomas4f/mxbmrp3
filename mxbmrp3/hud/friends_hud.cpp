@@ -359,7 +359,7 @@ void FriendsHud::resetToDefaults() {
     m_bShowTitle = true;
     setTextureVariant(0);
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     setPosition(cellsX(133), cellsY(47));  // right-column tower, in settings order (after Event Log, before FMX)
     m_enabledColumns = COL_DEFAULT;
     m_maxDisplayRows = 8;

@@ -325,6 +325,12 @@ bool AchievementManager::takeToast(Toast& out) {
     return true;
 }
 
+void AchievementManager::requeueFront(const Toast& toast) {
+    if (!m_toastsEnabled) return;
+    if (m_toasts.size() >= MAX_QUEUED_TOASTS) m_toasts.pop_back();
+    m_toasts.push_front(toast);
+}
+
 // ---- queries ------------------------------------------------------------------
 
 AchievementManager::Row AchievementManager::row(int i) const {

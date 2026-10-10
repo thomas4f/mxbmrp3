@@ -15,6 +15,7 @@
 #include "marker_label.h"
 #include "official_gap_freeze.h"
 #include "freeze_duration.h"
+#include "hud_defaults.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../game/unified_types.h"
@@ -47,7 +48,8 @@ public:
     // table, and an All-time default would show nothing until it was beaten.
     using Reference = PbGapTracker::Ref;
     static constexpr int REFERENCE_COUNT = PbGapTracker::REF_COUNT;
-    Reference getReference() const { return m_reference; }
+    // The reference in use: its own, or General's while it follows Default.
+    Reference getReference() const { return HudDefaults::reference(m_referenceDefault, m_reference); }
 
     // Label display mode - controls what labels appear above markers (like MapHud)
     // Shared with MapHud/RadarHud/GapBarHud — see hud/marker_label.h
@@ -88,6 +90,12 @@ public:
             setDataDirty();
         }
     }
+    void setRangeMs(int ms) {
+        if (m_gapRangeMs != ms) {
+            m_gapRangeMs = ms;
+            setDataDirty();
+        }
+    }
 
     // Rider positions update for flat map mode (called from HudManager)
     void updateRiderPositions(int numVehicles, const Unified::TrackPositionData* positions);
@@ -112,9 +120,18 @@ private:
     // Gap bar time range limits (how much time fits from center to edge)
     static constexpr int MIN_RANGE_MS = 1000;       // 1 second minimum
     static constexpr int MAX_RANGE_MS = 5000;       // 5 seconds maximum
-    static constexpr int DEFAULT_RANGE_MS = 2000;   // 2 seconds default
     static constexpr int RANGE_STEP_MS = 250;       // 0.25 second steps (accelerated stepper;
                                                     // old 1000ms-multiple saves stay valid)
+    // AUTO: one step below the minimum, so the stepper reaches it like any other
+    // value ("Auto", 1s, 1.25s, ...) and the INI stores it as a plain number. The
+    // range then fits the largest gap of the lap so far, in the Delta Trace's
+    // round steps (PluginUtils::niceGapScaleMs), never under MIN_RANGE_MS and
+    // never shrinking until the next lap - so the fill does not jump back and
+    // forth with every swing.
+    static constexpr int RANGE_AUTO = MIN_RANGE_MS - RANGE_STEP_MS;
+    static constexpr int DEFAULT_RANGE_MS = RANGE_AUTO;
+    // The range the fill is drawn against now (Auto resolved).
+    int effectiveRangeMs(int gapMs);
 
     // Bar width as a percentage of the base width (base = 2x the Notices/Timing box width)
     static constexpr int MIN_WIDTH_PERCENT = 50;      // 50% = same width as Notices/Timing
@@ -141,16 +158,21 @@ private:
     static constexpr int UPDATE_INTERVAL_MS = 16;  // ~60Hz update rate
 
     // === Configurable settings ===
-    int m_freezeDurationMs;           // How long to freeze on official times
+    int m_freezeDurationMs;           // How long to freeze on official times (FOLLOW_DEFAULT = General's)
     MarkerMode m_markerMode;          // What markers to show (ghost/opponents/both)
-    Reference m_reference = Reference::SESSION_PB;   // Which lap the gap is measured against
+    Reference m_reference = Reference::SESSION_PB;   // Which lap the gap is measured against (when not Default)
+    bool m_referenceDefault = true;                  // Follow General's reference (getReference)
     LabelMode m_labelMode;            // What labels to show on markers (like MapHud)
     LabelAnchor m_labelAnchor = LabelAnchor::BELOW;  // ...and where they sit
     RiderColorMode m_riderColorMode;  // How to color opponent markers (like MapHud/RadarHud)
     int m_riderIconIndex;             // Icon shape index (0=OFF/default, 1-N from AssetManager)
     bool m_showGapText;               // Show gap timer text (can hide for pure flat map mode)
     bool m_showGapBar;                // Show green/red gap visualization bars
-    int m_gapRangeMs;                 // Time range for gap bar (full bar at ±range)
+    int m_gapRangeMs;                 // Time range for gap bar (full bar at ±range), or RANGE_AUTO
+    int m_autoPeakMs = 0;             // Auto: the largest |gap| this lap
+    unsigned m_autoLapStamp = 0;      // Auto: PbGapTracker::lastLapStamp() the peak belongs to
+    bool m_autoLive = false;          // Auto: whether the gap was live at the last update()
+    Reference m_autoReference = Reference::SESSION_PB;   // Auto: the reference the peak was measured against
     int m_barWidthPercent;            // Bar width as percentage of default (50-400%)
     float m_fMarkerScale;             // Marker scale multiplier (0.5-3.0, like MapHud)
     bool m_showSplits = true;         // Ticks where the track's splits are

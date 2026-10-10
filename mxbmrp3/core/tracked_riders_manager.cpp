@@ -217,45 +217,6 @@ void TrackedRidersManager::setTrackedRiderShape(const std::string& name, int sha
     }
 }
 
-void TrackedRidersManager::cycleTrackedRiderColor(const std::string& name, bool forward) {
-    std::string normalizedName = normalizeName(name);
-    auto it = m_trackedRiders.find(normalizedName);
-    if (it != m_trackedRiders.end()) {
-        // Find current color in palette
-        int currentIndex = ColorPalette::getColorIndex(it->second.color);
-        int paletteSize = static_cast<int>(ColorPalette::ALL_COLORS.size());
-
-        if (currentIndex < 0) {
-            // Color not in palette, start at first color
-            currentIndex = 0;
-        } else {
-            // Cycle to next/previous
-            if (forward) {
-                currentIndex = (currentIndex + 1) % paletteSize;
-            } else {
-                currentIndex = (currentIndex - 1 + paletteSize) % paletteSize;
-            }
-        }
-
-        it->second.color = ColorPalette::ALL_COLORS[currentIndex];
-        m_bDirty = true;
-        m_needsSave = true;
-        PluginData::getInstance().notifyTrackedRidersChanged();
-    }
-}
-
-void TrackedRidersManager::cycleTrackedRiderShape(const std::string& name, bool forward) {
-    std::string normalizedName = normalizeName(name);
-    auto it = m_trackedRiders.find(normalizedName);
-    if (it != m_trackedRiders.end()) {
-        int maxShape = getMaxShapeIndex();
-        it->second.shapeIndex = stepEligibleShape(it->second.shapeIndex, forward, maxShape);
-        m_bDirty = true;
-        m_needsSave = true;
-        PluginData::getInstance().notifyTrackedRidersChanged();
-    }
-}
-
 void TrackedRidersManager::clearAll() {
     if (!m_trackedRiders.empty()) {
         m_trackedRiders.clear();

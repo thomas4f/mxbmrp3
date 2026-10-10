@@ -252,6 +252,26 @@ LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
                 static_cast<unsigned long long>(info->ExceptionRecord->ExceptionInformation[0]));
         }
 
+        // The address the access violation tried to touch (ExceptionInformation[1]),
+        // labelled null+offset / module+offset / raw (CrashStack::formatAvAddress). It
+        // tells a null-pointer bug, a use-after-free and a corrupted pointer apart,
+        // which the faulting instruction alone cannot. The null page is labelled
+        // before any OS lookup (see resolveModuleOffset's null quirk). "" otherwise.
+        char avAddr[CrashStack::MODULE_NAME_SIZE + 24];
+        avAddr[0] = '\0';
+        if (code == EXCEPTION_ACCESS_VIOLATION &&
+            info->ExceptionRecord->NumberParameters >= 2) {
+            const unsigned long long target =
+                static_cast<unsigned long long>(info->ExceptionRecord->ExceptionInformation[1]);
+            char targetMod[CrashStack::MODULE_NAME_SIZE] = "unknown";
+            unsigned long long targetOff = target;
+            if (target >= CrashStack::NULL_PAGE_LIMIT) {
+                CrashHandler::resolveModuleOffset(reinterpret_cast<void*>(target),
+                                                  targetMod, sizeof(targetMod), &targetOff);
+            }
+            CrashStack::formatAvAddress(avAddr, sizeof(avAddr), target, targetMod, targetOff);
+        }
+
         // MX Bikes build fingerprint: the host executable's PE link timestamp. An
         // mxbikes.exe+offset fault is only interpretable against a specific game build
         // (offsets shift between betas), so capture which build crashed. Reading the
@@ -325,9 +345,11 @@ LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
             // (",key":"value", or empty) so the body is ONE snprintf regardless of which
             // are present. Both hold only safe chars (literals / module basenames + hex +
             // spaces, no quotes or backslashes), so they embed inside JSON verbatim.
-            char avFrag[32];
+            char avFrag[32 + sizeof(avAddr) + 16];
             avFrag[0] = '\0';
-            if (avType[0])
+            if (avType[0] && avAddr[0])
+                snprintf(avFrag, sizeof(avFrag), ",\"av_type\":\"%s\",\"av_addr\":\"%s\"", avType, avAddr);
+            else if (avType[0])
                 snprintf(avFrag, sizeof(avFrag), ",\"av_type\":\"%s\"", avType);
             char stackFrag[CrashStack::MAX_STACK_CHARS + 16];
             stackFrag[0] = '\0';

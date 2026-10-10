@@ -69,6 +69,7 @@
 #include "../hud/fmx_hud.h"
 #include "../hud/stats_hud.h"
 #include "../hud/achievement_widget.h"
+#include "../hud/prestige_widget.h"
 #include "achievement_manager.h"
 #include "../hud/event_log_hud.h"
 #include "fmx_manager.h"
@@ -154,7 +155,13 @@ void SettingsManager::getHudWidgetFlags(const HudManager& hudManager,
         std::string key = sectionToFlagKey(entry.first);
         if (key.empty()) continue;  // skip non-HUD/widget entries (e.g. "Global")
         auto it = entry.second.find("visible");
-        const int on = (it != entry.second.end() && it->second == "1") ? 1 : 0;
+        int on = (it != entry.second.end() && it->second == "1") ? 1 : 0;
+#if GAME_HAS_ACHIEVEMENTS
+        // The badge is in use only once it can draw: switched on while still
+        // locked it renders nothing, and counting it read as a widget nearly
+        // everyone ran (prestige_widget.h).
+        if (entry.first == "PrestigeWidget" && !PrestigeWidget::isUnlocked()) on = 0;
+#endif
         outFlags.emplace_back(std::move(key), on);
     }
     std::sort(outFlags.begin(), outFlags.end());
@@ -179,6 +186,7 @@ const std::vector<SettingsManager::GlobalSectionSerializer>& SettingsManager::gl
         {"Spotter",       &SettingsManager::writeSpotterSettings,       &SettingsManager::applySpotterLine},
         {"Director",      &SettingsManager::writeDirectorSettings,      &SettingsManager::applyDirectorLine},
         {"Achievements",  &SettingsManager::writeAchievementsSettings,  &SettingsManager::applyAchievementsLine},
+        {"Messages",      &SettingsManager::writeMessagesSettings,      &SettingsManager::applyMessagesLine},
         {"StreamChat",    &SettingsManager::writeStreamChatSettings,    &SettingsManager::applyStreamChatLine},
         {"Twitch",        &SettingsManager::writeTwitchSettings,        &SettingsManager::applyTwitchLine},
         {"YouTube",       &SettingsManager::writeYouTubeSettings,       &SettingsManager::applyYouTubeLine},
@@ -214,6 +222,8 @@ void SettingsManager::writeGeneralSettings(std::ostream& out, [[maybe_unused]] c
     out << "autoSave=" << (UiConfig::getInstance().getAutoSave() ? 1 : 0) << "\n";
     out << "controller=" << XInputReader::getInstance().getRumbleConfig().controllerIndex << "\n";
     out << "pbScope=" << pbScopeToString(UiConfig::getInstance().getPBScope()) << "\n";
+    out << "defaultReference=" << UiConfig::getInstance().getDefaultReference() << "\n";
+    out << "defaultFreeze=" << UiConfig::getInstance().getDefaultFreezeMs() << "\n";
 #if GAME_HAS_RECORDS_PROVIDER
     out << "recordsAutoFetch=" << (hudManager.getRecordsHud().m_bAutoFetch ? 1 : 0) << "\n";
     out << "recordsProvider=" << dataProviderToString(hudManager.getRecordsHud().m_provider) << "\n";
@@ -293,6 +303,10 @@ void SettingsManager::applyGeneralLine(const std::string& key, const std::string
             XInputReader::getInstance().setControllerIndex(idx);
         } else if (key == "pbScope") {
             UiConfig::getInstance().setPBScope(stringToPBScope(value));
+        } else if (key == "defaultReference") {
+            UiConfig::getInstance().setDefaultReference(std::stoi(value));
+        } else if (key == "defaultFreeze") {
+            UiConfig::getInstance().setDefaultFreezeMs(std::stoi(value));
         }
 #if GAME_HAS_RECORDS_PROVIDER
         else if (key == "recordsAutoFetch") {
@@ -458,14 +472,10 @@ void SettingsManager::writeAdvancedSettings(std::ostream& out, const HudManager&
     out << IniOnly::Advanced::PLUGIN_THREAD.key << "=" << (UiConfig::getInstance().getPluginThread() ? 1 : 0) << " ; " << IniOnly::Advanced::PLUGIN_THREAD.description << "\n";
     // overlayInGame and overlayRefreshHz are retired keys: ACCEPTED and ignored on
     // load (see applyAdvancedLine) so an existing INI does not error, and never
-    // written back.
+    // written back. The retired glProbe* keys need no branch: an unknown key falls
+    // through the chain silently, and it is gone from the next save.
     out << IniOnly::Advanced::HW_ACCEL.key << "=" << (CompanionWindow::getInstance().getHwAccel() ? 1 : 0) << " ; " << IniOnly::Advanced::HW_ACCEL.description << "\n";
     out << IniOnly::Advanced::GL_IN_GAME.key << "=" << (UiConfig::getInstance().getGlInGame() ? 1 : 0) << " ; " << IniOnly::Advanced::GL_IN_GAME.description << "\n";
-    out << IniOnly::Advanced::GL_PROBE.key << "=" << UiConfig::getInstance().getGlProbe() << " ; " << IniOnly::Advanced::GL_PROBE.description << "\n";
-    out << IniOnly::Advanced::GL_PROBE_X.key << "=" << UiConfig::getInstance().getGlProbeX() << " ; " << IniOnly::Advanced::GL_PROBE_X.description << "\n";
-    out << IniOnly::Advanced::GL_PROBE_Y.key << "=" << UiConfig::getInstance().getGlProbeY() << " ; " << IniOnly::Advanced::GL_PROBE_Y.description << "\n";
-    out << IniOnly::Advanced::GL_PROBE_QUADS.key << "=" << UiConfig::getInstance().getGlProbeQuads() << " ; " << IniOnly::Advanced::GL_PROBE_QUADS.description << "\n";
-    out << IniOnly::Advanced::GL_PROBE_BATCH.key << "=" << UiConfig::getInstance().getGlProbeBatch() << " ; " << IniOnly::Advanced::GL_PROBE_BATCH.description << "\n";
     out << IniOnly::Advanced::RENDER_PROBE_QUADS.key << "=" << UiConfig::getInstance().getRenderProbeQuads() << " ; " << IniOnly::Advanced::RENDER_PROBE_QUADS.description << "\n";
     out << IniOnly::Advanced::RENDER_PROBE_FULLSCREEN.key << "=" << (UiConfig::getInstance().getRenderProbeFullscreen() ? 1 : 0) << " ; " << IniOnly::Advanced::RENDER_PROBE_FULLSCREEN.description << "\n";
     out << IniOnly::Advanced::RENDER_PROBE_TYPE.key << "=" << UiConfig::getInstance().getRenderProbeType() << " ; " << IniOnly::Advanced::RENDER_PROBE_TYPE.description << "\n";
@@ -634,16 +644,6 @@ void SettingsManager::applyAdvancedLine(const std::string& key, const std::strin
             // Re-applying the key is the retry gesture after a latched
             // failure.
             HudManager::getInstance().clearGlFailLatch();
-        } else if (key == "glProbe") {
-            UiConfig::getInstance().setGlProbe(std::stoi(value));
-        } else if (key == "glProbeX") {
-            UiConfig::getInstance().setGlProbeX(parseFiniteFloat(value));
-        } else if (key == "glProbeY") {
-            UiConfig::getInstance().setGlProbeY(parseFiniteFloat(value));
-        } else if (key == "glProbeQuads") {
-            UiConfig::getInstance().setGlProbeQuads(std::stoi(value));
-        } else if (key == "glProbeBatch") {
-            UiConfig::getInstance().setGlProbeBatch(std::stoi(value));
         } else if (key == "renderProbeQuads") {
             UiConfig::getInstance().setRenderProbeQuads(std::stoi(value));
         } else if (key == "renderProbeFullscreen") {
@@ -681,7 +681,9 @@ void SettingsManager::writeDisplaySettings(std::ostream& out, const HudManager& 
     out << "format24h=" << (hudManager.getClockWidget().getFormat24h() ? 1 : 0) << "\n";
     out << "shortTimeFormat=" << (PluginData::getInstance().isShortTimeFormat() ? 1 : 0) << "\n";
     out << "dropShadow=" << (UiConfig::getInstance().getDropShadow() ? 1 : 0) << "\n";
+    out << "uiScale=" << UiConfig::getInstance().getUiScale() << "\n";
     out << "titleIcons=" << (UiConfig::getInstance().getTitleIcons() ? 1 : 0) << "\n";
+    out << "motion=" << motionLevelToString(UiConfig::getInstance().getMotion()) << "\n";
     out << "gridSnapping=" << (UiConfig::getInstance().getGridSnapping() ? 1 : 0) << "\n";
     // Panel theme by NAME (empty = none). A name survives theme folders being
     // added, removed or reordered; an index would silently repoint.
@@ -703,6 +705,8 @@ void SettingsManager::writeDisplaySettings(std::ostream& out, const HudManager& 
     // N = fixed N Hz cap (lower to save CPU). No settings-menu control by design.
     out << "companionRefreshHz=" << CompanionWindow::getInstance().getRefreshHz()
         << " ; Companion render cadence: 0 = V-Sync (match the monitor), N = cap at N Hz\n";
+    out << "companionBackground="
+        << companionBackgroundToString(CompanionWindow::getInstance().getBackground()) << "\n";
     out << "displayTarget=" << displayTargetToString(UiConfig::getInstance().getDisplayTarget()) << "\n\n";
 }
 
@@ -724,6 +728,8 @@ void SettingsManager::applyDisplayLine(const std::string& key, const std::string
             UiConfig::getInstance().setDropShadow(std::stoi(value) != 0);
         } else if (key == "titleIcons") {
             UiConfig::getInstance().setTitleIcons(std::stoi(value) != 0);
+        } else if (key == "motion") {
+            UiConfig::getInstance().setMotion(stringToMotionLevel(value));
         } else if (key == "gridSnapping") {
             UiConfig::getInstance().setGridSnapping(std::stoi(value) != 0);
         } else if (key == Settings::Keys::Global::PANEL_THEME) {
@@ -751,6 +757,11 @@ void SettingsManager::applyDisplayLine(const std::string& key, const std::string
             CompanionWindow::getInstance().setSavedMaximized(std::stoi(value) != 0);
         } else if (key == "companionRefreshHz") {
             CompanionWindow::getInstance().setRefreshHz(std::stoi(value));
+        } else if (key == "companionBackground") {
+            CompanionWindow::getInstance().setBackground(stringToCompanionBackground(value));
+        } else if (key == "uiScale") {
+            const float v = std::stof(value);
+            if (std::isfinite(v)) hudManager.setUiScale(v);
         } else if (key == "displayTarget") {
             DisplayTarget target = stringToDisplayTarget(value);
             UiConfig::getInstance().setDisplayTarget(target);

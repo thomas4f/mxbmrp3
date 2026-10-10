@@ -6,11 +6,11 @@
 # THE INVARIANT: the plugin gains no import-table entry for opengl32, d3d11,
 # d3dcompiler_47 or dcomp. All four are resolved at RUNTIME - GetModuleHandle
 # or LoadLibrary plus GetProcAddress - and the reason is stated in
-# core/hud_gpu_renderer.h and core/gl_probe.h: an import is resolved by the
+# core/hud_gpu_renderer.h and core/hud_gl_renderer.h: an import is resolved by the
 # loader when the host maps the DLL, so a machine without the library, or with
 # an older one, fails to load the PLUGIN rather than falling back. The whole
-# fallback design (GPU -> software -> engine rendering; GL probe -> silent
-# no-op) depends on there being nothing for the loader to fail on.
+# fallback design (GPU -> software -> engine rendering; Direct GL -> engine
+# rendering) depends on there being nothing for the loader to fail on.
 #
 # opengl32 carries an extra trap the others do not: unlike d3d11, it IS present
 # on every Windows machine, so an accidental import would never fail to load
@@ -74,7 +74,7 @@ for lib in ${LAZY}; do
         echo "      GetProcAddress), so a machine without it falls back rather than failing"
         echo "      to load the plugin at all. The usual cause is including the library's"
         echo "      header and calling a function directly instead of through the resolved"
-        echo "      pointer. See core/hud_gpu_renderer.h and core/gl_probe.h."
+        echo "      pointer. See core/hud_gpu_renderer.h and core/hud_gl_renderer.h."
         fail=1
     fi
 done

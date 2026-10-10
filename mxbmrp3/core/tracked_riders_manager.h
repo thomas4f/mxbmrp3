@@ -59,8 +59,6 @@ public:
     // Update tracked rider settings
     void setTrackedRiderColor(const std::string& name, unsigned long color);
     void setTrackedRiderShape(const std::string& name, int shapeIndex);
-    void cycleTrackedRiderColor(const std::string& name, bool forward = true);
-    void cycleTrackedRiderShape(const std::string& name, bool forward = true);
 
     // Get all tracked riders (for settings UI and persistence)
     const std::unordered_map<std::string, TrackedRiderConfig>& getAllTrackedRiders() const {

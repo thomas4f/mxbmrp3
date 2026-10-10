@@ -29,6 +29,14 @@ namespace mxbtest {
 //               rather than under /textures/ or /icons/).
 int glRenderProbe(int w, int h, int px, int py, int scenario);
 
+// The backend is a guest in the game's context, and a leaked bit corrupts the
+// GAME's next draw. Samples the glstate fingerprint (gl_state_fingerprint.h),
+// renders scenario 1 through hudgl::Renderer, samples again, and returns how
+// many sampled values differ; GL errors raised by the render go to *glErrors.
+// -1 when no context is current or the backend could not render. No readback
+// in between: glRenderProbe's own glPixelStorei would count as a leak.
+int glRenderStateDiffs(int* glErrors);
+
 // The asset name the in-context GL frame carries at `index`, as the RENDERER
 // sees it - written to `out`, returning its length, or -1.
 //

@@ -71,6 +71,31 @@
     font-display: swap;
 }
 @font-face {
+    font-family: 'ChakraPetch-BoldItalic';
+    src: url('fonts/ChakraPetch-BoldItalic.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'ChakraPetch-SemiBoldItalic';
+    src: url('fonts/ChakraPetch-SemiBoldItalic.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Quantico-BoldItalic';
+    src: url('fonts/Quantico-BoldItalic.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Tomorrow-BoldItalic';
+    src: url('fonts/Tomorrow-BoldItalic.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Tomorrow-SemiBoldItalic';
+    src: url('fonts/Tomorrow-SemiBoldItalic.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
     font-family: 'ReenieBeanie-Regular';
     src: url('fonts/ReenieBeanie-Regular.ttf') format('truetype');
     font-display: swap;
@@ -93,6 +118,31 @@
 @font-face {
     font-family: 'IBMPlexMono-Regular';
     src: url('fonts/IBMPlexMono-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'LCD14-Regular';
+    src: url('fonts/LCD14-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'LCD14-Bold';
+    src: url('fonts/LCD14-Bold.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'LCD7-BoldItalic';
+    src: url('fonts/LCD7-BoldItalic.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Doto-Regular';
+    src: url('fonts/Doto-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Doto-Bold';
+    src: url('fonts/Doto-Bold.ttf') format('truetype');
     font-display: swap;
 }
 

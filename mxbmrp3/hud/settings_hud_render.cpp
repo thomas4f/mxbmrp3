@@ -47,6 +47,7 @@
 #include "../core/plugin_manager.h"
 #include "../core/settings_manager.h"
 #include "../core/hud_manager.h"
+#include "delta_trace_hud.h"
 #include "stream_chat_hud.h"
 #include "../core/profile_manager.h"
 #include "../core/update_checker.h"
@@ -73,6 +74,7 @@
 #include "../handlers/draw_handler.h"
 #include "settings/whats_new.h"
 #include <cstring>
+#include <iterator>
 #include <algorithm>
 
 using namespace PluginConstants;
@@ -94,6 +96,17 @@ using namespace PluginConstants;
 // - resetHud/resetExtra: see resetCurrentTab(). resetHud runs first (standard
 //   keep-visibility HUD reset), then resetExtra for anything outside the
 //   per-HUD snapshot.
+// - The global section lists every tab. The profile section lists its tabs
+//   most-used first, then a TAB_GROUP row ("More") owning the rest up to the
+//   next marker. A group never draws its tabs in the
+//   sidebar: its one row opens the More page (TAB_MORE, settings_tab_more.cpp),
+//   which lists them -- so the sidebar's height does not depend on the tab. The profile
+//   tabs follow the usage survey's HUD adoption (MX Bikes, Oct 2026), Widgets
+//   first because widgets out-adopt every HUD; Delta Trace is too new to rank and
+//   sits beside the Gap Bar. A tab carrying what's-new markers sits ABOVE its
+//   section's More: the More header has no "New" tag (its tag slot shows the
+//   on-count), so news inside a closed More would draw nowhere. Pinned by
+//   whats_new_test.
 // - Game-gated tabs (Records/FMX/Friends) are gated at RUNTIME via
 //   gameGated + a null HUD pointer (the 'Disabling a Feature Per-Game'
 //   pattern), so rows need no #if guards.
@@ -126,35 +139,44 @@ const SettingsHud::TabDescriptor SettingsHud::s_tabRegistry[] = {
     // Small "New" (2.25 cells) would collide with it -- see settingsSidebarWidth.
     // Its news bands the row instead (WhatsNew::tabHighlightsRow).
     { TAB_ACHIEVEMENTS, "Achievements", "achievements", nullptr,                                                            true,  &SettingsHud::renderTabAchievements,    &SettingsHud::handleClickTabAchievements, nullptr,            &SettingsHud::resetTabAchievements,     nullptr, nullptr, false,
-      [](const SettingsHud&) -> BaseHud* { return HudManager::getInstance().getAchievementWidget(); } },
+      // The card exists on every game (it carries the system toasts), so the
+      // gate is the feature flag, not the widget being registered.
+      [](const SettingsHud&) -> BaseHud* { return GAME_HAS_ACHIEVEMENTS ? HudManager::getInstance().getAchievementWidget() : nullptr; } },
     { TAB_UPDATES,      "Updates",    "updates",       nullptr,                                                              false, &SettingsHud::renderTabUpdates,         &SettingsHud::handleClickTabUpdates,      nullptr,            &SettingsHud::resetTabUpdates,          nullptr, nullptr },
     // HIDDEN (the trailing true): reached from the footer's About button, never
     // drawn in the sidebar. Its POSITION still matters even so -- it is in the GLOBAL
-    // group because tools/check_docs.py splits this registry at TAB_SECTION_PROFILE
-    // to decide which README table a tab belongs in, and About is a global page, not
-    // a HUD. Placed last in the group for the same reason it would be if it were
+    // section because tools/check_docs.py splits this registry at the TAB_SECTION_*
+    // markers to decide which README table a tab belongs in, and About is a global
+    // page, not a HUD. Placed last for the same reason it would be if it were
     // listed.
     { TAB_ABOUT,        "About",      "about",         nullptr,                                                              false, &SettingsHud::renderTabAbout,           nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr, true },
+    // HIDDEN too: a section's More row opens it (m_moreGroupRow says which section).
+    { TAB_MORE,         "More",       "more",          nullptr,                                                              false, &SettingsHud::renderTabMore,            nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr, true },
     { TAB_SECTION_PROFILE,  nullptr,  nullptr,         nullptr,                                                              false, nullptr,                                nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr },
-    { TAB_STANDINGS,    "Standings",  "standings",     [](const SettingsHud& s) -> BaseHud* { return s.m_standings; },       false, &SettingsHud::renderTabStandings,       &SettingsHud::handleClickTabStandings,    "StandingsHud",     &SettingsHud::resetTabStandingsExtra,   nullptr, nullptr },
+    { TAB_WIDGETS,      "Widgets",    "widgets",       nullptr,                                                              false, &SettingsHud::renderTabWidgets,         nullptr,                                  nullptr,            &SettingsHud::resetTabWidgets,          nullptr, nullptr },
     { TAB_MAP,          "Map",        "map",           [](const SettingsHud& s) -> BaseHud* { return s.m_mapHud; },          false, &SettingsHud::renderTabMap,             &SettingsHud::handleClickTabMap,          "MapHud",           nullptr,                                nullptr, nullptr },
-    { TAB_RADAR,        "Radar",      "radar",         [](const SettingsHud& s) -> BaseHud* { return s.m_radarHud; },        false, &SettingsHud::renderTabRadar,           &SettingsHud::handleClickTabRadar,        "RadarHud",         nullptr,                                nullptr, nullptr },
+    { TAB_NOTICES,      "Notices",    "notices",       [](const SettingsHud& s) -> BaseHud* { return s.m_notices; },         false, &SettingsHud::renderTabNotices,         nullptr,                                  "NoticesHud",       nullptr,                                nullptr, nullptr },
+    { TAB_STANDINGS,    "Standings",  "standings",     [](const SettingsHud& s) -> BaseHud* { return s.m_standings; },       false, &SettingsHud::renderTabStandings,       &SettingsHud::handleClickTabStandings,    "StandingsHud",     &SettingsHud::resetTabStandingsExtra,   nullptr, nullptr },
+    { TAB_FRIENDS,      "Friends",    "friends",       [](const SettingsHud& s) -> BaseHud* { return s.m_friends; },         true,  &SettingsHud::renderTabFriends,         &SettingsHud::handleClickTabFriends,      "FriendsHud",       nullptr,                                nullptr, nullptr },
+    { TAB_TIMING,       "Timing",     "timing",        [](const SettingsHud& s) -> BaseHud* { return s.m_timing; },          false, &SettingsHud::renderTabTiming,          &SettingsHud::handleClickTabTiming,       "TimingHud",        nullptr,                                nullptr, nullptr },
     { TAB_LAP_LOG,      "Lap Log",    "lap_log",       [](const SettingsHud& s) -> BaseHud* { return s.m_lapLog; },          false, &SettingsHud::renderTabLapLog,          &SettingsHud::handleClickTabLapLog,       "LapLogHud",        nullptr,                                nullptr, nullptr },
+    { TAB_GAP_BAR,      "Gap Bar",    "gap_bar",       [](const SettingsHud& s) -> BaseHud* { return s.m_gapBar; },          false, &SettingsHud::renderTabGapBar,          &SettingsHud::handleClickTabGapBar,       "GapBarHud",        nullptr,                                nullptr, nullptr },
+    // NO badge: "Delta Trace" is 11 of the sidebar's 13 label cells, like Stream
+    // Chat above; its news bands the sidebar row instead (WhatsNew::tabCanTag).
+    { TAB_DELTA_TRACE,  "Delta Trace","delta_trace",   [](const SettingsHud&) -> BaseHud* { return &HudManager::getInstance().getDeltaTraceHud(); },
+                                                                                                                                      false, &SettingsHud::renderTabDeltaTrace,      nullptr,                                  "DeltaTraceHud",    nullptr,                                nullptr, nullptr },
+    { TAB_PITBOARD,     "Pitboard",   "pitboard",      [](const SettingsHud& s) -> BaseHud* { return s.m_pitboard; },        false, &SettingsHud::renderTabPitboard,        nullptr,                                  "PitboardHud",      nullptr,                                nullptr, nullptr },
+    { TAB_GROUP,        "More",       nullptr,         nullptr,                                                              false, nullptr,                                nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr },
+    { TAB_RADAR,        "Radar",      "radar",         [](const SettingsHud& s) -> BaseHud* { return s.m_radarHud; },        false, &SettingsHud::renderTabRadar,           nullptr,                                  "RadarHud",         nullptr,                                nullptr, nullptr },
     { TAB_IDEAL_LAP,    "Ideal Lap",  "ideal_lap",     [](const SettingsHud& s) -> BaseHud* { return s.m_idealLap; },        false, &SettingsHud::renderTabIdealLap,        nullptr,                                  "IdealLapHud",      nullptr,                                nullptr, nullptr },
-    { TAB_SESSION_CHARTS, "Charts",   "session_charts",[](const SettingsHud& s) -> BaseHud* { return s.m_sessionCharts; },   false, &SettingsHud::renderTabSessionCharts,   nullptr,                                  "SessionChartsHud", nullptr,                                nullptr, nullptr },
+    { TAB_SESSION,      "Session",    "session",       [](const SettingsHud& s) -> BaseHud* { return s.m_session; },         false, &SettingsHud::renderTabSession,         &SettingsHud::handleClickTabSession,      "SessionHud",       nullptr,                                nullptr, nullptr },
+    { TAB_PERFORMANCE,  "Performance","performance",   [](const SettingsHud& s) -> BaseHud* { return s.m_performance; },     false, &SettingsHud::renderTabPerformance,     &SettingsHud::handleClickTabPerformance,  "PerformanceHud",   nullptr,                                nullptr, nullptr },
+    { TAB_STATS,        "Stats",      "stats",         [](const SettingsHud& s) -> BaseHud* { return s.m_statsHud; },        false, &SettingsHud::renderTabStats,           &SettingsHud::handleClickTabStats,        "StatsHud",         nullptr,                                nullptr, nullptr },
     { TAB_TELEMETRY,    "Telemetry",  "telemetry",     [](const SettingsHud& s) -> BaseHud* { return s.m_telemetry; },       false, &SettingsHud::renderTabTelemetry,       nullptr,                                  "TelemetryHud",     nullptr,                                nullptr, nullptr },
     { TAB_RECORDS,      "Records",    "records",       [](const SettingsHud& s) -> BaseHud* { return s.m_records; },         true,  &SettingsHud::renderTabRecords,         &SettingsHud::handleClickTabRecords,      "RecordsHud",       &SettingsHud::resetTabRecordsExtra,     nullptr, nullptr },
-    { TAB_PITBOARD,     "Pitboard",   "pitboard",      [](const SettingsHud& s) -> BaseHud* { return s.m_pitboard; },        false, &SettingsHud::renderTabPitboard,        nullptr,                                  "PitboardHud",      nullptr,                                nullptr, nullptr },
-    { TAB_SESSION,      "Session",    "session",       [](const SettingsHud& s) -> BaseHud* { return s.m_session; },         false, &SettingsHud::renderTabSession,         &SettingsHud::handleClickTabSession,      "SessionHud",       nullptr,                                nullptr, nullptr },
-    { TAB_TIMING,       "Timing",     "timing",        [](const SettingsHud& s) -> BaseHud* { return s.m_timing; },          false, &SettingsHud::renderTabTiming,          &SettingsHud::handleClickTabTiming,       "TimingHud",        nullptr,                                nullptr, nullptr },
-    { TAB_GAP_BAR,      "Gap Bar",    "gap_bar",       [](const SettingsHud& s) -> BaseHud* { return s.m_gapBar; },          false, &SettingsHud::renderTabGapBar,          &SettingsHud::handleClickTabGapBar,       "GapBarHud",        nullptr,                                nullptr, nullptr },
-    { TAB_NOTICES,      "Notices",    "notices",       [](const SettingsHud& s) -> BaseHud* { return s.m_notices; },         false, &SettingsHud::renderTabNotices,         nullptr,                                  "NoticesHud",       nullptr,                                nullptr, nullptr },
-    { TAB_EVENT_LOG,    "Event Log",  "event_log",     [](const SettingsHud& s) -> BaseHud* { return s.m_eventLog; },        false, &SettingsHud::renderTabEventLog,        &SettingsHud::handleClickTabEventLog,     "EventLogHud",      nullptr,                                nullptr, nullptr },
-    { TAB_FRIENDS,      "Friends",    "friends",       [](const SettingsHud& s) -> BaseHud* { return s.m_friends; },         true,  &SettingsHud::renderTabFriends,         &SettingsHud::handleClickTabFriends,      "FriendsHud",       nullptr,                                nullptr, nullptr },
     { TAB_FMX,          "FMX",        "fmx",           [](const SettingsHud& s) -> BaseHud* { return s.m_fmxHud; },          true,  &SettingsHud::renderTabFmx,             &SettingsHud::handleClickTabFmx,          "FmxHud",           nullptr,                                nullptr, nullptr },
-    { TAB_STATS,        "Stats",      "stats",         [](const SettingsHud& s) -> BaseHud* { return s.m_statsHud; },        false, &SettingsHud::renderTabStats,           &SettingsHud::handleClickTabStats,        "StatsHud",         nullptr,                                nullptr, nullptr },
-    { TAB_PERFORMANCE,  "Performance","performance",   [](const SettingsHud& s) -> BaseHud* { return s.m_performance; },     false, &SettingsHud::renderTabPerformance,     &SettingsHud::handleClickTabPerformance,  "PerformanceHud",   nullptr,                                nullptr, nullptr },
-    { TAB_WIDGETS,      "Widgets",    "widgets",       nullptr,                                                              false, &SettingsHud::renderTabWidgets,         nullptr,                                  nullptr,            &SettingsHud::resetTabWidgets,          nullptr, nullptr },
+    { TAB_EVENT_LOG,    "Event Log",  "event_log",     [](const SettingsHud& s) -> BaseHud* { return s.m_eventLog; },        false, &SettingsHud::renderTabEventLog,        &SettingsHud::handleClickTabEventLog,     "EventLogHud",      nullptr,                                nullptr, nullptr },
+    { TAB_SESSION_CHARTS, "Charts",   "session_charts",[](const SettingsHud& s) -> BaseHud* { return s.m_sessionCharts; },   false, &SettingsHud::renderTabSessionCharts,   nullptr,                                  "SessionChartsHud", nullptr,                                nullptr, nullptr },
 };
 
 const SettingsHud::TabDescriptor* SettingsHud::findTabDescriptor(int tabId) {
@@ -164,78 +186,147 @@ const SettingsHud::TabDescriptor* SettingsHud::findTabDescriptor(int tabId) {
     return nullptr;
 }
 
-// ==========================================================================
-// Tab-bar drawing helpers, split out of rebuildRenderData().
-//
-// Members, not lambdas: each needs TWO parameters beyond its original arguments
-// (the scaled dimensions and the checkbox cell width). Everything else they touch
-// -- addIcon, addString, m_clickRegions, m_hoveredRegionIndex -- is a member,
-// which a member function gets for free and a lambda would have to capture by
-// reference.
-// ==========================================================================
-
-// Shared dim level for "inactive" tab icons (disabled toggles + non-toggle section
-// tabs) so they read as equally subdued; enabled toggles stay at full opacity.
-constexpr float INACTIVE_ICON_OPACITY = 0.5f;
-
-
-// Draws an identity icon in a tab's checkbox cell at the given colour. Returns false
-// if no icon is assigned/available (caller can fall back to text). Icons render a bit
-// smaller than the row font (they fill their glyph box more than text fills the em) and
-// nudged up ~2px (at 1080p, scaled) so they sit optically centred on the row.
-bool SettingsHud::drawTabIcon(float x, float y, const char* iconName, unsigned long color,
-                              const ScaledDimensions& dim, float checkboxWidth) {
-
-    // Same global switch that drives the title-bar icons gates the tab icons.
-    int spriteIndex = (UiConfig::getInstance().getTitleIcons() && iconName && iconName[0])
-        ? AssetManager::getInstance().getIconSpriteIndex(iconName) : 0;
-    if (spriteIndex <= 0) return false;
-    constexpr float TAB_ICON_SCALE = 0.63f;
-    float cellW = checkboxWidth * 0.25f;
-    float iconCenterY = y + dim.lineHeightNormal * 0.5f - (2.0f / 1080.0f) * dim.scale;
-    addIcon(x + cellW * 1.5f, iconCenterY, spriteIndex, color, dim.fontSize * TAB_ICON_SCALE);
-    return true;
+int SettingsHud::groupRowOf(int tabId) {
+    if (tabId < 0) return -1;
+    int group = -1;
+    const int registrySize = static_cast<int>(std::size(s_tabRegistry));
+    for (int r = 0; r < registrySize; ++r) {
+        const int id = s_tabRegistry[r].tabId;
+        if (id == TAB_GROUP) group = r;
+        else if (id < 0) group = -1;                 // a section header closes the group
+        else if (id == tabId) return s_tabRegistry[r].hidden ? -1 : group;   // About: no group
+    }
+    return -1;
 }
 
-// Draws a tab's enable/disable toggle in semantic colours: POSITIVE when enabled,
-// NEGATIVE when disabled (a disabled icon lightens 10% on hover as an affordance).
-// Falls back to the legacy "[x]"/"[ ]" text when no icon is available.
-// Call right after pushing the tab's toggle ClickRegion so the hover check targets it.
-void SettingsHud::drawTabToggle(float x, float y, const char* iconName, bool enabled,
-                                bool onBand, const ScaledDimensions& dim, float checkboxWidth) {
+// [Back] under the content of a tab opened from a More page: the way back to the
+// page, where the Updates tab puts Check Now. The same click as that group's More
+// row in the sidebar (a TAB region flagged GROUP_HEADER, see handleTabClick).
+// Its section gets no card (rebuildRenderData): the button sits on the panel.
+// Called after the tab's own rows in BOTH the measure and the drawing pass, so
+// its height is part of the tab's and the tallest-tab measure counts it.
+void SettingsHud::addBackButton(SettingsLayoutContext& ctx) {
+    if (groupRowOf(m_activeTab) < 0) return;
+    ctx.beginUntitledSection();
+    const size_t first = m_clickRegions.size();
+    ctx.addActionButton("Back", 6, ClickRegion::TAB,
+                        SettingsLayoutContext::ButtonRole::Accent, true, "more.back");
+    if (first < m_clickRegions.size()) {
+        ClickRegion& back = m_clickRegions[first];
+        back.flagBit = GROUP_HEADER;
+        back.tabIndex = m_activeTab;
+    }
+}
 
+// ==========================================================================
+// One More group's row in the tab bar: an icon, "More", and on the right edge how
+// many of its toggles are on (when it has two or more). It reads as a tab, and it
+// is selected while its More page -- or any tab it lists -- is open, so the
+// sidebar always shows where you are.
+//
+// A click opens the More page for this group (handleTabClick, keyed by the
+// region's GROUP_HEADER flag on an ordinary ClickRegion::TAB whose tabIndex names
+// the group's first tab). The region carries the "more" tooltip id.
+//
+// A group with no available tab (every one game-gated off) draws nothing.
+// ==========================================================================
+void SettingsHud::buildMoreRow(const ScaledDimensions& dim, const PanelPlan& plan,
+                               const PanelBox::ColumnGeom& col, int groupRow,
+                               float tabStartX, float& tabStartY,
+                               float tabWidth, float checkboxWidth) {
     ColorConfig& cc = ColorConfig::getInstance();
-    // Full-opacity semantic base: POSITIVE (enabled) / NEGATIVE (disabled).
-    unsigned long base = enabled ? cc.getPositive() : cc.getNegative();
-    bool hovered = (m_hoveredRegionIndex >= 0 &&
-                    m_hoveredRegionIndex == static_cast<int>(m_clickRegions.size()) - 1);
-    unsigned long iconColor;
-    if (hovered) {
-        // Clear affordance in BOTH states: full opacity + a strong lighten, so a
-        // disabled icon jumps from dimmed to bright and an enabled one brightens.
-        // (lightenColor keeps alpha, so build from the full-opacity base.)
-        iconColor = PluginUtils::lightenColor(base, 0.25f);
-    } else if (onBand) {
-        // THE SELECTED ROW. Its background is the accent band, and the two things
-        // that make an icon readable on the panel work against it there: a disabled
-        // icon is dimmed to half, and the whole palette is warm, so a dimmed red on
-        // amber disappears and the selected tab reads as having no icon at all.
-        //
-        // Full opacity plus a lift, never the dimmed variant. The HUE still carries
-        // the state (green on, red off), which is why this is not simply switched to
-        // PRIMARY the way the label beside it is: the label has no state to lose.
-        iconColor = PluginUtils::lightenColor(base, 0.35f);
-    } else {
-        // Enabled pops at full; disabled is dimmed to the muted section level so it
-        // doesn't scream.
-        iconColor = enabled ? base : PluginUtils::applyOpacity(base, INACTIVE_ICON_OPACITY);
+    const int registrySize = static_cast<int>(std::size(s_tabRegistry));
+
+    int firstTab = -1;
+    int toggles = 0;
+    int togglesOn = 0;
+    for (int r = groupRow + 1; r < registrySize && s_tabRegistry[r].tabId >= 0; ++r) {
+        const TabDescriptor& row = s_tabRegistry[r];
+        if (row.hidden || !isTabAvailable(row.tabId)) continue;
+        if (firstTab < 0) firstTab = row.tabId;
+        BaseHud* hud = row.hud ? row.hud(*this) : nullptr;
+        bool on = false;
+        if (tabToggleState(row.tabId, hud, &on)) {
+            ++toggles;
+            if (on) ++togglesOn;
+        }
     }
-    if (!drawTabIcon(x, y, iconName, iconColor, dim, checkboxWidth)) {
-        // Text fallback (no icon assigned, or asset missing on this build)
-        addString(enabled ? "[x]" : "[ ]", x, y, Justify::LEFT,
-            Fonts::getNormal(), iconColor, dim.fontSize);
+    if (firstTab < 0) return;
+
+    int pageGroup = -1;
+    moreGroupTabs(nullptr, 0, &pageGroup);
+    const bool selected = (m_activeTab == TAB_MORE && pageGroup == groupRow)
+                       || groupRowOf(m_activeTab) == groupRow;
+
+    // Band first, like a tab row's (quads draw in push order): the selected fill,
+    // else the hover band when the region this row is about to push is hovered.
+    if (selected) {
+        addButtonQuad(tabStartX, tabStartY, tabWidth, dim.lineHeightNormal,
+                      PluginUtils::applyOpacity(cc.getAccent(), 128.0f / 255.0f),
+                      /*opaque=*/true, ButtonFill::State);
+    } else if (m_hoveredRegionIndex >= 0 &&
+               static_cast<size_t>(m_hoveredRegionIndex) == m_clickRegions.size()) {
+        addRowHighlight(plan.rowBandX(col), tabStartY, plan.rowBandW(col), dim.lineHeightNormal,
+                        PluginUtils::applyOpacity(cc.getAccent(), ROW_HOVER_ALPHA));
     }
 
+    const unsigned long color = selected ? cc.getPrimary() : cc.getAccent();
+    drawTabIcon(tabStartX, tabStartY, "layer-group", color, dim, checkboxWidth);
+
+    const float labelX = tabStartX + checkboxWidth;
+    const float labelW = tabWidth - checkboxWidth;
+
+    ClickRegion region;
+    region.x = tabStartX;
+    region.y = tabStartY;
+    region.width = tabWidth;
+    region.height = dim.lineHeightNormal;
+    region.type = ClickRegion::TAB;
+    region.targetPointer = std::monostate{};
+    region.flagBit = GROUP_HEADER;
+    region.isRequired = false;
+    region.targetHud = nullptr;
+    region.tabIndex = firstTab;
+    region.tooltipId = "more";
+    m_clickRegions.push_back(region);
+
+    addString(s_tabRegistry[groupRow].name, labelX, tabStartY, Justify::LEFT,
+              Fonts::getNormal(), color, dim.fontSize);
+
+    // Right edge, Small and MUTED, in the slot and centring of a tab row's badge:
+    // how many of the group's toggles are on. The slot never carries "New" -- a
+    // tab with news sits above More instead (see the registry).
+    if (toggles > 1) {   // "0/1" over one toggle says less than the icon would
+        char count[8];
+        snprintf(count, sizeof(count), "%d/%d", togglesOn, toggles);
+        addString(count, labelX + labelW, tabStartY + labelRowYOffset(dim), Justify::RIGHT,
+                  Fonts::getStrong(), selected ? cc.getPrimary() : cc.getMuted(), dim.fontSizeSmall);
+    }
+
+    tabStartY += dim.lineHeightNormal;
+}
+
+// What the More page lists: the group its row opened, else the last group (a
+// restored "More" tab has no row to say which). Writes up to `cap` of the group's
+// available tab ids to `tabs` (may be null) and the group's row to *groupRow;
+// returns how many there are.
+int SettingsHud::moreGroupTabs(int* tabs, int cap, int* groupRow) const {
+    const int registrySize = static_cast<int>(std::size(s_tabRegistry));
+    int group = m_moreGroupRow;
+    if (group < 0) {
+        for (int r = 0; r < registrySize; ++r) {
+            if (s_tabRegistry[r].tabId == TAB_GROUP) group = r;
+        }
+    }
+    if (groupRow) *groupRow = group;
+    int count = 0;
+    for (int r = group + 1; group >= 0 && r < registrySize && s_tabRegistry[r].tabId >= 0; ++r) {
+        const TabDescriptor& row = s_tabRegistry[r];
+        if (row.hidden || !isTabAvailable(row.tabId)) continue;
+        if (tabs && count < cap) tabs[count] = row.tabId;
+        ++count;
+    }
+    return count;
 }
 
 // ==========================================================================
@@ -261,8 +352,20 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
     float tabStartY = plan.colContentY(col, 0);
     // Visual tab order comes straight from the descriptor registry (rows are in
     // display order; negative TAB_SECTION_* rows are the section headers).
-    for (const TabDescriptor& tabRow : s_tabRegistry) {
+    int curGroupRow = -1;   // the TAB_GROUP row owning the rows being walked; -1 = none
+    const int registrySize = static_cast<int>(std::size(s_tabRegistry));
+    for (int rowIdx = 0; rowIdx < registrySize; ++rowIdx) {
+        const TabDescriptor& tabRow = s_tabRegistry[rowIdx];
         const int i = tabRow.tabId;
+
+        if (i == TAB_GROUP) {
+            curGroupRow = rowIdx;
+            buildMoreRow(dim, plan, col, rowIdx, tabStartX, tabStartY, tabWidth, checkboxWidth);
+            continue;
+        }
+        if (i == TAB_SECTION_GLOBAL || i == TAB_SECTION_PROFILE) curGroupRow = -1;
+        // A group's tabs draw nothing here; its More page lists them.
+        if (i >= 0 && curGroupRow >= 0) continue;
 
         // Skip game-gated tabs whose backing HUD isn't registered on this build (Records on
         // GP Bikes, FMX on karts, Friends on non-Steam). Section headers are negative ids and
@@ -321,8 +424,8 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
                 Fonts::getNormal(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
             currentX += charWidth * 8;
 
-            // Right arrow " >" with click region (cycles to next profile)
-            addString(" >", currentX, tabStartY, Justify::LEFT,
+            // Right arrow with click region (cycles to next profile)
+            addString(">", currentX + charWidth, tabStartY, Justify::LEFT,
                 Fonts::getNormal(), ColorConfig::getInstance().getAccent(), dim.fontSize);
             m_clickRegions.push_back(ClickRegion(
                 currentX, tabStartY, charWidth * 2, dim.lineHeightNormal,
@@ -338,39 +441,8 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
         // Get the HUD for this tab (nullptr for master-toggle/section tabs)
         BaseHud* tabHud = tabRow.hud ? tabRow.hud(*this) : nullptr;
 
-        // Determine if this tab's HUD/widgets are enabled. Per-HUD checkboxes show
-        // the focused surface's on/off (companion vs game); the manager/global toggles
-        // (widgets/rumble/updates/director) are shared, not decoupled.
-        //
-        // The helmet reads its GAME flag even on the companion, and that is correct
-        // rather than an oversight: it never renders on the companion at all
-        // (BaseHud::rendersOnCompanion), so the game flag is its only visibility.
-        bool isHudEnabled;
-        if (tabHud) {
-            isHudEnabled = tabHud->isVisibleOnActiveSurface();
-        } else if (i == TAB_WIDGETS) {
-            isHudEnabled = HudManager::getInstance().areWidgetsEnabled();
-        } else if (i == TAB_RUMBLE) {
-            isHudEnabled = XInputReader::getInstance().getGlobalRumbleConfig().enabled;
-        } else if (i == TAB_HELMET) {
-            isHudEnabled = m_helmetOverlay && m_helmetOverlay->isVisible();
-        } else if (i == TAB_UPDATES) {
-            isHudEnabled = UpdateChecker::getInstance().isEnabled();
-        } else if (i == TAB_DIRECTOR) {
-            isHudEnabled = DirectorManager::getInstance().isEnabled();
-        } else if (i == TAB_SPOTTER) {
-            // The SPOKEN-AUDIO master, matching the tab's own first toggle.
-            // Subtitles are deliberately not part of this reading: they are a
-            // standalone mode (silent, captioned), so a lit checkbox here
-            // means "you will hear it".
-            isHudEnabled = SpotterManager::getInstance().isEnabled();
-        } else if (i == TAB_ACHIEVEMENTS) {
-            // The toast master. Tracking is unconditional; the checkbox says
-            // whether an unlock is shown.
-            isHudEnabled = AchievementManager::getInstance().isToastsEnabled();
-        } else {
-            isHudEnabled = true;  // General is always "enabled"
-        }
+        bool isHudEnabled = true;  // tabs without a toggle (General...) read as enabled
+        const bool rowHasCheckbox = tabToggleState(i, tabHud, &isHudEnabled);
 
         // Tab color: PRIMARY if active, ACCENT if inactive
         unsigned long tabColor = isActive ? ColorConfig::getInstance().getPrimary() : ColorConfig::getInstance().getAccent();
@@ -388,9 +460,6 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
         // rather than a captured index. Click order: regions are pushed
         // checkbox-then-tab, which is what makes a click on the box toggle rather
         // than select (pinned by settings_layout_test's region golden).
-        const bool rowHasCheckbox = (tabHud != nullptr) || i == TAB_WIDGETS || i == TAB_RUMBLE
-                                 || i == TAB_HELMET || i == TAB_UPDATES || i == TAB_DIRECTOR
-                                 || i == TAB_SPOTTER || i == TAB_ACHIEVEMENTS;
         const size_t tabRegionIndex = m_clickRegions.size() + (rowHasCheckbox ? 1u : 0u);
         {
             // The highlight spans the tab COLUMN, not the label: full row width,
@@ -432,105 +501,17 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
             }
         }
 
-        // Add checkbox for tabs with toggleable HUDs or widgets
-        if (tabHud) {
-            // Checkbox click region for individual HUD
+        // The row's toggle, when it has one: its icon IS the checkbox (tabToggleType
+        // names the region); otherwise the identity icon in the label's colour.
+        const char* iconName = tabIconName(i, tabHud);
+        if (rowHasCheckbox) {
+            BaseHud* toggleTarget = nullptr;
+            const ClickRegion::Type toggleType = tabToggleType(i, tabHud, &toggleTarget);
             m_clickRegions.push_back(ClickRegion(
                 currentTabX, tabStartY, checkboxWidth, dim.lineHeightNormal,
-                ClickRegion::HUD_TOGGLE, tabHud
+                toggleType, toggleTarget
             ));
-
-            // Identity icon (or text fallback) for the individual HUD
-            drawTabToggle(currentTabX, tabStartY, tabHud->getIconName(), isHudEnabled, isActive, dim, checkboxWidth);
-
-            currentTabX += checkboxWidth;
-        } else if (i == TAB_WIDGETS) {
-            // Checkbox click region for widgets master toggle
-            m_clickRegions.push_back(ClickRegion(
-                currentTabX, tabStartY, checkboxWidth, dim.lineHeightNormal,
-                ClickRegion::WIDGETS_TOGGLE, nullptr
-            ));
-
-            drawTabToggle(currentTabX, tabStartY, "hud-widgets", isHudEnabled, isActive, dim, checkboxWidth);
-
-            currentTabX += checkboxWidth;
-        } else if (i == TAB_RUMBLE) {
-            // Checkbox click region for rumble master toggle
-            m_clickRegions.push_back(ClickRegion(
-                currentTabX, tabStartY, checkboxWidth, dim.lineHeightNormal,
-                ClickRegion::RUMBLE_TOGGLE, nullptr
-            ));
-
-            drawTabToggle(currentTabX, tabStartY, "hud-rumble", isHudEnabled, isActive, dim, checkboxWidth);
-
-            currentTabX += checkboxWidth;
-        } else if (i == TAB_HELMET) {
-            // Checkbox click region for helmet overlay master toggle
-            m_clickRegions.push_back(ClickRegion(
-                currentTabX, tabStartY, checkboxWidth, dim.lineHeightNormal,
-                ClickRegion::HELMET_OVERLAY_TOGGLE, m_helmetOverlay
-            ));
-
-            // Helmet icon is game-specific (the helmet shape differs per game).
-#if defined(GAME_MXBIKES)
-            drawTabToggle(currentTabX, tabStartY, "hud-helmet-mx", isHudEnabled, isActive, dim, checkboxWidth);
-#else
-            drawTabToggle(currentTabX, tabStartY, "hud-helmet", isHudEnabled, isActive, dim, checkboxWidth);
-#endif
-
-            currentTabX += checkboxWidth;
-        } else if (i == TAB_UPDATES) {
-            // Checkbox click region for update checking toggle
-            m_clickRegions.push_back(ClickRegion(
-                currentTabX, tabStartY, checkboxWidth, dim.lineHeightNormal,
-                ClickRegion::UPDATE_CHECK_TOGGLE, nullptr
-            ));
-
-            drawTabToggle(currentTabX, tabStartY, "hud-updates", isHudEnabled, isActive, dim, checkboxWidth);
-
-            currentTabX += checkboxWidth;
-        } else if (i == TAB_DIRECTOR) {
-            // Checkbox click region for the auto-director master toggle
-            m_clickRegions.push_back(ClickRegion(
-                currentTabX, tabStartY, checkboxWidth, dim.lineHeightNormal,
-                ClickRegion::DIRECTOR_ENABLE_TOGGLE, nullptr
-            ));
-
-            // hud-video, not the outlined marker "video": every other row in this list
-            // is a flat hud-* glyph, and the marker set carries a baked 2px outline for
-            // contrast over the track (see assets/icons/README.md), which read as one
-            // heavier icon among twenty. Both files exist; this is the identity one.
-            drawTabToggle(currentTabX, tabStartY, "hud-video", isHudEnabled, isActive, dim, checkboxWidth);
-
-            currentTabX += checkboxWidth;
-        } else if (i == TAB_SPOTTER) {
-            // Checkbox click region for the spotter's spoken-audio master.
-            // Same region TYPE as the toggle inside the tab body — one
-            // handler, in the common switch (a tab-list checkbox is clicked
-            // from whatever tab is open, so a tab-scoped handler would leave
-            // it dead everywhere but its own tab).
-            m_clickRegions.push_back(ClickRegion(
-                currentTabX, tabStartY, checkboxWidth, dim.lineHeightNormal,
-                ClickRegion::SPOTTER_ENABLED_TOGGLE, nullptr
-            ));
-
-            // Identity icon, from assets/icons/hud-spotter.svg like every
-            // other tab's — a headset, for the voice in your ear.
-            drawTabToggle(currentTabX, tabStartY, "hud-spotter", isHudEnabled, isActive, dim, checkboxWidth);
-
-            currentTabX += checkboxWidth;
-        } else if (i == TAB_ACHIEVEMENTS) {
-            // Checkbox click region for the achievement-toast master. Common
-            // handler, like the spotter's, for the same reason.
-            m_clickRegions.push_back(ClickRegion(
-                currentTabX, tabStartY, checkboxWidth, dim.lineHeightNormal,
-                ClickRegion::ACHIEVEMENTS_TOASTS_TOGGLE, nullptr
-            ));
-
-            // Identity icon: a medal (assets/icons/hud-achievements.svg), the flat copy of the podium marker.
-            drawTabToggle(currentTabX, tabStartY, "hud-achievements", isHudEnabled, isActive, dim, checkboxWidth);
-
-            currentTabX += checkboxWidth;
+            drawTabToggle(currentTabX, tabStartY, iconName, isHudEnabled, isActive, dim, checkboxWidth);
         } else {
             // Non-toggleable section tabs: the identity icon takes the SAME colour rule
             // as the label beside it -- PRIMARY on the active row, ACCENT elsewhere.
@@ -539,10 +520,9 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
             // accent on the selected row and simply disappears while its label stays
             // readable. One rule for the pair, so the band's colour cannot swallow
             // half of it.
-            drawTabIcon(currentTabX, tabStartY, tabRow.sectionIcon ? tabRow.sectionIcon : "",
-                tabColor, dim, checkboxWidth);
-            currentTabX += checkboxWidth;
+            drawTabIcon(currentTabX, tabStartY, iconName ? iconName : "", tabColor, dim, checkboxWidth);
         }
+        currentTabX += checkboxWidth;
 
         // Tab click region (for selecting the tab)
         float tabLabelWidth = tabWidth - checkboxWidth;
@@ -740,9 +720,9 @@ const char* SettingsHud::testAnyTabNameAt(int i) const {
 }
 
 const char* SettingsHud::testTabNameAt(int i) const {
-    // The tab LIST's own order and its own availability rule -- the registry walked
-    // exactly as buildTabBar walks it, so a game-gated tab is absent here for the
-    // same reason it is absent on screen.
+    // The tab LIST's own order and its own availability rule, so a game-gated tab
+    // is absent here for the same reason it is absent on screen. Tabs in a closed
+    // More group are listed too: they are in the list, one header click away.
     if (i < 0) return nullptr;
     for (const TabDescriptor& row : s_tabRegistry) {
         if (row.tabId < 0) continue;                 // a section header, not a tab
@@ -809,6 +789,7 @@ SettingsHud::TabMeasure SettingsHud::measureTab(int tabId, const ScaledDimension
                               contentAreaStartX, contentAreaWidth,
                               panelContentRightX, /*currentY=*/0.0f);
     desc->render(ctx);
+    addBackButton(ctx);
     ctx.finishSections();
     out.endY = ctx.currentY;
     out.sections = ctx.measuredSections;
@@ -819,36 +800,57 @@ SettingsHud::TabMeasure SettingsHud::measureTab(int tabId, const ScaledDimension
     m_clickRegions.clear();
     m_steppedControls.clear();
     m_cycleControls.clear();
+    m_sliders.clear();
+    m_dropdown.firstRegion = -1;
     return out;
 }
 
-// THE SIDEBAR AS SECTIONS -- one per tab-list group, content height each, in the
-// order the registry lists them. The engine lays the column out from these exactly
-// as it lays the content column out from a tab's; the air BETWEEN groups is the
-// same seam it puts between any two sibling cards, which is why none of it appears
-// here.
+// THE SIDEBAR AS SECTIONS -- one per tab-list section (card), content height each,
+// in the order the registry lists them. The engine lays the column out from these
+// exactly as it lays the content column out from a tab's; the air BETWEEN sections
+// is the same seam it puts between any two sibling cards, which is why none of it
+// appears here.
 //
 // The registry is walked the same way buildTabBar walks it, so a new group or a
-// game-gated tab moves both without either being told: a marker closes the running
-// group and opens the next, a tab row is one line, and each marker's caption pays
-// for itself (see buildTabBar).
+// game-gated tab moves both without either being told: a section marker closes the
+// running card and opens the next, a visible tab or a non-empty group header is one
+// line, and each section's caption pays for itself (see buildTabBar).
+//
+// ONE ROW PER GROUP, whatever tab is open: a More group never draws its tabs here
+// (its page lists them), so the sidebar's height does not change with the tab and
+// needs no slack for a tallest state.
 std::vector<float> SettingsHud::measureTabGroups(const ScaledDimensions& dim) const {
-    std::vector<float> out;
-    float rows = 0.0f;
-    bool started = false;
-    for (const TabDescriptor& row : s_tabRegistry) {
+    std::vector<float> rows;          // per section
+    bool groupHasTab = false;         // the group being walked has a visible tab
+    int groupRow = -1;                // its TAB_GROUP row; -1 = not in a group
+    auto closeGroup = [&]() {
+        if (groupRow >= 0 && groupHasTab) rows.back() += 1.0f;   // its More row
+        groupRow = -1;
+        groupHasTab = false;
+    };
+    const int registrySize = static_cast<int>(std::size(s_tabRegistry));
+    for (int r = 0; r < registrySize; ++r) {
+        const TabDescriptor& row = s_tabRegistry[r];
         if (row.tabId >= 0) {
             // Hidden tabs cost the sidebar nothing -- that is the point of them.
-            if (!row.hidden && isTabAvailable(row.tabId)) rows += 1.0f;
+            if (row.hidden || !isTabAvailable(row.tabId) || rows.empty()) continue;
+            if (groupRow >= 0) groupHasTab = true;
+            else rows.back() += 1.0f;
             continue;
         }
-        if (started) out.push_back(rows * dim.lineHeightNormal);
-        rows = 0.0f;
-        started = true;
-        rows += 1.0f;                                         // the group's caption
-        if (row.tabId == TAB_SECTION_PROFILE) rows += 1.0f;   // ...and its control row
+        closeGroup();
+        if (row.tabId == TAB_GROUP) {
+            groupRow = r;
+            continue;
+        }
+        rows.push_back(1.0f);                                    // the section's caption
+        if (row.tabId == TAB_SECTION_PROFILE) rows.back() += 1.0f;  // ...and its control row
     }
-    if (started) out.push_back(rows * dim.lineHeightNormal);
+    closeGroup();
+
+    std::vector<float> out;
+    out.reserve(rows.size());
+    for (float r : rows) out.push_back(r * dim.lineHeightNormal);
     return out;
 }
 
@@ -875,9 +877,11 @@ float SettingsHud::measureTallestBodyH(const ScaledDimensions& dim,
         // does not resize when you open it. Skipping it here would let About overflow
         // the one panel a player cannot scroll.
         if (!isTabAvailable(row.tabId)) continue;
+        m_measuringTallest = true;
         const TabMeasure m = measureTab(row.tabId, dim, labelX, controlX, rightColumnX,
                                         contentAreaStartX, contentAreaWidth,
                                         panelContentRightX);
+        m_measuringTallest = false;
 
         // The SAME want the panel below declares, with this tab's sections and no
         // floor -- so what comes back is the height this tab would really occupy,
@@ -952,6 +956,9 @@ void SettingsHud::rebuildRenderData() {
     m_clickRegions.clear();
     m_steppedControls.clear();  // rebuilt in lockstep with the click regions
     m_cycleControls.clear();    // rebuilt in lockstep with the click regions
+    m_sliders.clear();          // ...and so are these
+    m_dropdown.anchored = false;   // set again by the open dropdown's box, if drawn
+    m_dropdown.firstRegion = -1;   // ...and its entries, by buildDropdownPopup
 
     // The Gate::Unlocked markers' state, refreshed HERE because this is the one
     // place that runs before both readers -- the sidebar's "New" tag and the
@@ -994,8 +1001,46 @@ void SettingsHud::rebuildRenderData() {
     const float startX = contentAnchorX - plan.W(mainCol.rowsLeft);
     const float startY = snapEdgeY((1.0f - backgroundHeight) / 2.0f);
 
-    // The frame, the caption's band and one card per section of BOTH columns.
-    addPlanBackground(plan, startX, startY);
+    // The frame, the caption's band and one card per section of BOTH columns --
+    // except the Back row's (addBackButton): its section keeps its box, so the
+    // button sits where it always did, but on the panel's own background.
+    const PanelBox::SectionGeom* backSection =
+        (groupRowOf(m_activeTab) >= 0 && !mainCol.sections.empty())
+            ? &mainCol.sections.back() : nullptr;
+    addPlanBackground(plan, startX, startY, backSection);
+    // UNTHEMED SECTIONS. A theme paints a card per section; without one the
+    // sections were only air, and with rows now side by side the panel read as
+    // one block of text. A faint tint of the primary colour per section box (both
+    // columns), reaching past the rows and a little into each seam, groups them
+    // with no art -- one solid quad per section, behind every row. Sideways it
+    // takes at most a quarter of the gutter from each side, so the sidebar and
+    // the content keep a gap between them, as a theme's cards do.
+    if (!plan.g.hasCard) {
+        const unsigned long tint = PluginUtils::applyOpacity(
+            ColorConfig::getInstance().getPrimary(), 0.06f);
+        const float gutter = plan.X(mainCol.cardLeft) - plan.X(sideCol.cardLeft + sideCol.cardW);
+        const float padX = std::max(0.0f, std::min(
+            PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize) * 0.5f, gutter * 0.25f));
+        const float padY = dim.lineHeightNormal * 0.15f;
+        for (const PanelBox::BandGeom& band : plan.g.bands) {
+            for (const PanelBox::ColumnGeom& col : band.columns) {
+                for (const PanelBox::SectionGeom& sec : col.sections) {
+                    if (&sec == backSection) continue;
+                    float x = plan.X(col.cardLeft) - padX;
+                    float y = plan.Y(sec.top) - padY;
+                    const float w = plan.W(col.cardW) + padX * 2.0f;
+                    const float h = plan.H(sec.bot - sec.top) + padY * 2.0f;
+                    if (w <= 0.0f || h <= 0.0f) continue;
+                    SPluginQuad_t q;
+                    applyOffset(x, y);
+                    setQuadPositions(q, x, y, w, h);
+                    q.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;  // solid-quad-exempt: unthemed section tint, drawn only when no theme card exists
+                    q.m_ulColor = tint;
+                    m_quads.push_back(q);
+                }
+            }
+        }
+    }
     setBounds(startX, startY, startX + panelWidth, startY + backgroundHeight);
     addPlanTitle(plan, "MXBMRP3 SETTINGS",
                  ColorConfig::getInstance().getPrimary());
@@ -1033,6 +1078,12 @@ void SettingsHud::rebuildRenderData() {
     recordTestAnchors(plan, sideCol, mainCol, leftColumnX, controlX, layoutCtx);
 #endif
 
+    // The tab body, marked for Motion (core/motion.h): on a tab switch it fades in
+    // over the panel, sidebar and footer, which stay put.
+    m_motionPartQuadFirst = static_cast<int>(m_quads.size());
+    m_motionPartStringFirst = static_cast<int>(m_strings.size());
+    setMotionPartKey(m_activeTab);
+
     currentY = renderActiveTab(layoutCtx, plan, mainCol, dim, currentY);
 
     currentY += sectionSpacing;
@@ -1042,6 +1093,8 @@ void SettingsHud::rebuildRenderData() {
 
     // Render description or tooltip at the reserved position (replaces each other).
     renderTooltipText(layoutCtx, dim);
+    m_motionPartQuadEnd = static_cast<int>(m_quads.size());
+    m_motionPartStringEnd = static_cast<int>(m_strings.size());
 
     // Bottom button row: [Reset <Tab>] ... [Save/Saved] [Close] ... [About]
     // (settings_hud_footer.cpp).
@@ -1054,6 +1107,9 @@ void SettingsHud::rebuildRenderData() {
     // opacity, reading darker than the panel. Consumes m_fillFirst, so the
     // dirty-flag path finalizing again is a no-op, not a double cut.
     finalizeThemedFill();
+
+    // The open dropdown list, over everything (settings_controls.cpp).
+    buildDropdownPopup(startX, startY, startX + panelWidth, startY + backgroundHeight);
 }
 
 // The panel's plan: both columns' asks, the active tab's measured sections and
@@ -1143,106 +1199,6 @@ PanelPlan& SettingsHud::planSettingsPanel(const ScaledDimensions& dim, float& si
     return plan;
 }
 
-void SettingsHud::addWhatsNewRowBands(const PanelPlan& plan, const PanelBox::ColumnGeom& mainCol) {
-    // THE WHAT'S-NEW ROW BANDS, in one pass over what the tab just registered.
-    //
-    // Here rather than inside every row helper because a row's identity is its
-    // row-wide tooltip region, and by now they all exist -- one loop marks any
-    // row on any tab, and no helper needs to know this feature exists.
-    //
-    // Drawn AFTER the rows and still behind them: the plugin API takes quads and
-    // strings as two arrays, so every quad draws before every string whatever
-    // order they were pushed in (see HudManager::draw). The band cannot cover the
-    // label it is pointing at.
-    //
-    // The POSITIVE colour, matching the "New" tag on the tab that led the player
-    // here -- one colour for the whole trail, tag to row. Not WARNING, which this
-    // plugin spends everywhere else on "careful": a band in it reads as a problem
-    // with the row rather than as the thing worth looking at, and is
-    // indistinguishable from the Beta caveat two tabs down.
-    //
-    // At the same alpha the hover band uses, so it reads as "look here" rather
-    // than as a selection -- and so it disappears under the hover band the moment
-    // the pointer arrives, which is also when it is dismissed.
-    // SPANNED FROM THE PLAN (rowBandX/W), not from the region's own rect. A
-    // highlight is a property of the COLUMN, not of the control in it: a row that
-    // builds its tooltip region by hand gets a different rect from one that went
-    // through the layout helpers, so a band spanned from the region changes
-    // width by tab and does not line up with the accent band that replaces it on
-    // hover.
-    for (const ClickRegion& r : m_clickRegions) {
-        if (r.tooltipId.empty()) continue;
-        if (!WhatsNew::liveForRow(m_activeTab, r.tooltipId.c_str())) continue;
-        addRowHighlight(plan.rowBandX(mainCol), r.y, plan.rowBandW(mainCol), r.height,
-                        PluginUtils::applyOpacity(
-                            ColorConfig::getInstance().getPositive(), ROW_HOVER_ALPHA));
-    }
-}
-
-void SettingsHud::checkTabOverflow(const PanelPlan& plan, const PanelBox::ColumnGeom& mainCol,
-                                   const ScaledDimensions& dim, float currentY) {
-    // HOW FAR THE TAB OVERRAN THE SPACE RESERVED FOR IT, in rows -- negative is
-    // slack, and it should ALWAYS be negative: the height is measured from the
-    // tallest tab, so this one had room by construction.
-    //
-    // Plus the last card's bottom pad, which finishSections() drew BELOW
-    // currentY: the cursor stops on the last row, the card does not, and it is
-    // the CARD the footer buttons collide with.
-    //
-    // It is kept because "by construction" has one failure mode left: a renderer
-    // that lays out differently between the measure pass and this one -- reading
-    // the panel's own height, say. The warning is for a player's log, the number
-    // for CI (settings_fit_test reads it for every tab).
-    // WHERE THE COLUMN'S LAST SECTION ENDS, straight off the engine -- what the
-    // tab was given.
-    const float contentLimit = mainCol.sections.empty()
-        ? plan.Y(plan.g.btnTop)
-        : plan.Y(mainCol.sections.back().bot);
-    const float overflow = (currentY + cardPadBotY() - contentLimit)
-                         / dim.lineHeightNormal;
-#if defined(MXBMRP3_TEST_BUILD)
-    m_testOverflowRows = overflow;
-#endif
-    // A HUNDREDTH OF A ROW OF TOLERANCE, because the measure pass runs at the
-    // origin and this one at the panel's real Y: the tallest tab has no slack by
-    // construction, so float rounding alone left it "overflowing by 0.0 rows"
-    // on every frame (2,339 log lines in 40 seconds on the Stream Chat tab). A real
-    // overrun is at least a row. And ONCE per tab, not per rebuild.
-    if (overflow > 0.01f) {
-        if (m_overflowWarnedTab != m_activeTab) {
-            m_overflowWarnedTab = m_activeTab;
-            DEBUG_WARN_F("Settings tab %d overflows the panel by %.1f rows -- it "
-                         "measured shorter than it drew, so a tab renderer is not "
-                         "reproducible", m_activeTab, overflow);
-        }
-    } else if (m_overflowWarnedTab == m_activeTab) {
-        m_overflowWarnedTab = -1;
-    }
-}
-
-void SettingsHud::addHoveredRowHighlight(const PanelPlan& plan, const PanelBox::ColumnGeom& mainCol) {
-    if (m_hoveredRegionIndex >= 0 && m_hoveredRegionIndex < static_cast<int>(m_clickRegions.size())) {
-        const ClickRegion& hoveredRegion = m_clickRegions[m_hoveredRegionIndex];
-        if (hoveredRegion.type == ClickRegion::TOOLTIP_ROW) {
-            // THE CONTENT COLUMN, from the plan (rowBandX/W) -- the same band the
-            // sidebar, StandingsHud and RecordsHud span, inset by [content] padding
-            // like theirs rather than taking the card's interior.
-            //
-            // Not the region's own x and width: that ties the decoration to a
-            // hit-test rectangle, so every row that builds its region by hand
-            // highlights to a different width from the rows that went through the
-            // layout helpers. A highlight is a property of the column, not of the
-            // control in it. The plan also answers the themed card's clamp against
-            // the frame, so the themed case needs no second expression.
-            addRowHighlight(plan.rowBandX(mainCol), hoveredRegion.y,
-                            plan.rowBandW(mainCol),
-                            hoveredRegion.height,
-                            PluginUtils::applyOpacity(ColorConfig::getInstance().getAccent(),
-                                                      ROW_HOVER_ALPHA));
-        }
-    }
-}
-
 void SettingsHud::renderTooltipText(const SettingsLayoutContext& layoutCtx, const ScaledDimensions& dim) {
     // The description/tooltip box spans from the label column to the content edge — a whole number of
     // character cells, so take it from SettingsMetrics rather than dividing the
@@ -1279,8 +1235,11 @@ void SettingsHud::renderTooltipText(const SettingsLayoutContext& layoutCtx, cons
                 renderWrappedText(std::string(tabTooltip), ColorConfig::getInstance().getMuted());
             }
         } else {
-            // Show control tooltip
+            // Show control tooltip; a row named after a TAB (the More page's) shows
+            // that tab's description.
             const char* tooltipText = TooltipManager::getInstance().getControlTooltip(m_hoveredTooltipId.c_str());
+            if (!tooltipText || tooltipText[0] == '\0')
+                tooltipText = TooltipManager::getInstance().getTabTooltip(m_hoveredTooltipId.c_str());
             if (tooltipText && tooltipText[0] != '\0') {
                 renderWrappedText(std::string(tooltipText), ColorConfig::getInstance().getMuted());
             }
@@ -1311,6 +1270,7 @@ float SettingsHud::renderActiveTab(SettingsLayoutContext& layoutCtx, const Panel
         // Route to the extracted per-tab renderer (settings_tab_*.cpp) via the registry.
         layoutCtx.currentY = currentY;   // Sync context cursor
         tabDesc->render(layoutCtx);
+        addBackButton(layoutCtx);
         layoutCtx.finishSections();
         currentY = layoutCtx.currentY;   // Sync local cursor back
 

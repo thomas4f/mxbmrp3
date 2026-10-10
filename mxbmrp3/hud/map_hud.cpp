@@ -65,7 +65,7 @@ MapHud::MapHud()
     : m_fTrackWidthScale(DEFAULT_TRACK_WIDTH_SCALE),  // Reordered to match header declaration order
       m_minX(0.0f), m_maxX(0.0f), m_minY(0.0f), m_maxY(0.0f),
       m_fTrackScale(1.0f), m_fBaseMapWidth(0.0f), m_fBaseMapHeight(0.0f), m_bHasTrackData(false),
-      m_bRotateToPlayer(false), m_fLastRotationAngle(0.0f),
+      m_bRotateToPlayer(true), m_fLastRotationAngle(0.0f),
       m_fLastPlayerX(0.0f), m_fLastPlayerZ(0.0f),
       m_bShowOutline(true),
       m_fOutlineWidthScale(DEFAULT_OUTLINE_WIDTH_SCALE),
@@ -76,7 +76,7 @@ MapHud::MapHud()
       m_riderShapeIndex(1),  // Will be set properly via settings or resetToDefaults
       m_anchorPoint(AnchorPoint::TOP_RIGHT),
       m_fAnchorX(0.0f), m_fAnchorY(0.0f),
-      m_bZoomEnabled(false),
+      m_bZoomEnabled(true),
       m_fZoomDistance(DEFAULT_ZOOM_DISTANCE),
       m_fMarkerScale(DEFAULT_MARKER_SCALE),
       m_fDetailScale(DEFAULT_DETAIL_SCALE),
@@ -152,9 +152,13 @@ bool MapHud::handleMouseInput(bool allowInput) {
 bool MapHud::handlesDataType(DataChangeType dataType) const {
     // Need to rebuild rider labels when standings/positions change
     // Also rebuild when tracked riders change (color/shape)
+    // With the lap delta on, a session change or cleared lap logs drop its
+    // reference laps: repaint even before the next position update arrives.
     return dataType == DataChangeType::Standings ||
            dataType == DataChangeType::SpectateTarget ||
-           dataType == DataChangeType::TrackedRiders;
+           dataType == DataChangeType::TrackedRiders ||
+           (m_lapDelta != LapDelta::OFF &&
+            (dataType == DataChangeType::SessionData || dataType == DataChangeType::LapLog));
 }
 
 void MapHud::setTrackWidthScale(float scale) {
@@ -542,6 +546,7 @@ void MapHud::calculateTrackBounds() {
 }
 
 void MapHud::rebuildRenderData() {
+    m_motionUnderQuadFirst = m_motionUnderQuadEnd = -1;   // set again below if the outline draws
     m_quads.clear();
     clearStrings();
     m_riderClickRegions.clear();
@@ -782,6 +787,10 @@ void MapHud::rebuildRenderData() {
     // Both use same clip bounds - outline clips first (wider), track extends to edge
     // This gives natural "outline on sides only" effect at boundaries
     size_t quadsBeforeTrack = m_quads.size();
+    // The view (map_hud_view.cpp), from here to the end of the rebuild only.
+    setTiltMode(usingZoom ? m_tiltDeg : 0);
+    m_fadeEdges = usingZoom;
+    m_fadeClip[0] = clipLeft; m_fadeClip[1] = clipTop; m_fadeClip[2] = clipRight; m_fadeClip[3] = clipBottom;
     unsigned long outlineColor = this->getColor(ColorSlot::PRIMARY);
     unsigned long fillColor = this->getColor(ColorSlot::BACKGROUND);
 
@@ -808,7 +817,7 @@ void MapHud::rebuildRenderData() {
     ribbonKey.clipBottom = clipBottom;
     ribbonKey.trackWidthScale = m_fTrackWidthScale;
     ribbonKey.outlineWidthScale = m_fOutlineWidthScale;
-    ribbonKey.zoomDistance = m_fZoomDistance;
+    ribbonKey.zoomDistance = m_fRangeNow;
     ribbonKey.detailScale = m_fDetailScale;
     ribbonKey.adaptiveDetail = m_bAdaptiveDetail;
     ribbonKey.detailBaseline = m_fDetailBaseline;
@@ -817,6 +826,13 @@ void MapHud::rebuildRenderData() {
     ribbonKey.showTitle = m_bShowTitle;
     ribbonKey.outlineColor = outlineColor;
     ribbonKey.fillColor = fillColor;
+    ribbonKey.lapDelta = m_lapDelta != LapDelta::OFF && refreshDeltaRate();
+    if (ribbonKey.lapDelta) {
+        ribbonKey.deltaStamp = m_deltaStamp;
+        ribbonKey.gainColor = this->getColor(ColorSlot::POSITIVE);
+        ribbonKey.lossColor = this->getColor(ColorSlot::NEGATIVE);
+    }
+    ribbonKey.tilt = m_tiltMode;
 
 #if defined(MXBMRP3_TEST_BUILD)
     g_mapBoundsUs += usSince(profBoundsStart);
@@ -831,20 +847,27 @@ void MapHud::rebuildRenderData() {
 #endif
         m_quads.insert(m_quads.end(), m_ribbonQuads.begin(), m_ribbonQuads.end());
     } else {
+        m_ribbonOutlineQuads = 0;
 #if defined(MXBMRP3_TEST_BUILD)
         ++g_mapRibbonMiss;
 #endif
         if (m_bShowOutline) {
             renderTrack(rotation, outlineColor, effOutlineMult,
-                        clipLeft, clipTop, clipRight, clipBottom);  // White outline
+                        clipLeft, clipTop, clipRight, clipBottom, ribbonKey.lapDelta);  // White outline
+            m_ribbonOutlineQuads = m_quads.size() - quadsBeforeTrack;
         }
         renderTrack(rotation, fillColor, 1.0f,
-                    clipLeft, clipTop, clipRight, clipBottom);  // Black fill
+                    clipLeft, clipTop, clipRight, clipBottom, ribbonKey.lapDelta, /*tint=*/true);  // Black fill
         m_ribbonQuads.assign(m_quads.begin() + quadsBeforeTrack, m_quads.end());
         m_ribbonKey = ribbonKey;
         m_ribbonCacheValid = true;
     }
     size_t trackQuads = m_quads.size() - quadsBeforeTrack;
+    // The outline sits under the fill: Motion fades it on its own curve.
+    if (m_ribbonOutlineQuads > 0) {
+        m_motionUnderQuadFirst = static_cast<int>(quadsBeforeTrack);
+        m_motionUnderQuadEnd = static_cast<int>(quadsBeforeTrack + m_ribbonOutlineQuads);
+    }
 
 #if defined(MXBMRP3_TEST_BUILD)
     g_mapRibbonUs += usSince(profRibbonStart);
@@ -915,6 +938,9 @@ void MapHud::rebuildRenderData() {
         quadCountLogged = true;
     }
 
+    m_tiltMode = 0;   // drawing done: layout (and anything else) sees the flat map
+    m_fadeEdges = false;
+
     // --- ZOOM MODE: Restore original values ---
     if (usingZoom) {
         m_minX = savedMinX;
@@ -934,21 +960,24 @@ void MapHud::resetToDefaults() {
     m_bShowTitle = false;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = 0.0f;  // Transparent by default
-    m_fScale = 1.0f;
+    setScale(1.0f);
     m_anchorPoint = AnchorPoint::TOP_RIGHT;
     m_fAnchorX = 0.994125f;
     m_fAnchorY = 0.0113039f;
-    m_bRotateToPlayer = false;
+    m_bRotateToPlayer = true;
     m_bShowOutline = true;  // Enable outline by default
     m_fOutlineWidthScale = DEFAULT_OUTLINE_WIDTH_SCALE;
     m_bShowTrackMarkers = true;  // Show S/F, sector markers and segment lines by default
     m_riderColorMode = RiderColorMode::RELATIVE_POS;  // Default to relative position coloring
+    m_lapDelta = LapDelta::DEFAULT;
+    m_tiltDeg = 30;
     m_labelMode = LabelMode::RACE_NUM;
     m_labelAnchor = LabelAnchor::BELOW;
     m_riderShapeIndex = getShapeIndexByFilename(DEFAULT_RIDER_ICON);
     m_fTrackWidthScale = DEFAULT_TRACK_WIDTH_SCALE;
-    m_bZoomEnabled = false;
+    m_bZoomEnabled = true;  // Follow
     m_fZoomDistance = DEFAULT_ZOOM_DISTANCE;
+    m_bAdaptiveRange = false;
     m_fMarkerScale = DEFAULT_MARKER_SCALE;
     m_fDetailScale = DEFAULT_DETAIL_SCALE;
     m_bAdaptiveDetail = true;

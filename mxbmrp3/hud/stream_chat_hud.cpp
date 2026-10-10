@@ -44,12 +44,13 @@ void StreamChatHud::resetToDefaults() {
     m_bShowTitle = true;
     setTextureVariant(0);
     m_fBackgroundOpacity = 0.80f;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     setPosition(cellsX(133), cellsY(59));  // right-column tower, after Performance
     m_displayMode = DisplayMode::ON;
     m_maxRows = DEFAULT_ROWS;
     m_widthChars = DEFAULT_WIDTH_CHARS;
     m_autoHideDurationMs = DEFAULT_AUTO_HIDE_MS;
+    m_displayOrder = DisplayOrder::OLDEST_FIRST;
     m_showTimestamps = true;
     m_nameColors = true;
     m_textColors = false;
@@ -493,8 +494,10 @@ void StreamChatHud::rebuildRenderData() {
     const int chatRowBudget = blocking ? 0 : m_maxRows - statusRows;
 
     // Walk newest to oldest, wrapping each message, until the rows are full. A
-    // message that only partly fits keeps its NEWEST rows (its head scrolls off
-    // the top, as on both platforms).
+    // message that only partly fits keeps the rows nearest the newest end: its
+    // head scrolls off the top with newest at the bottom (as on both platforms),
+    // its tail off the bottom with newest on top.
+    const bool newestFirst = (m_displayOrder == DisplayOrder::NEWEST_FIRST);
     for (auto it = m_entries.rbegin(); it != m_entries.rend() && static_cast<int>(rows.size()) < chatRowBudget; ++it) {
         const StreamChatEntry& e = *it;
         if (isFiltered(e)) continue;
@@ -509,13 +512,20 @@ void StreamChatHud::rebuildRenderData() {
         }
         const int room = chatRowBudget - static_cast<int>(rows.size());
         const int take = std::min(room, static_cast<int>(msgRows.size()));
-        // rows is built newest-first, so push this message's rows in reverse.
-        for (int k = 0; k < take; ++k) {
-            rows.push_back(std::move(msgRows[msgRows.size() - 1 - static_cast<size_t>(k)]));
+        if (newestFirst) {
+            // rows is already in reading order: this message's head first.
+            for (int k = 0; k < take; ++k) {
+                rows.push_back(std::move(msgRows[static_cast<size_t>(k)]));
+            }
+        } else {
+            // rows is built bottom-up, so push this message's rows in reverse.
+            for (int k = 0; k < take; ++k) {
+                rows.push_back(std::move(msgRows[msgRows.size() - 1 - static_cast<size_t>(k)]));
+            }
         }
     }
     // Top-to-bottom reading order: oldest message first, newest at the bottom.
-    std::reverse(rows.begin(), rows.end());
+    if (!newestFirst) std::reverse(rows.begin(), rows.end());
 
     PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(m_widthChars, dim.fontSize);
@@ -624,23 +634,29 @@ void StreamChatHud::rebuildRenderData() {
         m_quads.push_back(quad);
     };
 
-    // Chat sits at the bottom of the panel with any empty space above it, the
-    // way both platforms fill; the status lines take the TOP rows, away from
-    // where new messages land.
+    // Chat sits at the newest end of the panel with any empty space beyond its
+    // oldest line -- at the bottom by default, the way both platforms fill; the
+    // status lines take the rows at the OTHER end, away from where new messages
+    // land.
     const int emptyRows = chatRowBudget - static_cast<int>(rows.size());
     float y = plan.contentY();
-    for (int i = 0; i < statusRows; ++i) {
-        char line[96];
-        snprintf(line, sizeof(line), "%.*s", m_widthChars, statusLines[i].text);
-        addString(line, contentX, y, PluginConstants::Justify::LEFT,
-                  getFont(FontCategory::NORMAL), statusLines[i].color, dim.fontSize);
+    auto drawStatusLines = [&]() {
+        for (int i = 0; i < statusRows; ++i) {
+            char line[96];
+            snprintf(line, sizeof(line), "%.*s", m_widthChars, statusLines[i].text);
+            addString(line, contentX, y, PluginConstants::Justify::LEFT,
+                      getFont(FontCategory::NORMAL), statusLines[i].color, dim.fontSize);
 #ifdef MXBMRP3_TEST_BUILD
-        m_testRows.push_back(std::string("~|") + line);
-        m_testRowSprites.push_back({ 0, 0 });
+            m_testRows.push_back(std::string("~|") + line);
+            m_testRowSprites.push_back({ 0, 0 });
 #endif
-        y += dim.lineHeightNormal;
+            y += dim.lineHeightNormal;
+        }
+    };
+    if (!newestFirst) {
+        drawStatusLines();
+        y += emptyRows * dim.lineHeightNormal;
     }
-    y += emptyRows * dim.lineHeightNormal;
 
     for (const Row& row : rows) {
         const StreamChatEntry& e = *row.entry;
@@ -685,6 +701,10 @@ void StreamChatHud::rebuildRenderData() {
 #endif
         }
         y += dim.lineHeightNormal;
+    }
+    if (newestFirst) {
+        y += emptyRows * dim.lineHeightNormal;
+        drawStatusLines();
     }
     m_renderedRows = static_cast<int>(rows.size()) + statusRows;
 

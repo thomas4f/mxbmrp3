@@ -19,15 +19,10 @@ BaseHud* SettingsHud::renderTabTelemetry(SettingsLayoutContext& ctx) {
     // === LAYOUT SECTION ===
     ctx.addSectionHeading("Layout");
 
-    // Display mode cycle control
-    const char* modeText = "";
-    switch (hud->m_displayMode) {
-        case 0: modeText = "Graphs"; break;
-        case 1: modeText = "Numbers"; break;
-        case 2: modeText = "Both"; break;
-    }
-    ctx.addCycleControl("Style", modeText,
-        SettingsHud::CycleControl::enumMember(hud, &TelemetryHud::m_displayMode, 3, hud),
+    // Display mode dropdown
+    static const char* const kStyles[] = { "Graphs", "Numbers", "Both" };
+    ctx.addCycleControl("Style", cycleName(kStyles, hud->m_displayMode),
+        SettingsHud::CycleControl::enumMember(hud, &TelemetryHud::m_displayMode, 3, hud, kStyles),
         hud, true, false, "telemetry.display");
 
     // Panel HEIGHT, in text rows. The knob the Telemetry HUD was missing: its graph

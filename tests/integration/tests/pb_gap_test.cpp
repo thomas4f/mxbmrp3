@@ -529,6 +529,52 @@ TEST_CASE("freeze: the Gap Bar holds the official split gap against its own Refe
     host.shutdown();
 }
 
+// General's Reference and Freeze are the DEFAULTS: a HUD on "Default" (the
+// factory setting, and every file that never chose) follows them; a HUD with
+// its own value keeps it (hud_defaults.h). Lap 3's S1 reads +3.456 against
+// the session PB and -1.544 against the last lap, as above.
+TEST_CASE("defaults: HUDs on Default follow General's Reference and Freeze, a set value overrides") {
+    SUBCASE("both follow General's Last lap, held") {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        rideToLap3S1(host, "defaults_follow",
+                     "[General]\ndefaultReference=2\ndefaultFreeze=3000\n\n"
+                     "[GapBarHud]\nvisible=1\n\n[LapLogHud]\nvisible=1\n");
+        int shownMs = 0;
+        REQUIRE(signedRows(host, "gap_bar_hud", shownMs) == 1);
+        CHECK_MESSAGE(shownMs == -1544, "the Gap Bar shows " << shownMs << " ms, not General's last-lap -1544");
+        REQUIRE(lapLogGapRows(host, shownMs) == 1);
+        CHECK_MESSAGE(shownMs == -1544, "the Lap Log shows " << shownMs << " ms, not General's last-lap -1544");
+        host.shutdown();
+    }
+
+    SUBCASE("a HUD's own Reference wins over General's") {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        rideToLap3S1(host, "defaults_override",
+                     "[General]\ndefaultReference=2\n\n"
+                     "[GapBarHud]\nvisible=1\n\n[LapLogHud]\nvisible=1\nreference=0\n");
+        int shownMs = 0;
+        REQUIRE(signedRows(host, "gap_bar_hud", shownMs) == 1);
+        CHECK(shownMs == -1544);   // Default: General's last lap
+        REQUIRE(lapLogGapRows(host, shownMs) == 1);
+        CHECK_MESSAGE(shownMs == 3456, "the Lap Log's own Session PB shows " << shownMs << " ms, not +3456");
+        host.shutdown();
+    }
+
+    SUBCASE("General's Freeze Off keeps a HUD on Default live") {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        rideToLap3S1(host, "defaults_freeze_off", "[General]\ndefaultFreeze=0\n\n[LapLogHud]\nvisible=1\n");
+        int shownMs = 0, liveGap = 0;
+        REQUIRE(lapLogGapRows(host, shownMs) == 1);
+        REQUIRE(host.liveGapRef(0, liveGap));
+        CHECK(std::abs(shownMs - liveGap) <= 500);
+        CHECK(shownMs != 3456);
+        host.shutdown();
+    }
+}
+
 TEST_CASE("freeze: the line that sets the all-time PB is held against the previous one, not +0.000") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());

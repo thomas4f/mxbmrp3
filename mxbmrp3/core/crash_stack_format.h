@@ -23,6 +23,7 @@
 
 #include <cstdio>
 #include <cstddef>
+#include <cstring>
 
 namespace CrashStack {
 
@@ -82,6 +83,35 @@ inline const char* avTypeName(unsigned long long info0) {
         case 8: return "execute";
         default: return "";
     }
+}
+
+// Below this, an access violation's target address is a null pointer plus a field
+// offset: Windows never maps the first 64 KB of a process.
+constexpr unsigned long long NULL_PAGE_LIMIT = 0x10000;
+
+// Format the address an access violation tried to touch
+// (EXCEPTION_RECORD::ExceptionInformation[1]) as one label, so a crash report says
+// WHY the pointer was bad, not only where the code was:
+//   "null+0x28"             a null pointer plus a field offset
+//   "<module>+0x<offset>"   inside a loaded module (`module` resolved by the caller)
+//   "0x<address>"           anything else: heap, freed memory, or garbage bits
+// `module` is the resolver's basename for the address, or empty/"unknown" when it
+// lies in no module; it is ignored for a null-page address. The raw address is
+// randomised per launch (ASLR), so it identifies nothing. Returns chars written
+// (excluding the NUL), or 0 with `out` left "" if it didn't fit or args were bad.
+inline int formatAvAddress(char* out, size_t outSize, unsigned long long address,
+                           const char* module, unsigned long long offset) {
+    if (!out || outSize == 0) return 0;
+    int n;
+    if (address < NULL_PAGE_LIMIT) {
+        n = std::snprintf(out, outSize, "null+0x%llx", address);
+    } else if (module && module[0] && std::strcmp(module, "unknown") != 0) {
+        n = std::snprintf(out, outSize, "%s+0x%llx", module, offset);
+    } else {
+        n = std::snprintf(out, outSize, "0x%llx", address);
+    }
+    if (n < 0 || static_cast<size_t>(n) >= outSize) { out[0] = '\0'; return 0; }
+    return n;
 }
 
 inline int formatFrameList(char* out, size_t outSize, const Frame* frames, int count,

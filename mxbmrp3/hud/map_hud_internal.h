@@ -47,6 +47,38 @@ inline void advanceAlongArc(float& x, float& y, float& headingDeg, float radius,
     headingDeg += theta * RAD_TO_DEG;
 }
 
+// A colour with its own opacity scaled by `fade` (0..1): the zoomed map's edge
+// fade (MapHud::edgeFade). fade 1 returns the colour unchanged.
+inline unsigned long fadeAlpha(unsigned long color, float fade) {
+    if (fade >= 1.0f) return color;
+    const float a = static_cast<float>((color >> 24) & 0xFF) * std::fmax(fade, 0.0f);
+    return (color & 0x00FFFFFFul) | (static_cast<unsigned long>(a + 0.5f) << 24);
+}
+
+// Liang-Barsky: the part [t0, t1] of the segment (x0,y0)-(x1,y1) inside the
+// rect, or false when none of it is. The zoomed map cuts its ribbon with it, so
+// the track ends exactly at the map's edge instead of a whole quad at a time.
+inline bool clipSegment(float x0, float y0, float x1, float y1,
+                        float left, float top, float right, float bottom,
+                        float& t0, float& t1) {
+    t0 = 0.0f;
+    t1 = 1.0f;
+    const float dx = x1 - x0, dy = y1 - y0;
+    const float p[4] = { -dx, dx, -dy, dy };
+    const float q[4] = { x0 - left, right - x0, y0 - top, bottom - y0 };
+    for (int k = 0; k < 4; ++k) {
+        if (p[k] == 0.0f) {
+            if (q[k] < 0.0f) return false;   // parallel to this edge and outside it
+            continue;
+        }
+        const float r = q[k] / p[k];
+        if (p[k] < 0.0f) t0 = std::fmax(t0, r);
+        else t1 = std::fmin(t1, r);
+        if (t0 > t1) return false;
+    }
+    return true;
+}
+
 // Helper to get shape index from filename (returns 1 if not found)
 inline int getShapeIndexByFilename(const char* filename) {
     const auto& assetMgr = AssetManager::getInstance();

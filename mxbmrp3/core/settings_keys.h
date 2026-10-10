@@ -523,6 +523,14 @@ namespace Settings {
             constexpr Setting SHOW_RESET_BUTTON = {"showResetButton", "Show the Reset button under the count (1 = on, default; 0 = off - reset by hotkey instead, for a clean capture)"};
         }
 
+        // RpmWidget settings
+        namespace Rpm {
+            constexpr Setting SEGMENTS = {"segments", "Number of shift lights (3-40, default 15)"};
+            constexpr Setting SEGMENT_GAPS = {"segmentGaps", "Gaps between the lights (1 = on, default; 0 = off - one continuous bar)"};
+            constexpr Setting WIDTH = {"width", "Strip width in characters (8-60, default 15 - spans the Gear and Speed widgets; horizontal only)"};
+            constexpr Setting VERTICAL = {"vertical", "Stand the strip on its end, filling bottom to top at the Gear and Speed widgets' height (1 = on; 0 = off, default)"};
+        }
+
         // GamepadWidget settings
         namespace Gamepad {
             constexpr Setting TRIGGER_FILL_MODE = {"triggerFillMode", "0=fade (brightness, default), 1=fill (bottom-up)"};
@@ -592,11 +600,6 @@ namespace Settings {
             constexpr Setting PLUGIN_THREAD = {"pluginThread", "EXPERIMENTAL: run the plugin's callbacks + HUD render build on its own thread so hiccups never stall the game frame (1=on, 0=off default). Read once at startup"};
             constexpr Setting HW_ACCEL = {"hwAccel", "GPU-render the companion window via D3D11 (4x MSAA, bilinear sampling) instead of the software rasterizer; falls back automatically when unavailable (1=on default, 0=software). Applies when a window next opens"};
             constexpr Setting GL_IN_GAME = {"glInGame", "EXPERIMENTAL: draw the in-game HUD inside the GAME'S OWN OpenGL context instead of handing primitives to the engine (1=on, 0=off default). It draws into the game's own framebuffer, so game capture sees it exactly as it sees the rest of the HUD. Falls back to engine rendering on any failure"};
-            constexpr Setting GL_PROBE = {"glProbe", "DEBUG: probe the game's OpenGL context from the Draw callback to find out whether the HUD could be drawn in-context instead of by the engine (Phase 0 of that spike). 0=off default, 1=report only (read-only, cannot perturb the game), 2=also draw one magenta test bar top-left with full state save/restore and verify both that it landed and that nothing leaked. Results go to the log as GlProbe: lines"};
-            constexpr Setting GL_PROBE_X = {"glProbeX", "DEBUG: x of the glProbe test bars in normalized HUD coords (default 0.02). Move them ON TOP OF one of the GAME's own on-track UI elements to find out whether an in-context GL draw lands above or below it - that is the layering question the spike has to answer, and it can only be asked where the game draws its own UI in the same frame"};
-            constexpr Setting GL_PROBE_Y = {"glProbeY", "DEBUG: y of the glProbe test bars in normalized HUD coords (default 0.02). See glProbeX"};
-            constexpr Setting GL_PROBE_QUADS = {"glProbeQuads", "DEBUG: draw N extra quads per frame IN-CONTEXT (our own GL), the counterpart of renderProbeQuads which draws them through the ENGINE. Sweep both at equal N and compare frame time: that difference is the entire case for an in-context renderer. Needs glProbe=2. 0=off default"};
-            constexpr Setting GL_PROBE_BATCH = {"glProbeBatch", "DEBUG: how glProbeQuads submits - 0=immediate mode (glBegin/glEnd, the slowest GL path, so a FLOOR on what GL can do), 1=one glDrawArrays over a client vertex array (default, much closer to a real backend). Sweep both: the floor alone understates GL, the batch alone understates how much work Phase 2 is"};
             constexpr Setting RENDER_PROBE_QUADS = {"renderProbeQuads", "DEBUG: emit N extra synthetic quads each frame for the ENGINE to draw, to measure its per-primitive render cost differentially (sweep N with uncapped FPS at a fixed spot, watch frame time rise; slope = engine cost). 0=off default"};
             constexpr Setting RENDER_PROBE_FULLSCREEN = {"renderProbeFullscreen", "DEBUG: make renderProbeQuads FULL-SCREEN quads (measures fill-rate) instead of tiny ones (measures per-quad submit cost); 1=fullscreen, 0=tiny default. Fill and sprite types (not text)"};
             constexpr Setting RENDER_PROBE_TYPE = {"renderProbeType", "DEBUG: which primitive renderProbeQuads emits — 0=solid-fill quad (default), 1=sprite quad (textured, cycles all registered sprites to exercise texture switches), 2=text string (glyph-atlas). The three have different engine costs; sweep each separately"};

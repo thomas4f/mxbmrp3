@@ -1,10 +1,9 @@
 // ============================================================================
 // core/test_hooks_gl.cpp
-// The MXBMRP3_Test_* exports for the GL paths: the Phase 0 feasibility probe,
-// the in-context renderer ([Advanced] glInGame) and its confirmation prompt.
-// Split by family out of core/test_hooks.cpp when that file reached its size
-// budget. Pinned by tests/integration/tests/gl_render_test.cpp and
-// gl_probe_test.cpp.
+// The MXBMRP3_Test_* exports for the GL paths: the in-context renderer
+// ([Advanced] glInGame) and its confirmation prompt. Split by family out of
+// core/test_hooks.cpp when that file reached its size budget. Pinned by
+// tests/integration/tests/gl_render_test.cpp.
 //
 // Same rules as core/test_hooks.cpp: gated on MXBMRP3_TEST_BUILD, and
 // mxbmrp3/CMakeLists.txt removes this file from every shipping target.
@@ -13,7 +12,6 @@
 
 #if defined(MXBMRP3_TEST_BUILD)
 
-#include "gl_probe.h"
 #include "hud_manager.h"
 #include "test_gl_render_probe.h"
 #include "ui_config.h"
@@ -21,11 +19,6 @@
 
 extern "C" {
 
-// Phase 0 GL feasibility probe (core/gl_probe.h). Under Wine with no GL context
-// current on the harness's Draw thread, these pin the inert path: the probe
-// runs, finds no context, and the native handoff is untouched. That is real
-// coverage of the branch a non-GL game would take, not a placeholder for the
-// in-game answer -- which no headless test can reach.
 // The GL render probe's body lives in core/test_gl_render_probe.cpp - it needs
 // a synthetic frame, a GL readback and hudgl::Renderer, which is more than a
 // registry file of thin exports should carry.
@@ -94,39 +87,9 @@ __declspec(dllexport) int MXBMRP3_Test_GlFrameAssetCount(int kind) {
     return mxbtest::glFrameAssetCount(kind);
 }
 
-__declspec(dllexport) void MXBMRP3_Test_GlProbeConfig(int mode) {
-    UiConfig::getInstance().setGlProbe(mode);
-}
-
-// The Phase 1 measurement load. Exposed so the batched client-vertex-array path
-// is exercised against a real driver in CI-adjacent conditions rather than
-// first running on Thomas's machine, where a fault would cost a game launch.
-__declspec(dllexport) void MXBMRP3_Test_GlProbeLoad(int quads, int batch) {
-    UiConfig::getInstance().setGlProbeQuads(quads);
-    UiConfig::getInstance().setGlProbeBatch(batch);
-}
-
-// Packed so one hook serves every field without a struct crossing the DLL
-// boundary (where a layout change is a silent skew, per the array-callback
-// rule). Index order is fixed; unknown index -> 0.
-__declspec(dllexport) int MXBMRP3_Test_GlProbeStatus(int field) {
-    const GlProbe::Status st = GlProbe::status();
-    switch (field) {
-        case 0: return st.ran ? 1 : 0;
-        case 1: return st.moduleResident ? 1 : 0;
-        case 2: return st.entryPointsOk ? 1 : 0;
-        case 3: return st.contextCurrent ? 1 : 0;
-        case 4: return st.glVersion;
-        case 5: return st.compatProfile ? 1 : 0;
-        case 6: return st.drew ? 1 : 0;
-        case 7: return st.readbackMatched ? 1 : 0;
-        case 8: return st.stateDiffs;
-        case 9: return st.glErrors;
-        case 10: return st.drawGaps;
-        case 11: return st.lastGapMs;
-        case 12: return st.loadPainted;
-        default: return 0;
-    }
+// Fingerprint diff across one backend render; see test_gl_render_probe.h.
+__declspec(dllexport) int MXBMRP3_Test_GlRenderStateDiffs(int* glErrors) {
+    return mxbtest::glRenderStateDiffs(glErrors);
 }
 
 }  // extern "C"

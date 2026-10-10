@@ -472,7 +472,7 @@ The plugin normally hands its quads and strings to the game to draw. With `[Adva
 
 **Inherited fixed-function state is the failure mode, and it is silent.** A tester's HUD drew panels correctly while every glyph and icon came out a solid block: the game had left texture unit 7 active and fog on. Nothing raises a GL error for that, so nothing reaches the error-based fallback. The renderer now sets every state it depends on - texture units down to unit 0, texgen, fog, logic op, polygon mode/stipple, clip planes, sample coverage, and any bound program/VBO/VAO - inside one push/pop window that also brackets batch building. Anything that DOES raise a GL error latches the backend off for the session and the engine draws the HUD, which is also what a non-GL game gets.
 
-**Two consequences worth knowing.** Text and icons are sampled from mip chains (`hudassets::buildFntMips` / `buildTexMips`) because the shipped `.fnt` cell is 135 px and HUD text is ~20 px - ~7x minification, which is what made unmipped glyphs look thin and broken up. And the settings row is a STATUS, not a toggle (Off / On / Failed): the backend can stand down by itself, and a plain toggle would keep reading "on" while the engine was drawing. Turning it on arms `hud/gl_confirm_hud.h` - a countdown the user confirms or lets expire, which is the way back for someone whose HUD came out unreadable. Pinned by `gl_render_test.cpp` (real GL under Xvfb) and `gl_probe_test.cpp`.
+**Two consequences worth knowing.** Text and icons are sampled from mip chains (`hudassets::buildFntMips` / `buildTexMips`) because the shipped `.fnt` cell is 135 px and HUD text is ~20 px - ~7x minification, which is what made unmipped glyphs look thin and broken up. And the settings row is a STATUS, not a toggle (Off / On / Failed): the backend can stand down by itself, and a plain toggle would keep reading "on" while the engine was drawing. Turning it on arms `hud/gl_confirm_hud.h` - a countdown the user confirms or lets expire, which is the way back for someone whose HUD came out unreadable. Pinned by `gl_render_test.cpp` (real GL under Xvfb).
 
 ### 14. DirectorManager (`core/director_manager.*`)
 
@@ -585,6 +585,7 @@ Abstract base class that all HUDs inherit from. Provides:
 - `ClockWidget` - Real-time clock
 - `GearWidget` - Current gear indicator
 - `CrashWidget` - A resettable crash tally for streaming (`GlobalStats::crashTally`), deliberately not StatsManager's per-track+bike `crashCount`
+- `RpmWidget` - Shift-light strip under Gear + Speed: green, amber, red from the shift point, the red ones flashing on the limiter
 - `SpeedoWidget`, `TachoWidget` - Analog dials. They ship as one **pack** (`gauges/<name>/` = `tacho.tga` + `speedo.tga` + `gauge.ini`), selected by name; `hud/gauge_geometry.h` has the format and why a dial's range lives in the pack
 - `BarsWidget` - Visual telemetry bars (throttle, brake, etc.)
 - `LeanWidget` - Bike lean/roll angle display with arc gauge and steering bar

@@ -152,6 +152,9 @@ public:
     bool hasPendingToast() const { return !m_toasts.empty(); }
     // Pops the oldest queued toast into `out`; false when the queue is empty.
     bool takeToast(Toast& out);
+    // Put a taken toast back at the FRONT: a system message (system_messages.h)
+    // took the card mid-way, and the achievement is shown again, whole, after it.
+    void requeueFront(const Toast& toast);
     // Every toast ever queued this run, whether or not one was shown. Cheap
     // observability for the headless tests.
     uint32_t toastsQueued() const { return m_toastsQueued; }

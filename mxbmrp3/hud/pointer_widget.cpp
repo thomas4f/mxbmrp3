@@ -22,7 +22,7 @@ PointerWidget::PointerWidget() {
     setTextureBaseName("pointer_widget");
 
     // Set defaults
-    m_fScale = 1.0f;
+    setScale(1.0f);
     m_fBackgroundOpacity = 1.0f;  // 100% opacity for sprite-based rendering
 
     // Pre-allocate vectors (4 quads: 2 shadow + 2 foreground)
@@ -49,11 +49,7 @@ void PointerWidget::setScale(float scale) {
     // Clamp pointer scale to reasonable range (0.5x to 3.0x)
     if (scale < 0.5f) scale = 0.5f;
     if (scale > 3.0f) scale = 3.0f;
-
-    if (m_fScale != scale) {
-        m_fScale = scale;
-        setDataDirty();
-    }
+    BaseHud::setScale(scale);
 }
 
 void PointerWidget::rebuildLayout() {
@@ -238,7 +234,7 @@ void PointerWidget::createTriangleQuad(SPluginQuad_t& quad,
 void PointerWidget::resetToDefaults() {
     m_bVisible = true;
     m_bShowTitle = false;
-    m_fScale = 1.0f;
+    setScale(1.0f);
     m_fBackgroundOpacity = 1.0f;  // 100% for sprite-based rendering
     setTextureVariant(0);  // Quad-based by default (variant 0 = Off)
     setDataDirty();

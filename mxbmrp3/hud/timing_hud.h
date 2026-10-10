@@ -15,7 +15,9 @@
 
 #include "base_hud.h"
 #include "freeze_duration.h"
+#include "hud_defaults.h"
 #include "hold_timer.h"
+#include "official_gap_freeze.h"
 #include "split_crossing.h"
 #include "../core/ui_config.h"  // For PBScope enum
 #include "../core/plugin_data.h"
@@ -242,6 +244,16 @@ public:
     // screenshot -- a truncated server name beside an obviously empty column.
     int readoutTextBudget() const { return m_lastReadoutBudget; }
 
+    // THE GAP SECTION: the Gap Bar's gap without the bar, large in its own card under
+    // the big time --
+    // the live gap to a reference lap (PluginData's, the one the Gap Bar, Delta Trace
+    // and Map read), held on the official gap for the freeze after each split and the
+    // line (OfficialGapFreeze, the Gap Bar's own). Its reference is its own setting,
+    // Default following General's, like every HUD that reads one. Off by default.
+    using GapRef = PbGapTracker::Ref;
+    bool isLiveGapEnabled() const { return m_liveGapOn; }
+    GapRef getLiveGapReference() const { return HudDefaults::reference(m_liveGapDefault, m_liveGapRef); }
+
     bool isReadoutEnabled(ReadoutFlags flag) const { return (m_enabledReadouts & flag) != 0; }
     void setReadoutEnabled(ReadoutFlags flag, bool enabled);
 
@@ -375,6 +387,7 @@ private:
     int buildReadouts(Readout* readouts) const;
     void addTimeSection(const PanelPlan& p, size_t section, const TimeCell& cell, float centerX,
                         const ScaledDimensions& dim);
+    void addGapSection(const PanelPlan& p, size_t section, float centerX, const ScaledDimensions& dim);
     void addComparisonRows(const Row* rows, int rowCount, float y, float leftTextX, float rightTextX,
                            const ScaledDimensions& dim);
     void addReadoutRows(Readout* readouts, int readoutCount, float y, float leftTextX, float rightTextX,
@@ -384,7 +397,8 @@ private:
     ColumnMode m_displayMode;
 
     // Configuration
-    int m_displayDurationMs;         // How long to freeze on official times (in milliseconds)
+    int m_displayDurationMs;         // How long to freeze on official times (ms; FOLLOW_DEFAULT = General's)
+    int freezeMs() const { return HudDefaults::freezeMs(m_displayDurationMs); }
     // The box plan's section stack, panel-top-relative, recorded each rebuild for
     // testGeometry(). See its comment.
     float m_fTestContentTop = 0.0f;
@@ -397,6 +411,14 @@ private:
     // Set by rebuildRenderData from the drawn row; read by readoutTextBudget().
     mutable int m_lastReadoutBudget = 0;
     uint32_t m_enabledReadouts = READOUT_DEFAULT_ENABLED;  // ...and of readout rows (ReadoutFlags)
+
+    // The Gap section (see isLiveGapEnabled): on/off, its reference, and the freeze that
+    // holds the official gap against that reference after each crossing.
+    bool m_liveGapOn = false;
+    bool m_liveGapDefault = true;                // follow General's reference
+    GapRef m_liveGapRef = GapRef::SESSION_PB;    // the reference when not following
+    OfficialGapFreeze m_liveGapFreeze;
+    bool m_liveGapWasLive = false;               // live at the last update (redraw on a flip)
 
     // Split and line crossings of the display rider
     SplitCrossingDetector m_crossings;

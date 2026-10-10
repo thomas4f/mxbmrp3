@@ -10,10 +10,12 @@
 #include "../../core/settings_manager.h"
 #include "../../core/hud_manager.h"
 #include "../gl_confirm_hud.h"
+#include "../freeze_duration.h"
 #include "../../core/plugin_data.h"
 #include "../../core/xinput_reader.h"
 #include "../../core/color_config.h"
 #include "../../core/ui_config.h"
+#include "../../core/system_messages.h"
 #if GAME_HAS_DISCORD
 #include "../../core/discord_manager.h"
 #endif
@@ -26,7 +28,12 @@
 #if GAME_HAS_ANALYTICS
 #include "../../core/analytics_manager.h"
 #endif
+#include <cmath>
+#include <cstdio>
 #include <cstring>  // strlen (link URL width)
+#include <memory>
+#include <string>
+#include <vector>
 
 using namespace PluginConstants;
 
@@ -165,58 +172,6 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
             }
             return true;
 
-        case ClickRegion::COPY_TARGET_UP:
-            {
-                ProfileType activeProfile = ProfileManager::getInstance().getActiveProfile();
-                int8_t activeIdx = static_cast<int8_t>(activeProfile);
-
-                if (m_copyTargetProfile == -1) {
-                    m_copyTargetProfile = 4;  // All
-                } else if (m_copyTargetProfile == 4) {
-                    m_copyTargetProfile = 0;
-                    if (m_copyTargetProfile == activeIdx) {
-                        m_copyTargetProfile++;
-                    }
-                } else {
-                    m_copyTargetProfile++;
-                    if (m_copyTargetProfile == activeIdx) {
-                        m_copyTargetProfile++;
-                    }
-                    if (m_copyTargetProfile >= static_cast<int8_t>(ProfileType::COUNT)) {
-                        m_copyTargetProfile = -1;
-                    }
-                }
-                rebuildRenderData();
-            }
-            return true;  // Don't save - just UI state
-
-        case ClickRegion::COPY_TARGET_DOWN:
-            {
-                ProfileType activeProfile = ProfileManager::getInstance().getActiveProfile();
-                int8_t activeIdx = static_cast<int8_t>(activeProfile);
-
-                if (m_copyTargetProfile == -1) {
-                    m_copyTargetProfile = static_cast<int8_t>(ProfileType::COUNT) - 1;
-                    if (m_copyTargetProfile == activeIdx) {
-                        m_copyTargetProfile--;
-                    }
-                } else if (m_copyTargetProfile == 4) {
-                    m_copyTargetProfile = -1;
-                } else if (m_copyTargetProfile == 0) {
-                    m_copyTargetProfile = 4;
-                } else {
-                    m_copyTargetProfile--;
-                    if (m_copyTargetProfile == activeIdx) {
-                        m_copyTargetProfile--;
-                    }
-                    if (m_copyTargetProfile < 0) {
-                        m_copyTargetProfile = 4;
-                    }
-                }
-                rebuildRenderData();
-            }
-            return true;  // Don't save - just UI state
-
         // ARM, then PERFORM. These two region types are the buttons themselves: an
         // unarmed click arms (and disarms its opposite), an armed click does the
         // thing. The two-step is the whole
@@ -244,15 +199,35 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
             }
             return true;
 
+        // Armed like the Reset pair below it: a copy overwrites another profile
+        // (or all of them) and is not undoable either.
         case ClickRegion::COPY_BUTTON:
-            if (m_copyTargetProfile != -1) {
+            if (m_copyTargetProfile != -1 && !m_copyConfirmed) {
+                m_copyConfirmed = true;
+                m_resetProfileConfirmed = false;
+                m_resetAllConfirmed = false;
+                rebuildRenderData();
+            } else if (m_copyTargetProfile != -1) {
+                const char* from = ProfileManager::getProfileName(ProfileManager::getInstance().getActiveProfile());
+                SystemMessages::Toast t;
                 if (m_copyTargetProfile == 4) {
                     SettingsManager::getInstance().applyToAllProfiles(HudManager::getInstance());
+                    snprintf(t.detail, sizeof(t.detail), "%s copied to every profile", from);
                 } else {
                     ProfileType targetProfile = static_cast<ProfileType>(m_copyTargetProfile);
                     SettingsManager::getInstance().copyToProfile(HudManager::getInstance(), targetProfile);
+                    snprintf(t.detail, sizeof(t.detail), "%s copied to %s", from,
+                             ProfileManager::getProfileName(targetProfile));
                 }
                 m_copyTargetProfile = -1;
+                m_copyConfirmed = false;
+                // The menu shows nothing different after a copy: the copy lands
+                // in a profile that is not on screen.
+                snprintf(t.title, sizeof(t.title), "Profile copied");
+                snprintf(t.icon, sizeof(t.icon), "clone");
+                t.key = SystemMessages::KEY_PROFILE_COPIED;
+                SystemMessages::getInstance().post(t);
+                rebuildRenderData();
             }
             return true;
 
@@ -260,25 +235,6 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
         // its own case above. The type stays in the enum so no region
         // ordinal moves (settings_layout_test's golden encodes them raw).
         case ClickRegion::RESET_BUTTON:
-            return true;
-
-        // Controller selection is also in General tab
-        case ClickRegion::RUMBLE_CONTROLLER_UP:
-            {
-                RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                config.controllerIndex = (config.controllerIndex + 2) % 5 - 1;
-                XInputReader::getInstance().setControllerIndex(config.controllerIndex);
-                setDataDirty();
-            }
-            return true;
-
-        case ClickRegion::RUMBLE_CONTROLLER_DOWN:
-            {
-                RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
-                config.controllerIndex = (config.controllerIndex + 5) % 5 - 1;
-                XInputReader::getInstance().setControllerIndex(config.controllerIndex);
-                setDataDirty();
-            }
             return true;
 
         default:
@@ -296,6 +252,10 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     // (Speed/fuel/temp units and clock format are on the Appearance tab; persisted
     // under [Display].)
     ctx.addSectionHeading("Preferences");
+    // The short switches side by side (beginColumns), with room for "Session PB";
+    // the controller row stays full width below them, since its value is a device name.
+    constexpr int PREFERENCE_LABEL_CHARS = 14;
+    ctx.beginColumns(2, 7, PREFERENCE_LABEL_CHARS);
 
     // PB scope. Both arrows drive the same 2-state toggle.
     {
@@ -310,45 +270,32 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             nullptr, true, false, "general.pb_scope");
     }
 
-    // Controller selector (used by both Gamepad Widget and Rumble)
-    // Cycles: Off -> 1 -> 2 -> 3 -> 4 -> Off
+    // The defaults every HUD set to "Default" follows (hud_defaults.h): the
+    // reference lap, and how long an official gap is held.
     {
-        RumbleConfig& rumbleConfig = XInputReader::getInstance().getRumbleConfig();
-        int controllerIdx = rumbleConfig.controllerIndex;
-        bool isDisabled = (controllerIdx < 0);
-        // Cached (I/O-thread) state, not a live XInput poll — a settings rebuild
-        // must never hit the slow disconnected-slot enumeration path.
-        bool isConnected = !isDisabled && XInputReader::getInstance().isControllerConnectedCached(controllerIdx);
-        std::string controllerName = isDisabled ? "" : XInputReader::getControllerName(controllerIdx);
+        static const char* const kReferences[] = { "Session PB", "All-time", "Last lap" };
+        SettingsHud::CycleControl reference;
+        reference.count = 3;
+        reference.get = []() { return UiConfig::getInstance().getDefaultReference(); };
+        reference.set = [](int v) { UiConfig::getInstance().setDefaultReference(v); };
+        reference.nameOf = [](int i) { return std::string(kReferences[i]); };
+        reference.postStep = []() { HudManager::getInstance().markAllHudsDirty(); };
+        ctx.addCycleControl("Reference", kReferences[reference.get()], reference,
+                            nullptr, true, false, "general.reference");
 
-        // Value text: "Off" (muted), or "<slot>: <name>" / ": OK" / ": N/C".
-        // formatValue() pads and cuts it to the row's value field.
-        char displayStr[32];
-        if (isDisabled) {
-            snprintf(displayStr, sizeof(displayStr), "%s", "Off");
-        } else {
-            int slot = controllerIdx + 1;
-            if (!controllerName.empty()) {
-                snprintf(displayStr, sizeof(displayStr), "%d: %s", slot, controllerName.c_str());
-            } else if (isConnected) {
-                snprintf(displayStr, sizeof(displayStr), "%d: OK", slot);
-            } else {
-                snprintf(displayStr, sizeof(displayStr), "%d: N/C", slot);
-            }
-        }
-
-        // Three-state value colour (connected reads green), which the standard
-        // primary/muted pair can't express — hence the override.
-        const unsigned long valueColor = (!isDisabled && isConnected)
-            ? colorConfig.getPositive() : colorConfig.getMuted();
-
-        ctx.addCycleControl("Controller", displayStr,
-            SettingsHud::ClickRegion::RUMBLE_CONTROLLER_DOWN,
-            SettingsHud::ClickRegion::RUMBLE_CONTROLLER_UP,
-            nullptr, true, false, "general.controller", valueColor);
+        const int freezeMs = UiConfig::getInstance().getDefaultFreezeMs();
+        char freezeValue[16];
+        if (freezeMs == 0) snprintf(freezeValue, sizeof(freezeValue), "Off");
+        else snprintf(freezeValue, sizeof(freezeValue), "%ds", freezeMs / 1000);
+        SettingsHud::SteppedControl freeze = SettingsHud::SteppedControl::accessor(
+                [] { return static_cast<float>(UiConfig::getInstance().getDefaultFreezeMs()); },
+                [](float v) { UiConfig::getInstance().setDefaultFreezeMs(static_cast<int>(std::lround(v))); },
+                static_cast<float>(FreezeDuration::STEP_MS), static_cast<float>(FreezeDuration::MIN_MS),
+                static_cast<float>(FreezeDuration::MAX_MS), nullptr);
+        freeze.postStep = []() { HudManager::getInstance().markAllHudsDirty(); };
+        ctx.addSteppedControl("Freeze", freezeValue, freeze, nullptr, true, freezeMs == 0, "general.freeze");
     }
 
-    // Auto-save toggle
     ctx.addToggleControl("Auto-save", UiConfig::getInstance().getAutoSave(),
         SettingsHud::ClickRegion::AUTOSAVE_TOGGLE, nullptr, nullptr, 0, true,
         "general.auto_save");
@@ -412,12 +359,71 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             glStatus = "On";
             glColor = colorConfig.getMuted();
         }
-        ctx.addCycleControl("Direct GL rendering", glStatus,
+        ctx.addCycleControl("Direct GL", glStatus,
             SettingsHud::ClickRegion::DIRECT_GL_TOGGLE,
             SettingsHud::ClickRegion::DIRECT_GL_TOGGLE,
             nullptr, /*enabled=*/true, /*isOff=*/false,
             "general.direct_gl", glColor);
     }
+    ctx.endColumns();
+
+    // Controller selector (used by both Gamepad Widget and Rumble)
+    // Cycles: Off -> 1 -> 2 -> 3 -> 4 -> Off
+    {
+        RumbleConfig& rumbleConfig = XInputReader::getInstance().getRumbleConfig();
+        int controllerIdx = rumbleConfig.controllerIndex;
+        bool isDisabled = (controllerIdx < 0);
+        // Cached (I/O-thread) state, not a live XInput poll — a settings rebuild
+        // must never hit the slow disconnected-slot enumeration path.
+        bool isConnected = !isDisabled && XInputReader::getInstance().isControllerConnectedCached(controllerIdx);
+        std::string controllerName = isDisabled ? "" : XInputReader::getControllerName(controllerIdx);
+
+        // Value text: "Off" (muted), or "<slot>: <name>" / ": OK" / ": N/C".
+        // formatValue() pads and cuts it to the row's value field.
+        // Room for a full device name: the row is full width, and a 32-byte
+        // buffer cut "Xbox 360 Controller for Windows" well short of the field.
+        char displayStr[96];
+        if (isDisabled) {
+            snprintf(displayStr, sizeof(displayStr), "%s", "Off");
+        } else {
+            int slot = controllerIdx + 1;
+            if (!controllerName.empty()) {
+                snprintf(displayStr, sizeof(displayStr), "%d: %s", slot, controllerName.c_str());
+            } else if (isConnected) {
+                snprintf(displayStr, sizeof(displayStr), "%d: OK", slot);
+            } else {
+                snprintf(displayStr, sizeof(displayStr), "%d: N/C", slot);
+            }
+        }
+
+        // Three-state value colour (connected reads green), which the standard
+        // primary/muted pair can't express — hence the override.
+        const unsigned long valueColor = (!isDisabled && isConnected)
+            ? colorConfig.getPositive() : colorConfig.getMuted();
+
+        // Off, then the four XInput slots: the stored index is the position less one.
+        SettingsHud::CycleControl controller;
+        controller.count = 5;
+        controller.get = []() { return XInputReader::getInstance().getRumbleConfig().controllerIndex + 1; };
+        controller.set = [](int i) {
+            RumbleConfig& config = XInputReader::getInstance().getRumbleConfig();
+            config.controllerIndex = i - 1;
+            XInputReader::getInstance().setControllerIndex(config.controllerIndex);
+        };
+        controller.nameOf = [](int i) {
+            if (i <= 0) return std::string("Off");
+            const std::string name = XInputReader::getControllerName(i - 1);
+            const bool connected = XInputReader::getInstance().isControllerConnectedCached(i - 1);
+            return std::to_string(i) + ": " + (!name.empty() ? name : (connected ? "OK" : "N/C"));
+        };
+        // Full width for the device name, its arrows in the switches' column above.
+        ctx.setRowLabelChars(PREFERENCE_LABEL_CHARS);
+        ctx.addCycleControl("Controller", displayStr, controller,
+            nullptr, true, false, "general.controller", true, valueColor);
+        ctx.setRowLabelChars(0);
+    }
+
+    // Auto-save toggle
 
 #if GAME_HAS_STEAM_FRIENDS || GAME_HAS_DISCORD || GAME_HAS_HTTP_SERVER || GAME_HAS_ANALYTICS
     // === INTEGRATIONS SECTION ===
@@ -561,21 +567,17 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
                 nullptr, true, !serverEnabled, "general.web_port");
         }
 
-        // THE ADDRESS, as a link, and ONLY when the server is actually serving.
-        //
-        // Not a three-state helper note ("enable to serve a live overlay" / the
-        // address / "port may be in use"): those are different lengths and the row
-        // would only exist in some of them, so everything below it JUMPS as you
-        // toggle the server -- a line that moves the tab around to tell you what the
-        // toggle two rows up already says. The address is worth more as something
-        // you can click than as a sentence about where to point a browser. Same row
-        // style as the Help & Community links at the foot of the tab (addLinkRow owns
-        // it), so a link looks like a link wherever it appears.
-        if (serverRunning) {
+        // THE ADDRESS, always shown and a link only while the server is serving:
+        // muted and unclickable otherwise. A row that existed only while serving
+        // made everything below it JUMP as the server was toggled. addLinkRow owns
+        // the style, so a link looks like a link wherever it appears. A label,
+        // not "Live overlay at ": the URL sits at a fixed column, and a sentence
+        // running into it collides in a font wider than the monospace estimate.
+        {
             const std::string url = "http://localhost:"
                 + std::to_string(HttpServer::getInstance().getPort());
-            ctx.addLinkRow("Live overlay at ", url.c_str(), 16,
-                           SettingsHud::ClickRegion::OPEN_LINK_OVERLAY);
+            ctx.addLinkRow("Live overlay", url.c_str(), 16,
+                           SettingsHud::ClickRegion::OPEN_LINK_OVERLAY, 0.9f, serverRunning);
         }
     }
 #endif
@@ -600,14 +602,41 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         } else {
             targetName = ProfileManager::getInstance().getProfileName(static_cast<ProfileType>(copyTarget));
         }
-        ctx.addCycleControl("Copy current profile to", targetName,
-            SettingsHud::ClickRegion::COPY_TARGET_DOWN,
-            SettingsHud::ClickRegion::COPY_TARGET_UP,
+        // Select (no target), All, then every profile but the active one. UI state
+        // only: nothing is written until the Copy button.
+        auto targets = std::make_shared<std::vector<int>>();
+        targets->push_back(-1);
+        targets->push_back(4);
+        const int activeIdx = static_cast<int>(ProfileManager::getInstance().getActiveProfile());
+        for (int p = 0; p < static_cast<int>(ProfileType::COUNT); ++p) {
+            if (p != activeIdx) targets->push_back(p);
+        }
+        SettingsHud* settings = ctx.parent;
+        SettingsHud::CycleControl copy;
+        copy.count = static_cast<int>(targets->size());
+        copy.get = [targets, settings]() {
+            for (size_t i = 0; i < targets->size(); ++i) {
+                if ((*targets)[i] == settings->m_copyTargetProfile) return static_cast<int>(i);
+            }
+            return 0;
+        };
+        copy.set = [targets, settings](int i) {
+            settings->m_copyConfirmed = false;   // an arm is for the target it was made on
+            settings->m_copyTargetProfile = static_cast<int8_t>((*targets)[static_cast<size_t>(i)]);
+        };
+        copy.nameOf = [targets](int i) {
+            const int t = (*targets)[static_cast<size_t>(i)];
+            if (t == -1) return std::string("Select");
+            if (t == 4) return std::string("All");
+            return std::string(ProfileManager::getInstance().getProfileName(static_cast<ProfileType>(t)));
+        };
+        ctx.addCycleControl("Copy profile to", targetName, copy,
             nullptr, true, !hasTarget, "general.copy_profile");
 
         // [Copy] button - centered like [Close] button
         ctx.addSpacing();
-        ctx.addActionButton("Copy", 6, SettingsHud::ClickRegion::COPY_BUTTON,
+        ctx.addActionButton(ctx.parent->m_copyConfirmed ? "Confirm?" : "Copy", 8,
+                            SettingsHud::ClickRegion::COPY_BUTTON,
                             SettingsLayoutContext::ButtonRole::Accent, hasTarget,
                             "general.copy_button");
     }
@@ -643,24 +672,6 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             ? "Resets this profile's settings. Click again to confirm."
             : armAll ? "Resets ALL profiles and globals. Click again to confirm."
                      : "Profile resets this profile only; Everything resets all.");
-    }
-
-    // Help & Community footer — clickable links that open the browser via ShellExecute.
-    ctx.addSectionHeading("Help & Community");
-
-    // Each row: fixed-width muted label + the URL (the only clickable/hoverable part).
-    // Prefixes are padded to 18 chars so the URLs align vertically with a gap.
-    struct LinkRow {
-        const char* prefix;  // 18-char padded label (≥1-char gap before the URL)
-        const char* url;     // full URL including scheme
-        SettingsHud::ClickRegion::Type regionType;
-    };
-    static const LinkRow links[] = {
-        { "Docs & guides:    ", "https://thomas4f.github.io/mxbmrp3", SettingsHud::ClickRegion::OPEN_LINK_DOCS      },
-        { "Discussion:       ", "https://mxb-mods.com/mxbmrp3",       SettingsHud::ClickRegion::OPEN_LINK_COMMUNITY },
-    };
-    for (const auto& link : links) {
-        ctx.addLinkRow(link.prefix, link.url, 18, link.regionType);
     }
 
     // No active HUD for general settings

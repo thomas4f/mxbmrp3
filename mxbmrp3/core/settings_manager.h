@@ -9,6 +9,8 @@
 #include "profile_manager.h"
 #include <array>
 #include <string>
+#include <chrono>
+#include <cstdint>
 #include <unordered_map>
 #include <map>
 #include <vector>
@@ -40,6 +42,12 @@ public:
     // Load settings from disk (call during plugin initialization)
     void loadSettings(HudManager& hudManager, const char* savePath);
 
+    // The second half of the v10 migration (the Prestige widget's default went
+    // off), which needs the prestige level and so the stats file: PluginManager
+    // calls it right after StatsManager::load(), and a reload calls it itself.
+    // A no-op unless the last load read a file older than v10.
+    void settlePrestigeDefault(HudManager& hudManager);
+
     // Save settings to disk synchronously (temp-file + atomic replace on the calling
     // thread). Use for the paths that must be durable before returning: explicit Save,
     // Reset-to-defaults, and plugin shutdown. Also clears the dirty flag.
@@ -67,6 +75,11 @@ public:
     // (manual mode: the user persists via the Save button) or nothing changed. Uses the stored
     // save path from loadSettings().
     void flushIfDirty(const HudManager& hudManager);
+    // Once per frame (HudManager::produceFrame): a save handed to the writer
+    // thread fails THERE, after saveSettings() returned, so the result is read
+    // back a moment later and a failure gets a "Settings not saved" toast. One
+    // bool test per frame while no save is in flight.
+    void pollSaveResult();
 
     // Profile switching - captures current HUD state to old profile, applies new profile
     // Returns true if profile actually changed
@@ -306,6 +319,8 @@ private:
     void applyDirectorLine(const std::string& key, const std::string& value, HudManager& hudManager);
     void writeAchievementsSettings(std::ostream& out, const HudManager& hudManager) const;
     void applyAchievementsLine(const std::string& key, const std::string& value, HudManager& hudManager);
+    void writeMessagesSettings(std::ostream& out, const HudManager& hudManager) const;
+    void applyMessagesLine(const std::string& key, const std::string& value, HudManager& hudManager);
 #if GAME_HAS_RECORDER
     void writeRecorderSettings(std::ostream& out, const HudManager& hudManager) const;
     void applyRecorderLine(const std::string& key, const std::string& value, HudManager& hudManager);
@@ -389,9 +404,17 @@ private:
     uint64_t m_loadedFileHash = 0;
     uint64_t m_expectedFileHash = 0;
     bool m_updateInstalled = false;
+    // The last load read a pre-v10 file: settlePrestigeDefault() has work to do.
+    bool m_prestigeDefaultPending = false;
 
     // Set by markDirty() when a HUD setting changes; cleared by saveSettings()/flushIfDirty()
     // once written. The write itself is deferred to a track->off-track transition so it never
     // spikes a gameplay frame (see markDirty).
     bool m_settingsDirty = false;
+    // pollSaveResult: a save is in flight and when to read its result; and the
+    // failure toast already shown (once until a save lands).
+    bool m_saveCheckPending = false;
+    std::chrono::steady_clock::time_point m_saveCheckAt{};
+    bool m_saveFailureAnnounced = false;
+    void announceSaveResult(bool ok);
 };

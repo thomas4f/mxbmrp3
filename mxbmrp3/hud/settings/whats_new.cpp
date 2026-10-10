@@ -19,28 +19,37 @@ namespace {
 // check_whats_new.sh fails the build if a version here falls behind resource.h,
 // so the review is not optional.
 //
-// 1.31 is the Stream Chat release: its tab bands the two Status switches, the
-// one thing on it to turn on (no tag: the name fills the sidebar, tabCanTag
-// below). The Gap Bar's Splits and Reference, the Lap Log's Gap reference and
-// Gap freeze, the Pitboard's Freeze, and the Standings' Class column are the
-// release's other new rows. The 1.30 marker (the achievement toasts) is
-// gone with its release (the Achievements tab never drew a tag: its name fills
-// the sidebar, tabCanTag below). The 1.29 markers - panel themes, the Crashes widget, the
-// pack pickers, the Timing readouts, the spotter hotkey, Direct GL - are gone:
-// each had its release, and a tag still lit a release later says nothing.
+// 1.32 is the Delta Trace release: its tab bands the Visible switch, the one
+// thing on it to turn on (no tag: the name fills the sidebar, tabCanTag below).
+// The Map's Lap delta, Tilt, Adaptive range and Mode (Follow now fades the map at its
+// edge), the Gap Bar's Range (now Auto by default), the Timing panel's Gap, the Stream Chat's Display
+// order, the Appearance tab's Motion, Messages, UI scale and Companion bg, the
+// General tab's Reference and Freeze defaults and the Delta Trace hotkey are
+// the release's other new rows. The 1.31 markers - the Stream Chat Status switches,
+// the Gap Bar's Splits and Reference, the Lap Log's Gap reference and Gap
+// freeze, the Pitboard's Freeze, the Standings' Class column - are gone: each
+// had its release, and a tag still lit a release later says nothing.
 //
 // Prestige is the table's one Gate::Unlocked row: it is not new in a release,
 // it is new the moment a player trades their ladder for it, and the row it
 // bands does not exist on the Widgets tab until then.
 const Marker kMarkers[] = {
-    { SettingsHud::TAB_STREAM_CHAT,  "twitch.status",            "1.31" },
-    { SettingsHud::TAB_STREAM_CHAT,  "youtube.status",           "1.31" },
-    { SettingsHud::TAB_GAP_BAR,      "gap_bar.splits",           "1.31" },
-    { SettingsHud::TAB_GAP_BAR,      "gap_bar.reference",        "1.31" },
-    { SettingsHud::TAB_LAP_LOG,      "lap_log.reference",        "1.31" },
-    { SettingsHud::TAB_LAP_LOG,      "lap_log.freeze",           "1.31" },
-    { SettingsHud::TAB_PITBOARD,     "pitboard.freeze",          "1.31" },
-    { SettingsHud::TAB_STANDINGS,    "standings.col_category",   "1.31" },
+    { SettingsHud::TAB_DELTA_TRACE,  "common.visible",           "1.32" },
+    { SettingsHud::TAB_MAP,          "map.lap_delta",            "1.32" },
+    { SettingsHud::TAB_MAP,          "map.tilt",                 "1.32" },
+    { SettingsHud::TAB_MAP,          "map.range_adaptive",       "1.32" },
+    { SettingsHud::TAB_MAP,          "map.mode",                 "1.32" },
+    { SettingsHud::TAB_GAP_BAR,      "gap_bar.range",            "1.32" },
+    { SettingsHud::TAB_TIMING,       "timing.gap",               "1.32" },
+    { SettingsHud::TAB_STREAM_CHAT,  "stream_chat.order",        "1.32" },
+    { SettingsHud::TAB_APPEARANCE,   "appearance.motion",        "1.32" },
+    { SettingsHud::TAB_APPEARANCE,   "appearance.messages",      "1.32" },
+    { SettingsHud::TAB_APPEARANCE,   "appearance.ui_scale",      "1.32" },
+    { SettingsHud::TAB_APPEARANCE,   "appearance.companion_background", "1.32" },
+    { SettingsHud::TAB_GENERAL,      "general.reference",        "1.32" },
+    { SettingsHud::TAB_GENERAL,      "general.freeze",           "1.32" },
+    { SettingsHud::TAB_HOTKEYS,      "hotkeys.delta_trace",      "1.32" },
+    { SettingsHud::TAB_WIDGETS,      "widgets.rpm",              "1.32" },
     { SettingsHud::TAB_WIDGETS,      "widgets.prestige",         nullptr, Gate::Unlocked },
 };
 
@@ -71,7 +80,18 @@ std::string tabKey(int tabId) {
     // WHICH line it dismissed, so folding it into the current one would hide a
     // genuinely new marker from anyone who last opened that tab a line ago. A
     // dot shown twice is the cheaper mistake.
-    return "T" + std::to_string(tabId) + ":" + currentLine();
+    //
+    // A tab carrying a Gate::Unlocked marker gets a SECOND key once that gate
+    // opens: the unlock is news whenever it happens, and a player who opened
+    // the Widgets tab earlier in the release line would otherwise prestige to
+    // a row band with no tag pointing at the tab it is on.
+    std::string key = "T" + std::to_string(tabId) + ":" + currentLine();
+    if (g_unlocked) {
+        for (const Marker& m : kMarkers) {
+            if (m.tabId == tabId && m.gate == Gate::Unlocked) return key + ":unlocked";
+        }
+    }
+    return key;
 }
 
 }  // namespace
@@ -112,11 +132,12 @@ bool isLive(const Marker& m) {
 }
 
 // A tab whose name fills the sidebar's label cells gets no "New" tag: the
-// Achievements and Stream Chat rows in s_tabRegistry (settings_hud_render.cpp)
+// Achievements, Stream Chat and Delta Trace rows in s_tabRegistry (settings_hud_render.cpp)
 // have the arithmetic. Their markers still band their rows, and the sidebar
 // bands their ROW instead (tabHighlightsRow).
 bool tabCanTag(int tabId) {
-    return tabId != SettingsHud::TAB_ACHIEVEMENTS && tabId != SettingsHud::TAB_STREAM_CHAT;
+    return tabId != SettingsHud::TAB_ACHIEVEMENTS && tabId != SettingsHud::TAB_STREAM_CHAT
+        && tabId != SettingsHud::TAB_DELTA_TRACE;
 }
 
 // Undismissed news on this tab, whichever way the sidebar shows it.
@@ -134,6 +155,13 @@ bool tabHasLive(int tabId) {
 
 bool tabHighlightsRow(int tabId) {
     return !tabCanTag(tabId) && tabHasNews(tabId);
+}
+
+int firstTabWithNews() {
+    for (int i = 0; i < MARKER_COUNT; ++i) {
+        if (tabHasNews(kMarkers[i].tabId)) return kMarkers[i].tabId;
+    }
+    return -1;
 }
 
 const Marker* liveForRow(int tabId, const char* rowTooltipId) {
