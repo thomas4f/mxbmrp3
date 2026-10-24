@@ -123,7 +123,7 @@ if [ "${fail}" -ne 0 ]; then
     echo "  python3 tools/icon_gen.py '${SRC_DIR}/hud-<name>.svg' -o ${SHIPPED_DIR}"
     echo "  python3 tools/icon_gen.py '${SRC_DIR}/<name>.svg' --outline 2 -o ${SHIPPED_DIR}"
     echo
-    echo "If you bumped cairosvg, the new renderer moves pixels: regenerate the"
+    echo "If you bumped cairosvg or Pillow, the new renderer moves pixels: regenerate the"
     echo "WHOLE set in the same PR and eyeball the diff before committing it."
     echo "See assets/icons/README.md -> Verify a regeneration."
     echo "A procedural texture: rerun its generator with -o mxbmrp3_data/textures."

@@ -94,7 +94,7 @@ installed has no effect.
 ## Regenerate
 
 ```bash
-python3 -m pip install -r tools/requirements.txt   # Pillow + the pinned cairosvg
+python3 -m pip install -r tools/requirements.txt   # the pinned Pillow + cairosvg
 
 # Flat identity icons (hud-*) -> shipped folder
 python3 tools/icon_gen.py 'assets/icons/hud-*.svg' -o mxbmrp3_data/icons

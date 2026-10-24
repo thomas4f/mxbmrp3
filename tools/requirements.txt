@@ -9,20 +9,23 @@
 capstone>=5.0.9
 
 # tools/icon_gen.py (SVG -> TGA icon generator):
-#   - Pillow:   REQUIRED for image processing.
+#   - Pillow:   REQUIRED for image processing. Pinned EXACTLY like cairosvg:
+#               its LANCZOS downscale moves edge pixels between releases too
+#               (13.0.0 changed two icons, so a floating >= pin turned the gate
+#               red on a fresh runner with no change in this repo).
 #   - cairosvg: the ONLY SVG renderer icon_gen.py uses. The version is pinned
 #               EXACTLY because the .tga output is byte-deterministic only for a
 #               fixed renderer version (edge anti-aliasing differs between
-#               releases). The pin below is the version that produced the
+#               releases). The two pins below are the versions that produced the
 #               current byte-identical mxbmrp3_data/icons/*.tga. ENFORCED by the
 #               `icon-repro` gate (tests/integration/check_icon_reproducibility.sh):
 #               a bump that moves any pixel turns it red, and the fix is to
 #               regenerate the whole set in that same PR and review the diff.
-#               That pin is the ONLY place the number appears: a bump edits it
-#               and nothing else, so a copy in prose would silently drift.
+#               Those pins are the ONLY place the numbers appear: a bump edits
+#               them and nothing else, so a copy in prose would silently drift.
 #               (rsvg-convert/system librsvg is deliberately unsupported - not
 #               pip-pinnable. See assets/icons/README.md.)
-Pillow>=12.3.0
+Pillow==12.3.0
 cairosvg==2.9.1
 
 # tools/analytics_report.py (Aptabase export -> usage_survey/REPORT.md + SVG charts):
