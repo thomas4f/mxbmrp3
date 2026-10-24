@@ -18,10 +18,17 @@
 // rules are the interesting part: keyed on the VERSION, so a newer release
 // re-arms it by itself, and kept apart from the SKIP-version state so that
 // reading about an update never silently skips it.
+//
+// Five clicks on the same button start the Breakout easter egg. The game lived
+// inside the Version widget's class; removing the widget (1.33) moved it to a
+// hidden HUD of its own (hud/breakout_hud.h). So: five clicks still start it
+// with no widget to host it, four do not, and an upgraded INI's [VersionWidget]
+// section is dropped on the next save (the save writes registered sections only).
 // ============================================================================
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
+#include "ini.h"
 
 #include <string>
 #include <vector>
@@ -140,6 +147,77 @@ TEST_CASE("the Updates tab's tag follows the available version") {
         host.loadSettings(saveWin);
         CHECK_FALSE(host.updateTagLive());
     }
+
+    host.shutdown();
+}
+
+namespace {
+
+bool drawsText(PluginHost& host, const char* hud, const char* text) {
+    for (const auto& r : host.hudStringRows(hud))
+        if (r.text == text) return true;
+    return false;
+}
+
+}  // namespace
+
+TEST_CASE("breakout: five clicks on About start the game, with no Version widget") {
+    const char* saveWin = "Z:\\tmp\\mxbmrp3-tests\\about_tab\\";
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(saveWin);
+    REQUIRE_MESSAGE(host.hasAbout(), "MXBMRP3_Test_ClickAbout not exported (test build?)");
+
+    // Gone, not merely hidden: an unknown name answers -1.
+    CHECK(host.hudVisible("version_widget") == -1);
+    // Registered, and hidden until the game runs.
+    REQUIRE(host.hudVisible("breakout_hud") == 0);
+
+    host.showSettings(true);
+    host.draw();
+
+    SUBCASE("four clicks open About and nothing more") {
+        for (int i = 0; i < 4; ++i) { host.clickAbout(); host.draw(); }
+        CHECK(host.settingsVisible());
+        CHECK(host.activeTab() == "About");
+        CHECK(host.hudVisible("breakout_hud") == 0);
+    }
+
+    SUBCASE("the fifth closes settings and starts the game") {
+        for (int i = 0; i < 5; ++i) { host.clickAbout(); host.draw(); }
+        host.draw();
+        CHECK_FALSE(host.settingsVisible());
+        CHECK(host.hudVisible("breakout_hud") == 1);
+        // Drawn, not just switched on: the field and its launch prompt.
+        CHECK(drawsText(host, "breakout_hud", "Click to launch"));
+    }
+
+    host.shutdown();
+}
+
+TEST_CASE("breakout: an upgraded INI's [VersionWidget] section is dropped on save") {
+    const char* saveWin = "Z:\\tmp\\mxbmrp3-tests\\about_tab\\";
+    const std::string iniPath = "Z:\\tmp\\mxbmrp3-tests\\about_tab\\mxbmrp3\\mxbmrp3_settings.ini";
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(saveWin);
+    host.save();
+
+    const std::string defText = ini::readFile(iniPath);
+    REQUIRE_MESSAGE(!defText.empty(), "no settings.ini written at " << iniPath);
+    CHECK(defText.find("[VersionWidget") == std::string::npos);
+
+    // What a 1.32 file carries: the base section and a profile override.
+    REQUIRE(ini::writeFile(iniPath, defText +
+        "\n[VersionWidget]\nvisible=1\noffsetX=0.5\n\n[VersionWidget:Practice]\nvisible=0\n"));
+    host.loadSettings(saveWin);
+    host.save();
+
+    const std::string saved = ini::readFile(iniPath);
+    REQUIRE(!saved.empty());
+    CHECK(saved.find("[VersionWidget") == std::string::npos);
+    // The rest of the file survived the round trip.
+    CHECK(saved.find("[StandingsHud]") != std::string::npos);
 
     host.shutdown();
 }

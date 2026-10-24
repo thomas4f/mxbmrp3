@@ -95,12 +95,12 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
     }
 
     SUBCASE("opening a tagged tab clears its tag and no row") {
-        // The Gap Bar tab has room for the tag (unlike Achievements and Stream
+        // The Appearance tab has room for the tag (unlike Achievements and Stream
         // Chat and Delta Trace, whose names fill the sidebar: WhatsNew::tabCanTag).
-        REQUIRE(host.whatsNewTabTagged("Gap Bar"));
+        REQUIRE(host.whatsNewTabTagged("Appearance"));
 
-        REQUIRE(host.openSettingsTab("Gap Bar"));
-        CHECK_FALSE(host.whatsNewTabTagged("Gap Bar"));
+        REQUIRE(host.openSettingsTab("Appearance"));
+        CHECK_FALSE(host.whatsNewTabTagged("Appearance"));
         // The rows on it are untouched: opening the tab says you know something
         // is here, not that you found it.
         CHECK(host.whatsNewLiveCount() == total);
@@ -119,7 +119,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         CHECK_FALSE(host.whatsNewTabTagged("Widgets"));
         // Off the tab before the panel next closes: closing dismisses the tab
         // it closes on, and the unlock is taken on the Achievements tab anyway.
-        REQUIRE(host.openSettingsTab("Gap Bar"));
+        REQUIRE(host.openSettingsTab("Appearance"));
 
         host.setPrestige(1);
         host.showSettings(true);
@@ -133,40 +133,39 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
     }
 
     SUBCASE("a tab whose name fills the sidebar bands its sidebar row instead of the tag, and its rows band") {
-        // "Stream Chat" and "Delta Trace" are 11 of the sidebar's 13 label cells;
-        // the tag would overflow them. Their rows are still marked.
-        CHECK_FALSE(host.whatsNewTabTagged("Stream Chat"));
+        // "Delta Trace" (like "Stream Chat" and "Achievements") is 11 of the
+        // sidebar's 13 label cells; the tag would overflow it. Its rows are still
+        // marked.
         CHECK_FALSE(host.whatsNewTabTagged("Delta Trace"));
-        CHECK(host.whatsNewTabHighlighted("Delta Trace"));
         // Its sidebar row is banded instead, until hovered like any banded row.
         // A tab that has room keeps the tag, unbanded, and hovering it leaves the
         // tag alone (that one clears on open).
-        CHECK(host.whatsNewTabHighlighted("Stream Chat"));
-        CHECK_FALSE(host.whatsNewTabHighlighted("Gap Bar"));
-        REQUIRE(host.hoverSettingsTab("Gap Bar"));
-        CHECK(host.whatsNewTabTagged("Gap Bar"));
-        REQUIRE(host.hoverSettingsTab("Stream Chat"));
-        CHECK_FALSE(host.whatsNewTabHighlighted("Stream Chat"));
-        REQUIRE(host.openSettingsTab("Stream Chat"));
+        CHECK(host.whatsNewTabHighlighted("Delta Trace"));
+        CHECK_FALSE(host.whatsNewTabHighlighted("Appearance"));
+        REQUIRE(host.hoverSettingsTab("Appearance"));
+        CHECK(host.whatsNewTabTagged("Appearance"));
+        REQUIRE(host.hoverSettingsTab("Delta Trace"));
+        CHECK_FALSE(host.whatsNewTabHighlighted("Delta Trace"));
+        REQUIRE(host.openSettingsTab("Delta Trace"));
         const int before = host.whatsNewLiveCount();
-        host.hoverSettingsRow("stream_chat.order");
+        host.hoverSettingsRow("delta_trace.peaks");
         CHECK(host.whatsNewLiveCount() == before - 1);
     }
 
     SUBCASE("hovering a marked row clears that row and no other") {
-        REQUIRE(host.openSettingsTab("Gap Bar"));
+        REQUIRE(host.openSettingsTab("Appearance"));
         const int before = host.whatsNewLiveCount();
         REQUIRE(before >= 1);
 
-        host.hoverSettingsRow("gap_bar.range");
+        host.hoverSettingsRow("appearance.glow");
         CHECK(host.whatsNewLiveCount() == before - 1);
 
         // Hovering it again is not a second dismissal.
-        host.hoverSettingsRow("gap_bar.range");
+        host.hoverSettingsRow("appearance.glow");
         CHECK(host.whatsNewLiveCount() == before - 1);
 
         // An unmarked row on the same tab dismisses nothing.
-        host.hoverSettingsRow("gap_bar.show_gap");
+        host.hoverSettingsRow("appearance.motion");
         CHECK(host.whatsNewLiveCount() == before - 1);
     }
 
@@ -182,7 +181,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // the case can see it.
         REQUIRE_MESSAGE(host.hasMarkDirty(), "MXBMRP3_Test_FlushIfDirty/IsDirty absent");
         host.setAutoSave(true);
-        REQUIRE(host.openSettingsTab("Gap Bar"));
+        REQUIRE(host.openSettingsTab("Appearance"));
 
         // SAVE FIRST, to clear the flag. Opening a tab persists [Profiles] activeTab
         // and marks dirty by itself, so a dirty check straight after the click passes
@@ -191,7 +190,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         host.save();
         REQUIRE_FALSE(host.isDirty());
 
-        host.hoverSettingsRow("gap_bar.range");
+        host.hoverSettingsRow("appearance.glow");
         const int afterDismiss = host.whatsNewLiveCount();
         REQUIRE(afterDismiss == total - 1);
         CHECK_MESSAGE(host.isDirty(),
@@ -205,7 +204,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         REQUIRE(host.whatsNewLiveCount() == total);
         host.loadSettings(saveWin);
         CHECK(host.whatsNewLiveCount() == afterDismiss);
-        CHECK_FALSE(host.whatsNewTabTagged("Gap Bar"));   // the tab dismissal too
+        CHECK_FALSE(host.whatsNewTabTagged("Appearance"));   // the tab dismissal too
     }
 
     SUBCASE("starting up does not silently dismiss a tab") {
@@ -260,14 +259,14 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // anywhere near this. Written against resetAll() alone, a test here would pass
         // while checking half a button.
         REQUIRE_MESSAGE(host.hasResetGlobals(), "MXBMRP3_Test_ResetGlobals not exported");
-        REQUIRE(host.openSettingsTab("Gap Bar"));
-        host.hoverSettingsRow("gap_bar.range");
+        REQUIRE(host.openSettingsTab("Appearance"));
+        host.hoverSettingsRow("appearance.glow");
         REQUIRE(host.whatsNewLiveCount() == total - 1);
-        REQUIRE_FALSE(host.whatsNewTabTagged("Gap Bar"));
+        REQUIRE_FALSE(host.whatsNewTabTagged("Appearance"));
 
         host.resetEverything();
         CHECK(host.whatsNewLiveCount() == total - 1);
-        CHECK_FALSE(host.whatsNewTabTagged("Gap Bar"));
+        CHECK_FALSE(host.whatsNewTabTagged("Appearance"));
     }
 
     host.shutdown();

@@ -23,6 +23,7 @@
 
 #include "../game/game_config.h"   // SPluginQuad_t / SPluginString_t (per game)
 #include "render_asset_decode.h"   // shared .tga/.fnt decode + .fnt text layout
+#include "render_layers.h"         // HUD stacking (hudlayers::Layers)
 
 namespace hudsw {
 
@@ -86,6 +87,9 @@ struct Frame {
     const std::vector<std::string>* spriteNames = nullptr;  // basenames, no extension
     int firstIcon = 1 << 30;
     std::string assetRoot;   // e.g. "plugins/mxbmrp3_data"
+    // HUD stacking (core/render_layers.h). Empty = the flat order: every quad,
+    // then every string, as the engine draws.
+    hudlayers::Layers layers;
 };
 
 class Renderer {

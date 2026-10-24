@@ -4,6 +4,8 @@
 // ============================================================================
 
 #include "plugin_data.h"
+#include <cmath>
+#include "plausible_g.h"
 #include "plugin_utils.h"
 #include "ui_config.h"
 #include "xinput_reader.h"
@@ -85,6 +87,11 @@ void PluginData::updateAcceleration(float accelX, float accelY, float accelZ) {
     m_bikeTelemetry.accelX = accelX;
     m_bikeTelemetry.accelY = accelY;
     m_bikeTelemetry.accelZ = accelZ;
+    // Held until the impact vignette reads it: telemetry runs at 100 Hz, so a
+    // one-sample landing spike would otherwise fall between two 60 fps frames.
+    // A spawn or reset glitch is skipped, or every respawn flashes black.
+    const float g = std::sqrt(accelX * accelX + accelY * accelY + accelZ * accelZ);
+    if (PlausibleG::ok(g) && g > m_bikeTelemetry.impactPeakG) m_bikeTelemetry.impactPeakG = g;
     // No separate notification - acceleration updates at same frequency as roll/pitch
     // which are bundled with the InputTelemetry notification from updateSpeedometer().
 }

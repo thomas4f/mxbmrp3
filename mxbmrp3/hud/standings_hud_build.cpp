@@ -313,6 +313,12 @@ void StandingsHud::formatDisplayEntries(const std::vector<int>& classificationOr
     }
 }
 
+StandingsGap::Table StandingsHud::gapTableFor(const std::vector<int>& classificationOrder,
+                                              int displayRaceNum) const {
+    return buildGapTable(classificationOrder, displayRaceNum, PluginData::getInstance(),
+                         getEffectiveGapReferenceMode());
+}
+
 StandingsGap::Table StandingsHud::buildGapTable(const std::vector<int>& classificationOrder, int displayRaceNum,
                                                 const PluginData& pluginData,
                                                 GapReferenceMode effectiveGapRef) const {
@@ -481,8 +487,7 @@ void StandingsHud::formatEntryLapColumns(DisplayEntry& entry, size_t entryIdx) c
 
     // Format penalty as whole seconds (e.g., "+5s" for 5 second penalty)
     if (entry.penalty > 0) {
-        int penaltySeconds = (entry.penalty + MS_TO_SEC_ROUNDING_OFFSET) / MS_TO_SEC_DIVISOR;
-        snprintf(entry.formattedPenalty, sizeof(entry.formattedPenalty), "+%ds", penaltySeconds);
+        formatPenalty(entry.penalty, entry.formattedPenalty, sizeof(entry.formattedPenalty));
     } else {
         // No penalty - show generic placeholder
         strcpy_s(entry.formattedPenalty, sizeof(entry.formattedPenalty), Placeholders::GENERIC);
@@ -654,6 +659,16 @@ void StandingsHud::addPlayerOrHoverHighlight(const DisplayEntry& entry, int rowI
     }
 }
 
+unsigned long StandingsHud::plateColor(bool outOfRace, unsigned long trackedColor, bool finished, int position,
+                                       unsigned long muted, unsigned long normal) {
+    if (outOfRace) return muted;
+    if (trackedColor != 0) return trackedColor;
+    if (finished && position == 1) return PluginConstants::PodiumColors::GOLD;
+    if (finished && position == 2) return PluginConstants::PodiumColors::SILVER;
+    if (finished && position == 3) return PluginConstants::PodiumColors::BRONZE;
+    return normal;
+}
+
 void StandingsHud::addRaceNumPlate(const DisplayEntry& entry, int rowIndex, float rowY,
                                    const ScaledDimensions& dim) {
     PlateGeometry pg(dim.fontSize, dim.lineHeightNormal);
@@ -665,30 +680,13 @@ void StandingsHud::addRaceNumPlate(const DisplayEntry& entry, int rowIndex, floa
     setQuadPositions(numPlate, npX, npY, pg.plateWidth, pg.plateHeight);
     numPlate.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
 
-    // Determine plate color: podium colors for finished P1-P3, muted for DNS/DSQ/RET, primary otherwise
     bool isMutedRider = (entry.state == PluginConstants::RiderState::DNS ||
                          entry.state == PluginConstants::RiderState::DSQ ||
                          entry.state == PluginConstants::RiderState::RETIRED);
-    unsigned long basePlateColor;
-    if (isMutedRider) {
-        basePlateColor = this->getColor(ColorSlot::MUTED);
-    } else if (entry.trackedColor != 0) {
-        // Tracked riders keep their custom plate colour (e.g. a red
-        // points-leader plate) even when finishing on the podium; only the
-        // muted (DNS/RET/DSQ) state takes precedence over it.
-        basePlateColor = entry.trackedColor;
-    } else if (entry.isFinishedRace && entry.position == 1) {
-        basePlateColor = PluginConstants::PodiumColors::GOLD;
-    } else if (entry.isFinishedRace && entry.position == 2) {
-        basePlateColor = PluginConstants::PodiumColors::SILVER;
-    } else if (entry.isFinishedRace && entry.position == 3) {
-        basePlateColor = PluginConstants::PodiumColors::BRONZE;
-    } else {
-        // Default plate: secondary colour (dark number stays legible on it).
-        basePlateColor = this->getColor(ColorSlot::SECONDARY);
-    }
-    unsigned long plateColor = PluginUtils::applyOpacity(basePlateColor, 230.0f / 255.0f);
-    numPlate.m_ulColor = plateColor;
+    const unsigned long basePlateColor = plateColor(
+        isMutedRider, entry.trackedColor, entry.isFinishedRace, entry.position,
+        this->getColor(ColorSlot::MUTED), this->getColor(ColorSlot::SECONDARY));
+    numPlate.m_ulColor = PluginUtils::applyOpacity(basePlateColor, PlateLayout::kPlateAlpha);
 
     size_t numPlateIdx = m_quads.size();
     m_quads.push_back(numPlate);
@@ -698,7 +696,7 @@ void StandingsHud::addRaceNumPlate(const DisplayEntry& entry, int rowIndex, floa
     float bsLeftX = npX + pg.plateWidth + pg.stripGap;
     setBrandMarkQuad(brandStrip, bsLeftX, npY + pg.arrowInsetY, pg);
     // Brand color always visible; dimmed for non-participants (DNS/RET/DSQ)
-    float stripOpacity = isMutedRider ? 100.0f / 255.0f : 230.0f / 255.0f;
+    float stripOpacity = isMutedRider ? PlateLayout::kBrandMarkOutAlpha : PlateLayout::kPlateAlpha;
     unsigned long stripColor = PluginUtils::applyOpacity(entry.bikeBrandColor, stripOpacity);
     brandStrip.m_ulColor = stripColor;
 
@@ -718,4 +716,9 @@ void StandingsHud::addRiderClickRegion(int raceNum, float rowY, const HudDimensi
     region.raceNum = raceNum;
     applyOffset(region.x, region.y);  // Apply drag offset to region
     m_riderClickRegions.push_back(region);
+}
+
+void StandingsHud::formatPenalty(int penaltyMs, char* out, size_t size) {
+    const int penaltySeconds = (penaltyMs + MS_TO_SEC_ROUNDING_OFFSET) / MS_TO_SEC_DIVISOR;
+    snprintf(out, size, "+%ds", penaltySeconds);
 }

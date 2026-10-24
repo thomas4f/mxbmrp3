@@ -19,37 +19,32 @@ namespace {
 // check_whats_new.sh fails the build if a version here falls behind resource.h,
 // so the review is not optional.
 //
-// 1.32 is the Delta Trace release: its tab bands the Visible switch, the one
-// thing on it to turn on (no tag: the name fills the sidebar, tabCanTag below).
-// The Map's Lap delta, Tilt, Adaptive range and Mode (Follow now fades the map at its
-// edge), the Gap Bar's Range (now Auto by default), the Timing panel's Gap, the Stream Chat's Display
-// order, the Appearance tab's Motion, Messages, UI scale and Companion bg, the
-// General tab's Reference and Freeze defaults and the Delta Trace hotkey are
-// the release's other new rows. The 1.31 markers - the Stream Chat Status switches,
-// the Gap Bar's Splits and Reference, the Lap Log's Gap reference and Gap
-// freeze, the Pitboard's Freeze, the Standings' Class column - are gone: each
-// had its release, and a tag still lit a release later says nothing.
+// 1.33 is the Dash release: its tab bands the Visible switch, as 1.32's Delta
+// Trace did, so the tag leads to a card that is already up. The Dash, Dash +
+// and Dash - hotkeys that toggle and step it, the Appearance tab's Glow, the
+// Delta Trace's Peaks, the Helmet tab's Impact vignette and the Widgets tab's
+// Toggles are the release's other new rows. The Event Log's Session PB and
+// All-time PB stay unmarked: the tab sits under More, and moving it up for
+// one release would reorder the sidebar for everyone. The 1.32 markers - the
+// Delta Trace's Visible switch, the Map's Lap delta, Tilt, Adaptive range and
+// Mode, the Gap Bar's Range, the Timing panel's Gap, the Stream Chat's
+// Display order, the Appearance tab's Motion, Messages, UI scale and
+// Companion bg, the General tab's Reference and Freeze, the Delta Trace
+// hotkey and the RPM widget - are gone: each had its release, and a tag still
+// lit a release later says nothing.
 //
 // Prestige is the table's one Gate::Unlocked row: it is not new in a release,
 // it is new the moment a player trades their ladder for it, and the row it
 // bands does not exist on the Widgets tab until then.
 const Marker kMarkers[] = {
-    { SettingsHud::TAB_DELTA_TRACE,  "common.visible",           "1.32" },
-    { SettingsHud::TAB_MAP,          "map.lap_delta",            "1.32" },
-    { SettingsHud::TAB_MAP,          "map.tilt",                 "1.32" },
-    { SettingsHud::TAB_MAP,          "map.range_adaptive",       "1.32" },
-    { SettingsHud::TAB_MAP,          "map.mode",                 "1.32" },
-    { SettingsHud::TAB_GAP_BAR,      "gap_bar.range",            "1.32" },
-    { SettingsHud::TAB_TIMING,       "timing.gap",               "1.32" },
-    { SettingsHud::TAB_STREAM_CHAT,  "stream_chat.order",        "1.32" },
-    { SettingsHud::TAB_APPEARANCE,   "appearance.motion",        "1.32" },
-    { SettingsHud::TAB_APPEARANCE,   "appearance.messages",      "1.32" },
-    { SettingsHud::TAB_APPEARANCE,   "appearance.ui_scale",      "1.32" },
-    { SettingsHud::TAB_APPEARANCE,   "appearance.companion_background", "1.32" },
-    { SettingsHud::TAB_GENERAL,      "general.reference",        "1.32" },
-    { SettingsHud::TAB_GENERAL,      "general.freeze",           "1.32" },
-    { SettingsHud::TAB_HOTKEYS,      "hotkeys.delta_trace",      "1.32" },
-    { SettingsHud::TAB_WIDGETS,      "widgets.rpm",              "1.32" },
+    { SettingsHud::TAB_DASH,         "common.visible",           "1.33" },
+    { SettingsHud::TAB_HOTKEYS,      "hotkeys.dash",             "1.33" },
+    { SettingsHud::TAB_HOTKEYS,      "hotkeys.dash_next",        "1.33" },
+    { SettingsHud::TAB_HOTKEYS,      "hotkeys.dash_prev",        "1.33" },
+    { SettingsHud::TAB_APPEARANCE,   "appearance.glow",          "1.33" },
+    { SettingsHud::TAB_DELTA_TRACE,  "delta_trace.peaks",        "1.33" },
+    { SettingsHud::TAB_HELMET,       "helmet.impact_vignette",   "1.33" },
+    { SettingsHud::TAB_WIDGETS,      "widgets.toggles",          "1.33" },
     { SettingsHud::TAB_WIDGETS,      "widgets.prestige",         nullptr, Gate::Unlocked },
 };
 

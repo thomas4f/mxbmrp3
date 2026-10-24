@@ -474,7 +474,6 @@ public:
     bool isHazardAhead() const;
     const std::vector<int>& getHazardRaceNums() const;
 
-
     // Live-gap HUD refresh coalescing (INI-only setting: [Advanced]
     // gapNotifyIntervalMs). 0 = notify on every change (table HUDs may
     // rebuild every frame during close racing).
@@ -483,9 +482,10 @@ public:
 
     // Overtime tracking for time+laps races
     void setOvertimeStarted(bool started) { m_sessionData.overtimeStarted = started; }
-    void setFinishLap(int lap) { m_sessionData.finishLap = lap; }
+    void setFinishLap(int lap, bool confirmed = false) { m_sessionData.finishLap = lap; m_sessionData.finishLapConfirmed = confirmed; }
     void setLastSessionTime(int time) { m_sessionData.lastSessionTime = time; }
     void setLeaderFinishTime(int time) { m_sessionData.leaderFinishTime = time; }
+    void setRaceOverClock(int time) { m_sessionData.raceOverClock = time; }
     int getLeaderFinishTime() const { return m_sessionData.leaderFinishTime; }
 
     // Leader-change ("takes the lead") detection state. Must be reset per session:
@@ -535,6 +535,8 @@ public:
     BenchmarkMetrics& getBenchmarkMetrics() { return m_benchmarkMetrics; }
     const BenchmarkMetrics& getBenchmarkMetrics() const { return m_benchmarkMetrics; }
     const BikeTelemetryData& getBikeTelemetry() const { return m_bikeTelemetry; }
+    // The largest g sample since the last call, then cleared (the impact vignette's one reader).
+    float takeImpactPeakG() { const float g = m_bikeTelemetry.impactPeakG; m_bikeTelemetry.impactPeakG = 0.0f; return g; }
     const InputTelemetryData& getInputTelemetry() const { return m_inputTelemetry; }
     const HistoryBuffers& getHistoryBuffers() const { return m_historyBuffers; }
     void clearHistoryBuffers() { m_historyBuffers.clear(); }
@@ -586,6 +588,8 @@ public:
     // Called by TrackedRidersManager when tracked riders list/settings change
     // Triggers DataChangeType::TrackedRiders notification to HUDs
     void notifyTrackedRidersChanged();
+    // Bumped by each such change: the Dash re-reads its plates' tracked colours on it.
+    uint32_t getTrackedRidersRevision() const { return m_trackedRidersRevision; }
 
     // ========================================================================
     // Live gap to personal best (display rider). Computed HERE from the central
@@ -612,6 +616,8 @@ public:
     // The tracker itself, read-only: the current lap's and each reference's
     // samples, for displays that draw the whole lap rather than one gap.
     const PbGapTracker& getPbGapTracker() const { return m_pbGap; }
+    // An all-time PB here with no trace that is that lap (see the definition).
+    bool isAllTimeTraceMissing() const;
     // TEST ONLY (test_hooks.cpp): plant a sticky live gap so the bar's fill can be
     // measured headlessly; a real one needs a full lap of samples. Outranks the
     // computed gap until clear().
@@ -620,9 +626,13 @@ public:
     // ========================================================================
     // Timed Notice Flags (set by RaceLapHandler, consumed by NoticesHud)
     // ========================================================================
-    void notifySessionPB()  { m_newSessionPB = true; m_sessionPBTime = std::chrono::steady_clock::now(); }
-    void notifyFastestLap()  { m_newFastestLap = true; m_fastestLapTime = std::chrono::steady_clock::now(); }
-    void notifyAllTimePB()  { m_newAllTimePB = true; m_allTimePBTime = std::chrono::steady_clock::now(); }
+    // Each with the lap that set it and the best it beat (PbNoticeLap).
+    void notifySessionPB(int lapMs, int prevMs)  { m_newSessionPB = true; m_sessionPBTime = std::chrono::steady_clock::now(); m_sessionPBLap = { lapMs, prevMs }; }
+    void notifyFastestLap(int lapMs, int prevMs)  { m_newFastestLap = true; m_fastestLapTime = std::chrono::steady_clock::now(); m_fastestLapLap = { lapMs, prevMs }; }
+    void notifyAllTimePB(int lapMs, int prevMs)  { m_newAllTimePB = true; m_allTimePBTime = std::chrono::steady_clock::now(); m_allTimePBLap = { lapMs, prevMs }; }
+    const PbNoticeLap& getSessionPBLap() const { return m_sessionPBLap; }
+    const PbNoticeLap& getFastestLapLap() const { return m_fastestLapLap; }
+    const PbNoticeLap& getAllTimePBLap() const { return m_allTimePBLap; }
 
     bool hasNewSessionPB() const  { return m_newSessionPB; }
     bool hasNewFastestLap() const  { return m_newFastestLap; }
@@ -685,8 +695,8 @@ public:
         // Cumulative ("aggregate like the official splits") view of the contiguous
         // run through the chain: the shown time/delta are running totals from the
         // chain's first point, so points dropped on the official split positions
-        // read like the regular timing HUD. Fed by updateSegmentTimer, read by the
-        // TimingHud segment override. See segment_cumulative.h.
+        // read like the regular timing HUD. Fed by updateSegmentTimer, read through
+        // readSegmentLine (Timing HUD, Dash). See segment_cumulative.h.
         SegmentCumulative cum;
 
         // Number of timed segments. A single point is a full-lap loop (1 segment); N>=2
@@ -765,6 +775,8 @@ private:
 
     // Rebuild blue flag caches (player flag + per-rider set)
     void rebuildBlueFlagCaches() const;
+
+    uint32_t m_trackedRidersRevision = 0;   // getTrackedRidersRevision()
 
     // Rebuild per-rider hazard type cache (lazy, called on first access when dirty)
     void rebuildHazardTypeCaches() const;
@@ -953,6 +965,7 @@ private:
     // as the tracker's ALLTIME_PB reference, for the bike the stats file's PB
     // scope resolves to. Called wherever the tracker is (re)bound to the player.
     void plantAllTimeGapReference();
+    bool m_allTimePbWithoutTrace = false;  // isAllTimeTraceMissing(), set by the plant
     bool m_liveGapForced = false;          // test plant (testForceLiveGap) outranks the computed gap
     int m_forcedLiveGapMs = 0;
     bool m_forcedLiveGapValid = false;
@@ -970,6 +983,7 @@ private:
     std::chrono::steady_clock::time_point m_fastestLapTime;
     std::chrono::steady_clock::time_point m_allTimePBTime;
     std::chrono::steady_clock::time_point m_defaultSetupTime;
+    PbNoticeLap m_sessionPBLap, m_fastestLapLap, m_allTimePBLap;
 
     // Segment timer (training tool - see public API above)
     SegmentTimerData m_segment;

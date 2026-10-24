@@ -170,6 +170,10 @@ float FuelWidget::getLapsRemaining() const {
         FuelEstimate::averagePerLap(m_fuelPerLap, m_totalLapsRecorded));
 }
 
+float FuelWidget::getFuelUsed() const {
+    return m_fuelAtRunStart - PluginData::getInstance().getBikeTelemetry().fuel;
+}
+
 void FuelWidget::resetFuelTracking() {
     m_fuelPerLap.clear();
     m_fuelAtRunStart = 0.0f;
@@ -191,7 +195,7 @@ int FuelWidget::getEnabledRowCount() const {
 
 void FuelWidget::rebuildLayout() {
     // BOX-MODEL: one source of geometry — rebuild rather than reposition a
-    // duplicated copy of the sizing arithmetic (see version_widget).
+    // duplicated copy of the sizing arithmetic.
     rebuildRenderData();
 }
 
@@ -271,8 +275,8 @@ void FuelWidget::rebuildRenderData() {
         formatFuelValue(fuelValueBuffer, sizeof(fuelValueBuffer), displayFuel, unitLabel);
 
         // Total fuel used this run
-        if (m_bTrackingActive && m_fuelAtRunStart > 0.0f) {
-            float fuelUsed = (m_fuelAtRunStart - bikeData.fuel) * unitConversion;
+        if (hasFuelUsed()) {
+            float fuelUsed = getFuelUsed() * unitConversion;
             formatFuelValue(usedValueBuffer, sizeof(usedValueBuffer), fuelUsed, unitLabel);
         } else {
             snprintf(usedValueBuffer, sizeof(usedValueBuffer), "%s", Placeholders::GENERIC);
@@ -283,8 +287,7 @@ void FuelWidget::rebuildRenderData() {
         // Shared with the spotter's fuel warning, so the number spoken and the
         // number shown cannot disagree (fuel_estimate.h — which also documents
         // why the first lap is skipped).
-        const float avgFuelPerLap =
-            FuelEstimate::averagePerLap(m_fuelPerLap, m_totalLapsRecorded);
+        const float avgFuelPerLap = getAveragePerLap();
 
         if (avgFuelPerLap > 0.001f) {
             float displayAvg = avgFuelPerLap * unitConversion;

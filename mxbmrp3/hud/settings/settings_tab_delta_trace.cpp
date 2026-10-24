@@ -31,8 +31,21 @@ BaseHud* SettingsHud::renderTabDeltaTrace(SettingsLayoutContext& ctx) {
     // === CONTENT SECTION ===
     // Reference names as the Gap Bar and the Map's Lap delta spell them.
     ctx.addSectionHeading("Content");
-    ctx.addReferenceControl("Reference", &hud->m_referenceDefault, &hud->m_reference, hud,
+    ctx.addReferenceControl("Gap reference", &hud->m_referenceDefault, &hud->m_reference, hud,
         "delta_trace.reference");
+
+    // Peaks: where the lap was furthest ahead and furthest behind.
+    {
+        static const char* const kOnOff[] = { "Off", "On" };
+        SettingsHud::CycleControl peaks;
+        peaks.count = 2;
+        peaks.get = [hud]() { return hud->m_showPeaks ? 1 : 0; };
+        peaks.set = [hud](int v) { hud->m_showPeaks = (v != 0); };
+        peaks.nameOf = [](int v) { return std::string(kOnOff[v]); };
+        peaks.dirtyHud = hud;
+        ctx.addCycleControl("Peaks", hud->m_showPeaks ? "On" : "Off", peaks, hud, true, !hud->m_showPeaks,
+                            "delta_trace.peaks");
+    }
 
     return hud;
 }

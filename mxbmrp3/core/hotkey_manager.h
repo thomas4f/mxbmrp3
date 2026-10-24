@@ -52,6 +52,11 @@ public:
 
     // Reset to default bindings
     void resetToDefaults();
+    // The Dash's shipped page keys give way to a binding the player made: a Dash
+    // action still on its shipped key, with another action on that key too, is
+    // left without a keyboard key (its hint then says to bind one). Run after
+    // each settings load.
+    void yieldShippedConflicts();
 
     // Capture mode - for settings UI to capture new bindings
     void startCapture(HotkeyAction action, CaptureType type);

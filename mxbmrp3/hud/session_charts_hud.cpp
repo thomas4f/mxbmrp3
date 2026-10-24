@@ -5,7 +5,7 @@
 // draws one line per rider for the selected chart type.
 // ============================================================================
 #include "session_charts_hud.h"
-#include "center_stack.h"
+#include "default_slots.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
@@ -562,6 +562,7 @@ void SessionChartsHud::drawLapChart(float px, float py, float pw, float ph,
     if (m_enabledElements & ELEM_GRID) {
         addHorizontalGridLine(px, yForRow(0), pw, gridColor, gridThickness);
         addHorizontalGridLine(px, yForRow(yRows - 1), pw, gridColor, gridThickness);
+        addChartLapLines(px, py, pw, ph, field.firstLaps(), field.maxLaps);
     }
 
     // Bump chart of the SHOWN subset: at each lap, rank the shown riders by their
@@ -663,6 +664,7 @@ void SessionChartsHud::drawTraceChart(float px, float py, float pw, float ph,
     if (m_enabledElements & ELEM_GRID) {
         addHorizontalGridLine(px, py, pw, gridColor, gridThickness);
         addHorizontalGridLine(px, py + ph, pw, gridColor, gridThickness);
+        addChartLapLines(px, py, pw, ph, field.firstLaps(), field.maxLaps);
     }
 
     // Dashed zero (reference-pace) line.
@@ -737,6 +739,7 @@ void SessionChartsHud::drawGapChart(float px, float py, float pw, float ph,
     if (m_enabledElements & ELEM_GRID) {
         addHorizontalGridLine(px, py, pw, gridColor, gridThickness);          // leader (0)
         addHorizontalGridLine(px, py + ph, pw, gridColor, gridThickness);     // gapMax
+        addChartLapLines(px, py, pw, ph, field.firstLaps(), field.maxLaps);
     }
 
     const float lineThickness = 0.0022f * dims.scale;
@@ -833,6 +836,7 @@ void SessionChartsHud::drawPaceChart(float px, float py, float pw, float ph,
         addHorizontalGridLine(px, py, pw, gridColor, gridThickness);
         addHorizontalGridLine(px, py + ph * 0.5f, pw, gridColor, gridThickness);
         addHorizontalGridLine(px, py + ph, pw, gridColor, gridThickness);
+        addChartLapLines(px, py, pw, ph, 1.0f, paceDomainEnd);
     }
 
     const float lineThickness = 0.0022f * dims.scale;
@@ -899,21 +903,6 @@ void SessionChartsHud::addRiderTag(float x, float y, int raceNum, unsigned long 
     }
 }
 
-SessionChartsHud::TestSeries SessionChartsHud::testSeries() const {
-    FieldData field;
-    collectField(field);
-    TestSeries out;
-    out.pointsPerLap = field.pointsPerLap;
-    const int displayRaceNum = PluginData::getInstance().getDisplayRaceNum();
-    for (size_t i = 0; i < field.raceNums.size(); ++i) {
-        if (field.raceNums[i] == displayRaceNum) {
-            out.points = static_cast<int>(field.cumulative[i].size());
-            break;
-        }
-    }
-    return out;
-}
-
 void SessionChartsHud::handleClick(float mouseX, float mouseY) {
     for (const auto& region : m_tagClickRegions) {
         if (isPointInRect(mouseX, mouseY, region.x, region.y, region.width, region.height)) {
@@ -965,12 +954,11 @@ void SessionChartsHud::resetToDefaults() {
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setScale(1.0f);
     m_graphRows = DEFAULT_GRAPH_ROWS;
-    // Upper-right by default. A single chart fits comfortably here; multi-chart
-    // stacks are tall (each chart is 10 rows) and a full stack exceeds the screen,
-    // so users reposition/scale to taste like any HUD.
-    // One grid cell down from the screen edge, computed rather than written out: a
-    // frozen 0.011734 stops being one cell the moment lineHeightRatio is set.
-    setPosition(0.7315f, CenterStack::rowY(1));
+    // The right column (default_slots.h), the one member that ends a cell inside
+    // Gear and Speed: 27 cells with its one default chart against the 24 the
+    // column has, an overlap the player moves like any other. Multi-chart stacks
+    // are taller still (each chart is 10 rows), so users reposition/scale to taste.
+    setPosition(DefaultSlots::rightColumnX(DefaultSlots::WIDE_CELLS), DefaultSlots::rightColumnY());
 
     m_enabledCharts = CHART_DEFAULT;
     m_enabledElements = ELEM_DEFAULT;

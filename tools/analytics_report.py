@@ -41,7 +41,7 @@ import os
 import re
 import sys
 from collections import Counter, defaultdict
-from datetime import timedelta
+from datetime import date, timedelta
 from html import unescape as html_unescape
 
 try:
@@ -552,6 +552,9 @@ def match_known(fault, game_build, lookup):
 # Between two figures on ONE bullet. Wide on purpose: a bare "·" between two
 # bold labels reads as punctuation inside a sentence rather than a break.
 FIG_SEP = "  ·  "
+# The Activity charts share one day axis and sit stacked, so they also share one
+# end-label column (characters; "100,000"), which keeps their days lined up.
+ACTIVITY_END_ROOM = 7
 
 
 class Report:
@@ -667,6 +670,20 @@ def load_downloads(out_dir):
     dates = [rel["published"] for rel in rels if rel.get("published")]
     return {"lines": lines, "total": sum(int(rel["downloads"]) for rel in rels),
             "releases": len(rels), "since": min(dates) if dates else None}
+
+
+def load_downloads_history(out_dir):
+    """usage_survey/downloads_history.csv (tools/release_downloads.py): the total
+    downloads as sampled each day, as [(date, total)] date-sorted, or [] when the
+    file is absent. Absent for the same reason downloads.json can be."""
+    path = os.path.join(out_dir, "downloads_history.csv")
+    if not os.path.exists(path):
+        return []
+    rows = []
+    for line in open(path, encoding="utf-8").read().splitlines()[1:]:
+        d, n = line.split(",")
+        rows.append((date.fromisoformat(d), int(n)))
+    return sorted(rows)
 
 
 def write_badge(out_dir, installs):
@@ -1279,7 +1296,7 @@ def _activity(r, df, started, sessions, axis):
                 svg.lines("Installs seen", xlabels,
                           [("All games", cum, svg.PALETTE[0])],
                           subtitle="running total of installs by the day each was first seen",
-                          gaps=gap_bands, annotate="ends"),
+                          gaps=gap_bands, annotate="ends", end_room=ACTIVITY_END_ROOM),
                 "Installs seen, cumulative")
 
     # NEW VERSUS RETURNING, of each day's active installs: the cut that says
@@ -1297,10 +1314,58 @@ def _activity(r, df, started, sessions, axis):
                           [("Returning", returning, svg.PALETTE[1]), ("New (first day seen)", fresh, svg.PALETTE[0])],
                           subtitle="distinct installs launching per day, split by whether it was their first "
                                    "day; a day after a gap carries the gap's backlog of first days",
-                          gaps=gap_bands),
+                          gaps=gap_bands, end_room=ACTIVITY_END_ROOM),
                 "Active installs, new versus returning")
         r.w("> The first weeks are existing users upgrading, not new ones; averages use the "
             "last {} full days.".format(len(recent)), "")
+
+    # DOWNLOADS, the second measure of reach, in the same two shapes as installs
+    # above: the running total, then the day by day. Their own charts, not lines on
+    # the installs ones: downloads run about five times installs (every update is a
+    # download, an install is counted once), so a shared axis flattens installs and
+    # invites reading the gap as a conversion rate. They do share the report's day
+    # axis, so their dates line up with every chart around them; the days before
+    # tools/release_downloads.py began keeping samples are shaded instead. The
+    # running total is GitHub's own all-time total, so it ends on the bullet's and
+    # the tile's figure; it is "Downloads", not "seen", because a download is a
+    # count GitHub reports, where an install is seen by reporting in itself.
+    # The job samples early in the UTC day, so the difference between two
+    # consecutive samples is (roughly) the downloads of the day BEFORE the later
+    # one; a day without both samples is a gap in the lines, not a zero.
+    # No charts until a day on the axis has a value: an all-blank chart says nothing.
+    history = load_downloads_history(r.out)
+    totals = dict(history)
+    # A negative difference is GitHub lowering a count (an asset deleted or
+    # replaced), not a day's downloads: a gap, like a missed sample.
+    per_day = [totals[d + timedelta(days=1)] - totals[d]
+               if d in totals and d + timedelta(days=1) in totals
+               and totals[d + timedelta(days=1)] >= totals[d] else None
+               for d in days]
+    if any(v is not None for v in per_day):
+        first_day = history[0][0]
+        unrecorded = sum(1 for d in days if d < first_day)
+        dl_gaps = [(0, unrecorded - 1, "not recorded")] if unrecorded else ()
+        dl_cum = [totals[d + timedelta(days=1)]
+                  if d >= first_day and d + timedelta(days=1) in totals else None
+                  for d in days]
+        window = history[-31:]
+        span = (window[-1][0] - window[0][0]).days
+        r.figures(("- **downloads:** {:,}" + FIG_SEP +
+                   "**avg downloads/day:** {:,.0f} (over the last {} days)")
+                  .format(history[-1][1], (window[-1][1] - window[0][1]) / max(1, span), span))
+        r.chart("activity_cumulative_downloads.svg",
+                svg.lines("Downloads", xlabels,
+                          [("GitHub releases", dl_cum, svg.PALETTE[0])],
+                          subtitle="running total of installer and zip downloads from GitHub, "
+                                   "updates included",
+                          gaps=dl_gaps, annotate="ends", end_room=ACTIVITY_END_ROOM),
+                "Downloads, cumulative")
+        r.chart("activity_downloads_per_day.svg",
+                svg.lines("Downloads per day", xlabels,
+                          [("GitHub releases", per_day, svg.PALETTE[0])],
+                          subtitle="installer and zip downloads from GitHub each day, updates included",
+                          gaps=dl_gaps, end_room=ACTIVITY_END_ROOM),
+                "Downloads per day")
 
     # HOW HARD each of them leant on it, OVER TIME. This slot used to hold daily
     # launches, which was very nearly this chart's neighbour drawn again: launches
@@ -1348,7 +1413,7 @@ def _activity(r, df, started, sessions, axis):
             svg.lines("Launches per active install", xlabels,
                       [("All games", intensity, svg.PALETTE[0])],
                       subtitle="how many times a typical active install launched that day",
-                      gaps=gap_bands),
+                      gaps=gap_bands, end_room=ACTIVITY_END_ROOM),
             "Launches per active install")
 
     # WHEN PEOPLE RIDE: launches by weekday and hour, averaged per occurrence of
@@ -2240,6 +2305,10 @@ def selftest():
             {"tag": "v1.30.3", "published": "2026-09-13", "downloads": 100},
             {"tag": "v1.30.1", "published": "2026-09-06", "downloads": 20},
             {"tag": "v1.10.0.0", "published": "2025-12-29", "downloads": 7}]}, f)
+    # Downloads history starting inside the report's two-day axis (2025-10-09..10):
+    # 10-09 predates the first sample, so it is shaded "not recorded", not zero.
+    with open(os.path.join(out, "downloads_history.csv"), "w") as f:
+        f.write("date,downloads\n2025-10-10,100\n2025-10-11,110\n")
     path, _ = build(mkdf(rows), out)
     md = open(path).read()
     # 1 pre-threshold + 1 dev-host crash excluded, leaving exactly 1 counted player crash;
@@ -2532,6 +2601,43 @@ def selftest():
     assert _order == sorted(_order), \
         "Activity must read unique installs -> new-versus-returning -> intensity -> " \
         "when people ride -> session length (the one chart with no time axis, last)"
+    # Downloads read like installs, after them: the bullet, the running total, then
+    # the day by day, all on the one day axis with the unsampled days shaded.
+    assert md.index("charts/activity_new_vs_returning.svg") < md.index("**downloads:** 110") \
+        < md.index("charts/activity_cumulative_downloads.svg") \
+        < md.index("charts/activity_downloads_per_day.svg") \
+        < md.index("charts/activity_launches_per_active.svg"), \
+        "Downloads belong after the installs charts: bullet, running total, then per day"
+    assert "**avg downloads/day:** 10 (over the last 1 days)" in md, "downloads/day wrong"
+    _dc = open(os.path.join(out, "charts", "activity_cumulative_downloads.svg")).read()
+    # The running total is GitHub's own total, ending on the bullet's figure.
+    assert ">Downloads<" in _dc and "110</text>" in _dc and ">not recorded<" in _dc, \
+        "running total title/end value/band wrong"
+    _dl = open(os.path.join(out, "charts", "activity_downloads_per_day.svg")).read()
+    assert "log scale" not in _dl and ">not recorded<" in _dl, "downloads chart axis/band wrong"
+    # 10-09 has no sample pair: a gap, not a zero, so only 10-10's point is drawn.
+    _pl = re.findall(r'<polyline points="([^"]*)"', _dl)
+    assert len(_pl) == 1 and " " not in _pl[0], "a missed sample was drawn as zero: " + str(_pl)
+    # A day keeps its first sample: a same-day rerun changes neither the history
+    # nor downloads.json, so the tile, the table and the bullet stay on one sample.
+    import release_downloads
+    _hist = os.path.join(out, "downloads_history.csv")
+    _json = os.path.join(out, "downloads.json")
+    _before = open(_json).read()
+    _rerun = {"repo": "x", "releases": [{"tag": "v1.30.3", "published": "2026-09-13", "downloads": 140}]}
+    assert not release_downloads.refresh(_rerun, "2025-10-11", _json, _hist)
+    assert open(_json).read() == _before, "a same-day rerun rewrote downloads.json"
+    assert release_downloads.refresh(dict(_rerun, releases=[dict(_rerun["releases"][0], downloads=150)]),
+                                     "2025-10-12", _json, _hist)
+    assert open(_hist).read() == ("date,downloads\n2025-10-10,100\n"
+                                  "2025-10-11,110\n2025-10-12,150\n"), open(_hist).read()
+    assert load_downloads(out)["total"] == 150, "a new day must refresh downloads.json"
+    # The stacked Activity day charts share one plot width, so their days line up.
+    _rights = {re.search(r'<line x1="52" y1="[0-9.]+" x2="([0-9.]+)"', open(os.path.join(out, "charts", _c)).read()).group(1)
+               for _c in ("activity_cumulative_installs.svg", "activity_new_vs_returning.svg",
+                          "activity_cumulative_downloads.svg", "activity_downloads_per_day.svg",
+                          "activity_launches_per_active.svg")}
+    assert len(_rights) == 1, "Activity day charts have different plot widths: " + str(_rights)
     # The launch scalars sit with the chart they summarise wherever that chart
     # moves -- between the population curve and the intensity one, not stranded
     # at the end of the section as avg launches/day once was.

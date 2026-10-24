@@ -35,15 +35,15 @@
 #include "../hud/gear_widget.h"
 #include "../hud/crash_widget.h"
 #include "../hud/rpm_widget.h"
+#include "../hud/toggle_strip_widget.h"
 #include "../hud/gl_confirm_hud.h"
 #include "../hud/speedo_widget.h"
 #include "../hud/tacho_widget.h"
 #include "../hud/timing_hud.h"
 #include "../hud/bars_widget.h"
-#include "../hud/version_widget.h"
+#include "../hud/breakout_hud.h"
 #include "../hud/notices_hud.h"
 #include "../hud/settings_hud.h"
-#include "../hud/settings_button_widget.h"
 #include "../hud/map_hud.h"
 #include "../hud/radar_hud.h"
 #include "../hud/pitboard_hud.h"
@@ -53,9 +53,9 @@
 #endif
 #include "../hud/gap_bar_hud.h"
 #include "../hud/delta_trace_hud.h"
+#include "../hud/dash_hud.h"
 #include "../hud/pointer_widget.h"
 #include "../hud/rumble_hud.h"
-#include "../hud/director_widget.h"
 #include "../hud/achievement_widget.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
@@ -71,6 +71,7 @@
 #endif
 #include "../hud/session_charts_hud.h"
 #include "../hud/helmet_overlay_hud.h"
+#include "../hud/impact_vignette_hud.h"
 #include "../hud/fmx_hud.h"
 #include "../hud/stats_hud.h"
 #include "../hud/event_log_hud.h"
@@ -145,6 +146,9 @@ void HudManager::initialize() {
     // This way HUD elements (speed, gear, lap, etc.) are always readable on top
     // of the helmet frame and visor tint, rather than being obscured by them.
     createHud(m_pHelmetOverlay, "helmet_overlay");
+    // Over the helmet (the hit darkens what the rider sees, frame included) and
+    // under every HUD, which stays readable through it.
+    createHud(m_pImpactVignette, "impact_vignette");
     createHud(m_pStandings, "standings_hud");
     createHud(m_pMapHud, "map_hud");
     createHud(m_pRadarHud, "radar_hud");
@@ -194,12 +198,16 @@ void HudManager::initialize() {
     createHud(m_pTiming, "timing_hud");
     createHud(m_pGapBar, "gap_bar_hud");
     createHud(m_pBars, "bars_widget");
-    createHud(m_pVersion, "version_widget");
+    // The easter-egg game (five clicks on About): hidden until it runs, no settings.
+    createHud(m_pBreakout, "breakout_hud");
     createHud(m_pNotices, "notices_hud");
     createHud(m_pSpotter, "spotter_widget");  // spotter subtitle; content-gated on [Spotter] settings
     createHud(m_pFuel, "fuel_widget");
+    // After the RPM and Fuel widgets: the Dash reads their settings (light
+    // count, fuel unit, fonts and colours) from its first rebuild, in its
+    // constructor.
+    createHud(m_pDash, "dash_hud");
     createHud(m_pRumble, "rumble_hud");
-    createHud(m_pDirector, "director_widget");
     // Every game: the card also carries the system toasts (core/system_messages.h).
     // Without achievements (GAME_HAS_ACHIEVEMENTS) the manager queues none, so
     // the card only ever shows those, and the Achievements tab stays gated.
@@ -222,7 +230,6 @@ void HudManager::initialize() {
 #if GAME_HAS_ECU
     createHud(m_pEcu, "ecu_widget");
 #endif
-
     // Create PointerWidget early so it can be passed to SettingsHud
     // (will be registered last to render on top)
     auto pointerPtr = std::make_unique<PointerWidget>();
@@ -235,21 +242,13 @@ void HudManager::initialize() {
 #else
     RecordsHud* recordsHudPtr = nullptr;
 #endif
-    // Create the settings button up front so SettingsHud can reference it for the
-    // Widgets tab (visibility/opacity/scale/texture). It is registered later so it
-    // keeps its existing draw order (above SettingsHud, below the pointer).
-    auto settingsButtonPtr = std::make_unique<SettingsButtonWidget>();
-    m_pSettingsButton = settingsButtonPtr.get();
-    bindHudSlot(m_pSettingsButton);
-
     auto settingsPtr = std::make_unique<SettingsHud>(m_pIdealLap, m_pLapLog, m_pFriends, m_pSessionCharts, m_pStandings,
-                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pGear, m_pCrash, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pVersion, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean, m_pGforce, m_pCompass,
+                                                       m_pPerformance, m_pTelemetry, m_pTime, m_pPosition, m_pLap, m_pSession, m_pMapHud, m_pRadarHud, m_pSpeed, m_pGear, m_pCrash, m_pSpeedo, m_pTacho, m_pTiming, m_pGapBar, m_pBars, m_pBreakout, m_pNotices, m_pPitboard, recordsHudPtr, m_pFuel, m_pPointer, m_pRumble, m_pGamepad, m_pLean, m_pGforce, m_pCompass,
                                                        m_pFmxHud,
                                                        m_pStatsHud,
                                                        m_pEventLog,
                                                        m_pClock,
-                                                       m_pHelmetOverlay,
-                                                       m_pSettingsButton
+                                                       m_pHelmetOverlay
 #if GAME_HAS_TYRE_TEMP
                                                        , m_pTyreTemp
 #endif
@@ -261,9 +260,9 @@ void HudManager::initialize() {
     bindHudSlot(m_pSettingsHud);
     registerHud(std::move(settingsPtr), "settings_hud");
 
-    // Register SettingsButtonWidget - draggable button to toggle settings
-    // (created earlier so SettingsHud could reference it; registered here for draw order)
-    registerHud(std::move(settingsButtonPtr), "settings_button");
+    // The Toggles strip carries the menu's own button, so it draws where that
+    // button did: above SettingsHud, below the pointer.
+    createHud(m_pToggleStrip, "toggle_strip_widget");
 
     // Register PointerWidget last so it renders on top of everything
     registerHud(std::move(pointerPtr), "pointer_widget");
@@ -297,12 +296,10 @@ void HudManager::initialize() {
         }
     }
 
-    // The broken-install warning is the Version widget's panel, so it waits for
-    // the HUDs; and it comes before the settings, so it takes the widget's
-    // factory place and size rather than wherever a player moved theirs.
+    // The broken-install warning, which the Dash says.
 #ifdef MXBMRP3_TEST_BUILD
     // The suite runs with no asset tree; see testBuildInstallWarning().
-    m_installWarning.clear();
+    SystemMessages::getInstance().setInstallProblem(nullptr);
 #else
     {
         const AssetManager& assets = AssetManager::getInstance();
@@ -362,14 +359,18 @@ void HudManager::shutdownInternal(bool allowSave) {
     DEBUG_INFO("HudManager shutdown complete");
 }
 
-void HudManager::setPreviewHud(const BaseHud* target) {
+void HudManager::setPreviewHud(const BaseHud* target, const BaseHud* sample) {
     // A DISABLED HUD IS NEVER PREVIEWED. Opening its tab is how you find the
     // switch, not a request to see it: forcing it on screen would put a HUD there
     // that the player has deliberately turned off. Read once, outside the loop --
     // it is the only thing here that is not a pointer compare.
     const bool on = target && target->isVisibleAnySurface();
     for (const auto& hud : m_huds) {
-        if (hud) hud->setPreviewing(on && hud.get() == target);
+        if (!hud) continue;
+        // The hover sample shows the same placeholder content, so a HUD that is
+        // empty until something happens still has something to show.
+        hud->setSampled(hud.get() == sample);
+        hud->setPreviewing((on && hud.get() == target) || hud.get() == sample);
     }
 }
 
@@ -530,7 +531,7 @@ void HudManager::testSetAllHudsVisible(bool visible) {
         BaseHud* p = hud.get();
         // Skip UI chrome and dev overlays — they aren't user "features" and
         // force-showing the settings menu/pointer would distort the profile.
-        if (p == m_pSettingsHud || p == m_pSettingsButton ||
+        if (p == m_pSettingsHud || p == m_pToggleStrip ||
             p == m_pPointer || p == m_pBenchmark) {
             continue;
         }
@@ -837,7 +838,9 @@ bool HudManager::isTelemetryHistoryNeeded() const {
     // buffers nobody fills — empty graphs. This is the visibility-gate invariant
     // applied to the DATA side: the consumer's gate and the producer's gate have
     // to ask the same question.
-    return m_pTelemetry && m_pTelemetry->isVisibleAnySurface();
+    // The Dash's Telemetry page draws the same buffers (DashHud::wantsTelemetryHistory).
+    return (m_pTelemetry && m_pTelemetry->isVisibleAnySurface()) ||
+           (m_pDash && m_pDash->wantsTelemetryHistory());
 }
 
 
@@ -870,6 +873,11 @@ void HudManager::updateRiderPositions(int numVehicles, Unified::TrackPositionDat
     // Update GapBarHud (for flat map mode)
     if (m_pGapBar) {
         m_pGapBar->updateRiderPositions(numVehicles, positions);
+    }
+
+    // Update DashHud (its Flat map page)
+    if (m_pDash) {
+        m_pDash->updateRiderPositions(numVehicles, positions);
     }
 
     // Update CompassWidget (heading from the displayed rider's yaw)
@@ -923,22 +931,14 @@ void HudManager::announceProfileSwitch(ProfileType profile) {
 
 // Overlap, not a fixed pair of positions: the player may have moved either.
 // Per frame for every HUD, so the pointer tests come first and the rects are
-// read only for Notices and Timing while a popup is actually up.
-bool HudManager::coveredByPopup(const BaseHud* hud) const {
+// read only for Notices and Timing while the Dash is borrowed.
+bool HudManager::coveredByBorrowedDash(const BaseHud* hud) const {
     if (!hud || (hud != m_pNotices && hud != m_pTiming)) return false;
-    float pl, pt, pr, pb, l, t, r, b;
-    // The broken-install warning takes the Version widget's place (and holds it
-    // back), so it covers them the same way; its rect is already on screen.
-    if (!m_installWarning.empty()) {
-        hud->panelRect(l, t, r, b);
-        const auto& w = m_installWarningBox;
-        const float x = hud->getOffsetX(), y = hud->getOffsetY();
-        return l + x < w.right && r + x > w.left && t + y < w.bottom && b + y > w.top;
-    }
-    if (!m_pVersion || m_pVersion->popupKind() == 0) return false;
-    m_pVersion->panelRect(pl, pt, pr, pb);
+    if (!m_pDash || !m_pDash->isBorrowed()) return false;
+    float dl, dt, dr, db, l, t, r, b;
+    m_pDash->panelRect(dl, dt, dr, db);
     hud->panelRect(l, t, r, b);
-    const float dx = hud->getOffsetX() - m_pVersion->getOffsetX();
-    const float dy = hud->getOffsetY() - m_pVersion->getOffsetY();
-    return l + dx < pr && r + dx > pl && t + dy < pb && b + dy > pt;
+    const float dx = hud->getOffsetX() - m_pDash->getOffsetX();
+    const float dy = hud->getOffsetY() - m_pDash->getOffsetY();
+    return l + dx < dr && r + dx > dl && t + dy < db && b + dy > dt;
 }

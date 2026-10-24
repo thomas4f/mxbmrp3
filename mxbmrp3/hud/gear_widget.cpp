@@ -14,15 +14,28 @@
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
 #include "../core/asset_manager.h"
+#include "../core/ui_config.h"
 
 using namespace PluginConstants;
+
+namespace {
+    // The shift glow (Appearance > Glow, BaseHud::addGlow): the digit's ink is
+    // this share of the gear font tall, and the halo reaches this share of the
+    // font past it, at this opacity.
+    constexpr float GLOW_INK_HEIGHT = 0.7f;
+    constexpr float GLOW_SPREAD = 0.45f;
+    constexpr float GLOW_OPACITY = 0.6f;
+    // The limiter circle's opacity: its art is densest at the middle, so at full
+    // strength the red digit drawn on it in the same red disappears.
+    constexpr float LIMITER_CIRCLE_OPACITY = 0.8f;
+}
 
 GearWidget::GearWidget()
 {
     m_panelKind = PanelKind::Widget;
     m_bContentCard = true;
     setDraggable(true);
-    m_quads.reserve(2);    // Background + gear circle
+    m_quads.reserve(3);    // Background + shift glow + gear circle
     m_strings.reserve(3);  // Title (optional) + gear value (two while it rolls)
 
     setTextureBaseName("gear_widget");
@@ -51,7 +64,7 @@ void GearWidget::update() {
 
 void GearWidget::rebuildLayout() {
     // BOX-MODEL: one source of geometry — rebuild rather than reposition a
-    // duplicated copy of the sizing arithmetic (see version_widget).
+    // duplicated copy of the sizing arithmetic.
     rebuildRenderData();
 }
 
@@ -118,6 +131,24 @@ void GearWidget::rebuildRenderData() {
     // RPM-based indicators only apply to the player's own bike
     bool isViewingPlayer = (pluginData.getDisplayRaceNum() == pluginData.getPlayerRaceNum());
 
+    // At the recommended shift point (skipped on gearless vehicles: nothing to shift to).
+    const bool atShift = m_bShowShiftColor && bikeData.isValid && isViewingPlayer
+        && bikeData.numberOfGears > 1
+        && sessionData.shiftRPM > 0 && bikeData.rpm >= sessionData.shiftRPM;
+
+    // THE RED DIGIT IS THE SHIFT LIGHT, so it glows with the RPM strip's red
+    // segments: around the digit's INK, which sits mid-row (see the circle
+    // below), behind the circle and the digit.
+    if (atShift && glowActive()) {
+        const float inkW = PluginUtils::calculateMonospaceTextWidth(1, gearFontSize);
+        const float inkH = gearFontSize * GLOW_INK_HEIGHT;
+        // Full on the rev limiter, the calm share from the shift point up to it.
+        const bool onLimiter = sessionData.limiterRPM > 0 && bikeData.rpm >= sessionData.limiterRPM;
+        addGlow(centerX - inkW / 2.0f, currentY + (gearRowDrawnH - inkH) / 2.0f, inkW, inkH,
+                gearFontSize * GLOW_SPREAD, this->getColor(ColorSlot::NEGATIVE),
+                GLOW_OPACITY * (onLimiter ? 1.0f : UiConfig::GLOW_CALM));
+    }
+
     // Add gear circle indicator if limiter RPM is reached (behind gear text)
     bool isLimiterHit = (m_bShowLimiterCircle && bikeData.isValid && isViewingPlayer && sessionData.limiterRPM > 0 && bikeData.rpm >= sessionData.limiterRPM);
 
@@ -139,21 +170,19 @@ void GearWidget::rebuildRenderData() {
         applyOffset(circleX, circleTopY);
         setQuadPositions(circleQuad, circleX, circleTopY, circleWidth, circleHeight);
         circleQuad.m_iSprite = m_circleSprite;
-        circleQuad.m_ulColor = this->getColor(ColorSlot::NEGATIVE);   // white art, tinted like the shift colour
+        // White art, tinted like the shift colour.
+        circleQuad.m_ulColor = PluginUtils::applyOpacity(this->getColor(ColorSlot::NEGATIVE),
+                                                         LIMITER_CIRCLE_OPACITY);
         m_quads.push_back(circleQuad);
     }
 
     // Gear color: red if recommended shift point reached, otherwise primary.
-    // Skip shift coloring on gearless vehicles (nothing to shift to). The placeholder
+    // The placeholder
     // draws MUTED, like the Timing panel's big time and the gap bar's gap with nothing
     // to show: in the primary colour it reads as a value.
     unsigned long gearColor = !bikeData.isValid
         ? this->getColor(ColorSlot::MUTED)
-        : (m_bShowShiftColor && isViewingPlayer
-           && bikeData.numberOfGears > 1
-           && sessionData.shiftRPM > 0 && bikeData.rpm >= sessionData.shiftRPM)
-        ? this->getColor(ColorSlot::NEGATIVE)
-        : textColor;
+        : atShift ? this->getColor(ColorSlot::NEGATIVE) : textColor;
     // INK-CENTRED IN THE ROW -- the same solve TimingHud's big time, the gap bar's
     // gap text and every bigValueTextY caller use.
     //

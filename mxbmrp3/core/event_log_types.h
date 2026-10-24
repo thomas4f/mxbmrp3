@@ -44,6 +44,10 @@ enum class EventLogType : uint8_t {
 
     // Broadcast
     Director,             // Auto-director decision/state change (cut, lock, manual, enable)
+
+    // Personal bests (local player only)
+    SessionPB,            // Player improved on their best lap of this session
+    AllTimePB,            // Player set an all-time PB (supersedes SessionPB for the same lap)
 };
 
 // Bitfield flags for enabling/disabling event types in settings
@@ -63,15 +67,18 @@ enum EventLogFlags : uint32_t {
     EVENT_PIT_ENTRY          = 1 << 12,
     EVENT_PIT_EXIT           = 1 << 13,
     EVENT_DIRECTOR           = 1 << 14,
+    EVENT_SESSION_PB         = 1 << 15,
+    EVENT_ALLTIME_PB         = 1 << 16,
 
     EVENT_DEFAULT = EVENT_SESSION_STARTED | EVENT_FASTEST_LAP
                   | EVENT_RIDER_RETIRED | EVENT_RIDER_DSQ
                   | EVENT_OVERTIME | EVENT_FINAL_LAP | EVENT_RIDER_FINISHED
-                  | EVENT_LEADER_CHANGE | EVENT_SESSION_STATE,
+                  | EVENT_LEADER_CHANGE | EVENT_SESSION_STATE
+                  | EVENT_SESSION_PB | EVENT_ALLTIME_PB,
                   // Note: EVENT_DIRECTOR is intentionally NOT in the defaults — it is an
                   // opt-in broadcaster tool (director cuts are frequent), enabled per-session.
 
-    EVENT_ALL = (1 << 15) - 1  // All 15 event type bits
+    EVENT_ALL = (1 << 17) - 1  // All 17 event type bits
 };
 
 // Map EventLogType to its corresponding flag bit
@@ -96,6 +103,8 @@ inline uint32_t eventLogTypeToFlag(EventLogType type) {
     case EventLogType::PitEntry:          return EVENT_PIT_ENTRY;
     case EventLogType::PitExit:           return EVENT_PIT_EXIT;
     case EventLogType::Director:           return EVENT_DIRECTOR;
+    case EventLogType::SessionPB:         return EVENT_SESSION_PB;
+    case EventLogType::AllTimePB:         return EVENT_ALLTIME_PB;
     default: return 0;
     }
 }
@@ -112,7 +121,7 @@ struct EventLogEntry {
     // Optional icon-color override: a ColorSlot value (stored as int) that replaces the
     // per-type default in EventLogHud::getIconColorForEvent(). -1 = use the type default.
     // Used to tint specific director state-transition entries (lock / enabled / manual / ...)
-    // with the director button's state colors; see DirectorManager::logDirectorEvent().
+    // with a director state color; see DirectorManager::logDirectorEvent().
     // In-game only: the web overlay picks colors client-side and ignores this.
     int iconColorSlot = -1;
 
@@ -144,7 +153,7 @@ struct EventLogEntry {
 // Defaulted throughout: an event with no number attached is the common case,
 // and -1 means "not applicable".
 struct EventNumbers {
-    int lapTimeMs = -1;   // FastestLap: the lap just set
+    int lapTimeMs = -1;   // FastestLap / SessionPB / AllTimePB: the lap just set
     int penaltyMs = -1;   // Penalty: the amount, as the game reports it
     int bonusLaps = -1;   // OvertimeStarted: the bonus laps after the clock
     int position = -1;    // RiderFinished: where they finished

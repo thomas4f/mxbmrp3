@@ -3,6 +3,7 @@
 // Displays real-time controller rumble motor outputs and effect values
 // ============================================================================
 #include "rumble_hud.h"
+#include "default_slots.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
@@ -72,7 +73,7 @@ void RumbleHud::resetToDefaults() {
     m_bShowTitle = true;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
-    setPosition(cellsX(133), cellsY(32));
+    setPosition(DefaultSlots::rightColumnX(DefaultSlots::WIDE_CELLS), DefaultSlots::rightColumnY());
     setScale(1.0f);
     m_bShowMaxMarkers = false;  // Max markers OFF by default
     // Linger counts REBUILDS, which tick at telemetry rate (~100Hz while riding),

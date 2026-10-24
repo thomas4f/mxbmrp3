@@ -17,10 +17,22 @@ WHY THIS IS BESPOKE: one paginated GET against the documented releases API; the
 anything else, and the summing and the stable output format are this file either
 way. GITHUB_TOKEN, when set, only raises the API rate limit - the repo is public.
 
+It also keeps usage_survey/downloads_history.csv, one `date,downloads` row per
+UTC day with that day's total, for the report's Downloads charts. GitHub
+keeps only a running count per asset, with no history, so this daily sample is
+the only record of how the total grew. A day keeps its FIRST sample: the
+scheduled run takes it early in the UTC day, and a manual rerun later that day
+must not move it (it leaves downloads.json alone too, so the tile and the
+release-line table stay on the same sample), or the day before stretches to cover the extra hours and the
+day itself shrinks to the rest (Oct 16, rerun at 19:30, read 450 then 111).
+Rows before 2026-10-16 were recovered from the
+git history of downloads.json, from the daily job's first sample (2026-10-08).
+
 The output is byte-stable (sorted, fixed key order, trailing newline), so a day
 with no new downloads leaves no git diff.
 """
 
+import datetime
 import json
 import os
 import re
@@ -30,6 +42,7 @@ import urllib.request
 REPO = "thomas4f/mxbmrp3"
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(os.path.dirname(HERE), "usage_survey", "downloads.json")
+HISTORY = os.path.join(os.path.dirname(HERE), "usage_survey", "downloads_history.csv")
 
 
 def counted(asset_name):
@@ -77,11 +90,43 @@ def write(data, path=OUT):
         f.write(json.dumps(data, indent=1) + "\n")
 
 
+def record(day, total, path=HISTORY):
+    """Add `day`'s row unless the history already has one, keeping the rows
+    date-sorted. Returns whether it was added: the first sample of a day stands
+    (see the module header)."""
+    rows = {}
+    if os.path.exists(path):
+        with open(path) as f:
+            for line in f.read().splitlines()[1:]:
+                d, n = line.split(",")
+                rows[d] = int(n)
+    if day in rows:
+        return False
+    rows[day] = total
+    with open(path, "w") as f:
+        f.write("date,downloads\n" + "".join(
+            "{},{}\n".format(d, rows[d]) for d in sorted(rows)))
+    return True
+
+
+def refresh(data, day, out=OUT, history=HISTORY):
+    """Write `data` and `day`'s history row, or neither when the day is already
+    sampled: downloads.json feeds the Downloads tile and the release-line table,
+    the history the bullet and the charts, and all of them must show one sample."""
+    if not record(day, sum(x["downloads"] for x in data["releases"]), history):
+        return False
+    write(data, out)
+    return True
+
+
 def main():
     data = summarise(fetch())
     if not data["releases"]:
         sys.exit("error: no releases returned for {}".format(REPO))
-    write(data)
+    day = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    if not refresh(data, day):
+        print("{} already sampled; left {} and {} as they are".format(day, OUT, HISTORY))
+        return
     print("Wrote {}: {} releases, {:,} downloads".format(
         OUT, len(data["releases"]), sum(x["downloads"] for x in data["releases"])))
 

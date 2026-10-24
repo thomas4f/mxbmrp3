@@ -69,8 +69,10 @@ var CONFIG = {
         finished: true,      // Rider finished
         leaderChange: true,  // Lead change
         pit: false,          // Pit entry/exit
-        director: false      // Auto-director decisions — a monitoring aid, off by default
+        director: false,     // Auto-director decisions — a monitoring aid, off by default
                              // (matches the in-game default); opt in to show them on stream.
+        sessionPB: true,     // Your lap beat your best of this session (local player only)
+        allTimePB: true      // Your lap set a new all-time PB (local player only)
     },
 
     // --- Chip filters ---

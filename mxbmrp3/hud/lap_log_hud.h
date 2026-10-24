@@ -41,6 +41,8 @@ public:
         OLDEST_FIRST = 0,  // Oldest laps at top, newest at bottom (default, HUD grows downward)
         NEWEST_FIRST = 1   // Newest laps at top, oldest at bottom (HUD grows upward)
     };
+    // Read by the Dash's Laps page, which follows it.
+    DisplayOrder getDisplayOrder() const { return m_displayOrder; }
 
     // Row count limits (public so static_assert can access them)
     static constexpr int MIN_DISPLAY_LAPS = 1;   // Minimum: show at least one lap

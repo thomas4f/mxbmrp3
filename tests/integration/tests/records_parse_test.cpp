@@ -23,6 +23,12 @@
 // pointers the worker dereferences on completion. Completing without a
 // crash/hang IS the assertion.
 //
+// The HUD's Filter row is pinned here too: its category picker is a dropdown
+// (the settings panel's, via DropdownList). A click on the box opens the list,
+// a click on an entry picks it and closes the list, a click anywhere else
+// (inside the HUD or out) only closes it, and hiding the HUD shuts it --
+// driven through the real click path with injected mouse.
+//
 // GAME_HAS_RECORDS_PROVIDER is MXB-only; on a build without the hooks the tests
 // no-op (hasRecords() false).
 // ============================================================================
@@ -31,6 +37,7 @@
 #include "plugin_host.h"
 
 #include <string>
+#include <vector>
 
 // Provider ids (RecordsHud::DataProvider / RecordsFetcher::DataProvider).
 static constexpr int PROV_CBR = 0;
@@ -240,4 +247,84 @@ TEST_CASE("records fetch: shutdown during an in-flight fetch joins the worker (n
     host.shutdown();   // must block on the join, then tear down cleanly
 
     CHECK(true);       // reached = the wine process survived the mid-fetch teardown
+}
+
+// How many of the Records HUD's strings read `text`; the first one's position.
+static int countString(PluginHost& host, const char* text, PluginHost::StringRow* first = nullptr) {
+    int n = 0;
+    for (const auto& row : host.hudStringRows("records_hud")) {
+        if (row.text != text) continue;
+        if (n++ == 0 && first) *first = row;
+    }
+    return n;
+}
+
+// A click just inside a string's top-left corner: on its row, inside its box.
+static void clickString(PluginHost& host, const PluginHost::StringRow& row) {
+    host.clickAt(static_cast<float>(row.x) + 0.004f, static_cast<float>(row.y) + 0.006f);
+}
+
+TEST_CASE("records hud: the category dropdown opens, picks and closes") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\records_dropdown\\");
+    if (!host.hasRecords()) { MESSAGE("records hooks not exported (non-MXB build); skipping"); host.shutdown(); return; }
+    REQUIRE_MESSAGE((host.hasInjectedMouse() && host.hasStringRows()), "build without the hooks");
+    host.setEveryHudVisible(false);
+    REQUIRE(host.setHudVisible("records_hud", true));
+    host.draw();
+    host.draw();
+
+    // Closed: the value reads "All" and no other category is drawn.
+    PluginHost::StringRow value;
+    REQUIRE(countString(host, "All", &value) == 1);
+    CHECK(countString(host, "MX2 OEM") == 0);
+
+    // A click on the box opens the list: every category, "All" in it as well.
+    clickString(host, value);
+    const std::vector<const char*> categories = {
+        "MX-E OEM", "MX1 OEM", "MX2 OEM", "MX1-2T OEM", "MX2-2T OEM", "MX3 OEM" };
+    for (const char* c : categories) CHECK_MESSAGE(countString(host, c) == 1, c);
+    CHECK(countString(host, "All") == 2);
+
+    // A click on an entry picks it and closes the list.
+    PluginHost::StringRow entry;
+    REQUIRE(countString(host, "MX2 OEM", &entry) == 1);
+    clickString(host, entry);
+    CHECK(countString(host, "MX2 OEM") == 1);   // the value now
+    CHECK(countString(host, "MX-E OEM") == 0);  // the list is gone
+    CHECK(countString(host, "All") == 0);
+
+    // Open again, then click the Filter heading, outside the list: it closes and
+    // the value stays.
+    REQUIRE(countString(host, "MX2 OEM", &value) == 1);
+    clickString(host, value);
+    REQUIRE(countString(host, "MX-E OEM") == 1);
+    PluginHost::StringRow heading;
+    REQUIRE(countString(host, "Filter", &heading) == 1);
+    clickString(host, heading);
+    CHECK(countString(host, "MX-E OEM") == 0);
+    CHECK(countString(host, "MX2 OEM") == 1);
+
+    // A click outside the HUD closes it too (the screen's far side on the
+    // value's row: the HUD is a left- or right-column panel).
+    REQUIRE(countString(host, "MX2 OEM", &value) == 1);
+    clickString(host, value);
+    REQUIRE(countString(host, "MX-E OEM") == 1);
+    host.clickAt(value.x < 0.5 ? 0.98f : 0.02f, static_cast<float>(value.y) + 0.006f);
+    CHECK(countString(host, "MX-E OEM") == 0);
+    CHECK(countString(host, "MX2 OEM") == 1);
+
+    // Hiding the HUD shuts an open list: shown again, it is closed.
+    clickString(host, value);
+    REQUIRE(countString(host, "MX-E OEM") == 1);
+    REQUIRE(host.setHudVisible("records_hud", false));
+    host.draw();
+    REQUIRE(host.setHudVisible("records_hud", true));
+    host.draw();
+    host.draw();
+    CHECK(countString(host, "MX-E OEM") == 0);
+    CHECK(countString(host, "MX2 OEM") == 1);
+
+    host.shutdown();
 }

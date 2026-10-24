@@ -814,6 +814,9 @@ void PluginData::clear() {
     m_newFastestLap = false;
     m_newAllTimePB = false;
     m_newDefaultSetup = false;
+    m_sessionPBLap = {};
+    m_fastestLapLap = {};
+    m_allTimePBLap = {};
 
     // The PB live gap itself resets with the lap timer above (resetAllLapTimers);
     // only the test plant is dropped here.
@@ -912,6 +915,7 @@ const XInputReader& PluginData::getXInputReader() const {
 }
 
 void PluginData::notifyTrackedRidersChanged() {
+    ++m_trackedRidersRevision;
     notifyHudManager(DataChangeType::TrackedRiders);
 }
 

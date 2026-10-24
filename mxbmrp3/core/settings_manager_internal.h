@@ -36,7 +36,15 @@ inline constexpr const char* SETTINGS_FILENAME = "mxbmrp3_settings.ini";
 //    default visible=1 in its base section, so the migration in loadSettings()
 //    switches it off for a player with no prestige level -- see
 //    settlePrestigeDefault(), which has to wait for the stats file.
-inline constexpr int SETTINGS_VERSION = 10;
+// 11: the default-off HUDs open in one spot per group, never under a HUD that ships
+//    on, and the Map steps one cell clear of the Toggles strip (hud/default_slots.h).
+//    migrateDefaultPositions() moves a stored position only while it is the old
+//    default, so a HUD the player placed stays put.
+// 12: the Spotter's card opens at low centre, and its offsetX means its CENTRE
+//    (it meant the left edge), so a card as wide as its cue stays centred.
+//    migrateSpotterPosition() moves one still on the old spot and re-anchors one
+//    the player placed, so the preview draws where they put it.
+inline constexpr int SETTINGS_VERSION = 12;
 
 // The on-disk shape has been stable since v4 (base [HudName] sections + sparse
 // [HudName:Profile] overrides). The load dispatch keys off THIS floor, not off

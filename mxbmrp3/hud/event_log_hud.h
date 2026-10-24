@@ -77,6 +77,17 @@ public:
         setDataDirty();
     }
 
+    // What the Dash's Event Log page follows: the event filter, the order and
+    // the icons (each event's sprite, 0 with icons off, and its colour).
+    uint32_t getEnabledEvents() const { return m_enabledEvents; }
+    DisplayOrder getDisplayOrder() const { return m_displayOrder; }
+    bool showsIcons() const { return m_showIcons; }
+    int getIconForEvent(EventLogType type) const;
+    unsigned long getIconColorForEvent(EventLogType type) const;
+    static constexpr int ICON_COL_WIDTH = 3;      // Icon column (matches StandingsHud COL_TRACKED_WIDTH)
+    // Icon rendering (matches StandingsHud sizing: 0.006f * scale)
+    static constexpr float ICON_BASE_SIZE = 0.006f;
+
     // Allow settings system to access private members
     friend class SettingsHud;
     friend class SettingsManager;
@@ -96,18 +107,8 @@ private:
     // HUD positioning
     static constexpr float START_X = 0.0f;
     static constexpr float START_Y = 0.0f;
-    static constexpr int ICON_COL_WIDTH = 3;      // Icon column (matches StandingsHud COL_TRACKED_WIDTH)
     static constexpr int TIMESTAMP_WIDTH = 9;    // "05:00   " (session) or "14:32:01 " (clock) + gap
     static constexpr int MESSAGE_WIDTH = 31;     // Event message text (total = icon 3 + timestamp 9 + message 31 = 43)
-
-    // Icon rendering (matches StandingsHud sizing: 0.006f * scale)
-    static constexpr float ICON_BASE_SIZE = 0.006f;
-
-    // Get icon sprite index for an event type (0 = no icon)
-    int getIconForEvent(EventLogType type) const;
-
-    // Get icon color for an event type
-    unsigned long getIconColorForEvent(EventLogType type) const;
 
     // Settings
     DisplayMode m_displayMode = DisplayMode::ON;
@@ -162,6 +163,7 @@ private:
         int crown = 0;
         int wrench = 0;
         int video = 0;
+        int award = 0;
         bool initialized = false;
 
         void ensureInitialized();

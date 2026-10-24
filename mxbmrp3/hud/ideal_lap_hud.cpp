@@ -3,6 +3,7 @@
 // Displays ideal lap (best individual sectors) with comparison to current
 // ============================================================================
 #include "ideal_lap_hud.h"
+#include "default_slots.h"
 #include "../core/layout_config.h"
 
 #include <cstring>
@@ -359,7 +360,7 @@ void IdealLapHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setScale(1.0f);
-    setPosition(cellsX(49), cellsY(64));
+    setPosition(DefaultSlots::rightColumnX(DefaultSlots::NARROW_CELLS), DefaultSlots::rightColumnY());
     m_enabledRows = ROW_DEFAULT;
     setDataDirty();
 }

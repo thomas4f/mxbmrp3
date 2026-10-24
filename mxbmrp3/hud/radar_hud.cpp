@@ -3,6 +3,7 @@
 // Radar HUD implementation - displays a top-down view of nearby riders
 // ============================================================================
 #include "radar_hud.h"
+#include "default_slots.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../core/plugin_utils.h"
@@ -768,7 +769,7 @@ void RadarHud::resetToDefaults() {
     m_bVisible = false;
     m_bShowTitle = false;  // No title for radar (compact display)
     setTextureVariant(1);  // Use first texture variant by default
-    m_fBackgroundOpacity = 0.1f;
+    m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setScale(1.0f);
     m_fRadarRangeMeters = DEFAULT_RADAR_RANGE;
     m_riderColorMode = RiderColorMode::BRAND;  // Default to bike brand colors
@@ -782,11 +783,9 @@ void RadarHud::resetToDefaults() {
     m_fProximityArrowScale = DEFAULT_PROXIMITY_ARROW_SCALE;
     m_proximityArrowColorMode = ProximityArrowColorMode::DISTANCE;
     m_fMarkerScale = DEFAULT_MARKER_SCALE;
-    // CENTRE-ANCHORED: offsetX is the dial's centre, so this is centred at EVERY
-    // scale. A frozen decimal (0.5 minus half the CONTENT width at scale 1) would not
-    // even centre the drawn box, which fitPanelToGrid rounds up to whole cells --
-    // about 3px out at 1080p, and further at every scale but one.
-    setPosition(CENTER_ANCHOR_X, cellsY(1));
+    // CENTRE-ANCHORED: offsetX is the dial's centre, so the centre spot's x is the
+    // screen's middle.
+    setPosition(0.5f, DefaultSlots::centreY());
     setDataDirty();
 }
 

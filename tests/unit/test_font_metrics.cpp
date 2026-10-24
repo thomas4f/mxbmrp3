@@ -159,3 +159,21 @@ TEST_CASE("font metrics: a digit advances the width the layout reserves for it")
         CHECK(ratio == doctest::Approx(expected).epsilon(0.01));
     }
 }
+
+TEST_CASE("font metrics: every shipped font's digits are fixed-width") {
+    // mxbmrp3_fontgen's `tabular_digits` (on under normalisation) gives 0-9 the
+    // widest digit's advance. Display faces like Tomorrow and Chakra Petch ship
+    // proportional digits with no `tnum` feature, so without it a running clock
+    // jiggled as its digits changed ("1:11.111" is ~a fifth narrower than
+    // "8:08.888") and right-aligned numbers did not line up in a column.
+    for (const auto& p : shippedFonts()) {
+        CAPTURE(p.filename().string());
+        const Font f = loadFnt(p.string());
+        REQUIRE(f.ok);
+        const int zero = f.g[unsigned('0')].adv();
+        for (char c = '1'; c <= '9'; ++c) {
+            CAPTURE(c);
+            CHECK(f.g[unsigned(c)].adv() == zero);
+        }
+    }
+}

@@ -24,6 +24,9 @@
 # against ~100us unthemed — so a theme costs roughly 16% of Draw, comfortably inside
 # the budget. Each driver prints which mode it ran in.
 #
+# All three also switch drop shadow and glow ON: the shipped defaults, which the
+# test build turns off, so without it the gate timed a frame no player draws.
+#
 # This said "BOTH RUN THEMED" while only perf_driver installed one -- so the driver
 # left flat was map_perf_driver, the one this same header calls the most expensive
 # path the plugin has. A claim about coverage is worth exactly as much as the

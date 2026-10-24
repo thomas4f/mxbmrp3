@@ -43,10 +43,8 @@
 #include "../hud/tacho_widget.h"
 #include "../hud/timing_hud.h"
 #include "../hud/bars_widget.h"
-#include "../hud/version_widget.h"
 #include "../hud/notices_hud.h"
 #include "../hud/settings_hud.h"
-#include "../hud/settings_button_widget.h"
 #include "../hud/map_hud.h"
 #include "../hud/radar_hud.h"
 #include "../hud/pitboard_hud.h"
@@ -57,7 +55,6 @@
 #include "../hud/gap_bar_hud.h"
 #include "../hud/pointer_widget.h"
 #include "../hud/rumble_hud.h"
-#include "../hud/director_widget.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
 #include "../hud/gforce_widget.h"
@@ -76,10 +73,12 @@
 #include "../hud/event_log_hud.h"
 #include "../hud/stream_chat_hud.h"
 #include "../hud/delta_trace_hud.h"
+#include "../hud/dash_hud.h"
 #include "../hud/benchmark_widget.h"
 #include "../hud/achievement_widget.h"
 #include "../hud/spotter_widget.h"
 #include "../hud/gl_confirm_hud.h"
+#include "../hud/toggle_strip_widget.h"
 #include "hotkey_manager.h"
 #include "system_messages.h"
 #include "settings_manager_internal.h"
@@ -96,38 +95,36 @@
 #include <atomic>
 #endif
 
-void HudManager::handleDirectorButton() {
-    if (!m_pDirector) return;
-    if (m_pDirector->isClicked()) {
-        // Click = turn the director on / off (the icon is a true on/off switch, matching
-        // its off/auto/manual/paused tint). Pause/hold stays on the Director Hold hotkey.
-        DirectorManager& dir = DirectorManager::getInstance();
-        dir.toggleEnabled();
-        DEBUG_INFO_F("Director: %s (status button)", dir.isEnabled() ? "enabled" : "disabled");
-        // Enabled is a persisted MODE (unlike transient HUD-visibility toggles), so save
-        // the choice - matching the settings-tab toggle's auto-save (respect the setting).
-        persistDirectorEnabled();
-    }
-}
-
 void HudManager::persistDirectorEnabled() {
     // Mark settings dirty; the write is deferred to a leave-track transition / Save button.
     SettingsManager::getInstance().markDirty();
 }
 
-void HudManager::handleSettingsButton() {
-    if (!m_pSettingsHud || !m_pSettingsButton) return;
-
-    // Check if settings button was clicked
-    if (m_pSettingsButton->isClicked()) {
-        // Toggle SettingsHud visibility
-        if (m_pSettingsHud->isVisible()) {
-            m_pSettingsHud->hide();
-            DEBUG_INFO("SettingsHud hidden (button clicked)");
-        } else {
-            m_pSettingsHud->show();
-            DEBUG_INFO("SettingsHud shown (button clicked)");
-        }
+// The Toggles strip. Settings opens/closes the menu. A switch is that tab's
+// sidebar checkbox, through SettingsHud's own dispatch, so it saves (and
+// refreshes the menu) the same way -- the Director's included.
+void HudManager::handleToggleStrip() {
+    if (!m_pToggleStrip || !m_pSettingsHud) return;
+    int tabId = -1;
+    switch (m_pToggleStrip->clicked(&tabId)) {
+        case ToggleStripWidget::Click::Settings:
+            if (m_pSettingsHud->isVisible()) {
+                m_pSettingsHud->hide();
+                DEBUG_INFO("SettingsHud hidden (Toggles strip)");
+            } else {
+                m_pSettingsHud->show();
+                DEBUG_INFO("SettingsHud shown (Toggles strip)");
+            }
+            break;
+        case ToggleStripWidget::Click::Collapse:
+            m_pToggleStrip->setCollapsed(!m_pToggleStrip->isCollapsed());
+            SettingsManager::getInstance().markDirty();
+            break;
+        case ToggleStripWidget::Click::Tab:
+            m_pSettingsHud->toggleTab(tabId);
+            break;
+        case ToggleStripWidget::Click::None:
+            break;
     }
 }
 
@@ -324,6 +321,25 @@ void HudManager::processKeyboardInput() {
         announceHudToggle(HotkeyAction::TOGGLE_DELTA_TRACE, *m_pDeltaTrace, SettingsHud::TAB_DELTA_TRACE);
     }
 
+    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_DASH) && m_pDash) {
+        m_pDash->setVisible(!m_pDash->isVisible());
+        DEBUG_INFO_F("Hotkey: Dash %s", m_pDash->isVisible() ? "shown" : "hidden");
+        announceHudToggle(HotkeyAction::TOGGLE_DASH, *m_pDash, SettingsHud::TAB_DASH);
+    }
+    // The page showing is a saved setting, so a step is a settings change. Only
+    // while the Dash is up: with it off, its shipped keys stay the player's.
+    // Also while shown for a message with its switch off: a step answers it.
+    // Not a hover sample (BaseHud::isSampled): that is drawn, not switched on.
+    const bool dashUp = m_pDash && ((m_pDash->isVisibleAnySurface() && !m_pDash->isSampled()) || m_pDash->isBorrowed());
+    if (dashUp && hotkeyMgr.wasActionTriggered(HotkeyAction::DASH_NEXT)) {
+        m_pDash->step(+1);
+        SettingsManager::getInstance().markDirty();
+    }
+    if (dashUp && hotkeyMgr.wasActionTriggered(HotkeyAction::DASH_PREV)) {
+        m_pDash->step(-1);
+        SettingsManager::getInstance().markDirty();
+    }
+
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_FRIENDS) && m_pFriends) {
         m_pFriends->setVisible(!m_pFriends->isVisible());
         DEBUG_INFO_F("Hotkey: Friends %s", m_pFriends->isVisible() ? "shown" : "hidden");
@@ -342,7 +358,7 @@ void HudManager::processKeyboardInput() {
             HotkeyAction::TOGGLE_EVENT_LOG, HotkeyAction::TOGGLE_FRIENDS, HotkeyAction::TOGGLE_HELMET,
             HotkeyAction::TOGGLE_SESSION_CHARTS, HotkeyAction::TOGGLE_FMX, HotkeyAction::TOGGLE_STATS,
             HotkeyAction::TOGGLE_SESSION, HotkeyAction::TOGGLE_NOTICES, HotkeyAction::TOGGLE_STREAM_CHAT,
-            HotkeyAction::TOGGLE_DELTA_TRACE,
+            HotkeyAction::TOGGLE_DELTA_TRACE, HotkeyAction::TOGGLE_DASH,
         };
         for (HotkeyAction a : kHudToggles) {
             if (!hotkeyMgr.wasActionTriggered(a)) continue;
@@ -355,7 +371,7 @@ void HudManager::processKeyboardInput() {
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::DIRECTOR_TOGGLE)) {
         DirectorManager::getInstance().toggleEnabled();
         if (m_pSettingsHud) m_pSettingsHud->setDataDirty();  // refresh the tab checkbox if open
-        persistDirectorEnabled();  // enabled is a persisted mode (see handleDirectorButton)
+        persistDirectorEnabled();  // enabled is a persisted mode, unlike the lock below
     }
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::DIRECTOR_LOCK)) {
         DirectorManager::getInstance().toggleLock();  // transient - not persisted
@@ -571,17 +587,17 @@ void HudManager::announceMasterToggle(HotkeyAction action, bool nowShown) {
 // as the plugin not loading. It may be deliberate, so this is said ONCE per
 // game session, at the first Draw, never on later returns to the track.
 // "Every HUD" is what the player switches on to see something while riding:
-// the settings chrome and pointer are how the HUDs come back (the hide-all
-// hotkey spares them too), and the card, Notices, Spotter subtitles, Director,
-// Version popups and the GL confirm only appear when something happens. A
+// the settings chrome (the menu and the Toggles strip) and pointer are how the
+// HUDs come back (the hide-all hotkey spares them too), and the card, Notices,
+// Spotter subtitles and the GL confirm only appear when something happens. A
 // widget under the Widgets master switch (saved) draws nothing either. The
 // companion counts: a HUD shown only there is a deliberate setup.
 void HudManager::announceAllHiddenAtStart() {
     for (const auto& hud : m_huds) {
         const BaseHud* h = hud.get();
-        if (!h || h == m_pSettingsHud || h == m_pSettingsButton || h == m_pPointer ||
-            h == m_pAchievement || h == m_pNotices || h == m_pSpotter || h == m_pDirector ||
-            h == m_pVersion || h == m_pGlConfirm) continue;
+        if (!h || h == m_pSettingsHud || h == m_pToggleStrip || h == m_pPointer ||
+            h == m_pAchievement || h == m_pNotices || h == m_pSpotter ||
+            h == m_pGlConfirm) continue;
         if (m_bAllWidgetsToggledOff && isWidgetHud(h)) continue;   // the saved Widgets master switch
         if (h->isVisibleAnySurface()) return;
     }

@@ -898,7 +898,7 @@ void BenchmarkWidget::resetToDefaults() {
     m_bVisible = false;    // Hidden by default
     m_bShowTitle = true;
     setTextureVariant(0);
-    m_fBackgroundOpacity = 0.90f;
+    m_fBackgroundOpacity = 1.0f;
     setScale(1.0f);
     setPosition(0.01f, cellsY(26));  // Left side of screen
 

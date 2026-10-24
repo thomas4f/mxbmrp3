@@ -11,6 +11,7 @@
 #include "../../core/hud_manager.h"
 #include "../gl_confirm_hud.h"
 #include "../freeze_duration.h"
+#include "../../core/pb_gap_tracker.h"
 #include "../../core/plugin_data.h"
 #include "../../core/xinput_reader.h"
 #include "../../core/color_config.h"
@@ -252,9 +253,10 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     // (Speed/fuel/temp units and clock format are on the Appearance tab; persisted
     // under [Display].)
     ctx.addSectionHeading("Preferences");
-    // The short switches side by side (beginColumns), with room for "Session PB";
-    // the controller row stays full width below them, since its value is a device name.
-    constexpr int PREFERENCE_LABEL_CHARS = 14;
+    // The short switches side by side (beginColumns), with room for "All-time PB"
+    // clear of the dropdown caret (a value filling its field runs under it); the
+    // controller row stays full width below them, since its value is a device name.
+    constexpr int PREFERENCE_LABEL_CHARS = 13;
     ctx.beginColumns(2, 7, PREFERENCE_LABEL_CHARS);
 
     // PB scope. Both arrows drive the same 2-state toggle.
@@ -273,14 +275,13 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     // The defaults every HUD set to "Default" follows (hud_defaults.h): the
     // reference lap, and how long an official gap is held.
     {
-        static const char* const kReferences[] = { "Session PB", "All-time", "Last lap" };
         SettingsHud::CycleControl reference;
-        reference.count = 3;
+        reference.count = PbGapTracker::REF_COUNT;
         reference.get = []() { return UiConfig::getInstance().getDefaultReference(); };
         reference.set = [](int v) { UiConfig::getInstance().setDefaultReference(v); };
-        reference.nameOf = [](int i) { return std::string(kReferences[i]); };
+        reference.nameOf = [](int i) { return std::string(PbGapTracker::refName(static_cast<PbGapTracker::Ref>(i))); };
         reference.postStep = []() { HudManager::getInstance().markAllHudsDirty(); };
-        ctx.addCycleControl("Reference", kReferences[reference.get()], reference,
+        ctx.addCycleControl("PB reference", PbGapTracker::refName(static_cast<PbGapTracker::Ref>(reference.get())), reference,
                             nullptr, true, false, "general.reference");
 
         const int freezeMs = UiConfig::getInstance().getDefaultFreezeMs();
@@ -445,7 +446,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         // override. When the runtime is absent entirely the row renders disabled
         // (muted label + arrows, no click regions), which is what `enabled`
         // already does.
-        const char* statusText = "N/A";
+        const char* statusText = Placeholders::NOT_AVAILABLE;
         unsigned long valueColor = colorConfig.getMuted();
         if (steamAvailable) {
             const bool steamEnabled = SteamFriendsManager::getInstance().isEnabled();

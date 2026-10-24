@@ -18,6 +18,109 @@ file; their wording is preserved too.
 
 ## [Unreleased]
 
+## [1.33.0] - 2026-10-24
+
+A new look out of the box: a Dash card that steps through timing, gaps and
+more, a Toggles strip, glow and shadows, and steady digits.
+
+### Added
+- **Dash** (Settings > Dash): one compact card that steps through
+  fourteen pages, such as Timing, Fuel, Gap Bar and Event Log, with the
+  new **Dash +** / **Dash -** hotkeys (Page Down / Page Up). A new
+  notice takes it over until it clears. The Timing page also times
+  custom segments. On by default
+- **Toggles** widget (Settings > Widgets > Toggles): the settings button
+  and every on/off switch in one strip in the top right corner, shown
+  while the mouse moves. The arrow under the settings button folds the
+  switches away and back. Resting the mouse on a switch that is off
+  shows a dimmed preview of what it turns on. On by default
+- **Glow** (Settings > Appearance > Glow): a soft halo behind the lights
+  that call for action, such as the RPM lights, the red gear at the
+  shift point and the warning notices. On by default
+- **Peaks** on the Delta Trace (Settings > Delta Trace > Peaks): where
+  your lap was furthest ahead and furthest behind
+- **Lap lines** on the Charts HUD (Settings > Charts > Content > Grid
+  lines)
+- A gold **crown** marks the race leader on the Map
+- **Session PB** and **All-time PB** rows in the Event Log
+  (Settings > Event Log > Events) and the web overlay's event log
+- **Impact vignette** (Settings > Helmet > Impact): with the Helmet on,
+  the screen edges darken briefly when you take a hard hit
+
+### Changed
+- The Goggles and Visor tint (Settings > Helmet) is shaded like a real
+  lens
+- The Effects rows (Settings > Helmet > Effects) are greyed out while
+  Visible is off
+- The Gear widget's rev limiter circle is fainter
+- The RPM widget's lights fade in as the revs climb
+- The Gap Bar and Delta Trace name the lap they compare against in their
+  title, and so do the Lap Log and Timing HUD when they show a gap
+- Settings > General > Reference is now PB reference,
+  Settings > Delta Trace > Reference is Gap reference as on the Gap Bar,
+  and the all-time lap reads "All-time PB" everywhere
+- The settings menu's heading shows the installed version
+- On fresh installs the Timing and Notices HUDs start off, as the Dash
+  shows the same, the RPM widget starts on and the Gap Bar sits under
+  the Dash
+- On fresh installs every HUD's opacity is 0, 33, 66 or 100%: most HUDs
+  33%, most widgets 100%, Spotter and Achievements 66%, and the Map and
+  the Gear, Speed, Position, Lap, RPM, Time and Clock widgets 0%
+- On fresh installs Drop shadow (Settings > Appearance) starts on
+- With Drop shadow on, the icons beside text (Standings, Event Log,
+  Session, Stream Chat, Friends, FMX and Achievements) cast a shadow
+  like the text
+- A HUD that starts off now opens in one spot per group when switched
+  on, clear of the ones that start on: under the Map (Charts,
+  Performance, Stats and Records reach into Gear and Speed), in the
+  middle, or, for the Gap Bar, Notices and Timing, one spot under the
+  Dash. The Gamepad opens in the bottom-left corner. The Map moves a
+  little left, clear of the Toggles strip. HUDs you have moved stay put
+- The Spotter's subtitles sit low in the middle of the screen, centred
+  on each callout. Subtitles you have moved stay put
+- On fresh installs the Charts HUD starts with the Lap chart only, so it
+  stays short (tick Pace in Settings > Charts to add it back), and with
+  Sector points on, so a race plots a point per sector
+- Update, welcome and install messages show on the Dash instead of in a
+  popup on the Version widget; a click on the update message opens
+  Settings > Updates
+- The HUD you dragged last draws on top, and the settings menu always
+  stays on top. Only with Direct GL (Settings > General) or in the
+  companion window does it also cover the text of the HUD below
+- The Gap Bar set to All-time PB says "No trace until a new PB" instead
+  of staying empty when that PB predates recorded PB laps
+- The settings and Director corner buttons are now part of the Toggles
+  strip, which starts hidden where you had hidden the settings button
+- With Direct GL (Settings > General), every image and font in use loads
+  in the first seconds, so a HUD or icon no longer stutters the frame it
+  first appears
+- The mouse pointer hides 3 seconds after the mouse stops, at any frame
+  rate, instead of in under a second at high frame rates
+- Settings > Updates has a GitHub Releases link under the release notes
+- The Records HUD's category picker opens a list of every category, like
+  the lists in the settings menu
+- Every digit is the same width in every font (not yet in the web
+  overlay), so running times no longer jiggle. Fonts whose digits
+  differed in width render smaller to fit the same columns, from 95%
+  (Quantico) to 77% (Audiowide); the default title font, used for HUD
+  titles and the gear number, is 90%
+- Updated vendored cpp-httplib to 0.62.0
+
+### Removed
+- The Version widget
+
+### Fixed
+- The WRONG WAY and RIDER ONCOMING notices stay up for as long as they
+  apply
+- A personal best, fastest lap or setup notice no longer stays up for
+  much of a lap when other notices keep interrupting it
+- In a session with a time and added laps, the laps to go, FINAL LAP,
+  CHECKERED and the Final lap event and callout no longer come a lap
+  early when the leader crosses the line just as the time runs out
+- Finish times are taken from each rider's lap times, and the last
+  rider to finish no longer gets a time of a few milliseconds or the
+  session length
+
 ## [1.32.0] - 2026-10-10
 
 A Delta Trace and Map colours that show where you gain and lose time, a Map you
@@ -1212,7 +1315,8 @@ Pre-release. Its contents shipped in 1.26.0.0, minus the analytics addition.
 
 Initial public release.
 
-[Unreleased]: https://github.com/thomas4f/mxbmrp3/compare/v1.32.0...HEAD
+[Unreleased]: https://github.com/thomas4f/mxbmrp3/compare/v1.33.0...HEAD
+[1.33.0]: https://github.com/thomas4f/mxbmrp3/compare/v1.32.0...v1.33.0
 [1.32.0]: https://github.com/thomas4f/mxbmrp3/compare/v1.31.0...v1.32.0
 [1.31.0]: https://github.com/thomas4f/mxbmrp3/compare/v1.30.3...v1.31.0
 [1.30.3]: https://github.com/thomas4f/mxbmrp3/compare/v1.30.1...v1.30.3

@@ -4,6 +4,7 @@
 // ============================================================================
 
 #include "event_log_hud.h"
+#include "default_slots.h"
 #include "rider_flag_icons.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
@@ -29,9 +30,9 @@ void EventLogHud::resetToDefaults() {
     m_bVisible = false;
     m_bShowTitle = true;
     setTextureVariant(0);
-    m_fBackgroundOpacity = 0.80f;
+    m_fBackgroundOpacity = PluginConstants::SettingsLimits::DEFAULT_OPACITY;
     setScale(1.0f);
-    setPosition(cellsX(133), cellsY(44));  // Right column, before Friends in the stack
+    setPosition(DefaultSlots::rightColumnX(DefaultSlots::WIDE_CELLS), DefaultSlots::rightColumnY());
     m_displayMode = DisplayMode::ON;
     m_displayOrder = DisplayOrder::OLDEST_FIRST;
     m_enabledEvents = EVENT_DEFAULT;
@@ -156,6 +157,7 @@ void EventLogHud::CachedIcons::ensureInitialized() {
     crown         = assets.getIconSpriteIndex("crown");
     wrench        = assets.getIconSpriteIndex("wrench");
     video         = assets.getIconSpriteIndex("video");
+    award         = assets.getIconSpriteIndex("award");
     initialized = true;
 }
 
@@ -182,6 +184,8 @@ int EventLogHud::getIconForEvent(EventLogType type) const {
     case EventLogType::PitEntry:          return m_iconCache.wrench;
     case EventLogType::PitExit:           return m_iconCache.wrench;
     case EventLogType::Director:           return m_iconCache.video;
+    case EventLogType::SessionPB:         return m_iconCache.stopwatch;
+    case EventLogType::AllTimePB:         return m_iconCache.award;
     default: return 0;
     }
 }
@@ -194,7 +198,9 @@ unsigned long EventLogHud::getIconColorForEvent(EventLogType type) const {
     case EventLogType::SessionStarted:    return FlagColors::START;
     case EventLogType::SessionStateChange:return ColorPalette::WHITE;
     case EventLogType::SessionPreStart:   return ColorPalette::BROWN;
-    case EventLogType::FastestLap:        return getColor(ColorSlot::POSITIVE);
+    case EventLogType::FastestLap:
+    case EventLogType::SessionPB:
+    case EventLogType::AllTimePB:         return getColor(ColorSlot::POSITIVE);
     case EventLogType::Penalty:
     case EventLogType::PenaltyChange:     return getColor(ColorSlot::NEGATIVE);
     case EventLogType::FinalLap:          return FlagColors::LAST_LAP;
@@ -360,12 +366,13 @@ void EventLogHud::rebuildRenderData() {
             quad.m_aafPos[3][0] = ox + iconHalfWidth; quad.m_aafPos[3][1] = oy - iconHalfSize;
             quad.m_iSprite = spriteIndex;
             // A per-entry ColorSlot override (e.g. director state-transition entries tinted
-            // with the director button's state colors) wins over the per-type default.
+            // with a director state color) wins over the per-type default.
             quad.m_ulColor = (entry->iconColorSlot >= 0)
                 ? getColor(static_cast<ColorSlot>(entry->iconColorSlot))
                 : getIconColorForEvent(entry->type);
             m_iconQuads.push_back({m_quads.size(), currentRow});
             m_quads.push_back(quad);
+            shadowLastIcon();
         }
 
         // Timestamp (conditional — may be off)

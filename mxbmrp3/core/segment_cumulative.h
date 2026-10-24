@@ -85,3 +85,62 @@ struct SegmentCumulative {
         lastHasDelta = bestValid;           // ...and the delta only when every prior best existed
     }
 };
+
+// What a timing line shows in segment mode: the Timing HUD's time cell and "Best"
+// row, and the Dash's Timing page, read it from this one place so both agree.
+// The shown segment is a just-completed one held through the split-style freeze
+// (`holding`), else the one being driven. Its time is the running total from the
+// chain's first point on a clean run (the isolated arc off one); the delta is that
+// total against the summed per-segment bests, only while held and only when every
+// segment in the run had a best. Between deltas, `bestMs` is the passive target:
+// the summed bests through the shown segment (its own best off a clean run), or,
+// in a dead zone outside every segment, the whole chain's. -1 = nothing yet.
+struct SegmentReadout {
+    bool frozen = false;   // a completed segment held through the freeze
+    int timeMs = -1;       // the shown time; -1 = none
+    bool hasDelta = false;
+    int deltaMs = 0;       // the cumulative delta to the summed bests
+    int deltaRefMs = 0;    // ...and those summed bests
+    int bestMs = -1;       // the passive target; -1 = none yet
+};
+
+// bests/hasBest: the per-segment session bests (seconds), `count` of them.
+// liveArcSec: the wall time since the running segment started (the caller owns
+// the clock; ignored with no segment running).
+inline SegmentReadout readSegmentLine(const float* bests, const char* hasBest, int count,
+                                      int runningSeg, int lastSeg, const SegmentCumulative& cum,
+                                      bool holding, double liveArcSec) {
+    auto toMs = [](double sec) { return static_cast<int>(sec * 1000.0 + (sec < 0.0 ? -0.5 : 0.5)); };
+    // The summed bests through segment idx; -1 if any of them has none yet.
+    auto summedBestMs = [&](int idx) {
+        float sum = 0.0f;
+        for (int k = 0; k <= idx; ++k) {
+            if (!hasBest[k]) return -1;
+            sum += bests[k];
+        }
+        return toMs(sum);
+    };
+    SegmentReadout r;
+    int shown = -1;
+    if (holding && lastSeg >= 0 && lastSeg < count) {
+        shown = lastSeg;
+        r.frozen = true;
+        r.timeMs = toMs(cum.lastTime);
+        if (cum.lastHasDelta) {
+            r.hasDelta = true;
+            r.deltaMs = toMs(static_cast<double>(cum.lastTime) - static_cast<double>(cum.lastBest));
+            r.deltaRefMs = toMs(cum.lastBest);
+        }
+    } else if (runningSeg >= 0 && runningSeg < count) {
+        shown = runningSeg;
+        r.timeMs = toMs(cum.active ? static_cast<double>(cum.time) + liveArcSec : liveArcSec);
+    }
+    const bool cleanRun = r.frozen ? cum.lastValid : cum.active;
+    if (shown >= 0) {
+        if (cleanRun) r.bestMs = summedBestMs(shown);
+        else if (hasBest[shown]) r.bestMs = toMs(bests[shown]);
+    } else if (count > 0) {
+        r.bestMs = summedBestMs(count - 1);
+    }
+    return r;
+}

@@ -44,6 +44,9 @@ namespace Settings {
             constexpr const char* COMPANION_VISIBLE = "companionVisible";
             constexpr const char* COMPANION_X = "companionX";
             constexpr const char* COMPANION_Y = "companionY";
+            // Stacking rank (BaseHud::getStackRank): only written once the HUD
+            // has been dragged; absent = registration order.
+            constexpr const char* STACK = "stackOrder";
         }
 
         // Shared keys used by multiple HUDs
@@ -301,6 +304,8 @@ namespace Settings {
             constexpr const char* PIT_ENTRY = "event_pit_entry";
             constexpr const char* PIT_EXIT = "event_pit_exit";
             constexpr const char* DIRECTOR = "event_director";
+            constexpr const char* SESSION_PB = "event_session_pb";
+            constexpr const char* ALLTIME_PB = "event_alltime_pb";
         }
 
         // NoticesHud notices
@@ -585,7 +590,7 @@ namespace Settings {
             constexpr Setting GRID_OVERLAY_MAJOR_EVERY = {"gridOverlayMajorEvery", "Emphasize every Nth grid line (thicker, major color) in the overlay (1-1000, default 10)"};
             constexpr Setting GRID_OVERLAY_COLOR = {"gridOverlayColor", "Grid overlay minor line color (hex 0xAABBGGRR, default 0x22FFFFFF)"};
             constexpr Setting GRID_OVERLAY_MAJOR_COLOR = {"gridOverlayMajorColor", "Grid overlay major (every Nth) line color (hex 0xAABBGGRR, default 0x9933CCFF)"};
-            constexpr Setting CURSOR_ACTIVATION_THRESHOLD = {"cursorActivationThreshold", "Mouse travel from rest before cursor/settings button appear, normalized screen units (0.001=~2px, raise to ignore bigger bumps, lower for more responsive; 0.0001-0.5, default 0.015)"};
+            constexpr Setting CURSOR_ACTIVATION_THRESHOLD = {"cursorActivationThreshold", "Mouse travel from rest before cursor/Toggles strip appear, normalized screen units (0.001=~2px, raise to ignore bigger bumps, lower for more responsive; 0.0001-0.5, default 0.015)"};
             constexpr Setting SEGMENT_SNAP_TO_SPLITS = {"segmentSnapToSplits", "Snap a new segment boundary onto a nearby official split (1=on default, 0=off)"};
             constexpr Setting SEGMENT_SNAP_THRESHOLD = {"segmentSnapThreshold", "Max distance to snap a segment boundary to a split, normalized fraction of the lap (0-0.25, default 0.02 = 2% of the lap)"};
             constexpr Setting HAZARD_STATIONARY_TOLERANCE = {"hazardStationaryTolerance", "Movement below this in meters = not moving (1-50, default 5.0)"};

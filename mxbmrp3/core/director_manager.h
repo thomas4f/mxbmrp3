@@ -336,7 +336,7 @@ private:
     // Push a one-line director STATE change (enable/disable, rider lock, manual control,
     // resume). Clears the cut-dedup so the next cut always logs fresh after a state change.
     // iconColorSlot: optional ColorSlot (as int) tinting this entry's event-log icon to
-    // match the director button's state color; -1 = the event log's default director color.
+    // a director state color; -1 = the event log's default director color.
     void logDirectorEvent(const char* message, int iconColorSlot = -1);
     // Format a rider's plate ("#42") into buf — its formattedRaceNum, or "#<num>" fallback.
     void riderLabel(int raceNum, char* buf, size_t n) const;
@@ -365,7 +365,7 @@ private:
     long long incidentMaxMs() const { return static_cast<long long>(m_incidentMaxSec) * 1000; }
 
     // Settings (tunable live from the Director tab)
-    // Off by default (opt-in): the status button is shown by default for discoverability
+    // Off by default (opt-in): the Toggles strip's Director switch is there for discoverability
     // (one click enables, and the choice persists), but auto-direction stays off so an
     // upgrade doesn't silently take over every spectator's camera or override the
     // pre-existing click-to-spectate. Broadcasters enable it once.

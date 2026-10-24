@@ -10,6 +10,7 @@
 #include "../pitboard_hud.h"
 #include "../tacho_widget.h"
 #include "../speedo_widget.h"
+#include "../dropdown_list.h"
 #include "../../core/asset_manager.h"
 #include "../../core/hud_manager.h"
 #include "../../core/color_config.h"
@@ -126,14 +127,8 @@ void SettingsHud::handleControlRegion(const ClickRegion& region) {
     if (control.dirtyHud) control.dirtyHud->setDataDirty();
 }
 
-// The open list, drawn LAST so its quads cover the rows beneath. The game draws
-// every quad before any string, though, so a quad cannot hide text: the strings
-// the list covers are blanked instead (blanked, not erased -- the title's string
-// index must stay put).
-//
-// PLACEMENT: below the box when the list fits there, else above it; a list too
-// long for either side wraps into columns on the roomier side (a font or icon
-// list runs to dozens), shifted left if the columns would leave the panel.
+// The open list, drawn LAST over everything else by the shared DropdownList
+// (placement, and how it covers the text beneath, are documented there).
 //
 // ITS ENTRIES ARE APPENDED, so every region index the layout handed out this
 // rebuild stays what it was -- the hover index is compared against those, and
@@ -143,6 +138,7 @@ void SettingsHud::handleControlRegion(const ClickRegion& region) {
 void SettingsHud::buildDropdownPopup(float panelLeft, float panelTop, float panelRight,
                                      float panelBottom) {
     m_dropdown.firstRegion = -1;
+    m_overlayQuadFirst = m_overlayStringFirst = -1;
     if (m_dropdown.open < 0) return;
     if (!m_dropdown.anchored || m_dropdown.tab != m_activeTab ||
         m_dropdown.open >= static_cast<int>(m_cycleControls.size())) {
@@ -150,146 +146,28 @@ void SettingsHud::buildDropdownPopup(float panelLeft, float panelTop, float pane
         return;
     }
     const CycleControl& control = m_cycleControls[m_dropdown.open];
-    const int count = control.count;
-    if (!control.nameOf || count <= 0) { m_dropdown.open = -1; return; }
+    if (!control.nameOf || control.count <= 0) { m_dropdown.open = -1; return; }
 
-    std::vector<std::string> names;
-    names.reserve(static_cast<size_t>(count));
-    size_t longest = 0;
-    for (int i = 0; i < count; ++i) {
-        names.push_back(control.nameOf(i));
-        longest = std::max(longest, names.back().size());
-    }
+    const int firstRegion = static_cast<int>(m_clickRegions.size());
+    DropdownList::Entries entries;
+    entries.count = control.count;
+    entries.current = control.get ? control.get() : -1;
+    entries.hovered = m_hoveredRegionIndex >= firstRegion ? m_hoveredRegionIndex - firstRegion : -1;
+    entries.nameOf = control.nameOf;
+    entries.spriteOf = control.spriteOf;
+    entries.swatchOf = control.swatchOf;
+    entries.fontOf = control.fontOf;
+    std::vector<DropdownList::Rect> rects;
+    DropdownList::build(*this,
+        {m_dropdown.x, m_dropdown.y, m_dropdown.w, m_dropdown.textX, m_dropdown.rowH, m_dropdown.fontSize},
+        {panelLeft, panelTop, panelRight, panelBottom}, entries, DropdownList::globalStyle(), rects);
 
-    const float rowH = m_dropdown.rowH;
-    const float fontSize = m_dropdown.fontSize;
-    const float pad = m_dropdown.textX - m_dropdown.x;
-    const bool iconGrid = static_cast<bool>(control.spriteOf);
-    // A colour list leads each name with its swatch: a character and a half.
-    const float swatchW = control.swatchOf
-        ? PluginUtils::calculateMonospaceTextWidth(1, fontSize) * 1.5f : 0.0f;
-
-    // Entry geometry. A text list is one column of names, wrapped into more
-    // columns on the roomier side when it fits neither below nor above the box.
-    // An icon list (a few hundred icons) is a grid of square cells as wide as the
-    // panel allows, with one caption row under it naming the hovered icon.
-    float cellW = 0.0f, cellH = rowH, captionH = 0.0f;
-    int perCol = count;   // text: entries per column; grid: unused
-    int cols = 1, rows = count;
-    bool below = true;
-    const float spaceBelow = panelBottom - (m_dropdown.y + rowH);
-    const float spaceAbove = m_dropdown.y - panelTop;
-    if (iconGrid) {
-        cellH = rowH * 1.2f;
-        cellW = cellH / UI_ASPECT_RATIO;
-        captionH = rowH;
-        cols = std::max(1, std::min(count, static_cast<int>((panelRight - panelLeft - pad * 2.0f) / cellW)));
-        rows = (count + cols - 1) / cols;
-        const float gridH = cellH * static_cast<float>(rows) + captionH;
-        below = gridH <= spaceBelow || spaceBelow >= spaceAbove;
-    } else {
-        cellW = std::max(m_dropdown.w,
-            PluginUtils::calculateMonospaceTextWidth(static_cast<int>(longest) + 1, fontSize) + pad + swatchW);
-        const int rowsBelow = static_cast<int>(spaceBelow / rowH);
-        const int rowsAbove = static_cast<int>(spaceAbove / rowH);
-        if (count > rowsBelow) {
-            if (count <= rowsAbove) {
-                below = false;
-            } else {
-                below = rowsBelow >= rowsAbove;
-                perCol = std::max(1, below ? rowsBelow : rowsAbove);
-            }
-        }
-        cols = (count + perCol - 1) / perCol;
-        rows = std::min(count, perCol);
-    }
-    const float w = cellW * static_cast<float>(cols) + (iconGrid ? pad * 2.0f : 0.0f);
-    const float h = cellH * static_cast<float>(rows) + captionH;
-    float x = m_dropdown.x;
-    if (x + w > panelRight) x = std::max(panelLeft, panelRight - w);
-    const float y = below ? m_dropdown.y + rowH : m_dropdown.y - h;
-
-    // Strings are stored offset; compare against the list's offset rect.
-    float ox = x, oy = y;
-    applyOffset(ox, oy);
-    for (SPluginString_t& str : m_strings) {
-        const size_t len = std::strlen(str.m_szString);
-        if (len == 0) continue;
-        const float tw = PluginUtils::calculateMonospaceTextWidth(static_cast<int>(len), str.m_fSize);
-        float left = str.m_afPos[0];
-        if (str.m_iJustify == Justify::RIGHT) left -= tw;
-        else if (str.m_iJustify == Justify::CENTER) left -= tw * 0.5f;
-        const float top = str.m_afPos[1];
-        if (left < ox + w && left + tw > ox && top < oy + h && top + rowH * 0.8f > oy) {
-            str.m_szString[0] = '\0';
-        }
-    }
-
-    ColorConfig& colors = ColorConfig::getInstance();
-    const float edge = rowH * 0.06f;
-    const int current = control.get ? control.get() : -1;
-    auto quad = [this](float qx, float qy, float qw, float qh, unsigned long color) {
-        SPluginQuad_t q;
-        applyOffset(qx, qy);
-        setQuadPositions(q, qx, qy, qw, qh);
-        q.m_iSprite = SpriteIndex::SOLID_COLOR;   // solid-quad-exempt: the open list is a flat box over the rows, drawn the same with or without a theme
-        q.m_ulColor = color;
-        m_quads.push_back(q);
-    };
-    // Outline, then an opaque body inside it.
-    quad(x - edge, y - edge, w + edge * 2.0f, h + edge * 2.0f, colors.getAccent());
-    quad(x, y, w, h, PluginUtils::applyOpacity(colors.getBackground(), 1.0f));
-
-    m_dropdown.firstRegion = static_cast<int>(m_clickRegions.size());
-    int hovered = -1;
-    for (int i = 0; i < count; ++i) {
-        const float ex = iconGrid ? x + pad + cellW * static_cast<float>(i % cols)
-                                  : x + cellW * static_cast<float>(i / perCol);
-        const float ey = iconGrid ? y + cellH * static_cast<float>(i / cols)
-                                  : y + rowH * static_cast<float>(i % perCol);
-        const int regionIndex = static_cast<int>(m_clickRegions.size());
-        if (m_hoveredRegionIndex == regionIndex) hovered = i;
-        if (i == current) {
-            quad(ex, ey, cellW, cellH, PluginUtils::applyOpacity(colors.getAccent(), 0.25f));
-        } else if (hovered == i) {
-            quad(ex, ey, cellW, cellH, PluginUtils::applyOpacity(colors.getAccent(), 0.12f));
-        }
-        const unsigned long ink = i == current ? colors.getPrimary() : colors.getSecondary();
-        if (iconGrid) {
-            const int sprite = control.spriteOf(i);
-            if (sprite > 0) {
-                addIcon(ex + cellW * 0.5f, ey + cellH * 0.5f, sprite, ink, cellH * 0.7f);
-            } else {
-                addString("-", ex + cellW * 0.5f, ey + (cellH - rowH) * 0.5f, Justify::CENTER,
-                    Fonts::getNormal(), ink, fontSize);
-            }
-        } else {
-            if (control.swatchOf) {
-                quad(ex + pad, ey + rowH * 0.22f, swatchW * 0.66f, rowH * 0.56f, control.swatchOf(i));
-            }
-            // A font list previews each face; a colour list writes each name in
-            // its colour, unless that colour would vanish on the list's body.
-            const int face = control.fontOf ? control.fontOf(i) : 0;
-            unsigned long nameInk = ink;
-            if (control.swatchOf) {
-                const unsigned long c = control.swatchOf(i);
-                if (!PluginUtils::isColorDark(c)) nameInk = c;
-            }
-            addString(names[static_cast<size_t>(i)].c_str(), ex + pad + swatchW, ey, Justify::LEFT,
-                face > 0 ? face : Fonts::getNormal(), nameInk, fontSize);
-        }
-        ClickRegion entry(ex, ey, cellW, cellH, ClickRegion::DROPDOWN_OPTION, nullptr,
-                          static_cast<uint32_t>(i));
+    m_dropdown.firstRegion = firstRegion;
+    for (size_t i = 0; i < rects.size(); ++i) {
+        ClickRegion entry(rects[i].x, rects[i].y, rects[i].w, rects[i].h, ClickRegion::DROPDOWN_OPTION,
+                          nullptr, static_cast<uint32_t>(i));
         entry.cycleIndex = m_dropdown.open;
         m_clickRegions.push_back(entry);
-    }
-    if (iconGrid) {
-        // The caption names what a click would pick: the hovered icon, else the current one.
-        const int named = hovered >= 0 ? hovered : current;
-        if (named >= 0 && named < count) {
-            addString(names[static_cast<size_t>(named)].c_str(), x + pad, y + h - captionH,
-                Justify::LEFT, Fonts::getNormal(), colors.getPrimary(), fontSize);
-        }
     }
 }
 

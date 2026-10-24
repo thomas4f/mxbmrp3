@@ -3,6 +3,7 @@
 // Displays real-time bike telemetry inputs (throttle, brakes, clutch, steering)
 // ============================================================================
 #include "telemetry_hud.h"
+#include "default_slots.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../core/plugin_utils.h"
@@ -471,7 +472,7 @@ void TelemetryHud::resetToDefaults() {
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setScale(1.0f);
     m_graphRows = DEFAULT_GRAPH_ROWS;
-    setPosition(cellsX(133), cellsY(38));
+    setPosition(DefaultSlots::rightColumnX(DefaultSlots::WIDE_CELLS), DefaultSlots::rightColumnY());
     m_enabledElements = ELEM_DEFAULT;
     m_displayMode = DISPLAY_DEFAULT;
     setDataDirty();

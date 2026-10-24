@@ -114,6 +114,16 @@ int main(int argc, char** argv) {
     } else {
         printf("scenario: unthemed (MXBMRP3_Test_InstallTheme not exported)\n");
     }
+    // THE SHIPPED FRAME: drop shadow and glow are on in a shipping build and off
+    // in the test build (UiConfig), so without this the gate would time a frame
+    // no player draws. Skipped, like the theme, on a build without the hooks.
+    auto SetDropShadow = (void(*)(int))S("MXBMRP3_Test_SetDropShadow");
+    auto SetGlow = (void(*)(int,float,float))S("MXBMRP3_Test_SetGlow");
+    if (SetDropShadow && SetGlow) {
+        SetDropShadow(1);
+        SetGlow(1, 1.0f, 1.0f);
+        printf("scenario: drop shadow + glow ON (the shipped defaults)\n");
+    }
 
     // --- Build the shared long/complex circuit + a full 50-rider grid -------
     // buildPerfTrack() synthesizes ~2400 m over ~950 segments (hairpins,

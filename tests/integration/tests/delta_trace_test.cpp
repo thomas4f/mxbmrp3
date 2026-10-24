@@ -9,10 +9,13 @@
 // that moves between profile points without a rebuild,
 // shows all of that lap once the gap stops being live (the pits), comes back
 // live after the out-lap with that lap still kept, and is gone with a new
-// session until the new session has a lap of its own. And that every quad is wound the way the game
-// draws: it culls the other order, so the red (behind) fill, built line-first
-// below the zero line, vanished in game (Thomas, 1.32) while the companion
-// window, which does not cull, still showed it.
+// session until the new session has a lap of its own. The peak markers sit on
+// the lap the chart is about (the lap in progress while live, else the lap
+// shown), only on the side the lap reached (by more than 20 ms), and go when
+// switched off. And that every quad (the peaks' dots included) is wound the
+// way the game draws: it culls the other order, so the red (behind) fill,
+// built line-first below the zero line, vanished in game (Thomas, 1.32) while
+// the companion window, which does not cull, still showed it.
 //
 // The lap timer is wall-clock anchored, so the clock is simulated through
 // MXBMRP3_Test_LapTimerSetNowUs: each position sample is sent at the elapsed
@@ -44,6 +47,10 @@ TEST_CASE("delta trace: plots the lap in progress against the reference, then th
     auto marker   = [&]() { int p = -1, r = -1, m = -1; Shape(&p, &r, &m, nullptr, nullptr); return m; };
     auto markerX  = [&]() { float x = -1.0f; Shape(nullptr, nullptr, nullptr, &x, nullptr); return x; };
     auto rebuilds = [&]() { int n = -1; Shape(nullptr, nullptr, nullptr, nullptr, &n); return n; };
+    auto Peaks        = host.sym<int (*)(int*, int*)>("MXBMRP3_Test_DeltaTracePeaks");
+    auto SetPeaks     = host.sym<void (*)(int)>("MXBMRP3_Test_DeltaTraceSetPeaks");
+    REQUIRE_MESSAGE((Peaks && SetPeaks), "peak test hooks not exported (test build?)");
+    int aheadMs = 0, behindMs = 0;
 
     host.setHudVisible("delta_trace_hud", true);
 
@@ -88,6 +95,20 @@ TEST_CASE("delta trace: plots the lap in progress against the reference, then th
     CHECK(previous() == 0);                        // lap 1 had nothing to compare with
     CHECK(reversed() == 0);                        // behind: the fill sits below zero
     CHECK(marker() == 1);                          // the rider's square on the live gap
+    // 10 ms a step slower all the way: one peak, behind, at the rider (~1 s).
+    CHECK(Peaks(&aheadMs, &behindMs) == 1);
+    CHECK(aheadMs == 0);
+    INFO("behind peak at half lap: " << behindMs);
+    CHECK(behindMs >= 900);
+    CHECK(behindMs <= 1100);
+    // Switched off, no marker; back on, it returns.
+    SetPeaks(0);
+    frame();
+    CHECK(Peaks(nullptr, nullptr) == 0);
+    CHECK(marker() == 1);                          // the rider's square is still the last quad
+    SetPeaks(1);
+    frame();
+    CHECK(Peaks(nullptr, nullptr) == 1);
 
     // Between profile points only the marker moves, at the pace of the
     // position updates: the trace itself is not rebuilt.
@@ -124,6 +145,12 @@ TEST_CASE("delta trace: plots the lap in progress against the reference, then th
     CHECK(kept >= 175);
     CHECK(kept <= 200 - 10 - LapDeltaProfileGap);
     CHECK(reversed() == 0);                        // ahead (lap 3) and behind (lap 2) both
+    // The peaks are lap 3's alone: ahead only, though lap 2 (behind) shows past the gap.
+    CHECK(Peaks(&aheadMs, &behindMs) == 1);
+    INFO("ahead peak early in lap 3: " << aheadMs);
+    CHECK(behindMs == 0);
+    CHECK(aheadMs <= -50);
+    CHECK(aheadMs >= -150);
 
     // Riding back (a crash, a missed jump) keeps what the lap already drew.
     for (int p = 9; p >= 4; --p) {
@@ -146,6 +173,11 @@ TEST_CASE("delta trace: plots the lap in progress against the reference, then th
     CHECK(previous() == 0);                        // nothing live to sweep over it
     CHECK(marker() == 0);                          // nor a rider on it
     CHECK(reversed() == 0);
+    // The peaks now belong to the lap shown: lap 2, behind all the way (~2 s at the end).
+    CHECK(Peaks(&aheadMs, &behindMs) == 1);
+    INFO("behind peak of lap 2 in the pits: " << behindMs);
+    CHECK(aheadMs == 0);
+    CHECK(behindMs >= 1800);
 
     // Back out of the pits most of a lap on: the run to the line is a partial,
     // so nothing is live yet and the lap kept in the pits stays up. The game
@@ -174,6 +206,7 @@ TEST_CASE("delta trace: plots the lap in progress against the reference, then th
     // A new session drops every reference: the trace empties...
     host.session(RACE1 + 1, 10, 0);
     CHECK(frame() == 0);
+    CHECK(Peaks(nullptr, nullptr) == 0);           // no data, no marker
 
     // ...and fills again once the new session has a lap to compare with.
     lapStartUs += 100LL * 305 * 1000LL + 20000000LL;

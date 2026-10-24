@@ -6,10 +6,10 @@
 #pragma once
 
 #include "base_hud.h"
+#include "notice_tracker.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
-#include <chrono>
 
 class NoticesHud : public BaseHud {
 public:
@@ -48,6 +48,22 @@ public:
     const char* getIconName() const override { return "hud-notices"; }
     void resetToDefaults();
 
+    // The Notices tab's settings, which the shared NoticeTracker steps with.
+    uint32_t getEnabledNotices() const { return m_enabledNotices; }
+    int getNoticeDurationMs() const { return m_noticeDurationMs; }
+    // A notice's slab in this HUD's colours: the fill whose colour is the message
+    // (still to take the slab's opacity) and the caption ink on it at `opacity`.
+    // The Dash's Notices page draws its slab from this, so the two never disagree.
+    void slabColors(NoticeTracker::Kind kind, float opacity, unsigned long& fill, unsigned long& ink) const;
+    // The notices that call for action now (wrong way, hazard, rider oncoming, blue
+    // flag) glow behind their slab (BaseHud::addGlow), here and on the Dash; the
+    // informational ones (PBs, lapper ahead, last lap...) do not. Reach is a share
+    // of the slab's height.
+    static bool glows(NoticeTracker::Kind kind);
+    static constexpr float GLOW_SPREAD = 0.6f;
+    static constexpr float GLOW_OPACITY = 0.4f;
+    static float glowOpacity(NoticeTracker::Kind kind);
+
     // Allow settings system to access private members
     friend class SettingsHud;
     friend class SettingsManager;
@@ -62,64 +78,10 @@ private:
     // this span by index.
     void addNoticeBackground(float x, float y, float w, float h, unsigned long color);
 
-    // Check if a timed notice is still within its display duration
-    bool isTimedNoticeActive(std::chrono::steady_clock::time_point triggerTime) const;
-
-    // The status-tier notice visibility (wrong way / hazard / blue flag / lapper /
-    // overtime) — the notices that outrank and therefore MASK the consumable
-    // PB/setup/segment tier. This is the SINGLE SOURCE shared by update() (which
-    // freezes a masked consumable notice's display timer, per notice_priority.h) and
-    // rebuildRenderData() (which renders the ladder). Keeping one computation is what
-    // stops the mask predicate and the render precedence from silently drifting apart.
-    struct StatusTier {
-        bool wrongWay = false, hazard = false, blueFlag = false, lapping = false, overtime = false;
-        bool anyShowing() const { return wrongWay || hazard || blueFlag || lapping || overtime; }
-    };
-    StatusTier computeStatusTier() const;
-
-    // Notice state
-    bool m_bIsWrongWay = false;            // Whether player is currently going wrong way
-    bool m_bIsHazardAhead = false;         // Whether there's a hazard rider ahead
-    // Whether the hazard ahead is a rider coming AT you rather than one stopped on the
-    // track. Same notice slot and same priority — only the wording differs, because
-    // "HAZARD AHEAD" reads as something to steer around and an oncoming rider is not.
-    bool m_bHazardIsWrongWay = false;
-    bool m_bIsBlueFlagged = false;         // Whether player should yield (blue flag)
-    bool m_bIsLapping = false;             // Whether player is closing on a backmarker ahead (mirror of blue flag)
-
-    // Timed notice state (transient - timed display)
-    bool m_bShowOvertime;                  // Currently showing overtime notice
-    bool m_bOvertimeTriggered;             // Overtime notice already triggered (resets on new session)
-    bool m_bShowLastLap;                   // Currently showing last lap notice
-    bool m_bShowFinished;                  // Currently showing finished notice
-    int m_finishedPosition;                // Current display position when finished (updates if penalties change it)
-    bool m_bLastLapTriggered;              // Last lap notice already triggered (resets when no longer on last lap)
-    bool m_bFinishedTriggered;             // Finished notice already triggered (resets when no longer finished)
-    bool m_bShowSessionPB;                 // Currently showing session PB notice
-    bool m_bShowFastestLap;                // Currently showing fastest lap notice
-    bool m_bShowAllTimePB;                 // Currently showing all-time PB notice
-    bool m_bShowDefaultSetup;              // Currently showing default setup warning (track entry)
-    bool m_bShowSegment;                   // Currently showing a segment-timer action notice
-    PluginData::SegmentNoticeKind m_segmentNoticeKind = PluginData::SegmentNoticeKind::None;  // Which segment action to show
-    int m_segmentNoticeNumber = 0;         // 1-based segment the notice refers to (0 = none yet)
-
-    // Trigger timestamps for timed notices
-    std::chrono::steady_clock::time_point m_overtimeTriggerTime;
-    std::chrono::steady_clock::time_point m_lastLapTriggerTime;
-    std::chrono::steady_clock::time_point m_finishedTriggerTime;
-
-    // Unmask anchors (ms since steady_clock epoch, 0 = none) for the consumable
-    // notices — when each last became unmasked. Their display window is measured
-    // from here so one masked behind a higher-priority status notice is held, not
-    // consumed unseen. See notice_priority.h.
-    long long m_allTimePBUnmaskMs = 0;
-    long long m_fastestLapUnmaskMs = 0;
-    long long m_sessionPBUnmaskMs = 0;
-    long long m_defaultSetupUnmaskMs = 0;
-    long long m_segmentUnmaskMs = 0;
-
-    // Spectate tracking - reset triggered flags when displayed rider changes
-    int m_lastDisplayRaceNum = -1;
+    // The NoticeTracker revision last rendered: a rebuild runs only when the
+    // tracker's notice changes. The state machine itself is notice_tracker.h's,
+    // shared with the Dash.
+    uint32_t m_renderedRevision = 0;
 
     // Settings
     uint32_t m_enabledNotices = NOTICE_DEFAULT;          // Bitfield of enabled notices

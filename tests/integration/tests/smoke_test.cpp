@@ -32,7 +32,7 @@ TEST_CASE("smoke: Startup -> DrawInit -> Draw -> Shutdown") {
     host.draw();
 
     // A minimally-populated frame must actually emit primitives: an event with
-    // one entry always renders at least the version widget / enabled HUD chrome,
+    // one entry always renders at least the enabled HUD chrome,
     // so zero quads here means the render pipeline silently died (the survival
     // checks above can't catch that).
     host.eventInit("TestTrack", "Alice");

@@ -127,14 +127,15 @@ public:
     // decodes of ~10 ms each in one frame, which kMaxDecodesPerFrame cannot split
     // because each is a single item.
     //
-    // So the caller names what enabled-but-hidden HUDs WILL draw, and render()
-    // loads ONE not-yet-loaded item per frame, and only on a frame that loaded
-    // nothing on demand - the load moves to the quiet frames after track entry
-    // instead of the moment the HUD appears. Indices are the frame's own 1-based
-    // tables (sprite >= firstIcon is an icon, exactly as a quad resolves it).
-    // Once everything named is loaded a frame costs one hash of the list.
+    // So EVERY sprite the frame's table registers (`allSprites`: icons, textures,
+    // theme slices, pack art - whatever any HUD might draw) and the fonts the
+    // caller names are loaded ahead, and render() loads ONE not-yet-loaded item
+    // per frame, and only on a frame that loaded nothing on demand - the load
+    // moves to the quiet frames after Direct GL starts instead of the moment
+    // the art appears. Font indices are the frame's own 1-based table. Once
+    // everything is loaded a frame costs one hash of the font list.
     struct Warm {
-        const int* sprites = nullptr; int spriteCount = 0;
+        bool allSprites = false;
         const int* fonts = nullptr;   int fontCount = 0;
     };
 

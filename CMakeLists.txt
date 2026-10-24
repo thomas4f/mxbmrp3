@@ -237,8 +237,9 @@ mxb_gate(analytics-fetch-selftest fast 120 "python3"
 # is a python package, which the TOOLS column cannot express. ~25s (the render
 # fans out across cores); it is the check that replaces "do not bump cairosvg
 # without regenerating the whole set" as prose in tools/requirements.txt.
+# numpy too: the glow, lens and vignette generators it also replays import it.
 mxb_gate(icon-repro fast 600 "python3"
-         "python3 -c 'import cairosvg, PIL' >/dev/null 2>&1 || { echo 'SKIP: cairosvg/Pillow not installed (./tools/install_deps.sh analytics)'; exit 3; }; ./tests/integration/check_icon_reproducibility.sh")
+         "python3 -c 'import cairosvg, PIL, numpy' >/dev/null 2>&1 || { echo 'SKIP: cairosvg/Pillow/numpy not installed (./tools/install_deps.sh analytics)'; exit 3; }; ./tests/integration/check_icon_reproducibility.sh")
 # ci-covers-differently: the CI job runs `npm ci` + `npx playwright test` with
 # setup-node's npm cache and a keyed Playwright browser cache; run.sh exists to
 # find-or-fetch Chromium on a dev box.

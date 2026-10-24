@@ -250,8 +250,10 @@ void Renderer::render(Image& out, const Frame& fr, uint8_t bgR, uint8_t bgG, uin
                       uint8_t bgA) {
     out.fill(bgR, bgG, bgB, bgA);
     if (!fr.fontNames || !fr.spriteNames) return;
-    for (int i = 0; i < fr.quadCount; ++i) drawQuad(out, fr.quads[i], fr);
-    for (int i = 0; i < fr.stringCount; ++i) drawString(out, fr.strings[i], fr);
+    // HUD by HUD where they overlap (core/render_layers.h); flat otherwise.
+    hudlayers::walkLayers(fr.layers, fr.quadCount, fr.stringCount,
+        [&](int b, int e) { for (int i = b; i < e; ++i) drawQuad(out, fr.quads[i], fr); },
+        [&](int b, int e) { for (int i = b; i < e; ++i) drawString(out, fr.strings[i], fr); });
 }
 
 }  // namespace hudsw

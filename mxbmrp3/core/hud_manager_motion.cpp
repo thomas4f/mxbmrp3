@@ -14,6 +14,7 @@
 // The digit roll (hud/digit_roll.h) is Motion too, and runs on this clock.
 // ============================================================================
 #include "hud_manager.h"
+#include "../hud/dash_hud.h"
 #include "ui_config.h"
 #include "../hud/digit_roll.h"
 #include "../hud/pointer_widget.h"
@@ -82,14 +83,19 @@ bool HudManager::drawsOnSurface(const BaseHud* hud, bool companion, bool surface
     // rendersOnCompanion() gates the companion pass BEFORE its on/off: a HUD that
     // is an in-game effect rather than a panel never belongs on the second
     // surface, whatever its companion visibility says. See BaseHud.
-    const bool visible = companion ? (hud->rendersOnCompanion() && hud->getCompanionVisible())
-                                   : hud->isVisible();
+    // The Dash shown for a message while switched off (DashHud::isBorrowed) is
+    // drawn on both surfaces.
+    const bool borrowed = hud == m_pDash && m_pDash->isBorrowed();
+    // The hover sample, on the surface whose strip is hovered only.
+    const bool shown = borrowed || (hud->isSampled() && surfaceIsActive);
+    const bool visible = companion ? (hud->rendersOnCompanion() && (hud->getCompanionVisible() || shown))
+                                   : hud->isVisible() || shown;
     // Not drawn for a reason other than its own flag (the Direct GL prompt
     // holding the menu back, the hide-all hotkey, the widgets toggle): the
     // same answer the input pass reads, so what is off screen takes nothing.
     if (!visible || isHeldBack(hud)) return false;
     // The pointer and the open settings MENU render only on the active surface
-    // (the settings BUTTON stays on both - it's how you open settings there).
+    // (the Toggles strip stays on both - it's how you open settings there).
     if ((hud == m_pPointer || hud == m_pSettingsHud) && !surfaceIsActive) return false;
     return true;
 }
@@ -180,18 +186,16 @@ void HudManager::motionEmitGhost(const MotionSlot& slot, std::vector<SPluginQuad
 void HudManager::motionFinishHud(MotionSlot& slot, const BaseHud& hud,
                                  std::vector<SPluginQuad_t>& outQuads, size_t quadStart,
                                  std::vector<SPluginString_t>& outStrings, size_t stringStart,
-                                 int titleIconShiftAt, bool stringShadows) {
+                                 const std::vector<int>* iconShifts, bool stringShadows) {
     if (!slot.drawn) return;
     const Motion::Frame& f = slot.frame;
     if (f.moving())
         moveRange(outQuads, quadStart, outQuads.size(), outStrings, stringStart, outStrings.size(),
                   f.alpha, f.dy);
 
-    // Local quad indices map through the title icon's shadow copy, which
-    // collectSurface inserts before titleIconShiftAt.
+    // Local quad indices map through the icon shadow copies appendHudQuads inserts.
     const auto outQuad = [&](int local) {
-        return quadStart + static_cast<size_t>(local) +
-               ((titleIconShiftAt >= 0 && local >= titleIconShiftAt) ? 1u : 0u);
+        return quadStart + static_cast<size_t>(local) + iconShiftsUpTo(iconShifts, local);
     };
 
     // The under layer (the map's outline) on alpha cubed: two more factors of it.

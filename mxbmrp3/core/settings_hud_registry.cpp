@@ -51,10 +51,8 @@
 #include "../hud/timing_hud.h"
 #include "../hud/gap_bar_hud.h"
 #include "../hud/bars_widget.h"
-#include "../hud/version_widget.h"
 #include "../hud/notices_hud.h"
 #include "../hud/fuel_widget.h"
-#include "../hud/settings_button_widget.h"
 #include "../hud/pointer_widget.h"
 #include "../hud/map_hud.h"
 #include "../hud/radar_hud.h"
@@ -108,7 +106,6 @@
 #include "hotkey_manager.h"
 #include "director_manager.h"
 #include "companion_window.h"
-#include "../hud/director_widget.h"
 #include "tracked_riders_manager.h"
 #include "asset_manager.h"
 #include "../game/game_config.h"
@@ -926,6 +923,7 @@ void SettingsManager::cap_DeltaTraceHud(const HudManager& hudManager, SettingsMa
         settings["reference"] = std::to_string(hud.m_referenceDefault ? HudDefaults::REFERENCE_FOLLOW
                                                                       : static_cast<int>(hud.m_reference));
         settings["graphRows"] = std::to_string(hud.m_graphRows);
+        settings["peaks"] = hud.m_showPeaks ? "1" : "0";
         cache[name] = std::move(settings);
 }
 
@@ -947,6 +945,7 @@ void SettingsManager::app_DeltaTraceHud(HudManager& hudManager, const SettingsMa
                 }
                 if (auto v = readInt(settings, "graphRows")) hud.m_graphRows = std::clamp(*v,
                     DeltaTraceHud::MIN_GRAPH_ROWS, DeltaTraceHud::MAX_GRAPH_ROWS);
+                if (auto v = readBool(settings, "peaks")) hud.m_showPeaks = *v;
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("DeltaTraceHud: Failed to parse settings: %s", e.what());
             }
@@ -1008,6 +1007,7 @@ const std::vector<HudSectionSerializer>& hudSectionRegistry() {
         { "TelemetryHud", &SettingsManager::cap_TelemetryHud, &SettingsManager::app_TelemetryHud },
         { "PerformanceHud", &SettingsManager::cap_PerformanceHud, &SettingsManager::app_PerformanceHud },
         { "DeltaTraceHud", &SettingsManager::cap_DeltaTraceHud, &SettingsManager::app_DeltaTraceHud },
+        { "DashHud", &SettingsManager::cap_DashHud, &SettingsManager::app_DashHud },
         { "LapWidget", &SettingsManager::cap_LapWidget, &SettingsManager::app_LapWidget },
         { "PositionWidget", &SettingsManager::cap_PositionWidget, &SettingsManager::app_PositionWidget },
         { "TimeWidget", &SettingsManager::cap_TimeWidget, &SettingsManager::app_TimeWidget },
@@ -1024,7 +1024,6 @@ const std::vector<HudSectionSerializer>& hudSectionRegistry() {
         { "TimingHud", &SettingsManager::cap_TimingHud, &SettingsManager::app_TimingHud },
         { "GapBarHud", &SettingsManager::cap_GapBarHud, &SettingsManager::app_GapBarHud },
         { "BarsWidget", &SettingsManager::cap_BarsWidget, &SettingsManager::app_BarsWidget },
-        { "VersionWidget", &SettingsManager::cap_VersionWidget, &SettingsManager::app_VersionWidget },
         { "NoticesHud", &SettingsManager::cap_NoticesHud, &SettingsManager::app_NoticesHud },
         { "FuelWidget", &SettingsManager::cap_FuelWidget, &SettingsManager::app_FuelWidget },
         { "GamepadWidget", &SettingsManager::cap_GamepadWidget, &SettingsManager::app_GamepadWidget },
@@ -1037,7 +1036,7 @@ const std::vector<HudSectionSerializer>& hudSectionRegistry() {
 #if GAME_HAS_ECU
         { "EcuWidget", &SettingsManager::cap_EcuWidget, &SettingsManager::app_EcuWidget },
 #endif
-        { "SettingsButtonWidget", &SettingsManager::cap_SettingsButtonWidget, &SettingsManager::app_SettingsButtonWidget },
+        { "ToggleStripWidget", &SettingsManager::cap_ToggleStripWidget, &SettingsManager::app_ToggleStripWidget },
         { "PointerWidget", &SettingsManager::cap_PointerWidget, &SettingsManager::app_PointerWidget },
         { "RumbleHud", &SettingsManager::cap_RumbleHud, &SettingsManager::app_RumbleHud },
         { "BenchmarkWidget", &SettingsManager::cap_BenchmarkWidget, &SettingsManager::app_BenchmarkWidget },

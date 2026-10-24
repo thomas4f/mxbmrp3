@@ -293,9 +293,9 @@ bool BaseHud::hasThemedButton() const {
 // Themed button background. Returns false when the theme has no button slices, so
 // the caller can fall back to its plain solid quad -- every call site keeps working
 // on an unthemed build or a theme that does not style buttons.
-// FULLY transparent stays gone. The corner buttons fade their chip out entirely as
-// Background opacity approaches zero, leaving just the glyph -- a deliberate way to get
-// a minimal corner control. Flattening alpha 0 would hand back an opaque background
+// FULLY transparent stays gone. A button whose chip fades out entirely as Background
+// opacity approaches zero leaves just the glyph -- a deliberate way to get a minimal
+// control. Flattening alpha 0 would hand back an opaque background
 // -coloured box instead, turning "vanishes" into "a dark rectangle", so drop the quad.
 static inline bool buttonIsInvisible(unsigned long color) {
     return ((color >> 24) & 0xFFu) == 0u;
@@ -323,7 +323,7 @@ bool BaseHud::addThemedButton(float x, float y, float width, float height, unsig
 // composited onto the panel's background first, which is the pixel it already produced
 // on an opaque panel. So this changes NOTHING at full opacity and only stops the track
 // showing through lower down. Done HERE, at the one funnel every button goes through
-// (settings rows, the corner buttons, the director chip), so a new button gets it
+// (settings rows, the settings footer), so a new button gets it
 // without knowing the rule exists.
 int BaseHud::addRowHighlight(float x, float y, float width, float height,
                              unsigned long color) {

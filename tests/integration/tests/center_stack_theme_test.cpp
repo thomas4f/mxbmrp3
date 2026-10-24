@@ -100,38 +100,23 @@ TEST_CASE("centre stack: [card] hud-content does not move a panel's top edge") {
     // bigger themed one subtracted back out. Both states reading zero would satisfy the
     // no-movement check above and still be wrong.
     //
-    // The stack's first box belongs one grid cell down (CenterStack::gapBarBoxTop is
-    // rowY(1)), which is also the row the settings and camera buttons sit on.
+    // The Gap Bar's box belongs eleven grid cells down, two under the Dash's
+    // default bottom (CenterStack::underDashBoxTop, DASH_DEFAULT_BOTTOM_CELL 9).
     const int gapTop = host.hudScreenEdges(PluginHost::HUD_GAPBAR).t;
     REQUIRE(host.hasLayoutCells());
     const auto lat = host.layoutCells();
     INFO("gap bar top: " << gapTop << " millionths of screen height, one cell = "
          << lat.cellH);
     CHECK(gapTop > 0);         // not clipped against the screen edge
-    // One grid cell, read off the LIVE lattice rather than frozen as 11733 --
-    // the literal asserted the shipped uiLineHeight, not the design, and went
-    // red the moment the ratio moved.
-    CHECK(std::abs(gapTop / 1e6 - lat.cellH) < 2e-6);
+    // Eleven grid cells, read off the LIVE lattice rather than frozen as a
+    // millionths literal -- that asserted the shipped uiLineHeight, not the
+    // design, and went red the moment the ratio moved.
+    CHECK(std::abs(gapTop / 1e6 - 11.0 * lat.cellH) < 2e-5);
 
-    // AND THE THREE DO NOT OVERLAP EACH OTHER -- UNTHEMED, which is the configuration
-    // the stack's stored defaults are derived for. center_stack.h computes the three
-    // box tops from the [Advanced] built-in (L.boxPanelPadding), writes them ONCE via
-    // resetToDefaults(), and its own header states the limitation: the stored tops
-    // "follow the built-in at reset/first-run but cannot follow a THEME at all".
-    //
-    // THE THEMED HALF OF THIS ASSERTION IS GONE, DELIBERATELY, and this note is the
-    // record of why. The removed version asserted no-overlap "in either state"; under
-    // the additive plan model a frame-2/card-1 theme grows each box ~4 cells while the
-    // stored tops stay put, so the themed stack DOES overlap at defaults (~3.7 cells at
-    // both seams, measured here). That is the documented, accepted cost of stored
-    // default offsets -- "a themed or captioned stack is nudged by hand exactly as any
-    // other panel is" (center_stack.h), with the alternative (live theme-following
-    // defaults) named at contentPaddingY() as a persistence migration this branch did
-    // not take. What IS pinned for the themed state is the mechanism itself: the tops
-    // do not move when a theme lands, which is the same stored-offset contract the
-    // no-movement case above pins for the card flag. If the persistence migration ever
-    // happens, THAT change flips this assertion -- restore the themed no-overlap check
-    // then, because it becomes the contract.
+    // AND THE THREE SHARE ONE SPOT -- UNTHEMED, which is the configuration the stored
+    // defaults are derived for: center_stack.h writes the shared top ONCE via
+    // resetToDefaults(), and a theme does not move it afterwards (the same
+    // stored-offset contract the no-movement case above pins for the card flag).
     host.clearTheme();
     host.draw();
     {
@@ -141,16 +126,11 @@ TEST_CASE("centre stack: [card] hud-content does not move a panel's top edge") {
         INFO("unthemed gapbar [" << g.t << ".." << g.b << "]"
              << " notices [" << n.t << ".." << n.b << "]"
              << " timing [" << t.t << ".." << t.b << "]");
-        // THEY SHARE A TOP AND THEREFORE OVERLAP, deliberately. This used to assert
-        // no-crossing, because the three defaulted to a column; they are alternatives
-        // more often than companions, so the default is now the one good spot and a
-        // player running all three drags two of them.
-        //
-        // What is pinned instead is that the three AGREE. Their offsets are stored
-        // per-HUD and only Notices ever carried a hidden base (its render baked
-        // CenterStack::noticesBoxTop in and treated the offset as a delta from it), so
-        // "the same INI value puts them in the same place" is exactly the property
-        // that was false before and has to stay true now.
+        // THE THREE SHARE ONE SPOT UNDER THE DASH (they stacked there during 1.33's
+        // development, and shared the Dash's own top before that, where each one
+        // switched on was hidden behind it). Each offset is its box top, so the drawn
+        // tops agree exactly -- Notices once carried a hidden base of its own, which
+        // is what this would catch.
         CHECK(std::abs(n.t - g.t) <= SLOP);
         CHECK(std::abs(t.t - g.t) <= SLOP);
         // AND THE WIDTHS AGREE, edge for edge. They deliberately did NOT for most
@@ -245,9 +225,8 @@ TEST_CASE("the notice slab lands on the card's outer edge at any card size") {
     // padding into the content rather than dropping it: the slab has to reach
     // the edges AND the panel has to be the size it always was. Dropping the
     // padding instead would pass the first check and silently shrink the panel
-    // - which center_stack.h's stored default tops are computed from
-    // (noticesBoxHeight sums the padding), so the stack would open gaps at both
-    // seams with nothing here to say so.
+    // - the panel the Gap Bar and Timing share their spot with, sized to match
+    // them, with nothing here to say so.
     {
         host.clearTheme();
         host.draw();
@@ -376,8 +355,8 @@ TEST_CASE("the notice slab lands on the card's outer edge at any card size") {
 // ============================================================================
 // THE GAP BAR'S PANEL IS THE STACK'S WIDTH at the 50% default.
 //
-// It used to size its BAR to CenterStack::boxWidth while Notices, Timing and
-// Version pass that number as their minPanelW -- so the gap bar's panel came out
+// It used to size its BAR to CenterStack::boxWidth while Notices and Timing
+// pass that number as their minPanelW -- so the gap bar's panel came out
 // one padding wider per SIDE, because a bar is content and their box is a panel.
 // Measured before the fix: 159500 against 137500 unthemed, 181500 against 148500
 // themed, the difference being 2 * dim.paddingH each time. It was known and left
@@ -439,84 +418,6 @@ TEST_CASE("gap bar: at 50% its panel matches the rest of the centre stack") {
 }
 
 // ============================================================================
-// A HAND-LAID BUTTON ROW OWES THE JUNCTION GAP ABOVE IT.
-//
-// The box model splits the two terms: a JUNCTION belongs to the stack, a MARGIN
-// belongs to the box. panel_box.h spends the junction itself for a PLANNED button
-// row (`y += gapY` before the row's own margin), and the settings tabs spend it
-// by hand as addSpacing(). The Version widget lays out its own row and spent only
-// planButtonTerms().marginT -- the button BOX's margin, which defaults to zero --
-// so its buttons sat flush against the message above them.
-//
-// Measured as the panel's HEIGHT rather than the button's position, because the
-// gap has to reach both: the row origin AND the height the panel reserves. Adding
-// it to only one is how the buttons would overflow their own card instead.
-//
-// The comparison is the SAME widget in its two states, one row versus two-plus-
-// buttons, so it needs no second HUD to agree about padding: the difference
-// between them is exactly one text row, one junction, and the button box.
-// ============================================================================
-TEST_CASE("version widget: its button row keeps the junction gap above it") {
-    PluginHost host(dllPath());
-    REQUIRE(host.loaded());
-    host.startup("Z:\\tmp\\mxbmrp3-tests\\version_buttons\\");
-    REQUIRE_MESSAGE(host.hasScreenEdges(),
-                    "MXBMRP3_Test_HudScreenEdges not exported (test build?)");
-    host.showAllHuds(true);
-    host.eventInit("Southwick", "Thomas");
-    host.draw();
-
-    const auto plain = host.hudScreenEdges(PluginHost::HUD_VERSION);
-    const double plainH = plain.b - plain.t;
-    REQUIRE_MESSAGE(plainH > 0, "version widget rendered nothing in its plain state");
-
-    host.updateSetAvailable("9.9.9");
-    host.draw();
-    const auto withButtons = host.hudScreenEdges(PluginHost::HUD_VERSION);
-    const double buttonsH = withButtons.b - withButtons.t;
-    REQUIRE_MESSAGE(buttonsH > 0, "version widget rendered nothing with an update available");
-
-    INFO("plain height " << plainH << ", with buttons " << buttonsH
-         << " (grew " << (buttonsH - plainH) << ")");
-    CHECK(buttonsH > plainH);
-
-    // THE GAP ITSELF. Height alone cannot see it -- the button box grows the panel
-    // whether or not the junction is spent, and the first version of this case
-    // passed with the junction reverted for exactly that reason. So measure the two
-    // DRAWN strings against each other: the message, and the label inside the first
-    // button. The widget places the button row at message + one text row + junction
-    // + the box's own margin, and the label a further inset down, so the distance
-    // between the two is a row plus a junction at minimum -- and without the
-    // junction it is a bare row.
-    //
-    // String-to-string on purpose: the widget stores its button BOUNDS before the
-    // HUD offset while the strings carry it, so measuring a bound against a string
-    // reads short by exactly the widget's screen position.
-    const auto terms = host.versionRowTerms();
-    REQUIRE_MESSAGE(terms.rowH > 0, "MXBMRP3_Test_VersionRowTerms not exported");
-    REQUIRE_MESSAGE(terms.junction > 0,
-                    "the [panel] junction gap resolved to zero -- nothing to assert");
-
-    REQUIRE(host.hasStringRows());
-    double messageY = -1.0, labelY = -1.0;
-    for (const auto& r : host.hudStringRows(PluginHost::HUD_VERSION)) {
-        if (r.text.find("9.9.9") != std::string::npos) messageY = r.y;
-        if (r.text.find("View in Settings") != std::string::npos) labelY = r.y;
-    }
-    REQUIRE_MESSAGE(messageY >= 0, "the update message was not drawn");
-    REQUIRE_MESSAGE(labelY >= 0, "the button label was not drawn");
-
-    const double messageToLabel = labelY - messageY;
-    INFO("message y " << messageY << ", button label y " << labelY
-         << " (gap " << messageToLabel << ", one row " << terms.rowH
-         << " + junction " << terms.junction << ")");
-    CHECK(messageToLabel >= terms.rowH + terms.junction);
-    // ...and not runaway: the row, the junction, and the box's own margin and top
-    // inset, which no shipped theme sets beyond a row between them.
-    CHECK(messageToLabel <= terms.rowH + terms.junction + terms.rowH);
-}
-
-// ============================================================================
 // THE GAP BAR'S INTERIOR IS THE PANEL IT DREW, and its bounds are a pure
 // function of its layout.
 //
@@ -559,10 +460,11 @@ TEST_CASE("gap bar: its bar fills the panel, and its bounds ignore the offset") 
     // startX + barWidth/2. With a zero-wide bar it lands on startX -- the panel's
     // left edge plus one padding -- so its distance from the panel's centre is the
     // whole failure, and it is the one string this HUD draws at its defaults.
-    // showAllHuds turns captions on, so skip the caption and take the value row.
+    // showAllHuds turns captions on, so skip the caption and the reference
+    // named on its row, and take the value row.
     double barMid = -1.0;
     for (const auto& r : host.hudStringRows(PluginHost::HUD_GAPBAR)) {
-        if (r.text.find("Gap Bar") == std::string::npos) barMid = r.x;
+        if (r.text.find("Gap Bar") == std::string::npos && r.text != "Session PB") barMid = r.x;
     }
     REQUIRE_MESSAGE(barMid >= 0.0, "gap bar drew no gap text");
     // ScreenEdges is fixed point (x 1e6); StringRow::x is screen units.
@@ -763,7 +665,7 @@ TEST_CASE("the gap fill reaches the panel's edge at full deflection, unthemed") 
 // EDGES, not widths: two panels of equal width sitting 4px apart is precisely the
 // failure the old code shipped, and comparing widths alone would pass it.
 // ---------------------------------------------------------------------------
-TEST_CASE("the centre stack shares its edges at any air terms, Version included") {
+TEST_CASE("the centre stack shares its edges at any air terms") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\stack_width_sweep\\");
@@ -801,16 +703,14 @@ TEST_CASE("the centre stack shares its edges at any air terms, Version included"
             const auto g = host.hudScreenEdges(PluginHost::HUD_GAPBAR);
             const auto n = host.hudScreenEdges(PluginHost::HUD_NOTICES);
             const auto ti = host.hudScreenEdges(PluginHost::HUD_TIMING);
-            const auto v = host.hudScreenEdges(PluginHost::HUD_VERSION);
             CAPTURE(std::string(t.what) + (themed ? " (themed)" : " (unthemed)"));
             INFO("gapbar [" << g.l << ".." << g.r << "] notices [" << n.l << ".." << n.r
-                 << "] timing [" << ti.l << ".." << ti.r << "] version [" << v.l
-                 << ".." << v.r << "]");
+                 << "] timing [" << ti.l << ".." << ti.r << "]");
             // Drawn at all -- a panel that renders nothing has equal edges of zero,
             // which would satisfy every check below having measured nothing.
             REQUIRE(g.r > g.l);
-            REQUIRE(v.r > v.l);
-            for (const auto& p : { n, ti, v }) {
+            REQUIRE(ti.r > ti.l);
+            for (const auto& p : { n, ti }) {
                 CHECK(std::abs(p.l - g.l) <= SLOP);
                 CHECK(std::abs(p.r - g.r) <= SLOP);
             }
@@ -921,7 +821,7 @@ TEST_CASE("an unknown panel name measures nothing, and every named id resolves")
         PluginHost::HUD_PERFORMANCE, PluginHost::HUD_SESSION_CHARTS,
         PluginHost::HUD_SETTINGS, PluginHost::HUD_GAPBAR, PluginHost::HUD_NOTICES,
         PluginHost::HUD_RECORDS, PluginHost::HUD_LAP, PluginHost::HUD_POSITION,
-        PluginHost::HUD_MAP, PluginHost::HUD_SESSION, PluginHost::HUD_VERSION,
+        PluginHost::HUD_MAP, PluginHost::HUD_SESSION,
         PluginHost::HUD_RADAR, PluginHost::HUD_SPEED, PluginHost::HUD_GEAR,
         PluginHost::HUD_CRASH, PluginHost::HUD_BARS, PluginHost::HUD_COMPASS,
         PluginHost::HUD_LEAN,
@@ -955,7 +855,6 @@ TEST_CASE("the centre stack holds its centre under scale and width changes") {
         { "gap_bar_hud",    PluginHost::HUD_GAPBAR  },
         { "notices_hud",    PluginHost::HUD_NOTICES },
         { "timing_hud",     PluginHost::HUD_TIMING  },
-        { "version_widget", PluginHost::HUD_VERSION },
         // Not a member of the centre STACK -- it sits on its own and is not the same
         // width -- but it is centre-ANCHORED, which is what this case is about. It
         // came last and by a different route: its default was a frozen 0.43275f
@@ -985,7 +884,9 @@ TEST_CASE("the centre stack holds its centre under scale and width changes") {
         const double off = (e0.l + e0.r) / 2.0 / 1e6 - 0.5;
         INFO(std::string(m.label) << " centre " << ((e0.l + e0.r) / 2.0)
              << ", off centre by " << off << " (one cell = " << cellW << ")");
-        CHECK(std::abs(off) <= cellW * 0.5);
+        // The Radar's default centre is the right column's (hud/default_slots.h),
+        // not the screen's; its centre-holding is what the sweep below checks.
+        if (m.id != PluginHost::HUD_RADAR) CHECK(std::abs(off) <= cellW * 0.5);
     }
 
     for (const Member& m : members) {

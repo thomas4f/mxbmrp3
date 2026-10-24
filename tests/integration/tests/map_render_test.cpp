@@ -723,3 +723,69 @@ TEST_CASE("map: the off-track pointer sweeps smoothly along a parallel run") {
                   << (maxStep * 57.2958) << " deg) -- a sawtooth or a lobe flip, "
                   "not a sweep");
 }
+
+TEST_CASE("map: in a race the leader's marker is the crown, in podium gold") {
+    // Gold as PluginConstants::PodiumColors::GOLD (#ffd700), packed ABGR.
+    constexpr unsigned long GOLD_BGR = 0x0000D7FFul;
+    auto goldMarkers = [](PluginHost& host) {
+        int n = 0;
+        const size_t quads = host.hudQuadRects("map_hud").size();
+        for (size_t i = 0; i < quads; ++i)
+            if ((host.quadColor("map_hud", static_cast<int>(i)) & 0x00FFFFFFul) == GOLD_BGR) ++n;
+        return n;
+    };
+    auto ride = [](PluginHost& host, int session) {
+        host.eventInit("CircleTrack", "Player");
+        host.raceEvent("CircleTrack");
+        host.addEntry(2, "Player");   // first entry after EventInit = the player
+        host.addEntry(1, "Leader");
+        host.addEntry(3, "Third");
+        host.session(session, 10);
+        host.trackCenterline(circleTrack(), {});
+        host.classify(session, 120000, {
+            { .num = 1, .laps = 3, .gap = 0 },
+            { .num = 2, .laps = 3, .gap = 1500 },
+            { .num = 3, .laps = 3, .gap = 4000 },
+        });
+        host.raceTrackPosition({
+            { .num = 1, .trackPos = 0.30f, .posX = 100.0f, .posZ = 160.0f, .yaw = 0.0f },
+            { .num = 2, .trackPos = 0.20f, .posX = 0.0f, .posZ = 160.0f, .yaw = 0.0f },
+            { .num = 3, .trackPos = 0.10f, .posX = -100.0f, .posZ = 160.0f, .yaw = 0.0f },
+        });
+        host.draw();
+        host.draw();
+    };
+    // The harness stages no icon set, so a synthetic theme lends the crown a
+    // sprite before the map first looks it up (RiderFlagIcons resolves it once).
+    auto lendCrown = [](PluginHost& host) {
+        REQUIRE(host.hasIconTheming());
+        host.installTheme("crown", 0.0f, 0.0f, /*titleBand=*/0, /*card=*/0);
+        REQUIRE(host.setThemeIcon("crown", 900003, 0));
+    };
+    SUBCASE("race: the leader alone") {
+        PluginHost host(dllPath());
+        REQUIRE(host.startup("Z:\\tmp\\mxbmrp3-tests\\map_crown\\") >= 0);
+        REQUIRE(host.hasInkHooks());
+        lendCrown(host);
+        auto MapVisible = host.sym<PFN_MapI>("MXBMRP3_Test_MapSetVisible");
+        REQUIRE(MapVisible);
+        MapVisible(1);
+        host.mapFlatOverview();
+        ride(host, 6);   // Race1
+        CHECK(goldMarkers(host) == 1);
+        host.shutdown();
+    }
+    SUBCASE("practice: no crown") {
+        PluginHost host(dllPath());
+        REQUIRE(host.startup("Z:\\tmp\\mxbmrp3-tests\\map_crown_practice\\") >= 0);
+        REQUIRE(host.hasInkHooks());
+        lendCrown(host);
+        auto MapVisible = host.sym<PFN_MapI>("MXBMRP3_Test_MapSetVisible");
+        REQUIRE(MapVisible);
+        MapVisible(1);
+        host.mapFlatOverview();
+        ride(host, 2);   // practice
+        CHECK(goldMarkers(host) == 0);
+        host.shutdown();
+    }
+}

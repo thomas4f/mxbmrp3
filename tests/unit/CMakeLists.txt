@@ -34,6 +34,7 @@ set(MXB_UNIT_SOURCES
     test_twitch_irc.cpp
     test_youtube_chat.cpp
     test_hold_repeat.cpp
+    test_cursor_idle.cpp
     test_hotkey_names.cpp
     test_slider_control.cpp
     test_text_edit.cpp
@@ -59,6 +60,7 @@ set(MXB_UNIT_SOURCES
     test_render_frame_buffer.cpp
     test_crash_stack_format.cpp
     test_blue_flag_detect.cpp
+    test_wrong_way_detect.cpp
     test_battle_groups.cpp
     test_lap_timer.cpp
     test_delta_color.cpp
@@ -86,6 +88,7 @@ set(MXB_UNIT_SOURCES
     test_records_window.cpp
     test_radar_fade.cpp
     test_motion.cpp
+    test_impact_vignette.cpp
     test_digit_roll.cpp
     test_severity_ramp.cpp
     test_icon_resolve.cpp
@@ -115,7 +118,6 @@ set(MXB_UNIT_SOURCES
     nine_slice_test.cpp
     gauge_square_test.cpp
     gear_geometry_test.cpp
-    corner_button_test.cpp
     layout_ini_test.cpp
     center_stack_test.cpp
     asset_path_test.cpp
@@ -125,6 +127,7 @@ set(MXB_UNIT_SOURCES
     test_thread_detach_grace.cpp
     test_gl_state_fingerprint.cpp
     test_render_batch.cpp
+    test_render_layers.cpp
     pixel_text_test.cpp
     shim/logger_stub.cpp
     ${MXB_ROOT}/mxbmrp3/core/hud_sw_renderer.cpp

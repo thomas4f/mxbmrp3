@@ -12,12 +12,16 @@
 //     over its max rpm instead, and never flashes
 //   - [RpmWidget] segments / segmentGaps / width / vertical (INI-only) reshape
 //     the strip; vertical fills bottom to top at the Gear widget's height
+//   - the newest light fades up over its stretch of revs in four steps, from
+//     where a whole light would come on: the first red one shows at the shift
+//     point, a quarter of the way up; nothing extra is drawn for it
 // Self-contained doctest; see run_tests.sh / TESTING.md.
 // ============================================================================
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -43,9 +47,15 @@ std::vector<Segment> segments(PluginHost& host, size_t count) {
 unsigned alpha(unsigned long c) { return static_cast<unsigned>((c >> 24) & 0xFF); }
 unsigned long rgb(unsigned long c) { return c & 0x00FFFFFFul; }
 
+// An unlit segment is drawn at RpmWidget::UNLIT_OPACITY (0x3F); the newest
+// lit one at least a step above it.
+constexpr unsigned UNLIT_ALPHA = 0x3F;
+bool on(const Segment& seg) { return alpha(seg.color) > UNLIT_ALPHA + 8; }
+
+// The lit segments, whole or fading up.
 int litCount(const std::vector<Segment>& s) {
     int n = 0;
-    for (const auto& seg : s) if (alpha(seg.color) == 0xFF) ++n;
+    for (const auto& seg : s) if (on(seg)) ++n;
     return n;
 }
 
@@ -275,7 +285,7 @@ TEST_CASE("rpm widget: vertical stands the strip on its end at Gear's height") {
     const auto s = segments(host, 15);
     REQUIRE(s.size() == 15);
     CHECK(litCount(s) == 1);
-    CHECK(alpha(s[0].color) == 0xFF);
+    CHECK(on(s[0]));
     // Bottom to top, stacked without overlapping, in one column.
     for (size_t i = 1; i < s.size(); ++i) {
         CHECK(s[i].rect.b <= s[i - 1].rect.t + 1e-6);
@@ -287,5 +297,49 @@ TEST_CASE("rpm widget: vertical stands the strip on its end at Gear's height") {
     const PluginHost::ScreenEdges gear = host.hudScreenEdges("gear_widget");
     const PluginHost::ScreenEdges rpm = host.hudScreenEdges(kRpm);
     CHECK(rpm.b - rpm.t == gear.b - gear.t);
+    host.shutdown();
+}
+
+TEST_CASE("rpm widget: the newest light fades up over its stretch of revs") {
+    // SHIFT 10500 / LIMITER 12000 over 15 lights: the range starts at 6000, 4
+    // are red, and the 11 below share [6000, 10500), ~409 rpm each. The third
+    // light (index 2) comes on at ~6818, its stretch running to ~7227.
+    PluginHost host(dllPath());
+    setUp(host, "Z:\\tmp\\mxbmrp3-tests\\rpm_fade\\");
+    ride(host, 7220);   // the end of its stretch: whole
+    auto s = segments(host, 15);
+    REQUIRE(s.size() == 15);
+    const size_t quads = host.hudQuadRects(kRpm).size();
+    CHECK(alpha(s[2].color) == 0xFF);
+    const unsigned dim = alpha(s[3].color);
+    CHECK(dim == UNLIT_ALPHA);
+
+    // A quarter, then three quarters of the way from unlit to lit, with the
+    // ones before it whole and nothing drawn besides the segments.
+    for (const auto& [rpm, share] : { std::pair{ 6830, 0.25 }, std::pair{ 7030, 0.75 } }) {
+        CAPTURE(rpm);
+        ride(host, rpm);
+        s = segments(host, 15);
+        CHECK(host.hudQuadRects(kRpm).size() == quads);
+        CHECK(alpha(s[1].color) == 0xFF);
+        CHECK(alpha(s[2].color) == doctest::Approx(dim + (0xFF - dim) * share).epsilon(0.03));
+        CHECK(rgb(s[2].color) == rgb(s[1].color));
+        CHECK(alpha(s[3].color) == dim);
+    }
+    host.shutdown();
+}
+
+TEST_CASE("rpm widget: the first red light still shows at the shift point") {
+    PluginHost host(dllPath());
+    setUp(host, "Z:\\tmp\\mxbmrp3-tests\\rpm_fade_shift\\");
+    ride(host, SHIFT - 1);   // the last amber one whole, no red
+    auto s = segments(host, 15);
+    REQUIRE(s.size() == 15);
+    for (size_t i = 0; i < 11; ++i) CHECK(alpha(s[i].color) == 0xFF);
+    CHECK(alpha(s[11].color) == UNLIT_ALPHA);
+    ride(host, SHIFT);
+    s = segments(host, 15);
+    CHECK(on(s[11]));   // the red one, a quarter of the way up
+    CHECK(alpha(s[11].color) < 0xFF);
     host.shutdown();
 }

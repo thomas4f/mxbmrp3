@@ -22,8 +22,8 @@ HelmetOverlayHud::HelmetOverlayHud() {
     m_bShowTitle = false;
     m_fBackgroundOpacity = 1.0f;
 
-    // Max 3 quads: visor tint + lower + upper.
-    m_quads.reserve(3);
+    // Max 4 quads: visor tint (lens + its flat floor) + lower + upper.
+    m_quads.reserve(4);
 
     resetToDefaults();
     rebuildRenderData();
@@ -317,13 +317,27 @@ void HelmetOverlayHud::rebuildRenderData() {
     const float hT = 0.5f - hHalf;
     const float hB = 0.5f + hHalf;
 
-    // Helper: emit full-screen tint quad (no rotation/translation)
+    // Helper: emit the full-screen tint (no rotation/translation), through the
+    // mode's lens profile when it is installed (TEX_HELMET_LENS), else flat.
     auto emitTint = [&]() {
-        if (hasTint && m_visorTintColor != 0) {
-            addOverlayQuad(SpriteIndex::SOLID_COLOR, 0.0f, 0.0f, 1.0f, 1.0f,
-                           1.0f, 0.0f, pivotX, pivotY, 0.0f,
-                           PluginUtils::applyOpacity(m_visorTintColor, m_visorTintOpacity));
+        if (!hasTint || m_visorTintColor == 0) return;
+        const int lens = resolveSpriteIndex(TEX_HELMET_LENS, m_visorMode == VISOR_MODE ? 2 : 1);
+        const float opacity = std::clamp(m_visorTintOpacity, 0.0f, 1.0f);
+        auto fullScreen = [&](int sprite, float alpha) {
+            addOverlayQuad(sprite, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, pivotX, pivotY, 0.0f,
+                           PluginUtils::applyOpacity(m_visorTintColor, alpha));
+        };
+        if (lens <= 0) {
+            fullScreen(SpriteIndex::SOLID_COLOR, opacity);
+            return;
         }
+        // Past 1 / LENS_EDGE_GAIN the lens quad is already opaque at its deep
+        // part, and its clear part tops out at its own 1 / gain. A flat floor
+        // under it makes up the rest, so the clear part still shows the set
+        // opacity: 1 - (1 - floor)(1 - clear) = opacity.
+        const float clear = 1.0f / LENS_EDGE_GAIN;
+        if (opacity > clear) fullScreen(SpriteIndex::SOLID_COLOR, 1.0f - (1.0f - opacity) / (1.0f - clear));
+        fullScreen(lens, std::min(1.0f, opacity * LENS_EDGE_GAIN));
     };
 
     // Helper: emit both helmet texture quads

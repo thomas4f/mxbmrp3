@@ -146,11 +146,13 @@ void CompanionWindow::submit(const std::vector<SPluginQuad_t>& quads,
                              const std::vector<SPluginString_t>& strings,
                              const std::vector<std::string>& fontPaths,
                              const std::vector<std::string>& spritePaths,
-                             int firstIcon) {
+                             int firstIcon, const hudlayers::Layers& layers) {
     if (!m_enabled.load(std::memory_order_relaxed)) return;
     MutexLock lock(m_mutex);
     m_quads = quads;
     m_strings = strings;
+    m_spans.assign(layers.spans, layers.spans + layers.spanCount);
+    m_layerCount = layers.layerCount;
     m_firstIcon = firstIcon;
     // The registration tables are stable after init — rebuild basenames only when
     // their size changes (i.e. once), not every frame. ASSUMPTION: font/sprite
@@ -168,6 +170,39 @@ void CompanionWindow::submit(const std::vector<SPluginQuad_t>& quads,
     }
     m_haveFrame = true;
 }
+
+#if defined(MXBMRP3_TEST_BUILD)
+bool CompanionWindow::testRenderRgba(int w, int h, unsigned char* out) {
+    std::vector<SPluginQuad_t> quads; std::vector<SPluginString_t> strings;
+    std::vector<hudlayers::Span> spans; int layerCount = 0;
+    std::vector<std::string> fontBases, spriteBases; int firstIcon = 0; std::string root;
+    {
+        MutexLock lock(m_mutex);
+        if (!m_haveFrame) return false;
+        quads = m_quads; strings = m_strings; spans = m_spans; layerCount = m_layerCount;
+        fontBases = m_fontBases; spriteBases = m_spriteBases; firstIcon = m_firstIcon; root = m_assetRoot;
+    }
+    static hudsw::Renderer renderer;
+    hudsw::Image img;
+    img.resize(w, h);
+    const UiViewport::Rect vp = UiViewport::compute(w, h);
+    img.setViewport((float)vp.x, (float)vp.y, (float)vp.w, (float)vp.h);
+    hudsw::Frame f;
+    f.quads = quads.data(); f.quadCount = (int)quads.size();
+    f.strings = strings.data(); f.stringCount = (int)strings.size();
+    f.fontNames = &fontBases; f.spriteNames = &spriteBases;
+    f.firstIcon = firstIcon; f.assetRoot = root;
+    f.layers = hudlayers::Layers{ spans.empty() ? nullptr : spans.data(), (int)spans.size(), layerCount };
+    renderer.render(img, f, 0, 0, 0, 0);
+    for (size_t i = 0; i < img.px.size(); i += 4) {
+        const unsigned a = img.px[i + 3];
+        for (int c = 0; c < 3; ++c)
+            out[i + c] = a ? (unsigned char)std::min(255u, img.px[i + c] * 255u / a) : 0;
+        out[i + 3] = (unsigned char)a;
+    }
+    return true;
+}
+#endif
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -327,6 +362,8 @@ void CompanionWindow::threadMain() {
     // high companionRefreshHz.
     std::vector<SPluginQuad_t> quads;
     std::vector<SPluginString_t> strings;
+    std::vector<hudlayers::Span> spans;
+    int layerCount = 0;
     std::vector<std::string> fontBases, spriteBases;
     std::string root;
     uint64_t lastFrameId = 0;      // see the unchanged-frame skip below
@@ -362,6 +399,7 @@ void CompanionWindow::threadMain() {
         {
             MutexLock lock(m_mutex);
             quads = m_quads; strings = m_strings;
+            spans = m_spans; layerCount = m_layerCount;
             fontBases = m_fontBases; spriteBases = m_spriteBases;
             firstIcon = m_firstIcon; root = m_assetRoot; have = m_haveFrame;
         }
@@ -379,9 +417,18 @@ void CompanionWindow::threadMain() {
         // Hashing the frame is ~21KB of streaming reads against milliseconds of fill, and
         // the strings/sprite tables go in too -- a lap time changing without any quad
         // moving still has to redraw.
-        const uint64_t h = have
+        uint64_t h = have
             ? hudsw::frameContentHash(quads, strings, fontBases, spriteBases)
             : hudsw::kFrameHashSeed;
+        // The stacking is part of the picture. Belt and braces: whatever changes
+        // the layers almost always changes the content too. Folded in only when
+        // there is any.
+        if (have && layerCount > 1) {
+            for (const hudlayers::Span& sp : spans)
+                h = (h ^ (uint64_t(uint32_t(sp.layer)) + 0x9E3779B97F4A7C15ULL)) * 0x100000001B3ULL;
+        }
+        const hudlayers::Layers frameLayers{ spans.empty() ? nullptr : spans.data(),
+                                             static_cast<int>(spans.size()), layerCount };
 
         RECT rc; GetClientRect(hwnd, &rc);
         // Named apart from the creation-time cw/ch above (the initial window
@@ -438,6 +485,7 @@ void CompanionWindow::threadMain() {
                 f.strings = strings.data(); f.stringCount = (int)strings.size();
                 f.fontNames = &fontBases; f.spriteNames = &spriteBases;
                 f.firstIcon = firstIcon; f.assetRoot = root;
+                f.layers = frameLayers;
             }
             const int hzNow = m_refreshHz.load(std::memory_order_relaxed);
             if (gpu.renderSwapchain(f, clientW, clientH,
@@ -461,6 +509,7 @@ void CompanionWindow::threadMain() {
             f.strings = strings.data(); f.stringCount = (int)strings.size();
             f.fontNames = &fontBases; f.spriteNames = &spriteBases;
             f.firstIcon = firstIcon; f.assetRoot = root;
+            f.layers = frameLayers;
             try {
                 renderer.render(img, f, bgR, bgG, bgB);  // opaque backdrop (fills the whole client)
             } catch (...) {

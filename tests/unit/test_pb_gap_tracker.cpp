@@ -45,9 +45,12 @@
 // ============================================================================
 #include "doctest.h"
 #include "core/pb_gap_tracker.h"
+#include "core/ui_config.h"
+#include "hud/hud_defaults.h"
 #include <cmath>
 #include <cstdlib>
 #include <limits>
+#include <string>
 
 namespace {
 
@@ -586,4 +589,22 @@ TEST_CASE("THE LAP FENCE holds for every order of wrap and completion, re-anchor
             CHECK(t.bestLapProgressAt(28500) == doctest::Approx(0.5f).epsilon(0.01));
         }
     }
+}
+
+// The one spelling of each reference: Settings lists it by this name and the
+// HUDs caption their gaps with it, so the two cannot drift. A reference row's
+// "Default" names General's reference in the same spelling.
+TEST_CASE("PbGapTracker::refName: one name per reference, and Default names it") {
+    using Ref = PbGapTracker::Ref;
+    CHECK(std::string(PbGapTracker::refName(Ref::SESSION_PB)) == "Session PB");
+    CHECK(std::string(PbGapTracker::refName(Ref::ALLTIME_PB)) == "All-time PB");
+    CHECK(std::string(PbGapTracker::refName(Ref::LAST_LAP)) == "Last lap");
+    UiConfig& ui = UiConfig::getInstance();
+    const int saved = ui.getDefaultReference();
+    for (int i = 0; i < PbGapTracker::REF_COUNT; ++i) {
+        ui.setDefaultReference(i);
+        CHECK(std::string(HudDefaults::defaultReferenceName()) ==
+              std::string("Default (") + PbGapTracker::refName(static_cast<Ref>(i)) + ")");
+    }
+    ui.setDefaultReference(saved);
 }

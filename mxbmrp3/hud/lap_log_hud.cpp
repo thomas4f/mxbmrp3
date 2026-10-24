@@ -3,6 +3,7 @@
 // Lap Log - displays recent lap times with sector splits and personal best
 // ============================================================================
 #include "lap_log_hud.h"
+#include "default_slots.h"
 #include "../core/layout_config.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
@@ -174,7 +175,9 @@ void LapLogHud::rebuildRenderData() {
     PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(getBackgroundWidthChars(), dim.fontSize);
     want.sectionH = { headerHeight + dim.lineHeightNormal * numDataRows };
-    want.captionW = planTitleWidth(dim, "Lap Log", TitleTier::Large);
+    // The gap row's reference lap, named on the title row while that row is on.
+    const char* refNote = m_showGapRow ? PbGapTracker::refName(gapReference()) : nullptr;
+    want.captionW = planTitleWidth(dim, "Lap Log", TitleTier::Large) + planTitleNoteWidth(dim, refNote);
     want.tier = TitleTier::Large;
     PanelPlan& plan = planPanel(dim, want);
     setBounds(START_X, START_Y, START_X + plan.width(), START_Y + plan.height());
@@ -234,6 +237,8 @@ void LapLogHud::rebuildRenderData() {
 
         currentY += dim.lineHeightNormal;  // Move down to next row
     }
+
+    addPlanTitleNote(plan, dim, refNote);
 }
 
 // Which rows to draw and in what order (fills m_plan).
@@ -594,7 +599,7 @@ void LapLogHud::resetToDefaults() {
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setScale(1.0f);
-    setPosition(cellsX(1), cellsY(64));
+    setPosition(DefaultSlots::rightColumnX(DefaultSlots::WIDE_CELLS), DefaultSlots::rightColumnY());
     m_enabledColumns = COL_DEFAULT;
     m_maxDisplayLaps = 5;
     m_showLiveTiming = true;

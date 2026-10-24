@@ -28,7 +28,11 @@
 #include "integration_main.h"
 #include "plugin_host.h"
 
+#include <windows.h>
+
+#include <filesystem>
 #include <string>
+#include <utility>
 
 namespace {
 
@@ -49,6 +53,14 @@ int stringsWithShadow(PluginHost& host, bool on) {
     host.draw();
     host.draw();          // the setting dirties every HUD; let the rebuild land
     return host.lastGameStrings();
+}
+
+// Quads handed to the game with the shadow setting at `on`.
+int quadsWithShadow(PluginHost& host, bool on) {
+    host.setDropShadow(on);
+    host.draw();
+    host.draw();
+    return host.lastGameQuads();
 }
 
 }  // namespace
@@ -259,5 +271,170 @@ TEST_CASE("label anchor: the same key moves the label on the radar and the gap b
     CHECK(gapAbove < gapBelow);   // y grows downward: ABOVE is higher on screen
     CHECK(radAbove < radBelow);
 
+    host.shutdown();
+}
+
+// ============================================================================
+// THE DASH'S PAGE ICONS TAKE THE SHADOW, ONE QUAD EACH, LIKE A TITLE ICON.
+//
+// Identity icons are flat art drawn to sit on a drop shadow (assets/icons/README.md),
+// and collectSurface shadowed only the one beside a HUD's title - so the same icons
+// down the Dash's strip were the only ones drawn without it. The Dash now marks
+// each strip icon (BaseHud::shadowLastIcon) for the same path. Counted as handed-over
+// quads with only the Dash up (its title off, so no title icon in the sum): the
+// shadow must add exactly one quad per strip icon.
+// ============================================================================
+TEST_CASE("drop shadow: the Dash's page icons take one, like a title icon") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    const char* save = "Z:\\tmp\\mxbmrp3-tests\\dash_icon_shadow\\";
+    // The strip's icons, which the harness does not ship (a missing one draws
+    // its page's letters): from a discovery tree of this case's own, for the
+    // length of Startup -- dash_test's startDash says why not the save dir.
+    {
+        const std::filesystem::path tree = "Z:\\tmp\\mxbmrp3-tests\\dash_icon_shadow_tree";
+        const std::filesystem::path icons = tree / "plugins" / "mxbmrp3_data" / "icons";
+        std::filesystem::create_directories(icons);
+        for (const char* icon : { "hud-standings", "hud-timing", "hud-laplog", "hud-clock", "hud-fuel",
+                                  "hud-gapbar", "hud-flatmap", "hud-ideallap", "hud-gauge", "hud-deltatrace",
+                                  "hud-sessioncharts", "hud-session", "hud-telemetry", "hud-eventlog" }) {
+            const std::string src = std::string(MXB_REPO_DATA_DIR "/icons/") + icon + ".tga";
+            REQUIRE(CopyFileA(src.c_str(), (icons / (std::string(icon) + ".tga")).string().c_str(), FALSE) != 0);
+        }
+        const std::filesystem::path prev = std::filesystem::current_path();
+        std::filesystem::current_path(tree);
+        host.startup(save);
+        std::filesystem::current_path(prev);   // integration_main's sentinel is CWD-relative
+    }
+    host.writeSettingsFile(save,
+        "[Settings]\nversion=6\n\n[Messages]\ndashTried=1\n\n[DashHud]\nvisible=1\nstrip=bottom\n");
+    host.loadSettings(save);
+    host.showAllHuds(false);
+    REQUIRE(host.setHudVisible("dash_hud", true));
+    host.showSettings(false);
+    openSession(host);
+
+    const int off = quadsWithShadow(host, false);
+    const int on = quadsWithShadow(host, true);
+    const int icons = static_cast<int>(host.hudQuadRects("dash_hud").size()) - host.dashFirstIcon();
+    REQUIRE_MESSAGE(icons > 0, "the Dash drew no strip icons - nothing is being tested");
+    CHECK_MESSAGE(on - off == icons,
+                  "drop shadow added " << (on - off) << " quads for " << icons
+                  << " strip icons - each identity icon takes one shadow quad");
+
+    host.shutdown();
+}
+
+// ============================================================================
+// AN ICON BESIDE SHADOWED TEXT TAKES THE TEXT'S SHADOW, ONE QUAD EACH.
+//
+// Before 1.33 only the title icon and the Dash strip did: the Session HUD's row
+// icons (and the Event Log's, the Standings carets, Stream Chat's badges...) sat
+// flat beside text that cast a shadow. Each now marks its icons
+// (BaseHud::shadowLastIcon) for core/hud_manager_shadow.cpp. The Session HUD
+// stands for them: with only it up, the shadow's extra quads with its row icons
+// on, less those with them off (the title icon, if any, cancels out), must be
+// exactly one per row icon.
+// ============================================================================
+TEST_CASE("drop shadow: an icon beside shadowed text takes one, like a title icon") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    const char* save = "Z:\\tmp\\mxbmrp3-tests\\body_icon_shadow\\";
+    {
+        const std::filesystem::path tree = "Z:\\tmp\\mxbmrp3-tests\\body_icon_shadow_tree";
+        const std::filesystem::path icons = tree / "plugins" / "mxbmrp3_data" / "icons";
+        std::filesystem::create_directories(icons);
+        for (const char* icon : { "location-dot", "clock", "temperature-low" }) {
+            const std::string src = std::string(MXB_REPO_DATA_DIR "/icons/") + icon + ".tga";
+            REQUIRE(CopyFileA(src.c_str(), (icons / (std::string(icon) + ".tga")).string().c_str(), FALSE) != 0);
+        }
+        const std::filesystem::path prev = std::filesystem::current_path();
+        std::filesystem::current_path(tree);
+        host.startup(save);
+        std::filesystem::current_path(prev);   // integration_main's sentinel is CWD-relative
+    }
+    // Shadow quads with the Session HUD's row icons on or off.
+    auto shadowQuads = [&](bool rowIcons) {
+        host.writeSettingsFile(save, std::string("[Settings]\nversion=11\n\n[SessionHud]\nvisible=1\nshowIcons=") +
+                                     (rowIcons ? "1" : "0") + "\n");
+        host.loadSettings(save);
+        host.showAllHuds(false);
+        REQUIRE(host.setHudVisible("session_widget", true));
+        host.showSettings(false);
+        openSession(host);
+        const int off = quadsWithShadow(host, false);
+        const int quads = static_cast<int>(host.hudQuadRects("session_widget").size());
+        const int on = quadsWithShadow(host, true);
+        return std::make_pair(on - off, quads);
+    };
+    const auto withIcons = shadowQuads(true);
+    const auto without = shadowQuads(false);
+    const int icons = withIcons.second - without.second;
+    REQUIRE_MESSAGE(icons > 0, "the Session HUD drew no row icons - nothing is being tested");
+    CHECK_MESSAGE(withIcons.first - without.first == icons,
+                  "drop shadow added " << (withIcons.first - without.first) << " quads for " << icons
+                  << " row icons - each icon beside shadowed text takes one shadow quad");
+
+    host.shutdown();
+}
+
+// ============================================================================
+// THE TOGGLES STRIP'S ICONS TAKE THE SHADOW, ONE QUAD EACH.
+//
+// The strip floats bare over the scene, so its icons were the one set left flat
+// beside a shadowed hover name and shadowed letters (UI icons off). The settings
+// sidebar's icons sit on the menu's panel and stay flat. With every other HUD
+// hidden (showAllHuds leaves the strip and the pointer alone), the shadow's
+// extra quads with UI icons on, less those with them off (the strip then draws
+// letters, no quads), must be exactly one per strip icon.
+// ============================================================================
+TEST_CASE("drop shadow: the Toggles strip's icons take one, like a title icon") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    const char* save = "Z:\\tmp\\mxbmrp3-tests\\toggle_icon_shadow\\";
+    // Every shipped icon, which the harness does not ship (a missing one draws
+    // its switch's letters), for the length of Startup.
+    {
+        const std::filesystem::path tree = "Z:\\tmp\\mxbmrp3-tests\\toggle_icon_shadow_tree";
+        const std::filesystem::path icons = tree / "plugins" / "mxbmrp3_data" / "icons";
+        std::filesystem::create_directories(icons);
+        for (const auto& e : std::filesystem::directory_iterator(MXB_REPO_DATA_DIR "/icons")) {
+            if (e.path().extension() != ".tga") continue;
+            REQUIRE(CopyFileA(e.path().string().c_str(), (icons / e.path().filename()).string().c_str(),
+                              FALSE) != 0);
+        }
+        const std::filesystem::path prev = std::filesystem::current_path();
+        std::filesystem::current_path(tree);
+        host.startup(save);
+        std::filesystem::current_path(prev);   // integration_main's sentinel is CWD-relative
+    }
+    REQUIRE_MESSAGE((host.hasInjectedMouse() && host.hasToggleStrip()), "build without the hooks");
+    // Shadow quads, and the strip's own quads, with UI icons on or off.
+    auto shadowQuads = [&](bool uiIcons) {
+        host.writeSettingsFile(save, std::string("[Settings]\nversion=11\n\n[Display]\ntitleIcons=") +
+                                     (uiIcons ? "1" : "0") + "\n");
+        host.loadSettings(save);
+        host.showAllHuds(false);
+        host.showSettings(false);
+        openSession(host);
+        // Wake the cursor away from the strip, so it shows with no row hovered.
+        host.injectMouse(true, 0.45f, 0.5f, 0); host.draw();
+        host.injectMouse(true, 0.5f, 0.5f, 0); host.draw();
+        REQUIRE(host.toggleStripRow(0) > 10);
+        const int off = quadsWithShadow(host, false);
+        const int quads = static_cast<int>(host.hudQuadRects("toggle_strip_widget").size());
+        const int on = quadsWithShadow(host, true);
+        return std::make_pair(on - off, quads);
+    };
+    const auto withIcons = shadowQuads(true);
+    const auto without = shadowQuads(false);
+    const int icons = withIcons.second - without.second;
+    REQUIRE_MESSAGE(icons == host.toggleStripRow(0), "the strip drew " << icons << " icons for "
+                    << host.toggleStripRow(0) << " rows - an icon is missing from the tree");
+    CHECK_MESSAGE(withIcons.first - without.first == icons,
+                  "drop shadow added " << (withIcons.first - without.first) << " quads for " << icons
+                  << " strip icons - each takes one shadow quad");
+
+    host.injectMouse(false);
     host.shutdown();
 }

@@ -64,6 +64,9 @@ off-centre (~7% of the cell). `fontgen` has no way to correct this.
   overall size. Ink taller than the cell (some letters' ascenders/descenders) is
   cropped to the cell - digits, which have neither, are unaffected. The atlas
   auto-grows (up to 2048²) if the larger scale needs it.
+- `tabular_digits = 1` - **fixed-width digits**: every digit advances the
+  widest digit's width, ink centred, the way a font's `tnum` feature lays them
+  out. With `mono_advance` the font is then sized by that widest digit.
 
 ## Config format
 
@@ -83,6 +86,7 @@ cell_height = 135                         # NEW: cell height in px (omit = auto-
 center      = 0                           # NEW: 1 = centre the digit band
 voffset     = 0                           # NEW: manual vertical nudge in px (+ = down)
 mono_advance = 0                          # NEW: >0 = width-normalise digit advance to this ratio
+tabular_digits = 0                        # NEW: 1 = every digit advances the widest digit's width
 normalize   = 0                           # NEW: 1 = apply the standard defaults below
 ```
 
@@ -97,6 +101,7 @@ width, and vertical position** in-game:
 | `cell_height` | 135 | high-resolution cell - same on-screen size across fonts, but crisp when a HUD scales text up (high-DPI, large widgets); atlas auto-grows to 2048² |
 | `mono_advance` | 0.489 | RobotoMono's digit-advance/cell = the plugin's monospace column, so numbers fit the plate the same in every font |
 | `center` | on | centre the digit band (fixes off-centre bakes like Tiny5) |
+| `tabular_digits` | on | fixed-width digits, like a font's `tnum` feature (which display faces such as Tomorrow, Chakra Petch and Quantico lack): 0-9 all advance the widest digit's width with their ink centred, so a running clock does not jiggle and right-aligned numbers line up. `mono_advance` then sizes the font by that widest digit, so a proportional font's text comes out 4-23% smaller than it would sized by the average digit; a font whose digits are already fixed-width is unchanged |
 | `spacing` | 20 | mip-safe inter-glyph gap. The games render the atlas with mipmaps; at the small sizes most HUD text is drawn (~20-40px, far below the 135px cell) the mip chain box-averages neighbouring cells together, so too small a gap makes the next glyph bleed across as a faint bar hugging the edge (the "green bar to the right of the K"). 20px keeps the neighbour out of the mip footprint; padding changes only atlas packing, not glyph widths/advances (on-screen layout is unchanged) |
 
 Any field you set explicitly wins, so `normalize = 1` with `center = 0` (or a

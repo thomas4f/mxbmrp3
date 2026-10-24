@@ -352,19 +352,20 @@ TEST_CASE("gl in-game: glDrewLastFrame cannot report a stale true") {
                   << (drewWhileOn ? "" : " (and it had not drawn to begin with)"));
 }
 
-TEST_CASE("gl in-game: art a HUD has not drawn yet is loaded before it first shows") {
+TEST_CASE("gl in-game: every sprite is loaded before anything first shows it") {
     // FOUND IN-GAME: a hitch the first time the pit board appeared mid-lap. The
     // backend loads every texture and font LAZILY, on the Draw thread, the first
     // frame something draws it - and the board (1920x1080) plus the MARKER font
     // only it uses are two ~10 ms decodes landing on that one frame. The fix
-    // pre-warms the art of enabled-but-hidden HUDs in the quiet frames after the
-    // backend starts; this pins that the board is loaded while it is NOT drawn.
-    // The same holds for art a VISIBLE HUD draws only on an event: the radar's
-    // proximity sector (a rider alongside) and the gear limiter circle.
+    // pre-warmed the art of enabled-but-hidden HUDs, plus a list of art a HUD
+    // draws only on an event (the radar's proximity sector, the gear limiter
+    // circle); a HUD switched on mid-ride, or an icon, still decoded on the frame
+    // it first showed. Now EVERY registered sprite loads in the quiet frames
+    // after the backend starts, whatever is on, so none of the HUDs that draw
+    // these is switched on here.
     //
-    // Must-catch: without the warm list none of the three is drawn here (At-
-    // Splits with no split, no riders, no telemetry), so nothing loads them and
-    // the checks below fail.
+    // Must-catch: with the per-HUD lists, none of the four loads here (their
+    // HUDs are off, nothing draws them), and the checks below fail.
     //
     // The harness ships no assets, so stage the real ones through the user-
     // override sync, as the render-names case above stages its font.
@@ -380,6 +381,10 @@ TEST_CASE("gl in-game: art a HUD has not drawn yet is loaded before it first sho
                                   FALSE) != 0,
                         "could not stage the pit board - the case would be vacuous");
     }
+    CreateDirectoryA((save + "mxbmrp3\\\\icons").c_str(), nullptr);
+    REQUIRE_MESSAGE(CopyFileA(MXB_REPO_DATA_DIR "/icons/shield.tga",
+                              (save + "mxbmrp3\\\\icons\\\\shield.tga").c_str(), FALSE) != 0,
+                    "could not stage shield.tga - the case would be vacuous");
     CreateDirectoryA((save + "mxbmrp3\\\\textures").c_str(), nullptr);
     for (const char* f : { "radar_sector_1.tga", "gear_circle_1.tga" }) {
         REQUIRE_MESSAGE(CopyFileA((std::string(MXB_REPO_DATA_DIR "/textures/") + f).c_str(),
@@ -394,9 +399,8 @@ TEST_CASE("gl in-game: art a HUD has not drawn yet is loaded before it first sho
         MESSAGE("no GL context in this environment");
         return;
     }
-    REQUIRE(host.setHudVisible("pitboard_hud", true));
-    REQUIRE(host.setHudVisible("radar_hud", true));
-    REQUIRE(host.setHudVisible("gear_widget", true));
+    for (const char* hud : { "pitboard_hud", "radar_hud", "gear_widget", "dash_hud" })
+        REQUIRE(host.setHudVisible(hud, false));
 
     host.glInGame(true);
     host.draw();
@@ -408,19 +412,23 @@ TEST_CASE("gl in-game: art a HUD has not drawn yet is loaded before it first sho
     REQUIRE_MESSAGE(host.glHasTexture(board) != -1, "build without the GlHasTexture hook");
     const char* sector = "radar_sector_1";
     const char* circle = "gear_circle_1";
+    const char* icon = "shield";   // twitch_chat_test stages it too
     auto allLoaded = [&] {
         return host.glHasTexture(board) == 1 && host.glHasTexture(sector) == 1 &&
-               host.glHasTexture(circle) == 1;
+               host.glHasTexture(circle) == 1 && host.glHasTexture(icon) == 1;
     };
-    // One load per quiet frame: a handful of fonts and backgrounds, bounded.
-    for (int i = 0; i < 40 && !allLoaded(); ++i) host.draw();
+    // One load per quiet frame, every registered sprite and the fonts in use:
+    // bounded by the harness's handful of staged assets.
+    for (int i = 0; i < 400 && !allLoaded(); ++i) host.draw();
     CHECK_MESSAGE(host.glHasTexture(board) == 1,
-                  "the hidden pit board's art was never pre-warmed - its first show "
+                  "the pit board's art (HUD off) was never pre-warmed - switching it on "
                   "will decode it on the Draw thread");
     CHECK_MESSAGE(host.glHasTexture(sector) == 1,
                   "the radar's proximity sector was never pre-warmed");
     CHECK_MESSAGE(host.glHasTexture(circle) == 1,
                   "the gear limiter circle was never pre-warmed");
+    CHECK_MESSAGE(host.glHasTexture(icon) == 1,
+                  "an icon nothing draws yet was never pre-warmed");
 }
 
 TEST_CASE("gl render: a NESTED pack sprite resolves and paints") {
@@ -708,7 +716,7 @@ TEST_CASE("gl confirm: silence reverts the setting, so nobody is stranded on a b
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\\\tmp\\\\mxbmrp3-tests\\\\gl_confirm\\\\");
-    if (!host.hasGlConfirm()) { MESSAGE("build without the confirm hooks"); return; }
+    REQUIRE_MESSAGE(host.hasGlConfirm(), "build without the confirm hooks");
 
     host.glInGame(true);
     host.glConfirmArm(true);
@@ -739,7 +747,7 @@ TEST_CASE("gl confirm: the settings menu it hides takes no clicks while it is up
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\gl_confirm\\");
-    if (!host.hasGlConfirm() || !host.hasInjectedMouse()) { MESSAGE("build without the hooks"); return; }
+    REQUIRE_MESSAGE((host.hasGlConfirm() && host.hasInjectedMouse()), "build without the hooks");
 
     host.showSettings(true);
     host.draw();
@@ -781,7 +789,7 @@ TEST_CASE("gl confirm: the prompt goes THROUGH Direct GL, so it is its own test"
     REQUIRE(host.loaded());
     host.startup("Z:\\\\tmp\\\\mxbmrp3-tests\\\\gl_confirm\\\\");
     if (!host.glMakeContext(true)) { MESSAGE("no GL context here"); return; }
-    if (!host.hasGlConfirm()) { MESSAGE("build without the confirm hooks"); return; }
+    REQUIRE_MESSAGE(host.hasGlConfirm(), "build without the confirm hooks");
 
     host.glInGame(true);
     host.glConfirmArm(true);
@@ -804,7 +812,7 @@ TEST_CASE("gl confirm: the escape needs no readable text") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\\\tmp\\\\mxbmrp3-tests\\\\gl_confirm\\\\");
-    if (!host.hasGlConfirm()) { MESSAGE("build without the confirm hooks"); return; }
+    REQUIRE_MESSAGE(host.hasGlConfirm(), "build without the confirm hooks");
 
     host.glConfirmArm(true);
     host.draw();
@@ -832,7 +840,7 @@ TEST_CASE("gl confirm: the prompt reaches the screen on the pluginThread path to
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\\\tmp\\\\mxbmrp3-tests\\\\gl_confirm\\\\");
-    if (!host.hasGlConfirm()) { MESSAGE("build without the confirm hooks"); return; }
+    REQUIRE_MESSAGE(host.hasGlConfirm(), "build without the confirm hooks");
 
     host.pluginThreadEnable();
     REQUIRE_MESSAGE(host.pluginThreadEnabled(), "worker did not start");
@@ -884,7 +892,7 @@ TEST_CASE("gl confirm: no frames means no time, so it cannot expire behind a men
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\\\tmp\\\\mxbmrp3-tests\\\\gl_confirm\\\\");
-    if (!host.hasGlConfirm()) { MESSAGE("build without the confirm hooks"); return; }
+    REQUIRE_MESSAGE(host.hasGlConfirm(), "build without the confirm hooks");
 
     host.glConfirmArm(true);
     host.draw();                     // one frame to establish the clock
@@ -918,3 +926,158 @@ TEST_CASE("gl confirm: no frames means no time, so it cannot expire behind a men
     host.glConfirmArm(false);
 }
 
+
+TEST_CASE("gl render: a HUD stacked over another hides its text") {
+    // Direct GL draws HUD by HUD where they overlap (core/render_layers.h), so a
+    // panel dragged over another HUD covers that HUD's text instead of the text
+    // bleeding through - which the engine, drawing every string after every
+    // quad, cannot do. Scenario 4 stacks a green "III" under an opaque blue
+    // panel; scenario 5 is the same frame in the flat order, proving the probe
+    // would see the text if it were drawn on top.
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\\\tmp\\\\mxbmrp3-tests\\\\gl_render\\\\");
+    if (!host.glMakeContext(true)) { MESSAGE("no GL context here"); return; }
+
+    auto findInk = [&](int scenario) {
+        for (int x = 1; x < 30; ++x)
+            for (int y = 5; y < 95; y += 3) {
+                const int p = host.glRenderProbe(kW, kH, x, y, scenario);
+                if (p != -1 && G(p) > 150 && R(p) < 100 && B(p) < 100) return true;
+            }
+        return false;
+    };
+    CHECK_MESSAGE(findInk(5), "the flat frame drew no green text - the probe cannot see it");
+    CHECK_MESSAGE(!findInk(4), "text of the back HUD shows through the front HUD's panel");
+}
+
+TEST_CASE("gl in-game: a HUD over another stacks above it, on Direct GL and the companion") {
+    // The real collect path (core/render_layers.h): two text HUDs on top of each
+    // other put the later one a layer above the earlier one, so its panel hides
+    // the earlier one's text. With Direct GL off no stacking is built for the
+    // game - the engine draws every quad before every string whatever it gets.
+    //
+    // NO GL CONTEXT NEEDED, deliberately: the stacking is built in collect,
+    // which runs before the backend's first draw attempt in the same Draw, so
+    // the first frame with Direct GL on carries it even where the backend then
+    // declines (and latches off, clearing it from the next frame on).
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\\\tmp\\\\mxbmrp3-tests\\\\gl_render\\\\");
+
+    host.setEveryHudVisible(false);
+    REQUIRE(host.setHudVisible("standings_hud", true));
+    REQUIRE(host.setHudVisible("lap_log_hud", true));
+    REQUIRE(host.setHudOffset("standings_hud", 0.3f, 0.3f));
+    REQUIRE(host.setHudOffset("lap_log_hud", 0.3f, 0.3f));
+    host.draw();
+    host.draw();
+    CHECK(host.glFrameLayerCount() == 0);    // Direct GL off: nothing built
+
+    host.glInGame(true);
+    host.draw();
+    const int back = host.glFrameHudLayer("standings_hud");
+    const int front = host.glFrameHudLayer("lap_log_hud");
+    REQUIRE(back >= 0);
+    REQUIRE(front >= 0);
+    CHECK_MESSAGE(front > back, "lap log over standings stayed in its layer: " << front
+                                << " vs " << back);
+    CHECK(host.glFrameLayerCount() >= 2);
+    host.glInGame(false);
+    host.draw();
+    CHECK(host.glFrameLayerCount() == 0);
+
+    // The companion window always stacks, at ITS positions: stacked there too
+    // (it opens with the game layout), and apart once the standings move away
+    // on the companion only.
+    host.companionWindow(true);
+    host.draw();
+    host.draw();
+    CHECK(host.companionFrameHudLayer("lap_log_hud") > host.companionFrameHudLayer("standings_hud"));
+    host.stSetCompanionOffset(0.7f, 0.0f);   // right of the lap log, on the companion only
+    host.draw();
+    host.draw();
+    REQUIRE(host.companionFrameHudLayer("lap_log_hud") >= 0);
+    CHECK(host.companionFrameHudLayer("lap_log_hud") <= host.companionFrameHudLayer("standings_hud"));
+    CHECK(host.glFrameHudLayer("lap_log_hud") == -1);   // the game surface built none meanwhile
+    host.companionWindow(false);
+}
+
+TEST_CASE("gl in-game: an open dropdown covers the rows under it instead of blanking them") {
+    // The engine cannot hide text under a quad, so the settings menu blanks the
+    // strings its open list covers (settings_layout_test pins that). Under
+    // Direct GL the list is the menu's overlay, a layer over the menu's own
+    // text, so the rows keep their text and the list's body hides it.
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    REQUIRE(host.hasInjectedMouse());
+    host.startup("Z:\\\\tmp\\\\mxbmrp3-tests\\\\gl_render\\\\");
+    if (!host.glMakeContext(true)) { MESSAGE("no GL context here"); return; }
+    host.glInGame(true);
+    host.draw();
+    if (!host.glDrewLastFrame()) { MESSAGE("GL backend declined to draw here"); return; }
+
+    host.showSettings(true);
+    host.setActiveTab("Map");
+    host.draw();
+    float x0 = 0.0f, y = 0.0f, w = 0.0f;
+    REQUIRE(host.settingsDropdownSpan("map.colorize", &x0, &y, &w));
+    auto below = [&](const char* text) {
+        int n = 0;
+        for (const auto& r : host.hudStringRows("settings_hud")) {
+            if (r.y > y && r.x >= x0 - 0.001 && r.x < x0 + w && r.text.rfind(text, 0) == 0) ++n;
+        }
+        return n;
+    };
+    REQUIRE(below("100%") == 1);      // Marker scale's value, the row under the box
+    const int closedLayer = host.glFrameHudLayer("settings_hud");
+
+    host.clickAt(x0 + w * 0.5f, y);   // open
+    host.draw();
+    host.draw();
+    REQUIRE(below("Brand") == 1);     // the list is open
+    CHECK(below("100%") == 1);        // the row under it keeps its text...
+    CHECK(host.glFrameHudLayer("settings_hud") > closedLayer);   // ...under the list's layer
+}
+
+TEST_CASE("gl in-game: Direct GL latching off brings the dropdown blanking back") {
+    // The open list stops blanking the rows under it only while the game surface
+    // stacks. When the backend latches off, the engine draws the menu again and
+    // cannot hide text under a quad, so the next rebuild must blank them again.
+    // No context is made here on purpose: Direct GL on without one is the
+    // natural latch (the first attempt declines and latches off).
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    REQUIRE(host.hasInjectedMouse());
+    host.startup("Z:\\\\tmp\\\\mxbmrp3-tests\\\\gl_render\\\\");
+    host.glInGame(false);   // the save dir is shared: start from the engine path
+    host.showSettings(true);
+    host.setActiveTab("Map");
+    host.draw();
+    float x0 = 0.0f, y = 0.0f, w = 0.0f;
+    REQUIRE(host.settingsDropdownSpan("map.colorize", &x0, &y, &w));
+    auto below = [&](const char* text) {
+        int n = 0;
+        for (const auto& r : host.hudStringRows("settings_hud")) {
+            if (r.y > y && r.x >= x0 - 0.001 && r.x < x0 + w && r.text.rfind(text, 0) == 0) ++n;
+        }
+        return n;
+    };
+    host.clickAt(x0 + w * 0.5f, y);   // open, Direct GL off: the engine blanks
+    host.draw();
+    REQUIRE(below("Brand") == 1);
+    REQUIRE(below("100%") == 0);
+
+    // Pointer still, so nothing but the latch can dirty the menu.
+    host.injectMouse(false);
+    host.draw();
+    host.glInGame(true);   // no context: declines and latches off
+    host.draw();
+    host.draw();
+    host.draw();
+    REQUIRE(host.glInGameEnabled());
+    CHECK_FALSE(host.glDrewLastFrame());
+    CHECK(below("Brand") == 1);   // still open...
+    CHECK(below("100%") == 0);    // ...and blanking again
+    host.glInGame(false);
+}

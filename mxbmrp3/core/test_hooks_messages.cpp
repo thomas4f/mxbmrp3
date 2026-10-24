@@ -2,7 +2,7 @@
 // core/test_hooks_messages.cpp
 // The MXBMRP3_Test_* exports for SystemMessages (core/system_messages.h): the
 // toast ledger and the card showing one, a hotkey fired without a keyboard,
-// the startup-popup bookkeeping, and the Version widget's popup and countdown.
+// the startup-message bookkeeping, and the Dash showing and timing one.
 //
 // Same rules as core/test_hooks.cpp: the whole file is gated on
 // MXBMRP3_TEST_BUILD and mxbmrp3/CMakeLists.txt removes it from every shipping
@@ -16,9 +16,10 @@
 #include "hotkey_manager.h"
 #include "hud_manager.h"
 #include "system_messages.h"
+#include "update_checker.h"
 #include "../hud/achievement_widget.h"
 #include "../hud/settings_hud.h"
-#include "../hud/version_widget.h"
+#include "../hud/dash_hud.h"
 
 #include <cstdio>
 #include <cstring>
@@ -40,7 +41,7 @@ __declspec(dllexport) int MXBMRP3_Test_HotkeyInject(const char* name) {
 }
 
 // The settings menu's keyboard binding: a VK code (0 = none) plus ModifierFlags
-// bits. Redraws every HUD so the Version widget's welcome names the new key.
+// bits. Redraws every HUD so a welcome that names the key reads the new one.
 __declspec(dllexport) void MXBMRP3_Test_SetSettingsKey(int vk, int mods) {
     HotkeyManager& hk = HotkeyManager::getInstance();
     if (vk == 0) hk.clearKeyboardBinding(HotkeyAction::TOGGLE_SETTINGS);
@@ -69,7 +70,7 @@ __declspec(dllexport) int MXBMRP3_Test_MessageShowing(char* out, int cap) {
     return 1;
 }
 
-// The startup-popup decision, re-run with chosen inputs (the real one ran at
+// The startup-message decision, re-run with chosen inputs (the real one ran at
 // startup against the test's save dir). Resets the queue and stored state first.
 __declspec(dllexport) void MXBMRP3_Test_MessagesStartup(int freshInstall, const char* line,
                                                         const char* storedLine) {
@@ -80,20 +81,17 @@ __declspec(dllexport) void MXBMRP3_Test_MessagesStartup(int freshInstall, const 
     m.onStartup(freshInstall != 0, line);
 }
 
-// Answer every startup popup still owed, as a returning player would have:
+// Answer every startup message still owed, as a returning player would have:
 // the harness does this after each startup (PluginHost::startup).
 __declspec(dllexport) void MXBMRP3_Test_MessagesSettle() {
-    SystemMessages& m = SystemMessages::getInstance();
-    m.resolvePopup(SystemMessages::Popup::Updated);
-    m.resolvePopup(SystemMessages::Popup::Welcome);
+    SystemMessages::getInstance().onSettingsOpened();
 }
 
-// The Version widget's popup: its kind (VersionWidget::popupKind) and the
-// countdown second showing into *countdown.
-__declspec(dllexport) int MXBMRP3_Test_VersionPopup(int* countdown) {
-    const VersionWidget& v = HudManager::getInstance().getVersionWidget();
-    if (countdown) *countdown = v.testCountdown();
-    return v.popupKind();
+// The startup message owed (SystemMessages::Startup: 0 none, 1 update,
+// 2 updated, 3 welcome), and the one the Dash's card drew last into *onCard.
+__declspec(dllexport) int MXBMRP3_Test_StartupMessage(int* onCard) {
+    if (onCard) *onCard = static_cast<int>(HudManager::getInstance().getDashHud().testShownMessage());
+    return static_cast<int>(SystemMessages::getInstance().pendingStartup());
 }
 // A HUD the frame holds back (HudManager::isHeldBack), by harness id: 1 held
 // back, 0 drawn by its own visibility, -1 no such HUD.
@@ -105,11 +103,18 @@ __declspec(dllexport) int MXBMRP3_Test_HudHeldBack(const char* name) {
     }
     return -1;
 }
-__declspec(dllexport) void MXBMRP3_Test_VersionPopupAdvance(int ms) {
-    HudManager::getInstance().getVersionWidget().testAdvancePopup(static_cast<float>(ms));
+// 1 while the Dash, switched off, is shown for a message (DashHud::isBorrowed).
+__declspec(dllexport) int MXBMRP3_Test_DashBorrowed() {
+    return HudManager::getInstance().getDashHud().isBorrowed() ? 1 : 0;
 }
-__declspec(dllexport) void MXBMRP3_Test_VersionPopupDismiss() {
-    HudManager::getInstance().getVersionWidget().testDismiss();
+// Settings > Updates on or off ("Updated to" borrows the Dash only while on).
+__declspec(dllexport) void MXBMRP3_Test_UpdateCheckEnabled(int on) {
+    UpdateChecker::getInstance().setEnabled(on != 0);
+}
+
+// Time on screen for the Dash's startup message, without waiting it out.
+__declspec(dllexport) void MXBMRP3_Test_StartupMessageAdvance(int ms) {
+    HudManager::getInstance().getDashHud().testAdvanceMessage(static_cast<float>(ms));
 }
 
 // One click on the active tab's Reset: arms "Confirm?" and resets nothing.

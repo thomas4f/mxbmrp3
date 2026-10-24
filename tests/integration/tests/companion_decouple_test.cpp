@@ -393,64 +393,6 @@ TEST_CASE("companion routing: the helmet overlay never renders on the companion"
     host.shutdown();
 }
 
-// The Director tab's "Visible" row edits the FOCUSED surface.
-//
-// Found while investigating the helmet report, and never reported by anyone: this
-// row called setVisible() unconditionally, i.e. the GAME flag, whichever window the
-// click landed in. On the companion that means the widget you just clicked "off"
-// stays on screen, and the row's own label reports the other surface's state --
-// exactly the helmet symptom, on a different control.
-//
-// Unlike the helmet, DirectorWidget IS an ordinary positioned widget, so the fix is
-// to decouple properly rather than to exclude it. Both now route through
-// SettingsHud::toggleHudOnActiveSurface().
-//
-// Driven through the REAL click path (hit-test -> dispatchRegion), because the bug
-// lived in the dispatch, not in the widget: calling a setter directly from the test
-// would exercise the half that was never broken.
-TEST_CASE("companion routing: the Director visible row edits the focused surface") {
-    PluginHost host(dllPath());
-    REQUIRE(host.loaded());
-    REQUIRE_MESSAGE(host.hasDirectorSurfaceHooks(),
-                    "Director surface hooks not exported (test build?)");
-    host.startup("Z:\\tmp\\mxbmrp3-tests\\companion_director\\");
-    host.session(/*session=*/1, /*numLaps=*/0);
-
-    host.setDisplayTarget(2 /*BOTH*/);
-    host.companionWindow(true);
-    host.showSettings(true);
-    host.setActiveTab("Director");
-    host.draw();
-
-    const auto before = host.directorWidgetVisibility();
-    // Computed first: doctest decomposes the expression it is handed and rejects a
-    // top-level && ("Expression Too Complex Please Rewrite As Binary Comparison").
-    const bool widgetPresent = (before.game >= 0) && (before.companion >= 0);
-    REQUIRE_MESSAGE(widgetPresent,
-                    "DirectorWidget missing — nothing to toggle, so this case cannot "
-                    "discriminate");
-
-    // Click as though the menu is on the COMPANION window.
-    host.forceActiveSurface(1 /*Companion*/);
-    host.draw();
-    REQUIRE_MESSAGE(host.clickDirectorHudVisible(),
-                    "no DIRECTOR_HUD_VISIBLE region on the Director tab — the row moved "
-                    "or stopped being emitted, so nothing was clicked");
-
-    const auto after = host.directorWidgetVisibility();
-    CHECK_MESSAGE(after.companion != before.companion,
-                  "clicking the Director visible row on the COMPANION surface did not "
-                  "change its companion visibility — the handler is editing the game "
-                  "flag again (SettingsHud::toggleHudOnActiveSurface)");
-    CHECK_MESSAGE(after.game == before.game,
-                  "clicking on the companion surface changed the GAME visibility — the "
-                  "two surfaces are meant to decouple");
-
-    host.forceActiveSurface(0 /*Game*/);
-    host.companionWindow(false);
-    host.shutdown();
-}
-
 // A HUD excluded from the companion must not report itself visible off a companion
 // flag that no longer reaches any renderer.
 //

@@ -20,8 +20,7 @@
 //   3. a hole in the sector data falls the WHOLE field back to per-lap, because mixed
 //      resolutions would rank one rider's sector against another's lap.
 //
-// The default is OFF, so the per-lap rendering (and stripchart_parity_test's golden
-// primitive checksums) is untouched.
+// The default is ON (a fresh install plots races per sector; the last case pins it).
 // ============================================================================
 #include "doctest.h"
 #include "integration_main.h"
@@ -167,5 +166,32 @@ TEST_CASE("charts: sector points are ignored outside a race") {
     CHECK_MESSAGE(s.pointsPerLap == 1, "practice must stay per-lap even with sector points on");
     CHECK(s.points == 2);
 
+    host.shutdown();
+}
+
+TEST_CASE("charts: a fresh install plots races at sector resolution") {
+    // No settings file: the constructor default (ELEM_DEFAULT) decides.
+    DeleteFileA("Z:\\tmp\\mxbmrp3-tests\\chart_sectors_fresh\\mxbmrp3\\mxbmrp3_settings.ini");
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\chart_sectors_fresh\\");
+    host.eventInit("TestTrack", "Alice");
+    host.raceEvent("TestTrack");
+    host.session(RACE, /*numLaps=*/10, /*lengthMs=*/0);
+    host.addEntry(10, "Alice");
+    host.addEntry(22, "Bob");
+    host.draw();
+    host.spectateVehicles({ { 10, "Alice" }, { 22, "Bob" } }, /*curSelectionIndex=*/0);
+    for (int lap = 1; lap <= 2; ++lap) {
+        host.raceLap(RACE, 10, lap, 90000, /*best=*/1, /*split0=*/30000, /*split1=*/61000);
+        host.raceLap(RACE, 22, lap, 92000, /*best=*/1, /*split0=*/31000, /*split1=*/62000);
+    }
+    host.classify(RACE, 200000, {
+        { .num = 10, .best = 90000, .laps = 2, .gap = 0 },
+        { .num = 22, .best = 92000, .laps = 2, .gap = 4000 },
+    });
+    const PluginHost::ChartSeries asShipped = host.chartSeries(/*sectorPoints=*/-1);
+    CHECK(asShipped.pointsPerLap == SECTORS);
+    CHECK(asShipped.points == 2 * SECTORS);
     host.shutdown();
 }

@@ -3,6 +3,7 @@
 // On-screen stats widget — shows session stats for current bike/track combo
 // ============================================================================
 #include "stats_hud.h"
+#include "default_slots.h"
 #include "speed_widget.h"
 #include "../core/plugin_data.h"
 #include "../core/hud_manager.h"
@@ -523,12 +524,12 @@ void StatsHud::resetToDefaults() {
     m_bVisible = false;
     m_bShowTitle = true;
     setTextureVariant(0);
-    m_fBackgroundOpacity = 0.80f;
+    m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setScale(1.0f);
     m_visibilityMode = VisibilityMode::ALWAYS;
     m_showLap = true;
     m_showSession = true;
     m_showAllTime = false;
-    setPosition(cellsX(133), cellsY(53));
+    setPosition(DefaultSlots::rightColumnX(DefaultSlots::NARROW_CELLS), DefaultSlots::rightColumnY());
     setDataDirty();
 }

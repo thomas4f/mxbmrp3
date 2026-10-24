@@ -209,6 +209,7 @@ struct TelemetryRow {
     float suspVelFront = 0.0f, suspVelRear = 0.0f;  // m/s
     int   rpm = 0;
     float throttle = 0.0f;
+    float frontBrake = 0.0f;                      // 0..1
     float steerTorque = 0.0f;                     // Nm
     // Per-wheel speed; NaN (the default) mirrors `speed` — grounded, rolling,
     // no slip. Set explicitly to author wheelspin (rear > speed) or a brake

@@ -4,6 +4,7 @@
 // ============================================================================
 #include "input_manager.h"
 #include "ui_viewport.h"
+#include "cursor_idle.h"
 #include "../diagnostics/logger.h"
 
 // ui_viewport.h is deliberately too pure to include plugin_constants.h (that
@@ -16,7 +17,8 @@ static_assert(static_cast<float>(UiViewport::kAspectW) / UiViewport::kAspectH
 #include "../core/hud_manager.h"
 #include "../core/ui_config.h"
 #include "../core/companion_window.h"
-#include "../hud/version_widget.h"
+#include "../hud/breakout_hud.h"
+#include "../hud/toggle_strip_widget.h"
 #include <windows.h>
 
 InputManager& InputManager::getInstance() {
@@ -37,7 +39,7 @@ void InputManager::initialize() {
     m_bWasCursorVisible = false;
     m_fLastMouseX = 0.0f;
     m_fLastMouseY = 0.0f;
-    m_framesSinceLastMovement = 0;
+    m_lastCursorActivity = {};
     m_framesSinceFocusLost = 0;
 
     m_bInitialized = true;
@@ -59,7 +61,7 @@ void InputManager::shutdown() {
     m_bWasCursorVisible = false;
     m_fLastMouseX = 0.0f;
     m_fLastMouseY = 0.0f;
-    m_framesSinceLastMovement = 0;
+    m_lastCursorActivity = {};
     m_framesSinceFocusLost = 0;
     m_leftButton = MouseButton();
     m_rightButton = MouseButton();
@@ -92,7 +94,7 @@ void InputManager::updateFrame() {
     if (m_testMouseOn) {
         m_bCursorEnabled = true;
         m_bWasCursorEnabled = true;
-        m_bShouldShowCursor = true;
+        m_bShouldShowCursor = !CursorIdle::hides(m_testCursorIdle ? CursorIdle::HIDE_MS : 0, isCursorHeld());
         m_cursorPosition.x = m_testMouseX;
         m_cursorPosition.y = m_testMouseY;
         m_cursorPosition.isValid = true;
@@ -433,8 +435,8 @@ void InputManager::updateCursorVisibility() {
 
     // Always show cursor when settings menu is open or easter egg game is active
     if (HudManager::getInstance().isSettingsVisible() ||
-        HudManager::getInstance().getVersionWidget().isGameActive()) {
-        m_framesSinceLastMovement = 0;
+        HudManager::getInstance().getBreakoutHud().isGameActive()) {
+        m_lastCursorActivity = std::chrono::steady_clock::now();
         m_bShouldShowCursor = true;
         m_fLastMouseX = m_cursorPosition.x;
         m_fLastMouseY = m_cursorPosition.y;
@@ -451,7 +453,6 @@ void InputManager::updateCursorVisibility() {
         m_fLastMouseX = m_cursorPosition.x;
         m_fLastMouseY = m_cursorPosition.y;
 
-        m_framesSinceLastMovement = 0;
         m_bShouldShowCursor = false;
 
         // The pointer is hidden, so it must also be non-interactive: an invisible
@@ -475,7 +476,7 @@ void InputManager::updateCursorVisibility() {
 
     // While visible, keep using the small floor so the cursor stays responsive.
     // While hidden, require the larger (INI-configurable) activation threshold so a
-    // tiny bump doesn't instantly pop the cursor + settings button into view.
+    // tiny bump doesn't instantly pop the cursor + Toggles strip into view.
     float threshold = m_bShouldShowCursor
         ? MOVEMENT_THRESHOLD
         : UiConfig::getInstance().getCursorActivationThreshold();
@@ -486,20 +487,25 @@ void InputManager::updateCursorVisibility() {
 
     if (hasMoved || hasClicked) {
         // Mouse moved or clicked - reset timer and show cursor
-        m_framesSinceLastMovement = 0;
+        m_lastCursorActivity = std::chrono::steady_clock::now();
         m_bShouldShowCursor = true;
         m_fLastMouseX = m_cursorPosition.x;
         m_fLastMouseY = m_cursorPosition.y;
     }
-    else {
-        // Mouse hasn't moved or clicked - increment timer
-        m_framesSinceLastMovement++;
-
-        // Hide cursor after timeout
-        if (m_framesSinceLastMovement >= CURSOR_HIDE_FRAMES) {
+    else if (m_bShouldShowCursor) {
+        // Mouse hasn't moved or clicked - hide cursor after timeout
+        const long long idleMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - m_lastCursorActivity).count();
+        if (CursorIdle::hides(idleMs, isCursorHeld())) {
             m_bShouldShowCursor = false;
         }
     }
+}
+
+bool InputManager::isCursorHeld() const {
+    // The strip shows only with the cursor, so hiding it under a pointer that is
+    // reading the icons would take the strip away mid-read.
+    return HudManager::getInstance().getToggleStripWidget().isHovered();
 }
 
 void InputManager::forceWindowRefresh() {

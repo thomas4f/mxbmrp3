@@ -62,7 +62,7 @@ gate fails the docs check:
 
 | Gate | What it covers |
 |---|---|
-| `fontgen` | `tools/fontgen/test.sh` - regenerates `RobotoMono-Regular.fnt` from the source `.ttf` and asserts it is structurally identical to the shipped font (cell height, per-glyph advances, atlas dims, inflate round-trip, mip-safe glyph gaps) |
+| `fontgen` | `tools/fontgen/test.sh` - the generator matches PiBoSo's fontgen on a baseline, and every shipped `.fnt` regenerates byte for byte with tabular digits |
 | `outlines2ttf` | `tools/fontgen/test_outlines2ttf.sh` - the outline-sheet importer (`outlines2ttf.py`: artwork `.ai`/`.pdf`/`.svg` -> `.ttf`, then fontgen -> `.fnt`). |
 | `themeslice` | `tools/themeslice/themeslice.py --selftest` - the theme slicer's **round trip**: cut a synthetic asymmetric master into 27 slices and require each to equal its region of the source (symmetric input cannot detect a transposed cell, which is the failure that ships two corners wrong). |
 | `analytics-selftest` | `tools/analytics_report.py --selftest`. Needs pandas + markdown-it-py (`./tools/install_deps.sh analytics`), else SKIPs |
@@ -72,7 +72,7 @@ gate fails the docs check:
 Alongside the test layers, CI also runs **cppcheck** static analysis
 (`.github/workflows/tests.yml`, over `mxbmrp3/` with vendored code excluded). It is
 **blocking**: the committed baseline is at zero findings, so any new one FAILS the
-build. It was report-only until that baseline was actually driven to zero -
+build. It was report-only until that baseline was driven to zero -
 findings nobody has to act on are findings nobody reads, and two error-severity
 ones had accumulated unnoticed in job summaries (a `danglingLifetime` in
 `PluginThread::flush()` that turned out to mark a real hang, and an out-of-bounds
@@ -154,7 +154,7 @@ the failure happened:
   plus `-B` prevents it; a missing `db-cpp/` fails loudly.
 - **Partial database.** The subtler one: a run that extracted **42 of 444 files**
   reported `no findings` and exited 0, indistinguishable from a real pass - the
-  code the finding lived in simply wasn't in the database. The script now reads
+  code the finding lived in wasn't in the database. The script now reads
   CodeQL's own scanned-file count and fails below a floor (a healthy run scans
   ~307). Raise the floor as the tree grows; never lower it to make a run pass.
 
@@ -219,7 +219,7 @@ assert (see any `*_test.cpp`).
    edge case (a reused race number, a spurious lead, a DSQ) - but they're only as
    correct as *our reading* of the API. A **real captured tape** replayed
    headlessly (`replayTape()`) is the fidelity anchor: it proves the synthetic
-   inputs match what the game actually sends. Keep both - they catch different
+   inputs match what the game sends. Keep both - they catch different
    failures. A note on golden masters, which have a deserved reputation for being
    brittle and opaque: ours assert **specific, meaning-bearing values
    cross-checked against the session log** (this rider won, this gap, this
@@ -286,9 +286,10 @@ game API is an integration test instead. The authoritative TU list is
 - `test_twitch_irc.cpp` - `core/twitch_irc.h`: IRC parsing, moderation, CP1252, emotes, wrap
 - `test_youtube_chat.cpp` - `core/youtube_chat.h` against `tests/fixtures/youtube/`
 - `test_hold_repeat.cpp` - `core/hold_repeat.h`
+- `test_cursor_idle.cpp` - `core/cursor_idle.h`
 - `test_text_edit.cpp` - `core/text_edit.h`
 - `test_hotkey_names.cpp` / `test_slider_control.cpp` - hotkey names fit; slider mapping
-- `test_system_messages.cpp` - `core/system_messages.h`: the toast queue and which startup popup is owed
+- `test_system_messages.cpp` - `core/system_messages.h`: the toast queue and which startup message is owed
 - `test_achievements.cpp` - `core/achievements.h` + `core/exploration_signals.h`: the catalogue's own invariants (unique ids, ascending thresholds within a row's tier count, a `%s` in every tiered template, a sentence for every one-shot, hidden rows on the Hidden page), the removal rule (every metric and every signal feeds exactly one row, every disabled id is a real row), tier stepping, one-shot tags, the step-relative progress bar, the km/h/s/count formatting, and `docs/achievements.md`, which it GENERATES from the table and diffs against the committed copy
 - `test_analytics_remote_config.cpp` - the remote sampling cost lever (`parseFullSample`/`shouldSendFull`): fails open to full, deterministic 0.0/1.0 endpoints
 - `test_analytics_endpoint.cpp` - App-Key → Aptabase ingest-region routing (unknown/self-hosted → "" = no send)
@@ -305,7 +306,8 @@ game API is an integration test instead. The authoritative TU list is
 - `test_render_frame_buffer.cpp` - the plugin-worker-thread triple buffer: the producer never writes the displayed slot; `acquire()` returns the latest published frame
 - `test_crash_stack_format.cpp` - the crash handler's backtrace string formatting + the whole-frame `MAX_STACK_CHARS` budget
 - `pixel_text_test.cpp` - `core/pixel_text.h`, the missing-assets warning's quad alphabet.
-- `test_render_batch.cpp` - the shared batcher (`core/render_batch.h`), extracted from the D3D11 backend so the GL backend consumes the same batches.
+- `test_render_batch.cpp` - the GL/D3D11 shared batcher (`core/render_batch.h`).
+- `test_render_layers.cpp` - HUD stacking (`core/render_layers.h`).
 - `test_gl_state_fingerprint.cpp` - the comparison half of the GL state-leak check (`core/gl_state_fingerprint.h`).
 - `test_hud_sw_renderer.cpp` - golden-frame sampling of the companion window's software renderer (`core/hud_sw_renderer.cpp` compiled natively): quad fill, per-quad alpha, the texel×color modulate (white-icon tinting), `.fnt` text against a real shipped font, and the scale-viewport mapping.
 - `test_render_asset_decode_mips.cpp` - the glyph-atlas mip chain (`hudassets::buildFntMips`), which all three renderers sample text from, so a fault here is a fault in every backend at once.
@@ -314,6 +316,7 @@ game API is an integration test instead. The authoritative TU list is
 - `test_segment_cumulative.cpp` - cumulative custom-segment timing: a contiguous run aggregates like the official splits; on-sector identity; isolated-arc fallback
 - `test_blue_flag_detect.cpp` - the blue-flag/lapping proximity core (`core/blue_flag_detect.h`): start/finish wraparound, directionality, the deliberately asymmetric backmarker-vs-lapper eligibility, stale-sample rejection, the first-lapper-wins ordering the director depends on, and output clearing (the containers are reused every rebuild).
 - `test_roost_detect.cpp` - `core/roost_detect.h`, the pairwise proximity core behind Roost (Side by Side no longer has a row, but is still classified - it is how the detector says "alongside, not behind").
+- `test_wrong_way_detect.cpp` - `core/wrong_way_detect.h`: a repeated sample keeps the flag.
 - `test_battle_groups.cpp` - the battle-group partitioning core (`core/battle_groups.h`) behind the director's battle scoring and the overlay battle panel: adjacency chaining (each consecutive delta within threshold, regardless of total spread), the strictly-positive-delta rule that keeps the pre-first-split field (everyone at gap 0) from fusing into one giant group, lap boundaries never chaining, the maxLeaderPos group filter, and position-sort independence from input order.
 - `test_lap_timer.cpp` - the display rider's live lap-timer state machine (`core/lap_timer.h`): S/F detection, the grid-start grace and its exits, split resync, invalidation.
 - `test_delta_color.cpp` - the one colour rule for a time delta (`deltaColorSlot`): ahead, behind, exactly even.
@@ -339,7 +342,8 @@ game API is an integration test instead. The authoritative TU list is
 - `test_radar_fade.cpp` - the radar's auto-hide fade (`hud/radar_fade.h`): how visible the radar is given who is nearby.
 - `test_digit_roll.cpp` - Motion's digit roll (`hud/digit_roll.h`).
 - `test_motion.cpp` - Motion's timing (`core/motion.h`): fades start settled, turn round mid-way, and step at most 50 ms a frame.
-- `test_peak_marker.cpp` - the shared "max marker" state machine (`hud/peak_marker.h`), which replaced six character-for-character copies across LeanWidget (lean and steer, both sides), BarsWidget and RumbleHud.
+- `test_impact_vignette.cpp` - the vignette's envelope (`core/impact_vignette.h`).
+- `test_peak_marker.cpp` - the shared "max marker" state machine (`hud/peak_marker.h`), which replaced six copies across LeanWidget, BarsWidget and RumbleHud.
 - `test_standings_gap_plan.cpp` - the standings gap-column decision (`hud/standings_gap_plan.h`): which value each cell shows, in which style, with which tint.
 - `test_thread_detach_grace.cpp` - the spin-then-detach teardown POLICY (`core/thread_detach_grace.h`), shared by the three singletons that own a worker thread.
 - `test_text_wrap.cpp` - the settings tooltip box's greedy word wrap (`hud/settings/text_wrap.h`), extracted from a lambda in `rebuildRenderData()` that wrapped and emitted in one loop.
@@ -375,7 +379,6 @@ game API is an integration test instead. The authoritative TU list is
 - `gauge_square_test.cpp` - a gauge's dial stays circular while its box lands on the cell lattice.
 - `gear_geometry_test.cpp` - the gear digit is sized from the FONT and capped by its box, so a raised `uiLineHeight` gives it air instead of a bigger glyph that runs off the panel.
 - `center_stack_test.cpp` - the three centred top panels do not overlap each other or the screen edge.
-- `corner_button_test.cpp` - the settings gear and director camera do not overlap and stay on screen.
 
 Exactly one TU defines the doctest impl + `main`
 (`DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN`); every other TU just `#include "doctest.h"`
@@ -452,6 +455,7 @@ without a row here, so a new test can't land invisibly:
 | `smoke_test.cpp` | lifecycle survives: Startup → DrawInit → Draw → Shutdown |
 | `race_test.cpp` | standings order (from the classification array, not insertion), gaps (`Leader`/`+1.500`), best-lap formatting, an overtake re-derive, a DSQ (state + event log) |
 | `sessions_test.cpp` | across practice→race→race2: race vs non-race gap semantics, a penalty, a lapped rider, the **reused-race-number stale-state** trap, and the #240 spurious-lead guard |
+| `reference_caption_test.cpp` | Title rows name the reference lap |
 | `racenum_reuse_test.cpp` | **raceNum reuse inherits NOTHING** (the `PerRider<>` registry): rich per-rider state on every registered surface (gap, lap series, live-gap active bit, real-time gap, split/S-F references) → `RaceRemoveEntry` → re-add the same number → every surface reads fresh |
 | `lap_test.cpp` | per-rider last lap + the **fastest-lap chip/event**: appears on a session best, moves when beaten, final-lap handling |
 | `sectors_test.cpp` | best-sectors board: per-sector fastest-first rider ranking derived from lap splits (non-race) |
@@ -481,16 +485,18 @@ without a row here, so a new test can't land invisibly:
 | `card_anchor_sweep_test.cpp` | every HUD's content anchors to **the box that owns it** - the card for body content, the title band for the caption - never to the outer panel. |
 | `crash_widget_test.cpp` | the crash widget's **streaming tally outlives every boundary that scopes the ordinary crash count**. |
 | `rpm_widget_test.cpp` | the RPM strip **spans Gear + Speed, turns red exactly at the shift point** and flashes its red ones on the limiter. |
+| `toggle_strip_test.cpp` | Toggles strip: Settings icon, **mirrors the sidebar's switches**, Director too, outlives its Widgets switch, inherits a hidden Settings icon, folds, previews. |
 | `render_probe_test.cpp` | the **render probe emits the primitive it claims to**: `renderProbeType` 0 adds N *untextured* quads, type 1 adds none, a pinned `renderProbeSprite` is the only sprite in the frame, and an **out-of-range pin falls back to cycling rather than to sprite 0**. |
-| `about_tab_test.cpp` | the **About page opens from the footer, not the tab list**, and the **Updates tag follows the available version**. |
+| `about_tab_test.cpp` | **About opens from the footer, not a tab**; **Updates tag follows the available version**; **5 clicks: Breakout** |
 | `whats_new_test.cpp` | the **"New" markers on settings tabs and rows appear, dismiss by their own rule, and stay dismissed**. |
 | `ink_legibility_test.cpp` | **a caption drawn on a coloured slab clears the plugin's own luma threshold**, on the Notices slabs and the Gap Bar's figure over its fill. |
-| `drop_shadow_test.cpp` | the **settings panel emits no shadow strings**, and the suppression is BEHAVIOUR rather than a stored preference. |
+| `drop_shadow_test.cpp` | the **settings panel emits no shadow strings**, as behaviour, not a stored preference. |
 | `director_test.cpp` | auto-director **battle detection** splits two close groups at the gap break; director advisory inert by default |
 | `director_lock_test.cpp` | auto-director **rider lock (hold)** release rules: the lock survives ordinary standings churn but is released when a new session (session-generation bump) resets the field |
 | `director_broadcast_test.cpp` | auto-director **broadcast measurement**: replays a real tape with an injected sim-clock (from tape timestamps) so the wall-clock shot pacing plays out, then parses the director's own cut log to report cut count/rate, shot-length spread, shot-type + camera mix, and per-rider screen time - asserting it lands in a plausible broadcast band and rotates across the field (not glued to the leader). |
 | `director_home_test.cpp` | **"Max shot = Off"**, the forced-rotation switch: with it off the director never cuts on a timer - it holds the broadcaster's own rider through a quiet race, still lets a story take the camera, and returns *home* when the story ends. |
 | `director_events_test.cpp` | director **transparency events**: shot decisions and state changes reach the event log as Director-typed entries, state transitions carry the director button's state colors (cuts keep the per-type default), and they're emitted **unconditionally** - the in-game toggle and the overlay filter at *display* time (raw-data contract). |
+| `event_log_pb_test.cpp` | player **PB log rows**: one per lap; none on a first, rival or invalid lap |
 | `theme_override_test.cpp` | **Per-HUD panel-theme override clears when absent**: the key is captured sparsely, so reset and entering a profile that carries no theme key must UNPIN the HUD -- while a set override still survives a save/load round trip |
 | `reset_test.cpp` | **Reset All scope** (#212/#214): per-profile HUD settings revert to factory default, global sections (Rumble/Hotkeys) untouched. Per-TAB resets are `reset_tab_test.cpp`'s |
 | `reset_tab_test.cpp` | **Per-tab "Reset `<tab>`" completeness**: for every settings tab, clicks every control the tab emits, presses that tab's Reset, and requires the saved INI back at factory. |
@@ -500,14 +506,15 @@ without a row here, so a new test can't land invisibly:
 | `stats_test.cpp` | player **personal-best lap** persists to the stats JSON (faster-replaces-only) + top speed and the `finiteOrZero` +Inf write guard. |
 | `hotkey_capture_test.cpp` | **The hotkey-capture lockout.** Clicking a bind row arms a capture, and an armed capture deliberately swallows the whole keyboard (`HotkeyManager::update` routes into `updateCapture` and `processHotkeys` returns early) so that any key, bound or not, can be chosen. |
 | `achievements_test.cpp` | **Achievements** end to end: tiers awarded at the record point with one toast each and never re-toasted; a pre-achievements stats file granted silently with ONE summary toast; `visible=0` earns but queues nothing; the rows through the real detectors |
-| `messages_test.cpp` | **System messages**: hotkey toasts, the hide-all card, startup popups and their countdown, Reset's Confirm |
+| `messages_test.cpp` | **System messages**: hotkey toasts, the hide-all card, startup messages on the Dash, Reset's Confirm |
 | `tooltip_coverage_test.cpp` | every settings row on every tab has a **tooltip with text** |
 | `ui_icons_off_test.cpp` | **UI icons off** draws text |
 | `settings_heavy_steps_test.cpp` | **heavy settings steps run once**: no held repeat; Spotter lists read per open |
-| `hidden_input_test.cpp` | A HUD the frame is not drawing **takes no input**: the hide-all hotkey and the Widgets toggle hide at draw time and leave the visibility flags alone, which is what the input pass read, so a hidden HUD could still be right-dragged and its click targets still fired whenever the cursor was up. |
+| `hidden_input_test.cpp` | A HUD the frame is not drawing **takes no input**: the hide-all hotkey and the Widgets toggle hide at draw time, so a hidden HUD could still be right-dragged and its click targets fired. |
+| `hud_stack_test.cpp` | The last HUD dragged draws **on top**, under the menu; saved. |
 | `exploration_test.cpp` | The **exploration and hidden achievements** (`core/exploration_stats.h`) end to end: a startup notices a user pack and a styled `custom.css` and grants them silently with one summary card; Night Owl, Anniversary and the day count on the injected clock; a hand-edited settings or stats file earns its row by fingerprint; the rest each from their own real edge |
 | `sprite_order_test.cpp` | the **sprite-order self-check** (`HudManager::verifySpriteRegistrationOrder`, run at the end of `setupDefaultResources`): discovery hands out absolute 1-based sprite indices and registration pushes file names in what must be the same order, two walks in different files mirroring each other's block arithmetic - a skew is silent (everything draws, with another asset's art). |
-| `pb_scope_test.cpp` | the **all-time-PB notice follows the active PB scope**, not the per-bike write: under the default `PBScope::CATEGORY` the reference is the fastest lap across the whole **class**, so a first lap on a second bike in that class stores a PB for that bike yet must NOT fire the green notice unless it beats the class best (`PersonalBestUpdate::beatsScopedBest`); a first lap in a *different* class still notifies |
+| `pb_scope_test.cpp` | the **all-time-PB notice follows the active PB scope**, not the per-bike write: under the default `PBScope::CATEGORY` the reference is the fastest lap across the whole **class**, so a second bike's slower first lap stores its PB yet must NOT notify (`PersonalBestUpdate::beatsScopedBest`); a new class still does |
 | `prestige_test.cpp` | **the prestige trade**: refused until the Platinum Sweep is earned (the act re-checks, so the button being drawn is not the rule), with **developer mode as a second key** that opens both the act and the badge widget; it zeroes every achievement tier and the lifetime counters they read, **keeps the personal bests** with an honest `pbCount` of 0, and the level survives the next load. |
 | `preview_test.cpp` | **the positioning preview**: a HUD that draws nothing until something happens fills itself with placeholder content while its own settings tab is open, so it can be dragged into place - and a **disabled** HUD does not, since opening a tab is how you reach its switch rather than a request to see it. |
 | `blocked_notice_test.cpp` | **a panel that cannot work says why, in its normal footprint**: Friends names Steam off / not available (red headline, muted hint) and keeps saying it while its settings tab is open, and Rumble names rumble off / controller missing in the graph's own box. |
@@ -516,12 +523,12 @@ without a row here, so a new test can't land invisibly:
 | `fuel_stats_test.cpp` | **the fuel achievements**: litres burnt accumulate from the tank level FALLING (a refuel re-references rather than counting, and a new bike's full tank is not a burn against the last one's empty one), the burn rides the odometer's ~100m flush so an evaluation never lands on a 100Hz path, Long Walk Home is the EDGE of the tank going dry rather than every tick spent there, and Running on Fumes reads the level at the flag. |
 | `proximity_test.cpp` | **Roost end to end**: the seconds come off the real `RaceTrackPosition` batch through PluginData's geometry pass into StatsManager's accumulation - not off a HUD or the spotter, both of which a player can switch off. |
 | `fmx_test.cpp` | **FMX trick detection + scoring** through the real RunTelemetry path under the injectable FMX clock: hop, full-pitch BACKFLIP, landing grace, chain banking and crash-during-grace (state via `MXBMRP3_Test_FmxState`). |
-| `records_parse_test.cpp` | records provider (MXB-only): canned CBR / MXB-Ranked responses through the **real parse path** (`MXBMRP3_Test_RecordsParse`) - field mapping incl. seconds→ms + date truncation, malformed/truncated/empty JSON rejected without crashing (zero records), absurd values handled sanely (multi-KB names truncated, negative/wrong-typed times, >MAX_RECORDS capped); plus the **fetch worker** via the stub seam (`MXBMRP3_Test_RecordsSetFetchStub`: sleep + canned response, no network) completing through the real thread, and **shutdown mid-fetch** pinning the join contract - `HudManager::clear()` joins the fetch thread *before* nulling the cached HUD pointers the worker touches (TimingHud) |
+| `records_parse_test.cpp` | records provider (MXB-only): canned CBR / MXB-Ranked responses through the **real parse path** (`MXBMRP3_Test_RecordsParse`) - field mapping incl. seconds→ms + date truncation, malformed/truncated/empty JSON rejected without crashing (zero records), absurd values handled sanely (multi-KB names truncated, negative/wrong-typed times, >MAX_RECORDS capped); plus the **fetch worker** via the stub seam (`MXBMRP3_Test_RecordsSetFetchStub`, no network) completing through the real thread, **shutdown mid-fetch** pinning the join contract (`HudManager::clear()` joins the fetch thread *before* nulling the cached HUD pointers the worker touches); the **category dropdown** (open, pick, close) |
 | `version_test.cpp` | update-checker version ordering (numeric, not lexicographic); plus the load-time **API handshake** - `GetModID`/`GetModDataVersion`/`GetInterfaceVersion` resolve under the exact export names the game looks up and answer what `mxb_api.cpp`'s static_asserts agreed to |
 | `updater_test.cpp` | update install pipeline (backup→extract→verify→**rollback**) + **locked-file retry**: aborts intact when the target is held; a transient lock is recovered by the move retry |
 | `settings_migration_test.cpp` | a version-mismatched INI (missing / `=4` / `=99` version line) keeps the user's HUD settings instead of silently wiping them |
 | `settings_tab_test.cpp` | the settings menu **remembers its open tab**: the focused tab round-trips through save→load (by name, in `[Profiles] activeTab`), and an unknown/unavailable tab name is ignored (no empty tab) |
-| `settings_sections_test.cpp` | every section `captureToCache()` produces is actually **serialized** to the INI (via `MXBMRP3_Test_CapturedSections`) - belt-and-suspenders guard on the per-HUD serializer registry (the old capture/apply/`hudOrder` "third hardcoded list" / FriendsHud silent-revert trap, now structurally one list) |
+| `settings_sections_test.cpp` | every section `captureToCache()` produces is **serialized** to the INI - belt-and-suspenders guard on the per-HUD serializer registry |
 | `settings_idempotency_test.cpp` | **apply-path coverage (defaults)**: `save→load→save` is byte-identical (and a second round too), forcing `applyProfile` to read back every serialized enum/float/int/bitmask at its default and re-capture it - an asymmetric parse/clamp/format bug diverges the files |
 | `settings_malformed_test.cpp` | **one malformed INI value fails alone**: keys after a value the applier cannot parse still apply; only the bad key defaults (logged), not the rest of the panel |
 | `pb_gap_test.cpp` | **live gap to PB is PluginData's**: driven by the real S/F, split and lap callbacks against the central lap timer -- no reference before the first PB, then the right sign and size on the next lap |
@@ -539,27 +546,32 @@ without a row here, so a new test can't land invisibly:
 | `asset_pack_test.cpp` | An asset pack (gamepad pad, pit board) is selected **by name**, and an unknown name degrades **without forgetting**. |
 | `pack_skin_test.cpp` | A pack SKIN (`base = <pack>` in the `[pack]` section) layers over its base: missing sprites and omitted geometry keys resolve from the base pack, own files and keys win - the spotter voice pack rule applied to gamepad and pit board packs, which is what makes a reskin two files instead of a copy of seventeen. |
 | `gauges_migration_test.cpp` | Custom dial art drawn BEFORE gauges packs survives the upgrade. |
+| `dash_test.cpp` | Dash: the shared notice, pages, the +/- cycle |
+| `default_positions_test.cpp`, `spotter_position_test.cpp` | Default spots clear of shipped-on HUDs; v11, v12 moves |
 | `delta_trace_test.cpp` | Delta Trace: no reference plots nothing; the line covers exactly the half lap ridden, restarts with the next lap over the previous one, keeps it when riding back, holds through the line window, marks the rider (moving without a rebuild), recovers after the out-lap and a new session, shows the lap just completed in the pits, empties with a new session; no quad is wound the way the game culls |
 | `map_lap_delta_test.cpp` | Map **lap delta**: Off tints nothing; On tints the stretch ridden green where gaining and red where losing, in many shades; the previous lap stays ahead of the rider; a new session drops the tint with its reference |
-| `motion_test.cpp` | **Motion**: Off and every settled frame are exactly the frame drawn without it; a hidden HUD fades out from its last frame, a shown one fades in, a settings tab body fades on a switch; the Map's outline fades ahead of its fill |
+| `motion_test.cpp` | **Motion**: Off and settled frames are the frame drawn without it; hidden HUDs fade out, shown ones in, tab bodies on a switch; the Map's outline leads its fill |
+| `impact_vignette_test.cpp` | the **impact vignette** draws only for a hard hit, on, on track |
+| `glow_test.cpp` | the **glow** behind signal lights, its INI scales, live switch |
+| `helmet_lens_test.cpp` | the visor tint's **lens** profile |
 | `digit_roll_test.cpp` | **Digit roll** on the gear and trip meter: steps roll, carries too, jumps and Off switch |
 | `map_view_test.cpp` | Map views: zoomed, the track is cut at the map's edge and fades there (not zoomed, nothing fades); **Tilted** (zoomed only), far track is narrower; at Full range the map stays flat |
 | `map_render_test.cpp` | MapHud **world-ribbon cache is transparent**: a real 2D track emits non-empty, all-finite quads in every view mode, and default-view geometry is bit-for-bit reproducible across a detail round-trip and rotate/zoom visits; the detail **20-200% dial** has real range, **adaptive** mode normalizes quad count across track lengths (fixed mode scales with length), legacy `detail=AUTO\|HIGH\|LOW` INI values migrate to scale/adaptive; a degenerate 1D track never produces a non-finite vertex |
 | `theme_panel_padding_test.cpp` | **`[panel] padding-x/-y`** - the gap between a panel's border and its first glyph, which was the last unreachable number in the box model (with every border at 0 a panel still held its content 2 cells in, and no file could change it). |
-| `title_band_test.cpp` | **The caption row under every `[card]` switch combination** (restored post-port; header records the two adaptations). |
+| `title_band_test.cpp` | **The caption row under every `[card]` switch combination**. |
 | `box_terms_test.cpp` | **Every air term reaches an UNTHEMED panel.** The box model states eight terms and the settings menu documents all eight, but four - `titleMargin`, `titlePadding`, `contentMargin`, `contentPadding` - did nothing unless a theme was selected, which is not the default: `PanelBox::layoutPanel` collapsed the whole title/content BOX on "is there art to draw a border with" when only the border needs art, and `SettingsHud::cardPad*()` gated its content padding the same way, separately. |
 | `ui_scale_test.cpp` | **UI scale**: drawn = own Scale x UI scale, the INI keeps own, positions untouched. |
-| `center_stack_theme_test.cpp` | **The centre stack's stored-offset contract.** `[card] hud-content` must not move a panel's top edge (the Gap Bar slid when a skinner flipped it - its top was derived by subtracting a flag-gated padding from its stored offset); the Gap Bar's absolute top is one grid cell (the same root cause once computed it to y=0, top frame slice clipped, with both states agreeing); the three boxes do not overlap **unthemed** (the configuration the stored defaults are derived for); and a theme landing moves **no** top - the stored tops follow the `[Advanced]` built-in, not the theme (center_stack.h). |
+| `center_stack_theme_test.cpp` | **The centre stack's stored-offset contract.** `[card] hud-content` must not move a panel's top edge (the Gap Bar slid when a skinner flipped it - its top was derived by subtracting a flag-gated padding from its stored offset); the Gap Bar's absolute top is one grid cell (the same root cause once computed it to y=0, top frame slice clipped, with both states agreeing); the three share one top **unthemed** (the configuration the stored defaults are derived for); and a theme landing moves **no** top - the stored tops follow the `[Advanced]` built-in, not the theme (center_stack.h). |
 | `settings_layout_test.cpp` | **The settings panel's click-region surface as behaviour**: regions are hit-tested in emission order, so a converted control that swaps its arrow pair or drops its tooltip row is silently broken while rendering perfectly. |
 | `standings_layout_test.cpp` | **The plate number's two placement paths agree, and both are right.** Standings places row text via full rebuild and via the drag fast path; the plate nudge went into one path first (centred at rest, jumped high mid-drag), and the later glyph-centring move applied the offset **twice** with both paths agreeing about it - so the agreement case carries a correctness case beside it (inset < 2% of plate height, every row, tolerance an order under the ±9% failures it pins) |
 | `settings_button_theme_test.cpp` | **Every settings-footer button is a themed button**: a themed button is nine quads, a flat one is one, so "did this go through `addButtonQuad`" has an integer answer. |
-| `stripchart_parity_test.cpp` | **Per-primitive golden fingerprints of the four strip-chart HUDs** (Telemetry, Rumble, Performance, Session Charts): counts + position/colour/sprite/text checksums plus order-sensitive rolling hashes (z-order regressions reorder terms without moving a sum), each HUD isolated by rewriting `visible=` in the real saved INI. |
+| `stripchart_parity_test.cpp` | **Per-primitive golden fingerprints of the four strip-chart HUDs** (Telemetry, Rumble, Performance, Session Charts): counts + position/colour/sprite/text checksums plus order-sensitive rolling hashes, each HUD isolated. |
 | `settings_fit_test.cpp` | **The settings panel is tall enough for every tab, and the same height on all of them.** |
 | `settings_render_test.cpp` | the settings panel **draws content, and fits the screen, in all four corners of (theme on/off) x (developer mode on/off)** - the smoke test it did not have. |
 | `standings_row_band_test.cpp` | **A full-row band sits inside its card, at any amount of theme air.** Reported as "the highlight grows outside the content of the card way beyond where the text is": a band's span was `contentRowInsetX()` - frame border + card border - which was the row's true inset until `[panel]` padding started acting on a plan panel's card. |
 | `theme_geometry_test.cpp` | The settings panel's **theme-geometry contracts**, on the box-model surface (a previous test of this name pinned the pre-port chain; the hooks it drove stayed exported). |
 | `settings_surface_test.cpp` | **The settings panel measured against the panel beside it**, which is the question every other case here cannot ask: they all measure one panel against itself, and both bugs this pins were reported from a screenshot by someone comparing neighbours. |
-| `theme_palette_test.cpp` | The **three-step precedence** for colours and fonts - built-in default → theme → user override - which had no test of any kind: the Appearance tab builds its colour/font click regions BY HAND, so `MXBMRP3_Test_SettingsClickCycle` cannot reach them, and ColorConfig/FontConfig do not link into the unit suite. |
+| `theme_palette_test.cpp` | The **three-step precedence** for colours and fonts - built-in default → theme → user override: the Appearance tab builds its colour/font click regions BY HAND, out of `MXBMRP3_Test_SettingsClickCycle`'s reach. |
 | `palette_test.cpp` | The **Appearance palette and its contract with the shipped packs**: eight of the nine pit board / gamepad skin hues are palette entries under the SAME NAMES the packs are shown by, which is what lets a player match text to their board exactly rather than by eye. |
 | `pack_by_name_test.cpp` | **Every pack type names and stores itself the same way.** Two rules, both cross-type, both previously unenforced. |
 | `theme_icons_test.cpp` | **Theme icon overrides follow the selected theme.** |
@@ -920,8 +932,8 @@ instead of argued to: capture the affected scenes before and after and require
 emission order but not a single pixel. It is equally the way to review a change
 that is *supposed* to look different - the diff is the review artifact.
 
-**What it is not.** It is not asserted and not CI-gated: there are no committed
-baselines, so it proves nothing on its own the way `ctest` does. Treat it as an
+**What it is not.** It is not asserted or CI-gated: with no committed baselines
+it proves nothing on its own. Treat it as an
 instrument (like `run_tape_bench.sh`), and keep the baseline you diff against in
 the same session - a capture from a different toolchain or font revision is not a
 valid baseline.
@@ -945,11 +957,9 @@ than the tool:
   convert diff.png -fuzz 5% -trim -format '%wx%h%O\n' info:   # where, not how much
   ```
 
-  (The 4th version component would otherwise put a floor under every cross-branch
-  diff - it is stamped from `git rev-list --count HEAD`, so a branch and its base
-  always differ there. `companion_demo.sh` pins it via `MXBMRP3_VER_BUILD`, so
-  captures are directly comparable. Drive the window another way and that floor
-  comes back, ~185 px wherever the version shows.)
+  (`companion_demo.sh` pins the 4th version component, stamped from the commit
+  count, via `MXBMRP3_VER_BUILD`, so a branch and its base compare directly. Drive
+  the window another way and they differ by ~185 px wherever the version shows.)
 
 - **An async repaint can make a scene undiffable, and a fixed hold does NOT save
   you.** Something background repaints over the panel title, worth ~10,654 px.

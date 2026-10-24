@@ -1,24 +1,17 @@
 // ============================================================================
-// hud/version_widget_game.cpp
-// VersionWidget's hidden easter-egg mini-game (breakout): state machine,
-// physics, collision, and rendering. Split out of version_widget.cpp — the
-// game is ~70% of the widget's code but unrelated to version display (same
-// class, second TU; the standings/map HUDs use the same split pattern).
+// hud/breakout_hud.cpp
+// The hidden easter-egg mini-game (Breakout): state machine, physics,
+// collision, and rendering. See breakout_hud.h.
 // ============================================================================
-#include "version_widget.h"
+#include "breakout_hud.h"
 #include "../core/layout_config.h"
 
 #include <cmath>
 
-#include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
 #include "../core/input_manager.h"
 #include "../core/color_config.h"
 #include "../core/stats_manager.h"
-#include "../core/hud_manager.h"
-#if GAME_HAS_ANALYTICS
-#include "../core/analytics_manager.h"
-#endif
 #include "../handlers/draw_handler.h"
 
 using namespace PluginConstants;
@@ -39,10 +32,68 @@ namespace GameColors {
     constexpr unsigned long BACKGROUND = PluginUtils::makeColor(20, 20, 30, 240);  // Dark blue-gray with transparency
 }
 
-void VersionWidget::startGame() {
-    // Save original visibility state and ensure widget is visible for game
-    m_wasVisibleBeforeGame = m_bVisible;  // vis-gate: save/restore of the game toggle itself
-    m_bVisible = true;
+BreakoutHud::BreakoutHud() {
+    setDraggable(false);
+    m_bVisible = false;   // shown only while the game runs
+    m_bricks.fill(true);
+}
+
+bool BreakoutHud::handlesDataType(DataChangeType /*dataType*/) const {
+    return false;
+}
+
+void BreakoutHud::update() {
+    if (!m_gameActive) return;
+
+    // Ball launch / exit clicks
+    handleClickDetection();
+    if (!m_gameActive) return;   // the click ended the game
+
+    long long currentTimeUs = DrawHandler::getCurrentTimeUs();
+    float deltaTime = 0.0f;
+    if (m_lastUpdateTimeUs > 0) {
+        deltaTime = (currentTimeUs - m_lastUpdateTimeUs) / 1000000.0f;
+        // Clamp to prevent huge jumps (e.g., after pause/tab-out)
+        if (deltaTime > 0.1f) deltaTime = 0.1f;
+    }
+    m_lastUpdateTimeUs = currentTimeUs;
+
+    updateGame(deltaTime);
+
+    // The game moves every frame while it runs
+    rebuildAndRecord();
+}
+
+void BreakoutHud::handleClickDetection() {
+    // Never held back while the game runs (HudManager::isHeldBack), but asked the same way.
+    if (isHeldBack()) return;
+    const InputManager& input = InputManager::getInstance();
+    if (!input.isCursorEnabled()) return;
+
+    // Detect left click (transition from not pressed to pressed)
+    const bool isLeftPressed = input.getLeftButton().isPressed;
+    const bool isLeftClick = isLeftPressed && !m_wasLeftPressed;
+    m_wasLeftPressed = isLeftPressed;
+    if (!isLeftClick) return;
+
+    if (m_gameOver) {
+        exitGame();      // Click to exit
+    } else if (!m_ballLaunched) {
+        launchBall();    // Click to launch ball
+    }
+}
+
+void BreakoutHud::rebuildRenderData() {
+    clearStrings();
+    m_quads.clear();
+    if (m_gameActive) renderGame();
+}
+
+void BreakoutHud::startGame() {
+    m_bVisible = true;   // hidden again in exitGame()
+    // The click that started the game may still be held: count only a fresh press,
+    // so it does not launch the ball on the first frame.
+    m_wasLeftPressed = InputManager::getInstance().getLeftButton().isPressed;
 
     // Suppress cursor during game
     InputManager::getInstance().setCursorSuppressed(true);
@@ -72,7 +123,7 @@ void VersionWidget::startGame() {
     setDataDirty();
 }
 
-void VersionWidget::resetBall() {
+void BreakoutHud::resetBall() {
     // Position ball on top of paddle
     m_ballX = m_paddleX;
     m_ballY = m_gameTop + GAME_AREA_HEIGHT - PADDLE_HEIGHT - BALL_SIZE - 0.005f;
@@ -81,26 +132,26 @@ void VersionWidget::resetBall() {
     m_ballLaunched = false;
 }
 
-void VersionWidget::launchBall() {
+void BreakoutHud::launchBall() {
     // Launch ball straight up - player controls angle via paddle position on return
     m_ballVelX = 0.0f;
     m_ballVelY = -1.0f;  // Negative Y = upward
     m_ballLaunched = true;
 }
 
-void VersionWidget::advanceLevel() {
+void BreakoutHud::advanceLevel() {
     m_level++;
     m_bricks.fill(true);
     m_bricksRemaining = TOTAL_BRICKS;
     resetBall();
 }
 
-float VersionWidget::getCurrentBallSpeed() const {
+float BreakoutHud::getCurrentBallSpeed() const {
     float speed = BALL_SPEED_BASE + (m_level - 1) * BALL_SPEED_INCREMENT;
     return (speed < BALL_SPEED_MAX) ? speed : BALL_SPEED_MAX;
 }
 
-void VersionWidget::updateGame(float deltaTime) {
+void BreakoutHud::updateGame(float deltaTime) {
     if (m_gameOver) return;
 
     const InputManager& input = InputManager::getInstance();
@@ -191,7 +242,7 @@ void VersionWidget::updateGame(float deltaTime) {
     m_ballY = newY;
 }
 
-bool VersionWidget::checkBrickCollision(float newX, float newY) {
+bool BreakoutHud::checkBrickCollision(float newX, float newY) {
     // Calculate brick grid starting position
     float brickAreaWidth = BRICK_COLS * (BRICK_WIDTH + BRICK_GAP) - BRICK_GAP;
     float brickStartX = m_gameLeft + (GAME_AREA_WIDTH - brickAreaWidth) / 2.0f;
@@ -253,29 +304,19 @@ bool VersionWidget::checkBrickCollision(float newX, float newY) {
     return false;
 }
 
-void VersionWidget::exitGame() {
+void BreakoutHud::exitGame() {
     m_gameActive = false;
 
     // Restore cursor
     InputManager::getInstance().setCursorSuppressed(false);
 
-    // Restore original visibility state
-    m_bVisible = m_wasVisibleBeforeGame;
+    m_bVisible = false;
 
-    // Clear game render data so widget rebuilds properly
     clearStrings();
     m_quads.clear();
-
-    // Force immediate rebuild of widget render data (if still visible on any
-    // surface — a companion-only widget must not be left with the cleared
-    // frame; update() would self-heal on the next tick via the empty-strings
-    // check, but rebuild now for consistency).
-    if (isVisibleAnySurface()) {
-        rebuildRenderData();
-    }
 }
 
-void VersionWidget::renderGame() {
+void BreakoutHud::renderGame() {
     // Game area background
     SPluginQuad_t bgQuad;
     BaseHud::setQuadPositions(bgQuad, m_gameLeft, m_gameTop, GAME_AREA_WIDTH, GAME_AREA_HEIGHT);
@@ -398,7 +439,6 @@ void VersionWidget::renderGame() {
         m_stringSkipShadow.push_back(false);  // Game text should have shadows
     }
 
-    // Set bounds to game area for potential interaction
-    setBounds(m_gameLeft - 0.5f, m_gameTop, m_gameLeft + GAME_AREA_WIDTH - 0.5f, m_gameTop + GAME_AREA_HEIGHT);
+    setBounds(m_gameLeft, m_gameTop, m_gameLeft + GAME_AREA_WIDTH, m_gameTop + GAME_AREA_HEIGHT);
 }
 

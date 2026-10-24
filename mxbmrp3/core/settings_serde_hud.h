@@ -755,6 +755,8 @@ namespace Settings {
         saveBitAsKey(settings, PIT_ENTRY, events, EVENT_PIT_ENTRY);
         saveBitAsKey(settings, PIT_EXIT, events, EVENT_PIT_EXIT);
         saveBitAsKey(settings, DIRECTOR, events, EVENT_DIRECTOR);
+        saveBitAsKey(settings, SESSION_PB, events, EVENT_SESSION_PB);
+        saveBitAsKey(settings, ALLTIME_PB, events, EVENT_ALLTIME_PB);
     }
 
     // EventLogHud: load events from named keys
@@ -775,6 +777,8 @@ namespace Settings {
         loadBitFromKey(settings, PIT_ENTRY, events, EVENT_PIT_ENTRY);
         loadBitFromKey(settings, PIT_EXIT, events, EVENT_PIT_EXIT);
         loadBitFromKey(settings, DIRECTOR, events, EVENT_DIRECTOR);
+        loadBitFromKey(settings, SESSION_PB, events, EVENT_SESSION_PB);
+        loadBitFromKey(settings, ALLTIME_PB, events, EVENT_ALLTIME_PB);
     }
 
     // NoticesHud: save notices as named keys

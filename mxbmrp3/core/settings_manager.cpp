@@ -14,7 +14,6 @@
 #include "../hud/achievement_widget.h"
 #include "../hud/benchmark_widget.h"
 #include "../hud/pointer_widget.h"
-#include "../hud/settings_button_widget.h"
 #include <sstream>
 #include "atomic_file_writer.h"
 #include "hud_manager.h"
@@ -22,7 +21,7 @@
 #include "../diagnostics/logger.h"
 #include <cstdint>
 #include <cstring>   // std::strcmp, for the v4 -> v5 font-slot migration
-#include <set>       // the v7/v8 migrations' record of file-carried base keys
+#include <set>       // the v7/v8/v12 migrations' record of file-carried base keys
 #include "../hud/standings_hud.h"
 #include "../hud/pitboard_hud.h"
 // settings_hud.h is core (every game has the settings menu, and getSettingsHud() is
@@ -34,7 +33,6 @@
 #include "../hud/friends_hud.h"
 #include "../hud/timing_hud.h"
 #include "../hud/notices_hud.h"
-#include "../hud/version_widget.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/radar_hud.h"
 #include "../hud/prestige_widget.h"
@@ -311,7 +309,7 @@ void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* saveP
                     m_hudDefaults[currentHudName][key] = value;
                 }
                 if ((currentHudName == "NoticesHud" || currentHudName == "TimingHud" ||
-                     currentHudName == "RadarHud") &&
+                     currentHudName == "RadarHud" || currentHudName == "SpotterWidget") &&
                     (key == Keys::Base::OFFSET_X || key == Keys::Base::COMPANION_X)) {
                     baseAnchorKeysInFile.insert(currentHudName + "|" + key);
                 }
@@ -667,9 +665,24 @@ void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* saveP
                      migratedFill);
     }
 
+    // DEFAULT POSITIONS (files written at version <= 10): see the function.
+    migrateDefaultPositions(loadedVersion);
+    // SPOTTER POSITION (files written at version <= 11): see the function.
+    migrateSpotterPosition(loadedVersion,
+                           baseAnchorKeysInFile.count(std::string("SpotterWidget|") + Keys::Base::OFFSET_X) > 0,
+                           baseAnchorKeysInFile.count(std::string("SpotterWidget|") + Keys::Base::COMPANION_X) > 0);
+
+    // SETTINGS BUTTON -> TOGGLES STRIP (files with no strip section): see the function.
+    migrateSettingsButton();
+
     // PRESTIGE WIDGET DEFAULT (files written at version <= 9): see SETTINGS_VERSION
     // and settlePrestigeDefault(), which does the work once the stats are loaded.
     m_prestigeDefaultPending = (loadedVersion > 0 && loadedVersion < 10);
+
+    // A shipped hotkey never shares a key with one the player chose: an INI from
+    // before the Dash has no Dash keys, so Page Down and Page Up arrive with the
+    // upgrade and would also fire whatever the player already put on them.
+    HotkeyManager::getInstance().yieldShippedConflicts();
 
     // Check if we need to reset to defaults due to old version
     // We support v3+ (v3 used numeric profile indices, v4+ uses named profiles)
@@ -731,18 +744,13 @@ void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* saveP
     // Trigger update check on startup if enabled
     if (UpdateChecker::getInstance().isEnabled()) {
         DEBUG_INFO("Update check enabled, checking for updates on startup");
-        // Set one-time startup callback to show version widget notification when update is found.
+        // Set one-time startup callback to offer the update message when one is found.
         // Note: Manual checks from settings UI will set their own callback, overwriting this one.
         UpdateChecker::getInstance().setCompletionCallback([]() {
             UpdateChecker& checker = UpdateChecker::getInstance();
             if (checker.getStatus() == UpdateChecker::Status::UPDATE_AVAILABLE) {
-                if (checker.shouldShowUpdateNotification()) {
-                    // Show the version widget with update notification
-                    HudManager::getInstance().getVersionWidget().showUpdateNotification();
-                } else {
-                    DEBUG_INFO_F("Update %s available but dismissed by user",
-                                checker.getLatestVersion().c_str());
-                }
+                // The Dash tells it (SystemMessages, startup messages).
+                SystemMessages::getInstance().offerUpdate();
             }
         });
         UpdateChecker::getInstance().checkForUpdates();
@@ -769,7 +777,7 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
     loadSettingsImpl(hudManager, savePath);
     applyInstallPrefs();
     if (!reload) {
-        // The startup popups (welcome, "Updated to") are decided once per
+        // The startup messages (welcome, "Updated to") are decided once per
         // launch, from what the file says was already told.
         SystemMessages::getInstance().onStartup(freshInstall, WhatsNew::currentLine());
     }
@@ -840,6 +848,62 @@ void SettingsManager::settlePrestigeDefault(HudManager& hudManager) {
 #else
     (void)hudManager;
 #endif
+}
+
+// The Toggles strip replaced the settings button (its Settings icon is that
+// button). A player who had hidden the button gets the strip hidden too, so
+// nothing new appears for them; the hotkey still opens the menu. Only the
+// switches carry over, on each surface: the button's spot and size were a 1-icon
+// box's. A companion switch that had diverged from the game's is configured from
+// the strip's own game spot, as BaseHud::setCompanionVisible snapshots it.
+//
+// ON THE CACHES, EVERY PROFILE, at load -- not when a profile is applied. The
+// first save drops the button's sections (the registry no longer knows them), so
+// done at apply time a profile not visited before that save lost its hidden
+// button and inherited the base strip. Runs only for a profile whose file has no
+// strip section, so the first save ends it. Pinned by toggle_strip_test.
+void SettingsManager::migrateSettingsButton() {
+    static constexpr const char* OLD = "SettingsButtonWidget";
+    static constexpr const char* STRIP = "ToggleStripWidget";
+    auto factory = m_hudFactoryDefaults.find(STRIP);
+    if (factory == m_hudFactoryDefaults.end()) return;
+    auto flag = [](const std::string& v) { return std::string(v != "0" ? "1" : "0"); };
+
+    int migrated = 0;
+    bool fileHasStrip = false;
+    for (auto& cache : m_profileCache) {
+        if (cache.count(STRIP)) { fileHasStrip = true; continue; }
+        auto legacy = cache.find(OLD);
+        if (legacy == cache.end()) continue;
+        const HudSettings& old = legacy->second;
+        HudSettings strip = factory->second;
+        auto vis = old.find(Keys::Base::VISIBLE);
+        if (vis != old.end()) strip[Keys::Base::VISIBLE] = flag(vis->second);
+        auto compConfigured = old.find(Keys::Base::COMPANION_CONFIGURED);
+        auto compVisible = old.find(Keys::Base::COMPANION_VISIBLE);
+        if (compConfigured != old.end() && compConfigured->second != "0" && compVisible != old.end()) {
+            strip[Keys::Base::COMPANION_CONFIGURED] = "1";
+            strip[Keys::Base::COMPANION_VISIBLE] = flag(compVisible->second);
+            strip[Keys::Base::COMPANION_X] = strip[Keys::Base::OFFSET_X];
+            strip[Keys::Base::COMPANION_Y] = strip[Keys::Base::OFFSET_Y];
+        }
+        cache[STRIP] = std::move(strip);
+        ++migrated;
+    }
+    // The base section the save writes back takes the button's base switch, so a
+    // button hidden everywhere is written once there rather than per profile.
+    if (!fileHasStrip) {
+        auto legacy = m_hudDefaults.find(OLD);
+        auto base = m_hudDefaults.find(STRIP);
+        if (legacy != m_hudDefaults.end() && base != m_hudDefaults.end()) {
+            auto vis = legacy->second.find(Keys::Base::VISIBLE);
+            if (vis != legacy->second.end()) base->second[Keys::Base::VISIBLE] = flag(vis->second);
+        }
+    }
+    if (migrated > 0) {
+        DEBUG_INFO_F("Settings: the settings button's switches carried onto the Toggles strip in %d profile(s)",
+                     migrated);
+    }
 }
 
 // See the declaration and core/install_prefs.h. Reads the marker Setup may have

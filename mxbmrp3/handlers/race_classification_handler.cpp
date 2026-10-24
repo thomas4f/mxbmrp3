@@ -24,9 +24,20 @@ void Handlers::handleRaceClassification(
     // Event logging handled by PluginManager
     PluginData& pluginData = PluginData::getInstance();
 
-    // Store current session time and state for real-time gap calculations
+    // Store current session time and state for real-time gap calculations.
+    // RACE OVER restarts the game's clock from zero, and the classification that
+    // carries the final crossing is already on the restarted one (30 ms), so a
+    // finish read from it came out as "30 ms" in a lap race and the session
+    // length less 30 ms in a timed one. Hold the clock at its last running value
+    // instead: that is when the leader finished. The restarted clock counts up
+    // from there, so it is kept apart for a finish read later. Pinned by
+    // session_format_test.
     int currentTime = psRaceClassification->sessionTime;
-    pluginData.setSessionTime(currentTime);
+    if (!(psRaceClassification->sessionState & PluginConstants::SessionState::RACE_OVER)) {
+        pluginData.setSessionTime(currentTime);
+    } else {
+        pluginData.setRaceOverClock(currentTime);
+    }
     pluginData.setSessionState(psRaceClassification->sessionState);
 
     // Gate drop: on a grid start the classification sessionState flips from the gate hold

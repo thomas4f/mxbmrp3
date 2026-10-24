@@ -117,7 +117,16 @@ void PluginData::resetLapTimerForNewLap(int raceNum, int lapNum, bool lapValid,
     }
 }
 
+// The player has an all-time PB here but no trace that is that lap (set
+// before traces were kept, or the trace lags the stats file), so the
+// all-time reference is empty until a new PB records one. False once it
+// does, and whenever the tracker is not the player's.
+bool PluginData::isAllTimeTraceMissing() const {
+    return m_allTimePbWithoutTrace && !m_pbGap.hasBestLap(GapRef::ALLTIME_PB);
+}
+
 void PluginData::plantAllTimeGapReference() {
+    m_allTimePbWithoutTrace = false;
     if (m_displayLapTimerRaceNum < 0 || m_displayLapTimerRaceNum != getPlayerRaceNum()) return;
     // The bike the active PB scope resolves to (under the class scope, the
     // fastest bike in the class), so the trace matches the PB the player is shown.
@@ -128,7 +137,10 @@ void PluginData::plantAllTimeGapReference() {
     int lapTimeMs = 0;
     const PbGapTracker::Table* table =
         PbTraceStore::getInstance().find(m_sessionData.trackId, bikeName, &lapTimeMs);
-    if (!table) return;
+    if (!table) {
+        m_allTimePbWithoutTrace = true;
+        return;
+    }
     // The trace is the all-time reference only while it IS the PB lap. One that
     // lags the stats file (see pb_trace_store.h) is a slower lap, and read as
     // all-time it shows the rider ahead of a PB they are not beating; no
@@ -136,6 +148,7 @@ void PluginData::plantAllTimeGapReference() {
     if (lapTimeMs != pbLapTimeMs) {
         DEBUG_WARN_F("LapTimer: all-time PB trace (%d ms, %s) is not the PB (%d ms), not planted",
                      lapTimeMs, bikeName.c_str(), pbLapTimeMs);
+        m_allTimePbWithoutTrace = true;
         return;
     }
     m_pbGap.setReference(PbGapTracker::Ref::ALLTIME_PB, *table, lapTimeMs);
@@ -175,6 +188,7 @@ void PluginData::resetAllLapTimers() {
     m_displayLapTimer.reset();
     m_pbGap.reset();
     m_displayLapTimerRaceNum = -1;
+    m_allTimePbWithoutTrace = false;
     m_lapViaPits.clear();        // a new session's laps owe nothing to the old one's pit visits
     m_awaitingGateDrop = false;  // drop any pending grid-start gate-drop watch
     DEBUG_INFO("LapTimer: Timer reset");

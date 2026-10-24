@@ -10,6 +10,7 @@
 #include "../core/plugin_data.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
+#include "../core/ui_config.h"
 
 using namespace PluginConstants;
 
@@ -19,17 +20,12 @@ namespace {
     constexpr float RANGE_START = 0.5f;
     // Amber covers this share of the strip just below the first red segment.
     constexpr float AMBER_SHARE = 0.2f;
-    // A gap is this share of one segment's pitch.
-    constexpr float GAP_SHARE = 0.25f;
     // Without a known shift point (spectating, or a bike without one) this share
     // of the strip is red.
     constexpr float DEFAULT_RED_SHARE = 0.25f;
     // Limiter flash of the red segments: lit for half a period, dark for the
     // other half (5 Hz).
     constexpr long long FLASH_HALF_PERIOD_US = 100000;
-    // An unlit segment is its own colour at this opacity, so the strip's shape
-    // and colour bands read before anything lights.
-    constexpr float UNLIT_OPACITY = 0.25f;
 }
 
 int RpmWidget::redSegments(int segments, int shiftRPM, int limiterRPM) {
@@ -50,7 +46,7 @@ RpmWidget::RpmWidget()
     m_panelKind = PanelKind::Widget;
     m_bContentCard = true;
     setDraggable(true);
-    m_quads.reserve(10 + MAX_SEGMENTS);  // 9-slice themed background + card + one quad per segment
+    m_quads.reserve(10 + 2 * MAX_SEGMENTS);  // 9-slice themed background + card + a segment and its glow each
 
     setTextureBaseName("rpm_widget");
 
@@ -64,15 +60,7 @@ bool RpmWidget::handlesDataType(DataChangeType dataType) const {
            dataType == DataChangeType::SessionData;
 }
 
-void RpmWidget::update() {
-    if (!isVisibleAnySurface()) {
-        clearDataDirty();
-        clearLayoutDirty();
-        return;
-    }
-
-    // GATED ON WHAT IS DRAWN, not on the telemetry tick: RPM moves every tick,
-    // but the quads only change when a segment lights or the flash flips.
+RpmWidget::Lights RpmWidget::readLights(int segments) {
     const PluginData& pluginData = PluginData::getInstance();
     const BikeTelemetryData& bike = pluginData.getBikeTelemetry();
     const SessionData& session = pluginData.getSessionData();
@@ -85,18 +73,15 @@ void RpmWidget::update() {
     // karts report 0) tops out at its max rpm instead, and never flashes.
     const bool hasLimiter = session.limiterRPM > 0;
     const int topRPM = session.rpmRangeTop();
-    const bool hasRange = bike.isValid && topRPM > 0;
 
-    const int segments = std::clamp(m_segments, MIN_SEGMENTS, MAX_SEGMENTS);
-    const int red = redSegments(segments, shiftRPM, topRPM);
-    int lit = 0;
-    bool onLimiter = false;
-    bool flashOn = false;
-    if (hasRange) {
-        onLimiter = viewingPlayer && hasLimiter && bike.rpm >= session.limiterRPM;
-        if (onLimiter) {
-            lit = segments;
-            flashOn = (DigitRoll::nowUs() / FLASH_HALF_PERIOD_US) % 2 == 0;
+    Lights lights;
+    lights.hasRange = bike.isValid && topRPM > 0;
+    lights.red = redSegments(segments, shiftRPM, topRPM);
+    if (lights.hasRange) {
+        lights.onLimiter = viewingPlayer && hasLimiter && bike.rpm >= session.limiterRPM;
+        if (lights.onLimiter) {
+            lights.lit = segments;
+            lights.flashOn = (DigitRoll::nowUs() / FLASH_HALF_PERIOD_US) % 2 == 0;
         } else {
             // THE FIRST RED LIGHT COMES ON AT THE SHIFT POINT, not near it: the
             // segments below it share [start, shift) and the red ones share
@@ -104,6 +89,7 @@ void RpmWidget::update() {
             // point whatever the count. One even split over the whole range
             // would light the first red segment up to a segment's worth of revs
             // late. The limiter then takes over with the flash.
+            const int red = lights.red;
             const float limiter = static_cast<float>(topRPM);
             const float start = limiter * RANGE_START;
             const int below = segments - red;
@@ -112,23 +98,68 @@ void RpmWidget::update() {
                 ? shiftAt
                 : start + (limiter - start) * static_cast<float>(below) / static_cast<float>(segments);
             const float rpm = static_cast<float>(bike.rpm);
-            for (int i = 0; i < segments; ++i) {
-                const float at = (i < below)
+            // Where segment i comes on; `segments` is the top of the range.
+            auto onAt = [&](int i) {
+                return (i < below)
                     ? start + (shift - start) * static_cast<float>(i) / static_cast<float>(below)
                     : shift + (limiter - shift) * static_cast<float>(i - below) / static_cast<float>(red);
-                if (rpm < at) break;
-                lit = i + 1;
+            };
+            for (int i = 0; i < segments; ++i) {
+                if (rpm < onAt(i)) break;
+                lights.lit = i + 1;
+            }
+            // How far the revs are through the newest light's stretch, in
+            // whole steps so the compare in update() moves a few times a
+            // light, not every tick.
+            if (lights.lit > 0) {
+                const float from = onAt(lights.lit - 1);
+                const float to = onAt(lights.lit);
+                if (to > from)
+                    lights.lead = std::clamp(static_cast<int>((rpm - from) / (to - from) * LEAD_STEPS),
+                                             0, LEAD_STEPS - 1);
             }
         }
     }
+    return lights;
+}
 
-    if (lit != m_lit || flashOn != m_flashOn || onLimiter != m_onLimiter || hasRange != m_hasRange ||
-        red != m_red) {
-        m_lit = lit;
-        m_flashOn = flashOn;
-        m_onLimiter = onLimiter;
-        m_hasRange = hasRange;
-        m_red = red;
+unsigned long RpmWidget::segmentInk(int i, int segments, const Lights& lights,
+                                    unsigned long positive, unsigned long warning, unsigned long negative) {
+    // The last `red` segments are red, the AMBER_SHARE of the strip before them
+    // amber, the rest green.
+    const int redFrom = segments - std::min(lights.red, segments);
+    const int amberFrom = std::max(0, redFrom - static_cast<int>(static_cast<float>(segments) * AMBER_SHARE + 0.5f));
+    return segmentRed(i, segments, lights) ? negative
+         : (i >= amberFrom) ? warning : positive;
+}
+
+unsigned long RpmWidget::segmentColor(int i, int segments, const Lights& lights,
+                                      unsigned long positive, unsigned long warning, unsigned long negative) {
+    const unsigned long color = segmentInk(i, segments, lights, positive, warning, negative);
+    if (!segmentLit(i, segments, lights)) return PluginUtils::applyOpacity(color, UNLIT_OPACITY);
+    // The newest one fades up over its stretch; on the limiter all are whole.
+    if (lights.onLimiter || i != lights.lit - 1 || lights.lead == LEAD_STEPS - 1) return color;
+    return PluginUtils::applyOpacity(color, onOpacity(stepShare(lights.lead)));
+}
+
+bool RpmWidget::segmentLit(int i, int segments, const Lights& lights) {
+    // On the limiter only the red segments flash; the rest stay lit.
+    return (lights.onLimiter && segmentRed(i, segments, lights)) ? lights.flashOn : i < lights.lit;
+}
+
+void RpmWidget::update() {
+    if (!isVisibleAnySurface()) {
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
+    // GATED ON WHAT IS DRAWN, not on the telemetry tick: RPM moves every tick,
+    // but the quads only change when a segment lights or steps up, or the flash
+    // flips.
+    const Lights lights = readLights(std::clamp(m_segments, MIN_SEGMENTS, MAX_SEGMENTS));
+    if (lights != m_lights) {
+        m_lights = lights;
         setDataDirty();
     }
 
@@ -148,7 +179,7 @@ void RpmWidget::rebuildRenderData() {
 
     auto dim = getScaledDimensions();
 
-    // BOX-MODEL: horizontal, one normal row (the Version widget's height) that
+    // BOX-MODEL: horizontal, one normal row (the Gap Bar's height) that
     // spans Gear + Speed by default. Vertical, the strip turned on its end: as
     // tall as Gear and Speed's content, and as wide as the horizontal strip is
     // tall -- the same row measured along x, so the aspect ratio converts it.
@@ -178,7 +209,7 @@ void RpmWidget::rebuildRenderData() {
     const float stripH = p.H(p.g.sections[0].h);
     // The strip's length is its width, or its height when vertical.
     const float length = m_bVertical ? stripH : stripW;
-    const float gap = m_bSegmentGaps ? length / static_cast<float>(segments) * GAP_SHARE : 0.0f;
+    const float gap = m_bSegmentGaps ? length / static_cast<float>(segments) * SEGMENT_GAP_SHARE : 0.0f;
 
     // Every segment is the same length and the (segments - 1) gaps sit only
     // BETWEEN them, so the strip spans its full content length either way.
@@ -188,25 +219,38 @@ void RpmWidget::rebuildRenderData() {
     const unsigned long warning = this->getColor(ColorSlot::WARNING);
     const unsigned long negative = this->getColor(ColorSlot::NEGATIVE);
 
-    // The last m_red segments are red, the AMBER_SHARE of the strip before them
-    // amber, the rest green.
-    const int redFrom = segments - std::min(m_red, segments);
-    const int amberFrom = std::max(0, redFrom - static_cast<int>(static_cast<float>(segments) * AMBER_SHARE + 0.5f));
+    // Horizontal fills left to right, vertical bottom to top.
+    auto segmentRect = [&](int i, float& x, float& y, float& w, float& h) {
+        const float along = (segLen + gap) * static_cast<float>(i);
+        x = m_bVertical ? stripX : stripX + along;
+        y = m_bVertical ? stripY + stripH - along - segLen : stripY;
+        w = m_bVertical ? stripW : segLen;
+        h = m_bVertical ? segLen : stripH;
+    };
+
+    // The lit segments' glow, all of it before any segment so no halo lies over
+    // a neighbour. Its reach is a share of the strip's thickness (as a height).
+    if (glowActive()) {
+        const float spreadY = (m_bVertical ? stripW * UI_ASPECT_RATIO : stripH) * GLOW_SPREAD;
+        for (int i = 0; i < segments; ++i) {
+            if (!segmentLit(i, segments, m_lights)) continue;
+            float x, y, w, h;
+            segmentRect(i, x, y, w, h);
+            // The red segments glow full, the green and amber at the calm share;
+            // the newest one full from its first step.
+            const unsigned long color = segmentInk(i, segments, m_lights, positive, warning, negative);
+            addGlow(x, y, w, h, spreadY, color,
+                    GLOW_OPACITY * (segmentRed(i, segments, m_lights) ? 1.0f : UiConfig::GLOW_CALM));
+        }
+    }
 
     for (int i = 0; i < segments; ++i) {
-        unsigned long color = (i >= redFrom) ? negative
-                            : (i >= amberFrom) ? warning : positive;
-        // On the limiter only the red segments flash; the rest stay lit.
-        const bool lit = (m_onLimiter && i >= redFrom) ? m_flashOn : i < m_lit;
-        if (!lit) color = PluginUtils::applyOpacity(color, UNLIT_OPACITY);
-
-        // Horizontal fills left to right, vertical bottom to top.
-        const float along = (segLen + gap) * static_cast<float>(i);
-        float x = m_bVertical ? stripX : stripX + along;
-        float y = m_bVertical ? stripY + stripH - along - segLen : stripY;
+        const unsigned long color = segmentColor(i, segments, m_lights, positive, warning, negative);
+        float x, y, w, h;
+        segmentRect(i, x, y, w, h);
         SPluginQuad_t quad{};
         applyOffset(x, y);
-        setQuadPositions(quad, x, y, m_bVertical ? stripW : segLen, m_bVertical ? segLen : stripH);
+        setQuadPositions(quad, x, y, w, h);
         quad.m_iSprite = SpriteIndex::SOLID_COLOR;
         quad.m_ulColor = color;
         m_quads.push_back(quad);
@@ -216,7 +260,7 @@ void RpmWidget::rebuildRenderData() {
 }
 
 void RpmWidget::resetToDefaults() {
-    m_bVisible = false;           // opt-in, like the other gauges
+    m_bVisible = true;            // on for fresh installs, under Gear + Speed
     m_bShowTitle = false;
     setTextureVariant(0);
     m_fBackgroundOpacity = 0.0f;  // bare, like Gear and Speed above it

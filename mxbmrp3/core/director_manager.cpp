@@ -112,8 +112,7 @@ void DirectorManager::setEnabled(bool enabled) {
     // notification (the 1 Hz clock heartbeat shares that type) doesn't re-reset.
     m_lastSessionGen = PluginData::getInstance().getSessionData().sessionGeneration;
     DEBUG_INFO_F("Director: %s", enabled ? "enabled" : "disabled");
-    // Tint state-transition entries with the director button's state colors (see
-    // director_widget.cpp stateColor()): auto-on == POSITIVE (running), off == MUTED.
+    // Tint state-transition entries by state: auto-on == POSITIVE (running), off == MUTED.
     if (enabled) logDirectorEvent("Auto-director enabled",  static_cast<int>(ColorSlot::POSITIVE));
     else         logDirectorEvent("Auto-director disabled", static_cast<int>(ColorSlot::MUTED));
 }
@@ -170,8 +169,8 @@ void DirectorManager::setManualResumeSec(int sec) {
 void DirectorManager::toggleLock() {
     m_riderLock = !m_riderLock;
     DEBUG_INFO_F("Director: rider lock %s", m_riderLock ? "ON" : "OFF");
-    // Rider lock == the director button's Paused state == WARNING (matches the standings
-    // lock icon); releasing it resumes auto == POSITIVE. See director_widget.cpp stateColor().
+    // Rider lock == Paused == WARNING (matches the standings lock icon); releasing it
+    // resumes auto == POSITIVE.
     if (m_riderLock && m_currentSubject >= 0) {
         char lab[16], msg[64];
         riderLabel(m_currentSubject, lab, sizeof(lab));

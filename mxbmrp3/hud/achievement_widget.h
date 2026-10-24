@@ -6,7 +6,7 @@
 // queue, like SpotterWidget is onto the spotter's cue log.
 //
 // GLOBAL, not per-profile: its geometry is persisted in [Achievements] (see
-// settings_manager_global.cpp), the shape the Director's status button uses, so
+// settings_manager_global.cpp), like the Director's own settings, so
 // a profile switch never moves or hides it and one toggle covers every profile.
 //
 // TWO FEEDS, ONE CARD. The same card carries the system toasts

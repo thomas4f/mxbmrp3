@@ -476,7 +476,7 @@ The plugin normally hands its quads and strings to the game to draw. With `[Adva
 
 ### 14. DirectorManager (`core/director_manager.*`)
 
-An **auto-director** for spectating and replays: it scores an "interest" model over the field and cuts the broadcast camera to the most compelling story, with broadcast-style pacing. Global (broadcast) feature persisted in the `[Director]` INI section like HelmetOverlay/Rumble - **not** per-profile - passive except while spectating or replaying, and **off by default** so an upgrade never seizes a spectator's camera. The `DirectorWidget` status button is the discoverability path: one click enables, and the choice persists.
+An **auto-director** for spectating and replays: it scores an "interest" model over the field and cuts the broadcast camera to the most compelling story, with broadcast-style pacing. Global (broadcast) feature persisted in the `[Director]` INI section like HelmetOverlay/Rumble - **not** per-profile - passive except while spectating or replaying, and **off by default** so an upgrade never seizes a spectator's camera. The Director switch in the Toggles strip is the discoverability path: one click enables, and the choice persists.
 
 **What it can and cannot control.** The plugin can choose the *spectated rider* (`SpectateVehicles`) and a *named camera* (`SpectateCameras`) through `SpectateHandler`, but it **cannot** author camera angles beyond the game's named set. So its job is exactly two decisions: **subject selection**, plus a **name-based camera baseline** (`CameraRole`). `Auto` hands framing to the game's own trackside director; `Trackside` is the plugin-picked TV shot used for every story cut.
 
@@ -488,7 +488,7 @@ An **auto-director** for spectating and replays: it scores an "interest" model o
 **The priority ladder.** After yielding to a hand-flown camera and honouring the rider lock, `evaluate()` runs a fixed ladder over the racing, on-track field - incident, fastest lap, fastest sectors, timing show, scored stories (leader / battle / overtake / lapper / drop), finish lock - each rung a `cutTo()`+return, so higher stories pre-empt lower ones. **The rungs, the scoring weights, the min/max-shot pacing and the onboard-variety rules are documented at the mechanism, in `director_manager.h`** - they are tuning, they move, and a second copy here would drift.
 
 **Consumers.** Two, both reading the director's published status:
-- `DirectorWidget` (`hud/director_widget.*`) - an on-screen status button (a camera icon tinted by state) that toggles the director on click; clipped unless spectating/replaying.
+- The Director switch in `ToggleStripWidget` (`hud/toggle_strip_widget.*`) - the sidebar's red/green camera, so one click enables the director from anywhere.
 - The **web overlay** - `buildJsonSnapshot()` emits a `director` advisory (suppressed to `-1` while paused/manual/held so the overlay never highlights a stale rider) and a `battles` array from the **same** `getBattleGroups(battleGap, maxPos)`. That shared call is the "one brain, one config" property: the in-game director and the overlay's battle panel agree on what a battle is because both read the director's own settings.
 
 **The cut log is a contract.** Every cut logs one parseable line - `Director cut: t=<ms> #<num> shot=<type> cam=<name> partner=<num> reason=<reason>` - so a whole broadcast can be reconstructed offline. `tools/director_report.py` parses it from a real log and `tests/integration/tests/director_broadcast_test.cpp` runs the same analysis headless off a recorded tape, so a one-sided change to `cutTo()` silently breaks both. `testSetNowMs()` injects a simulated wall-clock so a headless replay drives the real pacing from recorded timestamps.
@@ -564,7 +564,11 @@ Abstract base class that all HUDs inherit from. Provides:
 - `RecordsHud` - Track records from online databases (CBR or MXB-Ranked providers)
 - `TimingHud` - Split time comparison popup (center display)
 - `GapBarHud` - Live gap visualization bar with ghost position marker
+- `DeltaTraceHud` - The gap to a reference lap across the whole lap, green where gained and red where lost, with peaks
+- `DashHud` - One compact card stepping through fourteen pages (Timing, Fuel, Gap Bar, Event Log...), each drawn from the data and settings of the HUD it comes from; a notice takes it over until it clears
 - `SettingsHud` - Interactive settings menu UI
+- `GlConfirmHud` - The "can you still read this?" prompt after Direct GL is switched on, drawn by Direct GL itself; no answer reverts it
+- `BreakoutHud` - The hidden Breakout easter egg, started by five clicks on the settings footer's About button; drawn only while the game runs, high score persisted via StatsManager
 - `FmxHud` - FMX trick detection display with rotation arcs, chain stack, and scoring
 - `SessionHud` - Session info (server name as the headline, format & state, track, weather)
 - `StatsHud` - Session stats display with configurable columns (last lap, session, all-time)
@@ -576,6 +580,7 @@ Abstract base class that all HUDs inherit from. Provides:
 
 **Overlays** (full-screen, telemetry-driven):
 - `HelmetOverlayHud` - First-person helmet overlay with visor tint, tilt (lean angle) and vibration (suspension). Global settings in `[HelmetOverlay]` INI section. Registered first to draw behind all other HUDs.
+- `ImpactVignetteHud` - Darkens the screen edges briefly on a hard hit while the Helmet is on: one full-screen textured quad, registered right after the helmet.
 
 **Widgets** (simple, focused):
 - `SpeedWidget` - Speed and gear display
@@ -595,9 +600,10 @@ Abstract base class that all HUDs inherit from. Provides:
 - `EcuWidget` - Electronic rider aids: engine map, traction control, engine braking, anti-wheeling (GP Bikes only)
 - `GamepadWidget` - Controller visualization with button/stick/trigger display. A pad ships as a **pack** (`gamepads/<name>/` = 17 `.tga` + `gamepad.ini`), selected by name; `hud/gamepad_geometry.h` covers its sizing
 - `CompassWidget` - Bike heading dial (classic north-up needle, or modern rotating card with numeric readout)
-- `VersionWidget` - Plugin version display (includes hidden Breakout game easter egg; high score persisted via StatsManager)
-- `SettingsButtonWidget` - Settings menu toggle button
-- `DirectorWidget` - Auto-director status button (camera icon tinted by state; click to toggle). A window onto `DirectorManager`, clipped unless spectating/replaying.
+- `SpotterWidget` - The latest spotter callout as on-screen text (subtitles)
+- `AchievementWidget` - Toasts for achievements earned, queued by `AchievementManager`
+- `PrestigeWidget` - The prestige badge: artwork shown only once the player has a prestige level, otherwise drawing nothing
+- `ToggleStripWidget` - The Toggles strip: the settings menu button and every settings-tab on/off switch (Global, then Profile), shown with the cursor
 - `PointerWidget` - Customizable mouse pointer rendered with quads (internal; the on-screen cursor)
 - `BenchmarkWidget` - Developer-only per-callback/per-HUD timing breakdown (requires `developerMode=1` in INI)
 
@@ -978,7 +984,7 @@ This is crucial for performance since `Draw()` is called every frame.
 
 **Gate on the flags, not the frame.** A HUD must rebuild only when `isDataDirty()`/`isLayoutDirty()` is set, never unconditionally per frame (unless the rebuild is trivially cheap). TelemetryHud was re-tessellating ~1600 line segments (each with a `sqrt`) every frame at 480fps for data that only changes at the 100Hz telemetry rate, so more than half the rebuilds produced identical output. (Becoming visible sets data-dirty via `BaseHud::setVisible`, so the first rebuild is unaffected.) The same proportionality applies to input polling: `HotkeyManager` refreshes only the *bound* keys each frame, doing the full 256-key `GetAsyncKeyState` sweep only while capturing a new binding.
 
-**The visibility/dirty flags are atomic.** `m_bVisible`, `m_bDataDirty`, and `m_bLayoutDirty` are `std::atomic<bool>` - and `setDataDirty()` writes *both* dirty flags. Background workers legitimately mark HUDs dirty: the records fetch thread (`RecordsFetcher`) flags RecordsHud and TimingHud on completion, and the update-checker/downloader callbacks reach `VersionWidget::showUpdateNotification` (`m_bVisible` + the atomic `m_showingUpdateNotification`) and `SettingsHud::setDataDirty`. The reads happen every frame on the game thread; plain bools made that a data race (benign on x86-64 but UB). Keep any flag written cross-thread atomic.
+**The visibility/dirty flags are atomic.** `m_bVisible`, `m_bDataDirty`, and `m_bLayoutDirty` are `std::atomic<bool>` - and `setDataDirty()` writes *both* dirty flags. Background workers legitimately mark HUDs dirty: the records fetch thread (`RecordsFetcher`) flags RecordsHud and TimingHud on completion, and the update-checker/downloader callbacks reach `SystemMessages::offerUpdate` (the atomic `m_owesUpdate`, read by the Dash) and `SettingsHud::setDataDirty`. The reads happen every frame on the game thread; plain bools made that a data race (benign on x86-64 but UB). Keep any flag written cross-thread atomic.
 
 **Second-level render caches key on their inputs.** Where a rebuild is dominated by sub-geometry that *doesn't* change every rebuild, cache it keyed on everything that affects its output. MapHud's `renderTrack()` does this: every `RaceTrackPosition` marks the map dirty, but with rotation/zoom off the track ribbon is bit-identical between rebuilds, so its two tessellation passes are cached in `m_ribbonQuads` keyed by `TrackRibbonKey` (rotation, render bounds, scales, HUD offset, clip rect, LOD, zoom params, title row, the two colors - every input baked into the emitted quads). **Any new input to the ribbon output must be added to the key**, or the cache serves stale geometry. In rotate-to-player/zoom-follow modes the key changes every rebuild by design, so it's a transparent pass-through there.
 

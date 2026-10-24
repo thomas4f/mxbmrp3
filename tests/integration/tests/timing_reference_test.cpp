@@ -29,6 +29,7 @@ TEST_CASE("timing reference: cumulative target sums the reference's sectors prog
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_ref\\");
+    REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
 
     host.eventInit("TestTrack", "Thomas");
     host.raceEvent("TestTrack", /*type=*/2);   // Race
@@ -66,6 +67,7 @@ TEST_CASE("timing reference: a reference without sector times shows its full lap
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_ref_nosec\\");
+    REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
     host.eventInit("TestTrack", "Thomas");
     host.raceEvent("TestTrack", /*type=*/2);
     host.session(RACE, /*numLaps=*/10, /*lengthMs=*/0);
@@ -87,6 +89,7 @@ TEST_CASE("timing reference: live target tracks the lap-timer sector from the fi
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_ref_live\\");
+    REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
 
     host.eventInit("TestTrack", "Thomas");
     host.raceEvent("TestTrack", /*type=*/2);
@@ -130,6 +133,7 @@ TEST_CASE("timing reference: the chips show the whole lap exactly while the cloc
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_agree\\");
+    REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
     host.eventInit("TestTrack", "Thomas");
     host.raceEvent("TestTrack", /*type=*/1);   // Testing, on track
     host.session(1, 0, 0);
@@ -173,6 +177,7 @@ TEST_CASE("timing live timer: resets to placeholder on pit exit until next S/F")
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_pit\\");
+    REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
 
     host.eventInit("TestTrack", "Thomas");
     host.raceEvent("TestTrack", /*type=*/2);
@@ -216,6 +221,7 @@ TEST_CASE("timing INVALID: shown for a cut lap, suppressed for a pit out-lap") {
         PluginHost host(dllPath());
         REQUIRE(host.loaded());
         host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_inv_cut\\");
+        REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
         host.eventInit("TestTrack", "Thomas");
         host.raceEvent("TestTrack", /*type=*/2);
         host.session(RACE, /*numLaps=*/10, /*lengthMs=*/0);
@@ -238,6 +244,7 @@ TEST_CASE("timing INVALID: shown for a cut lap, suppressed for a pit out-lap") {
         PluginHost host(dllPath());
         REQUIRE(host.loaded());
         host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_inv_pit\\");
+        REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
         host.eventInit("TestTrack", "Thomas");
         host.raceEvent("TestTrack", /*type=*/2);
         host.session(RACE, /*numLaps=*/10, /*lengthMs=*/0);
@@ -278,6 +285,7 @@ TEST_CASE("timing INVALID: shown for a cut lap, suppressed for a pit out-lap") {
         PluginHost host(dllPath());
         REQUIRE(host.loaded());
         host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_inv_menu\\");
+        REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
         host.eventInit("TestTrack", "Thomas");
         host.raceEvent("TestTrack", /*type=*/2);
         host.session(RACE, /*numLaps=*/10, /*lengthMs=*/0);
@@ -318,6 +326,7 @@ TEST_CASE("timing INVALID: shown for a cut lap, suppressed for a pit out-lap") {
         PluginHost host(dllPath());
         REQUIRE(host.loaded());
         host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_inv_early\\");
+        REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
         host.eventInit("TestTrack", "Thomas");
         host.raceEvent("TestTrack", /*type=*/2);
         host.session(RACE, /*numLaps=*/10, /*lengthMs=*/0);
@@ -354,6 +363,7 @@ TEST_CASE("timing freeze: first flying lap after a garage/pit start still freeze
         PluginHost host(dllPath());
         REQUIRE(host.loaded());
         host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_garage_valid\\");
+        REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
         host.eventInit("TestTrack", "Thomas");
         host.raceEvent("TestTrack", /*type=*/2);
         host.session(RACE, /*numLaps=*/10, /*lengthMs=*/0);
@@ -382,6 +392,7 @@ TEST_CASE("timing freeze: first flying lap after a garage/pit start still freeze
         PluginHost host(dllPath());
         REQUIRE(host.loaded());
         host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_garage_invalid\\");
+        REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
         host.eventInit("TestTrack", "Thomas");
         host.raceEvent("TestTrack", /*type=*/2);
         host.session(RACE, /*numLaps=*/10, /*lengthMs=*/0);
@@ -422,6 +433,7 @@ TEST_CASE("timing lap timer: grid (standing) start counts from the gate drop, no
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_grid\\");
+    REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
     host.eventInit("TestTrack", "Thomas");
     host.raceEvent("TestTrack", /*type=*/2);
     host.session(RACE, /*numLaps=*/0, /*lengthMs=*/180000, /*state=*/PRE_START);  // timed race, PRE_START
@@ -477,6 +489,7 @@ TEST_CASE("grid-start grace: active from the green flag until the first split, o
         PluginHost host(dllPath());
         REQUIRE(host.loaded());
         host.startup("Z:\\tmp\\mxbmrp3-tests\\gridgrace\\");
+        REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
         host.eventInit("TestTrack", "Thomas");
         host.raceEvent("TestTrack", /*type=*/2);
         host.session(RACE, /*numLaps=*/0, /*lengthMs=*/180000, /*state=*/PRE_START);
@@ -514,6 +527,7 @@ TEST_CASE("grid-start grace: active from the green flag until the first split, o
         PluginHost host(dllPath());
         REQUIRE(host.loaded());
         host.startup("Z:\\tmp\\mxbmrp3-tests\\pitgrace\\");
+        REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
         host.eventInit("TestTrack", "Thomas");
         host.raceEvent("TestTrack", /*type=*/2);
         // A pit-start session arrives already IN_PROGRESS (no PRE_START->IN_PROGRESS transition),
@@ -550,6 +564,8 @@ TEST_CASE("timing panel: height is a whole number of grid bands") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_pad\\");
+    REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
+    REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
     host.eventInit("TestTrack", "Thomas");
     host.raceEvent("TestTrack", /*type=*/2);
     host.session(RACE, /*numLaps=*/10, /*lengthMs=*/0);
@@ -627,6 +643,7 @@ TEST_CASE("timing reference: player-scoped rows blank out while spectating anoth
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_ref\\");
+    REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
 
     host.eventInit("TestTrack", "Thomas");
     host.raceEvent("TestTrack", /*type=*/2);
@@ -849,6 +866,7 @@ TEST_CASE("timing: the server and track readouts fit the panel") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_text_readouts\\");
+    REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
     REQUIRE_MESSAGE(host.timingReadouts(0), "MXBMRP3_Test_TimingReadouts not exported");
     host.showAllHuds(true);
     // A track name comfortably longer than the panel is wide, so truncation is
@@ -918,6 +936,7 @@ TEST_CASE("timing: the lap readout shows a total only in a pure lap race") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\timing_lap_total\\");
+    REQUIRE(host.setHudVisible("timing_hud", true));   // off by default
     REQUIRE_MESSAGE(host.timingReadouts(0), "MXBMRP3_Test_TimingReadouts not exported");
     host.showAllHuds(true);
     host.eventInit("TestTrack", "Player");

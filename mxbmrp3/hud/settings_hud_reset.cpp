@@ -32,15 +32,12 @@
 #include "lap_widget.h"
 #include "speed_widget.h"
 #include "gear_widget.h"
-#include "director_widget.h"
 #include "crash_widget.h"
 #include "speedo_widget.h"
 #include "tacho_widget.h"
 #include "bars_widget.h"
-#include "version_widget.h"
 #include "fuel_widget.h"
 #include "pointer_widget.h"
-#include "settings_button_widget.h"
 #include "gamepad_widget.h"
 #include "lean_widget.h"
 #include "gforce_widget.h"
@@ -212,12 +209,12 @@ void SettingsHud::resetTabAppearance() {
     // longer requires updating this tab's reset.
     // ...minus the two [Display] toggles the General tab shows and resets. A tab's
     // Reset restores what that tab can change and nothing else. [Messages] is the
-    // Messages row; its other keys are what the startup popups have told, not a
+    // Messages row; its other keys are what the startup messages have told, not a
     // setting, so they stay.
     SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
         HudManager::getInstance(), {"Display", "Fonts", "Colors", "Messages"},
         {{ "Display", "gridSnapping" }, { "Display", "screenClamping" },
-         { "Messages", "lastLine" }, { "Messages", "welcomed" }});
+         { "Messages", "lastLine" }, { "Messages", "welcomed" }, { "Messages", "dashTried" }});
     // Mark all HUDs dirty so they pick up new colors
     if (m_idealLap) m_idealLap->setDataDirty();
     if (m_lapLog) m_lapLog->setDataDirty();
@@ -239,7 +236,6 @@ void SettingsHud::resetTabAppearance() {
     if (m_tacho) m_tacho->setDataDirty();
     if (m_notices) m_notices->setDataDirty();
     if (m_bars) m_bars->setDataDirty();
-    if (m_version) m_version->setDataDirty();
     if (m_fuel) m_fuel->setDataDirty();
     if (m_sessionCharts) m_sessionCharts->setDataDirty();
     if (m_gear) m_gear->setDataDirty();
@@ -273,9 +269,10 @@ void SettingsHud::resetTabWidgets() {
     // Reset all widgets in a single pass
     std::vector<std::string> widgets = {
         "LapWidget", "PositionWidget", "TimeWidget", "SpeedWidget", "GearWidget",
-        "SpeedoWidget", "TachoWidget", "BarsWidget", "VersionWidget", "FuelWidget",
+        "SpeedoWidget", "TachoWidget", "BarsWidget", "FuelWidget",
         "GamepadWidget", "LeanWidget", "GForceWidget", "CompassWidget", "ClockWidget",
-        "PointerWidget", "SettingsButtonWidget", "CrashWidget", "PrestigeWidget", "RpmWidget"
+        "PointerWidget", "CrashWidget", "PrestigeWidget", "RpmWidget",
+        "ToggleStripWidget"
     };
 #if GAME_HAS_TYRE_TEMP
     widgets.push_back("TyreTempWidget");
@@ -347,15 +344,10 @@ void SettingsHud::resetTabDirector() {
     // Director maps 1:1 to the [Director] snapshot section. Replay it but leave
     // the master enable alone (like Updates' check toggle); a full "Reset all
     // settings" disables it instead.
-    // The section also carries the status button's hudVisible, which every
-    // other tab's reset keeps, so it is restored the same way.
     bool wasEnabled = DirectorManager::getInstance().isEnabled();
-    DirectorWidget* button = HudManager::getInstance().getDirectorWidget();
-    const bool buttonWasVisible = button && button->isVisible();
     SettingsManager::getInstance().resetGlobalSectionsToFactoryDefaults(
         HudManager::getInstance(), {"Director"});
     DirectorManager::getInstance().setEnabled(wasEnabled);
-    if (button) button->setVisible(buttonWasVisible);
 }
 
 void SettingsHud::resetTabSpotter() {

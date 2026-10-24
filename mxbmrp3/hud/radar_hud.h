@@ -177,13 +177,6 @@ public:
     friend class SettingsHud;
     friend class SettingsManager;
 
-    // The proximity sector first draws MID-RACE, when a rider comes alongside.
-    int glWarmSprites(int* out, int cap) const override {
-        int n = BaseHud::glWarmSprites(out, cap);
-        if (m_sectorSprite > 0 && n < cap) out[n++] = m_sectorSprite;
-        return n;
-    }
-
 protected:
     void rebuildRenderData() override;
 

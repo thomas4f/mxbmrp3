@@ -31,7 +31,7 @@ cairosvg==2.9.1
 #   - markdown-it-py: REQUIRED; renders REPORT.md into the interactive Pages
 #               copy, usage_survey/index.html (tools/analytics_page.py).
 #   The SVG charting (tools/analytics_svg.py) is pure-stdlib, no extra dep.
-pyarrow>=25.0.1
+pyarrow>=26.0.0
 pandas>=3.0.6
 markdown-it-py>=4.2.0
 
@@ -40,4 +40,4 @@ markdown-it-py>=4.2.0
 #   - fonttools: writes the TrueType font mxbmrp3_fontgen then rasterises.
 #   Both REQUIRED; the `outlines2ttf` gate SKIPs without them.
 pymupdf>=1.28.2
-fonttools>=4.66.1
+fonttools>=4.67.0

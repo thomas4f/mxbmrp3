@@ -48,7 +48,7 @@ private:
     void handleClickDetection();
 
     // The button's bounds, stored at rebuild and hit-tested in update() -- the
-    // same shape VersionWidget's notification buttons use, offsets applied at the
+    // same shape GlConfirmHud's buttons use, offsets applied at the
     // test rather than baked in, so dragging the widget moves the target with it.
     float m_resetLeft = 0.0f;
     float m_resetTop = 0.0f;

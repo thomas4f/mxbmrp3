@@ -2,204 +2,209 @@
  "repo": "thomas4f/mxbmrp3",
  "releases": [
   {
+   "tag": "v1.32.0",
+   "published": "2026-10-10",
+   "downloads": 4761
+  },
+  {
    "tag": "v1.31.0",
    "published": "2026-10-03",
-   "downloads": 3071
+   "downloads": 3255
   },
   {
    "tag": "v1.30.3",
    "published": "2026-09-13",
-   "downloads": 6275
+   "downloads": 6278
   },
   {
    "tag": "v1.30.1",
    "published": "2026-09-06",
-   "downloads": 3288
+   "downloads": 3289
   },
   {
    "tag": "v1.30.0",
    "published": "2026-09-06",
-   "downloads": 123
+   "downloads": 124
   },
   {
    "tag": "v1.29.5",
    "published": "2026-09-02",
-   "downloads": 2082
+   "downloads": 2083
   },
   {
    "tag": "v1.29.3",
    "published": "2026-08-29",
-   "downloads": 2123
+   "downloads": 2124
   },
   {
    "tag": "v1.29.1",
    "published": "2026-08-26",
-   "downloads": 1848
+   "downloads": 1849
   },
   {
    "tag": "v1.28.0",
    "published": "2026-07-30",
-   "downloads": 5460
+   "downloads": 5462
   },
   {
    "tag": "v1.27.7",
    "published": "2026-07-18",
-   "downloads": 4595
+   "downloads": 4596
   },
   {
    "tag": "v1.27.5",
    "published": "2026-07-14",
-   "downloads": 1544
+   "downloads": 1545
   },
   {
    "tag": "v1.27.4",
    "published": "2026-07-12",
-   "downloads": 1327
+   "downloads": 1328
   },
   {
    "tag": "v1.27.3",
    "published": "2026-07-12",
-   "downloads": 171
+   "downloads": 172
   },
   {
    "tag": "v1.26.0.0",
    "published": "2026-06-28",
-   "downloads": 3855
+   "downloads": 3856
   },
   {
    "tag": "v1.25.3.0",
    "published": "2026-06-27",
-   "downloads": 3
+   "downloads": 4
   },
   {
    "tag": "v1.25.0.0",
    "published": "2026-06-21",
-   "downloads": 2142
+   "downloads": 2143
   },
   {
    "tag": "v1.24.0.0",
    "published": "2026-06-14",
-   "downloads": 2434
+   "downloads": 2435
   },
   {
    "tag": "v1.23.10.0",
    "published": "2026-05-30",
-   "downloads": 3817
+   "downloads": 3818
   },
   {
    "tag": "v1.22.0.0",
    "published": "2026-04-26",
-   "downloads": 6577
+   "downloads": 6578
   },
   {
    "tag": "v1.21.4.0",
    "published": "2026-04-07",
-   "downloads": 3914
+   "downloads": 3915
   },
   {
    "tag": "v1.21.2.0",
    "published": "2026-04-05",
-   "downloads": 826
+   "downloads": 827
   },
   {
    "tag": "v1.20.0.0",
    "published": "2026-03-30",
-   "downloads": 1573
+   "downloads": 1574
   },
   {
    "tag": "v1.19.0.0",
    "published": "2026-03-28",
-   "downloads": 647
+   "downloads": 648
   },
   {
    "tag": "v1.18.0.0",
    "published": "2026-03-22",
-   "downloads": 367
+   "downloads": 368
   },
   {
    "tag": "v1.17.0.0",
    "published": "2026-03-15",
-   "downloads": 725
+   "downloads": 726
   },
   {
    "tag": "v1.16.6.0",
    "published": "2026-03-14",
-   "downloads": 221
+   "downloads": 222
   },
   {
    "tag": "v1.16.1.0",
    "published": "2026-03-08",
-   "downloads": 994
+   "downloads": 995
   },
   {
    "tag": "v1.15.0.0",
    "published": "2026-02-11",
-   "downloads": 4397
+   "downloads": 4398
   },
   {
    "tag": "v1.14.0.0",
    "published": "2026-01-24",
-   "downloads": 5607
+   "downloads": 5608
   },
   {
    "tag": "v1.13.3.0",
    "published": "2026-01-18",
-   "downloads": 2112
+   "downloads": 2113
   },
   {
    "tag": "v1.12.0.0",
    "published": "2026-01-11",
-   "downloads": 3201
+   "downloads": 3202
   },
   {
    "tag": "v1.11.0.0",
    "published": "2026-01-05",
-   "downloads": 1837
+   "downloads": 1838
   },
   {
    "tag": "v1.10.0.0",
    "published": "2025-12-29",
-   "downloads": 1949
+   "downloads": 1950
   },
   {
    "tag": "v1.9.2.0",
    "published": "2025-12-23",
-   "downloads": 1303
+   "downloads": 1304
   },
   {
    "tag": "v1.8.0.0",
    "published": "2025-12-16",
-   "downloads": 1182
+   "downloads": 1183
   },
   {
    "tag": "v1.7.0.0",
    "published": "2025-12-13",
-   "downloads": 523
+   "downloads": 524
   },
   {
    "tag": "v1.6.0.0",
    "published": "2025-12-09",
-   "downloads": 1209
+   "downloads": 1210
   },
   {
    "tag": "v1.5.5.3",
    "published": "2025-12-07",
-   "downloads": 371
+   "downloads": 372
   },
   {
    "tag": "v1.5.4.2",
    "published": "2025-12-04",
-   "downloads": 769
+   "downloads": 770
   },
   {
    "tag": "v1.5.4.1",
    "published": "2025-12-03",
-   "downloads": 47
+   "downloads": 48
   },
   {
    "tag": "v1.5.3.0",
    "published": "2025-11-29",
-   "downloads": 1195
+   "downloads": 1196
   }
  ]
 }

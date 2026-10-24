@@ -54,4 +54,8 @@ inline float platePadY(float lineHeight) {
     return (lineHeight - plateHeight(lineHeight)) * 0.5f;
 }
 
+// The plate's opacity, and the brand mark's (dimmed for a rider out of the race).
+constexpr float kPlateAlpha = 230.0f / 255.0f;
+constexpr float kBrandMarkOutAlpha = 100.0f / 255.0f;
+
 }  // namespace PlateLayout

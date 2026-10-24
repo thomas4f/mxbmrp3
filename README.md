@@ -1,4 +1,5 @@
 [![Latest release](https://img.shields.io/github/v/release/thomas4f/mxbmrp3?sort=semver&label=release)](https://github.com/thomas4f/mxbmrp3/releases)
+[![Released](https://img.shields.io/github/release-date/thomas4f/mxbmrp3?label=released)](https://github.com/thomas4f/mxbmrp3/releases/latest)
 [![Unique installs](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fthomas4f%2Fmxbmrp3%2Fmain%2Fusage_survey%2Fbadge.json)](https://thomas4f.github.io/mxbmrp3/usage_survey/)
 
 A free, [open-source](https://github.com/thomas4f/mxbmrp3) plugin for MX Bikes, GP Bikes, and Kart Racing Pro with customizable on-screen displays, immersion features, social tools, and streaming/broadcasting overlays.
@@ -6,9 +7,13 @@ A free, [open-source](https://github.com/thomas4f/mxbmrp3) plugin for MX Bikes, 
 ![MXBMRP3 HUD Screenshot](assets/mxbmrp3.jpg)
 *Default HUD layout. All elements are fully customizable - see [Tips & Tricks](#tips--tricks) for setup ideas.*
 
+https://github.com/user-attachments/assets/4d5e126e-6940-4ec9-92bd-2083ff99521c
+
+*Toggle HUDs from the strip, flip Dash pages, and restyle fonts and themes in Settings.*
+
 ## Features
 
-- **Racing:** Live standings, timing, gap bar, track map, radar and online records
+- **Racing:** Live standings, timing, dash, gap bar, track map, radar and online records
 - **Social:** Steam friends, Discord Rich Presence and tracked riders
 - **Progress:** Stats, personal bests, achievements and FMX trick scoring
 - **Layout:** Customizable HUDs with themes, hotkeys and auto-switching profiles
@@ -26,7 +31,7 @@ A free, [open-source](https://github.com/thomas4f/mxbmrp3) plugin for MX Bikes, 
 > 1. Download the installer above and run it
 > 2. Launch the game and load a track
 > 3. Move the mouse to bring up the pointer, then right-click and drag to reposition elements
-> 4. Press **Tilde (~)** or click the settings button to toggle elements, adjust opacity, and more
+> 4. Click an icon in the **Toggles** strip (right edge, shown while the mouse moves) to switch it on or off, or the top icon - or **Tilde (~)** - for the settings menu
 >
 > The installer isn't signed yet, so Windows will warn about an "unknown publisher" - [why & how to proceed](#windows-warns-me-when-downloading-or-installing).
 
@@ -97,16 +102,17 @@ Launch the game and load a track - a few elements are on by default, so the HUD 
 ## Controls
 
 ### Mouse
-- **Move Mouse** - Show mouse pointer and settings button (auto-hides after inactivity)
+- **Move Mouse** - Show mouse pointer and the Toggles strip (hides 3 seconds after the mouse stops, but not while it rests on the strip)
 - **Left Click** - Interact with settings menu and HUD elements
-- **Right Click & Drag** - Reposition elements
+- **Right Click & Drag** - Reposition elements (the one dragged last draws on top)
 - **Left Click a rider** - On the Map, Standings, Event Log or Charts HUD, switch the spectate camera to that rider
 
 ### Keyboard Shortcuts
 
-Keyboard and controller hotkeys can be customized in Settings > Hotkeys. By default, only the settings menu hotkey is configured:
+Keyboard and controller hotkeys can be customized in Settings > Hotkeys. By default, only these are configured:
 
 - **Tilde (~)** - Toggle settings menu. It is the key left of **1** on the number row, so on a non-US layout it may be marked **`** or **§** rather than ~
+- **Page Down / Page Up** - Dash + / Dash -: step the Dash to its next or previous page
 
 ## Configuration
 
@@ -121,11 +127,11 @@ The settings menu provides global settings that apply to all profiles, followed 
 | Icon | Tab | Description |
 |:----:|-----|-------------|
 | <img src="assets/icons/hud-general.svg" width="20" height="20" alt=""> | **General** | Preferences with reference and freeze defaults, presence integrations, usage survey, web overlay, profiles |
-| <img src="assets/icons/hud-appearance.svg" width="20" height="20" alt=""> | **Appearance** | Panel theme, units, motion, messages, UI scale, fonts, colors, and which display the HUD draws on |
+| <img src="assets/icons/hud-appearance.svg" width="20" height="20" alt=""> | **Appearance** | Panel theme, units, motion, glow, messages, UI scale, fonts, colors, and which display the HUD draws on |
 | <img src="assets/icons/hud-hotkeys.svg" width="20" height="20" alt=""> | **Hotkeys** | Keyboard and controller bindings |
 | <img src="assets/icons/hud-riders.svg" width="20" height="20" alt=""> | **Riders** | Track specific riders with custom colors and icons |
 | <img src="assets/icons/hud-rumble.svg" width="20" height="20" alt=""> | **Rumble** | Controller vibration feedback effects |
-| <img src="assets/icons/hud-helmet-mx.svg" width="20" height="20" alt=""> | **Helmet** | First-person helmet overlay configuration |
+| <img src="assets/icons/hud-helmet-mx.svg" width="20" height="20" alt=""> | **Helmet** | First-person helmet overlay configuration and the impact vignette |
 | <img src="assets/icons/hud-video.svg" width="20" height="20" alt=""> | **Director** | Auto-director for spectating and replays - follows the most interesting rider |
 | <img src="assets/icons/hud-chat.svg" width="20" height="20" alt=""> | **Stream Chat** | Your Twitch and YouTube chat in game, with name colors, role icons and filters |
 | <img src="assets/icons/hud-spotter.svg" width="20" height="20" alt=""> | **Spotter** | Spoken race callouts and subtitles - voice, categories and proximity distances |
@@ -150,7 +156,7 @@ Four separate profiles store complete HUD layout configurations:
 
 ## HUDs & Widgets
 
-**HUDs** are the larger data displays - each gets its own settings tab with options like column/row toggles, gap modes, and textures. **Widgets** are simpler, single-purpose readouts (one number, gauge, or dial); rather than a tab each, they're configured together under the shared **Widgets** tab, a row apiece for visibility, title, texture, opacity and scale (the two that belong to a feature - the Director's status button and the Spotter's subtitles - sit on that feature's own tab instead).
+**HUDs** are the larger data displays - each gets its own settings tab with options like column/row toggles, gap modes, and textures. **Widgets** are simpler, single-purpose readouts (one number, gauge, or dial); rather than a tab each, they're configured together under the shared **Widgets** tab, a row apiece for visibility, title, texture, opacity and scale (the one that belongs to a feature - the Spotter's subtitles - sits on that feature's own tab instead).
 
 ### Widgets
 
@@ -172,8 +178,7 @@ Four separate profiles store complete HUD layout configurations:
 | **Compass** | Heading dial (classic needle or modern rotating card) |
 | **Tyre Temp** | Front and rear tyre temperatures (GP Bikes only) |
 | **ECU** | Engine map, traction control, engine braking and anti-wheeling (GP Bikes only) |
-| **Settings** | The button that opens this menu. Hide it if you prefer the Tilde hotkey |
-| **Version** | The plugin's version number |
+| **Toggles** | The settings button and every on/off switch from the menu in one strip, shown while the mouse moves; the arrow under the settings button folds the switches away, and resting the mouse on a switch that is off shows a dimmed preview of it |
 | **Gamepad** | Controller visualization |
 | **Clock** | Real-time clock |
 | **Pointer** | The mouse cursor. Off = settings menu only, which helps if a pad reads as a mouse |
@@ -183,6 +188,7 @@ Four separate profiles store complete HUD layout configurations:
 
 | Icon | HUD | Description |
 |:----:|-----|-------------|
+| <img src="assets/icons/hud-dash.svg" width="20" height="20" alt=""> | **Dash** | Compact card that steps through pages drawn from other HUDs (Dash + / Dash - hotkeys) and shows new notices |
 | <img src="assets/icons/hud-map.svg" width="20" height="20" alt=""> | **Map** | Top-down track map with rider positions (click to spectate), a zoomed Follow view you can tilt and that can show more track the faster you go, and lap delta colours |
 | <img src="assets/icons/hud-notices.svg" width="20" height="20" alt=""> | **Notices** | Race status notices (wrong way, blue flag, PB alerts, last lap, finished) |
 | <img src="assets/icons/hud-standings.svg" width="20" height="20" alt=""> | **Standings** | Live race positions with gaps, status, and tracked rider indicators |
@@ -219,7 +225,7 @@ Take every counted one to Platinum and a **Prestige** button appears, trading th
 Turn on **Spoken audio** (Settings > Spotter, or the checkbox beside the tab) and the plugin talks to you while you ride: riders behind or alongside you, blue flags, a rider down, and - each time you cross the line - your position and the gaps ahead and behind. Windows text-to-speech reads it out of the box, with **TTS voice**, **Speed** and **Volume** to choose how; recorded voice packs are a separate download. Five **Callouts** switches decide what gets announced, and **Subtitles** puts every call on screen so you can run it silent. It follows whoever you're watching, so it works while spectating and in replays. Full guide: [Spotter voice](docs/spotter.md).
 
 ### Auto-director (spectating & replays)
-Turn on the **Director** (Settings > Director, or its camera-icon status button) and it automatically cuts the spectate camera to the most interesting rider or battle, broadcast-style, so you don't have to switch riders by hand. It works while spectating live and in replays - a great way to re-watch or record a session and let it direct the action for you. It also drives the [Web Overlay](#web-overlay)'s battle panel.
+Turn on the **Director** (Settings > Director, or its camera icon in the Toggles strip) and it automatically cuts the spectate camera to the most interesting rider or battle, broadcast-style, so you don't have to switch riders by hand. It works while spectating live and in replays - a great way to re-watch or record a session and let it direct the action for you. It also drives the [Web Overlay](#web-overlay)'s battle panel.
 
 ### Second-monitor HUD (Companion window)
 Set **HUD display** (Settings > Appearance > Companion window) to **Companion** or **Both** to open a standalone window you can drag and maximize on a second monitor. Each HUD keeps its own on/off state and position there (drag or toggle it while your mouse is over that window), so you can run a minimal in-game layout and a full dashboard on the second screen at once.
@@ -230,7 +236,7 @@ Set **HUD display** (Settings > Appearance > Companion window) to **Companion** 
 The Records HUD fetches online lap records from CBR or MXB-Ranked. Turn on **Auto-fetch** (Settings > Records) to load them when you enter a track. Records also work while spectating.
 
 ### Custom segment timing (training tool)
-Bind the **Segment +** and **Segment -** hotkeys (Settings > Hotkeys) to drop timing points on the track as you ride. Drop two and the Timing HUD times the section between them - live, with a delta to your best for it - so you can drill a single corner or rhythm section without completing a full lap. Remove the points to return to normal split/lap timing.
+Bind the **Segment +** and **Segment -** hotkeys (Settings > Hotkeys) to drop timing points on the track as you ride. Drop two and the Timing HUD (Settings > Timing, off by default) and the Dash's Timing page time the section between them - live, with a delta to your best for it - so you can drill a single corner or rhythm section without completing a full lap. Remove the points to return to normal split/lap timing.
 
 ### See where friends are racing
 **Steam** (Settings > General) is on by default on the Steam build. It broadcasts your session to friends and populates the Friends HUD: which of your Steam friends are in-game, the server and track they're on, and who's joined your session.
@@ -262,7 +268,7 @@ Biggest wins first:
 
 1. Turn on **Direct GL** (Settings > General) - the plugin draws the HUD itself instead of handing every piece of it to the game
 2. Set **Panel theme** to **None** (Settings > Appearance) - a theme puts artwork behind every panel
-3. Turn off **Drop shadow** (Settings > Appearance) - every shadowed string is drawn twice
+3. Turn off **Drop shadow** (Settings > Appearance) - every shadowed text and icon is drawn twice
 4. Turn down **Detail**, and slim or turn off **Track outline** (Settings > Map) - the track ribbon is the plugin's largest single piece of drawing
 5. Turn off what you don't use (the checkbox beside each tab, or the Visible column in Settings > Widgets) - a hidden element builds and draws nothing
 
@@ -335,7 +341,7 @@ Installing manually from the [ZIP archive](#manual-installation) avoids most of 
 
 ### Make Sure You're on the Latest Version
 - Many issues are already fixed in a newer release, so update before troubleshooting further
-- Check your version in Settings > Updates (or the Version widget) and install a newer one from there - no manual download or reinstall needed. The plugin also notifies you on startup when a stable release is out
+- Check your version in Settings > Updates and install a newer one from there - no manual download or reinstall needed. The plugin also notifies you on startup when a stable release is out
 - If the in-game updater is set to **Off** or unavailable, download the latest release manually from [GitHub Releases](https://github.com/thomas4f/mxbmrp3/releases) and reinstall
 
 ### HUD Not Appearing
@@ -347,7 +353,7 @@ Installing manually from the [ZIP archive](#manual-installation) avoids most of 
 - If you have multiple installations (e.g., standalone and Steam), the installer may pick the wrong one. Verify the plugin ended up in the `plugins\` folder next to the game `.exe` you actually launch. If not, run the installer again and select the correct path, or install manually.
 
 ### Text or Icons Not Appearing
-- The plugin shows "MXBMRP3 is not installed correctly" in block letters when it finds no fonts or icons
+- The Dash shows "Not installed correctly" in block letters when the plugin finds no fonts or icons, even with the Dash switched off
 - `mxbmrp3_data\` holds the fonts, textures and icons, and must sit in `plugins\` beside the DLO (see [directory structure](#manual-installation))
 - If you moved or renamed it, restore it from the release archive
 
@@ -448,6 +454,7 @@ Documents\PiBoSo\[Game]\mxbmrp3\
 
 Built with C++17, Visual Studio 2022, the PiBoSo Plugin API, and Claude Code.
 
+- [`CHANGELOG.md`](CHANGELOG.md) - what changed in each release
 - [`DEVELOPMENT.md`](DEVELOPMENT.md) - building (Windows shipping build + Linux cross-build) and running the test suites
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) - how to report bugs and contribute changes (and how the public mirror works)
 - [`TESTING.md`](TESTING.md) - the layered test suite (unit / integration / specialized) and how to add a test

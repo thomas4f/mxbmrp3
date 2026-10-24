@@ -76,7 +76,7 @@ OUT="${1:-${HERE}/companion_window.png}"
 DEFAULT_HOLD=25
 HOLD="${2:-${DEFAULT_HOLD}}"
 # Args from $3 on are passed through to the exe: a scene mode ("gamepad", "gear", "toast",
-# "timing", "gapbar", "eventlog", "close") or a settings tab ("tab Map", "tab Timing", ...),
+# "timing", "gapbar", "eventlog", "close", "toggles N") or a settings tab ("tab Map", "tab Timing", ...),
 # optionally with the pointer left over one of its rows ("hover appearance.color_accent").
 # "gapbar" wants its marker mode seeded, since the demo cannot set it through a hook:
 #   EXTRA_INI=$'[GapBarHud]\nmarkerMode=2' companion_demo.sh out.png 25 gapbar

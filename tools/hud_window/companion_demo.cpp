@@ -113,6 +113,11 @@ int main(int argc, char** argv) {
     // under way, ridden on a simulated lap clock, with the Delta Trace shown and
     // the Map's lap delta on (Session PB): the new lap drawing over the old.
     bool deltaMode = false;
+    // "dash": a race under way for the Dash's pages - two laps ridden and a third
+    // in progress on the simulated lap clock, rivals ahead and behind, revs,
+    // inputs and fuel fed every step, and drawn ON TRACK (the Fuel rows read "-"
+    // in spectate). Pair it with EXTRA_INI=$'[DashHud]\nvisible=1\npage=<key>'.
+    bool dashMode = false;
     // "motion N": Motion at Normal, the settings menu opening N ms ago, the clock
     // then held so the capture is that instant of the fade. "motiontab N": the
     // same, for the Appearance tab's body fading in over the General tab's panel.
@@ -136,8 +141,8 @@ int main(int argc, char** argv) {
         if (std::string(argv[a]) == "gapbar") { timingMode = true; gapbarMode = true; }
         if (std::string(argv[a]) == "eventlog") eventlogMode = true;
         // "update": publish a fake UPDATE_AVAILABLE, so the settings footer's
-        // "vX.Y.Z available!" chip and the Version widget's notification panel are on
-        // screen. Composes with the other modes -- it only sets checker state.
+        // "vX.Y.Z available!" chip is on screen. Composes with the other modes -- it
+        // only sets checker state.
         if (std::string(argv[a]) == "update") host.updateSetAvailable("9.9.9");
         if (std::string(argv[a]) == "records") recordsMode = true;
         if (std::string(argv[a]) == "preview") { previewMode = true; recordsMode = true; }
@@ -145,6 +150,7 @@ int main(int argc, char** argv) {
         if (std::string(argv[a]) == "update")  updateMode = true;
         if (std::string(argv[a]) == "fmx")     fmxMode = true;
         if (std::string(argv[a]) == "deltatrace") deltaMode = true;
+        if (std::string(argv[a]) == "dash") dashMode = true;
         if ((std::string(argv[a]) == "motion" || std::string(argv[a]) == "motiontab") && a + 1 < argc) {
             motionMs = std::atoi(argv[a + 1]);
             motionTab = std::string(argv[a]) == "motiontab";
@@ -153,20 +159,20 @@ int main(int argc, char** argv) {
             motionHud = argv[a + 1];
             motionMs = std::atoi(argv[a + 2]);
         }
-        // The missing-assets warning, built as if discovery found nothing (test builds
-        // never build it themselves); the staged assets still draw behind it.
-        // "brokeninstall real" draws the same panel with the real font instead of
-        // the block letters, for a pixel diff of the two.
+        // The missing-assets warning on the Dash, raised as if discovery found
+        // nothing (test builds never raise it themselves); the staged assets still
+        // draw. "brokeninstall real" draws the same rows with the real font instead
+        // of the block letters, for a pixel diff of the two.
         if (std::string(argv[a]) == "brokeninstall") {
             gearMode = true;
             const bool real = a + 1 < argc && std::string(argv[a + 1]) == "real";
             host.installWarning(0, 0, true, real);
         }
-        // "welcome" / "updated": the gear scene with the Version widget's startup
-        // popup up (a fresh install, or a new release line), the default setup
-        // notice held back under it.
-        if (std::string(argv[a]) == "welcome") { gearMode = true; host.messagesStartup(true, "1.32"); }
-        if (std::string(argv[a]) == "updated") { gearMode = true; host.messagesStartup(false, "1.32", "1.31"); }
+        // "welcome" / "updated" / "updatemsg": the gear scene with a startup message
+        // on the Dash (a fresh install, a new release line, a release available).
+        if (std::string(argv[a]) == "welcome") { gearMode = true; host.messagesStartup(true, "1.33"); }
+        if (std::string(argv[a]) == "updated") { gearMode = true; host.messagesStartup(false, "1.33", "1.32"); }
+        if (std::string(argv[a]) == "updatemsg") { gearMode = true; host.updateSetAvailable("1.34.0"); }
     }
     if (gamepadMode) {
         host.fakeGamepad(true);
@@ -276,6 +282,97 @@ int main(int argc, char** argv) {
             host.raceTrackPosition({ { 4, 0.00f } });
             host.raceLap(1, 4, /*lapNum=*/2, lapMs, /*best=*/0, lapMs / 3, lapMs * 2 / 3);
             ride(80, -10.0f);   // the clock stays put: the capture is of this moment
+        }
+    } else if (dashMode) {
+        auto setNowUs = host.sym<void (*)(long long)>("MXBMRP3_Test_LapTimerSetNowUs");
+        if (setNowUs) {
+            // A 7 l tank and a bike that shifts at 10500 and hits the limiter at
+            // 12000, re-initialised so the player is entered first (see the preview
+            // scene's note on the first RaceAddEntry).
+            host.eventInit("Southwick", "Thomas", 1600.0f, 2, "Test 450", "MX1", "southwick", 0, "",
+                           7.0f, 10500, 12000, 13000);
+            host.raceEvent("Southwick", /*type=*/2);   // Race
+            host.session(/*session=*/6, /*numLaps=*/10, /*lengthMs=*/0);
+            struct Rider { int num; const char* name; const char* bike; float ahead; };
+            const Rider grid[] = {
+                {  4, "Thomas",      "Test 450",              0.000f },
+                { 10, "Wilhelmina",  "Kawasaki KX450 2023",   0.060f },
+                { 22, "Bartholomew", "Honda CRF450R 2023",    0.018f },
+                {  7, "Cassiopeia",  "Yamaha YZ450F 2023",   -0.012f },
+                {  3, "Aleksander",  "KTM 450 SX-F 2023",    -0.050f },
+                { 18, "Genevieve",   "Husqvarna FC 450 2023", -0.110f },
+            };
+            for (const Rider& r : grid) host.addEntry(r.num, r.name, r.bike);
+            host.runInit(6);
+            host.trackCenterline(stadium(), { 10.0f, 480.0f, 950.0f, 0.0f });
+            // Back on track before each stint: raceLap() draws in spectate, and the
+            // switch either way clears the telemetry and its history.
+            host.drawWithState(0);
+            long long lapStart = 1000000000LL;
+            int lapMs = 0, step = 0;
+            float fuel = 6.2f;
+            auto positions = [&](float pos) {
+                std::vector<TrackRow> rows;
+                for (const Rider& r : grid) {
+                    const float p = pos + r.ahead;
+                    rows.push_back({ .num = r.num, .trackPos = p - std::floor(p) });
+                }
+                host.raceTrackPosition(rows);
+            };
+            // One sample per 0.5% of the lap, the pace swinging around 60 s by
+            // `wave`; revs, gear and inputs follow a corner every quarter lap.
+            auto ride = [&](int to, float wave) {
+                double t = 0.0;
+                for (int p = 1; p <= to; ++p, ++step) {
+                    t += 300.0 + wave * std::sin(p * 0.035 + 2.0) + wave * 0.4 * std::sin(p * 0.12);
+                    setNowUs(lapStart + static_cast<long long>(t * 1000.0));
+                    positions(p / 200.0f);
+                    const float c = std::sin(p * 0.157f);   // +1 straight, -1 corner
+                    fuel -= 0.0021f;
+                    TelemetryRow r;
+                    r.speed = 18.0f + 7.0f * c;
+                    r.gear = c > 0.3f ? 4 : c > -0.4f ? 3 : 2;
+                    r.rpm = 8200 + static_cast<int>(2600.0f * std::sin(p * 0.47f));
+                    r.throttle = std::clamp(0.55f + 0.6f * c, 0.0f, 1.0f);
+                    r.frontBrake = std::clamp(-0.9f * c - 0.2f, 0.0f, 1.0f);
+                    r.fuel = fuel;
+                    r.trackPos = p / 200.0f;
+                    r.time = static_cast<float>(step) * 0.3f;
+                    host.telemetryFrame(r);
+                }
+                lapMs = static_cast<int>(t + 300.0);
+            };
+            auto classify = [&](int laps, int best) {
+                host.classify(6, laps * 60000, { { .num = 10, .best = best - 700, .laps = laps, .gap = 0 },
+                                      { .num = 22, .best = best - 200, .laps = laps, .gap = 2100 },
+                                      { .num = 4,  .best = best,       .laps = laps, .gap = 3050 },
+                                      { .num = 7,  .best = best + 400, .laps = laps, .gap = 3900 },
+                                      { .num = 3,  .best = best + 900, .laps = laps, .gap = 6200 },
+                                      { .num = 18, .best = best + 2300, .laps = laps, .gap = 11800 } });
+            };
+            setNowUs(lapStart - 20000);
+            positions(0.99f);
+            setNowUs(lapStart);
+            positions(0.0f);
+            ride(197, 0.0f);
+            int best = lapMs;
+            lapStart += static_cast<long long>(lapMs) * 1000LL;
+            setNowUs(lapStart);
+            classify(1, best);
+            positions(0.0f);
+            host.raceLap(6, 10, 1, best - 700, /*best=*/1, best / 3, best * 2 / 3);
+            host.raceLap(6, 4, 1, lapMs, /*best=*/1, lapMs / 3, lapMs * 2 / 3);
+            host.drawWithState(0);
+            ride(197, 14.0f);
+            best = std::min(best, lapMs);
+            lapStart += static_cast<long long>(lapMs) * 1000LL;
+            setNowUs(lapStart);
+            classify(2, best);
+            positions(0.0f);
+            host.raceLap(6, 4, 2, lapMs, /*best=*/lapMs <= best ? 2 : 0, lapMs / 3, lapMs * 2 / 3);
+            host.raceLap(6, 22, 2, best - 200, /*best=*/2, best / 3, best * 2 / 3);
+            host.drawWithState(0);
+            ride(120, -10.0f);   // the clock stays put: the capture is of this moment
         }
     } else if (recordsMode) {
         // A TRACK ID, which the default scene has no reason to set: the player PB row
@@ -393,6 +490,7 @@ int main(int argc, char** argv) {
         // scene -- but the PANEL still has to be opened, exactly as the default
         // branch does it. Omitting that is a blank capture, not a missing tag.
         host.updateSetAvailable("9.9.9");
+        host.settleStartupMessages();   // else the menu opens on the Updates tab
         host.showSettings(true);
         host.setActiveTab("General");
     } else if (mapLostMode) {
@@ -516,7 +614,19 @@ int main(int argc, char** argv) {
     // menu, the pointer) renders on the companion window we screenshot — it never
     // takes focus, so it's never the foreground-derived active surface under Wine.
     host.forceActiveSurface(1);
-    host.draw();
+    const int drawState = dashMode ? 0 : 1;   // ON_TRACK for the Dash's Fuel rows
+    host.drawWithState(drawState);
+
+    // "toggles N": the mouse stand-in over the Toggles strip's row N, so the capture
+    // shows the strip and that row's hover name ("toggles -1": awake, mouse off it).
+    for (int a = 1; a + 1 < argc; ++a) {
+        if (std::string(argv[a]) != "toggles") continue;
+        host.injectMouse(true, 0.45f, 0.5f, 0); host.draw();
+        host.injectMouse(true, 0.5f, 0.5f, 0); host.draw();
+        float tx = 0.5f, ty = 0.5f;
+        host.toggleStripRow(std::atoi(argv[a + 1]), &tx, &ty);
+        host.injectMouse(true, tx, ty, 0); host.draw(); host.draw();
+    }
 
     // "dump": print the plugin's own draw list for the five reference panels and
     // exit, without opening a window. It fed the deleted theme-preview page's
@@ -616,7 +726,7 @@ int main(int argc, char** argv) {
             motionNow = std::min(motionEnd, motionNow + 16000ll);
             host.setMotionNowUs(motionNow);
         }
-        host.draw();
+        host.drawWithState(drawState);
         // The frame to photograph is on screen once the clock has reached its
         // target and the companion has drawn it: tell companion_demo.sh, whose
         // poll would otherwise take the first frame with any content - from before

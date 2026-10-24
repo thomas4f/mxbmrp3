@@ -3,6 +3,7 @@
 // Speedo widget - displays rotating needle (0-230 km/h) with dial background
 // ============================================================================
 #include "speedo_widget.h"
+#include "default_slots.h"
 #include "../core/layout_config.h"
 #include "speed_widget.h"  // For SpeedUnit enum
 
@@ -320,7 +321,9 @@ void SpeedoWidget::resetToDefaults() {
     setShowBackgroundTexture(true);
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
     setScale(1.5f);  // 150% default scale
-    setPosition(cellsX(125), cellsY(64));
+    // Right-aligned on the column by the box rebuildRenderData() fits around the dial.
+    setPosition(DefaultSlots::rightEdge() - fitPanelToGrid(DIAL_SIZE * m_fScale / UI_ASPECT_RATIO, DIAL_SIZE * m_fScale).w,
+                DefaultSlots::rightColumnY());
     m_smoothedSpeed = 0.0f;
     // EMPTY, not "classic": empty means "whatever the default pack resolves to",
     // which is how an upgrading user whose own art was migrated into gauges\\legacy

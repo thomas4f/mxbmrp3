@@ -71,7 +71,7 @@ BaseHud* SettingsHud::renderTabPitboard(SettingsLayoutContext& ctx) {
 
     // Gap compare mode (Auto/Leader/Session PB/Ideal/All-time/Overall/Record)
     static const char* const kGapModes[] = {
-        "Auto", "Leader", "Session PB", "Ideal", "All-time", "Overall", "Record" };
+        "Auto", "Leader", "Session PB", "Ideal", "All-time PB", "Overall", "Record" };
     static_assert(sizeof(kGapModes) / sizeof(kGapModes[0]) == PitboardHud::GAP_COUNT,
                   "one name per gap mode");
     const char* gapModeText = cycleName(kGapModes, hud->m_gapCompareMode);

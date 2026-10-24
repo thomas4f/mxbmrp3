@@ -3,6 +3,7 @@
 // Displays performance metrics including FPS and render timing diagnostics
 // ============================================================================
 #include "performance_hud.h"
+#include "default_slots.h"
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
 #include "../core/plugin_constants.h"
@@ -533,7 +534,7 @@ void PerformanceHud::resetToDefaults() {
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setScale(1.0f);
     m_graphRows = DEFAULT_GRAPH_ROWS;
-    setPosition(cellsX(133), cellsY(56));
+    setPosition(DefaultSlots::rightColumnX(DefaultSlots::WIDE_CELLS), DefaultSlots::rightColumnY());
     m_enabledElements = ELEM_DEFAULT;
     m_displayMode = DISPLAY_BOTH;  // Show both graphs and values by default
 

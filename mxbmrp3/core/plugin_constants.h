@@ -119,13 +119,13 @@ namespace PluginConstants {
     constexpr double FRAME_BUDGET_US = 1000000.0 / TARGET_FPS;   // 2083.3
     constexpr float FRAME_BUDGET_MS = static_cast<float>(FRAME_BUDGET_US / 1000.0);
 
-    // How long the corner status buttons (settings / director) flash into view on an
-    // event (entering the track, toggling a mode) before returning to their normal
-    // mouse-idle auto-hide. Milliseconds.
+    // How long the Toggles strip's controls (settings / director) flash into view on
+    // entering the track before returning to their normal mouse-idle auto-hide.
+    // Milliseconds.
     constexpr int WIDGET_REVEAL_MS = 4000;
     // A gap between Draw calls longer than this means the game stopped drawing us
     // (menu / loading / alt-tab); when drawing resumes we treat it as "entered the
-    // track" and reveal the corner buttons. Milliseconds.
+    // track" and reveal the Toggles strip's controls. Milliseconds.
     constexpr int ENTER_TRACK_GAP_MS = 1000;
 
     // Telemetry settings
@@ -382,7 +382,7 @@ namespace PluginConstants {
         // Background opacity limits (0.0 = fully transparent, 1.0 = fully opaque)
         constexpr float MIN_OPACITY = 0.0f;
         constexpr float MAX_OPACITY = 1.0f;
-        constexpr float DEFAULT_OPACITY = 0.8f;  // Used by most HUDs
+        constexpr float DEFAULT_OPACITY = 0.33f;  // Used by most HUDs; defaults keep to 0, 33, 66 or 100%
 
         // Position offset limits (normalized coordinates)
         constexpr float MIN_OFFSET = -2.0f;  // Allow off-screen for ultrawide/multi-monitor

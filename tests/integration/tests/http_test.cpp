@@ -35,6 +35,10 @@ TEST_CASE("http: the server serves /api/state and it matches the direct snapshot
         std::ofstream f(webRoot / "custom.css", std::ios::binary);
         f << ":root { --test-marker: 1; }\n";
     }
+    {
+        std::ofstream f(webRoot / "index.html", std::ios::binary);
+        f << "<!doctype html><title>mount-marker</title>\n";
+    }
 
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
@@ -85,6 +89,17 @@ TEST_CASE("http: the server serves /api/state and it matches the direct snapshot
     const std::string cssFull = host.rawGetFull("/custom.css");
     CHECK(cssFull.find("--test-marker") != std::string::npos);
     CHECK(cssFull.find("Cache-Control: no-cache") != std::string::npos);
+
+    // A plain mounted file goes through the static mount itself. Since
+    // cpp-httplib 0.62 a file whose path cannot be resolved is not served at
+    // all (before, an unresolved path fell through to the plain lookup), so
+    // this pins that our relative web root still resolves and serves, with
+    // the charset the mime mapping adds.
+    const std::string indexFull = host.rawGetFull("/index.html");
+    CHECK(indexFull.find("mount-marker") != std::string::npos);
+    CHECK(indexFull.find("text/html; charset=utf-8") != std::string::npos);
+    const std::string rootFull = host.rawGetFull("/");
+    CHECK(rootFull.find("mount-marker") != std::string::npos);
 
     host.shutdown();
 }

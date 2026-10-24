@@ -82,6 +82,20 @@ void HotkeyManager::resetToDefaults() {
     DEBUG_INFO("HotkeyManager: Reset to default bindings");
 }
 
+void HotkeyManager::yieldShippedConflicts() {
+    // The Dash's pair only: the settings key has shipped on ` since the start, so
+    // a player who shares it did so on purpose.
+    for (HotkeyAction action : { HotkeyAction::DASH_NEXT, HotkeyAction::DASH_PREV }) {
+        HotkeyBinding& binding = m_bindings[static_cast<size_t>(action)];
+        const KeyBinding shipped = defaultHotkeyBinding(action).keyboard;
+        if (!shipped.isSet() || !(binding.keyboard == shipped)) continue;
+        if (!hasKeyboardConflict(action, shipped)) continue;
+        binding.clearKeyboard();
+        DEBUG_INFO_F("HotkeyManager: %s gives its shipped key to the player's binding",
+                     getActionConfigName(action));
+    }
+}
+
 void HotkeyManager::update() {
     if (!m_bInitialized) return;
 

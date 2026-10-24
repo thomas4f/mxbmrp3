@@ -5,6 +5,12 @@
 // a hand-edited INI from feeding a zero/negative/huge stride into the grid
 // drawer (a 0 stride would make every line "major"; the drawer does i % every).
 //
+// Also the shipped defaults that live in TWO places, the member initialiser and
+// resetToDefaults(): the constructor runs the latter, so it is the one that
+// counts. 1.33 turned Drop shadow on in the initialiser only, and every install
+// still started with it off. This TU is compiled without MXBMRP3_TEST_BUILD, so it
+// sees the shipping values.
+//
 // test_plugin_utils.cpp provides the doctest impl + main
 // (DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN); this TU only registers more tests.
 // ============================================================================
@@ -55,4 +61,14 @@ TEST_CASE("UiConfig: toDisplayTemperature follows the temperature unit") {
     CHECK(ui.toDisplayTemperature(0.0f) == 32);
     CHECK(ui.toDisplayTemperature(85.0f) == 185);
     ui.setTemperatureUnit(TemperatureUnit::CELSIUS);
+}
+
+TEST_CASE("UiConfig: Drop shadow and Glow start on in a shipping build") {
+    UiConfig& ui = UiConfig::getInstance();
+    ui.setDropShadow(false);
+    ui.setGlow(false);
+    ui.resetToDefaults();
+
+    CHECK(ui.getDropShadow() == true);
+    CHECK(ui.getGlow() == true);
 }

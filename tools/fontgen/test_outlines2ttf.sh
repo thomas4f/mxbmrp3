@@ -45,7 +45,13 @@ PY
 BASE="${ROOT}/mxbmrp3_data/web/fonts/RobotoMono-Regular.ttf"
 python3 "${HERE}/outlines2ttf.py" "${TMP}/sheet.pdf" --chars 10 -o "${TMP}/Bare.ttf" 2>/dev/null
 python3 "${HERE}/outlines2ttf.py" "${TMP}/sheet.pdf" --chars 10 --base "${BASE}" -o "${TMP}/Filled.ttf" 2>/dev/null
-"${HERE}/mxbmrp3_fontgen" "${TMP}/Bare.ttf" "${TMP}/Bare.fnt" 2>/dev/null
+# Bare is rasterised with tabular_digits OFF: the advance check below compares
+# the undrawn glyph with the artwork's own '0' and '1' spacing, which is what
+# outlines2ttf outputs. Normalisation's fixed-width digits would give both
+# digits the widest advance and push the comparison out of range, testing
+# fontgen's digit layout (pinned by test_font_metrics) instead of this tool.
+printf 'normalize = 1\ntabular_digits = 0\nfilename = %s\n' "${TMP}/Bare.ttf" > "${TMP}/bare.cfg"
+"${HERE}/mxbmrp3_fontgen" "${TMP}/bare.cfg" "${TMP}/Bare.fnt" 2>/dev/null
 "${HERE}/mxbmrp3_fontgen" "${TMP}/Filled.ttf" "${TMP}/Filled.fnt" 2>/dev/null
 
 python3 - "${TMP}" <<'PY'

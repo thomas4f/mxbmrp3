@@ -61,14 +61,17 @@ bool preservedByDesign(const std::string& tab, const ini::Key& k) {
     // The file's own hash (exploration_stats.h): differs whenever anything above
     // it does, so it can only ever echo another difference.
     if (section == "Fingerprint") return true;
+    // Where the companion window sits on the desktop, recorded by the window
+    // itself: under an X display the sweep really opens it (980x560), headless
+    // it never does. Window placement, not a setting any tab's Reset owns.
+    if (section == "Display" && key.rfind("companionWindow", 0) == 0) return true;
 
     // Visibility: a per-tab reset must not hide the element the user is
     // positioning (resetHudsToFactoryDefaults' keepVisibility). The Widgets tab is
     // the deliberate exception — its rows expose per-widget "Visible" toggles, so
     // Reset restores those too, and it is NOT excused here.
-    // The Director status button's is hudVisible, in the global [Director] section.
     if (tab != "Widgets" &&
-        (key == "visible" || key == "companionVisible" || key == "hudVisible")) return true;
+        (key == "visible" || key == "companionVisible")) return true;
 
     // Master switches. Each tab's reset restores that tab's tuning while leaving
     // the on/off alone; the full "Reset all settings" turns them off instead.
@@ -204,39 +207,5 @@ TEST_CASE("reset tab: a tab's Reset restores everything that tab can change") {
     // without the number needing a touch every time a tab is added.
     CHECK(tabsWithSomethingToReset >= 20);
 
-    host.shutdown();
-}
-
-// The sweep above excuses visibility, so it cannot see a Reset that changes it.
-// Reset Director replayed all of [Director], status button's hudVisible included,
-// while every other tab's Reset keeps its element's visibility.
-TEST_CASE("reset tab: Reset Director keeps the status button's visibility") {
-    const char* saveWin = "Z:\\tmp\\mxbmrp3-tests\\reset_tab\\";
-    const std::string iniPath =
-        "Z:\\tmp\\mxbmrp3-tests\\reset_tab\\mxbmrp3\\mxbmrp3_settings.ini";
-
-    PluginHost host(dllPath());
-    REQUIRE(host.loaded());
-    host.startup(saveWin);
-    REQUIRE(host.save());
-
-    std::string text = ini::readFile(iniPath);
-    const ini::Key key{"Director", "hudVisible"};
-    const ini::Map factory = ini::parse(text);
-    REQUIRE_MESSAGE(factory.count(key) == 1, "[Director] hudVisible not written");
-    const std::string flipped = factory.at(key) == "1" ? "0" : "1";
-    const size_t section = text.find("[Director]");
-    REQUIRE(section != std::string::npos);
-    const size_t at = text.find("hudVisible=", section);
-    REQUIRE(at != std::string::npos);
-    text.replace(at, std::string("hudVisible=").size() + 1, "hudVisible=" + flipped);
-    REQUIRE(ini::writeFile(iniPath, text));
-    host.loadSettings(saveWin);
-
-    host.showSettings(true);
-    host.setActiveTab("Director");
-    REQUIRE(host.clickResetTab());
-    REQUIRE(host.save());
-    CHECK(ini::parse(ini::readFile(iniPath)).at(key) == flipped);
     host.shutdown();
 }

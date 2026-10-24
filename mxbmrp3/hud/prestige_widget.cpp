@@ -3,6 +3,8 @@
 // The prestige badge. See prestige_widget.h for what it is and why it is locked.
 // ============================================================================
 #include "prestige_widget.h"
+#include "default_slots.h"
+#include "dash_hud.h"
 
 #include "../core/plugin_utils.h"
 #include "../core/settings_manager.h"
@@ -97,7 +99,7 @@ void PrestigeWidget::rebuildRenderData() {
     PanelWant want;
     // Square on screen: the height is the badge, so the width is that height
     // divided by the aspect ratio (the same conversion the settings tab's tier
-    // tile and the settings button's box make). The artwork is square, and
+    // tile and the Toggles strip's icon boxes make). The artwork is square, and
     // addBackgroundQuad stretches it to the box -- so the box has to be square
     // or the badge is drawn oval.
     want.contentW = badge / UI_ASPECT_RATIO;
@@ -125,6 +127,8 @@ void PrestigeWidget::resetToDefaults() {
     setTextureVariant(1);
     m_fBackgroundOpacity = 1.0f;
     setScale(1.0f);
-    setPosition(0.5f, 0.05f);
+    // Beside the Dash, on its right, a box gap clear of it: the top-centre spot
+    // this used to take is the Dash's.
+    setPosition(0.5f + cellsX(DashHud::DEFAULT_PANEL_WIDTH_CELLS * 0.5f + 2.0f), cellsY(1));
     setDataDirty();
 }

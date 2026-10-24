@@ -100,7 +100,7 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     ctx.endColumns();
 
     ctx.addSectionHeading("Events");
-    ctx.beginColumns(2, 10);
+    ctx.beginColumns(2, 12);
 
     // Session: started + state changes
     constexpr uint32_t SESSION_GROUP = EVENT_SESSION_STARTED | EVENT_SESSION_STATE;
@@ -116,6 +116,19 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledEvents, EVENT_FASTEST_LAP, true,
         "event_log.fastest_lap");
+
+    // Your own personal bests (local player only)
+    bool sessionPbOn = (hud->m_enabledEvents & EVENT_SESSION_PB) != 0;
+    ctx.addToggleControl("Session PB", sessionPbOn,
+        SettingsHud::ClickRegion::CHECKBOX, hud,
+        &hud->m_enabledEvents, EVENT_SESSION_PB, true,
+        "event_log.session_pb");
+
+    bool allTimePbOn = (hud->m_enabledEvents & EVENT_ALLTIME_PB) != 0;
+    ctx.addToggleControl("All-time PB", allTimePbOn,
+        SettingsHud::ClickRegion::CHECKBOX, hud,
+        &hud->m_enabledEvents, EVENT_ALLTIME_PB, true,
+        "event_log.alltime_pb");
 
     // Penalties: penalty + penalty cleared
     constexpr uint32_t PENALTY_GROUP = EVENT_PENALTY | EVENT_PENALTY_CLEAR;

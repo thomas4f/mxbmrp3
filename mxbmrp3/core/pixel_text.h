@@ -13,7 +13,7 @@
 // Upper and lower case, digits and the punctuation a path needs; any character
 // without a glyph draws as a space. Lowercase follows the classic 5x7 LCD set,
 // with real descenders below the baseline. WHERE the glyphs go is the caller's:
-// VersionWidget::buildInstallNotice spaces them on the real font's character
+// DashHud::addPixelText spaces them on the real font's character
 // cell, so the notice keeps the size the same text would have in the font.
 // Pure and header-only, so the glyph walk is unit-tested without a renderer
 // (tests/unit/pixel_text_test.cpp).

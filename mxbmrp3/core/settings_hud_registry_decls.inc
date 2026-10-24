@@ -71,12 +71,12 @@
     static void app_TimingHud(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_DeltaTraceHud(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_DeltaTraceHud(HudManager& hudManager, const ProfileCache& cache, const char* name);
+    static void cap_DashHud(const HudManager& hudManager, ProfileCache& cache, const char* name);
+    static void app_DashHud(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_GapBarHud(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_GapBarHud(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_BarsWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_BarsWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
-    static void cap_VersionWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
-    static void app_VersionWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_NoticesHud(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_NoticesHud(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_FuelWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
@@ -97,8 +97,8 @@
     static void cap_EcuWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_EcuWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
 #endif
-    static void cap_SettingsButtonWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
-    static void app_SettingsButtonWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
+    static void cap_ToggleStripWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
+    static void app_ToggleStripWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_PointerWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_PointerWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_RumbleHud(const HudManager& hudManager, ProfileCache& cache, const char* name);

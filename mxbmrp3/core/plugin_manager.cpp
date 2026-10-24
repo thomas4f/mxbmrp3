@@ -528,14 +528,15 @@ void PluginManager::handleDraw(int iState, int* piNumQuads, void** ppQuad, int* 
         const SPluginQuad_t* q = nullptr;
         const SPluginString_t* s = nullptr;
         int nq = 0, ns = 0;
-        if (pt.takeFrame(q, nq, s, ns)) {
+        hudlayers::Layers layers;
+        if (pt.takeFrame(q, nq, s, ns, &layers)) {
             *piNumQuads = nq;
             *ppQuad = const_cast<SPluginQuad_t*>(q);
             *piNumString = ns;
             *ppString = const_cast<SPluginString_t*>(s);
             // In-context GL, on THIS thread because that is where the context
             // is. Suppression follows what actually drew, never the setting.
-            if (HudManager::getInstance().renderInContextGl(q, nq, s, ns)) {
+            if (HudManager::getInstance().renderInContextGl(q, nq, s, ns, layers)) {
                 *piNumQuads = 0; *ppQuad = nullptr;
                 *piNumString = 0; *ppString = nullptr;
             }
@@ -573,9 +574,13 @@ void PluginManager::handleDraw(int iState, int* piNumQuads, void** ppQuad, int* 
     // Called unconditionally, empty frames included: renderInContextGl owns
     // m_glDrewLastFrame and clears it on entry, so gating the call here is what
     // would let the hook report a stale "we drew".
-    if (HudManager::getInstance().renderInContextGl(
+    // The stacking describes HudManager's own arrays, which are what draw()
+    // just handed the game in this (synchronous) mode.
+    HudManager& hm = HudManager::getInstance();
+    if (hm.renderInContextGl(
             static_cast<const SPluginQuad_t*>(*ppQuad), *piNumQuads,
-            static_cast<const SPluginString_t*>(*ppString), *piNumString)) {
+            static_cast<const SPluginString_t*>(*ppString), *piNumString,
+            hm.gameFrameLayers())) {
         *piNumQuads = 0; *ppQuad = nullptr;
         *piNumString = 0; *ppString = nullptr;
     }

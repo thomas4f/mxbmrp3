@@ -115,7 +115,7 @@ private:
     int m_shownPercent = -1;
 
     // Button bounds, stored at rebuild and hit-tested in update() - the shape
-    // CrashWidget and VersionWidget both use.
+    // CrashWidget uses.
     float m_keepLeft = 0.0f, m_keepTop = 0.0f, m_keepW = 0.0f, m_keepH = 0.0f;
     float m_revertLeft = 0.0f, m_revertTop = 0.0f, m_revertW = 0.0f, m_revertH = 0.0f;
     bool m_keepHovered = false;

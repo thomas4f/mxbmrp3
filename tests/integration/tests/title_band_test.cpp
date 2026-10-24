@@ -511,6 +511,18 @@ TEST_CASE("[card] band-size scales the band alone") {
 // Both callers now ask BaseHud::emitCaptionRow. This asserts the property that makes
 // them one implementation rather than two that agree today: the settings caption sits
 // the SAME distance below its panel top as a HUD's does, at every frame size.
+// The settings caption is "MXBMRP3 v<version>". Read
+// the version from the plugin's own snapshot so no test pins a build number, and
+// assert it is really there: a caption that lost its version would otherwise
+// still be found as "MXBMRP3 v".
+static std::string settingsCaptionFor(PluginHost& host) {
+    const nlohmann::json snap = host.snapshot();
+    REQUIRE(snap.contains("session"));
+    const std::string version = snap["session"].value("pluginVersion", std::string());
+    REQUIRE_FALSE(version.empty());
+    return "MXBMRP3 v" + version;
+}
+
 TEST_CASE("the settings panel's bandless caption tracks the frame like a HUD's") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
@@ -524,6 +536,7 @@ TEST_CASE("the settings panel's bandless caption tracks the frame like a HUD's")
     host.runInit(1);
     host.addEntry(4, "Thomas");
     REQUIRE(host.setHudTitle("timing_hud", true));
+    const std::string settingsCaption = settingsCaptionFor(host);
 
     // Swept over frame size for the same reason the case above is: at [frame] size 2 a
     // constant content origin and the frame's boundary coincide, so one size cannot
@@ -543,7 +556,7 @@ TEST_CASE("the settings panel's bandless caption tracks the frame like a HUD's")
             REQUIRE_MESSAGE(y >= 0.0, "caption not drawn: " << text);
             return y - host.hudScreenEdges(id).t / 1e6;
         };
-        const double settings = captionDrop(PluginHost::HUD_SETTINGS, "MXBMRP3 SETTINGS");
+        const double settings = captionDrop(PluginHost::HUD_SETTINGS, settingsCaption.c_str());
         const double hud      = captionDrop(PluginHost::HUD_TIMING,   "Timing");
 
         INFO("frame=" << frame << ": settings caption sits " << settings
@@ -661,6 +674,7 @@ TEST_CASE("the settings caption block spends its terms on every branch") {
     host.runInit(1);
     host.addEntry(4, "Thomas");
     host.showSettings(true);
+    const std::string settingsCaption = settingsCaptionFor(host);
 
     // Top of the first CONTENT row, measured from the panel's top edge. The tab
     // list is the leftmost column and starts at the same y, so the topmost string
@@ -671,7 +685,7 @@ TEST_CASE("the settings caption block spends its terms on every branch") {
         double best = 1e9, caption = 1e9;
         for (const auto& r : host.hudStringRows(PluginHost::HUD_SETTINGS)) {
             if (r.text.empty()) continue;
-            if (r.text == "MXBMRP3 SETTINGS") { caption = r.y; continue; }
+            if (r.text == settingsCaption) { caption = r.y; continue; }
             best = (std::min)(best, r.y);
         }
         REQUIRE(caption < 1e8);

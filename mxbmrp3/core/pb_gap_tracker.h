@@ -105,6 +105,11 @@ public:
         LAST_LAP = 2      // the lap just completed
     };
     static constexpr int REF_COUNT = 3;
+    // A reference's name, the one spelling Settings lists it by and the HUDs
+    // caption their gaps with.
+    static constexpr const char* refName(Ref ref) {
+        return ref == Ref::ALLTIME_PB ? "All-time PB" : ref == Ref::LAST_LAP ? "Last lap" : "Session PB";
+    }
 
     // Everything: session change, spectate target change. The all-time
     // reference goes too: it belongs to one rider on one track and bike, and

@@ -511,6 +511,36 @@ def check_named_singletons_exist(failures):
             "may not be wrong.")
 
 
+def check_display_components_listed(failures):
+    """Every HUD and widget class is listed in ARCHITECTURE.md's component list.
+
+    CLAUDE.md sends readers to *Two Types of Display Components* for the full
+    set, so a class missing there is a reader told the set is smaller than it
+    is. Seven were missing, unnoticed until a release review.
+    """
+    arch = open(os.path.join(REPO, "ARCHITECTURE.md"), encoding="utf-8").read()
+    start = arch.find("### Two Types of Display Components")
+    if start < 0:
+        failures.append(
+            "ARCHITECTURE.md has no '### Two Types of Display Components' section. If "
+            "it was renamed, update check_display_components_listed.")
+        return
+    section = arch[start:arch.find("\n### ", start + 1)]
+    listed = set(re.findall(r"`([A-Za-z_][A-Za-z0-9_]*)`", section))
+    hud_dir = os.path.join(REPO, "mxbmrp3", "hud")
+    for f in sorted(os.listdir(hud_dir)):
+        if not f.endswith(".h"):
+            continue
+        text = open(os.path.join(hud_dir, f), encoding="utf-8", errors="replace").read()
+        for m in re.finditer(r"^class\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:final\s*)?:\s*public\s+BaseHud\b",
+                             text, re.M):
+            if m.group(1) not in listed:
+                failures.append(
+                    f"ARCHITECTURE.md's Two Types of Display Components does not list "
+                    f"`{m.group(1)}` (mxbmrp3/hud/{f}). Add a row under Full HUDs, "
+                    "Overlays or Widgets.")
+
+
 def check_symbol_homes(failures):
     """A doc that says `sym()` lives in `file.cpp` must still be right.
 
@@ -1559,6 +1589,7 @@ def main():
     check_budget(failures)
     check_gate_tools_installable(failures)
     check_named_singletons_exist(failures)
+    check_display_components_listed(failures)
     check_symbol_homes(failures)
     check_build_sharing_gates_are_locked(failures)
     check_readme_toc(failures)
@@ -1586,7 +1617,7 @@ def main():
         f"{doc} {os.path.getsize(os.path.join(REPO, doc)):,}/{budget:,}"
         for doc, budget in DOC_BUDGETS.items())
     print(f"Docs clean: paths resolve (docs and source comments), invariants labelled, "
-          f"named singletons exist, "
+          f"named singletons exist, every HUD in the component list, "
           f"symbols where docs say, build-sharing gates locked, gate tools installable, "
           f"shipped themes share one geometry, legacy redirects intact, "
           f"icon SVGs tinted, generated docs noted alike, zip readme copies the README, "

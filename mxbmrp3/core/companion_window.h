@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "../game/game_config.h"   // SPluginQuad_t / SPluginString_t
+#include "render_layers.h"         // hudlayers::Span, the frame's HUD stacking
 
 // What fills the companion window behind the HUD. DARK is the legible default;
 // GREEN / BLUE / MAGENTA are solid chroma-key backdrops matching OBS's Chroma Key
@@ -57,14 +58,21 @@ public:
     void setEnabled(bool enabled);
     bool isEnabled() const { return m_enabled.load(std::memory_order_relaxed); }
 
+#if defined(MXBMRP3_TEST_BUILD)
+    // DEMO CAPTURE: the last submitted frame through the software renderer on a
+    // transparent backdrop, as straight-alpha RGBA (w*h*4 bytes).
+    bool testRenderRgba(int w, int h, unsigned char* out);
+#endif
+
     // Game-thread: publish this frame's primitives + the registration tables
     // (font/sprite paths, 1-based indices; firstIcon splits textures from icons).
     // Cheap POD copy under the mutex; a no-op when the window is closed.
+    // `layers` is the same frame's HUD stacking (core/render_layers.h).
     void submit(const std::vector<SPluginQuad_t>& quads,
                 const std::vector<SPluginString_t>& strings,
                 const std::vector<std::string>& fontPaths,
                 const std::vector<std::string>& spritePaths,
-                int firstIcon);
+                int firstIcon, const hudlayers::Layers& layers = {});
 
     // Persisted window geometry (full-window rect, screen coords). The window
     // thread updates it as the user moves/resizes; the game thread reads it when
@@ -163,6 +171,8 @@ private:
     Mutex m_mutex;
     std::vector<SPluginQuad_t> m_quads MXB_GUARDED_BY(m_mutex);
     std::vector<SPluginString_t> m_strings MXB_GUARDED_BY(m_mutex);
+    std::vector<hudlayers::Span> m_spans MXB_GUARDED_BY(m_mutex);
+    int m_layerCount MXB_GUARDED_BY(m_mutex) = 0;
     // These five ride the same lock as m_quads/m_strings above — submit() writes
     // them under m_mutex on the game thread, the window thread copies them under
     // m_mutex before rendering — but they had no MXB_GUARDED_BY, so the

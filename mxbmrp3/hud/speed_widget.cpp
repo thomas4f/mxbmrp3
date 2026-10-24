@@ -54,7 +54,7 @@ void SpeedWidget::update() {
 
 void SpeedWidget::rebuildLayout() {
     // BOX-MODEL: one source of geometry — rebuild rather than reposition a
-    // duplicated copy of the sizing arithmetic (see version_widget).
+    // duplicated copy of the sizing arithmetic.
     rebuildRenderData();
 }
 

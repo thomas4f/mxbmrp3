@@ -12,6 +12,7 @@
 #include "hotkey_manager.h"
 #include "hud_manager.h"
 #include "plugin_constants.h"
+#include "plausible_g.h"
 #include "settings_manager.h"
 #include "ui_config.h"
 #include "companion_window.h"
@@ -21,12 +22,12 @@
 
 #include "../diagnostics/logger.h"
 #include "../hud/gl_confirm_hud.h"
-#include "../hud/version_widget.h"
+#include "../hud/breakout_hud.h"
 #include "../hud/benchmark_widget.h"
 #include "../hud/pointer_widget.h"
 #include "../hud/prestige_widget.h"
-#include "../hud/settings_button_widget.h"
 #include "../hud/settings_hud.h"
+#include "../hud/toggle_strip_widget.h"
 
 #include <cmath>
 #include <windows.h>
@@ -436,7 +437,7 @@ void ExplorationStats::observeSettings(const HudManager& hudManager) {
         // Not user-facing switches: the menu, its button, the pointer, the
         // developer's benchmark, the achievement toast itself -- and the two
         // that show themselves: the Direct GL confirmation (armed by that
-        // setting's prompt) and the version widget (an update notice).
+        // setting's prompt) and the Breakout easter egg (five clicks on About).
         // Counted, 100% would need both events, not every HUD.
         //
         // The PRESTIGE BADGE is here for a different reason: it is EARNED, not
@@ -446,14 +447,15 @@ void ExplorationStats::observeSettings(const HudManager& hudManager) {
         // everyone a free row toward Tyre Kicker. Excluded outright rather than
         // while locked, so the denominator does not change under a player the
         // day they prestige.
-        const bool chrome = h == &hudManager.getSettingsHud() || h == &hudManager.getSettingsButtonWidget() ||
+        const bool chrome = h == &hudManager.getSettingsHud() || h == &hudManager.getToggleStripWidget() ||
                             h == &hudManager.getPointerWidget() || h == hudManager.getBenchmarkWidget() ||
                             h == hudManager.getAchievementWidget() || h == &hudManager.getGlConfirmHud() ||
                             h == hudManager.getPrestigeWidget() ||
-                            h == &hudManager.getVersionWidget();
+                            h == &hudManager.getBreakoutHud();
         if (!chrome) {
             ++hudsTotal;
-            if (h->isVisibleAnySurface()) setGrew |= m_huds.insert(h->getHarnessId()).second;
+            // A Toggles strip hover sample is drawn, not switched on (BaseHud::isSampled).
+            if (h->isVisibleAnySurface() && !h->isSampled()) setGrew |= m_huds.insert(h->getHarnessId()).second;
             if (m_huds.count(h->getHarnessId())) ++hudsTried;
         }
         // Against the HUD's shipped value: Radar and Gamepad ship THEME_NONE, and
@@ -758,11 +760,9 @@ void ExplorationStats::onDiggingTime(double seconds) {
 }
 
 void ExplorationStats::onGForce(float g) {
-    // A landing reads a few g; anything past this is the physics engine losing
-    // its footing (a spawn, a wall, a reset), and a lifetime PEAK is exactly the
-    // number a single glitch would ruin permanently.
-    constexpr float MAX_PLAUSIBLE_G = 50.0f;
-    if (!std::isfinite(g) || g <= 0.0f || g > MAX_PLAUSIBLE_G) return;
+    // A lifetime PEAK is exactly the number a single glitch would ruin
+    // permanently: core/plausible_g.h.
+    if (!PlausibleG::ok(g)) return;
     if (raise(Signal::PeakG, g)) changed();
 }
 

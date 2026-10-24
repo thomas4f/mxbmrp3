@@ -3,6 +3,7 @@
 // Tacho widget - displays rotating needle (0-15000 RPM) with dial background
 // ============================================================================
 #include "tacho_widget.h"
+#include "default_slots.h"
 
 #include <cstdio>
 #include <cmath>
@@ -191,7 +192,9 @@ void TachoWidget::resetToDefaults() {
     setShowBackgroundTexture(true);
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
     setScale(1.0f);  // 100% default scale
-    setPosition(cellsX(112), cellsY(71));
+    // Right-aligned on the column by the box rebuildRenderData() fits around the dial.
+    setPosition(DefaultSlots::rightEdge() - fitPanelToGrid(DIAL_SIZE * m_fScale / UI_ASPECT_RATIO, DIAL_SIZE * m_fScale).w,
+                DefaultSlots::rightColumnY());
     m_smoothedRpm = 0.0f;
     // EMPTY, not "classic": empty means "whatever the default pack resolves to",
     // which is how an upgrading user whose own art was migrated into gauges\\legacy

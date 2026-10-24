@@ -16,6 +16,7 @@
 #include "../game/unified_types.h"
 #include "../hud/base_hud.h"
 #include "hud_sw_renderer.h"   // hudsw::Frame, returned by buildGlFrame
+#include "render_layers.h"     // hudlayers::Span, each surface's HUD stacking
 #include "motion.h"
 #include "thread_safety.h"     // Mutex, for the GL pre-warm list handoff
 
@@ -65,6 +66,32 @@ public:
     // (COMPANION mode) means the game should be handed an empty frame this pass.
     const std::vector<SPluginQuad_t>& gameFrameQuads() const { return m_quads; }
     const std::vector<SPluginString_t>& gameFrameStrings() const { return m_strings; }
+    // The in-game frame's HUD stacking (core/render_layers.h), for the renderers
+    // that can use it. Built only while Direct GL is on; empty otherwise.
+    hudlayers::Layers gameFrameLayers() const { return m_gameLayers.view(); }
+    const std::vector<hudlayers::Span>& gameFrameSpans() const { return m_gameLayers.spans; }
+    int gameFrameLayerCount() const { return m_gameLayers.count; }
+    // Whether a surface's renderer draws HUD by HUD (core/render_layers.h): the
+    // companion window always, the game while Direct GL is on and not latched
+    // off (a frame the engine still draws, such as the first, may show one
+    // unblanked dropdown). A HUD may then let a later quad of its own cover its
+    // text (BaseHud's m_overlayQuadFirst) instead of blanking it for the engine.
+    bool surfaceStacks(bool companion) const;
+    // Put a HUD on top of every other HUD (BaseHud::getStackRank): what dragging
+    // one does. The settings menu, its button and the pointer always stay above,
+    // and a HUD that cannot be dragged keeps its place.
+    void raiseHud(BaseHud* hud);
+    // Draw order this frame: indices into getHuds(), bottom first.
+    const std::vector<size_t>& drawOrder() const { return m_drawOrder; }
+    // Test hook support: the highest layer a HUD's spans landed in last frame
+    // on a surface (its overlay's, if it has one), -1 if it drew none there.
+    int frameHudLayer(const BaseHud* hud, bool companion) const {
+        const SurfaceLayers& ls = companion ? m_companionLayers : m_gameLayers;
+        int layer = -1;
+        for (size_t i = 0; i < ls.owners.size(); ++i)
+            if (ls.owners[i] == hud && ls.spans[i].layer > layer) layer = ls.spans[i].layer;
+        return layer;
+    }
     bool inGameFrameSuppressed() const { return m_bSuppressInGame; }
 
     // Read-only access to the last-collected surface frames, for test introspection
@@ -85,7 +112,11 @@ public:
     // right, so this costs a comparison each and dirties only what changed.
     // nullptr turns the preview off everywhere (the panel closed, or a tab with no
     // HUD behind it). See BaseHud::isPreviewing.
-    void setPreviewHud(const BaseHud* target);
+    // `sample` is the HOVER PREVIEW (ToggleStripWidget::hoverSample): a HUD that
+    // is switched off, drawn on the active surface with placeholder content and
+    // dimmed (markSample) while its strip icon is hovered. Its own flags
+    // are untouched, so nothing saves and nothing else reads it as on.
+    void setPreviewHud(const BaseHud* target, const BaseHud* sample);
 
     // HUD registration. `harnessId` is REQUIRED and stamps BaseHud::getHarnessId
     // -- the one stable name for this element, read by the benchmark report and
@@ -110,11 +141,15 @@ public:
     // Any failure latches the backend off for the session and returns false
     // forever after, so the engine keeps drawing and the user always has a HUD.
     // gl_render_test's suppression cases hold this.
+    // `layers` must describe these same arrays (gameFrameLayers(), or the copy
+    // the plugin worker published with them); empty draws the flat order.
     bool renderInContextGl(const SPluginQuad_t* quads, int quadCount,
-                           const SPluginString_t* strings, int stringCount);
+                           const SPluginString_t* strings, int stringCount,
+                           const hudlayers::Layers& layers = {});
     // The single description of the in-context GL frame; see its definition.
     hudsw::Frame buildGlFrame(const SPluginQuad_t* quads, int quadCount,
-                              const SPluginString_t* strings, int stringCount) const;
+                              const SPluginString_t* strings, int stringCount,
+                              const hudlayers::Layers& layers = {}) const;
     void clearGlFailLatch();
     // BUILD thread, once per frame while glInGame is on: publish what the GL
     // backend should pre-warm - see m_glWarmBuilt.
@@ -182,7 +217,6 @@ public:
                                  bool realText) {
         buildInstallWarning(fontCount, iconCount, iconsComplete, realText);
     }
-    size_t testInstallWarningQuads() const { return m_installWarning.size(); }
 #endif
 
     // Bind a typed HUD cache pointer (m_pStandings, ...) to the slot-clearing
@@ -199,7 +233,7 @@ public:
     // Construct a HUD, bind its typed cache pointer (see bindHudSlot), and
     // register it in draw order under `name`. The standard one-liner for
     // initialize(); HUDs needing constructor args or deferred registration
-    // (SettingsHud, SettingsButtonWidget, PointerWidget) compose the pieces by
+    // (SettingsHud, PointerWidget) compose the pieces by
     // hand and call registerHud themselves.
     //
     // `name` is the HARNESS ID ONLY -- deliberately NOT also the texture base name,
@@ -296,21 +330,20 @@ public:
     // True while the Direct GL prompt holds the settings MENU back: not drawn,
     // not hit-tested, not updated -- one answer for all three, so a panel that is
     // not on screen cannot take a click through the prompt (it did: the draw
-    // pass skipped it while the input pass still fed it). The settings button
+    // pass skipped it while the input pass still fed it). The Toggles strip
     // and the pointer are not held back; they are how the menu comes back.
     bool standsDown(const BaseHud* hud) const;
     // True for a HUD the frame is not drawing for a reason OTHER than its own
     // visibility flag: the prompt above, the hide-all-HUDs hotkey, the widgets
     // toggle. The one answer the draw pass and the input pass share, so a HUD
     // that is not on screen is never a drag target and never takes a click
-    // (BaseHud::isHeldBack is the per-HUD view of this). The version widget's
+    // (BaseHud::isHeldBack is the per-HUD view of this). The Breakout
     // easter egg is exempt from the toggles while it runs, in both passes.
     bool isHeldBack(const BaseHud* hud) const;
-    // Notices or Timing while a Version popup is up and drawn over them: the
-    // popup is the one message waiting for an answer, and their text under its
-    // panel made both unreadable (the default setup notice sits right there).
-    // The broken-install warning, drawn in the popup's place, covers them too.
-    bool coveredByPopup(const BaseHud* hud) const;
+    // Notices or Timing while the Dash, switched off, is shown for a message
+    // (DashHud::isBorrowed) over them: their text under its card made both
+    // unreadable, and a player who switched the Dash off kept them where it sits.
+    bool coveredByBorrowedDash(const BaseHud* hud) const;
     // The widgets the Widgets toggle covers. SessionHud is deliberately not one:
     // it started as a widget and grew its own tab, so it hides only by itself.
     bool isWidgetHud(const BaseHud* hud) const;
@@ -318,9 +351,9 @@ public:
     class TachoWidget& getTachoWidget() const { assert(m_pTacho && "HudManager not initialized"); return *m_pTacho; }
     class TimingHud& getTimingHud() const { assert(m_pTiming && "HudManager not initialized"); return *m_pTiming; }
     class BarsWidget& getBarsWidget() const { assert(m_pBars && "HudManager not initialized"); return *m_pBars; }
-    class VersionWidget& getVersionWidget() const { assert(m_pVersion && "HudManager not initialized"); return *m_pVersion; }
+    class BreakoutHud& getBreakoutHud() const { assert(m_pBreakout && "HudManager not initialized"); return *m_pBreakout; }
     class NoticesHud& getNoticesHud() const { assert(m_pNotices && "HudManager not initialized"); return *m_pNotices; }
-    class SettingsButtonWidget& getSettingsButtonWidget() const { assert(m_pSettingsButton && "HudManager not initialized"); return *m_pSettingsButton; }
+    class ToggleStripWidget& getToggleStripWidget() const { assert(m_pToggleStrip && "HudManager not initialized"); return *m_pToggleStrip; }
     class PitboardHud& getPitboardHud() const { assert(m_pPitboard && "HudManager not initialized"); return *m_pPitboard; }
 #if GAME_HAS_RECORDS_PROVIDER
     class RecordsHud& getRecordsHud() const { assert(m_pRecords && "HudManager not initialized"); return *m_pRecords; }
@@ -328,9 +361,9 @@ public:
     class FuelWidget& getFuelWidget() const { assert(m_pFuel && "HudManager not initialized"); return *m_pFuel; }
     class GapBarHud& getGapBarHud() const { assert(m_pGapBar && "HudManager not initialized"); return *m_pGapBar; }
     class DeltaTraceHud& getDeltaTraceHud() const { assert(m_pDeltaTrace && "HudManager not initialized"); return *m_pDeltaTrace; }
+    class DashHud& getDashHud() const { assert(m_pDash && "HudManager not initialized"); return *m_pDash; }
     class PointerWidget& getPointerWidget() const { assert(m_pPointer && "HudManager not initialized"); return *m_pPointer; }
     class RumbleHud& getRumbleHud() const { assert(m_pRumble && "HudManager not initialized"); return *m_pRumble; }
-    class DirectorWidget* getDirectorWidget() const { return m_pDirector; }  // nullable; callers null-check
     class AchievementWidget* getAchievementWidget() const { return m_pAchievement; }  // nullable; callers null-check
     class GamepadWidget& getGamepadWidget() const { assert(m_pGamepad && "HudManager not initialized"); return *m_pGamepad; }
     class LeanWidget& getLeanWidget() const { assert(m_pLean && "HudManager not initialized"); return *m_pLean; }
@@ -360,7 +393,7 @@ public:
 
 #if defined(MXBMRP3_TEST_BUILD)
     // Force every registered HUD/widget visible (or hidden), skipping UI chrome
-    // (settings menu, settings button, pointer, benchmark). Used by the headless
+    // (settings menu, Toggles strip, pointer, benchmark). Used by the headless
     // benchmark driver to profile the plugin with everything enabled; not part of
     // any in-game flow, so it's compiled out of every shipping DLL.
     void testSetAllHudsVisible(bool visible);
@@ -400,14 +433,14 @@ public:
 
 private:
     HudManager() : m_bInitialized(false), m_bResourcesInitialized(false),
-                   m_pDraggingHud(nullptr), m_pSettingsHud(nullptr), m_pSettingsButton(nullptr),
+                   m_pDraggingHud(nullptr), m_pSettingsHud(nullptr),
                    m_pIdealLap(nullptr), m_pLapLog(nullptr), m_pFriends(nullptr), m_pStandings(nullptr),
                    m_pPerformance(nullptr), m_pTelemetry(nullptr),
-                   m_pTime(nullptr), m_pSpotter(nullptr), m_pPosition(nullptr), m_pLap(nullptr), m_pSession(nullptr), m_pMapHud(nullptr), m_pRadarHud(nullptr), m_pSpeed(nullptr), m_pGear(nullptr), m_pCrash(nullptr), m_pSpeedo(nullptr), m_pTacho(nullptr), m_pTiming(nullptr), m_pGapBar(nullptr), m_pBars(nullptr), m_pVersion(nullptr), m_pNotices(nullptr), m_pPitboard(nullptr),
+                   m_pTime(nullptr), m_pSpotter(nullptr), m_pPosition(nullptr), m_pLap(nullptr), m_pSession(nullptr), m_pMapHud(nullptr), m_pRadarHud(nullptr), m_pSpeed(nullptr), m_pGear(nullptr), m_pCrash(nullptr), m_pSpeedo(nullptr), m_pTacho(nullptr), m_pTiming(nullptr), m_pGapBar(nullptr), m_pBars(nullptr), m_pBreakout(nullptr), m_pNotices(nullptr), m_pPitboard(nullptr),
 #if GAME_HAS_RECORDS_PROVIDER
                    m_pRecords(nullptr),
 #endif
-                   m_pFuel(nullptr), m_pPointer(nullptr), m_pRumble(nullptr), m_pDirector(nullptr), m_pGamepad(nullptr), m_pLean(nullptr), m_pGforce(nullptr), m_pCompass(nullptr), m_pClock(nullptr),
+                   m_pFuel(nullptr), m_pPointer(nullptr), m_pRumble(nullptr), m_pGamepad(nullptr), m_pLean(nullptr), m_pGforce(nullptr), m_pCompass(nullptr), m_pClock(nullptr),
 #if GAME_HAS_TYRE_TEMP
                    m_pTyreTemp(nullptr),
 #endif
@@ -416,6 +449,7 @@ private:
 #endif
                    m_pSessionCharts(nullptr),
                    m_pHelmetOverlay(nullptr),
+                   m_pImpactVignette(nullptr),
                    m_pStatsHud(nullptr),
                    m_pFmxHud(nullptr),
                    m_pEventLog(nullptr),
@@ -443,23 +477,38 @@ private:
     void collectRenderData();
     // Build one surface's frame into the given vectors. companion=false reproduces
     // the game frame exactly; companion=true uses each HUD's companion instance
-    // (on/off + position). See collectRenderData.
+    // (on/off + position). See collectRenderData. outLayers, when given, receives
+    // the surface's HUD stacking (core/render_layers.h); null skips that work.
+    struct SurfaceLayers;
     void collectSurface(std::vector<SPluginQuad_t>& outQuads,
-                        std::vector<SPluginString_t>& outStrings, bool companion);
+                        std::vector<SPluginString_t>& outStrings, bool companion,
+                        SurfaceLayers* outLayers);
+    // DROP-SHADOWED ICONS (hud_manager_shadow.cpp): append a HUD's quads with a
+    // shadow copy in front of its title icon and each icon it marked with
+    // BaseHud::shadowLastIcon, and leave the local indices shadowed, ascending, in
+    // m_iconShifts - motionFinishHud and recordLayerSpan map local indices through
+    // them. iconShiftsUpTo: how many of them sit at or before local index `local`.
+    void appendHudQuads(const BaseHud& hud, std::vector<SPluginQuad_t>& outQuads,
+                        bool shadowTitleIcon, bool hudShadow);
+    static size_t iconShiftsUpTo(const std::vector<int>* shifts, int local);
+    std::vector<int> m_iconShifts;
     // Whether collectSurface draws this HUD on a surface this frame: shown there,
     // not held back, and the pointer / open menu only on the active surface.
     bool drawsOnSurface(const BaseHud* hud, bool companion, bool surfaceIsActive) const;
+    // The hover sample's mark, dimming the primitives it just appended (setPreviewHud).
+    static void markSample(std::vector<SPluginQuad_t>& outQuads, size_t quadStart,
+                           std::vector<SPluginString_t>& outStrings, size_t stringStart);
     // Debug/alignment aid (INI-only, off by default): append the HUD snap-grid lattice
     // as thin quads on top of the frame. Every Nth line uses the "major" color/thickness.
     void appendGridOverlay(std::vector<SPluginQuad_t>& outQuads) const;
     // Number of grid quads appendGridOverlay would add (for capacity reservation).
     static size_t gridOverlayQuadCount();
-    // "Not installed correctly", laid out as the Version widget's panel with the
-    // text in block letters built from SOLID_COLOR quads (core/pixel_text.h),
-    // because without fonts no string can draw. Built once by initialize() when
-    // discovery found no fonts, no icons, or not the icons requiredIconsPresent()
-    // names; empty on every working install. `realText` draws the same rows in
-    // the real font instead, only so a test build can compare the two.
+    // "Not installed correctly": hands the Dash what is missing
+    // (SystemMessages::setInstallProblem), which it says on its card, switched
+    // on or not, in block letters while there are no fonts. Run once by
+    // initialize() when discovery found no fonts, no icons, or not the icons
+    // requiredIconsPresent() names. `realText` draws the rows in the real font
+    // even then, only so a test build can compare the two.
     void buildInstallWarning(size_t fontCount, size_t iconCount, bool iconsComplete,
                              bool realText = false);
     static bool requiredIconsPresent();
@@ -468,8 +517,7 @@ private:
     // setupDefaultResources() just registered; returns the mismatch count.
     // Startup-only cost. See the definition for the invariant it verifies.
     int verifySpriteRegistrationOrder(const class AssetManager& assetMgr) const;
-    void handleSettingsButton();
-    void handleDirectorButton();
+    void handleToggleStrip();
     void persistDirectorEnabled();  // save the director on/off mode (auto-save-gated)
 
     bool m_bInitialized;
@@ -487,12 +535,12 @@ private:
 
     // Timestamp of the previous Draw call. A long gap means the game stopped drawing us
     // (menu / loading); when it resumes we treat it as "entered the track" and flash the
-    // corner status buttons into view. Default-constructed to the clock epoch.
+    // Toggles strip's controls into view. Default-constructed to the clock epoch.
     std::chrono::steady_clock::time_point m_lastDrawTime;
 
     // Pointers to HUDs (for settings persistence and button clicks)
     class SettingsHud* m_pSettingsHud;
-    class SettingsButtonWidget* m_pSettingsButton;
+    class ToggleStripWidget* m_pToggleStrip = nullptr;
     class IdealLapHud* m_pIdealLap;
     class LapLogHud* m_pLapLog;
     class FriendsHud* m_pFriends;
@@ -518,8 +566,9 @@ private:
     class TimingHud* m_pTiming;
     class GapBarHud* m_pGapBar;
     class DeltaTraceHud* m_pDeltaTrace = nullptr;
+    class DashHud* m_pDash = nullptr;
     class BarsWidget* m_pBars;
-    class VersionWidget* m_pVersion;
+    class BreakoutHud* m_pBreakout;
     class NoticesHud* m_pNotices;
     class PitboardHud* m_pPitboard;
 #if GAME_HAS_RECORDS_PROVIDER
@@ -528,7 +577,6 @@ private:
     class FuelWidget* m_pFuel;
     class PointerWidget* m_pPointer;
     class RumbleHud* m_pRumble;
-    class DirectorWidget* m_pDirector;
     class AchievementWidget* m_pAchievement = nullptr;
     class GamepadWidget* m_pGamepad;
     class LeanWidget* m_pLean;
@@ -545,6 +593,7 @@ private:
 #endif
     class SessionChartsHud* m_pSessionCharts;
     class HelmetOverlayHud* m_pHelmetOverlay;
+    class ImpactVignetteHud* m_pImpactVignette;
     class StatsHud* m_pStatsHud;
     class FmxHud* m_pFmxHud;
     class EventLogHud* m_pEventLog;
@@ -558,6 +607,10 @@ private:
     // gets an empty frame this pass. Read by draw() and by the plugin worker thread.
     bool m_bSuppressInGame = false;
     bool m_lastActiveCompanion = false;  // track focus surface to refresh settings on change
+    // mt-plain: game thread; the glow as last drawn (on, opacity scale, reach scale)
+    bool m_lastGlowActive = false;
+    float m_lastGlowIntensity = 1.0f;
+    float m_lastGlowWidth = 1.0f;
 
     // Collected render data from all HUDs
     std::vector<SPluginQuad_t> m_quads;
@@ -565,6 +618,39 @@ private:
     // Companion-surface frame (built only while the companion window is open).
     std::vector<SPluginQuad_t> m_companionQuads;
     std::vector<SPluginString_t> m_companionStrings;
+    // Each surface's HUD stacking, built by collectSurface beside the arrays it
+    // describes. Reused buffers: a steady frame allocates nothing.
+    struct SurfaceLayers {
+        std::vector<hudlayers::Span> spans;
+        std::vector<hudlayers::Rect> rects;   // scratch, one per span
+        std::vector<const BaseHud*> owners;   // per span; null = ghost or grid
+        int count = 0;
+        void clear() { spans.clear(); rects.clear(); owners.clear(); count = 0; }
+        hudlayers::Layers view() const {
+            return { spans.empty() ? nullptr : spans.data(), static_cast<int>(spans.size()), count };
+        }
+    };
+    SurfaceLayers m_gameLayers;
+    SurfaceLayers m_companionLayers;
+    // Draw order (indices into m_huds, bottom first), rebuilt each frame from the
+    // stack ranks by buildDrawOrder(); the drag pick walks it backwards so the
+    // HUD on top is the one a click lands on. m_raised is its scratch.
+    std::vector<size_t> m_drawOrder;
+    std::vector<size_t> m_raised;
+    void buildDrawOrder();
+    bool staysOnTop(const BaseHud* hud) const;
+    // collectSurface's two layer steps (hud_manager_gl.cpp): close the span that
+    // began at (quadStart, stringStart) with its screen rect - the HUD's bounds
+    // at this surface's offset, or everywhere - then assign the layers.
+    // A HUD with an overlay (BaseHud::m_overlayQuadFirst) closes two spans; its
+    // local indices map through the drop-shadow copies collectSurface inserted
+    // (iconShifts, stringShadows), as motionFinishHud's do.
+    static void recordLayerSpan(SurfaceLayers& layers,
+                                const std::vector<SPluginQuad_t>& quads, size_t quadStart,
+                                const std::vector<SPluginString_t>& strings, size_t stringStart,
+                                const BaseHud* hud, bool companion, bool everywhere,
+                                const std::vector<int>* iconShifts = nullptr, bool stringShadows = false);
+    static void finishLayers(SurfaceLayers& layers);
 
     // MOTION (core/motion.h), applied in collectSurface (hud_manager_motion.cpp).
     // One slot per registered HUD in collect order, one set per surface, all on
@@ -602,12 +688,12 @@ private:
     static void motionEmitGhost(const MotionSlot& slot, std::vector<SPluginQuad_t>& outQuads,
                                 std::vector<SPluginString_t>& outStrings);
     // Apply this frame's step to the HUD's just-appended primitives and remember
-    // where they landed. titleIconShift: the title icon's shadow copy was inserted
-    // before local quad index titleIconIdx (see collectSurface).
+    // where they landed. iconShifts: the icons a shadow copy was inserted before
+    // (appendHudQuads).
     static void motionFinishHud(MotionSlot& slot, const BaseHud& hud,
                                 std::vector<SPluginQuad_t>& outQuads, size_t quadStart,
                                 std::vector<SPluginString_t>& outStrings, size_t stringStart,
-                                int titleIconShiftAt, bool stringShadows);
+                                const std::vector<int>* iconShifts, bool stringShadows);
 
     // Resource management - dynamically sized based on discovered assets
     // In-context GL renderer state. Not a unique_ptr because hudgl::Renderer is
@@ -635,20 +721,19 @@ private:
     // Last status baked into the settings row, so produceFrame can tell when it
     // needs rebuilding. Build-thread only - never touched from Draw.
     int m_glStatusLastShown = -1;
-    // THE GL PRE-WARM LIST (hudgl::Renderer::Warm): the background art of every
-    // enabled HUD and every font category, so the backend loads them in the
-    // quiet frames after track entry rather than on the frame a HUD first
-    // appears - the pit board's mid-lap first show was a ~20 ms hitch. Built on
-    // the BUILD thread, because it reads HUD state the worker owns in
-    // pluginThread mode; drawn from on the Draw thread. The shared copy changes
-    // only when the list does, so a steady frame costs the Draw side one atomic
-    // load and no lock.
+    // THE GL PRE-WARM LIST (hudgl::Renderer::Warm): the fonts in use - every
+    // category and every per-HUD override - beside EVERY registered sprite, which
+    // the backend takes from the frame's own table. So nothing is decoded on the
+    // frame it first appears mid-ride (the pit board's mid-lap first show was a
+    // ~20 ms hitch); the backend loads it all in the quiet frames after Direct GL
+    // starts. Built on the BUILD thread, because it reads HUD state the worker
+    // owns in pluginThread mode; drawn from on the Draw thread. The shared copy
+    // changes only when the list does, so a steady frame costs the Draw side one
+    // atomic load and no lock.
     struct GlWarmList {
-        // Every HUD enabled at once lists ~50 sprites today; a list past the
-        // cap is not pre-warmed, never overrun. Room for the HUDs still to come.
+        // Six categories plus the overrides, deduplicated: a handful today. A
+        // list past the cap is not pre-warmed past it, never overrun.
         static constexpr int kMax = 128;
-        int sprites[kMax] = {};
-        int spriteCount = 0;
         int fonts[kMax] = {};
         int fontCount = 0;
         bool sameAs(const GlWarmList& o) const;
@@ -670,10 +755,6 @@ private:
     std::vector<std::string> m_fontBases;
     // Written once by setupDefaultResources() on the game thread; see the getter.
     int m_spriteOrderMismatches = 0;
-    std::vector<SPluginQuad_t> m_installWarning;   // see buildInstallWarning()
-    std::vector<SPluginString_t> m_installWarningStrings;   // realText only
-    // The warning's panel on screen: HUD text anchored inside it is dropped.
-    struct { float left, top, right, bottom; } m_installWarningBox = {};
 
     std::vector<char> m_spriteBuffer;  // Null-separated sprite names for API
     std::vector<char> m_fontBuffer;    // Null-separated font names for API

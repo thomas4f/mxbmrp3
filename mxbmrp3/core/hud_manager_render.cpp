@@ -45,14 +45,16 @@
 #include "../hud/tacho_widget.h"
 #include "../hud/timing_hud.h"
 #include "../hud/bars_widget.h"
-#include "../hud/version_widget.h"
+#include "../hud/breakout_hud.h"
 #include "../hud/crash_widget.h"
 #include "../hud/rpm_widget.h"
 #include "../hud/prestige_widget.h"
 #include "../hud/achievement_widget.h"
 #include "../hud/notices_hud.h"
+#include "../hud/notice_tracker.h"
+#include "system_messages.h"
+#include "../hud/dash_hud.h"
 #include "../hud/settings_hud.h"
-#include "../hud/settings_button_widget.h"
 #include "../hud/map_hud.h"
 #include "../hud/radar_hud.h"
 #include "../hud/pitboard_hud.h"
@@ -63,7 +65,6 @@
 #include "../hud/gap_bar_hud.h"
 #include "../hud/pointer_widget.h"
 #include "../hud/rumble_hud.h"
-#include "../hud/director_widget.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
 #include "../hud/gforce_widget.h"
@@ -81,6 +82,7 @@
 #include "../hud/stats_hud.h"
 #include "../hud/event_log_hud.h"
 #include "../hud/benchmark_widget.h"
+#include "../hud/toggle_strip_widget.h"
 #include "hotkey_manager.h"
 #if GAME_HAS_HTTP_SERVER
 #include "http_server.h"
@@ -141,21 +143,19 @@ bool HudManager::standsDown(const BaseHud* hud) const {
 bool HudManager::isWidgetHud(const BaseHud* hud) const {
     return hud == m_pLap || hud == m_pPosition || hud == m_pTime ||
            hud == m_pSpeed || hud == m_pGear || hud == m_pSpeedo || hud == m_pTacho ||
-           hud == m_pBars || hud == m_pVersion || hud == m_pFuel ||
+           hud == m_pBars || hud == m_pFuel ||
            hud == m_pGamepad || hud == m_pLean || hud == m_pGforce || hud == m_pCompass ||
            hud == m_pClock || hud == m_pCrash || hud == m_pPrestige || hud == m_pRpm;
 }
 
 bool HudManager::isHeldBack(const BaseHud* hud) const {
     if (!hud) return false;
-    if (standsDown(hud) || coveredByPopup(hud)) return true;
-    const bool versionGame = hud == m_pVersion && m_pVersion && m_pVersion->isGameActive();
-    if (versionGame) return false;
-    // A broken install's warning IS the Version widget's panel, in its place.
-    if (hud == m_pVersion && !m_installWarning.empty()) return true;
-    // The hide-all hotkey spares the settings chrome and the pointer (how the
-    // HUD comes back), and its own "All HUDs hidden" card for its few seconds.
-    const bool chrome = hud == m_pSettingsHud || hud == m_pSettingsButton || hud == m_pPointer;
+    if (standsDown(hud) || coveredByBorrowedDash(hud)) return true;
+    if (hud == m_pBreakout && m_pBreakout->isGameActive()) return false;
+    // The hide-all hotkey spares the settings chrome (the menu and the Toggles
+    // strip) and the pointer (how the HUD comes back), and its own "All HUDs
+    // hidden" card for its few seconds.
+    const bool chrome = hud == m_pSettingsHud || hud == m_pToggleStrip || hud == m_pPointer;
     const bool hideAllNotice = hud == m_pAchievement && m_pAchievement->isShowingThroughHideAll();
     if (m_bAllHudsToggledOff && !chrome && !hideAllNotice) return true;
     return m_bAllWidgetsToggledOff && isWidgetHud(hud);
@@ -188,9 +188,10 @@ void HudManager::produceFrame(int iState) {
 
     // "Entered the track" detection: the game calls Draw continuously while we're on
     // track / spectating, and stops in menus / loading. A long gap since the previous
-    // Draw (or the very first Draw) means drawing just resumed, so flash the corner
-    // status buttons into view - they otherwise auto-hide with the idle cursor, and this
-    // helps users find them without moving the mouse. Time-based so it's FPS-independent.
+    // Draw (or the very first Draw) means drawing just resumed, so flash the Toggles
+    // strip's controls into view - they otherwise auto-hide with the idle cursor, and
+    // this helps users find the menu without moving the mouse. Time-based so it's
+    // FPS-independent.
     {
         auto now = std::chrono::steady_clock::now();
         bool firstDraw = (m_lastDrawTime.time_since_epoch().count() == 0);
@@ -198,8 +199,7 @@ void HudManager::produceFrame(int iState) {
             std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastDrawTime).count()
                 > PluginConstants::ENTER_TRACK_GAP_MS;
         if (firstDraw || resumed) {
-            if (m_pSettingsButton) m_pSettingsButton->reveal(PluginConstants::WIDGET_REVEAL_MS);
-            if (m_pDirector) m_pDirector->reveal(PluginConstants::WIDGET_REVEAL_MS);
+            if (m_pToggleStrip) m_pToggleStrip->reveal(PluginConstants::WIDGET_REVEAL_MS);
         }
         m_lastDrawTime = now;
         if (firstDraw) announceAllHiddenAtStart();   // m_lastDrawTime never resets: once per session
@@ -390,7 +390,8 @@ void HudManager::produceFrame(int iState) {
         // The companion gets its OWN frame (per-HUD companion on/off + position),
         // built by collectRenderData when the window is open.
         companion.submit(m_companionQuads, m_companionStrings, m_fontNames, m_spriteNames,
-                         AssetManager::getInstance().getFirstIconSpriteIndex());
+                         AssetManager::getInstance().getFirstIconSpriteIndex(),
+                         m_companionLayers.view());
     }
 
     // COMPANION mode suppresses the in-game HUD — EXCEPT while the settings menu is
@@ -419,7 +420,8 @@ void HudManager::produceFrame(int iState) {
     // The comparison lives HERE, on the build thread, and deliberately not at the
     // point the state changes: that is the Draw thread, and m_bDataDirty is a
     // plain bool that produceFrame reads on the worker in pluginThread mode.
-    // Setting it from Draw would be a data race for a cosmetic refresh.
+    // Setting it from Draw would be a data race for a cosmetic refresh. The same
+    // compare rebuilds the settings dropdown when surfaceStacks() flips.
     if (m_pSettingsHud) {
         const int glStatus = glStatusCode();
         if (glStatus != m_glStatusLastShown) {
@@ -444,11 +446,8 @@ void HudManager::updateHuds() {
     auto& bmPoll = PluginData::getInstance().getBenchmarkMetrics();
     const long long pollStart = bmPoll.active ? DrawHandler::getCurrentTimeUs() : 0;
 
-    // Handle settings button click for SettingsHud toggle
-    handleSettingsButton();
-
-    // Handle director status-button click (pause/resume auto-direction)
-    handleDirectorButton();
+    // Toggles strip click: open the menu, switch the director or a HUD
+    handleToggleStrip();
 
     // Per-frame director manual-control poll (gamepad takeover + auto-resume). Runs
     // here, not only on data callbacks, so it works in lulls / solo / replays. Gates
@@ -497,8 +496,10 @@ void HudManager::updateHuds() {
         if ((leftButton.isClicked() || rightButton.isClicked()) && input.isCursorEnabled()) {
             const CursorPosition& cursor = input.getCursorPosition();
             if (cursor.isValid) {
-                for (auto it = m_huds.rbegin(); it != m_huds.rend(); ++it) {
-                    auto& hud = *it;
+                // Top first, in the order last frame drew (the stacking order).
+                const bool ordered = m_drawOrder.size() == m_huds.size();
+                for (size_t k = m_huds.size(); k-- > 0;) {
+                    auto& hud = m_huds[ordered ? m_drawOrder[k] : k];
                     if (!hud || !hud->isDraggable() || isHeldBack(hud.get())) continue;
                     bool visibleHere = dragCompanion ? hud->getCompanionVisible() : hud->isVisible();
                     if (!visibleHere) continue;
@@ -523,7 +524,49 @@ void HudManager::updateHuds() {
     // because the panel has four ways to change the answer (open, close, tab click,
     // the tab's own visibility checkbox) and this has one.
     setPreviewHud(m_pSettingsHud && m_pSettingsHud->isVisible()
-                      ? m_pSettingsHud->activeTabHud() : nullptr);
+                      ? m_pSettingsHud->activeTabHud() : nullptr,
+                  m_pToggleStrip && !isHeldBack(m_pToggleStrip) ? m_pToggleStrip->hoverSample() : nullptr);
+
+    // THE NOTICE UP RIGHT NOW, stepped once here, before any HUD reads it: the
+    // Notices HUD and the Dash both show NoticeTracker::current(), and its timed
+    // notices CONSUME their PluginData flag, so two panels stepping their own copy
+    // would race for it. Steps fully while either panel is shown; otherwise only
+    // drains the expired flags.
+    if (m_pNotices) {
+        const bool watched = m_pNotices->isVisibleAnySurface() ||
+                             (m_pDash && m_pDash->watchesNotices());
+        NoticeTracker::getInstance().step(m_pNotices->getEnabledNotices(),
+                                          m_pNotices->getNoticeDurationMs(), watched);
+    }
+
+    // THE STARTUP MESSAGES all point at the settings menu, so it opening answers
+    // them, whether or not the Dash that shows them is on, and opens on the tab
+    // the one showing names. One load and compare per frame.
+    SystemMessages& messages = SystemMessages::getInstance();
+    const SystemMessages::Startup owed = messages.pendingStartup();
+    if (owed != SystemMessages::Startup::None && m_pSettingsHud &&
+        m_pSettingsHud->isVisible()) {  // vis-gate: the menu's own state
+        if (owed == SystemMessages::Startup::Update) m_pSettingsHud->showUpdatesTab();
+        else if (owed == SystemMessages::Startup::Updated) m_pSettingsHud->showWhatsNew();
+        messages.onSettingsOpened();
+        // What was told persists with the next save (leave-track or Save).
+        SettingsManager::getInstance().markDirty();
+    }
+
+    // THE GLOW IS BAKED INTO EACH HUD'S QUADS (BaseHud::addGlow), so switching it
+    // or retuning it rebuilds every HUD this frame: one that rebuilds only on its
+    // own data change (Notices, mid-warning) would otherwise keep the old halo.
+    {
+        const UiConfig& ui = UiConfig::getInstance();
+        const bool glow = BaseHud::glowActive();
+        if (glow != m_lastGlowActive || ui.getGlowIntensity() != m_lastGlowIntensity ||
+            ui.getGlowWidth() != m_lastGlowWidth) {
+            m_lastGlowActive = glow;
+            m_lastGlowIntensity = ui.getGlowIntensity();
+            m_lastGlowWidth = ui.getGlowWidth();
+            markAllHudsDirty();
+        }
+    }
 
     // Now update all HUDs
     if (bmPoll.active) bmPoll.frameHudInputTimeUs += DrawHandler::getCurrentTimeUs() - dragSearchStart;
@@ -545,9 +588,10 @@ void HudManager::updateHuds() {
                     hud->handleMouseInput(allowInput);
                 }
 
-                // Cache the HUD if it just started dragging
+                // Cache the HUD if it just started dragging, and put it on top.
                 if (hud->isDragging() && !m_pDraggingHud) {
                     m_pDraggingHud = hud.get();
+                    raiseHud(hud.get());
                 }
             }
 
@@ -582,7 +626,12 @@ void HudManager::collectRenderData() {
     // Game surface: byte-identical to before. Then, only when the companion window
     // is open, build its frame from each HUD's companion instance (own on/off +
     // position; mirrors the game until diverged).
-    collectSurface(m_quads, m_strings, /*companion=*/false);
+    // HUD stacking only for a renderer that can use it: the engine draws every
+    // quad before every string whatever we hand it (core/render_layers.h).
+    buildDrawOrder();
+    const bool glLayers = surfaceStacks(/*companion=*/false);
+    if (!glLayers) m_gameLayers.clear();
+    collectSurface(m_quads, m_strings, /*companion=*/false, glLayers ? &m_gameLayers : nullptr);
     if (UiConfig::getInstance().getGlInGame()) publishGlWarmList();
     if (CompanionWindow::getInstance().isEnabled()) {
         // Decouple from the start: the first frame the companion is on, snapshot each
@@ -591,7 +640,8 @@ void HudManager::collectRenderData() {
         // edits each HUD. No-op once a HUD is already configured.
         for (auto& hud : m_huds)
             if (hud) hud->snapshotCompanionFromGame();
-        collectSurface(m_companionQuads, m_companionStrings, /*companion=*/true);
+        collectSurface(m_companionQuads, m_companionStrings, /*companion=*/true,
+                       &m_companionLayers);
     } else if (!m_motionCompanion.slots.empty()) {
         // Its last frame is stale by the time the window reopens: start it settled.
         m_motionCompanion = MotionSurface{};
@@ -604,7 +654,7 @@ void HudManager::collectRenderData() {
 // appended range by its (companion - game) offset delta.
 void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
                                 std::vector<SPluginString_t>& outStrings,
-                                bool companion) {
+                                bool companion, SurfaceLayers* outLayers) {
 
     // Get drop shadow settings once (avoid repeated singleton calls)
     const UiConfig& uiConfig = UiConfig::getInstance();
@@ -616,7 +666,7 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
     // The interactive chrome — the mouse pointer and the OPEN settings menu — belongs
     // to the surface the user is actually on, not both. Otherwise the companion
     // mirrors the game's pointer/menu and the user sees a cursor and a settings menu
-    // in both windows. The settings BUTTON stays on every surface so settings can be
+    // in both windows. The Toggles strip stays on every surface so settings can be
     // opened from either window. In single-window mode the active surface is Game, so
     // this leaves the game frame unchanged.
     bool activeCompanion =
@@ -665,23 +715,22 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
         }
     }
 
-    // Reserve space for pointer and settings button (always allocated, conditionally added)
-    totalQuads += 2;     // Pointer quad + settings button background quad
-    totalStrings += 1;   // Settings button text
+    // Small fixed headroom (always allocated); the pointer and the Toggles strip
+    // are HUDs, so their primitives are already counted above
+    totalQuads += 2;
+    totalStrings += 1;
 
     // Grid overlay (debug, INI-only) appends the snap lattice on top — reserve for it too.
     if (UiConfig::getInstance().getGridOverlay()) {
         totalQuads += gridOverlayQuadCount();
     }
-    totalQuads += m_installWarning.size();   // empty on every working install
-    totalStrings += m_installWarningStrings.size();
 
     // If drop shadow is enabled, we may need up to 2x the strings
     if (dropShadowEnabled) {
         totalStrings *= 2;
     }
     // Note: this intentionally ignores two minor over-counts of shadow copies - the
-    // one shadow quad per shadowed title icon, and strings when a per-HUD dropShadow=1
+    // one shadow quad per shadowed icon (title icon, icons beside text), and strings when a per-HUD dropShadow=1
     // override is on while the global is off. Both are bounded and only cost at most one
     // extra realloc (capacity never shrinks), not worth a pre-pass over every HUD.
 
@@ -701,21 +750,25 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
     // Clear existing data but keep allocated memory
     outQuads.resize(0);
     outStrings.resize(0);
+    if (outLayers) outLayers->clear();
 
     // Collect from all visible HUDs using efficient vector operations
-    // Settings and settings button are always rendered (even when toggle key pressed)
-    bool warningAppended = false;
-    for (size_t hudIndex = 0; hudIndex < m_huds.size(); ++hudIndex) {
+    // Settings and the Toggles strip are always rendered (even when toggle key pressed)
+    // In stacking order (hud_manager_stack.cpp); slots and the rest stay keyed
+    // on the registration index.
+    const bool ordered = m_drawOrder.size() == m_huds.size();
+    for (size_t pos = 0; pos < m_huds.size(); ++pos) {
+        const size_t hudIndex = ordered ? m_drawOrder[pos] : pos;
         const auto& hud = m_huds[hudIndex];
-        // A broken install's warning goes over every HUD but under the pointer,
-        // which is registered last, so the pointer stays visible over its box.
-        if (!warningAppended && hud.get() == m_pPointer && !m_installWarning.empty()) {
-            outQuads.insert(outQuads.end(), m_installWarning.begin(), m_installWarning.end());
-            warningAppended = true;
-        }
         // A HUD fading out draws its ghost in its own place in the order.
         MotionSlot* motionSlot = motion ? &motion->slots[hudIndex] : nullptr;
-        if (motionSlot && motionSlot->ghostLive) motionEmitGhost(*motionSlot, outQuads, outStrings);
+        if (motionSlot && motionSlot->ghostLive) {
+            const size_t ghostQuad = outQuads.size(), ghostString = outStrings.size();
+            motionEmitGhost(*motionSlot, outQuads, outStrings);
+            // A fading ghost is not at its HUD's bounds: it stacks against everything.
+            if (outLayers) recordLayerSpan(*outLayers, outQuads, ghostQuad, outStrings, ghostString,
+                                           nullptr, companion, true);
+        }
         // Guard the deref: m_huds provably holds no nulls (registerHud filters
         // them), but this file is written defensively, so don't dereference before
         // the null check. drawsOnSurface is false for a null hud.
@@ -742,47 +795,17 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
             // Per-HUD drop shadow: the global setting unless this HUD has an ini-only override.
             bool hudShadow = hud->getEffectiveDropShadow(dropShadowEnabled);
 
-            // Quads: bulk copy normally, but drop-shadow the title icon (the per-HUD
-            // identity icon to the left of the title) so it matches the title text.
-            // Only the title icon is shadowed - in-body/widget icons (settings tabs,
-            // the gear, gamepad glyphs, map/radar markers) keep their own outlines and
-            // would look wrong with an added shadow.
+            // Quads: bulk copy, with a shadow copy in front of the title icon and each
+            // icon the HUD marked beside its text (appendHudQuads). Mirror the title
+            // string's own shadow decision so the icon and the title beside it agree.
             int titleIconIdx = hud->m_titleIconQuadIndex;
-            // Mirror the title string's own shadow decision so the icon and the title
-            // text beside it always agree (today the title string never opts out, but
-            // this keeps them in lockstep if the caption path ever gains a skip flag).
             int titleStrIdx = hud->m_titleStringIndex;
             bool titleStrSkips = titleStrIdx >= 0 &&
                                  titleStrIdx < static_cast<int>(skipShadowFlags.size()) &&
                                  skipShadowFlags[titleStrIdx];
             bool shadowTitleIcon = hudShadow && !titleStrSkips && titleIconIdx >= 0 &&
                                    titleIconIdx < static_cast<int>(hudQuads.size());
-            if (shadowTitleIcon) {
-                // Bulk-copy the quads before the icon, then a tinted/offset shadow copy
-                // (renders behind), then the icon and everything after it - two bulk
-                // inserts + one push_back instead of N per-quad copies in this hot path.
-                outQuads.insert(outQuads.end(), hudQuads.begin(), hudQuads.begin() + titleIconIdx);
-
-                // Shadow copy. Offset is proportional to the icon's height and capped at
-                // EXTRA_LARGE, matching the string formula.
-                const auto& iconQuad = hudQuads[titleIconIdx];
-                SPluginQuad_t shadowQuad = iconQuad;
-                float iconHeight = iconQuad.m_aafPos[1][1] - iconQuad.m_aafPos[0][1];
-                float shadowSize = std::min(iconHeight, layoutDefaults().fontSizeExtraLarge);
-                float dx = shadowSize * shadowOffsetXPct;
-                float dy = shadowSize * shadowOffsetYPct;
-                for (int c = 0; c < 4; ++c) {
-                    shadowQuad.m_aafPos[c][0] += dx;
-                    shadowQuad.m_aafPos[c][1] += dy;
-                }
-                shadowQuad.m_ulColor = shadowColor;
-                outQuads.push_back(shadowQuad);
-
-                outQuads.insert(outQuads.end(), hudQuads.begin() + titleIconIdx, hudQuads.end());
-            } else {
-                // No drop shadow - use efficient bulk copy
-                outQuads.insert(outQuads.end(), hudQuads.begin(), hudQuads.end());
-            }
+            appendHudQuads(*hud, outQuads, shadowTitleIcon, hudShadow);
 
             // For strings: if drop shadow enabled, add shadow before each non-skipped string
             if (hudShadow) {
@@ -814,6 +837,7 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
                 // No drop shadow - use efficient bulk copy
                 outStrings.insert(outStrings.end(), hudStrings.begin(), hudStrings.end());
             }
+            if (hud->isSampled()) markSample(outQuads, quadStart, outStrings, stringStart);
 
             // Companion surface: shift this HUD's just-appended primitives to its
             // companion position (delta is 0 for the game, or a mirrored HUD).
@@ -827,38 +851,31 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
 
             if (motionSlot)
                 motionFinishHud(*motionSlot, *hud, outQuads, quadStart, outStrings, stringStart,
-                                shadowTitleIcon ? titleIconIdx : -1, hudShadow);
+                                &m_iconShifts, hudShadow);
+            // Mid-slide or mid-fade, the HUD is not where its bounds say.
+            if (outLayers)
+                recordLayerSpan(*outLayers, outQuads, quadStart, outStrings, stringStart, hud.get(),
+                                companion, motionSlot && motionSlot->frame.moving(),
+                                &m_iconShifts, hudShadow);
         }
     }
 
     // Debug: draw the snap grid ON TOP of everything (INI-only, off by default), so HUD
     // edges can be checked against the lattice they snap to. Same on both surfaces.
     if (UiConfig::getInstance().getGridOverlay()) {
+        const size_t gridQuad = outQuads.size();
         appendGridOverlay(outQuads);
+        if (outLayers) recordLayerSpan(*outLayers, outQuads, gridQuad, outStrings, outStrings.size(),
+                                       nullptr, companion, true);
     }
-
-    // The warning on both surfaces, if no pointer took it above. Strings always
-    // draw after quads, so any HUD text anchored inside its box is dropped:
-    // fonts can be present while icons are missing, and that text would cover it.
-    if (!m_installWarning.empty()) {
-        if (!warningAppended)
-            outQuads.insert(outQuads.end(), m_installWarning.begin(), m_installWarning.end());
-        const auto& box = m_installWarningBox;
-        outStrings.erase(std::remove_if(outStrings.begin(), outStrings.end(),
-            [&](const SPluginString_t& str) {
-                return str.m_afPos[0] >= box.left && str.m_afPos[0] <= box.right &&
-                       str.m_afPos[1] >= box.top && str.m_afPos[1] <= box.bottom;
-            }), outStrings.end());
-        // Empty outside the real-font comparison; see buildInstallWarning().
-        outStrings.insert(outStrings.end(), m_installWarningStrings.begin(), m_installWarningStrings.end());
-    }
+    if (outLayers) finishLayers(*outLayers);
 }
 
 bool HudManager::requiredIconsPresent() {
-    // The icons that buttons and carets draw with no text stand-in. A stale or
-    // partial icons folder that lacks one gets the warning too, or the settings
-    // button would be an empty chip.
-    static const char* const kRequiredIcons[] = { "hud-menu", "hud-close", "hud-video", "caret-up" };
+    // The icons buttons, carets and the Dash/Toggles strips draw: a stale or
+    // partial icons folder lacking one gets the warning, or a chip draws empty.
+    static const char* const kRequiredIcons[] = { "hud-menu", "hud-close", "hud-video", "caret-up", "hud-dash",
+                                                  "hud-clock", "hud-fuel", "hud-flatmap", "hud-gauge" };
     for (const char* name : kRequiredIcons)
         if (AssetManager::getInstance().getIconSpriteIndex(name) <= 0) return false;
     return true;
@@ -866,31 +883,20 @@ bool HudManager::requiredIconsPresent() {
 
 void HudManager::buildInstallWarning(size_t fontCount, size_t iconCount, bool iconsComplete,
                                      bool realText) {
-    m_installWarning.clear();
-    m_installWarningStrings.clear();
-    if (fontCount > 0 && iconCount > 0 && iconsComplete) return;
-    if (!m_pVersion) return;
-
-    // Pixel text cannot read DISCOVERY_DIR's casing or the subdir constants into a
-    // sentence without allocating, and this runs once: plain literals are clearer.
-    const char* what = fontCount == 0 && iconCount == 0
-        ? "No fonts or icons found in plugins\\mxbmrp3_data"
-        : fontCount == 0 ? "No fonts found in plugins\\mxbmrp3_data\\fonts"
-        : iconCount == 0 ? "No icons found in plugins\\mxbmrp3_data\\icons"
-                         : "Icons missing from plugins\\mxbmrp3_data\\icons";
-    const char* const rows[] = {
-        "MXBMRP3 is not installed correctly",
-        what,
-        "Reinstall it with its mxbmrp3_data folder",
-    };
-    m_pVersion->buildInstallNotice(rows, 3, realText, m_installWarning, m_installWarningStrings);
-    // The panel rect is the widget's, before its offset; read now, before the
-    // widget rebuilds its own view over it.
-    float l, t, r, b;
-    m_pVersion->panelRect(l, t, r, b);
-    m_installWarningBox = { l + m_pVersion->getOffsetX(), t + m_pVersion->getOffsetY(),
-                            r + m_pVersion->getOffsetX(), b + m_pVersion->getOffsetY() };
-    DEBUG_WARN_F("HudManager: install looks broken (%zu fonts, %zu icons) - drawing the warning",
+    SystemMessages& messages = SystemMessages::getInstance();
+    if (fontCount > 0 && iconCount > 0 && iconsComplete) {
+        messages.setInstallProblem(nullptr);
+        return;
+    }
+    // Short enough for the Dash's card, at the small font, like its other lines.
+    const char* what = fontCount == 0 && iconCount == 0 ? "No fonts or icons in mxbmrp3_data"
+                     : fontCount == 0 ? "No fonts in mxbmrp3_data\\fonts"
+                     : iconCount == 0 ? "No icons in mxbmrp3_data\\icons"
+                                      : "Icons missing in mxbmrp3_data";
+    messages.setInstallProblem(what);
+    // Block letters unless the fonts are there (or a test compares the two).
+    if (m_pDash) m_pDash->setInstallPixelText(fontCount == 0 && !realText);
+    DEBUG_WARN_F("HudManager: install looks broken (%zu fonts, %zu icons) - the Dash says so",
                  fontCount, iconCount);
 }
 

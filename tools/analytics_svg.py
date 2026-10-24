@@ -350,7 +350,7 @@ def _linear_ticks(vmax):
 
 
 def lines(title, x_labels, series, subtitle="", value_fmt=_fmt, width=760, height=320,
-          x_tick_every=None, log=False, gaps=(), annotate=True):
+          x_tick_every=None, log=False, gaps=(), annotate=True, end_room=0):
     """Multi-series line chart.
 
     x_labels: list of tick labels (one per x index).
@@ -385,6 +385,10 @@ def lines(title, x_labels, series, subtitle="", value_fmt=_fmt, width=760, heigh
     keeps the peaks but puts each END value in the legend ("1.30.3 · 49%") instead
     of the margin: with many series ending near each other (the version chart) the
     margin became a column of small numbers matched to lines by colour alone.
+
+    end_room reserves the end-label column for at least that many characters, so
+    charts stacked on one day axis share one plot width and their days line up
+    whatever their end values happen to be.
     """
     pad_l, pad_r, pad_t, pad_b = 52, 16, (74 if subtitle else 56), 46
     plain_names = [ser[0] for ser in series]  # before annotate="legend" suffixes them
@@ -404,8 +408,8 @@ def lines(title, x_labels, series, subtitle="", value_fmt=_fmt, width=760, heigh
             series = [(name + next((" · " + value_fmt(v) for si, _i, v in ends if si == k), ""), ys, c)
                       for k, (name, ys, c) in enumerate(series)]
             ends = []
-        elif ends:
-            pad_r += 6 + 7 * max(len(value_fmt(v)) for _si, _i, v in ends)
+        elif ends or end_room:
+            pad_r += 6 + 7 * max([end_room] + [len(value_fmt(v)) for _si, _i, v in ends])
     # LEGEND FIRST, because it decides how much room the plot has. One row was fine at
     # four series and ran off the right edge at seven (the version chart, once a second
     # month of data brought more releases into view) - the last entry simply vanished

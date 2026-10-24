@@ -560,7 +560,9 @@ var EVENT_TYPE_MAP = [
     "leaderChange", // 15 LeaderChange
     "pit",          // 16 PitEntry
     "pit",          // 17 PitExit
-    "director"      // 18 Director
+    "director",     // 18 Director
+    "sessionPB",    // 19 SessionPB
+    "allTimePB"     // 20 AllTimePB
 ];
 
 function isEventEnabled(type) {

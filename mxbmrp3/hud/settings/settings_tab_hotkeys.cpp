@@ -153,6 +153,9 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
             case HotkeyAction::DIRECTOR_LOCK:             return "hotkeys.director_lock";
             case HotkeyAction::TOGGLE_STREAM_CHAT:        return "hotkeys.stream_chat";
             case HotkeyAction::TOGGLE_DELTA_TRACE:        return "hotkeys.delta_trace";
+            case HotkeyAction::TOGGLE_DASH:               return "hotkeys.dash";
+            case HotkeyAction::DASH_NEXT:                 return "hotkeys.dash_next";
+            case HotkeyAction::DASH_PREV:                 return "hotkeys.dash_prev";
             case HotkeyAction::TOGGLE_RUMBLE:      return "hotkeys.rumble";
             case HotkeyAction::TOGGLE_WIDGETS:     return "hotkeys.widgets";
             case HotkeyAction::TOGGLE_ALL_HUDS:    return "hotkeys.all_huds";
@@ -263,6 +266,9 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     // (crash_reset_key=): the widget carries its own Reset button.
     static const HotkeyAction kHuds[] = {
         HotkeyAction::TOGGLE_SETTINGS,
+        HotkeyAction::TOGGLE_DASH,
+        HotkeyAction::DASH_NEXT,
+        HotkeyAction::DASH_PREV,
         HotkeyAction::TOGGLE_MAP,
         HotkeyAction::TOGGLE_NOTICES,
         HotkeyAction::TOGGLE_STANDINGS,

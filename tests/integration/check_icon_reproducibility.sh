@@ -14,6 +14,8 @@
 #      check now: a bump that changes any icon turns this red, and the fix is to
 #      regenerate and commit the new .tga in the same PR.
 #   2. An .svg edited without regenerating its .tga - the more likely one.
+#   3. The same for the procedural textures (glow, impact vignette, helmet
+#      lens): a generator tuned without rerunning it.
 #      check_docs.py compares the two sets by NAME; nothing compared content.
 #
 # THE TWO RENDER RULES come from assets/icons/README.md: hud-* are flat identity
@@ -27,7 +29,7 @@
 # must-catch half was verified by hand instead - flip one byte of a committed
 # .tga and this reports it.
 #
-# Requires: python3 with cairosvg + Pillow (pip install -r tools/requirements.txt,
+# Requires: python3 with cairosvg + Pillow + numpy (pip install -r tools/requirements.txt,
 # or ./tools/install_deps.sh analytics, which installs that file).
 # ============================================================================
 set -euo pipefail
@@ -95,6 +97,24 @@ for tga in "${SHIPPED_DIR}"/*.tga; do
     [ -f "${SRC_DIR}/${name}.svg" ] || report "${name}: shipped .tga has no ${SRC_DIR}/${name}.svg"
 done
 
+# THE PROCEDURAL TEXTURES are committed generator output too (no SVG source):
+# each generator must reproduce every file it owns in mxbmrp3_data/textures.
+TEX_OUT="${OUT}/textures"
+tex_count=0
+for gen in glow_gen vignette_gen lens_gen; do
+    rm -rf "${TEX_OUT}"; mkdir -p "${TEX_OUT}"
+    python3 tools/${gen}.py -o "${TEX_OUT}" >/dev/null || { report "${gen}.py failed"; continue; }
+    made=0
+    for tga in "${TEX_OUT}"/*.tga; do
+        [ -f "${tga}" ] || continue
+        made=1; tex_count=$((tex_count + 1))
+        name="$(basename "${tga}")"
+        cmp -s "${tga}" "mxbmrp3_data/textures/${name}" \
+            || report "${name}: shipped texture differs from a fresh tools/${gen}.py run"
+    done
+    [ "${made}" -eq 1 ] || report "${gen}.py produced no .tga"
+done
+
 if [ "${fail}" -ne 0 ]; then
     echo
     echo "FAIL: mxbmrp3_data/icons is out of step with assets/icons."
@@ -106,7 +126,9 @@ if [ "${fail}" -ne 0 ]; then
     echo "If you bumped cairosvg, the new renderer moves pixels: regenerate the"
     echo "WHOLE set in the same PR and eyeball the diff before committing it."
     echo "See assets/icons/README.md -> Verify a regeneration."
+    echo "A procedural texture: rerun its generator with -o mxbmrp3_data/textures."
     exit 1
 fi
 
-echo "OK: all $(( ${#FLAT[@]} + ${#OUTLINED[@]} )) shipped icons reproduce byte-for-byte from their SVG sources."
+echo "OK: all $(( ${#FLAT[@]} + ${#OUTLINED[@]} )) shipped icons reproduce byte-for-byte from their SVG sources,"
+echo "    and ${tex_count} procedural textures from their generators."

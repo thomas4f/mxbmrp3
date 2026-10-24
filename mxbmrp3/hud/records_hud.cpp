@@ -2,8 +2,9 @@
 // hud/records_hud.cpp
 // Displays lap records fetched from external data providers via HTTP
 // ============================================================================
-// file-budget: 1100 one HUD, one TU; the fetcher is already extracted to core
+// file-budget: 1150 one HUD, one TU; the fetcher is already extracted to core
 #include "records_hud.h"
+#include "default_slots.h"
 #include "../core/layout_config.h"
 #include "records_window.h"
 #include "timing_hud.h"
@@ -259,6 +260,21 @@ void RecordsHud::storeParsedRecords(RecordsFetcher::Result&& result) {
 // ============================================================================
 
 void RecordsHud::handleClick(float mouseX, float mouseY) {
+    // An open list takes the click: an entry picks its category, anything else
+    // only closes it (the click under the list was not aimed at what it covers).
+    if (m_categoryOpen) {
+        closeCategoryList();
+        for (const auto& region : m_clickRegions) {
+            if (region.type == ClickRegionType::CATEGORY_OPTION &&
+                isPointInRect(mouseX, mouseY,
+                    region.x + m_fOffsetX, region.y + m_fOffsetY, region.width, region.height)) {
+                m_categoryIndex = region.entry;
+                SettingsManager::getInstance().markDirty();
+                break;
+            }
+        }
+        return;
+    }
     // Click regions store base positions, add offset for hit testing
     for (const auto& region : m_clickRegions) {
         if (isPointInRect(mouseX, mouseY,
@@ -280,6 +296,11 @@ void RecordsHud::handleClick(float mouseX, float mouseY) {
                 case ClickRegionType::CATEGORY_RIGHT:
                     cycleCategory(1);
                     saveSettings = true;
+                    break;
+                case ClickRegionType::CATEGORY_BOX:
+                    m_categoryOpen = true;
+                    break;
+                case ClickRegionType::CATEGORY_OPTION:   // only drawn while open, handled above
                     break;
                 case ClickRegionType::FETCH_BUTTON:
                     startFetch();
@@ -308,6 +329,12 @@ void RecordsHud::cycleCategory(int direction) {
 
     // Cycle through all categories including "All" (index 0)
     m_categoryIndex = (m_categoryIndex + direction + count) % count;
+}
+
+void RecordsHud::closeCategoryList() {
+    m_categoryOpen = false;
+    m_hoveredCategory = -1;
+    setDataDirty();
 }
 
 int RecordsHud::findPlayerPositionInRecords(const std::vector<RecordEntry>& records, int playerPBTime) const {
@@ -383,6 +410,7 @@ void RecordsHud::update() {
 
     // Skip UI processing when not visible
     if (!isVisibleAnySurface()) {
+        m_categoryOpen = false;   // hidden, the list shuts: it does not reopen with the HUD
         clearDataDirty();
         clearLayoutDirty();
         return;
@@ -398,28 +426,32 @@ void RecordsHud::update() {
     mapCursorToHudSpace(cursor.x, cursor.y);
     bool wasHovered = m_fetchButtonHovered;
     m_fetchButtonHovered = false;
+    const int wasHoveredCategory = m_hoveredCategory;
+    m_hoveredCategory = -1;
 
     if (cursor.isValid) {
         float mouseX = cursor.x;
         float mouseY = cursor.y;
 
-        // Check for fetch button hover (click regions store base positions, add offset for hit testing)
+        // Fetch button and list entry hover (click regions store base positions, add offset for hit testing)
         for (const auto& region : m_clickRegions) {
-            if (region.type == ClickRegionType::FETCH_BUTTON) {
-                m_fetchButtonHovered = isPointInRect(mouseX, mouseY,
-                    region.x + m_fOffsetX, region.y + m_fOffsetY, region.width, region.height);
-                break;
-            }
+            if (region.type != ClickRegionType::FETCH_BUTTON &&
+                region.type != ClickRegionType::CATEGORY_OPTION) continue;
+            const bool over = isPointInRect(mouseX, mouseY,
+                region.x + m_fOffsetX, region.y + m_fOffsetY, region.width, region.height);
+            if (region.type == ClickRegionType::FETCH_BUTTON) m_fetchButtonHovered = over;
+            else if (over) m_hoveredCategory = region.entry;
         }
 
-        // Handle clicks
-        if (inputManager.getLeftButton().isClicked() && !isHeldBack() && isPointInBounds(mouseX, mouseY)) {
-            handleClick(mouseX, mouseY);
+        // Handle clicks; one outside the HUD closes an open list
+        if (inputManager.getLeftButton().isClicked() && !isHeldBack()) {
+            if (isPointInBounds(mouseX, mouseY)) handleClick(mouseX, mouseY);
+            else if (m_categoryOpen) closeCategoryList();
         }
     }
     // Repaint on any hover transition, including losing hover when the cursor
-    // goes away (m_fetchButtonHovered was reset to false above).
-    if (wasHovered != m_fetchButtonHovered) {
+    // goes away (both were reset above).
+    if (wasHovered != m_fetchButtonHovered || wasHoveredCategory != m_hoveredCategory) {
         setDataDirty();
     }
 
@@ -457,6 +489,7 @@ void RecordsHud::rebuildRenderData() {
     clearStrings();
     m_quads.clear();
     m_clickRegions.clear();
+    m_overlayQuadFirst = m_overlayStringFirst = -1;   // set again by an open list
 
     // Get scaled dimensions
     auto dim = getScaledDimensions();
@@ -569,6 +602,40 @@ void RecordsHud::rebuildRenderData() {
         addString(footer, contentStartX, currentY,
                   Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSizeSmall);
     }
+
+    // The open category list, last so it covers the rows under it.
+    if (m_categoryOpen) {
+        addCategoryList(backgroundWidth, plan.height());
+    }
+}
+
+void RecordsHud::addCategoryList(float panelWidth, float panelHeight) {
+    DropdownList::Entries entries;
+    entries.count = static_cast<int>(m_categoryList.size());
+    entries.current = m_categoryIndex;
+    entries.hovered = m_hoveredCategory;
+    entries.nameOf = [this](int i) { return m_categoryList[static_cast<size_t>(i)]; };
+    std::vector<DropdownList::Rect> rects;
+    DropdownList::build(*this, m_categoryAnchor,
+        {START_X, START_Y, START_X + panelWidth, START_Y + panelHeight}, entries, dropdownStyle(), rects);
+    // In front of the rows' regions: hit-testing takes the first match, and the
+    // list covers the table (and, opened upwards, the selectors).
+    for (size_t i = 0; i < rects.size(); ++i) {
+        ClickRegion region{rects[i].x, rects[i].y, rects[i].w, rects[i].h, ClickRegionType::CATEGORY_OPTION};
+        region.entry = static_cast<int>(i);
+        m_clickRegions.insert(m_clickRegions.begin() + static_cast<std::ptrdiff_t>(i), region);
+    }
+}
+
+DropdownList::Style RecordsHud::dropdownStyle() const {
+    DropdownList::Style style;
+    style.primary = getColor(ColorSlot::PRIMARY);
+    style.secondary = getColor(ColorSlot::SECONDARY);
+    style.muted = getColor(ColorSlot::MUTED);
+    style.accent = getColor(ColorSlot::ACCENT);
+    style.background = getColor(ColorSlot::BACKGROUND);
+    style.font = getFont(FontCategory::NORMAL);
+    return style;
 }
 
 // The provider/category selectors under the Filter heading.
@@ -594,9 +661,21 @@ void RecordsHud::addFilterRow(float contentStartX, float currentY, const ScaledD
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::PROVIDER_RIGHT});
     rowX += charWidth * 4;  // " > " + gap
 
-    // Category selector: "< MX1-2T OEM >" - use fixed width so arrows don't jump
+    // Category selector: "< MX1-2T OEM v >" - use fixed width so arrows don't jump.
+    // Seven categories, so the value is a dropdown box (the settings panel's, via
+    // DropdownList) over the field and the caret's cell; the arrows still step.
     static constexpr int CATEGORY_WIDTH_CHARS = 10;  // Longest: "MX1-2T OEM"
     float categoryFixedWidth = PluginUtils::calculateMonospaceTextWidth(CATEGORY_WIDTH_CHARS, dim.fontSize);
+    const float valueX = rowX + charWidth * 2;
+    const float fieldW = categoryFixedWidth + charWidth;
+    m_categoryAnchor = {valueX - charWidth * 0.3f, currentY, fieldW + charWidth * 0.3f, valueX,
+                        dim.lineHeightNormal, dim.fontSize};
+    // The box's region first: hit-testing takes the first match, and the arrows'
+    // two-cell regions reach into the box's air and the caret's cell.
+    m_clickRegions.push_back({m_categoryAnchor.x, currentY, m_categoryAnchor.w, dim.lineHeightNormal,
+                              ClickRegionType::CATEGORY_BOX});
+    DropdownList::drawBox(*this, valueX, currentY, fieldW, dim.lineHeightNormal, dim.fontSize, true,
+                          m_categoryOpen, dropdownStyle());
 
     addString("<", rowX, currentY, Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::ACCENT), dim.fontSize);
     m_clickRegions.push_back({rowX, currentY, charWidth * 2, dim.lineHeightNormal, ClickRegionType::CATEGORY_LEFT});
@@ -1009,11 +1088,12 @@ bool RecordsHud::getFastestRecordSectors(int& sector1, int& sector2, int& sector
 
 void RecordsHud::resetToDefaults() {
     m_bVisible = false;
+    m_categoryOpen = false;
     m_bShowTitle = true;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setScale(1.0f);
-    setPosition(cellsX(133), cellsY(41));
+    setPosition(DefaultSlots::rightColumnX(DefaultSlots::WIDE_CELLS), DefaultSlots::rightColumnY());
     m_provider = DataProvider::CBR;
     m_categoryIndex = 0;
     m_lastSessionTrackName[0] = '\0';  // Reset so update() will pick up current session track

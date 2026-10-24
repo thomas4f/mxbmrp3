@@ -27,6 +27,25 @@
 //      classifications, so the value sitting in the clock belongs to the session
 //      that just ended and the row states the label alone.
 //
+// And three about the finish, two from in-game recordings (second TEST_CASE):
+//
+//   4. The game counts the bonus laps from its OWN time-up callback (a
+//      RaceSessionState re-send of IN_PROGRESS), which lands one classification
+//      tick after the clock first reads negative. A leader crossing the line in
+//      that gap ran the lap "before expiry": a player's 1:00 + 2L qualifying was
+//      flagged CHECKERED a lap early (10:32:32.032 clock -12 ms, .062 crossing,
+//      .063 re-send; the game ran one more lap).
+//   5. A finish time is the sum of the rider's laps, exact to the millisecond.
+//      It used to be the session clock, which ticks every ~30 ms and which
+//      RACE OVER restarts: the classification carrying the last crossing is
+//      already on the new clock, so the last finisher's time came out as 30 ms
+//      (lap race) or the session length less 30 ms (timed). The clock, held at
+//      Race Over and counted on by the restarted one, stays the fallback for a
+//      rider whose laps were not all seen.
+//   6. With one added lap, a leader crossing in that gap completes the armed
+//      finish lap, which the game counts as run before expiry: that crossing
+//      is not the white flag.
+//
 // One lifecycle (singletons persist across TEST_CASEs). The non-arming formats run
 // first; overtime (a sticky flag) is driven last. Self-contained doctest.
 // ============================================================================
@@ -36,7 +55,8 @@
 #include "assertions.h"
 
 // PiBoSo session enum: 0=Waiting, 1=Practice, 6=Race1. state 16 = running.
-static constexpr int WAITING = 0, PRACTICE = 1, RACE1 = 6;
+static constexpr int WAITING = 0, PRACTICE = 1, RACE1 = 6, RACE2 = 7;
+static constexpr int IN_PROGRESS = 16, RACE_OVER = 512;
 
 static std::string sessTime(const nlohmann::json& d) {
     return d["session"].value("time", std::string());
@@ -199,6 +219,127 @@ TEST_CASE("session format + overtime clock: laps vs time vs time+laps") {
         { .num = 22, .best = 89000, .laps = 6 },
     });
     CHECK(sessionInfoRow(host, "Open Practice") == "Open Practice: 10:10");
+
+    host.shutdown();
+}
+
+TEST_CASE("race finish: the game's time-up callback and the Race Over clock") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\session_format_finish\\");
+    REQUIRE(host.finishLap() != -2);
+
+    host.eventInit("TestTrack", "Alice");
+    host.raceEvent("TestTrack");
+    host.addEntry(10, "Alice");
+    host.addEntry(22, "Bob");
+
+    // --- 4a. Leader crosses inside the gap: one more lap than armed ----------
+    host.session(RACE2, /*numLaps=*/2, /*lengthMs=*/180000);
+    host.classify(RACE2, 25, {
+        { .num = 10, .laps = 0, .gap = 0 },
+        { .num = 22, .laps = 0, .gap = 2000 },
+    });
+    host.classify(RACE2, -5, {
+        { .num = 10, .laps = 0, .gap = 0 },
+        { .num = 22, .laps = 0, .gap = 2000 },
+    });
+    CHECK(host.finishLap() == 2);          // armed at the negative tick: 0 + 2
+    host.raceLap(RACE2, 10, 1, 60039);     // 30 ms later, before the game's callback
+    host.raceSessionState(RACE2, IN_PROGRESS, 180000);
+    CHECK(host.finishLap() == 3);          // the game's count: 1 + 2
+
+    // A later re-send of the same state is not the time-up moment.
+    host.raceLap(RACE2, 10, 2, 45000);
+    host.raceSessionState(RACE2, IN_PROGRESS, 180000);
+    CHECK(host.finishLap() == 3);
+
+    // Laps 2 and 3 complete: FINAL LAP, not the early CHECKERED.
+    host.raceLap(RACE2, 10, 3, 43000);
+    host.classify(RACE2, -61000, {
+        { .num = 10, .laps = 3, .gap = 0 },
+        { .num = 22, .laps = 2, .gap = 2000 },
+    });
+    CHECK(sessTime(host.snapshot()) == "FINAL LAP");
+    CHECK(host.riderFinishTime(10) == -1);
+
+    // --- 5a. Timed: the finish lands on the Race Over tick --------------------
+    // The leader's time is the sum of the four laps, not the restarted clock.
+    host.raceLap(RACE2, 10, 4, 44000);
+    host.raceSessionState(RACE2, RACE_OVER, 180000);
+    host.classify(RACE2, 30, {
+        { .num = 10, .laps = 4, .gap = 0 },
+        { .num = 22, .laps = 3, .gap = 2000 },
+    }, RACE_OVER);
+    CHECK(host.riderFinishTime(10) == 60039 + 45000 + 43000 + 44000);
+    // Bob's laps were never seen (no RaceLap), and he crosses a minute after
+    // the leader: the fallback is the clock held at its last running value plus
+    // the restarted clock's minute -- not the restarted clock alone, and not the
+    // held clock alone, which is the leader's finish.
+    host.classify(RACE2, 60030, {
+        { .num = 10, .laps = 4, .gap = 0 },
+        { .num = 22, .laps = 4, .gap = 2000 },
+    }, RACE_OVER);
+    CHECK(host.riderFinishTime(22) == 180000 + 61000 + 60030);
+
+    // --- 4b. Control: crossing well before expiry, the armed lap stands ------
+    host.session(RACE1, /*numLaps=*/2, /*lengthMs=*/180000);
+    host.classify(RACE1, 1100, {
+        { .num = 10, .laps = 3, .gap = 0 },
+        { .num = 22, .laps = 3, .gap = 2000 },
+    });
+    host.classify(RACE1, -5, {
+        { .num = 10, .laps = 3, .gap = 0 },
+        { .num = 22, .laps = 3, .gap = 2000 },
+    });
+    host.raceSessionState(RACE1, IN_PROGRESS, 180000);
+    CHECK(host.finishLap() == 5);
+
+    // --- 5b. Pure laps: the finish read "30 ms" -------------------------------
+    // The recorded race: laps of 72.394 and 46.033 s; the clock's last tick
+    // before the line read 118.400.
+    host.session(RACE1, /*numLaps=*/2, /*lengthMs=*/0);
+    host.raceLap(RACE1, 10, 1, 72394);
+    host.classify(RACE1, 118400, {
+        { .num = 10, .laps = 1, .gap = 0 },
+        { .num = 22, .laps = 1, .gap = 2000 },
+    });
+    host.raceLap(RACE1, 10, 2, 46033);
+    host.raceSessionState(RACE1, RACE_OVER);
+    host.classify(RACE1, 30, {
+        { .num = 10, .laps = 2, .gap = 0 },
+        { .num = 22, .laps = 1, .gap = 2000 },
+    }, RACE_OVER);
+    CHECK(host.riderFinishTime(10) == 72394 + 46033);
+
+    // --- 4c. Time + 1 lap: the crossing in the gap is not the white flag ------
+    // Armed at the negative tick as 0 + 1, so the leader's crossing 30 ms later
+    // completes the armed lap. The game counts that lap as run before expiry,
+    // and the last lap starts at the NEXT crossing; "Final lap" (and the
+    // spotter's cue) used to fire on this one, then again on the next.
+    auto finalLaps = [&host]() {
+        int n = 0;
+        for (const auto& e : host.snapshot().value("events", nlohmann::json::array()))
+            if (e.value("message", std::string()).find("inal lap") != std::string::npos) ++n;
+        return n;
+    };
+    host.session(RACE1, /*numLaps=*/1, /*lengthMs=*/180000);
+    host.classify(RACE1, 25, {
+        { .num = 10, .laps = 0, .gap = 0 },
+        { .num = 22, .laps = 0, .gap = 2000 },
+    });
+    host.classify(RACE1, -5, {
+        { .num = 10, .laps = 0, .gap = 0 },
+        { .num = 22, .laps = 0, .gap = 2000 },
+    });
+    REQUIRE(host.finishLap() == 1);
+    const int whiteFlags = finalLaps();
+    host.raceLap(RACE1, 10, 1, 60039);     // in the gap, before the game's callback
+    CHECK_MESSAGE(finalLaps() == whiteFlags, "the white flag fired a lap early");
+    host.raceSessionState(RACE1, IN_PROGRESS, 180000);
+    REQUIRE(host.finishLap() == 2);
+    host.raceLap(RACE1, 10, 2, 45000);     // now the last lap starts
+    CHECK(finalLaps() == whiteFlags + 1);
 
     host.shutdown();
 }

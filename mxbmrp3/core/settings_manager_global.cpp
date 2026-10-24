@@ -38,11 +38,10 @@
 #include "../hud/timing_hud.h"
 #include "../hud/gap_bar_hud.h"
 #include "../hud/bars_widget.h"
-#include "../hud/version_widget.h"
 #include "../hud/notices_hud.h"
 #include "../hud/fuel_widget.h"
-#include "../hud/settings_button_widget.h"
 #include "../hud/pointer_widget.h"
+#include "../hud/toggle_strip_widget.h"
 #include "../hud/map_hud.h"
 #include "../hud/radar_hud.h"
 #include "../hud/pitboard_hud.h"
@@ -99,7 +98,6 @@
 #include "hotkey_manager.h"
 #include "director_manager.h"
 #include "companion_window.h"
-#include "../hud/director_widget.h"
 #include "tracked_riders_manager.h"
 #include "asset_manager.h"
 #include "../game/game_config.h"
@@ -287,14 +285,11 @@ void SettingsManager::applyGeneralLine(const std::string& key, const std::string
         } else if (key == "checkForUpdates") {
             UpdateChecker::getInstance().setEnabled(std::stoi(value) != 0);
         } else if (key == "updateChannel") {
-            // Load channel before dismissedVersion (setChannel clears dismissedVersion on change)
             if (value == "prerelease") {
                 UpdateChecker::getInstance().setChannel(UpdateChecker::UpdateChannel::PRERELEASE);
             } else {
                 UpdateChecker::getInstance().setChannel(UpdateChecker::UpdateChannel::STABLE);
             }
-        } else if (key == "dismissedVersion") {
-            UpdateChecker::getInstance().setDismissedVersion(value);
         } else if (key == "updateTagSeen") {
             UpdateChecker::getInstance().setUpdateTagSeenVersion(value);
         } else if (key == "controller") {
@@ -366,9 +361,6 @@ void SettingsManager::applyGeneralLine(const std::string& key, const std::string
 
 // Write Updates section (auto-update settings, owned solely by the Updates tab, so
 // the tab maps 1:1 to one INI section and resets via section replay).
-// updateChannel is written before dismissedVersion because
-// setChannel() clears the dismissed version when the channel changes — applying it
-// first keeps a same-channel dismissal intact on load.
 void SettingsManager::writeUpdatesSettings(std::ostream& out, const HudManager& /*hudManager*/) const {
     const char* channelStr = (UpdateChecker::getInstance().getChannel() == UpdateChecker::UpdateChannel::PRERELEASE) ? "prerelease" : "stable";
     const char* updateModeStr = "off";
@@ -380,16 +372,10 @@ void SettingsManager::writeUpdatesSettings(std::ostream& out, const HudManager& 
     out << "updateChannel=" << channelStr << "\n";
     out << "updateMode=" << updateModeStr << "\n";
     out << "updateDebugMode=" << (UpdateChecker::getInstance().isDebugMode() ? 1 : 0) << "\n";
-    // Dismissed version (suppresses re-notifying about an update the user dismissed).
-    // Written unconditionally — even when empty — so the factory-defaults snapshot
-    // (captured before load, when it is empty) carries the key, and a full reset
-    // restores it to empty via the normal [Updates] replay. A conditional write would
-    // omit it from the snapshot, leaving a stale dismissal stuck across "Reset all
-    // settings". An empty value loads as a no-op (setDismissedVersion("")).
-    out << "dismissedVersion=" << UpdateChecker::getInstance().getDismissedVersion() << "\n";
-    // The sidebar tag's own seen-version, deliberately separate from the skip
-    // above (see UpdateChecker::shouldShowUpdateTag). Written unconditionally
-    // for the same reason that one is.
+    // The sidebar tag's seen-version (see UpdateChecker::shouldShowUpdateTag).
+    // Written unconditionally -- even when empty -- so the factory-defaults
+    // snapshot (captured before load, when it is empty) carries the key, and a
+    // full reset restores it to empty via the normal [Updates] replay.
     out << "updateTagSeen=" << UpdateChecker::getInstance().getUpdateTagSeenVersion() << "\n";
     out << "\n";
 }
@@ -398,8 +384,6 @@ void SettingsManager::writeUpdatesSettings(std::ostream& out, const HudManager& 
 void SettingsManager::applyUpdatesLine(const std::string& key, const std::string& value, HudManager& /*hudManager*/) {
     try {
         if (key == "updateChannel") {
-            // Apply channel before dismissedVersion: setChannel() clears the dismissed
-            // version when the channel changes, so a same-channel dismissal stays intact.
             if (value == "prerelease") {
                 UpdateChecker::getInstance().setChannel(UpdateChecker::UpdateChannel::PRERELEASE);
             } else {
@@ -416,8 +400,6 @@ void SettingsManager::applyUpdatesLine(const std::string& key, const std::string
             bool debugMode = (std::stoi(value) != 0);
             UpdateChecker::getInstance().setDebugMode(debugMode);
             UpdateDownloader::getInstance().setDebugMode(debugMode);
-        } else if (key == "dismissedVersion") {
-            UpdateChecker::getInstance().setDismissedVersion(value);
         } else if (key == "updateTagSeen") {
             UpdateChecker::getInstance().setUpdateTagSeenVersion(value);
         }
@@ -684,6 +666,12 @@ void SettingsManager::writeDisplaySettings(std::ostream& out, const HudManager& 
     out << "uiScale=" << UiConfig::getInstance().getUiScale() << "\n";
     out << "titleIcons=" << (UiConfig::getInstance().getTitleIcons() ? 1 : 0) << "\n";
     out << "motion=" << motionLevelToString(UiConfig::getInstance().getMotion()) << "\n";
+    out << "glow=" << (UiConfig::getInstance().getGlow() ? 1 : 0) << "\n";
+    // INI-only: the glow's look, as scales on every light's own tuning (0-3).
+    out << "glowIntensity=" << UiConfig::getInstance().getGlowIntensity()
+        << " ; Glow opacity scale: 1 = as shipped, 0 = invisible, up to 3\n";
+    out << "glowWidth=" << UiConfig::getInstance().getGlowWidth()
+        << " ; Glow reach scale: 1 = as shipped, 0 = none, up to 3\n";
     out << "gridSnapping=" << (UiConfig::getInstance().getGridSnapping() ? 1 : 0) << "\n";
     // Panel theme by NAME (empty = none). A name survives theme folders being
     // added, removed or reordered; an index would silently repoint.
@@ -691,6 +679,7 @@ void SettingsManager::writeDisplaySettings(std::ostream& out, const HudManager& 
         << UiConfig::getInstance().getThemeName() << "\n";
     out << "screenClamping=" << (UiConfig::getInstance().getScreenClamping() ? 1 : 0) << "\n";
     out << "menuOnlyCursor=" << (UiConfig::getInstance().getMenuOnlyCursor() ? 1 : 0) << "\n";
+    out << "togglesCollapsed=" << (hudManager.getToggleStripWidget().isCollapsed() ? 1 : 0) << "\n";
     // Companion window geometry (full-window rect). Written before displayTarget so
     // it's restored before the window opens on load. w<=0 => open at default.
     {
@@ -730,6 +719,12 @@ void SettingsManager::applyDisplayLine(const std::string& key, const std::string
             UiConfig::getInstance().setTitleIcons(std::stoi(value) != 0);
         } else if (key == "motion") {
             UiConfig::getInstance().setMotion(stringToMotionLevel(value));
+        } else if (key == "glow") {
+            UiConfig::getInstance().setGlow(std::stoi(value) != 0);
+        } else if (key == "glowIntensity") {
+            UiConfig::getInstance().setGlowIntensity(std::stof(value));   // clamps, non-finite = 1
+        } else if (key == "glowWidth") {
+            UiConfig::getInstance().setGlowWidth(std::stof(value));
         } else if (key == "gridSnapping") {
             UiConfig::getInstance().setGridSnapping(std::stoi(value) != 0);
         } else if (key == Settings::Keys::Global::PANEL_THEME) {
@@ -741,6 +736,8 @@ void SettingsManager::applyDisplayLine(const std::string& key, const std::string
             UiConfig::getInstance().setScreenClamping(std::stoi(value) != 0);
         } else if (key == "menuOnlyCursor") {
             UiConfig::getInstance().setMenuOnlyCursor(std::stoi(value) != 0);
+        } else if (key == "togglesCollapsed") {
+            hudManager.getToggleStripWidget().setCollapsed(std::stoi(value) != 0);
         } else if (key == "companionWindowX" || key == "companionWindowY" ||
                    key == "companionWindowW" || key == "companionWindowH") {
             // Restore one component of the saved window rect (read-modify-write;

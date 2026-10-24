@@ -60,6 +60,9 @@ enum class HotkeyAction : uint8_t {
     CRASH_RESET,                 // Crash widget: zero the streaming tally
     TOGGLE_STREAM_CHAT,          // Stream chat HUD on/off
     TOGGLE_DELTA_TRACE,          // Delta Trace HUD on/off
+    TOGGLE_DASH,                 // Dash HUD on/off
+    DASH_NEXT,                   // Dash: the next page
+    DASH_PREV,                   // Dash: the previous page
     COUNT  // Must be last
 };
 
@@ -105,6 +108,9 @@ inline const char* getActionDisplayName(HotkeyAction action) {
         case HotkeyAction::DIRECTOR_LOCK:             return "Cam Lock";
         case HotkeyAction::TOGGLE_STREAM_CHAT:        return "Chat";
         case HotkeyAction::TOGGLE_DELTA_TRACE:        return "Delta";
+        case HotkeyAction::TOGGLE_DASH:               return "Dash";
+        case HotkeyAction::DASH_NEXT:                 return "Dash +";
+        case HotkeyAction::DASH_PREV:                 return "Dash -";
         default: return "Unknown";
     }
 }
@@ -153,6 +159,9 @@ inline const char* getActionConfigName(HotkeyAction action) {
         case HotkeyAction::DIRECTOR_LOCK:             return "director_lock";
         case HotkeyAction::TOGGLE_STREAM_CHAT:        return "stream_chat";
         case HotkeyAction::TOGGLE_DELTA_TRACE:        return "delta_trace";
+        case HotkeyAction::TOGGLE_DASH:               return "dash";
+        case HotkeyAction::DASH_NEXT:                 return "dash_next";
+        case HotkeyAction::DASH_PREV:                 return "dash_prev";
         default: return "unknown";
     }
 }
@@ -270,12 +279,16 @@ struct HotkeyBinding {
     bool operator!=(const HotkeyBinding& other) const { return !(*this == other); }
 };
 
-// The shipped binding for an action: only the settings menu has one. ONE table,
-// read by HotkeyManager::resetToDefaults() and by Keymaster (a binding the
-// player made is one that differs from this, so the shipped key earns nothing).
+// The shipped binding for an action: the settings menu and the Dash's page
+// steps have one. ONE table, read by HotkeyManager::resetToDefaults() and by
+// Keymaster (a binding the player made is one that differs from this, so the
+// shipped key earns nothing).
 inline HotkeyBinding defaultHotkeyBinding(HotkeyAction action) {
     // VK_OEM_3 is ` on US keyboards, § on some EU layouts
     if (action == HotkeyAction::TOGGLE_SETTINGS) return HotkeyBinding(VK_OEM_3);
+    // Clear of the arrows, which riding on the keyboard may use.
+    if (action == HotkeyAction::DASH_NEXT) return HotkeyBinding(VK_NEXT);    // Page Down
+    if (action == HotkeyAction::DASH_PREV) return HotkeyBinding(VK_PRIOR);   // Page Up
     return HotkeyBinding();
 }
 

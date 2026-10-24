@@ -12,6 +12,8 @@
 
 #if defined(MXBMRP3_TEST_BUILD)
 
+#include <cstring>
+
 #include "hud_manager.h"
 #include "test_gl_render_probe.h"
 #include "ui_config.h"
@@ -64,6 +66,21 @@ __declspec(dllexport) void MXBMRP3_Test_GlConfirmTick(int ms) {
 
 __declspec(dllexport) int MXBMRP3_Test_GlDrewLastFrame() {
     return HudManager::getInstance().glDrewLastFrame() ? 1 : 0;
+}
+
+// The last in-game frame's HUD stacking (core/render_layers.h): 0 = none built
+// (Direct GL off), 1 = nothing overlaps, 2+ = HUDs stacked over others' text.
+__declspec(dllexport) int MXBMRP3_Test_GlFrameLayerCount() {
+    return HudManager::getInstance().gameFrameLayerCount();
+}
+
+// The highest layer a HUD (registration name) landed in last frame; -1 = drew none.
+__declspec(dllexport) int MXBMRP3_Test_GlFrameHudLayer(const char* name) {
+    if (!name) return -1;
+    const HudManager& hm = HudManager::getInstance();
+    for (const auto& hud : hm.getHuds())
+        if (hud && std::strcmp(hud->getHarnessId(), name) == 0) return hm.frameHudLayer(hud.get(), false);
+    return -1;
 }
 
 // 1 = the live GL backend has loaded this sprite (render name), 0 = not, -1 = no

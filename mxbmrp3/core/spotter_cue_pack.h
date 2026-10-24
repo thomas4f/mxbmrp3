@@ -454,6 +454,10 @@ inline const char* cueKeyFor(EventLogType type, bool focused) {
         case EventLogType::PitExit:
             return focused ? "pit_exit_you" : "pit_exit_other";
         case EventLogType::Director:          return nullptr;
+        // Already spoken from the lap handler (onPersonalBest / onSessionBest),
+        // which knows the PB ladder; a second cue here would repeat the time.
+        case EventLogType::SessionPB:         return nullptr;
+        case EventLogType::AllTimePB:         return nullptr;
         default:                              return nullptr;
     }
 }

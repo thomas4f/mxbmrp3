@@ -33,7 +33,6 @@
 // ============================================================================
 #include "settings_layout.h"
 #include "../settings_hud.h"
-#include "../version_widget.h"
 #include "../../core/color_config.h"
 #include "../../core/font_config.h"
 #include "../../core/plugin_constants.h"
@@ -50,7 +49,7 @@ BaseHud* SettingsHud::renderTabAbout(SettingsLayoutContext& ctx) {
     // budget above), and the hint draws on the heading's OWN line, so it costs
     // nothing vertically. An About page is where people look for a version -- the
     // settings footer next to it is only a button, and the number is otherwise
-    // on the Updates tab or the VersionWidget.
+    // on the Updates tab.
     char versionHint[32];
     snprintf(versionHint, sizeof(versionHint), "(v%s)", PluginConstants::PLUGIN_VERSION);
     ctx.addSectionHeading("About MXBMRP3", versionHint);

@@ -1,7 +1,8 @@
 // ============================================================================
 // hud/rider_flag_icons.h
 // The flag-class markers a rider can carry on the Standings row, the Map and
-// the Radar -- wrong way, hazard, blue flag, last lap, finished -- as one
+// the Radar -- wrong way, hazard, blue flag, last lap, finished, and the race
+// leader's crown -- as one
 // sprite + colour pairing, so the three HUDs cannot draw the same state in
 // different colours.
 //
@@ -10,7 +11,8 @@
 // are fixed palette values, never ColorSlots a theme can repaint. The
 // wrong-way marker is not a flag: it is a warning and follows the HUD's
 // NEGATIVE slot, like the WRONG WAY notice. The Event Log and the blue-flag
-// notice read the same FlagColors.
+// notice read the same FlagColors. The leader's crown is podium gold, as P1's
+// label (MarkerLabel::color).
 //
 // Only the pairing is shared. WHICH marker wins is each HUD's own order (the
 // Standings row also shows a director lock and the pit wrench; the Map skips
@@ -19,6 +21,7 @@
 #pragma once
 
 #include "../core/color_config.h"
+#include "../core/plugin_constants.h"
 #include "../core/plugin_data_types.h"
 
 namespace FlagColors {
@@ -31,7 +34,7 @@ namespace FlagColors {
 
 class RiderFlagIcons {
 public:
-    enum class Kind { None, WrongWay, Hazard, Blue, LastLap, Finished };
+    enum class Kind { None, WrongWay, Hazard, Blue, LastLap, Finished, Leader };
 
     // sprite 0 = the icon is missing from the asset set: draw nothing for it
     struct Icon {
@@ -54,5 +57,6 @@ private:
     int m_circleExclamation = 0;
     int m_flag = 0;
     int m_flagCheckered = 0;
+    int m_crown = 0;
     bool m_initialized = false;
 };

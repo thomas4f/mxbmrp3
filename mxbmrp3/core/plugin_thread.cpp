@@ -228,7 +228,8 @@ void PluginThread::requestFrame(int iState) {
 }
 
 bool PluginThread::takeFrame(const SPluginQuad_t*& quads, int& numQuads,
-                             const SPluginString_t*& strings, int& numStrings) {
+                             const SPluginString_t*& strings, int& numStrings,
+                             hudlayers::Layers* layers) {
     if (!m_frameBuffer.everProduced()) return false;
     // Adopt the latest finished frame. The returned reference stays valid until the
     // next takeFrame() (the buffer won't reuse this slot before then) — matching the
@@ -238,6 +239,11 @@ bool PluginThread::takeFrame(const SPluginQuad_t*& quads, int& numQuads,
     numQuads = static_cast<int>(f.quads.size());
     strings = f.strings.empty() ? nullptr : f.strings.data();
     numStrings = static_cast<int>(f.strings.size());
+    if (layers) {
+        layers->spans = f.spans.empty() ? nullptr : f.spans.data();
+        layers->spanCount = static_cast<int>(f.spans.size());
+        layers->layerCount = f.layerCount;
+    }
     return true;
 }
 
@@ -281,9 +287,13 @@ void PluginThread::buildAndPublishFrame() {
     if (hud.inGameFrameSuppressed()) {
         w.quads.clear();
         w.strings.clear();
+        w.spans.clear();
+        w.layerCount = 0;
     } else {
         w.quads = hud.gameFrameQuads();
         w.strings = hud.gameFrameStrings();
+        w.spans = hud.gameFrameSpans();
+        w.layerCount = hud.gameFrameLayerCount();
     }
 
     // Publish: the write slot becomes the latest ready frame; a recycled slot is taken

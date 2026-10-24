@@ -122,6 +122,10 @@ int main(int argc, char** argv) {
     // --- Drive a realistic race with the built-in benchmark active -----------
     if (showAll && ShowAll) { ShowAll(1); printf("ALL HUDs/widgets forced visible.\n"); }
     if (maxSettings && MaxSettings) { MaxSettings(); printf("Heavy HUD settings cranked to MAX.\n"); }
+    // The shipped defaults, which the test build turns off (see perf_driver.cpp).
+    auto SetDropShadow = (void(*)(int))S("MXBMRP3_Test_SetDropShadow");
+    auto SetGlow = (void(*)(int,float,float))S("MXBMRP3_Test_SetGlow");
+    if (SetDropShadow && SetGlow) { SetDropShadow(1); SetGlow(1, 1.0f, 1.0f); printf("Drop shadow + glow ON (shipped defaults).\n"); }
     printf("Driving %d-rider race with benchmark profiler active (%s)...\n",
            RIDERS, maxSettings ? "everything + max settings" : (showAll ? "everything enabled" : "default HUDs"));
     Benchmark(1);  // activate + reset the profiler

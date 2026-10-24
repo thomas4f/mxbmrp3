@@ -13,6 +13,7 @@
 #include "../../core/plugin_manager.h"
 #include "../../core/hud_manager.h"
 #include "../../core/ui_config.h"
+#include "../../core/impact_vignette.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -125,6 +126,11 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
     // ========================================================================
     ctx.addSectionHeading("Effects");
 
+    // Tilt and vibration move the helmet art alone: moot while it is not
+    // drawn (Helmet > Visible, or the tab switched off), so greyed out as the
+    // visor tint is without a visor.
+    const bool helmetOn = hud->isVisible() && hud->m_helmetEnabled;
+
     // Signed strengths read "Off" at zero.
     auto fmtSigned = [](float value) {
         char buf[16];
@@ -135,13 +141,45 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
     };
     ctx.addSteppedControl("Tilt strength", fmtSigned(hud->m_helmetTiltStrength).c_str(),
         SettingsHud::SteppedControl::stepFloat(&hud->m_helmetTiltStrength, 0.01f, -1.0f, 1.0f, hud),
-        hud, true, std::round(hud->m_helmetTiltStrength * 100.0f) == 0.0f, "helmet.tilt");
+        hud, helmetOn, std::round(hud->m_helmetTiltStrength * 100.0f) == 0.0f, "helmet.tilt");
     ctx.addSteppedControl("Vibration strength", fmtSigned(hud->m_helmetVibrationStrength).c_str(),
         SettingsHud::SteppedControl::stepFloat(&hud->m_helmetVibrationStrength, 0.01f, -1.0f, 1.0f, hud),
-        hud, true, std::round(hud->m_helmetVibrationStrength * 100.0f) == 0.0f, "helmet.vibration");
+        hud, helmetOn, std::round(hud->m_helmetVibrationStrength * 100.0f) == 0.0f, "helmet.vibration");
     ctx.addSteppedControl("Vibration sensitivity", fmtPct(hud->m_helmetVibrationSensitivity).c_str(),
         SettingsHud::SteppedControl::stepFloat(&hud->m_helmetVibrationSensitivity, 0.01f, 0.0f, 1.0f, hud),
-        hud, true, hud->m_helmetVibrationSensitivity <= 0.0f, "helmet.vib_sensitivity");
+        hud, helmetOn, hud->m_helmetVibrationSensitivity <= 0.0f, "helmet.vib_sensitivity");
+
+    // ========================================================================
+    // IMPACT SECTION
+    // ========================================================================
+    ctx.addSectionHeading("Impact");
+
+    // Impact vignette: its own HUD (core/impact_vignette.h), shown while this
+    // tab is on, with or without the helmet art, as the visor.
+    {
+        const int pct = static_cast<int>(std::lround(UiConfig::getInstance().getImpactVignette() * 100.0f));
+        char value[8];
+        if (pct == 0) snprintf(value, sizeof(value), "Off");
+        else snprintf(value, sizeof(value), "%d%%", pct);
+        SettingsHud::SteppedControl vignette = SettingsHud::SteppedControl::accessor(
+                [] { return UiConfig::getInstance().getImpactVignette(); },
+                [](float v) { UiConfig::getInstance().setImpactVignette(v); },
+                ImpactVignette::STRENGTH_STEP, 0.0f, ImpactVignette::STRENGTH_MAX, nullptr);
+        ctx.addSteppedControl("Impact vignette", value, vignette, nullptr, true, pct == 0,
+                              "helmet.impact_vignette");
+
+        // Moot while the vignette is Off: greyed out, like the visor tint.
+        char fade[8];
+        snprintf(fade, sizeof(fade), "%.1f s",
+                 std::clamp(UiConfig::getInstance().getImpactVignetteFade(),
+                            ImpactVignette::FADE_MIN_S, ImpactVignette::FADE_MAX_S));
+        SettingsHud::SteppedControl fadeControl = SettingsHud::SteppedControl::accessor(
+                [] { return UiConfig::getInstance().getImpactVignetteFade(); },
+                [](float v) { UiConfig::getInstance().setImpactVignetteFade(v); },
+                ImpactVignette::FADE_STEP_S, ImpactVignette::FADE_MIN_S, ImpactVignette::FADE_MAX_S, nullptr);
+        ctx.addSteppedControl("Vignette fade", fade, fadeControl, nullptr, pct != 0, false,
+                              "helmet.impact_vignette_fade");
+    }
 
     // ========================================================================
     // VISOR SECTION

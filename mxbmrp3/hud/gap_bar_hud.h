@@ -15,6 +15,7 @@
 #include "marker_label.h"
 #include "official_gap_freeze.h"
 #include "freeze_duration.h"
+#include "gap_auto_range.h"
 #include "hud_defaults.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
@@ -50,6 +51,8 @@ public:
     static constexpr int REFERENCE_COUNT = PbGapTracker::REF_COUNT;
     // The reference in use: its own, or General's while it follows Default.
     Reference getReference() const { return HudDefaults::reference(m_referenceDefault, m_reference); }
+    // How long it holds an official gap (General's while on Default).
+    int getFreezeMs() const { return HudDefaults::freezeMs(m_freezeDurationMs); }
 
     // Label display mode - controls what labels appear above markers (like MapHud)
     // Shared with MapHud/RadarHud/GapBarHud — see hud/marker_label.h
@@ -97,8 +100,57 @@ public:
         }
     }
 
+    // The fill's range for `gapMs` under this bar's Range setting, an Auto range
+    // resolved by `autoRange` -- the Dash's Gap bar page passes its own, so the
+    // two scale alike.
+    int rangeMs(GapAutoRange& autoRange, int gapMs) const {
+        return m_gapRangeMs != RANGE_AUTO ? m_gapRangeMs : autoRange.rangeMs(gapMs, MIN_RANGE_MS);
+    }
+
     // Rider positions update for flat map mode (called from HudManager)
     void updateRiderPositions(int numVehicles, const Unified::TrackPositionData* positions);
+
+    // FLAT MAP, shared with the Dash's Flat map page: the markers this bar draws,
+    // styled as it draws them (its icon, colour mode and tracked riders), so the
+    // two never show a rider apart.
+    enum class MarkerKind : uint8_t { OPPONENT, GHOST, SELF };
+    struct Marker {
+        float trackPos = 0.0f;   // 0..1 along the lap
+        int raceNum = -1;        // the ghost's is the displayed rider's
+        int sprite = 0;
+        int shape = 0;           // for TrackedRidersManager::shouldRotate
+        unsigned long color = 0;
+        MarkerKind kind = MarkerKind::OPPONENT;
+    };
+    // Every rider, the ghost and the displayed rider at most.
+    static constexpr int MAX_MARKERS = Unified::MAX_RACE_ENTRIES + 2;   // raw-cache: a size, no state
+    // Into out[] in draw order: the opponents in `riders` (the displayed rider
+    // skipped) when `opponents`, the ghost when `ghost` and the reference lap
+    // has a live gap, then the displayed rider on top. Returns how many.
+    int collectMarkers(const Unified::TrackPositionData* riders, int count, bool opponents, bool ghost,
+                       Marker* out, int max) const;
+    // What this bar's Markers setting shows.
+    bool showsOpponents() const {
+        return m_markerMode == MarkerMode::OPPONENTS || m_markerMode == MarkerMode::GHOST_OPPONENTS;
+    }
+    bool showsGhost() const {
+        return m_markerMode == MarkerMode::GHOST || m_markerMode == MarkerMode::GHOST_OPPONENTS;
+    }
+    LabelMode getLabelMode() const { return m_labelMode; }
+    float getMarkerScale() const { return m_fMarkerScale; }
+    bool showsSplits() const { return m_showSplits; }
+    // Split positions (0-1 along the lap, S/F excluded, ascending) into out[];
+    // returns how many. The centerline's when the game sent them, else learned.
+    int collectSplitPositions(float (&out)[SPLIT_SLOTS]) const;
+    // A marker icon's quad centred on (x, y), a directional icon turned to point
+    // along the bar (right), before any HUD offset.
+    static void markerQuad(float centerX, float centerY, float size, int spriteIndex,
+                           unsigned long color, int shapeIndex, SPluginQuad_t& out);
+    static constexpr float DEFAULT_MARKER_BASE_SIZE = 0.012f;  // Base full size (halfSize = 0.006, matches MapHud/StandingsHud)
+
+    // In the bar instead of the gap when All-time has a PB but no trace
+    // (isAllTimeTraceMissing); the Dash's Gap bar page shows it too.
+    static constexpr const char* NO_TRACE_NOTE = "No trace until a new PB";
 
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
@@ -127,7 +179,7 @@ private:
     // range then fits the largest gap of the lap so far, in the Delta Trace's
     // round steps (PluginUtils::niceGapScaleMs), never under MIN_RANGE_MS and
     // never shrinking until the next lap - so the fill does not jump back and
-    // forth with every swing.
+    // forth with every swing (GapAutoRange).
     static constexpr int RANGE_AUTO = MIN_RANGE_MS - RANGE_STEP_MS;
     static constexpr int DEFAULT_RANGE_MS = RANGE_AUTO;
     // The range the fill is drawn against now (Auto resolved).
@@ -169,10 +221,7 @@ private:
     bool m_showGapText;               // Show gap timer text (can hide for pure flat map mode)
     bool m_showGapBar;                // Show green/red gap visualization bars
     int m_gapRangeMs;                 // Time range for gap bar (full bar at ±range), or RANGE_AUTO
-    int m_autoPeakMs = 0;             // Auto: the largest |gap| this lap
-    unsigned m_autoLapStamp = 0;      // Auto: PbGapTracker::lastLapStamp() the peak belongs to
-    bool m_autoLive = false;          // Auto: whether the gap was live at the last update()
-    Reference m_autoReference = Reference::SESSION_PB;   // Auto: the reference the peak was measured against
+    GapAutoRange m_autoRange;         // Auto: the lap's peak gap, followed once a frame
     int m_barWidthPercent;            // Bar width as percentage of default (50-400%)
     float m_fMarkerScale;             // Marker scale multiplier (0.5-3.0, like MapHud)
     bool m_showSplits = true;         // Ticks where the track's splits are
@@ -192,14 +241,10 @@ private:
     std::vector<Unified::TrackPositionData> m_riderPositions;
 
     // Marker scale constants (matches MapHud pattern)
-    static constexpr float DEFAULT_MARKER_BASE_SIZE = 0.012f;  // Base full size (halfSize = 0.006, matches MapHud/StandingsHud)
     static constexpr float DEFAULT_MARKER_SCALE = 1.0f;        // Default 100%
     static constexpr float MIN_MARKER_SCALE = 0.5f;            // Min 50%
     static constexpr float MAX_MARKER_SCALE = 3.0f;            // Max 300%
 
-    // Split positions (0-1 along the lap, S/F excluded, ascending) into out[];
-    // returns how many. The centerline's when the game sent them, else learned.
-    int collectSplitPositions(float (&out)[SPLIT_SLOTS]) const;
     void learnSplitPositions();
     // Short ticks at the bar's top and bottom edges at each split, the middle --
     // gap text and rider markers -- left clear.

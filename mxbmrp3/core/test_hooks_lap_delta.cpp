@@ -2,7 +2,8 @@
 // core/test_hooks_lap_delta.cpp
 // The MXBMRP3_Test_* exports for the lap delta displays: the Map's lap delta
 // (its mode, and a count of the tinted track quads) and the Delta Trace HUD
-// (points plotted, the previous lap, quad winding and the rider's marker).
+// (points plotted, the previous lap, quad winding, the rider's marker and the
+// peak markers).
 //
 // SPLIT OUT OF core/test_hooks.cpp, which is at its file budget.
 // Same rules as its parent: the whole file is gated on MXBMRP3_TEST_BUILD and
@@ -106,6 +107,18 @@ __declspec(dllexport) void MXBMRP3_Test_DeltaTraceShape(int* previousPoints, int
         }
         *reversedQuads = reversed;
     }
+}
+
+// The Delta Trace's peak markers (delta_trace_test): switch them on or off,
+// then how many the last rebuild drew and the gap at each (0 = that side has none).
+__declspec(dllexport) void MXBMRP3_Test_DeltaTraceSetPeaks(int on) {
+    HudManager::getInstance().getDeltaTraceHud().setShowPeaks(on != 0);
+}
+__declspec(dllexport) int MXBMRP3_Test_DeltaTracePeaks(int* aheadMs, int* behindMs) {
+    const DeltaTraceHud& hud = HudManager::getInstance().getDeltaTraceHud();
+    if (aheadMs) *aheadMs = hud.peakAheadMs();
+    if (behindMs) *behindMs = hud.peakBehindMs();
+    return hud.peaksShown();
 }
 
 }  // extern "C"

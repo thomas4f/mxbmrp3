@@ -19,7 +19,6 @@
 #include "../settings_hud.h"
 #include "../../core/director_manager.h"
 #include "../../core/hud_manager.h"
-#include "../director_widget.h"
 
 #include <cmath>
 #include <cstdio>
@@ -35,28 +34,10 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
 
     char buf[16];
 
-    // --- Appearance: the on-screen status button (a separate draggable widget).
-    // Leads the tab like Rumble/Helmet; independent of the director being enabled. ---
-    ctx.addSectionHeading("Appearance");
-    // Side by side (beginColumns) here and in every section below: short labels
-    // and short values, so two columns take half the rows.
-    ctx.beginColumns(2, HudManager::getInstance().getDirectorWidget() ? 3 : 1);
-    DirectorWidget* hud = HudManager::getInstance().getDirectorWidget();
-    // Active surface: DIRECTOR_HUD_VISIBLE now toggles whichever surface the menu is
-    // on, so the label has to report the same one it changes.
-    const bool shown = hud && hud->isVisibleOnActiveSurface();
-    ctx.addToggleControl("Visible", shown,
-        SettingsHud::ClickRegion::DIRECTOR_HUD_VISIBLE, nullptr,
-        nullptr, 0, true, "director.hud_visible");
-    if (hud) {
-        ctx.addOpacityControl(hud, shown);
-        ctx.addScaleControl(hud, shown);
-    }
-
-    ctx.endColumns();
-
     // --- Director: master enable, shot pacing, and the field-wide position cutoff
-    // (it gates battles, incidents, overtakes AND lappers, so it lives here). ---
+    // (it gates battles, incidents, overtakes AND lappers, so it lives here).
+    // Side by side (beginColumns) here and in every section below: short labels
+    // and short values, so two columns take half the rows. ---
     ctx.addSectionHeading("Director");
     ctx.beginColumns(2, 6);
     ctx.addToggleControl("Enabled", on,

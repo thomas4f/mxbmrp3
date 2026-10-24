@@ -43,7 +43,7 @@ TEST_CASE("hidden input: the hide-all hotkey takes the HUDs out of the input pas
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\hidden_input\\");
-    if (!host.hasInjectedMouse() || !host.hasScreenEdges()) { MESSAGE("build without the hooks"); return; }
+    REQUIRE_MESSAGE((host.hasInjectedMouse() && host.hasScreenEdges()), "build without the hooks");
     // Only the HUD under test on screen: at the default layout a HUD that is
     // on top of another takes the drag, and the search is topmost-first.
     const char* standings = PluginHost::hudName(PluginHost::HUD_STANDINGS);
@@ -63,7 +63,7 @@ TEST_CASE("hidden input: the Widgets toggle holds back the widgets and only the 
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\hidden_input\\");
-    if (!host.hasInjectedMouse() || !host.hasScreenEdges()) { MESSAGE("build without the hooks"); return; }
+    REQUIRE_MESSAGE((host.hasInjectedMouse() && host.hasScreenEdges()), "build without the hooks");
     const char* speed = PluginHost::hudName(PluginHost::HUD_SPEED);
     const char* standings = PluginHost::hudName(PluginHost::HUD_STANDINGS);
     host.setEveryHudVisible(false);                    // see above: two HUDs that do not overlap

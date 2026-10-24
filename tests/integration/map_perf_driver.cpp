@@ -202,6 +202,14 @@ int main(int argc, char** argv) {
     } else {
         printf("scenario: unthemed (MXBMRP3_Test_InstallTheme not exported)\n");
     }
+    // The shipped defaults, which the test build turns off (see perf_driver.cpp).
+    auto SetDropShadow = (void(*)(int))GetProcAddress(h, "MXBMRP3_Test_SetDropShadow");
+    auto SetGlow = (void(*)(int,float,float))GetProcAddress(h, "MXBMRP3_Test_SetGlow");
+    if (SetDropShadow && SetGlow) {
+        SetDropShadow(1);
+        SetGlow(1, 1.0f, 1.0f);
+        printf("scenario: drop shadow + glow ON (the shipped defaults)\n");
+    }
 
     // Long/complex circuit + full grid shared with perf_driver.cpp: ~2400 m over
     // ~950 short CURVE/STRAIGHT segments (hairpins, sweepers, esses), a heavier

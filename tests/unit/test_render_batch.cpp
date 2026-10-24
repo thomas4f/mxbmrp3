@@ -430,3 +430,38 @@ TEST_CASE("texture cache: without a cache every quad still resolves (the old con
     hudbatch::build(f, 200, 100, 0, 0, 200, 100, res, verts, runs);
     CHECK(res.textureAsks.size() == 6);
 }
+
+TEST_CASE("render batch: a layered frame draws the back HUD's text before the front panel") {
+    // Two overlapping HUDs: without layers every string trails every quad and
+    // the back HUD's label bleeds through the front panel (core/render_layers.h).
+    FakeResolver res;
+    const std::vector<SPluginQuad_t> quads = { makeQuad(0, 0.0f, 0.0f, 0.5f, 0.5f),
+                                               makeQuad(0, 0.2f, 0.2f, 0.7f, 0.7f) };
+    const std::vector<SPluginString_t> strings = { makeString("A", 0.1f, 0.1f, 0),
+                                                   makeString("A", 0.3f, 0.3f, 0) };
+    static std::vector<std::string> fonts;
+    fonts = { "font" };
+    static std::vector<std::string> sprites;
+    sprites = { "a" };
+    hudsw::Frame f;
+    f.quads = quads.data(); f.quadCount = 2;
+    f.strings = strings.data(); f.stringCount = 2;
+    f.fontNames = &fonts; f.spriteNames = &sprites;
+    f.assetRoot = "root";
+    hudlayers::Span spans[2];
+    spans[0].q0 = 0; spans[0].q1 = 1; spans[0].s0 = 0; spans[0].s1 = 1; spans[0].layer = 0;
+    spans[1].q0 = 1; spans[1].q1 = 2; spans[1].s0 = 1; spans[1].s1 = 2; spans[1].layer = 1;
+    f.layers = hudlayers::Layers{ spans, 2, 2 };
+    Built b;
+    hudbatch::build(f, 200, 100, 0, 0, 200, 100, res, b.verts, b.runs);
+    REQUIRE(b.runs.size() == 4);
+    CHECK(b.runs[0].shader == hudbatch::Shader::Sprite);
+    CHECK(b.runs[1].shader == hudbatch::Shader::Text);
+    CHECK(b.runs[2].shader == hudbatch::Shader::Sprite);
+    CHECK(b.runs[3].shader == hudbatch::Shader::Text);
+
+    // The same frame with one layer is the old batch: two runs, quads then text.
+    f.layers.layerCount = 1;
+    hudbatch::build(f, 200, 100, 0, 0, 200, 100, res, b.verts, b.runs);
+    CHECK(b.runs.size() == 2);
+}

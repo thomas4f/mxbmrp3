@@ -498,7 +498,7 @@ title_advance_scan || violations=$((violations + 1))
 # inside its plate on drag -- a test that exists because this same class of bug (two paths
 # to place one thing, only one of them updated) had already happened once.
 #
-# Deliberate exceptions carry `// string-y-exempt: <reason>` -- VersionWidget's minigame
+# Deliberate exceptions carry `// string-y-exempt: <reason>` -- the Breakout minigame
 # places text absolutely in its own field, where there is no row to centre in.
 string_y_scan() {
     local bad=0
@@ -639,7 +639,7 @@ content_card_scan || violations=$((violations + 1))
 # quantity has more than one spelling. This bans the others.
 #
 # Panels NOT composed as padding + content + padding are exempt and say why: sized
-# from ART (GamepadWidget), from a CONTROL (SettingsButtonWidget), or carrying their
+# from ART (GamepadWidget), or carrying their
 # own vertical structure (SettingsHud's band + section cards).
 panel_pad_scan() {
     scan '(backgroundHeight|panelHeight|contentStartY|currentY|boxHeight)[^;]*=[^;]*\.(lineHeight(Normal|Large)|cellH)[^;]*\*[^;]*1\.0f' \

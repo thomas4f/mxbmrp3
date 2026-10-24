@@ -44,11 +44,10 @@ class TachoWidget;
 class TimingHud;
 class GapBarHud;
 class BarsWidget;
-class VersionWidget;
+class BreakoutHud;
 class NoticesHud;
 class FuelWidget;
 class PointerWidget;
-class SettingsButtonWidget;
 class RecordsHud;
 class GamepadWidget;
 class LeanWidget;
@@ -69,17 +68,48 @@ struct SettingsLayoutContext;
 
 class SettingsHud : public BaseHud {
 public:
+    // THE TAB LIST'S ON/OFF SWITCHES, for the Toggles widget (toggle_strip_widget.h):
+    // one entry per tab with a toggle, Global section then Profile, in sidebar
+    // order, the More groups' tabs included. A click goes through toggleTab(),
+    // which is the sidebar checkbox's own click (tabToggleType -> dispatchRegion),
+    // so the strip and the sidebar cannot disagree about what a switch does or
+    // whether it saves.
+    struct TabToggle {
+        int tabId;
+        const char* name;   // getTabName(): static storage
+        const char* icon;   // tabIconName(): static storage, may be nullptr
+        bool on;
+        bool global;        // in the Global section (else Profile)
+        BaseHud* shows;     // what the switch shows (the toast, the subtitles, the helmet), or null (Widgets, Rumble, ...)
+    };
+    int tabToggles(TabToggle* out, int max) const;
+    void toggleTab(int tabId);
+    // drawTabToggle's colour rule, shared with the widget so on/off has one look:
+    // green on, red off. The Director's, while it is on in spectate or replay,
+    // shows its live state instead (directorState), as the camera button the
+    // Toggles strip replaced did.
+    static unsigned long tabToggleColor(int tabId, bool enabled, bool hovered, bool onBand);
+    // Plain: off, or not spectating. Running: following a rider (green). Locked:
+    // the rider lock (orange, like the Standings lock icon). Manual: a manual
+    // camera or a gamepad takeover; Waiting: no rider yet (both yellow).
+    enum class DirectorState : uint8_t { Plain, Running, Locked, Manual, Waiting };
+    static DirectorState directorState();
+    // The strip's hover name for a state ("Director: locked"); nullptr for Plain.
+    static const char* directorStateName(DirectorState state);
+    // A tab's identity icon, against the row's font size (drawTabIcon); the
+    // Toggles strip draws its mirrored icons at the same size.
+    static constexpr float TAB_ICON_SCALE = 0.63f;
+
     SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* friends, SessionChartsHud* sessionCharts,
                 StandingsHud* standings,
                 PerformanceHud* performance,
                 TelemetryHud* telemetry,
-                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, CrashWidget* crash, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean, GForceWidget* gforce, CompassWidget* compass,
+                TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, CrashWidget* crash, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, BreakoutHud* breakout, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean, GForceWidget* gforce, CompassWidget* compass,
                 FmxHud* fmxHud,
                 StatsHud* statsHud,
                 EventLogHud* eventLog,
                 ClockWidget* clock,
-                HelmetOverlayHud* helmetOverlay,
-                SettingsButtonWidget* settingsButton
+                HelmetOverlayHud* helmetOverlay
 #if GAME_HAS_TYRE_TEMP
                 , TyreTempWidget* tyreTemp
 #endif
@@ -127,7 +157,7 @@ public:
     // The menu, on `tabId` (a system toast's click). An unavailable tab opens
     // the menu where it was.
     void showTab(int tabId);
-    // The Version popup's "What's New": the menu on the first tab with a live
+    // Where "Updated to" points (the menu opening while it is owed): the first tab with a live
     // "New" marker (WhatsNew::firstTabWithNews), else where it was.
     void showWhatsNew();
     // A tab's sidebar name, for a system toast about it ("Standings hidden").
@@ -281,7 +311,6 @@ public:
             DIRECTOR_FOLLOW_LAPPERS,   // Toggle following a front-runner lapping backmarkers
             DIRECTOR_FOLLOW_DROPS,     // Toggle following a rider tumbling down the order
             // (Incident hold cap is an INI-only tunable - no click region.)
-            DIRECTOR_HUD_VISIBLE,      // Toggle the on-screen director status button
             // FMX HUD
             // (Trick stack rows is a data-driven STEPPED control.)
             FMX_DEBUG_TOGGLE,          // Toggle FMX debug logging
@@ -323,6 +352,7 @@ public:
             DROPDOWN_OPTION,           // One entry of the open list (cycleIndex, flagBit = entry)
             // Appended, not grouped with the Map's other toggles: see COUNT.
             MAP_RANGE_ADAPTIVE_TOGGLE, // Toggle Follow's range growing with speed (MapHud)
+            OPEN_LINK_RELEASES,        // Open the GitHub releases page (Updates tab release notes)
 
             // Sentinel, always last. settings_layout_test.cpp's golden encodes
             // region types as raw ORDINALS, and this enum is unnumbered and
@@ -546,6 +576,7 @@ public:
     static BaseHud* renderTabTiming(SettingsLayoutContext& ctx);
     static BaseHud* renderTabGapBar(SettingsLayoutContext& ctx);
     static BaseHud* renderTabDeltaTrace(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabDash(SettingsLayoutContext& ctx);
     static BaseHud* renderTabStandings(SettingsLayoutContext& ctx);
     static BaseHud* renderTabMap(SettingsLayoutContext& ctx);
     static BaseHud* renderTabRadar(SettingsLayoutContext& ctx);
@@ -635,13 +666,11 @@ public:
     TimingHud* getTimingHud() const { return m_timing; }
     GapBarHud* getGapBarHud() const { return m_gapBar; }
     BarsWidget* getBarsWidget() const { return m_bars; }
-    VersionWidget* getVersionWidget() const { return m_version; }
     NoticesHud* getNoticesHud() const { return m_notices; }
     PitboardHud* getPitboardHud() const { return m_pitboard; }
     RecordsHud* getRecordsHud() const { return m_records; }
     FuelWidget* getFuelWidget() const { return m_fuel; }
     PointerWidget* getPointerWidget() const { return m_pointer; }
-    SettingsButtonWidget* getSettingsButtonWidget() const { return m_settingsButton; }
     RumbleHud* getRumbleHud() const { return m_rumble; }
     HelmetOverlayHud* getHelmetOverlayHud() const { return m_helmetOverlay; }
     GamepadWidget* getGamepadWidget() const { return m_gamepad; }
@@ -806,12 +835,6 @@ public:
     // Press the footer's "Reset <tab>" button through the real click path (the
     // perturbation sweep deliberately skips it).
     bool testClickResetTab(int clicks = 2);
-
-    // Click the Director tab's "Visible" row through the REAL path. Named rather
-    // than taking a ClickRegion::Type ordinal: that enum is unnumbered and grouped
-    // by topic, so an ordinal crossing the DLL boundary silently means something
-    // else the moment a control is inserted near its relatives.
-    bool testClickDirectorHudVisible();
 
     // The panel's two COLUMN edges as the last rebuild placed them: the outer edge of
     // the tab column and the outer edge of the content column's full-width rows. Under
@@ -1011,7 +1034,7 @@ private:
     bool drawTabIcon(float x, float y, const char* iconName, unsigned long color,
                      const ScaledDimensions& dim, float checkboxWidth);
     // `onBand` = the icon is on the SELECTED tab's accent band (see the definition).
-    void drawTabToggle(float x, float y, const char* iconName, bool enabled, bool onBand,
+    void drawTabToggle(int tabId, float x, float y, const char* iconName, bool enabled, bool onBand,
                        const ScaledDimensions& dim, float checkboxWidth);
     void handleClick(float mouseX, float mouseY);
     void dispatchRegion(const ClickRegion& region, bool skipSave = false);  // Dispatch a click region directly
@@ -1181,13 +1204,12 @@ private:
     TimingHud* m_timing;
     GapBarHud* m_gapBar;
     BarsWidget* m_bars;
-    VersionWidget* m_version;
+    BreakoutHud* m_breakout;
     NoticesHud* m_notices;
     PitboardHud* m_pitboard;
     RecordsHud* m_records;
     FuelWidget* m_fuel;
     PointerWidget* m_pointer;
-    SettingsButtonWidget* m_settingsButton;
     RumbleHud* m_rumble;
     HelmetOverlayHud* m_helmetOverlay;
     GamepadWidget* m_gamepad;
@@ -1289,7 +1311,8 @@ public:
         TAB_STREAM_CHAT = 30,       // "Stream Chat": (global: Twitch + YouTube channels, the chat HUD)
         TAB_DELTA_TRACE = 31,  // Delta Trace HUD (gap to a reference lap across the lap)
         TAB_MORE = 32,         // A section's More page (hidden; its sidebar row opens it)
-        TAB_COUNT = 33
+        TAB_DASH = 33,         // Dash (one card stepping through pages)
+        TAB_COUNT = 34
     };
 private:
     int m_activeTab;
@@ -1301,6 +1324,7 @@ private:
 
     // Last-seen SettingsManager dirty state: update() rebuilds the Save button when it flips.
     bool m_lastSettingsDirty = false;
+    DirectorState m_lastDirectorState = DirectorState::Plain;   // repaints the sidebar's icon
     // Stats tab periodic refresh timer (epoch default triggers immediate first refresh)
     std::chrono::steady_clock::time_point m_lastStatsRefresh{};
 
@@ -1351,6 +1375,11 @@ private:
     // action fires on release only if the cursor is still over it (so a press can be
     // aborted by sliding off). Repeatable steppers still fire on press + hold-repeat.
     bool m_leftPressArmed = false;
+    // The left press that OPENED the menu (a click on the Dash's message, the
+    // achievement card, the Toggles strip) is not one on the menu: set by show()
+    // while the button is down, it keeps that press from reaching a control
+    // drawn under it this frame, and clears once the button is up.
+    bool m_openingPress = false;   // mt-plain: game thread only
     float m_pressX = 0.0f;
     float m_pressY = 0.0f;
     // Index of the clickable region at (x,y), skipping TOOLTIP_ROW; -1 if none.

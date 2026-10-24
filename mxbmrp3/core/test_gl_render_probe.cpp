@@ -102,6 +102,9 @@ bool renderScenario(int w, int h, int scenario) {
         q.m_aafPos[2][0]=1.0f; q.m_aafPos[2][1]=1.0f; q.m_aafPos[3][0]=1.0f; q.m_aafPos[3][1]=0.0f;
         quads.push_back(q);
     } else {
+        // 2: the string alone. 4/5: the string's HUD, then a second HUD whose
+        // opaque blue panel covers it - stacked (4) or in the flat order (5).
+        if (scenario == 4 || scenario == 5) quad(0.0f, 0.0f, 1.0f, 1.0f, 0xFFFF0000ul);
         SPluginString_t st{};
         strncpy_s(st.m_szString, sizeof(st.m_szString), "III", _TRUNCATE);
         st.m_afPos[0] = 0.0f; st.m_afPos[1] = 0.0f;
@@ -111,6 +114,15 @@ bool renderScenario(int w, int h, int scenario) {
     }
 
     hudsw::Frame f;
+    // Back HUD = the string (no quads), front HUD = the blue panel. The panel is
+    // pushed first above only so the arrays read quads-then-strings; the spans
+    // say which HUD each primitive belongs to and in what order they stack.
+    static hudlayers::Span spans[2];
+    if (scenario == 4 || scenario == 5) {
+        spans[0].q0 = 0; spans[0].q1 = 0; spans[0].s0 = 0; spans[0].s1 = 1; spans[0].layer = 0;
+        spans[1].q0 = 0; spans[1].q1 = 1; spans[1].s0 = 1; spans[1].s1 = 1; spans[1].layer = 1;
+        f.layers = hudlayers::Layers{ spans, 2, scenario == 4 ? 2 : 1 };
+    }
     f.quads = quads.empty() ? nullptr : quads.data();
     f.quadCount = static_cast<int>(quads.size());
     f.strings = strings.empty() ? nullptr : strings.data();
@@ -159,7 +171,9 @@ bool renderScenario(int w, int h, int scenario) {
 // scenario: 0 = one white-through-colour quad covering the left half;
 //           1 = two overlapping quads, second on top (z-order);
 //           2 = a string;
-//           3 = a NESTED PACK SPRITE, the case a hand-rolled path join missed.
+//           3 = a NESTED PACK SPRITE, the case a hand-rolled path join missed;
+//           4 = a string under a later HUD's opaque panel, stacked (hidden);
+//           5 = the same frame in the flat order (the text bleeds through).
 // Returns packed 0xRRGGBBAA, or -1 if the render failed.
 int glRenderProbe(int wIgnored, int hIgnored, int pctX, int pctY, int scenario) {
     // The size comes from the CURRENT GL viewport rather than from the caller -

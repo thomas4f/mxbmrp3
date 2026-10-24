@@ -107,7 +107,7 @@ inline constexpr ReadoutInfo READOUT_INFO[] = {
     { READOUT_LAP,      "Lap",     "Lap",       "readout_lap"      },
     { READOUT_TIME,     "Time",    "Time left", "readout_time"     },
     // "Format", not "Session": the Session PB comparison row above already
-    // labels itself "Session", and two rows under one word in the same panel
+    // carries "Session" in its label, and two rows under one word in the same panel
     // is the collision a render test caught the moment both were on.
     { READOUT_SESSION,  "Format",  "Session format", "readout_session" },
     { READOUT_FUEL,     "Fuel",    "Fuel laps left", "readout_fuel"  },
@@ -149,8 +149,8 @@ struct GapTypeInfo {
 
 // Ordered list of gap types for cycling and display
 inline constexpr GapTypeInfo GAP_TYPE_INFO[] = {
-    { GAP_TO_PB,      "Session"  },
-    { GAP_TO_ALLTIME, "All-time" },
+    { GAP_TO_PB,      "Session PB"  },
+    { GAP_TO_ALLTIME, "All-time PB" },
     { GAP_TO_IDEAL,   "Ideal"    },
     { GAP_TO_OVERALL, "Overall"  },
     { GAP_TO_LASTLAP, "Last lap" },
@@ -253,6 +253,17 @@ public:
     using GapRef = PbGapTracker::Ref;
     bool isLiveGapEnabled() const { return m_liveGapOn; }
     GapRef getLiveGapReference() const { return HudDefaults::reference(m_liveGapDefault, m_liveGapRef); }
+    // ...and how long it holds an official gap (General's while on Default).
+    int getLiveGapFreezeMs() const { return freezeMs(); }
+    // Whether the custom segment timer owns the timing line: at least one segment armed
+    // AND the local player is actually on track. It's a player-only training tool fed by
+    // the player's own telemetry, so while spectating/replaying another rider the line
+    // shows that rider's regular timing instead (the single gate for every segment-mode
+    // site, the Dash's Timing page included).
+    static bool segmentModeActive();
+    // The segment line now (readSegmentLine on the live clock); `holding` = the
+    // caller's freeze on a completed segment.
+    static SegmentReadout segmentLine(const PluginData::SegmentTimerData& seg, bool holding);
 
     bool isReadoutEnabled(ReadoutFlags flag) const { return (m_enabledReadouts & flag) != 0; }
     void setReadoutEnabled(ReadoutFlags flag, bool enabled);
@@ -316,11 +327,6 @@ private:
     // Whether the panel's content is showing now: Always -> yes; At-Splits -> only during the
     // freeze after a split/lap (or continuously in segment mode); Off -> never.
     bool contentVisible() const;
-    // Whether the custom segment timer owns the panel: at least one segment armed AND the
-    // local player is actually on track. It's a player-only training tool fed by the
-    // player's own telemetry, so while spectating/replaying another rider the panel shows
-    // that rider's regular timing instead (the single gate for all segment-mode sites).
-    bool segmentModeActive() const;
     int calculateGap(int currentTime, int referenceTime) const;
     void resetLiveTimingState();
 
@@ -351,8 +357,7 @@ private:
     // What segment mode shows this rebuild (see resolveSegmentView).
     struct SegmentView {
         bool active = false;   // segment mode owns the panel
-        bool frozen = false;   // a just-completed segment held during the split-style freeze
-        int refBestMs = -1;    // passive "Best" reference; -1 = none yet
+        SegmentReadout line;   // what it shows (see readSegmentLine)
         GapData gap;           // cumulative delta-to-best (staged by formatTimeCell)
     };
     // The big time cell's text and what colours it.

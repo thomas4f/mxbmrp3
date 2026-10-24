@@ -45,6 +45,13 @@ public:
     // because the spotter's fuel warning reads THIS rather than tracking its
     // own history — one buffer, so the number spoken is the number shown.
     float getLapsRemaining() const;
+    // The average used per lap in litres (0 until there is lap data), and the
+    // litres used this run (below 0 after a refuel; only once hasFuelUsed()):
+    // the Avg and Used rows' figures, public for the Dash's Fuel page, which
+    // shows the same rows.
+    float getAveragePerLap() const { return FuelEstimate::averagePerLap(m_fuelPerLap, m_totalLapsRecorded); }
+    bool hasFuelUsed() const { return m_bTrackingActive && m_fuelAtRunStart > 0.0f; }
+    float getFuelUsed() const;
 
     FuelUnit getFuelUnit() const { return m_fuelUnit; }
     void setFuelUnit(FuelUnit unit) { m_fuelUnit = unit; setDataDirty(); }

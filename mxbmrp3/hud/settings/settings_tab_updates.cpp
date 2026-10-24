@@ -42,7 +42,7 @@ bool SettingsHud::handleClickTabUpdates(const ClickRegion& region) {
                 if (!checker.isChecking()) {
                     checker.setCompletionCallback([this]() {
                         setDataDirty();  // Refresh UI when check completes
-                        // Note: Don't show version widget notification here - user is already
+                        // Note: No Dash update message here - the player is already
                         // in Settings and can see the update info directly
                     });
                     checker.checkForUpdates();
@@ -304,17 +304,15 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
             std::istringstream stream(releaseNotes);
             std::string line;
             int lineCount = 0;
-            constexpr int MAX_LINES = 13;
-            bool hasMoreLines = false;
+            // As many as fit with the link below them without the panel growing
+            // (the tallest-tab measure sizes it); pinned by settings_fit_test.
+            constexpr int MAX_LINES = 11;
 
             while (std::getline(stream, line)) {
                 // Skip empty lines and markdown headers
                 if (line.empty() || line[0] == '#') continue;
 
-                if (lineCount >= MAX_LINES) {
-                    hasMoreLines = true;
-                    break;
-                }
+                if (lineCount >= MAX_LINES) break;
 
                 // Truncate long lines
                 if (line.size() > 45) {
@@ -326,11 +324,16 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
                 lineCount++;
             }
 
-            // Show truncation note if there are more lines
-            if (hasMoreLines) {
-                ctx.addSpacing();
-                ctx.addTextRow("See GitHub for full release notes.", colorConfig.getMuted());
-            }
+            // ALWAYS, not only past MAX_LINES: headers are skipped and long lines
+            // cut, so what fits above is never the whole of it. The link sits on
+            // its own row -- inline after the sentence, its x would be a monospace
+            // width that a proportional font draws narrower or wider.
+            ctx.addSpacing();
+            ctx.addTextRow("Full release notes are on GitHub.", colorConfig.getSecondary());
+            ctx.addLinkCell(ctx.labelX, "GitHub Releases",
+                            SettingsHud::ClickRegion::OPEN_LINK_RELEASES, 1.0f, true,
+                            "updates.release_notes");
+            ctx.nextLine();
 
             ctx.addSpacing();
         }

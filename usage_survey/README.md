@@ -20,7 +20,9 @@ editing the README; it updates publicly when the mirror is pushed, like the page
 
 The report's Downloads and Releases figures and its release-line table read [`downloads.json`](downloads.json),
 the public releases' dates and installer + zip download counts, which the same job refreshes with
-[`tools/release_downloads.py`](../tools/release_downloads.py) before rendering.
+[`tools/release_downloads.py`](../tools/release_downloads.py) before rendering. The same script appends
+that day's total to [`downloads_history.csv`](downloads_history.csv) for the Downloads charts:
+GitHub keeps no download history, so the file's daily samples (from 2026-10-08) are the only record.
 
 ## Regenerate
 

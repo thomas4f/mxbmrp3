@@ -6,6 +6,7 @@
 
 #include "plugin_constants.h"
 #include <windows.h>  // For HWND type
+#include <chrono>
 
 // Normalized UI coordinates where:
 // - (0,0) = top-left of 16:9 UI area
@@ -78,7 +79,12 @@ public:
     // consecutive frames.
     void testInjectMouse(bool on, float x, float y, int buttons) {
         m_testMouseOn = on; m_testMouseX = x; m_testMouseY = y; m_testButtons = buttons;
+        m_testCursorIdle = false;   // a move: the cursor is active again
     }
+    // The injected mouse stopped longer ago than the hide timeout, so the next
+    // frame auto-hides the cursor unless something holds it (the Toggles strip's
+    // hover). Without this the injected cursor always shows.
+    void testCursorIdle() { m_testCursorIdle = true; }
 #endif
 
     void initialize();
@@ -128,7 +134,7 @@ private:
         m_bInitialized(false), m_bCursorEnabled(false), m_bWasCursorEnabled(false),
         m_bShouldShowCursor(false), m_bWasCursorVisible(false), m_bCursorSuppressed(false),
         m_fLastMouseX(0.0f), m_fLastMouseY(0.0f),
-        m_framesSinceLastMovement(0), m_framesSinceFocusLost(0) {}
+        m_framesSinceFocusLost(0) {}
     ~InputManager() { shutdown(); }
     InputManager(const InputManager&) = delete;
     InputManager& operator=(const InputManager&) = delete;
@@ -139,6 +145,8 @@ private:
     void updateMouseButtons();
     void updateKeyboardKeys();
     void updateCursorVisibility();  // New: tracks mouse movement and auto-hide
+    // Something keeps the idle cursor up: it rests on the Toggles strip.
+    bool isCursorHeld() const;
     void refreshWindowInformation();
 
     // The active surface follows the MOUSE, not keyboard focus: HUD editing is
@@ -159,6 +167,7 @@ private:
     bool m_testMouseOn = false;    // testInjectMouse
     float m_testMouseX = 0.0f, m_testMouseY = 0.0f;
     int m_testButtons = 0;
+    bool m_testCursorIdle = false; // testCursorIdle
 #endif
 
     // Frame state
@@ -189,7 +198,8 @@ private:
     // Mouse movement tracking for auto-hide
     float m_fLastMouseX;
     float m_fLastMouseY;
-    int m_framesSinceLastMovement;
+    // Last movement or click: the cursor hides CursorIdle::HIDE_MS after it.
+    std::chrono::steady_clock::time_point m_lastCursorActivity;
 
     // Focus debouncing - prevents flicker during alt-tab transitions
     int m_framesSinceFocusLost;
@@ -197,7 +207,6 @@ private:
     // Constants (the 16:9 UI-rect math itself lives in ui_viewport.h — one
     // function shared with the companion paint loop; see input_manager.cpp's
     // static_assert tying it to PluginConstants::UI_ASPECT_RATIO)
-    static constexpr int CURSOR_HIDE_FRAMES = 120;  // Frames of inactivity before hiding cursor (~2 seconds at 60fps)
     static constexpr float MOVEMENT_THRESHOLD = 0.001f;  // Minimum movement to count as "moved"
     static constexpr int FOCUS_DEBOUNCE_FRAMES = 5;  // Frames to wait before disabling cursor on focus loss
 };

@@ -52,8 +52,8 @@ void UpdateChecker::shutdown() {
         m_workerThread.join();
     }
 
-    // Drop the completion callback: it captures HUD pointers (VersionWidget,
-    // SettingsHud) that dangle once HudManager shuts down after us. The
+    // Drop the completion callback: it captures HUD pointers (SettingsHud)
+    // that dangle once HudManager shuts down after us. The
     // worker is joined, so nothing can fire it now - and a future late
     // checkForUpdates() must not call into destroyed HUDs.
     {
@@ -139,36 +139,13 @@ std::string UpdateChecker::getChecksumHash() const {
     return m_checksumHash;
 }
 
-void UpdateChecker::setDismissedVersion(const std::string& version) {
-    MutexLock lock(m_mutex);
-    m_dismissedVersion = version;
-}
-
-std::string UpdateChecker::getDismissedVersion() const {
-    MutexLock lock(m_mutex);
-    return m_dismissedVersion;
-}
-
 void UpdateChecker::setChannel(UpdateChannel channel) {
-    MutexLock lock(m_mutex);
-    UpdateChannel old = m_channel.exchange(channel);
-    if (old != channel) {
-        m_dismissedVersion.clear();  // Clear stale dismissal from other channel
-    }
+    m_channel = channel;
 }
 
 bool UpdateChecker::isLatestPrerelease() const {
     MutexLock lock(m_mutex);
     return m_latestIsPrerelease;
-}
-
-bool UpdateChecker::shouldShowUpdateNotification() const {
-    if (m_status != Status::UPDATE_AVAILABLE) {
-        return false;
-    }
-    MutexLock lock(m_mutex);
-    // Show notification if no version dismissed, or if latest version differs from dismissed
-    return m_dismissedVersion.empty() || m_latestVersion != m_dismissedVersion;
 }
 
 bool UpdateChecker::shouldShowUpdateTag() const {

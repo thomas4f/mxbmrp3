@@ -165,6 +165,12 @@ int countTooltipRows(const std::vector<std::string>& regions, const char* toolti
 // The Helmet tab's 22 arrow-pair types then left the enum (its rows are shared
 // slider and dropdown descriptors now). Every ordinal past them dropped by
 // exactly 22, every label and `strings` are unchanged -- a pure renumbering.
+//
+// DIRECTOR_HUD_VISIBLE then left the enum with the director's camera button
+// (the Toggles strip carries it now): one fewer type.
+//
+// OPEN_LINK_RELEASES (the Updates tab's release-notes link) was appended:
+// one more type, no ordinal moved.
 constexpr int kClickRegionTypeCount = 119;
 
 }  // namespace
@@ -359,18 +365,26 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
     // The Timing tab's Gap (1.32, #439) tags the Timing sidebar row: 120 -> 121.
     // ClickRegion::Type gained MAP_RANGE_ADAPTIVE_TOGGLE (appended): typecount 118 -> 119.
     // The RPM widget (1.32) tags the Widgets sidebar row: strings 121 -> 122.
+    // The Dash tab's sidebar row after Widgets ("52:dash;10:-"): strings 122 -> 124.
+    // At 1.33 the 1.32 tags (General, Appearance, Hotkeys, Map, Gap Bar, Timing,
+    // Widgets) gave way to Appearance, Hotkeys, Helmet and Dash's; Delta Trace
+    // still bands its row: strings 124 -> 121.
+    // DIRECTOR_HUD_VISIBLE left the enum (the Toggles strip took the camera button):
+    // typecount 119 -> 118, and every later ordinal one lower -- a pure renumbering.
+    // The Toggles widget (1.33) tags the Widgets sidebar row: strings 121 -> 122.
+    // OPEN_LINK_RELEASES (appended): typecount 118 -> 119.
     static const char* kGolden =
         "52:general;52:appearance;52:hotkeys;52:riders;54:-;52:rumble;61:-;52:helmet;77:-;52:director;10:-;52"
-        ":stream_chat;78:-;52:spotter;94:-;52:achievements;40:-;52:updates;47:-;48:-;51:-;52:widgets;10:-;52:"
-        "map;10:-;52:notices;10:-;52:standings;10:-;52:friends;10:-;52:timing;10:-;52:lap_log;10:-;52:gap_bar"
-        ";10:-;52:delta_trace;10:-;52:pitboard;52:more;72:general.pb_scope;34:-;34:-;72:general.reference;4:g"
-        "eneral.reference;3:general.reference;116:general.reference;72:general.freeze;2:general.freeze;1:gene"
-        "ral.freeze;115:general.freeze;72:general.auto_save;41:-;41:-;72:general.grid_snap;35:-;35:-;72:gener"
-        "al.screen_clamp;36:-;36:-;72:general.direct_gl;109:-;109:-;72:general.controller;4:general.controlle"
-        "r;3:general.controller;116:general.controller;72:general.steam_friends;72:general.web_server;44:-;44"
-        ":-;72:general.web_port;45:-;46:-;72:general.auto_switch;49:-;49:-;72:general.copy_profile;4:general."
-        "copy_profile;3:general.copy_profile;116:general.copy_profile;8:general.reset_profile;9:general.reset"
-        "_all;53:-;6:-;71:-;typecount=119;strings=122";
+        ":stream_chat;78:-;52:spotter;93:-;52:achievements;40:-;52:updates;47:-;48:-;51:-;52:widgets;10:-;52:"
+        "dash;10:-;52:map;10:-;52:notices;10:-;52:standings;10:-;52:friends;10:-;52:timing;10:-;52:lap_log;10"
+        ":-;52:gap_bar;10:-;52:delta_trace;10:-;52:pitboard;52:more;72:general.pb_scope;34:-;34:-;72:general."
+        "reference;4:general.reference;3:general.reference;115:general.reference;72:general.freeze;2:general."
+        "freeze;1:general.freeze;114:general.freeze;72:general.auto_save;41:-;41:-;72:general.grid_snap;35:-;"
+        "35:-;72:general.screen_clamp;36:-;36:-;72:general.direct_gl;108:-;108:-;72:general.controller;4:gene"
+        "ral.controller;3:general.controller;115:general.controller;72:general.steam_friends;72:general.web_s"
+        "erver;44:-;44:-;72:general.web_port;45:-;46:-;72:general.auto_switch;49:-;49:-;72:general.copy_profi"
+        "le;4:general.copy_profile;3:general.copy_profile;115:general.copy_profile;8:general.reset_profile;9:"
+        "general.reset_all;53:-;6:-;71:-;typecount=119;strings=122";
 
     MESSAGE("General tab signature: " << sig);
     CHECK(sig == kGolden);
@@ -1236,5 +1250,32 @@ TEST_CASE("settings Hotkeys: every HUD toggle has a row") {
         prevX = x; prevY = y;
     }
     CHECK(host.settingsOverflowRows() <= 0.0);
+    host.shutdown();
+}
+
+// beginColumns is told how many cells follow; a row added without bumping it
+// lands its last cell on top of another. That shipped once on the Appearance
+// Display grid (Glow added, Messages drawn over UI scale): every cell must get
+// a place of its own.
+TEST_CASE("settings Appearance: every Display cell has its own place in the grid") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\settings_layout_display_grid\\");
+    host.showSettings(true);
+    host.setActiveTab("Appearance");
+    host.draw();
+    static const char* const kCells[] = {
+        "appearance.speed_unit", "appearance.fuel_unit", "appearance.temp_unit",
+        "appearance.clock_format", "appearance.compact_times", "appearance.drop_shadow",
+        "appearance.hud_icons", "appearance.motion", "appearance.glow",
+        "appearance.messages", "appearance.ui_scale" };
+    std::vector<std::pair<float, float>> centres;
+    for (const char* id : kCells) {
+        float x = 0.0f, y = 0.0f;
+        REQUIRE_MESSAGE(host.settingsRegionCenter(id, &x, &y), id);
+        for (const auto& c : centres)
+            CHECK_FALSE_MESSAGE((std::abs(c.first - x) < 1e-4f && std::abs(c.second - y) < 1e-4f), id);
+        centres.push_back({ x, y });
+    }
     host.shutdown();
 }

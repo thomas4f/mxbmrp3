@@ -39,7 +39,6 @@
 #include "helmet_overlay_hud.h"
 #include "fmx_hud.h"
 #include "stats_hud.h"
-#include "settings_button_widget.h"
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
 #include "../core/plugin_constants.h"
@@ -48,6 +47,7 @@
 #include "../core/settings_manager.h"
 #include "../core/hud_manager.h"
 #include "delta_trace_hud.h"
+#include "dash_hud.h"
 #include "stream_chat_hud.h"
 #include "../core/profile_manager.h"
 #include "../core/update_checker.h"
@@ -55,7 +55,6 @@
 #include "../core/director_manager.h"
 #include "../core/spotter_manager.h"
 #include "../core/achievement_manager.h"
-#include "director_widget.h"
 #include "../core/hotkey_manager.h"
 #if GAME_HAS_DISCORD
 #include "../core/discord_manager.h"
@@ -154,6 +153,8 @@ const SettingsHud::TabDescriptor SettingsHud::s_tabRegistry[] = {
     { TAB_MORE,         "More",       "more",          nullptr,                                                              false, &SettingsHud::renderTabMore,            nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr, true },
     { TAB_SECTION_PROFILE,  nullptr,  nullptr,         nullptr,                                                              false, nullptr,                                nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr },
     { TAB_WIDGETS,      "Widgets",    "widgets",       nullptr,                                                              false, &SettingsHud::renderTabWidgets,         nullptr,                                  nullptr,            &SettingsHud::resetTabWidgets,          nullptr, nullptr },
+    { TAB_DASH,         "Dash",       "dash",          [](const SettingsHud&) -> BaseHud* { return &HudManager::getInstance().getDashHud(); },
+                                                                                                                                      false, &SettingsHud::renderTabDash,            nullptr,                                  "DashHud",          nullptr,                                nullptr, nullptr },
     { TAB_MAP,          "Map",        "map",           [](const SettingsHud& s) -> BaseHud* { return s.m_mapHud; },          false, &SettingsHud::renderTabMap,             &SettingsHud::handleClickTabMap,          "MapHud",           nullptr,                                nullptr, nullptr },
     { TAB_NOTICES,      "Notices",    "notices",       [](const SettingsHud& s) -> BaseHud* { return s.m_notices; },         false, &SettingsHud::renderTabNotices,         nullptr,                                  "NoticesHud",       nullptr,                                nullptr, nullptr },
     { TAB_STANDINGS,    "Standings",  "standings",     [](const SettingsHud& s) -> BaseHud* { return s.m_standings; },       false, &SettingsHud::renderTabStandings,       &SettingsHud::handleClickTabStandings,    "StandingsHud",     &SettingsHud::resetTabStandingsExtra,   nullptr, nullptr },
@@ -178,6 +179,30 @@ const SettingsHud::TabDescriptor SettingsHud::s_tabRegistry[] = {
     { TAB_EVENT_LOG,    "Event Log",  "event_log",     [](const SettingsHud& s) -> BaseHud* { return s.m_eventLog; },        false, &SettingsHud::renderTabEventLog,        &SettingsHud::handleClickTabEventLog,     "EventLogHud",      nullptr,                                nullptr, nullptr },
     { TAB_SESSION_CHARTS, "Charts",   "session_charts",[](const SettingsHud& s) -> BaseHud* { return s.m_sessionCharts; },   false, &SettingsHud::renderTabSessionCharts,   nullptr,                                  "SessionChartsHud", nullptr,                                nullptr, nullptr },
 };
+
+// The Toggles widget's list (toggle_strip_widget.h): the sidebar's toggles but
+// Updates, Global section then Profile, in sidebar order, the More groups
+// inline. Here, beside the registry it walks.
+int SettingsHud::tabToggles(TabToggle* out, int max) const {
+    int n = 0;
+    bool global = false;
+    for (const TabDescriptor& row : s_tabRegistry) {
+        if (row.tabId == TAB_SECTION_GLOBAL) { global = true; continue; }
+        if (row.tabId == TAB_SECTION_PROFILE) { global = false; continue; }
+        if (row.tabId < 0) continue;   // More: its tabs follow inline
+        if (row.hidden || !isTabAvailable(row.tabId)) continue;
+        // Update checks is a once-in-a-while choice, not a switch to flip mid-session.
+        if (row.tabId == TAB_UPDATES) continue;
+        BaseHud* hud = row.hud ? row.hud(*this) : nullptr;
+        bool on = false;
+        if (!tabToggleState(row.tabId, hud, &on)) continue;
+        if (n >= max) break;
+        // What switching it on shows (the strip's hover preview): the HUD, or what a feature switch configures.
+        BaseHud* shows = row.tabId == TAB_HELMET ? m_helmetOverlay : hud ? hud : row.previewHud ? row.previewHud(*this) : nullptr;
+        out[n++] = TabToggle{ row.tabId, getTabName(row.tabId), tabIconName(row.tabId, hud), on, global, shows };
+    }
+    return n;
+}
 
 const SettingsHud::TabDescriptor* SettingsHud::findTabDescriptor(int tabId) {
     for (const TabDescriptor& row : s_tabRegistry) {
@@ -511,7 +536,7 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
                 currentTabX, tabStartY, checkboxWidth, dim.lineHeightNormal,
                 toggleType, toggleTarget
             ));
-            drawTabToggle(currentTabX, tabStartY, iconName, isHudEnabled, isActive, dim, checkboxWidth);
+            drawTabToggle(i, currentTabX, tabStartY, iconName, isHudEnabled, isActive, dim, checkboxWidth);
         } else {
             // Non-toggleable section tabs: the identity icon takes the SAME colour rule
             // as the label beside it -- PRIMARY on the active row, ACCENT elsewhere.
@@ -655,6 +680,19 @@ inline double resolveSide(const ThemeAsset::BoxTerm& themed, const PanelBox::Sid
                           bool bottom) {
     const PanelBox::Sides& s = themed.set ? themed.v : builtIn;
     return bottom ? s.b : s.t;
+}
+
+// The panel caption, "MXBMRP3 v<major>.<minor>.<patch>.<build>" -- the Version
+// widget's wording, so the two read the same. Formatted once: PLUGIN_VERSION is
+// fixed for the life of the process, and the caption is drawn and measured on
+// every rebuild.
+const char* settingsTitle() {
+    static char title[48] = {};
+    if (!title[0]) {
+        snprintf(title, sizeof(title), "%s v%s", PluginConstants::PLUGIN_DISPLAY_NAME,
+                 PluginConstants::PLUGIN_VERSION);
+    }
+    return title;
 }
 }  // namespace
 
@@ -888,7 +926,8 @@ float SettingsHud::measureTallestBodyH(const ScaledDimensions& dim,
         // card chrome and seams included, in the engine's own arithmetic.
         PanelWant w;
         w.tier = TitleTier::Large;
-        w.captionW = planTitleWidth(dim, "MXBMRP3 SETTINGS", TitleTier::Large);
+        const char* const title = settingsTitle();
+        w.captionW = planTitleWidth(dim, title, TitleTier::Large);
         PanelWant::BandWant band;
         band.columns.push_back({ sidebarAsk, tabGroups });
         band.columns.push_back({ contentAsk, m.sections });
@@ -1042,7 +1081,7 @@ void SettingsHud::rebuildRenderData() {
         }
     }
     setBounds(startX, startY, startX + panelWidth, startY + backgroundHeight);
-    addPlanTitle(plan, "MXBMRP3 SETTINGS",
+    addPlanTitle(plan, settingsTitle(),
                  ColorConfig::getInstance().getPrimary());
 
     // ---- the columns, in the engine's coordinates ------------------------
@@ -1170,7 +1209,8 @@ PanelPlan& SettingsHud::planSettingsPanel(const ScaledDimensions& dim, float& si
 
     PanelWant want;
     want.tier = TitleTier::Large;
-    want.captionW = planTitleWidth(dim, "MXBMRP3 SETTINGS", TitleTier::Large);
+    const char* const title = settingsTitle();
+    want.captionW = planTitleWidth(dim, title, TitleTier::Large);
     PanelWant::BandWant band;
     band.columns.push_back({ sidebarAsk, measureTabGroups(dim) });
     band.columns.push_back({ contentAsk, active.sections });

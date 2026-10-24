@@ -13,9 +13,10 @@
 # column. The raw artefact test.sh needs now lives in tools/fontgen/
 # testdata/, where nothing renders it.
 #
-# NORMALISATION is `normalize = 1`: cell 135, digit-advance 0.489, centred -- so
-# every shipped font renders numbers at the same size, width and vertical position
-# and a font swap does not reflow a HUD. The cell height is the atlas RESOLUTION,
+# NORMALISATION is `normalize = 1`: cell 135, digit-advance 0.489, centred, fixed-
+# width (tabular) digits -- so every shipped font renders numbers at the same size,
+# width and vertical position, a font swap does not reflow a HUD, and a changing
+# number does not jiggle. The cell height is the atlas RESOLUTION,
 # not the on-screen size: the renderer scales by `size * screenH / cellH`, so a
 # 135px cell keeps text crisp when a HUD draws it larger than the cell. The atlas
 # auto-grows to 2048^2 to hold it.
@@ -30,7 +31,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${HERE}/../.." && pwd)"
 WEB="${ROOT}/mxbmrp3_data/web/fonts"
-OUT="${ROOT}/mxbmrp3_data/fonts"
+OUT="${1:-${ROOT}/mxbmrp3_data/fonts}"   # test.sh passes a scratch folder
 TMP="$(mktemp -d)"; trap 'rm -rf "${TMP}"' EXIT
 
 "${HERE}/build.sh" >/dev/null

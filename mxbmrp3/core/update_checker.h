@@ -51,7 +51,7 @@ public:
 
     // Update channel setting (persisted) - determines whether prereleases are shown
     UpdateChannel getChannel() const { return m_channel.load(); }
-    void setChannel(UpdateChannel channel);  // Clears dismissed version on change
+    void setChannel(UpdateChannel channel);
     bool isPrereleaseChannel() const { return m_channel.load() == UpdateChannel::PRERELEASE; }
 
     // Check if the latest available version is a prerelease
@@ -78,23 +78,14 @@ public:
     // Get SHA256 checksum hash (only valid when UPDATE_AVAILABLE, may be empty)
     std::string getChecksumHash() const;
 
-    // Dismissed version tracking (user chose to skip this version)
-    void setDismissedVersion(const std::string& version);
-    std::string getDismissedVersion() const;
-
-    // Check if update notification should be shown (update available AND not dismissed)
-    bool shouldShowUpdateNotification() const;
 
     // THE SIDEBAR'S "Update" TAG on the Updates tab row -- live while an update is
     // available and this version's tag has not been seen, cleared by opening the
     // tab, and re-armed on its own when a NEWER version turns up (the seen state is
     // a version string, not a flag).
     //
-    // DELIBERATELY NOT the dismissed-version state above, though the shape is
-    // identical. That one means "skip this release" -- an explicit button, which
-    // also silences the startup notification. Opening a tab to read about an update
-    // is not a decision to skip it, and wiring the tag to that state would have made
-    // a glance cost the notification.
+    // Nothing here silences the Dash's update message (SystemMessages): it is
+    // told each launch an update is out, and answered for that launch only.
     bool shouldShowUpdateTag() const;
     void markUpdateTagSeen();
     void setUpdateTagSeenVersion(const std::string& version);
@@ -120,16 +111,22 @@ public:
     // Publish an UPDATE_AVAILABLE result without a network round trip. setDebugMode()
     // is NOT this: it only biases the comparison inside a real check, so headless
     // (no network, no GitHub) it never fires and the update-available UI -- the
-    // settings footer's chip and the Version widget's whole notification panel --
+    // Updates tab's tag --
     // could not be rendered or asserted at all. Test build only; the whole export
     // surface that reaches it lives in test_hooks.cpp.
     // An EMPTY string clears back to IDLE (the plain "vX.Y.Z" state), so one test can
-    // measure both states in a row; anything else publishes it as the latest version.
+    // measure both states in a row; anything else publishes it as the latest version,
+    // with release notes longer than the Updates tab shows -- its tallest state.
     void testSetUpdateAvailable(const std::string& latest) {
         {
             MutexLock lock(m_mutex);
             m_latestVersion = latest;
-            m_dismissedVersion.clear();   // else shouldShowUpdateNotification() hides it
+            m_releaseNotes.clear();
+            if (!latest.empty()) {
+                m_releaseNotes = "## [" + latest + "]\n\n### Added\n";
+                for (int i = 1; i <= 20; ++i)
+                    m_releaseNotes += "- A release note line long enough to be cut " + std::to_string(i) + "\n";
+            }
         }
         m_status = latest.empty() ? Status::IDLE : Status::UPDATE_AVAILABLE;
     }
@@ -253,7 +250,6 @@ private:
     size_t m_downloadSize MXB_GUARDED_BY(m_mutex);        // Asset size in bytes
     std::string m_checksumHash MXB_GUARDED_BY(m_mutex);   // SHA256 hash from GitHub digest field
     bool m_latestIsPrerelease MXB_GUARDED_BY(m_mutex);    // Whether the latest available version is a prerelease
-    std::string m_dismissedVersion MXB_GUARDED_BY(m_mutex);  // Version user chose to skip (persisted)
     std::string m_tagSeenVersion MXB_GUARDED_BY(m_mutex);    // Version whose sidebar tag was seen (persisted)
     mutable Mutex m_mutex;
     // joined-by: shutdown() (PluginManager::shutdown) + the re-arm join in

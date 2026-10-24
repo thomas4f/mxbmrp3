@@ -3,6 +3,7 @@
 // User-configurable UI behavior settings (grid snapping, screen clamping, etc.)
 // ============================================================================
 #include "ui_config.h"
+#include "impact_vignette.h"
 
 UiConfig& UiConfig::getInstance() {
     static UiConfig instance;
@@ -33,11 +34,16 @@ void UiConfig::resetToDefaults() {
     m_gridOverlayMajorEvery = 10;
     m_ulGridOverlayColor = 0x22FFFFFF;
     m_ulGridOverlayMajorColor = 0x9933CCFF;
-    m_bDropShadow = false;
+    m_bDropShadow = DROP_SHADOW_DEFAULT;
     m_fDropShadowOffsetX = 0.03f;
     m_fDropShadowOffsetY = 0.04f;
     m_ulDropShadowColor = 0xAA000000;
     m_motion = Motion::DEFAULT_LEVEL;
+    m_bGlow = GLOW_DEFAULT;
+    m_fGlowIntensity = 1.0f;
+    m_fGlowWidth = 1.0f;
+    m_fImpactVignette = ImpactVignette::STRENGTH_DEFAULT;
+    m_fImpactVignetteFade = 1.5f;
 }
 
 void UiConfig::setThemeName(const std::string& name) {

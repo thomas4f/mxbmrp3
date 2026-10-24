@@ -16,7 +16,7 @@
 
 namespace {
 
-// EventLogType::Director is the last (append-only) enum value; the HTTP snapshot
+// EventLogType::Director's value in the append-only enum; the HTTP snapshot
 // emits the raw integer. Keep in step with core/event_log_types.h.
 constexpr int DIRECTOR_EVENT_TYPE = 18;
 
@@ -105,7 +105,7 @@ TEST_CASE("director events: state-transition entries carry the director button's
     host.eventLogEnableDirector(true);
     driveSpectatedRace(host);
 
-    // State transitions are tinted to match director_widget.cpp stateColor(): auto-on is
+    // State transitions are tinted by state (director_manager.cpp): auto-on is
     // POSITIVE (running), the rider lock is WARNING (matches the standings lock icon).
     CHECK(host.eventLogIconColorSlot("Auto-director enabled") == SLOT_POSITIVE);
     CHECK(host.eventLogIconColorSlot("Locked on") == SLOT_WARNING);

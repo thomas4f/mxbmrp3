@@ -157,9 +157,20 @@ public:
         m_setProbeChars = sym<void(*)(int)>("MXBMRP3_Test_SetRenderProbeTextChars");
         m_getProbeChars = sym<int(*)()>("MXBMRP3_Test_GetRenderProbeTextChars");
         m_setDropShadow = sym<void(*)(int)>("MXBMRP3_Test_SetDropShadow");
+        m_setImpactVignette = sym<void(*)(float)>("MXBMRP3_Test_SetImpactVignette");
+        m_setGlow = sym<void(*)(int,float,float)>("MXBMRP3_Test_SetGlow");
         m_setDevMode = sym<void(*)(int)>("MXBMRP3_Test_SetDeveloperMode");
         m_setHudOpacity = sym<int(*)(const char*,float)>("MXBMRP3_Test_SetHudOpacity");
         m_setHudOffset = sym<int(*)(const char*,float,float)>("MXBMRP3_Test_SetHudOffset");
+        m_toggleStripRow = sym<int(*)(int,float*,float*,int*,char*,int)>("MXBMRP3_Test_ToggleStripRow");
+        m_toggleStripHover = sym<int(*)()>("MXBMRP3_Test_ToggleStripHoverRow");
+        m_toggleStripReveal = sym<void(*)(int)>("MXBMRP3_Test_ToggleStripReveal");
+        m_cursorIdle = sym<void(*)()>("MXBMRP3_Test_CursorIdle");
+        m_directorEnabled = sym<int(*)()>("MXBMRP3_Test_DirectorEnabled");
+        m_toggleStripSurfaces = sym<void(*)(int*,int*,int*)>("MXBMRP3_Test_ToggleStripSurfaces");
+        m_hudSampled = sym<int(*)(const char*)>("MXBMRP3_Test_HudSampled");
+        m_helmetOnCompanion = sym<void(*)(int)>("MXBMRP3_Test_HelmetOnCompanion");
+        m_frameAlphaSum = sym<double(*)()>("MXBMRP3_Test_GameFrameAlphaSum");
         m_setUiScale   = sym<void(*)(float)>("MXBMRP3_Test_SetUiScale");
         m_hudScales    = sym<int(*)(const char*,int*,int*)>("MXBMRP3_Test_HudScales");
         m_maxQuadArea = sym<int(*)(const char*)>("MXBMRP3_Test_HudMaxQuadArea");
@@ -233,6 +244,11 @@ public:
         m_glConfirmPct = sym<int(*)()>("MXBMRP3_Test_GlConfirmRemainingPct");
         m_glConfirmTick = sym<void(*)(int)>("MXBMRP3_Test_GlConfirmTick");
         m_glDrewLastFrame = sym<int(*)()>("MXBMRP3_Test_GlDrewLastFrame");
+        m_glFrameLayerCount = sym<int(*)()>("MXBMRP3_Test_GlFrameLayerCount");
+        m_glFrameHudLayer = sym<int(*)(const char*)>("MXBMRP3_Test_GlFrameHudLayer");
+        m_hudDrawPosition = sym<int(*)(const char*)>("MXBMRP3_Test_HudDrawPosition");
+        m_hudStackRank = sym<int(*)(const char*)>("MXBMRP3_Test_HudStackRank");
+        m_companionHudLayer = sym<int(*)(const char*)>("MXBMRP3_Test_CompanionFrameHudLayer");
         m_glHasTexture = sym<int(*)(const char*)>("MXBMRP3_Test_GlHasTexture");
         m_glFrameAssetName = sym<int(*)(int,int,char*,int)>("MXBMRP3_Test_GlFrameAssetName");
         m_glFrameAssetCount = sym<int(*)(int)>("MXBMRP3_Test_GlFrameAssetCount");
@@ -276,6 +292,10 @@ public:
             sym<int(*)(float,float,float,float)>("MXBMRP3_Test_SetThemeTitleMargin");
         m_hudCardRect = sym<int(*)(const char*,int*)>("MXBMRP3_Test_HudCardRect");
         m_gapBarForceGap = sym<void(*)(int,int)>("MXBMRP3_Test_GapBarForceGap");
+        m_dashPage = sym<int(*)()>("MXBMRP3_Test_DashPage");
+        m_finishLap = sym<int(*)()>("MXBMRP3_Test_FinishLap");
+        m_riderFinishTime = sym<int(*)(int)>("MXBMRP3_Test_RiderFinishTime");
+        m_dashFirstIcon = sym<int(*)()>("MXBMRP3_Test_DashFirstIcon");
         m_liveGapToPb = sym<int(*)(int*)>("MXBMRP3_Test_LiveGapToPb");
         m_liveGapRef = sym<int(*)(int,int*)>("MXBMRP3_Test_LiveGapRef");
         m_setThemeIcon      = sym<int(*)(const char*,int,int)>("MXBMRP3_Test_SetThemeIconOverride");
@@ -306,7 +326,6 @@ public:
         m_settingsClosingArrows = sym<int(*)(int*,int*)>("MXBMRP3_Test_SettingsClosingArrowRightX");
         m_setHudTitle       = sym<int(*)(const char*,int)>("MXBMRP3_Test_SetHudTitle");
         m_updateSetAvailable = sym<void(*)(const char*)>("MXBMRP3_Test_UpdateSetAvailable");
-        m_versionRowTerms   = sym<void(*)(int*,int*)>("MXBMRP3_Test_VersionRowTerms");
         m_showAllHuds       = sym<void(*)(int)>("MXBMRP3_Test_ShowAllHuds");
         m_effColor          = sym<unsigned long(*)(int)>("MXBMRP3_Test_EffectiveColor");
         m_colorOverridden   = sym<int(*)(int)>("MXBMRP3_Test_ColorOverridden");
@@ -340,8 +359,6 @@ public:
         m_helmetVisible     = sym<int(*)()>("MXBMRP3_Test_HelmetVisible");
         m_helmetSetCompVis  = sym<void(*)(int)>("MXBMRP3_Test_HelmetSetCompanionVisible");
         m_helmetAnySurface  = sym<int(*)()>("MXBMRP3_Test_HelmetVisibleAnySurface");
-        m_clickDirectorVis  = sym<int(*)()>("MXBMRP3_Test_ClickDirectorHudVisible");
-        m_dirWidgetVis      = sym<void(*)(int*, int*)>("MXBMRP3_Test_DirectorWidgetVisibility");
         m_setDisplayTarget  = sym<void(*)(int)>("MXBMRP3_Test_SetDisplayTarget");
         m_getDisplayTarget  = sym<int(*)()>("MXBMRP3_Test_GetDisplayTarget");
         m_surfaceFrameStats = sym<void(*)(int*, int*, double*, double*)>("MXBMRP3_Test_SurfaceFrameStats");
@@ -410,10 +427,11 @@ public:
         m_msgLast           = sym<void(*)(char*,int)>("MXBMRP3_Test_MessageLast");
         m_msgShowing        = sym<int(*)(char*,int)>("MXBMRP3_Test_MessageShowing");
         m_msgStartup        = sym<void(*)(int,const char*,const char*)>("MXBMRP3_Test_MessagesStartup");
-        m_verPopup          = sym<int(*)(int*)>("MXBMRP3_Test_VersionPopup");
+        m_startupMsg        = sym<int(*)(int*)>("MXBMRP3_Test_StartupMessage");
         m_hudHeldBack       = sym<int(*)(const char*)>("MXBMRP3_Test_HudHeldBack");
-        m_verPopupAdvance   = sym<void(*)(int)>("MXBMRP3_Test_VersionPopupAdvance");
-        m_verPopupDismiss   = sym<void(*)()>("MXBMRP3_Test_VersionPopupDismiss");
+        m_startupMsgAdvance = sym<void(*)(int)>("MXBMRP3_Test_StartupMessageAdvance");
+        m_dashBorrowed      = sym<int(*)()>("MXBMRP3_Test_DashBorrowed");
+        m_updateCheckOn     = sym<void(*)(int)>("MXBMRP3_Test_UpdateCheckEnabled");
         m_clickResetOnce    = sym<int(*)()>("MXBMRP3_Test_SettingsClickResetTabOnce");
         m_msgSettle         = sym<void(*)()>("MXBMRP3_Test_MessagesSettle");
         m_trackRider        = sym<int(*)(const char*)>("MXBMRP3_Test_TrackRider");
@@ -518,18 +536,20 @@ public:
     // cycles (deinit, companion_decouple, director_*), and swallowing the second
     // shutdown would leave the plugin live across the next one.
     //
-    // Startup also SETTLES the startup popups (the welcome a fresh save folder
-    // owes, an "Updated to"): every test folder is a fresh install, and a
-    // Version widget turned popup would sit in every layout assertion. A test
-    // about those popups asks for them with keepStartupPopups() first.
+    // Startup also SETTLES the startup messages (the welcome a fresh save folder
+    // owes, an "Updated to"): every test folder is a fresh install, and a Dash
+    // held on a message would sit in every layout assertion. A test about those
+    // messages asks for them with keepStartupMessages() first.
     int startup(const char* savePath) {
         m_shutdownDone = false;
         m_started = true;
         const int rc = m_startup ? m_startup(const_cast<char*>(savePath)) : -1;
-        if (!m_keepStartupPopups && m_msgSettle) m_msgSettle();
+        if (!m_keepStartupMessages && m_msgSettle) m_msgSettle();
         return rc;
     }
-    void keepStartupPopups(bool keep = true) { m_keepStartupPopups = keep; }
+    void keepStartupMessages(bool keep = true) { m_keepStartupMessages = keep; }
+    // Answer every startup message owed now, as startup() does.
+    void settleStartupMessages() { if (m_msgSettle) m_msgSettle(); }
     // Idempotent within one startup, so an explicit call followed by the
     // destructor's does not Shutdown twice.
     //
@@ -988,6 +1008,7 @@ public:
         d.m_afSuspVelocity[1] = r.suspVelRear;
         d.m_iRPM = r.rpm;
         d.m_fThrottle = r.throttle;
+        d.m_fFrontBrake = r.frontBrake;
         d.m_fSteerTorque = r.steerTorque;
         d.m_iCrashed = r.crashed;
         d.m_fClutch = r.clutch;
@@ -1375,6 +1396,13 @@ public:
     // Global drop shadow. On, every non-skipped string gets a second copy emitted
     // underneath it -- so the handed-over string count is what this is observed by.
     void setDropShadow(bool on) { if (m_setDropShadow) m_setDropShadow(on ? 1 : 0); }
+    bool hasImpactVignette() const { return m_setImpactVignette != nullptr; }
+    void setImpactVignette(float strength) { if (m_setImpactVignette) m_setImpactVignette(strength); }
+    // Appearance > Glow and its [Display] glowIntensity / glowWidth scales, live.
+    bool hasGlow() const { return m_setGlow != nullptr; }
+    void setGlow(bool on, float intensity = 1.0f, float width = 1.0f) {
+        if (m_setGlow) m_setGlow(on ? 1 : 0, intensity, width);
+    }
     // Developer mode: reveals the Performance tab's Developer section, which the
     // settings panel measures like any other content.
     void setDeveloperMode(bool on) { if (m_setDevMode) m_setDevMode(on ? 1 : 0); }
@@ -1398,6 +1426,34 @@ public:
         if (m_hudScales) m_hudScales(name, &s.own, &s.drawn);
         return s;
     }
+    // The Toggles widget: row i's centre, switch and tab name as last drawn;
+    // returns the rows drawn (0 while hidden with the cursor, -1 without the hook).
+    bool hasToggleStrip() const {
+        return m_toggleStripRow && m_toggleStripHover && m_toggleStripReveal && m_directorEnabled &&
+               m_toggleStripSurfaces && m_cursorIdle;
+    }
+    int toggleStripRow(int i, float* x = nullptr, float* y = nullptr, std::string* name = nullptr,
+                       bool* on = nullptr) {
+        if (!m_toggleStripRow) return -1;
+        char buf[64] = {0};
+        int lit = 0;
+        const int n = m_toggleStripRow(i, x, y, &lit, buf, static_cast<int>(sizeof(buf)));
+        if (name) *name = buf;
+        if (on) *on = lit != 0;
+        return n;
+    }
+    int toggleStripHoverRow() { return m_toggleStripHover ? m_toggleStripHover() : -2; }
+    // The hover preview: whether a HUD is drawn as a sample (1/0, -1 unknown/no hook).
+    bool hasHoverSample() const { return m_hudSampled && m_frameAlphaSum; }
+    // Every game-frame quad's alpha, summed (-1 without the hook).
+    double gameFrameAlphaSum() { return m_frameAlphaSum ? m_frameAlphaSum() : -1.0; }
+    int hudSampled(const char* name) { return m_hudSampled ? m_hudSampled(name) : -1; }
+    // Let the helmet draw on the companion window, for a demo reel recording it.
+    void helmetOnCompanion(bool on) { if (m_helmetOnCompanion) m_helmetOnCompanion(on ? 1 : 0); }
+    void toggleStripReveal(int ms) { if (m_toggleStripReveal) m_toggleStripReveal(ms); }
+    // The mouse idle past the cursor's hide timeout, without waiting it out.
+    void cursorIdle() { if (m_cursorIdle) m_cursorIdle(); }
+    bool directorEnabled() { return m_directorEnabled && m_directorEnabled() != 0; }
     bool setHudOffset(const char* name, float x, float y) {
         return m_setHudOffset && m_setHudOffset(name, x, y) != 0;
     }
@@ -1925,6 +1981,21 @@ public:
     int glConfirmPct() const { return m_glConfirmPct ? m_glConfirmPct() : -1; }
     void glConfirmTick(int ms) { if (m_glConfirmTick) m_glConfirmTick(ms); }
     bool glDrewLastFrame() const { return m_glDrewLastFrame && m_glDrewLastFrame() != 0; }
+    // The last in-game frame's HUD layer count (core/render_layers.h); -1 = no hook.
+    int glFrameLayerCount() const { return m_glFrameLayerCount ? m_glFrameLayerCount() : -1; }
+    // The highest layer a HUD (registration name) landed in; -1 = none or no hook.
+    int glFrameHudLayer(const char* name) const {
+        return m_glFrameHudLayer ? m_glFrameHudLayer(name) : -1;
+    }
+    // The HUD stacking order (core/hud_manager_stack.cpp): a HUD's place in last
+    // frame's draw order (0 = bottom) and its saved rank; -1 = none or no hook.
+    bool hasHudStack() const { return m_hudDrawPosition && m_hudStackRank; }
+    int hudDrawPosition(const char* name) const { return m_hudDrawPosition ? m_hudDrawPosition(name) : -1; }
+    int hudStackRank(const char* name) const { return m_hudStackRank ? m_hudStackRank(name) : -1; }
+    // glFrameHudLayer's companion-window twin; -1 = none or no hook.
+    int companionFrameHudLayer(const char* name) const {
+        return m_companionHudLayer ? m_companionHudLayer(name) : -1;
+    }
     // 1 = the live GL backend has loaded this sprite (render name), 0 = not,
     // -1 = no backend (or a build without the hook).
     int glHasTexture(const char* renderName) const { return m_glHasTexture ? m_glHasTexture(renderName) : -1; }
@@ -2086,8 +2157,8 @@ public:
     int spriteOrderWithSwap(int a, int b) {
         return m_spriteOrderSwap ? m_spriteOrderSwap(a, b) : -1;
     }
-    // Build the broken-install warning for these discovery counts; its quad
-    // count, 0 when the install looks fine (-1 = hook missing).
+    // Build the broken-install warning for these discovery counts: 1 when the
+    // Dash has it to say, 0 when the install looks fine (-1 = hook missing).
     int installWarning(int fonts, int icons, bool iconsComplete = true, bool realText = false) {
         return m_installWarning ? m_installWarning(fonts, icons, iconsComplete ? 1 : 0, realText ? 1 : 0) : -1;
     }
@@ -2252,7 +2323,7 @@ public:
 
     // --- System messages (core/system_messages.h) -----------------------------
     // See MXBMRP3_Test_HotkeyInject and friends in core/test_hooks_messages.cpp.
-    bool hasMessages() const { return m_hkInject && m_msgPosted && m_msgLast && m_msgShowing && m_verPopup; }
+    bool hasMessages() const { return m_hkInject && m_msgPosted && m_msgLast && m_msgShowing && m_startupMsg; }
     // Fire a hotkey by its INI config name on the next draw(); false = unknown name.
     bool injectHotkey(const char* name) { return m_hkInject && m_hkInject(name) == 1; }
     // Rebind the settings menu's keyboard key (vk 0 = none; mods = ModifierFlags bits).
@@ -2274,12 +2345,16 @@ public:
     void messagesStartup(bool fresh, const char* line, const char* storedLine = nullptr) {
         if (m_msgStartup) m_msgStartup(fresh ? 1 : 0, line, storedLine);
     }
-    // 0 none, 1 update, 2 updated, 3 welcome; *countdown = the second shown.
-    int versionPopup(int* countdown = nullptr) { return m_verPopup ? m_verPopup(countdown) : -1; }
-    // 1 while the frame holds the HUD back (hide-all, a popup over it), 0 if not.
+    // The startup message owed: 0 none, 1 update, 2 updated, 3 welcome;
+    // *onCard = the one the Dash's card drew last (4 = a broken install).
+    int startupMessage(int* onCard = nullptr) { return m_startupMsg ? m_startupMsg(onCard) : -1; }
+    // 1 while the Dash, switched off, is shown for a message.
+    int dashBorrowed() { return m_dashBorrowed ? m_dashBorrowed() : -1; }
+    // Settings > Updates switched on or off.
+    void setUpdateCheckEnabled(bool on) { if (m_updateCheckOn) m_updateCheckOn(on ? 1 : 0); }
+    // 1 while the frame holds the HUD back (hide-all, a borrowed Dash over it), 0 if not.
     int hudHeldBack(const char* name) { return m_hudHeldBack ? m_hudHeldBack(name) : -1; }
-    void versionPopupAdvance(int ms) { if (m_verPopupAdvance) m_verPopupAdvance(ms); }
-    void versionPopupDismiss() { if (m_verPopupDismiss) m_verPopupDismiss(); }
+    void startupMessageAdvance(int ms) { if (m_startupMsgAdvance) m_startupMsgAdvance(ms); }
     // One Reset click: arms "Confirm?" only (clickResetTab() is the full two).
     bool clickResetTabOnce() { return m_clickResetOnce && m_clickResetOnce() != 0; }
     // The exploration signals' clock (Night Owl, Anniversary, Regular) and their
@@ -2468,8 +2543,7 @@ public:
                  // each "fixed" against the settings panel, whose cards lay out in
                  // COLUMNS and speak for nothing else.
                  HUD_SESSION = 12,
-                 // The only panel laying out its own button row.
-                 HUD_VERSION = 13,
+                 // 13 was the Version widget, removed in 1.33.
                  // The third rider-marker HUD, beside Map and the gap bar -- the set
                  // whose labels have to agree.
                  HUD_RADAR = 14,
@@ -2490,7 +2564,14 @@ public:
                  // that draws NOTHING until a condition holds, so a sweep that
                  // did not first grant a prestige level would pass by looking at
                  // an empty plan (the trap glConfirmArm exists for).
-                 HUD_PRESTIGE = 22 };
+                 HUD_PRESTIGE = 22,
+                 // The Dash: a themed panel of two sections, its pages centred on
+                 // the first card, so the anchor sweep has to see it.
+                 HUD_DASH = 23,
+                 // The Toggles strip. Centres its icons on the card box, and like
+                 // the prestige badge draws nothing until a condition holds: the
+                 // cursor shown (injectMouse), else the sweep looks at no plan.
+                 HUD_TOGGLES = 24 };
 
     // THE ONE TRANSLATION. Strings are HudManager::initialize()'s registration names;
     // an id outside the enum yields "", which resolves to no panel rather than to
@@ -2510,7 +2591,6 @@ public:
             case HUD_POSITION:       return "position_widget";
             case HUD_MAP:            return "map_hud";
             case HUD_SESSION:        return "session_widget";
-            case HUD_VERSION:        return "version_widget";
             case HUD_RADAR:          return "radar_hud";
             case HUD_SPEED:          return "speed_widget";
             case HUD_GEAR:           return "gear_widget";
@@ -2519,7 +2599,9 @@ public:
             case HUD_COMPASS:        return "compass_widget";
             case HUD_LEAN:           return "lean_widget";
             case HUD_GL_CONFIRM:     return "gl_confirm";
-            case HUD_PRESTIGE:            return "prestige_widget";
+            case HUD_PRESTIGE:       return "prestige_widget";
+            case HUD_DASH:           return "dash_hud";
+            case HUD_TOGGLES:        return "toggle_strip_widget";
         }
         return "";
     }
@@ -2579,23 +2661,10 @@ public:
     int iconSpriteForShape(int shape)       { return m_iconForShape ? m_iconForShape(shape) : 0; }
     int shapeForIconSprite(int sprite)      { return m_shapeForIcon ? m_shapeForIcon(sprite) : 0; }
     // Publish an UPDATE_AVAILABLE result with no network, so the update-available UI
-    // (the settings footer chip, the Version widget's notification panel) can be
+    // (the Updates tab's tag) can be
     // rendered and asserted headlessly.
     void updateSetAvailable(const char* latest) {
         if (m_updateSetAvailable) m_updateSetAvailable(latest);
-    }
-
-    // The two terms the Version widget's notification button row is laid out from:
-    // one text row and the [panel] junction gap, in screen units (the hook's fixed
-    // point is undone here, so they compare directly with StringRow::y).
-    struct VersionRowTerms { double rowH = 0, junction = 0; };
-    VersionRowTerms versionRowTerms() {
-        VersionRowTerms t;
-        if (!m_versionRowTerms) return t;
-        int rh = 0, j = 0;
-        m_versionRowTerms(&rh, &j);
-        t = { rh / 1e6, j / 1e6 };
-        return t;
     }
 
     // An asymmetric [content] border on the installed synthetic theme -- the shape a
@@ -2719,6 +2788,18 @@ public:
         m_gapBarShowSplits(on ? 1 : 0);
         return true;
     }
+    // The Dash's page (DashHud::Page: 0 Standings, 1 Timing, 2 Laps, 3 Time,
+    // 4 Fuel, 5 Gap bar, 6 Flat map, 7 Ideal, 8 RPM, 9 Delta trace, 10 Session,
+    // 11 Telemetry, 12 Event log, 13 Notices while a notice holds the card);
+    // -1 without the hook. See MXBMRP3_Test_DashPage.
+    int dashPage() { return m_dashPage ? m_dashPage() : -1; }
+    // Time+laps finish lap (-1 = not armed) and a rider's race time in ms
+    // (-1 = not finished); -2 = hook missing.
+    int finishLap() { return m_finishLap ? m_finishLap() : -2; }
+    int riderFinishTime(int raceNum) { return m_riderFinishTime ? m_riderFinishTime(raceNum) : -2; }
+    // Where the Dash's strip icons start among its quads; -1 without the hook.
+    // See MXBMRP3_Test_DashFirstIcon.
+    int dashFirstIcon() { return m_dashFirstIcon ? m_dashFirstIcon() : -1; }
     // Plant a live gap in the Gap Bar so its fill draws (see the hook).
     bool gapBarForceGap(int ms, bool valid) {
         if (!m_gapBarForceGap) return false;
@@ -2976,22 +3057,18 @@ public:
     void helmetSetCompanionVisible(bool v) { if (m_helmetSetCompVis) m_helmetSetCompVis(v ? 1 : 0); }
     bool helmetVisibleAnySurface()     { return m_helmetAnySurface && m_helmetAnySurface() != 0; }
 
-    // Director "Visible" row: click it through the real path, read the widget's
-    // per-surface state, and choose which surface the click counts as.
-    bool hasDirectorSurfaceHooks() const {
-        return m_clickDirectorVis && m_dirWidgetVis && m_forceSurface;
-    }
-    bool clickDirectorHudVisible()     { return m_clickDirectorVis && m_clickDirectorVis() != 0; }
-    struct SurfaceVis { int game = -1, companion = -1; };
-    SurfaceVis directorWidgetVisibility() {
-        SurfaceVis v;
-        if (m_dirWidgetVis) m_dirWidgetVis(&v.game, &v.companion);
-        return v;
-    }
+    // Which surface a click counts as (the companion's, or the game's).
+    bool hasForceSurface() const       { return m_forceSurface != nullptr; }
     struct SurfaceState { int configured = -1, companionVisible = -1, gameVisible = -1; };
     SurfaceState stCompanionState() {
         SurfaceState s;
         if (m_stCompanionState) m_stCompanionState(&s.configured, &s.companionVisible, &s.gameVisible);
+        return s;
+    }
+    // The Toggles strip's switch on each surface (configured = companion diverged).
+    SurfaceState toggleStripSurfaces() {
+        SurfaceState s;
+        if (m_toggleStripSurfaces) m_toggleStripSurfaces(&s.gameVisible, &s.companionVisible, &s.configured);
         return s;
     }
 
@@ -3532,9 +3609,20 @@ private:
     void        (*m_setProbeChars)(int) = nullptr;
     int         (*m_getProbeChars)() = nullptr;
     void        (*m_setDropShadow)(int) = nullptr;
+    void        (*m_setImpactVignette)(float) = nullptr;
+    void        (*m_setGlow)(int, float, float) = nullptr;
     void        (*m_setDevMode)(int) = nullptr;
     int         (*m_setHudOpacity)(const char*,float) = nullptr;
     int         (*m_setHudOffset)(const char*,float,float) = nullptr;
+    int         (*m_toggleStripRow)(int,float*,float*,int*,char*,int) = nullptr;
+    int         (*m_hudSampled)(const char*) = nullptr;
+    void        (*m_helmetOnCompanion)(int) = nullptr;
+    double      (*m_frameAlphaSum)() = nullptr;
+    int         (*m_toggleStripHover)() = nullptr;
+    void        (*m_toggleStripReveal)(int) = nullptr;
+    void        (*m_cursorIdle)() = nullptr;
+    int         (*m_directorEnabled)() = nullptr;
+    void        (*m_toggleStripSurfaces)(int*,int*,int*) = nullptr;
     void        (*m_setUiScale)(float) = nullptr;
     int         (*m_hudScales)(const char*,int*,int*) = nullptr;
     int         (*m_maxQuadArea)(const char*) = nullptr;
@@ -3598,6 +3686,11 @@ private:
     int         (*m_glConfirmPct)() = nullptr;
     void        (*m_glConfirmTick)(int) = nullptr;
     int         (*m_glDrewLastFrame)() = nullptr;
+    int         (*m_glFrameLayerCount)() = nullptr;
+    int         (*m_glFrameHudLayer)(const char*) = nullptr;
+    int         (*m_hudDrawPosition)(const char*) = nullptr;
+    int         (*m_hudStackRank)(const char*) = nullptr;
+    int         (*m_companionHudLayer)(const char*) = nullptr;
     int         (*m_glHasTexture)(const char*) = nullptr;
     int         (*m_glFrameAssetName)(int,int,char*,int) = nullptr;
     int         (*m_glFrameAssetCount)(int) = nullptr;
@@ -3643,10 +3736,13 @@ private:
     int         (*m_setThemeTitleMargin)(float,float,float,float) = nullptr;
     int         (*m_hudCardRect)(const char*,int*) = nullptr;
     void        (*m_gapBarForceGap)(int,int) = nullptr;
+    int         (*m_dashPage)() = nullptr;
+    int         (*m_finishLap)() = nullptr;
+    int         (*m_riderFinishTime)(int) = nullptr;
+    int         (*m_dashFirstIcon)() = nullptr;
     int         (*m_liveGapToPb)(int*) = nullptr;
     int         (*m_liveGapRef)(int,int*) = nullptr;
     void        (*m_updateSetAvailable)(const char*) = nullptr;
-    void        (*m_versionRowTerms)(int*,int*) = nullptr;
     void        (*m_showAllHuds)(int) = nullptr;
     unsigned long (*m_effColor)(int) = nullptr;
     int         (*m_colorOverridden)(int) = nullptr;
@@ -3677,8 +3773,6 @@ private:
     int         (*m_helmetVisible)() = nullptr;
     void        (*m_helmetSetCompVis)(int) = nullptr;
     int         (*m_helmetAnySurface)() = nullptr;
-    int         (*m_clickDirectorVis)() = nullptr;
-    void        (*m_dirWidgetVis)(int*, int*) = nullptr;
     void        (*m_tmClearCompanion)() = nullptr;
     int         (*m_tmHistoryDepth)() = nullptr;
     void        (*m_tmClearHistory)() = nullptr;
@@ -3748,13 +3842,14 @@ private:
     void        (*m_msgLast)(char*, int) = nullptr;
     int         (*m_msgShowing)(char*, int) = nullptr;
     void        (*m_msgStartup)(int, const char*, const char*) = nullptr;
-    int         (*m_verPopup)(int*) = nullptr;
+    int         (*m_startupMsg)(int*) = nullptr;
     int         (*m_hudHeldBack)(const char*) = nullptr;
-    void        (*m_verPopupAdvance)(int) = nullptr;
-    void        (*m_verPopupDismiss)() = nullptr;
+    void        (*m_startupMsgAdvance)(int) = nullptr;
+    int         (*m_dashBorrowed)() = nullptr;
+    void        (*m_updateCheckOn)(int) = nullptr;
     int         (*m_clickResetOnce)() = nullptr;
     void        (*m_msgSettle)() = nullptr;
-    bool        m_keepStartupPopups = false;
+    bool        m_keepStartupMessages = false;
     int         (*m_trackRider)(const char*) = nullptr;
     void        (*m_explorationTick)(int,int,int,int,int,unsigned int) = nullptr;
     void        (*m_achForceTiers)(int, const char*) = nullptr;

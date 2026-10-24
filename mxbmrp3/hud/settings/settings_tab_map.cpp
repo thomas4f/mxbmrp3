@@ -5,6 +5,7 @@
 #include "settings_layout.h"
 #include "../settings_hud.h"
 #include "../map_hud.h"
+#include "../hud_defaults.h"
 #include "../../core/asset_manager.h"
 #include <cmath>
 
@@ -170,8 +171,11 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     // Lap delta: Off, Default (General's reference), or the reference lap the
     // track colours compare against (the Gap Bar's names, in its order). The
     // list order differs from the enum's, where DEFAULT came last to keep the
-    // stored values: Off, Default, then the references.
-    static const char* const kLapDeltas[] = { "Off", "Default", "Session PB", "All-time", "Last lap" };
+    // stored values: Off, Default (named for General's today), then the references.
+    using Ref = PbGapTracker::Ref;
+    const char* const kLapDeltas[] = { "Off", HudDefaults::defaultReferenceName(),
+        PbGapTracker::refName(Ref::SESSION_PB), PbGapTracker::refName(Ref::ALLTIME_PB),
+        PbGapTracker::refName(Ref::LAST_LAP) };
     static_assert(sizeof(kLapDeltas) / sizeof(kLapDeltas[0]) == MapHud::LAP_DELTA_COUNT, "one name per state");
     SettingsHud::CycleControl lapDelta;
     lapDelta.count = MapHud::LAP_DELTA_COUNT;
@@ -183,7 +187,7 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
         hud->m_lapDelta = (i == 1) ? MapHud::LapDelta::DEFAULT
                         : static_cast<MapHud::LapDelta>(i == 0 ? 0 : i - 1);
     };
-    lapDelta.nameOf = [](int i) { return std::string(kLapDeltas[i]); };
+    lapDelta.nameOf = [kLapDeltas](int i) { return std::string(kLapDeltas[i]); };
     lapDelta.dirtyHud = hud;
     ctx.setRowLabelChars(16);
     ctx.addCycleControl("Lap delta", kLapDeltas[lapDelta.get()], lapDelta,

@@ -87,7 +87,7 @@ BaseHud* SettingsHud::renderTabMore(SettingsLayoutContext& ctx) {
             BaseHud* target = nullptr;
             const ClickRegion::Type type = self.tabToggleType(row.tabId, hud, &target);
             self.m_clickRegions.push_back(ClickRegion(x, y, iconW, ctx.lineHeightNormal, type, target));
-            self.drawTabToggle(x, y, icon, on, /*onBand=*/false, dim, iconW);
+            self.drawTabToggle(row.tabId, x, y, icon, on, /*onBand=*/false, dim, iconW);
         } else {
             self.drawTabIcon(x, y, icon ? icon : "", cc.getAccent(), dim, iconW);
         }

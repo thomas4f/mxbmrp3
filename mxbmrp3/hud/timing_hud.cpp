@@ -34,9 +34,8 @@ namespace {
     constexpr float START_X = 0.0f;
     constexpr float START_Y = 0.0f;
 
-    // Default vertical position is LAST in the center-top stack, at CenterStack::timingTop()
-    // -- see hud/center_stack.h. The Timing HUD grows DOWN, so sitting at the bottom means it
-    // never overlaps the notice/gapbar above however many comparison rows are enabled.
+    // Default vertical position is the spot under the Dash that the Gap Bar and Notices
+    // share, at CenterStack::underDashBoxTop() -- see hud/center_stack.h.
 }
 
 TimingHud::TimingHud()
@@ -280,7 +279,7 @@ void TimingHud::checkFreezeExpiration() {
     if (m_hold.expire(freezeMs())) setDataDirty();
 }
 
-bool TimingHud::segmentModeActive() const {
+bool TimingHud::segmentModeActive() {
     // Segments are a LOCAL-PLAYER training tool, fed only by the player's own RunTelemetry
     // (which flows only while riding). So the panel is in segment mode only when the player
     // is actually on track — never while spectating or watching a replay, where it instead
@@ -289,6 +288,14 @@ bool TimingHud::segmentModeActive() const {
     const PluginData& data = PluginData::getInstance();
     return data.getSegmentTimer().segmentCount() >= 1
         && data.getDrawState() == PluginConstants::ViewState::ON_TRACK;
+}
+
+SegmentReadout TimingHud::segmentLine(const PluginData::SegmentTimerData& seg, bool holding) {
+    const double liveArcSec = seg.runningSeg >= 0
+        ? std::chrono::duration<double>(std::chrono::steady_clock::now() - seg.runStart).count()
+        : 0.0;
+    return readSegmentLine(seg.bests.data(), seg.hasBest.data(), seg.segmentCount(),
+                           seg.runningSeg, seg.lastSeg, seg.cum, holding, liveArcSec);
 }
 
 bool TimingHud::contentVisible() const {
@@ -370,13 +377,12 @@ void TimingHud::rebuildRenderData() {
     formatTimeCell(pluginData, sv, timeCell);
 
     // === COMPARISON VALUE RESOLUTION (normal, non-segment rows) ===
-    const PluginData::SegmentTimerData& seg = pluginData.getSegmentTimer();
     // The split boundary the rider is driving toward, so the passive reference tracks the sector.
     int targetSplit = sv.active ? -1 : currentTargetSplit();
     // Show the +/- delta while frozen on a split/lap; otherwise the progressive reference time.
     // (An invalid lap clears the gaps, so those cells just fall back to their reference — the
     // "INVALID" flag is shown once, in the time cell.)
-    bool showGapData = sv.active ? (sv.frozen && seg.cum.lastHasDelta) : m_hold.active();
+    bool showGapData = sv.active ? sv.line.hasDelta : m_hold.active();
 
     // === BUILD THE ROW LIST (name + value) ===
     Row rows[GAP_TYPE_COUNT + 1];   // +1 for the segment "Best" row
@@ -412,7 +418,9 @@ void TimingHud::rebuildRenderData() {
     if (showGap) want.sectionH.push_back(bigValueRowHeight(dim));
     if (rowCount > 0) want.sectionH.push_back(rowCount * dim.lineHeightNormal);
     if (readoutCount > 0) want.sectionH.push_back(readoutCount * dim.lineHeightNormal);
-    want.captionW = planTitleWidth(dim, "Timing", TitleTier::Large);
+    // The Gap section's reference lap, named on the title row while it is on.
+    const char* refNote = showGap ? PbGapTracker::refName(getLiveGapReference()) : nullptr;
+    want.captionW = planTitleWidth(dim, "Timing", TitleTier::Large) + planTitleNoteWidth(dim, refNote);
     want.tier = TitleTier::Large;
     PanelPlan& p = planPanel(dim, want);
 
@@ -476,78 +484,29 @@ void TimingHud::rebuildRenderData() {
     m_fTestContentTop = p.Y(p.g.sections.front().top) - START_Y;
     m_fTestContentBot = p.Y(p.g.sections.back().bot - p.g.slackY) - START_Y;
 
+    addPlanTitleNote(p, dim, refNote);
     setBounds(bgLeftX, START_Y, bgLeftX + backgroundWidth, START_Y + backgroundHeight);
 }
 
 TimingHud::SegmentView TimingHud::resolveSegmentView(const PluginData& pluginData) const {
     // Segment mode: when at least one segment is armed (two boundary points), this
-    // timing line shows the custom segment timer instead of the official split/lap.
-    // Like the official timer it AGGREGATES: the shown time is the running total
-    // from the chain's first point through the current boundary, and the "Best" row
-    // is that total vs the summed per-segment bests (so points on the official
-    // splits read identically to the regular HUD). Off a clean run it degrades to
-    // the isolated arc. The official-timing machinery still runs in update(); we
-    // only swap what's rendered. The shown segment is a just-completed one held
-    // during the split-style freeze, otherwise the one currently being driven.
+    // timing line shows the custom segment timer instead of the official split/lap,
+    // aggregated like the official timer (see readSegmentLine, which the Dash's
+    // Timing page reads too). The official-timing machinery still runs in update();
+    // we only swap what's rendered.
     // The segment timer is a training tool that doesn't affect the game result, so it
     // keeps timing through a session finish (warmup/race over) — you can drill segments
     // on the cool-down lap; it stops only when you actually leave the track (handled by
     // segmentModeActive's ON_TRACK gate).
-    const PluginData::SegmentTimerData& seg = pluginData.getSegmentTimer();
-    bool segmentMode = segmentModeActive();  // off while spectating/replaying another rider
-    int segShownIndex = -1;
-    bool segShowFrozen = false;
-    if (segmentMode) {
-        if (m_segHold.active() && seg.lastSeg >= 0 && seg.lastSeg < seg.segmentCount()) {
-            segShownIndex = seg.lastSeg;
-            segShowFrozen = true;
-        } else if (seg.runningSeg >= 0 && seg.runningSeg < seg.segmentCount()) {
-            segShownIndex = seg.runningSeg;
-        }
-    }
-    // Cumulative "Best" target through segment idx: the summed per-segment bests
-    // (the ideal you're chasing), matching the official timer's summed best sectors.
-    // -1 if any segment up to idx has no best yet (no clean cumulative reference).
-    auto cumBestMsThrough = [&](int idx) -> int {
-        if (idx < 0) return -1;
-        float sum = 0.0f;
-        for (int k = 0; k <= idx; ++k) {
-            if (!seg.hasBest[k]) return -1;
-            sum += seg.bests[k];
-        }
-        return static_cast<int>(sum * 1000.0f + 0.5f);
-    };
-    // Passive "Best" reference: the cumulative target on a clean run (aggregated
-    // from the chain start), else this one segment's best (the isolated-arc
-    // fallback when no contiguous run is active).
-    bool segRunActive = segShowFrozen ? seg.cum.lastValid : seg.cum.active;
-    int segRefBestMs = -1;
-    if (segShownIndex >= 0) {
-        if (segRunActive) {
-            segRefBestMs = cumBestMsThrough(segShownIndex);
-        } else if (seg.hasBest[segShownIndex]) {
-            segRefBestMs = static_cast<int>(seg.bests[segShownIndex] * 1000.0f + 0.5f);
-        }
-    } else if (segmentMode) {
-        // Dead zone: not inside a segment (before the first one, or an untimed stretch on
-        // an open chain). Show the whole chain's cumulative best as a passive target so
-        // the line is never blank — the analog of the regular timer showing the full-lap
-        // PB on the out-lap. -1 (→ "-") until every segment has a best this session.
-        segRefBestMs = cumBestMsThrough(seg.segmentCount() - 1);
-    }
-
     SegmentView sv;
-    sv.active = segmentMode;
-    sv.frozen = segShowFrozen;
-    sv.refBestMs = segRefBestMs;
+    sv.active = segmentModeActive();  // off while spectating/replaying another rider
+    if (sv.active) sv.line = segmentLine(pluginData.getSegmentTimer(), m_segHold.active());
     return sv;
 }
 
 // The big time cell. Stages segment mode's delta-to-best into sv.gap.
 void TimingHud::formatTimeCell(const PluginData& pluginData, SegmentView& sv, TimeCell& cell) const {
-    const PluginData::SegmentTimerData& seg = pluginData.getSegmentTimer();
     const bool segmentMode = sv.active;
-    const bool segShowFrozen = sv.frozen;
     GapData& segGap = sv.gap;
     char (&timeBuffer)[32] = cell.text;
     bool& timePlaceholder = cell.placeholder;
@@ -591,37 +550,16 @@ void TimingHud::formatTimeCell(const PluginData& pluginData, SegmentView& sv, Ti
     // Swap the time for the shown segment's, and stage its delta-to-best (rendered below as the
     // single "Best" comparison row).
     if (segmentMode) {
-        if (segShowFrozen) {
-            // Frozen just-completed boundary: the running total from the chain start
-            // (or the isolated arc off a clean run) and its cumulative delta-to-best.
-            PluginUtils::formatLapTime(static_cast<int>(seg.cum.lastTime * 1000.0f + 0.5f),
-                                       timeBuffer, sizeof(timeBuffer));
+        const SegmentReadout& line = sv.line;
+        if (line.timeMs >= 0) {
+            PluginUtils::formatLapTime(line.timeMs, timeBuffer, sizeof(timeBuffer));
             timePlaceholder = false;
-            if (seg.cum.lastHasDelta) {
-                float dsec = seg.cum.lastTime - seg.cum.lastBest;
-                int deltaMs = static_cast<int>(dsec * 1000.0f + (dsec < 0.0f ? -0.5f : 0.5f));
-                int refMs = static_cast<int>(seg.cum.lastBest * 1000.0f + 0.5f);
-                segGap.set(deltaMs, refMs);
-            } else {
-                segGap.reset();
-            }
-        } else if (seg.runningSeg >= 0) {
-            // Live: running total from the chain's first point (completed arcs + the
-            // live arc) on a clean run, else the isolated live arc. Keeps ticking through
-            // a session finish — it's a training tool that ignores the game result.
-            double liveArcSec = std::chrono::duration<double>(
-                std::chrono::steady_clock::now() - seg.runStart).count();
-            double shownSec = seg.cum.active ? (static_cast<double>(seg.cum.time) + liveArcSec)
-                                             : liveArcSec;
-            PluginUtils::formatLapTime(static_cast<int>(shownSec * 1000.0 + 0.5),
-                                       timeBuffer, sizeof(timeBuffer));
-            timePlaceholder = false;
-            segGap.reset();
         } else {
             strcpy_s(timeBuffer, sizeof(timeBuffer), Placeholders::GENERIC);
             timePlaceholder = true;
-            segGap.reset();
         }
+        if (line.hasDelta) segGap.set(line.deltaMs, line.deltaRefMs);
+        else segGap.reset();
     }
 }
 
@@ -629,7 +567,7 @@ void TimingHud::formatTimeCell(const PluginData& pluginData, SegmentView& sv, Ti
 // enabled comparison. Returns the row count.
 int TimingHud::buildComparisonRows(Row* rows, const SegmentView& sv, bool showGapData, int targetSplit) const {
     const bool segmentMode = sv.active;
-    const int segRefBestMs = sv.refBestMs;
+    const int segRefBestMs = sv.line.bestMs;
     const GapData& segGap = sv.gap;
 
     auto getGapDataForType = [&](GapTypeFlags type) -> const GapData* {
@@ -897,20 +835,18 @@ void TimingHud::addReadoutRows(Readout* readouts, int readoutCount, float y, flo
 
 
 void TimingHud::resetToDefaults() {
-    // On by default (changed from off in v1.27.1). UPGRADE NOTE: under sparse-save,
-    // a user who explicitly disabled Timing while OFF was the default saved no
-    // `visible` key (it matched the default), so on upgrade they are indistinguishable
-    // from "never touched" and Timing re-appears. This is inherent to any default
-    // flip with sparse persistence — call it out in the release notes.
-    m_bVisible = true;
+    // Off by default since 1.33: the Dash's Timing page (its default page) shows the
+    // same time and gap. Fresh installs only -- the base section saves
+    // `visible`, so an upgraded INI keeps the panel on.
+    m_bVisible = false;
     // Off by DEFAULT, not unavailable -- the toggle is in the Timing tab. A caption
     // over a panel this close to the centre of the screen is usually noise, which is
     // why it starts off rather than why it does not exist.
     m_bShowTitle = false;
     setTextureVariant(0);  // No texture by default
-    m_fBackgroundOpacity = 0.1f;
+    m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setScale(1.0f);
-    setPosition(CENTER_ANCHOR_X, CenterStack::stackBoxTop());
+    setPosition(CENTER_ANCHOR_X, CenterStack::underDashBoxTop());
 
     // Show mode: Always show by default (content shows continuously, references passive)
     m_displayMode = ColumnMode::ALWAYS;

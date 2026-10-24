@@ -32,6 +32,12 @@
 // its trace match, or no trace is shown); the store used to keep the faster
 // lap, which left the all-time reference off until the old time was beaten.
 //
+// Case 6 is a PB WITHOUT ITS TRACE (set before traces were kept): the Gap Bar
+// on All-time says so instead of sitting empty, which read as the trace failing
+// to load, and the Dash's Gap bar page with it. No PB at all shows the plain
+// placeholder; a new PB ends the note. With the title on, the caption keeps
+// naming the reference while the note is up.
+//
 // Case 2 is the PB SCOPE. Under the default class scope a different bike in
 // the same class is planted with the class's fastest trace (StatsManager names
 // the bike; the store is keyed by bike and knows nothing of classes); under
@@ -42,6 +48,7 @@
 #include "plugin_host.h"
 #include "ini.h"             // readFile
 #include <cstdio>    // std::remove
+#include <filesystem>
 #include <fstream>
 #include <string>
 
@@ -261,4 +268,85 @@ TEST_CASE("a new PB replaces a faster stored trace, so the PB and its trace matc
         CHECK_MESSAGE(host.liveGapRef(REF_ALLTIME, gap), "the PB's own trace was not planted");
         host.shutdown();
     }
+}
+
+TEST_CASE("an all-time PB without its trace says so in the Gap Bar; no PB, or a new one, does not") {
+    const std::string save = "Z:\\tmp\\mxbmrp3-tests\\pb_trace_missing\\";
+    const std::string dir = save + "mxbmrp3\\";
+    std::remove((dir + "mxbmrp3_stats.json").c_str());
+    std::remove((dir + "mxbmrp3_pb_traces.json").c_str());
+    std::filesystem::create_directories(dir);
+    {
+        // All-time as the reference everything follows (the Gap Bar's default),
+        // and no freeze, so a moment without a live gap shows no frozen one either.
+        std::ofstream ini(dir + "mxbmrp3_settings.ini", std::ios::trunc);
+        ini << "[Settings]\nversion=10\n\n[General]\ndefaultReference=1\ndefaultFreeze=0\n\n"
+               "[Messages]\ndashTried=1\n\n[DashHud]\nvisible=1\npage=gapbar\nnotice_takeover=0\n\n"
+               "[GapBarHud]\nshowTitle=1\n";   // the caption names the reference
+    }
+    auto shows = [](PluginHost& host, PluginHost::HudId hud, const char* text) {
+        host.drawWithState(0);
+        host.drawWithState(0);
+        for (const auto& row : host.hudStringRows(hud)) {
+            if (row.text == text) return true;
+        }
+        return false;
+    };
+    auto barShows = [&](PluginHost& host, const char* text) { return shows(host, PluginHost::HUD_GAPBAR, text); };
+    auto dashShows = [&](PluginHost& host, const char* text) { return shows(host, PluginHost::HUD_DASH, text); };
+    constexpr const char* NOTE = "No trace until a new PB";   // GapBarHud::NO_TRACE_NOTE
+    {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        host.startup(save.c_str());
+        REQUIRE(host.hasStringRows());
+        REQUIRE(host.setHudVisible("gap_bar_hud", true));
+        beginSession(host, "Test 450", "MX1");
+        firstLapToS1(host);
+        CHECK_MESSAGE(barShows(host, "-"), "no PB: the plain placeholder");
+        CHECK_FALSE(barShows(host, NOTE));
+        CHECK_FALSE(dashShows(host, NOTE));
+        host.shutdown();
+    }
+    {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        host.startup(save.c_str());
+        REQUIRE(host.setHudVisible("gap_bar_hud", true));
+        beginSession(host, "Test 450", "MX1");
+        setPbLap(host);   // the PB, and its trace
+        host.shutdown();
+    }
+    // The PB stays in the stats file; its trace is gone, as for a PB set before
+    // traces were kept.
+    REQUIRE(std::remove((dir + "mxbmrp3_pb_traces.json").c_str()) == 0);
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(save.c_str());
+    REQUIRE(host.setHudVisible("gap_bar_hud", true));
+    beginSession(host, "Test 450", "MX1");
+    firstLapToS1(host);
+    CHECK_MESSAGE(barShows(host, NOTE), "a PB without its trace showed no note");
+    // The caption still names the reference: the no-trace branch used to return
+    // before the title note was drawn, though the caption kept its width.
+    CHECK_MESSAGE(barShows(host, "All-time PB"), "the caption lost its reference note");
+    CHECK_MESSAGE(dashShows(host, NOTE), "the Dash's Gap bar page showed no note");
+    // A new PB records the trace, and the bar reads against it.
+    host.raceSplit(RACE1, 10, 1, 1, 39000);
+    host.raceTrackPosition({ { 10, 0.70f } });
+    host.classify(RACE1, 58000, { { .num = 10, .laps = 1, .gap = 0 } });
+    host.raceTrackPosition({ { 10, 0.02f } });
+    host.raceLap(RACE1, 10, 1, 58000, /*best=*/1, 20000, 39000);
+    host.raceTrackPosition({ { 10, 0.02f } });
+    // At the line, with no gap to show: what ends the note here is the new
+    // all-time reference, not a live gap drawn over it.
+    int gap = 0;
+    REQUIRE_FALSE(host.liveGapRef(REF_ALLTIME, gap));
+    CHECK_MESSAGE(barShows(host, "-"), "no gap at the line: the plain placeholder");
+    CHECK_FALSE_MESSAGE(barShows(host, NOTE), "the note outlived the new PB");
+    CHECK_FALSE_MESSAGE(dashShows(host, NOTE), "the Dash's note outlived the new PB");
+    host.raceSplit(RACE1, 10, 2, 0, 20000);
+    host.raceTrackPosition({ { 10, 0.40f } });
+    CHECK_FALSE_MESSAGE(barShows(host, NOTE), "the note outlived the new PB's trace");
+    host.shutdown();
 }

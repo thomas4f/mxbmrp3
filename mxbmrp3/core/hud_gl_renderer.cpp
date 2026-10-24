@@ -243,22 +243,21 @@ struct Renderer::Impl {
 // nothing yet - see Renderer::Warm. Walks past items already cached, so once the
 // list is loaded this is the hash and nothing else.
 void Renderer::Impl::prewarm(const Warm& w, const hudsw::Frame& f) {
-    uint64_t sig = 1469598103934665603ull;   // FNV-1a over the indices
+    const int spriteCount = (w.allSprites && f.spriteNames) ? static_cast<int>(f.spriteNames->size()) : 0;
+    uint64_t sig = 1469598103934665603ull;   // FNV-1a over the list
     auto mix = [&sig](int v) { sig = (sig ^ static_cast<uint32_t>(v)) * 1099511628211ull; };
-    for (int i = 0; i < w.spriteCount; ++i) mix(w.sprites[i]);
-    mix(-1);                                  // sprites {1},fonts {} != sprites {},fonts {1}
+    mix(spriteCount);
     for (int i = 0; i < w.fontCount; ++i) mix(w.fonts[i]);
     if (sig != warmSig) { warmSig = sig; warmDone = 0; }
 
-    const int total = w.spriteCount + w.fontCount;
+    const int total = spriteCount + w.fontCount;
     while (warmDone < total && decodesThisFrame == 0) {
         const int i = warmDone++;
-        if (i < w.spriteCount) {
-            const int idx = w.sprites[i] - 1;
-            if (f.spriteNames && idx >= 0 && idx < static_cast<int>(f.spriteNames->size()))
-                texture((*f.spriteNames)[idx], w.sprites[i] >= f.firstIcon, f.assetRoot);
+        if (i < spriteCount) {
+            // Sprite i + 1, 1-based like a quad's (>= firstIcon is an icon).
+            texture((*f.spriteNames)[static_cast<size_t>(i)], i + 1 >= f.firstIcon, f.assetRoot);
         } else {
-            const int idx = w.fonts[i - w.spriteCount] - 1;
+            const int idx = w.fonts[i - spriteCount] - 1;
             if (f.fontNames && idx >= 0 && idx < static_cast<int>(f.fontNames->size()))
                 font((*f.fontNames)[idx], f.assetRoot);
         }

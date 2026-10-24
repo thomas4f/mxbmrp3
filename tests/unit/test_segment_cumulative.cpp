@@ -1,6 +1,7 @@
 // ============================================================================
 // tests/unit/test_segment_cumulative.cpp
-// Unit tests for the segment-timer aggregation in core/segment_cumulative.h.
+// Unit tests for the segment-timer aggregation in core/segment_cumulative.h,
+// and readSegmentLine, the timing line the Timing HUD and the Dash both show.
 //
 // This is the logic that makes the custom segment timer AGGREGATE a contiguous
 // run through the chain the same way the official split timer aggregates
@@ -157,4 +158,56 @@ TEST_CASE("segment cumulative: reset clears state") {
     CHECK_FALSE(c.lastValid);
     CHECK(c.time == doctest::Approx(0.0f));
     CHECK(c.lastTime == doctest::Approx(0.0f));
+}
+
+// readSegmentLine: what the Timing HUD and the Dash's Timing page both show.
+TEST_CASE("segment line: held completion shows the running total and its delta") {
+    const float bests[2] = { 29.0f, 24.0f };
+    const char has[2] = { 1, 1 };
+    SegmentCumulative c;
+    c.beginChain();
+    c.completeSegment(0, 30.0f, true, 29.0f);
+    c.completeSegment(1, 25.0f, true, 24.0f);
+    const SegmentReadout r = readSegmentLine(bests, has, 2, -1, 1, c, /*holding*/ true, 0.0);
+    CHECK(r.frozen);
+    CHECK(r.timeMs == 55000);
+    CHECK(r.hasDelta);
+    CHECK(r.deltaMs == 2000);
+    CHECK(r.deltaRefMs == 53000);
+    CHECK(r.bestMs == 53000);
+}
+
+TEST_CASE("segment line: running segment ticks from the chain start, target is the summed bests") {
+    const float bests[2] = { 29.0f, 24.0f };
+    const char has[2] = { 1, 1 };
+    SegmentCumulative c;
+    c.beginChain();
+    c.completeSegment(0, 30.0f, true, 29.0f);
+    // Segment 1 running 2.5 s in, not holding: total so far, no delta.
+    const SegmentReadout r = readSegmentLine(bests, has, 2, 1, 0, c, false, 2.5);
+    CHECK_FALSE(r.frozen);
+    CHECK(r.timeMs == 32500);
+    CHECK_FALSE(r.hasDelta);
+    CHECK(r.bestMs == 53000);
+    // Off a clean run the arc stands alone, against its own best.
+    c.breakChain();
+    const SegmentReadout iso = readSegmentLine(bests, has, 2, 1, 0, c, false, 2.5);
+    CHECK(iso.timeMs == 2500);
+    CHECK(iso.bestMs == 24000);
+}
+
+TEST_CASE("segment line: a first completion has no delta, and a dead zone shows the whole chain's target") {
+    const float bests[2] = { 30.0f, 0.0f };
+    const char has[2] = { 1, 0 };
+    SegmentCumulative c;
+    c.beginChain();
+    c.completeSegment(0, 30.0f, false, 0.0f);
+    const SegmentReadout held = readSegmentLine(bests, has, 2, -1, 0, c, true, 0.0);
+    CHECK(held.timeMs == 30000);
+    CHECK_FALSE(held.hasDelta);
+    CHECK(held.bestMs == 30000);
+    // Outside every segment, with segment 1 still without a best: no target yet.
+    const SegmentReadout dead = readSegmentLine(bests, has, 2, -1, 0, c, false, 0.0);
+    CHECK(dead.timeMs == -1);
+    CHECK(dead.bestMs == -1);
 }

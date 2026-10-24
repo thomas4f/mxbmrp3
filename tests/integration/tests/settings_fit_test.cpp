@@ -231,3 +231,38 @@ TEST_CASE("Rumble's Bumps and Lockup groups open inside the panel") {
 
     host.showSettings(false);
 }
+
+// AN UPDATE WITH LONG RELEASE NOTES, the Updates tab's tallest state: the notes it
+// shows, then "Full release notes are on GitHub." and the GitHub Releases link on a
+// row of its own. That state appears only when a release is out, so the sweep above
+// never lays it out; this one does, and asserts it costs the panel no height -- the
+// link row was spent out of the room the notes left, not added to the panel.
+TEST_CASE("the Updates tab's release notes and link fit without growing the panel") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\settings_fit\\");
+    REQUIRE(host.hasSettingsOverflow());
+    float x = 0.0f, y = 0.0f;
+    auto hasLink = [&]() { return host.settingsRegionCenter("updates.release_notes", &x, &y); };
+    host.showSettings(true);
+    host.setActiveTab("Updates");
+    host.draw();
+    const auto before = host.hudScreenEdges(PluginHost::HUD_SETTINGS);
+    REQUIRE_FALSE(hasLink());
+
+    // Reopened so the tallest-tab measure runs again over the new state.
+    host.updateSetAvailable("9.9.9");
+    host.showSettings(false);
+    host.showSettings(true);
+    host.setActiveTab("Updates");
+    host.draw();
+
+    CHECK(hasLink());
+    CHECK(host.settingsOverflowRows() <= 0.0);
+    const auto after = host.hudScreenEdges(PluginHost::HUD_SETTINGS);
+    CHECK(after.t == before.t);
+    CHECK(after.b == before.b);
+
+    host.updateSetAvailable("");
+    host.showSettings(false);
+}

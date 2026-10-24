@@ -14,6 +14,8 @@
 //     glyphs bake off-centre in the cell (e.g. Tiny5 sits ~10% low), which the
 //     stock fontgen cannot express — it has no offset/baseline key at all.
 //   * Correct CP1252 high-range mapping (bytes 0x80-0x9F -> the right glyphs).
+//   * Fixed-width digits (`tabular_digits`) for proportional fonts, so a
+//     changing number (a running clock, a lap time) does not jiggle.
 //
 // Config format is a superset of PiBoSo fontgen's (same keys work); see README.md.
 //
@@ -87,7 +89,9 @@ struct Config {
     double voffset = 0.0;                 // px, + = shift glyphs down
     bool center = false;                  // auto-centre ink vertically in the cell
     double monoAdvance = 0.0;             // >0: size so digit-advance/cellH == this
+    bool tabularDigits = false;           // every digit advances the widest digit's width
     bool normalize = false;               // apply the standard normalisation defaults
+    bool tabularSet = false;              // whether `tabularDigits` was set explicitly
     bool centerSet = false;               // whether `center` was set explicitly
     bool spacingSet = false;              // whether `spacing` was set explicitly
 };
@@ -126,6 +130,7 @@ void applyNormalizeDefaults(Config& c) {
     if (c.monoAdvance <= 0.0) c.monoAdvance = kRefMonoAdvance;
     if (!c.centerSet) c.center = true;
     if (!c.spacingSet) c.spacing = kRefSpacing;
+    if (!c.tabularSet) c.tabularDigits = true;
 }
 
 std::string trim(const std::string& s) {
@@ -158,6 +163,7 @@ bool parseConfig(const std::string& path, Config& c) {
         else if (kl == "voffset") c.voffset = std::stod(v);
         else if (kl == "center") { c.center = (v == "1" || v == "true" || v == "yes"); c.centerSet = true; }
         else if (kl == "mono_advance") c.monoAdvance = std::stod(v);
+        else if (kl == "tabular_digits") { c.tabularDigits = (v == "1" || v == "true" || v == "yes"); c.tabularSet = true; }
         else if (kl == "normalize" || kl == "normalise") c.normalize = (v == "1" || v == "true" || v == "yes");
         // `scale` (fontgen's opaque area knob) is intentionally ignored — use cell_height.
     }
@@ -261,6 +267,20 @@ int main(int argc, char** argv) {
         }
         return true;
     };
+    // Tabular digits: give 0-9 one advance, the WIDEST digit's, and centre each
+    // digit's ink in it -- what a font's own `tnum` feature does, for the many
+    // display faces (Tomorrow, Chakra Petch, Quantico...) that ship without one.
+    // Proportional digits make a running clock or a changing lap time jiggle and
+    // stop right-aligned numbers lining up. The widest rather than the average:
+    // the average would make the wide digits' ink collide, so the font is
+    // instead sized smaller to keep the column width (width-normalise below).
+    int maxDigitUnits = 0;
+    if (cfg.tabularDigits) {
+        for (int c = '0'; c <= '9'; ++c) {
+            int aw, lsb; stbtt_GetCodepointHMetrics(&font, c, &aw, &lsb);
+            maxDigitUnits = std::max(maxDigitUnits, aw);
+        }
+    }
     int cellH;
     float scale;
     if (cfg.monoAdvance > 0.0) {
@@ -277,6 +297,7 @@ int main(int argc, char** argv) {
             if (aw > 0) { digitUnits += aw; ++dn; }
         }
         double avgDigit = dn ? double(digitUnits) / dn : double(ascent - descent);
+        if (maxDigitUnits > 0) avgDigit = maxDigitUnits;   // tabular: every digit is this wide
         cellH = cfg.cellHeight > 0 ? cfg.cellHeight : kRefCellHeight;
         scale = float(cellH * cfg.monoAdvance / avgDigit);
         fprintf(stderr, "mxbmrp3_fontgen: width-normalise digit-advance/cell=%.3f  cell=%dpx  scale=%.5f\n",
@@ -363,6 +384,11 @@ int main(int argc, char** argv) {
         int cp = byteToUnicode(b, cfg.cp1252);
         int gi = stbtt_FindGlyphIndex(&font, cp);
         int aw, lsb; stbtt_GetCodepointHMetrics(&font, cp, &aw, &lsb);
+        const bool tabular = maxDigitUnits > 0 && cp >= '0' && cp <= '9';
+        // Tabular digit: the widest digit's advance, ink shifted right by half
+        // the difference so it sits centred in it.
+        const int tabShift = tabular ? int(std::lround((maxDigitUnits - aw) * scale / 2.0)) : 0;
+        if (tabular) aw = maxDigitUnits;
         int advance = int(aw * scale);   // truncate (matches fontgen; keeps advance <= cell ratio)
         int x0, y0, x1, y1;
         stbtt_GetCodepointBitmapBox(&font, cp, scale, scale, &x0, &y0, &x1, &y1);
@@ -394,7 +420,7 @@ int main(int argc, char** argv) {
                 atlas[size_t(ay) * cfg.bitmapX + ax] = tmp[size_t(gy) * w + gx];
             }
         }
-        g.xoff = x0;                          // left bearing (matches fontgen; may be signed)
+        g.xoff = x0 + tabShift;               // left bearing (matches fontgen; may be signed)
         g.width = w;
         g.ax0 = px; g.ax1 = px + w;
         g.ay0 = py; g.ay1 = py + cellH;

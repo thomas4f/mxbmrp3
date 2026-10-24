@@ -36,6 +36,11 @@ namespace DigitRoll { class Roller; }
 enum class PanelKind { Hud, Widget, Settings };
 
 class BaseHud {
+    // Draws the Delta Trace's chart into its host (the Delta Trace HUD, the
+    // Dash's page) with the host's own helpers -- see delta_trace_plot.h.
+    friend class DeltaTracePlot;
+    // Draws a dropdown's box and open list into its host -- see dropdown_list.h.
+    friend class DropdownList;
 public:
     // Standard update interval for live timing displays (~167Hz for smooth ticking)
     static constexpr int TICK_UPDATE_INTERVAL_MS = 6;
@@ -136,6 +141,10 @@ public:
         m_bPreviewing = on;
         setDataDirty();
     }
+    // HOVER SAMPLE: drawn though switched off, while its Toggles strip icon is
+    // hovered (HudManager::setPreviewHud); counts as visible to update() gates.
+    bool isSampled() const { return m_bSampled; }
+    void setSampled(bool on) { if (m_bSampled != on) { m_bSampled = on; setDataDirty(); } }
 
     // Not on screen for a reason other than the visibility flags: the hide-all
     // hotkey, the widgets toggle, the Direct GL prompt (HudManager::isHeldBack).
@@ -143,9 +152,9 @@ public:
     // isVisibleAnySurface(), else a hidden control keeps taking the click.
     bool isHeldBack() const;
 
-    // Temporary "show even if the mouse is idle" reveal, used by the corner status
-    // buttons (settings / director) so they can flash into view on an event (entering
-    // the track, toggling a mode) without waiting for cursor movement. A no-op for HUDs
+    // Temporary "show even if the mouse is idle" reveal, used by the Toggles strip so
+    // its controls (settings / director) can flash into view on entering the track
+    // without waiting for cursor movement. A no-op for HUDs
     // that don't consult isRevealed() in their render gate. Time-based (not frame-based)
     // so the duration is FPS-independent.
     void reveal(int ms) {
@@ -172,7 +181,7 @@ public:
 
     void setBackgroundOpacity(float opacity) {
         // Clamp opacity to valid range [min, 1.0] - min is 0 for most HUDs, but some
-        // (e.g. the settings button) floor it so the slider can't reach a misleading 0%
+        // (widgets that always draw foreground content) floor it so the slider can't reach a misleading 0%
         if (opacity < m_fMinBackgroundOpacity) opacity = m_fMinBackgroundOpacity;
         if (opacity > 1.0f) opacity = 1.0f;
 
@@ -258,7 +267,7 @@ public:
     // are one-line readouts stacked against the top edge: a caption over each turns
     // three thin bars into three two-row panels and pushes the stack down the screen.
     // The rest are panels whose content IS the panel -- a pit board, a radar sweep, a
-    // gauge face, the pad artwork, the cursor, the settings button.
+    // gauge face, the pad artwork, the cursor, the Toggles strip.
     //
     // THE RENDER PATH IS UNAFFECTED: the caption path handles the hidden case itself
     // (it emits the body card and an empty string, which is what keeps every layout
@@ -308,19 +317,6 @@ public:
     // Legacy texture index support (for compatibility)
     void setBackgroundTextureIndex(int index) { m_iBackgroundTextureIndex = index; invalidateThemeCache(); }
     int getBackgroundTextureIndex() const { return m_iBackgroundTextureIndex; }
-
-    // Sprites worth loading BEFORE this HUD first draws them: the Direct GL
-    // backend decodes lazily on the Draw thread, so art that first appears
-    // mid-ride costs that frame a decode (see hudgl::Renderer::Warm). Default:
-    // the background art. A HUD with art drawn only on an event (the radar's
-    // proximity sector, the gear limiter circle) adds it. Writes at most `cap`
-    // 1-based sprite indices and returns the count. Called every frame while
-    // Direct GL is on, so an override returns cached indices, never looks up.
-    virtual int glWarmSprites(int* out, int cap) const {
-        if (!m_bShowBackgroundTexture || m_iBackgroundTextureIndex <= 0 || cap <= 0) return 0;
-        out[0] = m_iBackgroundTextureIndex;
-        return 1;
-    }
 
     // Per-HUD panel-theme override:
     //   ""             follow the global Appearance > Panel Theme (the default)
@@ -458,12 +454,10 @@ public:
     }
     void setCompanionPosition(float x, float y) { ensureCompanionConfigured(); m_fCompanionOffsetX = x; m_fCompanionOffsetY = y; }
     // Settings load applies the persisted companion instance verbatim (configured).
-    void applyCompanionState(bool visible, float x, float y) {
-        m_bCompanionConfigured = true;
-        m_bCompanionVisible.store(visible);
-        m_fCompanionOffsetX = x; m_fCompanionOffsetY = y;
-    }
+    void applyCompanionState(bool visible, float x, float y);
     void clearCompanionState() { m_bCompanionConfigured = false; }
+    int getStackRank() const { return m_stackRank; }   // hud_manager_stack.cpp; 0 = never dragged
+    void setStackRank(int rank) { m_stackRank = rank < 0 ? 0 : rank; }
 
     // Snapshot the game state into the companion instance now, so the companion is
     // independent from the moment it's enabled instead of mirroring until the first
@@ -481,7 +475,7 @@ public:
     }
 
     // Hit-test at the surface the user is currently on: a companion HUD sits at its
-    // companion offset, so an interactive widget (settings/director button, drag)
+    // companion offset, so an interactive widget (the Toggles strip, drag)
     // must test there, not at the game offset. Mirrors to the game offset until the
     // companion instance diverges.
     // The panel rect the last rebuild produced. Public because it is the only way to
@@ -656,7 +650,10 @@ protected:
     // Clear strings and associated shadow flags (use instead of m_strings.clear()).
     // Also invalidates the title-icon/string indices so a rebuild path that clears
     // strings without re-emitting the title can't leave them pointing at a stale quad.
-    void clearStrings() { m_strings.clear(); m_stringSkipShadow.clear(); m_titleStringIndex = -1; m_titleIconQuadIndex = -1; }
+    void clearStrings() { m_strings.clear(); m_stringSkipShadow.clear(); m_titleStringIndex = -1; m_titleIconQuadIndex = -1; m_shadowIcons.clear(); }
+    // Drop-shadow the quad just pushed, as the title icon is: an icon beside shadowed
+    // text (collectSurface). Rebuild-time; the indices reset with clearStrings().
+    void shadowLastIcon() { if (!m_quads.empty()) m_shadowIcons.push_back(static_cast<int>(m_quads.size()) - 1); }
     // Drop the remembered panel rect, for a rebuild that draws NO panel background.
     //
     // addBackgroundQuad() is what arms m_bgRectValid and m_contentCardEmitted, so a
@@ -1144,6 +1141,9 @@ public:
     // state colour so the glyph is punched out of it (chipGlyphColor); unthemed, the
     // fill is a neutral surface and the state rides the glyph instead.
     unsigned long buttonGlyphColor(unsigned long stateColor) const;
+    // Appearance > Glow: a halo behind a signal light, reaching spreadY past its rect (see the definition).
+    static bool glowActive();
+    void addGlow(float x, float y, float w, float h, float spreadY, unsigned long color, float opacity);
 
     // A BUTTON'S STATE, in the one place that turns it into an alpha, so the same
     // control is the same shade whichever file draws it.
@@ -1158,8 +1158,8 @@ public:
     // deriving from the grey fill is exactly what makes it look live.
     //
     // Geometry and click regions stay the caller's, `labelY` included: a footer
-    // button, an in-card action row and VersionWidget's notification chips place
-    // themselves very differently, and only the drawing was ever the same.
+    // button and an in-card action row place themselves very differently, and
+    // only the drawing was ever the same.
     void addStateButton(float x, float y, float width, float height,
                         const char* label, float labelY, float fontSize,
                         unsigned long stateColor, ButtonState state,
@@ -1408,7 +1408,7 @@ public:
     //
     // Panels whose height is NOT composed this way keep computing their own and are
     // annotated: a panel sized from ART (GamepadWidget, from the pad photograph's
-    // aspect), from a CONTROL (SettingsButtonWidget), or with its own vertical
+    // aspect), or with its own vertical
     // structure (SettingsHud, whose top is a title band and whose body is section
     // cards -- see titleAdvance()).
     //
@@ -1501,10 +1501,6 @@ public:
     // gap_bar_hud.cpp documents at its own minPanelW ("setting both would make the
     // wider of the two win").
     //
-    // A panel that must fit content the stack width cannot hold is not a stack
-    // member: VersionWidget's update popup sizes to its message and button row
-    // through the ordinary PanelWant fields, and is deliberately wider.
-    //
     // The dim overload computes the shared width; the float one takes it, for the
     // Gap Bar, whose user width setting scales the panel.
     void wantCenterStackWidth(PanelWant& want, const ScaledDimensions& dim) const;
@@ -1515,8 +1511,7 @@ public:
     // TEST ONLY (test_hooks.cpp): the memoized plan as last stamped by
     // addPlanBackground -- the card-anchoring sweep measures every drawn string
     // and quad against its card rect. Null while no plan has been computed.
-    // Only meaningful for HUDs that bind planPanel() BY REFERENCE (all but
-    // VersionWidget, which copies and places a local).
+    // Only meaningful for HUDs that bind planPanel() BY REFERENCE.
     const PanelPlan* testPlacedPlan() const {
         return m_planCacheValid ? &m_planCachePlan : nullptr;
     }
@@ -1536,6 +1531,13 @@ public:
     // panel (the widest-ask rule) instead of overhanging it.
     float planTitleWidth(const ScaledDimensions& dim, const char* text,
                          TitleTier tier = TitleTier::Normal) const;
+    // A short note right-aligned on the caption row, in the column-header style
+    // (STRONG, Small, TERTIARY): the reference lap a HUD's gap is against.
+    // planTitleNoteWidth is what to add to captionW so the two never touch.
+    // Emit it LAST in a rebuild, so no index-walking fast path sees a string
+    // shift. No-op / 0 when the title is off.
+    void addPlanTitleNote(const PanelPlan& p, const ScaledDimensions& dim, const char* text);
+    float planTitleNoteWidth(const ScaledDimensions& dim, const char* text) const;
     // The y addPlanTitle hands addString for the caption — band-centred with the
     // row-centring compensation, or the bare row top. Exposed for layout fast
     // paths that repositionString the caption without re-emitting it.
@@ -1763,6 +1765,12 @@ protected:
                             const char* topLabel, const char* midLabel, const char* botLabel,
                             const ScaledDimensions& dims);
 
+    // Lap lines on a chart over laps: a full-height muted line at each whole lap
+    // between firstLaps (the left edge) and endLaps (the right), as the Delta
+    // Trace draws its split lines, every few laps once they would crowd. The
+    // Session Charts HUD's charts and the Dash's Gap chart, with their Grid.
+    void addChartLapLines(float x, float y, float width, float height, float firstLaps, float endLaps);
+
     // One scrolling history trace: a polyline over a deque of 0..1 samples, with
     // the newest sample pinned to the right edge (the graph scrolls left as the
     // deque fills). Segments where both endpoints are near zero are skipped so an
@@ -1822,8 +1830,12 @@ protected:
     // If set, these override the global ColorConfig/FontConfig values for this HUD.
     // Usage: getColor(ColorSlot::PRIMARY) instead of ColorConfig::getInstance().getPrimary()
     // Usage: getFont(FontCategory::NORMAL) instead of Fonts::getNormal()
+    // Public so a HUD drawing another's readout (the Dash's Gear and Speed cards)
+    // draws it in that HUD's own fonts and colours.
+public:
     unsigned long getColor(ColorSlot slot) const;
     int getFont(FontCategory category) const;
+protected:
 
     // A signed time delta's colour (see deltaColorSlot): ahead, behind, even.
     unsigned long deltaColor(int deltaMs) const { return getColor(deltaColorSlot(deltaMs)); }
@@ -1917,11 +1929,14 @@ public:
     std::string m_themeOverride;
     std::string m_defaultThemeOverride;   // the shipped value; see setDefaultThemeOverride()
     int m_titleIconQuadIndex = -1;     // index into m_quads of the title icon
+    std::vector<int> m_shadowIcons;    // body icon quads drop-shadowed like the title icon; see shadowLastIcon()
     // Motion (core/motion.h): a sub-range of m_quads / m_strings, [first, end),
     // that fades in on its own over the unchanged panel each time the HUD bumps
     // m_motionPartEpoch - the settings menu's tab body on a tab switch. -1 = none.
     int m_motionPartQuadFirst = -1, m_motionPartQuadEnd = -1;
     int m_motionPartStringFirst = -1, m_motionPartStringEnd = -1;
+    int m_overlayQuadFirst = -1, m_overlayStringFirst = -1;   // stacks over own text; see render_layers.h
+    int m_stackRank = 0;   // see getStackRank()
     uint32_t m_motionPartEpoch = 0;
     int m_motionPartKey = -1;   // what the range showed last build (the tab)
     // Marks what the range shows this build; a change bumps the epoch.
@@ -1975,15 +1990,16 @@ public:
     // Visibility and display options (protected so derived classes can access)
     // Atomic because background workers legitimately poke these (RecordsHud's
     // fetch thread marks HUDs dirty on completion; update-checker callbacks
-    // call VersionWidget::showUpdateNotification) while the game thread reads
+    // mark SettingsHud dirty) while the game thread reads
     // them every frame. All access is plain load/store - no RMW needed.
     std::atomic<bool> m_bVisible;
     // mt-plain: game thread only -- set from the settings panel's own click/open
     // handling, read in rebuildRenderData. See isPreviewing().
     bool m_bPreviewing = false;
+    bool m_bSampled = false;   // mt-plain: game thread only. See isSampled().
     bool m_bShowTitle;
     float m_fBackgroundOpacity;  // 0.0 (fully transparent) to 1.0 (fully opaque)
-    float m_fMinBackgroundOpacity = 0.0f;  // Lower bound for the opacity slider (most HUDs allow full transparency; raised for widgets that always render foreground content, e.g. the settings button)
+    float m_fMinBackgroundOpacity = 0.0f;  // Lower bound for the opacity slider (most HUDs allow full transparency; raised for widgets that always render foreground content)
     bool m_bShowBackgroundTexture;  // If true and texture exists, render sprite background
     int m_iBackgroundTextureIndex;  // 1-based sprite index (0 = no texture)
 

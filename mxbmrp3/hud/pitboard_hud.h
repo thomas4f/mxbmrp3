@@ -116,7 +116,7 @@ private:
     static constexpr float PIT_TRACK_END = 0.95f;      // Stop showing at 95% track position
 
     uint32_t m_enabledRows = ROW_DEFAULT;  // Bitfield of enabled rows
-    uint8_t m_displayMode = MODE_ALWAYS;   // Display mode setting
+    uint8_t m_displayMode = MODE_SPLITS;   // Display mode setting
     uint8_t m_gapCompareMode = GAP_AUTO;   // Gap comparison target
     int m_freezeDurationMs = FreezeDuration::PITBOARD_DEFAULT_MS;  // At Splits: how long the board shows
 

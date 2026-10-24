@@ -330,7 +330,7 @@ private:
     void applyFingerprintLine(const std::string& key, const std::string& value, HudManager& hudManager);
 
     // [StreamChat]: the whole StreamChatHud (a GLOBAL HUD, so its geometry lives
-    // here rather than in the per-profile cache, like the Director button's).
+    // here rather than in the per-profile cache).
     // [Twitch] / [YouTube]: each platform's switch and channel. Split out of
     // settings_manager_global.cpp; rows of its globalSectionRegistry().
     void writeStreamChatSettings(std::ostream& out, const HudManager& hudManager) const;
@@ -404,6 +404,17 @@ private:
     uint64_t m_loadedFileHash = 0;
     uint64_t m_expectedFileHash = 0;
     bool m_updateInstalled = false;
+    // The v11 migration: default-off HUDs still on their pre-1.33 default spot move
+    // to the new one (hud/default_slots.h). See settings_default_positions.cpp.
+    void migrateDefaultPositions(int loadedVersion);
+    // The v12 migration: the Spotter's card moves to low centre and its offsetX
+    // becomes its centre. The flags say whether the FILE's base section carried
+    // offsetX / companionX. See settings_default_positions.cpp.
+    void migrateSpotterPosition(int loadedVersion, bool baseCarriesX, bool baseCarriesCompanionX);
+    // The settings button's switches carried onto the Toggles strip, in every
+    // profile cache (the strip replaced the button). See the definition.
+    void migrateSettingsButton();
+
     // The last load read a pre-v10 file: settlePrestigeDefault() has work to do.
     bool m_prestigeDefaultPending = false;
 

@@ -121,7 +121,8 @@ jobs:
 
       # Release download counts for the report's Downloads tile and table. Read from
       # the PUBLIC repo's releases (no secret needed; the token only lifts the rate
-      # limit), into usage_survey/downloads.json beside the report it feeds.
+      # limit), into usage_survey/downloads.json beside the report it feeds, plus
+      # today's total into usage_survey/downloads_history.csv.
       - name: Fetch release download counts
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -173,6 +174,7 @@ jobs:
             usage_survey/index.html
             usage_survey/badge.json
             usage_survey/downloads.json
+            usage_survey/downloads_history.csv
             usage_survey/charts/
           retention-days: 3
 

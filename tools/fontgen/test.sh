@@ -7,6 +7,8 @@
 # that the atlas round-trips through raw inflate. No game engine or Wine needed.
 # Then asserts regen_shipped.sh's font table still names exactly the shipped
 # .fnt set and their .ttf sources -- see that check's own comment below.
+# Then regenerates every shipped font into a scratch folder and requires a byte
+# match, and that each advances its ten digits alike (tabular digits).
 #
 # THE BASELINE IS A FIXTURE, not the shipped font. It used to be
 # mxbmrp3_data/fonts/RobotoMono-Regular.fnt, kept un-normalised so this
@@ -137,4 +139,34 @@ if fails:
     for f in fails: print("  -", f)
     sys.exit(1)
 print(f"OK: {len(listed)} shipped fonts; regen list and both asset folders agree")
+PY
+
+# ---------------------------------------------------------------------------
+# THE SHIPPED .fnt ARE THIS GENERATOR'S OUTPUT, byte for byte: a re-run of
+# regen_shipped.sh into a scratch folder must reproduce every one, so a font
+# edited by hand, or a generator change that was not followed by a regen, fails
+# here. And every shipped font advances its ten digits alike (normalize's
+# tabular digits), which is what keeps a running time from jiggling.
+# ---------------------------------------------------------------------------
+"${HERE}/regen_shipped.sh" "${TMP}" >/dev/null 2>&1
+python3 - "${ROOT}/mxbmrp3_data/fonts" "${TMP}" <<'PY'
+import os, struct, sys
+shipped, regen = sys.argv[1], sys.argv[2]
+fails = []
+names = sorted(f for f in os.listdir(shipped) if f.endswith(".fnt"))
+for f in names:
+    data = open(os.path.join(shipped, f), "rb").read()
+    if open(os.path.join(regen, f), "rb").read() != data:
+        fails.append(f"{f}: regen_shipped.sh does not reproduce the committed file")
+    def advance(cp):
+        o = 268 + cp * 40
+        return sum(struct.unpack_from("<iii", data, o + 4))
+    digits = {advance(cp) for cp in range(ord("0"), ord("9") + 1)}
+    if len(digits) != 1:
+        fails.append(f"{f}: digit advances differ {sorted(digits)}")
+if fails:
+    print("FAIL:")
+    for f in fails: print("  -", f)
+    sys.exit(1)
+print(f"OK: {len(names)} shipped fonts regenerate byte for byte, digits tabular")
 PY

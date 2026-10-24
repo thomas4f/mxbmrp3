@@ -215,12 +215,19 @@ void BaseHud::setBounds(float left, float top, float right, float bottom) {
     m_fBoundsBottom = bottom;
 }
 
+void BaseHud::applyCompanionState(bool visible, float x, float y) {
+    m_bCompanionConfigured = true;
+    m_bCompanionVisible.store(visible);
+    m_fCompanionOffsetX = x; m_fCompanionOffsetY = y;
+}
+
 bool BaseHud::isPointInBounds(float x, float y) const {
     return isPointInBoundsAt(x, y, m_fOffsetX, m_fOffsetY);
 }
 
 bool BaseHud::isVisibleAnySurface() const {
     if (m_bVisible.load()) return true;  // vis-gate: this IS the any-surface check
+    if (m_bSampled) return true;         // a hover sample updates like a shown HUD
     // The companion is a second surface: a HUD enabled only there must still update.
     //
     // rendersOnCompanion() has to be asked HERE too, not only in collectSurface().

@@ -962,7 +962,7 @@ void MapHud::resetToDefaults() {
     m_fBackgroundOpacity = 0.0f;  // Transparent by default
     setScale(1.0f);
     m_anchorPoint = AnchorPoint::TOP_RIGHT;
-    m_fAnchorX = 0.994125f;
+    m_fAnchorX = DefaultSlots::rightEdge();   // one cell clear of the Toggles strip
     m_fAnchorY = 0.0113039f;
     m_bRotateToPlayer = true;
     m_bShowOutline = true;  // Enable outline by default

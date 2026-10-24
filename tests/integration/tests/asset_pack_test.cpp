@@ -344,34 +344,57 @@ TEST_CASE("reload config: re-reads every pack type, not just gamepads") {
 }
 
 // A data folder that never arrived leaves the plugin with no fonts, so no string
-// can say what went wrong. The warning is the Version widget's panel with its
-// text in SOLID_COLOR block letters, and drawn only when discovery came back empty.
-TEST_CASE("install warning: drawn from plain quads only when fonts or icons are missing") {
+// can say what went wrong. The warning is the Dash's message, its text in
+// SOLID_COLOR block letters when there are no fonts, raised only when discovery
+// came back empty -- and the Dash shows for it even when switched off.
+namespace {
+bool dashSays(PluginHost& host, const char* text) {
+    for (const auto& row : host.hudStringRows("dash_hud")) {
+        if (row.text == text) return true;
+    }
+    return false;
+}
+}  // namespace
+
+TEST_CASE("install warning: the Dash says it, in block letters when fonts are missing") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\asset_pack\\");
 
-    CHECK(host.installWarning(12, 40) == 0);   // a working install draws nothing
-
+    CHECK(host.installWarning(12, 40) == 0);   // a working install says nothing
     host.draw();
     const int baseline = host.lastGameQuads();
-    const int warning = host.installWarning(0, 0);
-    CHECK(warning > 1);                        // the backdrop plus the letters
-    CHECK(host.installWarning(0, 40) > 1);     // fonts alone are enough to warn
-    CHECK(host.installWarning(12, 0) > 1);     // and so are icons
-    CHECK(host.installWarning(12, 40, false) > 1);   // and so is a button's icon
-    host.draw();
-    CHECK(host.lastGameQuads() >= baseline + host.installWarning(12, 0));
 
-    // The real-font twin companion_demo diffs against: the same panel, its rows
-    // as strings instead of block letters, so far fewer quads and three strings.
-    const int realQuads = host.installWarning(0, 0, true, /*realText=*/true);
-    CHECK(realQuads >= 1);
-    CHECK(realQuads < warning);
+    CHECK(host.installWarning(0, 40) == 1);    // fonts alone are enough to warn
+    CHECK(host.installWarning(12, 0) == 1);    // and so are icons
+    CHECK(host.installWarning(12, 40, false) == 1);   // and so is a button's icon
+
+    // No fonts: the rows are block letters, so many more quads and no string.
+    REQUIRE(host.installWarning(0, 0) == 1);
     host.draw();
-    CHECK(host.lastGameStrings() >= 3);
+    CHECK(host.lastGameQuads() > baseline + 50);
+    CHECK_FALSE(dashSays(host, "Not installed correctly"));
+
+    // The real-font twin companion_demo diffs against: the same rows as strings.
+    REQUIRE(host.installWarning(0, 0, true, /*realText=*/true) == 1);
+    host.draw();
+    CHECK(dashSays(host, "Not installed correctly"));
+    CHECK(dashSays(host, "No fonts or icons in mxbmrp3_data"));
+    // No page strip: its icons may be what is missing.
+    CHECK(host.dashFirstIcon() == static_cast<int>(host.hudQuadRects("dash_hud").size()));
+
+    // A step cannot dismiss it: the install is still broken.
+    REQUIRE(host.injectHotkey("dash_next"));
+    host.draw();
+    CHECK(dashSays(host, "Not installed correctly"));
+
+    // Switched off, the Dash still shows for it.
+    REQUIRE(host.setHudVisible("dash_hud", false));
+    host.draw();
+    CHECK(host.dashBorrowed() == 1);
+    CHECK(dashSays(host, "Not installed correctly"));
 
     CHECK(host.installWarning(12, 40) == 0);
     host.draw();
-    CHECK(host.lastGameQuads() == baseline);
+    CHECK(host.dashBorrowed() == 0);
 }

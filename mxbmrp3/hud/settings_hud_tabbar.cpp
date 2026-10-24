@@ -12,11 +12,13 @@
 #include "../core/color_config.h"
 #include "../core/director_manager.h"
 #include "../core/hud_manager.h"
+#include "../core/plugin_data.h"
 #include "../core/plugin_utils.h"
 #include "../core/spotter_manager.h"
 #include "../core/ui_config.h"
 #include "../core/update_checker.h"
 #include "../core/xinput_reader.h"
+#include "../handlers/spectate_handler.h"
 
 using namespace PluginConstants;
 
@@ -138,7 +140,6 @@ bool SettingsHud::drawTabIcon(float x, float y, const char* iconName, unsigned l
     int spriteIndex = (UiConfig::getInstance().getTitleIcons() && iconName && iconName[0])
         ? AssetManager::getInstance().getIconSpriteIndex(iconName) : 0;
     if (spriteIndex <= 0) return false;
-    constexpr float TAB_ICON_SCALE = 0.63f;
     float cellW = checkboxWidth * 0.25f;
     float iconCenterY = y + dim.lineHeightNormal * 0.5f - (2.0f / 1080.0f) * dim.scale;
     addIcon(x + cellW * 1.5f, iconCenterY, spriteIndex, color, dim.fontSize * TAB_ICON_SCALE);
@@ -149,14 +150,60 @@ bool SettingsHud::drawTabIcon(float x, float y, const char* iconName, unsigned l
 // NEGATIVE when disabled (a disabled icon lightens 10% on hover as an affordance).
 // Falls back to the legacy "[x]"/"[ ]" text when no icon is available.
 // Call right after pushing the tab's toggle ClickRegion so the hover check targets it.
-void SettingsHud::drawTabToggle(float x, float y, const char* iconName, bool enabled,
+void SettingsHud::drawTabToggle(int tabId, float x, float y, const char* iconName, bool enabled,
                                 bool onBand, const ScaledDimensions& dim, float checkboxWidth) {
 
+    const bool hovered = (m_hoveredRegionIndex >= 0 &&
+                          m_hoveredRegionIndex == static_cast<int>(m_clickRegions.size()) - 1);
+    const unsigned long iconColor = tabToggleColor(tabId, enabled, hovered, onBand);
+    if (!drawTabIcon(x, y, iconName, iconColor, dim, checkboxWidth)) {
+        // Text checkbox when the tab has no icon to stand in for one (UI icons off)
+        addString(enabled ? "[x]" : "[ ]", x, y, Justify::LEFT,
+            Fonts::getNormal(), iconColor, dim.fontSize);
+    }
+
+}
+
+SettingsHud::DirectorState SettingsHud::directorState() {
+    // The old camera button's states, in its priority order, and like it only
+    // while there is a camera to direct.
+    const DirectorManager& dir = DirectorManager::getInstance();
+    if (!dir.isEnabled()) return DirectorState::Plain;
+    const int view = PluginData::getInstance().getDrawState();
+    if (view != PluginConstants::ViewState::SPECTATE && view != PluginConstants::ViewState::REPLAY)
+        return DirectorState::Plain;
+    if (SpectateHandler::getInstance().isManualCameraActive() || dir.isTakeoverActive())
+        return DirectorState::Manual;
+    if (dir.isLocked()) return DirectorState::Locked;
+    if (dir.getCurrentSubject() >= 0) return DirectorState::Running;
+    return DirectorState::Waiting;
+}
+
+const char* SettingsHud::directorStateName(DirectorState state) {
+    switch (state) {
+        case DirectorState::Running: return "Director: auto";
+        case DirectorState::Locked:  return "Director: locked";
+        case DirectorState::Manual:  return "Director: manual";
+        case DirectorState::Waiting: return "Director: waiting";
+        case DirectorState::Plain:   break;
+    }
+    return nullptr;
+}
+
+unsigned long SettingsHud::tabToggleColor(int tabId, bool enabled, bool hovered, bool onBand) {
     ColorConfig& cc = ColorConfig::getInstance();
-    // Full-opacity semantic base: POSITIVE (enabled) / NEGATIVE (disabled).
+    // Full-opacity semantic base: POSITIVE (enabled) / NEGATIVE (disabled), or
+    // the Director's live state.
     unsigned long base = enabled ? cc.getPositive() : cc.getNegative();
-    bool hovered = (m_hoveredRegionIndex >= 0 &&
-                    m_hoveredRegionIndex == static_cast<int>(m_clickRegions.size()) - 1);
+    if (tabId == TAB_DIRECTOR && enabled) {
+        switch (directorState()) {
+            case DirectorState::Locked:  base = cc.getWarning(); break;
+            case DirectorState::Manual:
+            case DirectorState::Waiting: base = cc.getNeutral(); break;
+            case DirectorState::Running:
+            case DirectorState::Plain:   break;
+        }
+    }
     unsigned long iconColor;
     if (hovered) {
         // Clear affordance in BOTH states: full opacity + a strong lighten, so a
@@ -178,12 +225,18 @@ void SettingsHud::drawTabToggle(float x, float y, const char* iconName, bool ena
         // doesn't scream.
         iconColor = enabled ? base : PluginUtils::applyOpacity(base, INACTIVE_ICON_OPACITY);
     }
-    if (!drawTabIcon(x, y, iconName, iconColor, dim, checkboxWidth)) {
-        // Text checkbox when the tab has no icon to stand in for one (UI icons off)
-        addString(enabled ? "[x]" : "[ ]", x, y, Justify::LEFT,
-            Fonts::getNormal(), iconColor, dim.fontSize);
-    }
+    return iconColor;
+}
 
+void SettingsHud::toggleTab(int tabId) {
+    const TabDescriptor* desc = findTabDescriptor(tabId);
+    if (!desc) return;
+    BaseHud* hud = desc->hud ? desc->hud(*this) : nullptr;
+    bool on = false;
+    if (!tabToggleState(tabId, hud, &on)) return;
+    BaseHud* target = nullptr;
+    const ClickRegion::Type type = tabToggleType(tabId, hud, &target);
+    dispatchRegion(ClickRegion(0.0f, 0.0f, 0.0f, 0.0f, type, target));
 }
 
 // Rumble's split-effect disclosure caret, the same caret-up the dropdown boxes

@@ -8,11 +8,11 @@
 //   is a sibling of AchievementManager's rather than a new widget: one card,
 //   two feeds.
 //
-//   STARTUP POPUPS -- messages that wait for the player (welcome on a fresh
-//   install, "Updated to 1.32"). Drawn by
-//   VersionWidget, which already carried the update-available popup with its
-//   buttons; this class only decides WHICH are owed and remembers which were
-//   answered, in the [Messages] INI section.
+//   STARTUP MESSAGES -- the ones that wait for the player: a broken install,
+//   an update available, "Updated to 1.33" and the welcome on a fresh install.
+//   Shown by the Dash as a notice on its card (DashHud::followNotices), even
+//   switched off for all but the welcome; this class only decides WHICH are
+//   owed and remembers which were answered, in the [Messages] INI section.
 //
 // THE RULE FOR A TOAST: post one only when the result is not already visible.
 // A HUD switched ON by hotkey appears, which is its own confirmation; one
@@ -26,6 +26,7 @@
 // ============================================================================
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <deque>
 #include <string>
@@ -97,34 +98,50 @@ public:
     uint32_t posted() const { return m_posted; }
     const Toast& lastPosted() const { return m_last; }
 
-    // ---- startup popups (VersionWidget) ------------------------------------
-    enum class Popup : uint8_t { None, Updated, Welcome };
+    // ---- startup messages (the Dash) ------------------------------------
+    enum class Startup : uint8_t { None, Update, Updated, Welcome, BrokenInstall };
 
     // Called once, after the FIRST settings load (never on RELOAD_CONFIG).
     //   freshInstall  there was no settings file
     //   currentLine   the running "MAJOR.MINOR" (WhatsNew::currentLine)
     //
-    // NO CRASH POPUP, deliberately: most dumps come from the game crashing, and
-    // any notice about one shown as the plugin loads reads as the plugin owning
-    // it. The crash handler still saves its report for support to ask for.
+    // NO CRASH MESSAGE, deliberately: most dumps come from the game crashing,
+    // and any notice about one shown as the plugin loads reads as the plugin
+    // owning it. The crash handler still saves its report for support to ask for.
     void onStartup(bool freshInstall, const char* currentLine);
+    // The startup update check found a release the player has not skipped. From
+    // the UpdateChecker worker, hence the atomic.
+    void offerUpdate() { m_owesUpdate = true; }
 
-    // The highest-priority popup still owed this session ("Updated to", then
-    // the welcome). The update-available popup is VersionWidget's own and
-    // outranks all of these.
-    Popup pendingPopup() const;
+    // The install is missing its fonts or icons (HudManager::buildInstallWarning):
+    // `what` names what, a string literal. Said all session, never answered, so
+    // not among pendingStartup()'s; the Dash puts it before them, and before any
+    // notice.
+    void setInstallProblem(const char* what) { m_installProblem = what; }
+    const char* installProblem() const { return m_installProblem; }
+
+    // The highest-priority answerable message still owed this session: the
+    // update, then "Updated to", then the welcome.
+    Startup pendingStartup() const;
     // The release line "Updated to" names: the one onStartup was given.
     const char* updatedLine() const { return m_currentLine.c_str(); }
-    // The player answered `p`: a button, or the welcome's goal reached (the
-    // settings menu opened). Recorded for good.
-    void resolvePopup(Popup p);
-    // `p` timed out unanswered. "Updated to" is told once, so it is recorded
-    // anyway; the welcome comes back at the next launch.
-    void expirePopup(Popup p) { if (p != Popup::Welcome) resolvePopup(p); else m_owesWelcome = false; }
+    // The player answered `s` (a Dash step, or the settings menu opened):
+    // recorded for good. The update's answer is only for this session; the
+    // caller skips the version when that is what the answer meant.
+    void resolveStartup(Startup s);
+    // `s` timed out unanswered. "Updated to" is told once, so it is recorded
+    // anyway; the welcome and the update come back at the next launch.
+    void expireStartup(Startup s) {
+        if (s == Startup::Welcome) m_owesWelcome = false;
+        else resolveStartup(s);
+    }
+    // The settings menu opened: where every one of them points, so all are
+    // answered.
+    void onSettingsOpened();
 
     // ---- [Messages] persistence ---------------------------------------------
     // lastLine: the release line whose "Updated to" was last told. While one is
-    // still owed this keeps the OLD line, so a session closed before the popup
+    // still owed this keeps the OLD line, so a session closed before the message
     // drew owes it again; otherwise the writer stores the running line. An
     // absent key on an existing install (one older than this feature) reads as
     // "never told".
@@ -161,6 +178,8 @@ private:
     std::string m_lastLine;
     std::string m_currentLine;       // the running line, from onStartup
 
+    const char* m_installProblem = nullptr;
+    std::atomic<bool> m_owesUpdate{false};
     bool m_owesUpdated = false;
     bool m_owesWelcome = false;
 };

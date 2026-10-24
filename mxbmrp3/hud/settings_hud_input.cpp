@@ -10,7 +10,7 @@
 #include "settings_hud.h"
 #include "../core/stats_manager.h"
 #include "clock_widget.h"
-#include "version_widget.h"
+#include "breakout_hud.h"
 #include "pitboard_hud.h"
 #include "gamepad_widget.h"
 #include "settings/whats_new.h"
@@ -20,7 +20,6 @@
 #include "helmet_overlay_hud.h"
 #include "fmx_hud.h"
 #include "stats_hud.h"
-#include "settings_button_widget.h"
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
 #include "../core/plugin_constants.h"
@@ -36,7 +35,6 @@
 #include "../core/achievement_manager.h"
 #include "../core/system_messages.h"
 #include "achievement_widget.h"
-#include "director_widget.h"
 #include "../core/hotkey_manager.h"
 #if GAME_HAS_DISCORD
 #include "../core/discord_manager.h"
@@ -233,12 +231,6 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
             DirectorManager::getInstance().setFollowLappers(!DirectorManager::getInstance().getFollowLappers());
             rebuildRenderData();
             break;
-        case ClickRegion::DIRECTOR_HUD_VISIBLE:
-            // DirectorWidget is an ordinary positioned widget, so its on/off decouples
-            // per surface like every other HUD's.
-            toggleHudOnActiveSurface(HudManager::getInstance().getDirectorWidget());
-            rebuildRenderData();
-            break;
         case ClickRegion::HELMET_OVERLAY_TOGGLE:
             if (m_helmetOverlay) {
                 // Visibility gate only — doesn't touch individual enable flags
@@ -361,9 +353,9 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
                 // Check if threshold reached
                 if (m_versionClickCount >= EASTER_EGG_CLICKS) {
                     m_versionClickCount = 0;
-                    if (m_version) {
+                    if (m_breakout) {
                         hide();  // Close settings before starting game
-                        m_version->startGame();
+                        m_breakout->startGame();
                         return;   // hide() already tore the panel down; don't rebuild
                     }
                 }
@@ -609,6 +601,7 @@ static bool isPerturbSafe(SettingsHud::ClickRegion::Type t) {
         case CR::OPEN_LINK_KOFI:
         case CR::OPEN_LINK_GITHUB:
         case CR::OPEN_LINK_OVERLAY:
+        case CR::OPEN_LINK_RELEASES:
         case CR::UPDATE_CHECK_NOW:
         case CR::UPDATE_INSTALL:
         case CR::PROBE_SWEEP:
@@ -664,15 +657,6 @@ bool SettingsHud::testClickResetTab(int clicks) {
         if (!found) return false;
     }
     return true;
-}
-
-bool SettingsHud::testClickDirectorHudVisible() {
-    for (const auto& r : m_clickRegions) {
-        if (r.type != ClickRegion::DIRECTOR_HUD_VISIBLE) continue;
-        handleClick(r.x + r.width * 0.5f, r.y + r.height * 0.5f);
-        return true;
-    }
-    return false;
 }
 
 bool SettingsHud::testClickCycle(int index, bool up) {

@@ -33,6 +33,18 @@ public:
     const char* getIconName() const override { return "hud-session"; }
     void resetToDefaults();
 
+    // The Format row's text ("Race 1 (10:00 + 2L), In Progress"); false when it
+    // is nothing but the state placeholder. Shared with the Dash's Session page.
+    static bool formatLine(char* out, size_t size);
+    // The Weather row's text ("Sunny, 24 C"); only meaningful with conditions >= 0.
+    static void weatherLine(char* out, size_t size);
+    // Icon size as a fraction of font size (slightly smaller than text for visual balance)
+    static constexpr float ICON_SIZE_FACTOR = 0.8f;
+    // The rows' icons (each row's own, the server headline has none).
+    static constexpr const char* TRACK_ICON = "location-dot";
+    static constexpr const char* FORMAT_ICON = "clock";
+    static constexpr const char* WEATHER_ICON = "temperature-low";
+
     // Public for settings access
     uint32_t m_enabledRows = ROW_DEFAULT;
     bool m_bShowIcons = true;  // Show row icons

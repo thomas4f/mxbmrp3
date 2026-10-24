@@ -237,10 +237,8 @@ void PitboardHud::rebuildRenderData() {
     m_quads.clear();
 
     // Keep BaseHud's background sprite pointing at the active pack - BEFORE the
-    // hidden early-out, so the board is known while it is not showing: that is
-    // what HudManager::publishGlWarmList hands the GL backend to load ahead of the
-    // first show. Assigned only on change: setBackgroundTextureIndex invalidates
-    // the theme memo.
+    // hidden early-out, so the board is known while it is not showing.
+    // Assigned only on change: setBackgroundTextureIndex invalidates the theme memo.
     const PitboardAsset* pack = activePack();
     const int packBackground = pack ? pack->sprites[PitboardSprite::BACKGROUND] : 0;
     if (getBackgroundTextureIndex() != packBackground) setBackgroundTextureIndex(packBackground);

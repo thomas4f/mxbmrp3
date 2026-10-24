@@ -412,6 +412,25 @@ float BaseHud::planTitleY(const PanelPlan& p) const {
     return inkCenteredY(p.Y(p.g.captionY), p.H(boxCells), fs);
 }
 
+// Right-aligned on the caption row, inset from the band's right edge by what
+// the caption is inset from its left, and ink-centred in the caption's box.
+void BaseHud::addPlanTitleNote(const PanelPlan& p, const ScaledDimensions& dim, const char* text) {
+    if (!m_bShowTitle || !p.g.hasCaptionRow || !text || !text[0]) return;
+    const double right = p.g.titleLeft + p.g.titleW - (p.g.captionX - p.g.titleLeft);
+    const double boxCells = (p.g.titleBot - (p.g.T.b.b + p.g.T.p.b))
+                          - p.g.captionY;
+    addString(text, p.X(right), inkCenteredY(p.Y(p.g.captionY), p.H(boxCells), dim.fontSizeSmall),
+              PluginConstants::Justify::RIGHT, getFont(FontCategory::STRONG),
+              getColor(ColorSlot::TERTIARY), dim.fontSizeSmall);
+}
+
+float BaseHud::planTitleNoteWidth(const ScaledDimensions& dim, const char* text) const {
+    if (!m_bShowTitle || !text || !text[0]) return 0.0f;
+    // One normal cell between the caption and the note.
+    return PluginUtils::calculateMonospaceTextWidth(static_cast<int>(std::strlen(text)), dim.fontSizeSmall)
+         + PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
+}
+
 // The caption's ASK — what PanelWant::captionW should carry so a long title
 // widens its panel instead of overhanging it (the model's widest-ask rule; the
 // old chain simply let it overhang). Text width plus the icon's advance when

@@ -42,6 +42,35 @@
 //    their exact grid thickness). The polyline is intentionally not pinned.
 //  * Session Charts: fed a fixed 3-rider, 3-lap race; all four charts enabled.
 //
+// GOLDEN REFRESH, 2026-10-23 (eleventh) -- PERFORMANCE UNDER THE MAP.
+// Performance's POSITION SUMS and ORDER HASHES only; every count, colour and
+// metadata sum is byte-identical. The spot under Standings is gone: its members
+// joined the right column under the Map (hud/default_slots.h).
+//   perf        gpos  24.177999496 ->  39.451718926   lpos 10.975699902 -> 18.612559557
+//
+// GOLDEN REFRESH, 2026-10-22 (tenth) -- CHARTS UNDER THE MAP.
+// Charts' POSITION SUMS and ORDER HASHES only; every count, colour, sprite,
+// metadata and text sum is byte-identical. Its default spot moved from the
+// centre group to the right column under the Map (hud/default_slots.h).
+//   charts      qpos 348.963109136 -> 480.080022216   spos 92.312821269 -> 125.092050314
+//
+// GOLDEN REFRESH, 2026-10-22 (ninth) -- THE DEFAULT-OFF POSITIONS.
+// POSITION SUMS and ORDER HASHES only, on all four HUDs; every count, colour,
+// sprite, metadata and text sum is byte-identical. The four HUDs open in new
+// default spots (hud/default_slots.h): Telemetry and Rumble in the right
+// column under the Map, Performance under Standings, Charts centred.
+//   telemetry   qpos 583.277590513 -> 623.018796563   spos 32.798418045 -> 35.136136293
+//   rumble      qpos  31.413556814 ->  35.335275412   spos 31.285067677 -> 35.206786394
+//   charts      qpos 346.917113364 -> 348.963109136   spos 91.801324189 -> 92.312821269
+//   perf        gpos  41.866000891 ->  24.177999496   lpos 19.819700003 -> 10.975699902
+//
+// GOLDEN REFRESH, 2026-10-21 (eighth) -- THE OPACITY DEFAULT.
+// QUAD COLOUR SUM and QUAD ORDER HASH only, on Telemetry, Rumble and Charts;
+// everything else is byte-identical. Each qcol fell by exactly 2013265920 =
+// (204 - 84) << 24: one quad's alpha, the panel background, going from 0.8 to
+// 0.33 of 255 (SettingsLimits::DEFAULT_OPACITY). Performance pins no panel
+// quad, so it did not move.
+//
 // GOLDEN REFRESH, 2026-08-25 (seventh) -- THE ROW-PITCH DEFAULT.
 // POSITIONS ONLY, on all four HUDs. Every count, every colour sum, the sprite
 // sums, the font/justify/size metadata sums and every text hash are
@@ -499,9 +528,9 @@ TEST_CASE("strip-chart HUDs: primitive parity goldens") {
         CHECK(fpStr(f2) == fpStr(f));         // stable across draws
         // GOLDEN(telemetry)
         checkAgainst(f, { 102, 24,
-                          583.277590513, 436195095084.0, 0.0,
-                          32.798418045, 85684202790.0, 24000.43, 14463422246.0,
-                          0xd759b3e88eb214beULL, 0xa2b81cb3aa9c17d3ULL });
+                          623.018796563, 434181829164.0, 0.0,
+                          35.136136293, 85684202790.0, 24000.43, 14463422246.0,
+                          0xae946c690e75fc87ULL, 0x8a2360ba07ced4adULL });
     }
 
     // =========================================================================
@@ -527,9 +556,9 @@ TEST_CASE("strip-chart HUDs: primitive parity goldens") {
         CHECK(fpStr(f2) == fpStr(f));
         // GOLDEN(rumble)
         checkAgainst(f, { 6, 24,
-                          31.413556814, 20551431668.0, 0.0,
-                          31.285067677, 84962886643.0, 24400.42, 13744300338.0,
-                          0xac6a724b95036ec0ULL, 0xed3e3758697080b1ULL });
+                          35.335275412, 18538165748.0, 0.0,
+                          35.206786394, 84962886643.0, 24400.42, 13744300338.0,
+                          0xbad868145d616f58ULL, 0x0a053c33d851d14bULL });
         host.rumbleSetEnabled(false);
         host.fakeGamepad(false);
     }
@@ -576,11 +605,11 @@ TEST_CASE("strip-chart HUDs: primitive parity goldens") {
         MESSAGE("perf axis labels: " << lbuf);
         CHECK(found == 12);   // 6 labels x (shadow + main)
         // GOLDEN(performance) — axis-label triple identity
-        CHECK_POS(lpos, 19.819700003, found * 2);
+        CHECK_POS(lpos, 18.612559557, found * 2);
         CHECK(lcol == doctest::Approx(42837166920.0).epsilon(1e-12));
         CHECK(lmeta == doctest::Approx(12000.18).epsilon(1e-12));
         // GOLDEN(performance) — axis-label emission order
-        CHECK(lorder == 0x38a3a04e2054d534ULL);   // ms labels read the frame budget
+        CHECK(lorder == 0xe57379f72ee5a4beULL);   // ms labels read the frame budget
 
         // The six grid lines are the only quads with the exact grid thickness
         // (0.001 * scale); the trace polylines are 0.002 * scale thick.
@@ -602,28 +631,31 @@ TEST_CASE("strip-chart HUDs: primitive parity goldens") {
         MESSAGE("perf grid lines: " << gbuf);
         CHECK(gridCount == 6);
         // GOLDEN(performance) — grid-line geometry
-        CHECK_POS(gpos, 41.866000891, gridCount * 8);
+        CHECK_POS(gpos, 39.451718926, gridCount * 8);
         CHECK(gcol == doctest::Approx(25708616280.0).epsilon(1e-12));
         // GOLDEN(performance) — grid-line emission order
-        CHECK(gorder == 0x92e72a14f4c7626cULL);
+        CHECK(gorder == 0x466380d6f2c0ea84ULL);
     }
 
     // =========================================================================
     // Session Charts HUD (all four charts, fixed race data)
     // =========================================================================
     {
-        loadPhase({ "SessionChartsHud" });
+        // One point per lap, stated like the drop shadow above: Sector points became
+        // the default in 1.33, and these goldens pin the per-lap drawing.
+        loadPhase({ "SessionChartsHud" }, { { { "SessionChartsHud", "enabledElements" }, "47" } });
         host.sessionChartsSetCharts(15);      // Lap | Trace | Gap | Pace
         (void)probe.fingerprint();
         Fp f = probe.fingerprint();
         Fp f2 = probe.fingerprint();
         MESSAGE("charts:     " << fpStr(f));
         CHECK(fpStr(f2) == fpStr(f));
-        // GOLDEN(charts)
-        checkAgainst(f, { 54, 66,
-                          279.215777814, 230722193649.0, 0.0,
-                          91.801324189, 235651418535.0, 70801.06, 37242547186.0,
-                          0x680697ff6e24a904ULL, 0x870a05bf12f1e77dULL });
+        // GOLDEN(charts) - re-pinned when Grid lines gained a line at each lap
+        // (BaseHud::addChartLapLines): twelve more quads, strings unchanged.
+        checkAgainst(f, { 66, 66,
+                          480.080022216, 280126160289.0, 0.0,
+                          125.092050314, 235651418535.0, 70801.06, 37242547186.0,
+                          0x995bc3ea77787570ULL, 0xf761394389121b6dULL });
     }
 
     // --- Baseline again: phases must leave nothing behind -----------------------

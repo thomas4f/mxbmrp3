@@ -177,7 +177,8 @@ namespace {
 // 2.30.0 = widget_prestige is 1 only when the badge is on AND unlocked (a prestige
 //          level taken, or developer mode). It used to read the stored switch
 //          alone, which defaulted on, so nearly every install reported it.
-constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.30.0";
+// 2.31.0 = widget_version is gone with the Version widget (and out of widget_count).
+constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.31.0";
 
 // The two Aptabase ingest paths a queued POST can name.
 constexpr const wchar_t* PATH_EVENTS = L"/api/v0/events";

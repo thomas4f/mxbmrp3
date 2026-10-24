@@ -86,7 +86,6 @@ void GapBarHud::update() {
             m_learnSplitCache[i] = -1;
         }
         m_cachedSessionGeneration = currentGeneration;
-        m_autoPeakMs = 0;
         if (isVisibleAnySurface()) setDataDirty();
     }
 
@@ -97,7 +96,6 @@ void GapBarHud::update() {
         DEBUG_INFO_F("GapBarHud: Spectate target changed from %d to %d",
             m_cachedDisplayRaceNum, currentDisplayRaceNum);
         m_cachedDisplayRaceNum = currentDisplayRaceNum;
-        m_autoPeakMs = 0;
         const CurrentLapData* currentLap = pluginData.getCurrentLapData();
         if (currentLap) {
             m_learnSplitCache[0] = currentLap->split1;
@@ -107,16 +105,10 @@ void GapBarHud::update() {
         if (isVisibleAnySurface()) setDataDirty();
     }
 
-    // The Auto range's peak belongs to one lap against one reference: start it
-    // over when the gap comes back live (the next timed lap after the pits, or
-    // after a session reset) and when the Reference changes. A committed lap
-    // restarts it too (effectiveRangeMs); the out-lap from the pits is never
-    // committed, which is why the live flip is needed as well.
+    // The Auto range's peak belongs to one lap of one rider against one
+    // reference (GapAutoRange::follow says when it starts over).
     const Reference reference = getReference();
-    const bool live = pluginData.hasValidLiveGap(reference);
-    if ((live && !m_autoLive) || reference != m_autoReference) m_autoPeakMs = 0;
-    m_autoLive = live;
-    m_autoReference = reference;
+    m_autoRange.follow(reference);
 
     // Official splits and the line: freeze on their gap against the reference
     if (m_freeze.update(reference, HudDefaults::freezeMs(m_freezeDurationMs)) && isVisibleAnySurface()) {
@@ -168,7 +160,7 @@ void GapBarHud::rebuildRenderData() {
     float centerStackWidth = CenterStack::boxWidth(dim.fontSizeLarge, centerStackPaddingX());
     float basePanelWidth = 2.0f * centerStackWidth;
     float panelWidth = basePanelWidth * (static_cast<float>(m_barWidthPercent) / 100.0f);
-    // One normal row, like the Version widget's content, so the bar lines up on the
+    // One normal row, so the bar lines up on the
     // shared grid with the Notices/Timing rows. Inner content (gap fill, markers, gap
     // text) is positioned relative to barHeight below, so it re-centers automatically.
     // Its own gap text stays cell-centred: a normal font in a normal row is exactly the
@@ -202,10 +194,10 @@ void GapBarHud::rebuildRenderData() {
     // flat while every other panel is framed.
     // Panel padding wraps the bar, like every other HUD's box wraps its content, so
     // panelPaddingXCells/panelPaddingYCells apply here.
-    // Optional caption. Default OFF, like the two panels below it in the stack --
-    // this one is a bar, and a header over it is usually noise -- but available.
-    // The box grows DOWNWARD (title above content, as everywhere else), which moves
-    // the bar down; see resetToDefaults for what that costs the centre stack.
+    // Optional caption. Default OFF, like the two panels sharing its spot -- this
+    // one is a bar, and a header over it is usually noise -- but available. The box
+    // grows DOWNWARD (title above content, as everywhere else), which moves the bar
+    // down.
     // BOX-MODEL: the bar is the section's content; the card is its border box.
     // The panel wraps both through the plan, so the bar's interior, the card the
     // user sees and the panel height are one computation.
@@ -219,7 +211,9 @@ void GapBarHud::rebuildRenderData() {
     // Normal, which is right for a gauge and wrong for a panel with a table in
     // it -- left unsaid, this panel wears the widget caption size next to
     // siblings that do not.
-    want.captionW = planTitleWidth(dim, "Gap Bar", TitleTier::Large);
+    // The reference lap, named on the title row.
+    const char* refNote = PbGapTracker::refName(getReference());
+    want.captionW = planTitleWidth(dim, "Gap Bar", TitleTier::Large) + planTitleNoteWidth(dim, refNote);
     want.tier = TitleTier::Large;
     // The bar IS this panel: unthemed, its coloured fill takes the cell of panel
     // padding rather than sitting inside it. Same outer rect either way; with a
@@ -370,8 +364,9 @@ void GapBarHud::rebuildRenderData() {
     if (!m_showGapText) {
         // Skip gap text - user wants pure flat map mode
         // The BOX, not the bar: the box is what the user sees and grabs, and with a
-    // title on, bar-only bounds would leave the caption undraggable.
-    setBounds(boxLeft, boxTop, boxLeft + boxWidth, boxTop + boxHeight);
+        // title on, bar-only bounds would leave the caption undraggable.
+        setBounds(boxLeft, boxTop, boxLeft + boxWidth, boxTop + boxHeight);
+        addPlanTitleNote(plan, dim, refNote);
         return;
     }
 
@@ -400,7 +395,20 @@ void GapBarHud::rebuildRenderData() {
 
     // The frozen official gap from a split/lap crossing, else the live one (full precision)
     int gap = 0;
-    if (m_freeze.shownGap(getReference(), &gap)) {
+    const bool hasGap = m_freeze.shownGap(getReference(), &gap);
+    // AN ALL-TIME PB WITHOUT ITS TRACE says so instead of the placeholder: the
+    // PB is in the stats file, so an empty bar reads as the reference failing
+    // to load. Only that case: no PB at all is plain missing data. MUTED like
+    // the placeholder it replaces, and small, so it fits the narrowest bar.
+    if (!hasGap && getReference() == Reference::ALLTIME_PB &&
+        PluginData::getInstance().isAllTimeTraceMissing()) {
+        addString(NO_TRACE_NOTE, gapTextX, inkCenteredY(startY, barHeight, dim.fontSizeSmall), Justify::CENTER,
+                  this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSizeSmall);
+        addPlanTitleNote(plan, dim, refNote);
+        setBounds(boxLeft, boxTop, boxLeft + boxWidth, boxTop + boxHeight);
+        return;
+    }
+    if (hasGap) {
         PluginUtils::formatTimeDiff(gapBuffer, sizeof(gapBuffer), gap);
         gapColor = this->deltaColor(gap);
     } else {
@@ -428,6 +436,7 @@ void GapBarHud::rebuildRenderData() {
     // Set bounds for drag detection
     // The BOX, not the bar: the box is what the user sees and grabs, and with a
     // title on, bar-only bounds would leave the caption undraggable.
+    addPlanTitleNote(plan, dim, refNote);
     setBounds(boxLeft, boxTop, boxLeft + boxWidth, boxTop + boxHeight);
 }
 
@@ -452,20 +461,16 @@ void GapBarHud::resetToDefaults() {
     m_reference = Reference::SESSION_PB;
     m_referenceDefault = true;
     // Off by DEFAULT, not unavailable -- the toggle is in the Gap Bar tab. Switching
-    // it on grows the box DOWNWARD, so the bar and everything under it move down by
-    // the band's height; center_stack.h derives the two panels below from box heights
-    // it computes WITHOUT a title, so expect to nudge them.
+    // it on grows the box DOWNWARD, so the bar moves down by the band's height.
     m_bShowTitle = false;
     setTextureVariant(0);  // No texture by default
-    m_fBackgroundOpacity = 0.1f;
+    m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setScale(1.0f);
-    // First box of the center-top stack; see hud/center_stack.h for the whole
-    // specification. One cell down from the screen edge, aligning with the
-    // settings/camera buttons' row.
+    // The spot under the Dash that Notices and Timing share; see hud/center_stack.h.
     // The BOX TOP, plainly, because that is what the offset means here (see
     // rebuildRenderData); adding the live paddingV back would make the default
     // depend on the theme in force when it is written.
-    setPosition(CENTER_ANCHOR_X, CenterStack::stackBoxTop());
+    setPosition(CENTER_ANCHOR_X, CenterStack::underDashBoxTop());
 
     // Settings
     m_freezeDurationMs = FreezeDuration::FOLLOW_DEFAULT;
@@ -477,7 +482,7 @@ void GapBarHud::resetToDefaults() {
     m_showGapText = true;              // Show gap text by default
     m_showGapBar = true;               // Show gap visualization bars by default
     m_gapRangeMs = DEFAULT_RANGE_MS;
-    m_autoPeakMs = 0;
+    m_autoRange.reset();
     m_barWidthPercent = DEFAULT_WIDTH_PERCENT;
     m_fMarkerScale = DEFAULT_MARKER_SCALE;
     m_showSplits = true;
@@ -487,16 +492,9 @@ void GapBarHud::resetToDefaults() {
 }
 
 // The fill's range: the setting, or under Auto the round step that holds the
-// lap's largest gap so far. A new lap (a lap committed) starts the peak over.
+// lap's largest gap so far (GapAutoRange).
 int GapBarHud::effectiveRangeMs(int gapMs) {
-    if (m_gapRangeMs != RANGE_AUTO) return m_gapRangeMs;
-    const unsigned stamp = PluginData::getInstance().getPbGapTracker().lastLapStamp();
-    if (stamp != m_autoLapStamp) {
-        m_autoLapStamp = stamp;
-        m_autoPeakMs = 0;
-    }
-    m_autoPeakMs = std::max(m_autoPeakMs, std::abs(gapMs));
-    return std::max(MIN_RANGE_MS, PluginUtils::niceGapScaleMs(m_autoPeakMs));
+    return rangeMs(m_autoRange, gapMs);
 }
 
 // ============================================================================
@@ -588,10 +586,10 @@ unsigned long GapBarHud::calculateRiderColor(int riderRaceNum, int displayRaceNu
 }
 
 // ============================================================================
-// Render a marker icon (rotated 90° right for directional icons only)
+// A marker icon's quad (rotated 90° right for directional icons only)
 // ============================================================================
-void GapBarHud::renderMarkerIcon(float centerX, float centerY, float size,
-                                  int spriteIndex, unsigned long color, int shapeIndex) {
+void GapBarHud::markerQuad(float centerX, float centerY, float size,
+                           int spriteIndex, unsigned long color, int shapeIndex, SPluginQuad_t& out) {
     // Define corner offsets (square icon)
     float halfSize = size / 2.0f;
 
@@ -610,7 +608,6 @@ void GapBarHud::renderMarkerIcon(float centerX, float centerY, float size,
         { halfSize, -halfSize}   // Top-right
     };
 
-    SPluginQuad_t sprite;
     for (int i = 0; i < 4; i++) {
         float dx = corners[i][0];
         float dy = corners[i][1];
@@ -620,23 +617,30 @@ void GapBarHud::renderMarkerIcon(float centerX, float centerY, float size,
         float rotY = dx * sinAngle + dy * cosAngle;
 
         // Apply aspect ratio to X and position
-        sprite.m_aafPos[i][0] = centerX + rotX / UI_ASPECT_RATIO;
-        sprite.m_aafPos[i][1] = centerY + rotY;
-        applyOffset(sprite.m_aafPos[i][0], sprite.m_aafPos[i][1]);
+        out.m_aafPos[i][0] = centerX + rotX / UI_ASPECT_RATIO;
+        out.m_aafPos[i][1] = centerY + rotY;
     }
 
-    sprite.m_iSprite = spriteIndex;
-    sprite.m_ulColor = color;
+    out.m_iSprite = spriteIndex;
+    out.m_ulColor = color;
+}
+
+void GapBarHud::renderMarkerIcon(float centerX, float centerY, float size,
+                                  int spriteIndex, unsigned long color, int shapeIndex) {
+    SPluginQuad_t sprite;
+    markerQuad(centerX, centerY, size, spriteIndex, color, shapeIndex, sprite);
+    for (int i = 0; i < 4; i++) applyOffset(sprite.m_aafPos[i][0], sprite.m_aafPos[i][1]);
     m_quads.push_back(sprite);
 }
 
 // ============================================================================
-// Render all rider markers (self, ghost, opponents based on mode)
+// The markers in draw order: opponents, ghost, self (as asked)
 // ============================================================================
-void GapBarHud::renderRiderMarkers(float innerX, float innerY, float innerWidth, float innerHeight,
-                                    const ScaledDimensions& dim) {
+int GapBarHud::collectMarkers(const Unified::TrackPositionData* riders, int count, bool opponents, bool ghost,
+                              Marker* out, int max) const {
     const PluginData& pluginData = PluginData::getInstance();
-    int displayRaceNum = pluginData.getDisplayRaceNum();
+    const int displayRaceNum = pluginData.getDisplayRaceNum();
+    const TrackedRidersManager& trackedMgr = TrackedRidersManager::getInstance();
 
     // Get icon sprite index and shape index for rotation check
     const AssetManager& assetMgr = AssetManager::getInstance();
@@ -652,29 +656,26 @@ void GapBarHud::renderRiderMarkers(float innerX, float innerY, float innerWidth,
         globalShapeIndex = assetMgr.shapeIndexForSprite(spriteIndex);
     }
 
-    // Icon size scaled with HUD and marker scale (matches MapHud/StandingsHud pattern)
-    // DEFAULT_MARKER_BASE_SIZE is full size, so halfSize = 0.006 * scale * markerScale
-    float iconSize = DEFAULT_MARKER_BASE_SIZE * m_fScale * m_fMarkerScale;
-    float iconHalfSize = iconSize / 2.0f;
+    // The displayed rider's tracked colour and shape, which their ghost takes too.
+    const RaceEntryData* selfEntry = pluginData.getRaceEntry(displayRaceNum);
+    const TrackedRiderConfig* selfTracked = selfEntry ? trackedMgr.getTrackedRider(selfEntry->name) : nullptr;
 
-    // Y centre of the bar -- of the ICON when there is no label, and of the icon and
-    // its label TOGETHER when there is. This bar is one text row tall, so a label
-    // centred the naive way hangs half out of the panel; marker_label.h owns the
-    // shift, and it is per-marker because the local player's icon and label are both
-    // boosted and so want a bigger one.
-    const float boxCenterY = innerY + innerHeight / 2.0f;
-    auto centerFor = [&](float halfSize, float boost) {
-        if (m_labelMode == LabelMode::NONE) return boxCenterY;
-        return boxCenterY + MarkerLabel::blockCenterShift(
-            m_labelAnchor, halfSize, dim.fontSizeSmall * m_fMarkerScale * boost);
+    int n = 0;
+    auto push = [&](MarkerKind kind, float trackPos, int raceNum, int sprite, int shape, unsigned long color) {
+        if (n >= max) return;
+        Marker& m = out[n++];
+        m.kind = kind;
+        m.trackPos = trackPos;
+        m.raceNum = raceNum;
+        m.sprite = sprite;
+        m.shape = shape;
+        m.color = color;
     };
-    const float markerY = centerFor(iconHalfSize, 1.0f);
 
-    // === Render opponent markers (if enabled) - render FIRST so they're behind ===
-    if (m_markerMode == MarkerMode::OPPONENTS || m_markerMode == MarkerMode::GHOST_OPPONENTS) {
-        const TrackedRidersManager& trackedMgr = TrackedRidersManager::getInstance();
-
-        for (const auto& pos : m_riderPositions) {
+    // === Opponent markers - FIRST so they're behind ===
+    if (opponents && riders) {
+        for (int i = 0; i < count; ++i) {
+            const Unified::TrackPositionData& pos = riders[i];
             if (pos.raceNum == displayRaceNum) continue;  // Skip self
 
             float trackPos = pos.trackPos;
@@ -694,85 +695,95 @@ void GapBarHud::renderRiderMarkers(float innerX, float innerY, float innerWidth,
                     riderShapeIndex = trackedConfig->shapeIndex;
                 }
             }
-
-            // Calculate X position on bar
-            float markerX = innerX + (innerWidth * trackPos);
-
-            // Render icon (only rotates if directional icon like chevron)
-            renderMarkerIcon(markerX, markerY, iconSize, riderSpriteIndex, riderColor, riderShapeIndex);
-
-            // Render label if enabled
-            if (m_labelMode != LabelMode::NONE) {
-                int position = pluginData.getDisplayPositionForRaceNum(pos.raceNum);
-                renderMarkerLabel(markerX, markerY, iconHalfSize, pos.raceNum, position, dim);
-            }
+            push(MarkerKind::OPPONENT, trackPos, pos.raceNum, riderSpriteIndex, riderShapeIndex, riderColor);
         }
     }
 
-    // === Render ghost (best lap) marker ===
-    if ((m_markerMode == MarkerMode::GHOST || m_markerMode == MarkerMode::GHOST_OPPONENTS) &&
-        PluginData::getInstance().hasValidLiveGap(getReference())) {
-        float bestLapProgress = PluginData::getInstance().getPbGhostProgress(getReference());
+    // === Ghost (best lap) marker ===
+    if (ghost && pluginData.hasValidLiveGap(getReference())) {
+        float bestLapProgress = pluginData.getPbGhostProgress(getReference());
         if (bestLapProgress >= 0.0f && bestLapProgress <= 1.0f) {
-            float markerX = innerX + (innerWidth * bestLapProgress);
-
-            // Ghost uses darkened color - check if player is tracked
-            unsigned long ghostColor;
-            int ghostSpriteIndex = spriteIndex;
-            int ghostShapeIndex = globalShapeIndex;
-
             // Ghost is a dimmed version of the live self marker: darkened tracked color
             // when tracked, otherwise a darkened accent (matching the self marker default).
-            ghostColor = PluginUtils::darkenColor(this->getColor(ColorSlot::ACCENT), 0.5f);
-
-            const RaceEntryData* selfEntry = pluginData.getRaceEntry(displayRaceNum);
-            if (selfEntry) {
-                const TrackedRiderConfig* selfTrackedConfig = TrackedRidersManager::getInstance().getTrackedRider(selfEntry->name);
-                if (selfTrackedConfig) {
-                    ghostColor = PluginUtils::darkenColor(selfTrackedConfig->color, 0.5f);
-                    ghostSpriteIndex = assetMgr.iconSpriteForShape(selfTrackedConfig->shapeIndex);
-                    ghostShapeIndex = selfTrackedConfig->shapeIndex;
-                }
+            if (selfTracked) {
+                push(MarkerKind::GHOST, bestLapProgress, displayRaceNum,
+                     assetMgr.iconSpriteForShape(selfTracked->shapeIndex), selfTracked->shapeIndex,
+                     PluginUtils::darkenColor(selfTracked->color, 0.5f));
+            } else {
+                push(MarkerKind::GHOST, bestLapProgress, displayRaceNum, spriteIndex, globalShapeIndex,
+                     PluginUtils::darkenColor(this->getColor(ColorSlot::ACCENT), 0.5f));
             }
-
-            renderMarkerIcon(markerX, markerY, iconSize, ghostSpriteIndex, ghostColor, ghostShapeIndex);
-            // No label for ghost - it's your own best lap
         }
     }
 
-    // === Render self marker (always on top) ===
-    const float selfTrackPos = PluginData::getInstance().getDisplayRiderTrackPos();
+    // === Self marker (always on top) ===
+    const float selfTrackPos = pluginData.getDisplayRiderTrackPos();
     if (selfTrackPos > 0.001f) {
-        float markerX = innerX + (innerWidth * selfTrackPos);
+        // Check if player is tracked - use their configured color and shape (like RadarHud).
+        // Default to the accent slot so the player's own marker matches StandingsHud/MapHud.
+        if (selfTracked) {
+            push(MarkerKind::SELF, selfTrackPos, displayRaceNum,
+                 assetMgr.iconSpriteForShape(selfTracked->shapeIndex), selfTracked->shapeIndex, selfTracked->color);
+        } else {
+            push(MarkerKind::SELF, selfTrackPos, displayRaceNum, spriteIndex, globalShapeIndex,
+                 this->getColor(ColorSlot::ACCENT));
+        }
+    }
+    return n;
+}
+
+// ============================================================================
+// Render all rider markers (self, ghost, opponents based on mode)
+// ============================================================================
+void GapBarHud::renderRiderMarkers(float innerX, float innerY, float innerWidth, float innerHeight,
+                                    const ScaledDimensions& dim) {
+    const PluginData& pluginData = PluginData::getInstance();
+
+    // Icon size scaled with HUD and marker scale (matches MapHud/StandingsHud pattern)
+    // DEFAULT_MARKER_BASE_SIZE is full size, so halfSize = 0.006 * scale * markerScale
+    float iconSize = DEFAULT_MARKER_BASE_SIZE * m_fScale * m_fMarkerScale;
+    float iconHalfSize = iconSize / 2.0f;
+
+    // Y centre of the bar -- of the ICON when there is no label, and of the icon and
+    // its label TOGETHER when there is. This bar is one text row tall, so a label
+    // centred the naive way hangs half out of the panel; marker_label.h owns the
+    // shift, and it is per-marker because the local player's icon and label are both
+    // boosted and so want a bigger one.
+    const float boxCenterY = innerY + innerHeight / 2.0f;
+    auto centerFor = [&](float halfSize, float boost) {
+        if (m_labelMode == LabelMode::NONE) return boxCenterY;
+        return boxCenterY + MarkerLabel::blockCenterShift(
+            m_labelAnchor, halfSize, dim.fontSizeSmall * m_fMarkerScale * boost);
+    };
+    const float markerY = centerFor(iconHalfSize, 1.0f);
+
+    Marker markers[MAX_MARKERS];
+    const int count = collectMarkers(m_riderPositions.data(), static_cast<int>(m_riderPositions.size()),
+                                     showsOpponents(), showsGhost(), markers, MAX_MARKERS);
+    for (int i = 0; i < count; ++i) {
+        const Marker& m = markers[i];
+        float markerX = innerX + (innerWidth * m.trackPos);
+        if (m.kind != MarkerKind::SELF) {
+            renderMarkerIcon(markerX, markerY, iconSize, m.sprite, m.color, m.shape);
+            // No label for ghost - it's your own best lap
+            if (m.kind == MarkerKind::OPPONENT && m_labelMode != LabelMode::NONE) {
+                int position = pluginData.getDisplayPositionForRaceNum(m.raceNum);
+                renderMarkerLabel(markerX, markerY, iconHalfSize, m.raceNum, position, dim);
+            }
+            continue;
+        }
         // A touch larger than the pack, like MapHud's local-player marker -- on a bar
         // whose whole subject is YOUR gap, the one marker that is you should be the
         // one you find first. See MarkerLabel::PLAYER_BOOST.
         const float selfBoost = MarkerLabel::boost(true);
         const float selfIconSize = iconSize * selfBoost;
-
-        // Check if player is tracked - use their configured color and shape (like RadarHud).
-        // Default to the accent slot so the player's own marker matches StandingsHud/MapHud.
-        unsigned long selfColor = this->getColor(ColorSlot::ACCENT);
-        int selfSpriteIndex = spriteIndex;
-        int selfShapeIndex = globalShapeIndex;
-
-        const RaceEntryData* selfEntry = pluginData.getRaceEntry(displayRaceNum);
-        if (selfEntry) {
-            const TrackedRiderConfig* selfTrackedConfig = TrackedRidersManager::getInstance().getTrackedRider(selfEntry->name);
-            if (selfTrackedConfig) {
-                selfColor = selfTrackedConfig->color;
-                selfSpriteIndex = assetMgr.iconSpriteForShape(selfTrackedConfig->shapeIndex);
-                selfShapeIndex = selfTrackedConfig->shapeIndex;
-            }
-        }
-
         const float selfY = centerFor(selfIconSize / 2.0f, selfBoost);
-        renderMarkerIcon(markerX, selfY, selfIconSize, selfSpriteIndex, selfColor, selfShapeIndex);
+        renderMarkerIcon(markerX, selfY, selfIconSize, m.sprite, m.color, m.shape);
 
         // Render label for self if enabled
         if (m_labelMode != LabelMode::NONE) {
-            int position = pluginData.getDisplayPositionForRaceNum(displayRaceNum);
-            renderMarkerLabel(markerX, selfY, selfIconSize / 2.0f, displayRaceNum, position,
+            int position = pluginData.getDisplayPositionForRaceNum(m.raceNum);
+            renderMarkerLabel(markerX, selfY, selfIconSize / 2.0f, m.raceNum, position,
                               dim, selfBoost);
         }
     }

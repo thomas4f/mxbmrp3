@@ -17,9 +17,7 @@
 using namespace PluginConstants;
 
 namespace {
-    // Icon size as a fraction of font size (slightly smaller than text for visual balance)
-    constexpr float ICON_SIZE_FACTOR = 0.8f;
-    // Max visible characters before truncating with "..."
+    // Max visible characters before the cut (PluginUtils::fitText, no ellipsis)
     constexpr int MAX_DISPLAY_CHARS = 25;
 }
 
@@ -253,12 +251,6 @@ void SessionHud::rebuildRenderData() {
     const PluginData& pluginData = PluginData::getInstance();
     const SessionData& sessionData = pluginData.getSessionData();
 
-    int sessionState = sessionData.sessionState;
-    bool isOnline = sessionData.isOnline();
-
-    // Session state string (the session type lives in the StandingsHud title)
-    const char* stateString = PluginUtils::getSessionStateString(sessionState);
-
     float startX = 0.0f;
     float startY = 0.0f;
 
@@ -292,9 +284,9 @@ void SessionHud::rebuildRenderData() {
     AssetManager& assetMgr = AssetManager::getInstance();
 
     // Get specific icons for each row type (only if icons enabled)
-    int iconFormat = m_bShowIcons ? assetMgr.getIconSpriteIndex("clock") : 0;      // Time/format
-    int iconTrack = m_bShowIcons ? assetMgr.getIconSpriteIndex("location-dot") : 0;    // Track location
-    int iconWeather = m_bShowIcons ? assetMgr.getIconSpriteIndex("temperature-low") : 0;  // Weather/temperature
+    int iconFormat = m_bShowIcons ? assetMgr.getIconSpriteIndex(FORMAT_ICON) : 0;      // Time/format
+    int iconTrack = m_bShowIcons ? assetMgr.getIconSpriteIndex(TRACK_ICON) : 0;    // Track location
+    int iconWeather = m_bShowIcons ? assetMgr.getIconSpriteIndex(WEATHER_ICON) : 0;  // Weather/temperature
 
     // Use full opacity for text and icons
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
@@ -317,6 +309,7 @@ void SessionHud::rebuildRenderData() {
         quad.m_iSprite = spriteIndex;
         quad.m_ulColor = iconColor;
         m_quads.push_back(quad);
+        shadowLastIcon();
     };
 
     // "Session" -- the HUD's OWN name, which is what a title is for. With the title
@@ -371,36 +364,12 @@ void SessionHud::rebuildRenderData() {
         currentY += trackHeight;
     }
 
-    // Session + Format + State on one line: "Session (Format), State" - matches the
-    // Steam status / Friends Info / Discord detail line. The session name is added
-    // only when online; offline it's already the server-row headline ("Testing").
+    // Session + Format + State on one line (formatLine).
     if (m_enabledRows & ROW_FORMAT) {
         addIconQuad(contentStartX, currentY, iconFormat);
-        const char* sessionStateString = stateString ? stateString : Placeholders::GENERIC;
-
-        const char* sessionStr = (isOnline && sessionData.session >= 0)
-            ? PluginUtils::getSessionString(sessionData.eventType, sessionData.session) : nullptr;
-
-        // Shared helper: "8:00 + 2L" / "8:00" / "2L" / "".
-        char formatBuffer[64];
-        PluginUtils::formatSessionFormat(sessionData.sessionLength, sessionData.sessionNumLaps, formatBuffer, sizeof(formatBuffer));
-
-        // Head = "Session (Format)" (any piece optional).
-        char head[96];
-        head[0] = '\0';
-        if (sessionStr && formatBuffer[0] != '\0')  snprintf(head, sizeof(head), "%s (%s)", sessionStr, formatBuffer);
-        else if (sessionStr)                        snprintf(head, sizeof(head), "%s", sessionStr);
-        else if (formatBuffer[0] != '\0')           snprintf(head, sizeof(head), "(%s)", formatBuffer);
-
-        // Append ", State" (skip if it duplicates the session name).
-        const bool showState = (!sessionStr || strcmp(sessionStr, sessionStateString) != 0);
         char combinedBuffer[128];
-        if (head[0] != '\0' && showState)  snprintf(combinedBuffer, sizeof(combinedBuffer), "%s, %s", head, sessionStateString);
-        else if (head[0] != '\0')          snprintf(combinedBuffer, sizeof(combinedBuffer), "%s", head);
-        else                               snprintf(combinedBuffer, sizeof(combinedBuffer), "%s", sessionStateString);
-
+        const bool formatIsPlaceholder = !formatLine(combinedBuffer, sizeof(combinedBuffer));
         // Placeholder MUTED when the line is nothing but the placeholder state.
-        const bool formatIsPlaceholder = (head[0] == '\0' && !stateString);
         addString(combinedBuffer, contentStartX + textOffset, currentY, Justify::LEFT,
             this->getFont(FontCategory::NORMAL),
             formatIsPlaceholder ? this->getColor(ColorSlot::MUTED) : textColor, dim.fontSize);
@@ -411,31 +380,8 @@ void SessionHud::rebuildRenderData() {
     if ((m_enabledRows & ROW_WEATHER) && sessionData.conditions >= 0) {
         addIconQuad(contentStartX, currentY, iconWeather);
 
-        // Get conditions string
-        const char* conditionsStr = PluginUtils::getConditionsString(sessionData.conditions);
-
-        // Format temperature based on unit setting
-        // Note: -1.0f is the sentinel for "no data" in plugin_data.h
         char weatherBuffer[64];
-        const UiConfig& ui = UiConfig::getInstance();
-        const char unitChar = (ui.getTemperatureUnit() == TemperatureUnit::FAHRENHEIT) ? 'F' : 'C';
-        bool hasAirTemp = (sessionData.airTemperature != -1.0f);
-        bool hasTrackTemp = (sessionData.trackTemperature != -1.0f);
-
-        // Shared conversion: rounded, in the selected unit.
-        if (hasAirTemp && hasTrackTemp) {
-            // Show both air and track temperature (GP Bikes, WRS, KRP)
-            snprintf(weatherBuffer, sizeof(weatherBuffer), "%s, %d / %d %c", conditionsStr,
-                     ui.toDisplayTemperature(sessionData.airTemperature),
-                     ui.toDisplayTemperature(sessionData.trackTemperature), unitChar);
-        } else if (hasAirTemp) {
-            // Only air temperature (MX Bikes)
-            snprintf(weatherBuffer, sizeof(weatherBuffer), "%s, %d %c", conditionsStr,
-                     ui.toDisplayTemperature(sessionData.airTemperature), unitChar);
-        } else {
-            // No temperature data, just show conditions
-            snprintf(weatherBuffer, sizeof(weatherBuffer), "%s", conditionsStr);
-        }
+        weatherLine(weatherBuffer, sizeof(weatherBuffer));
 
         addString(weatherBuffer, contentStartX + textOffset, currentY, Justify::LEFT,
             this->getFont(FontCategory::NORMAL), textColor, dim.fontSize);
@@ -446,11 +392,65 @@ void SessionHud::rebuildRenderData() {
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 }
 
+// Session + Format + State on one line: "Session (Format), State" - matches the
+// Steam status / Friends Info / Discord detail line. The session name is added
+// only when online; offline it's already the server-row headline ("Testing").
+bool SessionHud::formatLine(char* out, size_t size) {
+    const SessionData& sessionData = PluginData::getInstance().getSessionData();
+    const char* stateString = PluginUtils::getSessionStateString(sessionData.sessionState);
+    const char* sessionStateString = stateString ? stateString : Placeholders::GENERIC;
+
+    const char* sessionStr = (sessionData.isOnline() && sessionData.session >= 0)
+        ? PluginUtils::getSessionString(sessionData.eventType, sessionData.session) : nullptr;
+
+    // Shared helper: "8:00 + 2L" / "8:00" / "2L" / "".
+    char formatBuffer[64];
+    PluginUtils::formatSessionFormat(sessionData.sessionLength, sessionData.sessionNumLaps, formatBuffer, sizeof(formatBuffer));
+
+    // Head = "Session (Format)" (any piece optional).
+    char head[96];
+    head[0] = '\0';
+    if (sessionStr && formatBuffer[0] != '\0')  snprintf(head, sizeof(head), "%s (%s)", sessionStr, formatBuffer);
+    else if (sessionStr)                        snprintf(head, sizeof(head), "%s", sessionStr);
+    else if (formatBuffer[0] != '\0')           snprintf(head, sizeof(head), "(%s)", formatBuffer);
+
+    // Append ", State" (skip if it duplicates the session name).
+    const bool showState = (!sessionStr || strcmp(sessionStr, sessionStateString) != 0);
+    if (head[0] != '\0' && showState)  snprintf(out, size, "%s, %s", head, sessionStateString);
+    else if (head[0] != '\0')          snprintf(out, size, "%s", head);
+    else                               snprintf(out, size, "%s", sessionStateString);
+    return head[0] != '\0' || stateString != nullptr;
+}
+
+// Conditions + temperatures, in the selected unit, rounded.
+void SessionHud::weatherLine(char* out, size_t size) {
+    const SessionData& sessionData = PluginData::getInstance().getSessionData();
+    const char* conditionsStr = PluginUtils::getConditionsString(sessionData.conditions);
+    // Note: -1.0f is the sentinel for "no data" in plugin_data.h
+    const UiConfig& ui = UiConfig::getInstance();
+    const char unitChar = (ui.getTemperatureUnit() == TemperatureUnit::FAHRENHEIT) ? 'F' : 'C';
+    const bool hasAirTemp = (sessionData.airTemperature != -1.0f);
+    const bool hasTrackTemp = (sessionData.trackTemperature != -1.0f);
+    if (hasAirTemp && hasTrackTemp) {
+        // Show both air and track temperature (GP Bikes, WRS, KRP)
+        snprintf(out, size, "%s, %d / %d %c", conditionsStr,
+                 ui.toDisplayTemperature(sessionData.airTemperature),
+                 ui.toDisplayTemperature(sessionData.trackTemperature), unitChar);
+    } else if (hasAirTemp) {
+        // Only air temperature (MX Bikes)
+        snprintf(out, size, "%s, %d %c", conditionsStr,
+                 ui.toDisplayTemperature(sessionData.airTemperature), unitChar);
+    } else {
+        // No temperature data, just show conditions
+        snprintf(out, size, "%s", conditionsStr);
+    }
+}
+
 void SessionHud::resetToDefaults() {
     m_bVisible = false;  // Disabled by default
     m_bShowTitle = true;   // Captioned like every other full HUD -- see rebuildRenderData
     setTextureVariant(0);  // No texture by default
-    m_fBackgroundOpacity = 0.8f;
+    m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setScale(1.0f);
     m_enabledRows = ROW_DEFAULT;  // Reset row visibility
     m_bShowIcons = true;  // Icons enabled by default

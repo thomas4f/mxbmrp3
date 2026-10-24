@@ -67,10 +67,12 @@ void HudManager::requestGlArtReload() {
 // the defect it pins is not visible in any pixel assertion that builds its own
 // frame, which is precisely how it survived a passing render suite.
 hudsw::Frame HudManager::buildGlFrame(const SPluginQuad_t* quads, int quadCount,
-                                      const SPluginString_t* strings, int stringCount) const {
+                                      const SPluginString_t* strings, int stringCount,
+                                      const hudlayers::Layers& layers) const {
     hudsw::Frame f;
     f.quads = quads; f.quadCount = quadCount;
     f.strings = strings; f.stringCount = stringCount;
+    f.layers = layers;
     // The BASE tables, not m_fontNames/m_spriteNames. Those hold full paths with
     // extensions because that is what the game's DrawInit wants; hudsw::Frame
     // wants render names to resolve against assetRoot. Passing the paths here
@@ -86,29 +88,108 @@ hudsw::Frame HudManager::buildGlFrame(const SPluginQuad_t* quads, int quadCount,
     return f;
 }
 
+// HUD STACKING (core/render_layers.h). Called from collectSurface once per
+// drawn HUD, ghost and the debug grid, so the spans tile both arrays in order.
+void HudManager::recordLayerSpan(SurfaceLayers& layers,
+                                 const std::vector<SPluginQuad_t>& quads, size_t quadStart,
+                                 const std::vector<SPluginString_t>& strings, size_t stringStart,
+                                 const BaseHud* hud, bool companion, bool everywhere,
+                                 const std::vector<int>* iconShifts, bool stringShadows) {
+    if (quads.size() == quadStart && strings.size() == stringStart) return;   // drew nothing
+    hudlayers::Rect rect;
+    rect.everywhere = everywhere || !hud;
+    if (!rect.everywhere) {
+        // The drag bounds: the box the user sees and moves, at this surface's offset.
+        hud->panelRect(rect.l, rect.t, rect.r, rect.b);
+        const float ox = companion ? hud->getCompanionOffsetX() : hud->getOffsetX();
+        const float oy = companion ? hud->getCompanionOffsetY() : hud->getOffsetY();
+        rect.l += ox; rect.r += ox; rect.t += oy; rect.b += oy;
+        if (rect.r <= rect.l || rect.b <= rect.t) {
+            // No bounds (a full-screen effect, a HUD that never sets them): what it
+            // actually drew. String extents are unknown without the font, so a
+            // string counts as its anchor and one line of height.
+            rect.l = rect.t = 1e9f; rect.r = rect.b = -1e9f;
+            for (size_t i = quadStart; i < quads.size(); ++i)
+                for (int c = 0; c < 4; ++c) {
+                    rect.l = std::min(rect.l, quads[i].m_aafPos[c][0]);
+                    rect.r = std::max(rect.r, quads[i].m_aafPos[c][0]);
+                    rect.t = std::min(rect.t, quads[i].m_aafPos[c][1]);
+                    rect.b = std::max(rect.b, quads[i].m_aafPos[c][1]);
+                }
+            for (size_t i = stringStart; i < strings.size(); ++i) {
+                rect.l = std::min(rect.l, strings[i].m_afPos[0]);
+                rect.r = std::max(rect.r, strings[i].m_afPos[0]);
+                rect.t = std::min(rect.t, strings[i].m_afPos[1]);
+                rect.b = std::max(rect.b, strings[i].m_afPos[1] + strings[i].m_fSize);
+            }
+        }
+    }
+    auto close = [&](size_t q0, size_t q1, size_t s0, size_t s1) {
+        if (q0 == q1 && s0 == s1) return;
+        hudlayers::Span span;
+        span.q0 = static_cast<uint32_t>(q0); span.q1 = static_cast<uint32_t>(q1);
+        span.s0 = static_cast<uint32_t>(s0); span.s1 = static_cast<uint32_t>(s1);
+        layers.spans.push_back(span);
+        layers.rects.push_back(rect);
+        layers.owners.push_back(hud);
+    };
+
+    // The HUD's overlay (the open dropdown list) closes a span of its own, so it
+    // stacks over this HUD's text. Its local indices map through the shadow
+    // copies inserted in front of them.
+    size_t quadSplit = quads.size(), stringSplit = strings.size();
+    if (hud && hud->m_overlayQuadFirst >= 0 && hud->m_overlayStringFirst >= 0 &&
+        hud->m_overlayQuadFirst <= static_cast<int>(hud->getQuads().size()) &&
+        hud->m_overlayStringFirst <= static_cast<int>(hud->getStrings().size())) {
+        const int lq = hud->m_overlayQuadFirst;
+        quadSplit = quadStart + static_cast<size_t>(lq) + iconShiftsUpTo(iconShifts, lq);
+        stringSplit = stringStart + static_cast<size_t>(hud->m_overlayStringFirst);
+        if (stringShadows) {
+            const auto& skip = hud->getStringSkipShadow();
+            stringSplit = stringStart;
+            for (int i = 0; i < hud->m_overlayStringFirst; ++i)
+                stringSplit += (static_cast<size_t>(i) < skip.size() && skip[static_cast<size_t>(i)]) ? 1 : 2;
+        }
+        quadSplit = std::min(quadSplit, quads.size());
+        stringSplit = std::min(stringSplit, strings.size());
+    }
+    close(quadStart, quadSplit, stringStart, stringSplit);
+    close(quadSplit, quads.size(), stringSplit, strings.size());
+}
+
+bool HudManager::surfaceStacks(bool companion) const {
+    return companion || (UiConfig::getInstance().getGlInGame() &&
+                         !m_glLatchedOff.load(std::memory_order_relaxed));
+}
+
+void HudManager::finishLayers(SurfaceLayers& layers) {
+    layers.count = hudlayers::assignLayers(layers.spans.data(), layers.rects.data(),
+                                           static_cast<int>(layers.spans.size()));
+}
+
 bool HudManager::GlWarmList::sameAs(const GlWarmList& o) const {
-    return spriteCount == o.spriteCount && fontCount == o.fontCount &&
-           std::equal(sprites, sprites + spriteCount, o.sprites) &&
-           std::equal(fonts, fonts + fontCount, o.fonts);
+    return fontCount == o.fontCount && std::equal(fonts, fonts + fontCount, o.fonts);
 }
 
 void HudManager::publishGlWarmList() {
     GlWarmList next;
-    // Every enabled HUD's art, drawing or not (BaseHud::glWarmSprites): one
-    // already on screen is loaded, and the backend walks past it. The GAME flag,
-    // because this backend only ever draws the game surface.
-    for (const auto& hud : m_huds) {
-        if (!hud || !hud->isVisible()) continue;
-        next.spriteCount += hud->glWarmSprites(next.sprites + next.spriteCount,
-                                               GlWarmList::kMax - next.spriteCount);
-    }
+    auto add = [&next](int idx) {
+        if (idx <= 0 || next.fontCount >= GlWarmList::kMax) return;
+        for (int i = 0; i < next.fontCount; ++i) if (next.fonts[i] == idx) return;
+        next.fonts[next.fontCount++] = idx;
+    };
     // Every font category: a category only one HUD uses (the pit board's MARKER)
     // is otherwise first decoded - a 2048x2048 atlas and its mip chain - on the
-    // frame that HUD appears.
+    // frame that HUD appears. Then each HUD's own override, shown or not. Not
+    // every discovered font: each atlas is megabytes of texture, and a face no
+    // setting names is never drawn. The sprites need no list (Warm::allSprites).
     const FontConfig& fonts = FontConfig::getInstance();
-    for (int c = 0; c < static_cast<int>(FontCategory::COUNT); ++c) {
-        const int idx = fonts.getFont(static_cast<FontCategory>(c));
-        if (idx > 0 && next.fontCount < GlWarmList::kMax) next.fonts[next.fontCount++] = idx;
+    for (int c = 0; c < static_cast<int>(FontCategory::COUNT); ++c)
+        add(fonts.getFont(static_cast<FontCategory>(c)));
+    for (const auto& hud : m_huds) {
+        if (!hud) continue;
+        for (int c = 0; c < static_cast<int>(FontCategory::COUNT); ++c)
+            if (hud->hasFontOverride(static_cast<FontCategory>(c))) add(hud->getFont(static_cast<FontCategory>(c)));
     }
     if (next.sameAs(m_glWarmBuilt)) return;
     m_glWarmBuilt = next;
@@ -135,7 +216,8 @@ int HudManager::glStatusCode() const {
 
 // See hud_manager.h for the contract. Game thread only.
 bool HudManager::renderInContextGl(const SPluginQuad_t* quads, int quadCount,
-                                   const SPluginString_t* strings, int stringCount) {
+                                   const SPluginString_t* strings, int stringCount,
+                                   const hudlayers::Layers& layers) {
     // This function OWNS m_glDrewLastFrame, and is therefore called on every
     // frame including empty ones - the callers no longer gate it. A test hook
     // that can report a stale true is the same failure family as the sweep that
@@ -200,7 +282,7 @@ bool HudManager::renderInContextGl(const SPluginQuad_t* quads, int quadCount,
     // and watching them line up at a non-16:9 client.
     const UiViewport::Rect ui = UiViewport::compute(vw, vh);
 
-    const hudsw::Frame f = buildGlFrame(quads, quadCount, strings, stringCount);
+    const hudsw::Frame f = buildGlFrame(quads, quadCount, strings, stringCount, layers);
 
     // Pick up a changed pre-warm list; a steady frame is this one load.
     const unsigned warmGen = m_glWarmGen.load(std::memory_order_acquire);
@@ -210,8 +292,9 @@ bool HudManager::renderInContextGl(const SPluginQuad_t* quads, int quadCount,
         m_glWarmDrawGen = warmGen;
     }
     hudgl::Renderer::Warm warm;
-    warm.sprites = m_glWarmDraw.sprites; warm.spriteCount = m_glWarmDraw.spriteCount;
-    warm.fonts = m_glWarmDraw.fonts;     warm.fontCount = m_glWarmDraw.fontCount;
+    warm.allSprites = true;
+    warm.fonts = m_glWarmDraw.fonts;
+    warm.fontCount = m_glWarmDraw.fontCount;
 
     if (!gl->render(f, vw, vh, static_cast<float>(ui.x), static_cast<float>(ui.y),
                               static_cast<float>(ui.w), static_cast<float>(ui.h), &warm)) {

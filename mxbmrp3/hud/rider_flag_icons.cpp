@@ -13,6 +13,7 @@ void RiderFlagIcons::ensureInitialized() {
     m_circleExclamation = assets.getIconSpriteIndex("circle-exclamation");
     m_flag = assets.getIconSpriteIndex("flag");
     m_flagCheckered = assets.getIconSpriteIndex("flag-checkered");
+    m_crown = assets.getIconSpriteIndex("crown");
     m_initialized = true;
 }
 
@@ -26,6 +27,7 @@ RiderFlagIcons::Icon RiderFlagIcons::get(Kind kind, unsigned long wrongWayColor)
     case Kind::Blue:     icon.sprite = m_flag;              icon.color = FlagColors::BLUE;       break;
     case Kind::LastLap:  icon.sprite = m_flag;              icon.color = FlagColors::LAST_LAP;   break;
     case Kind::Finished: icon.sprite = m_flagCheckered;     icon.color = FlagColors::CHECKERED;  break;
+    case Kind::Leader:   icon.sprite = m_crown;             icon.color = PluginConstants::PodiumColors::GOLD; break;
     }
     if (icon.sprite < 0) icon.sprite = 0;
     return icon;

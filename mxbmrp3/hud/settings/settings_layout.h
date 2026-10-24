@@ -329,8 +329,10 @@ struct SettingsLayoutContext {
                     bool enabled = true);
     // One link at x on the current row, styled and hit-tested like addLinkRow's
     // URL; does not advance, so several can share a row. Returns its width.
+    // tooltipId gives a link that stands alone on its row a hover tip.
     float addLinkCell(float x, const char* text, SettingsHud::ClickRegion::Type type,
-                      float fontScale = 1.0f, bool enabled = true);
+                      float fontScale = 1.0f, bool enabled = true,
+                      const char* tooltipId = nullptr);
 
     // A PAGER: two row-height buttons flanking "Page x/y", centred in the content
     // column -- the same button emitter as the action buttons (themed fill, hover,

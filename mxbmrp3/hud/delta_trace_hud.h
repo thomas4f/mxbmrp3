@@ -9,6 +9,16 @@
 // it shows. Faint vertical lines mark the splits, and a square marks the rider.
 // Riding back never erases what the lap has already drawn.
 //
+// Peaks (on by default): a dot with the gap beside it, as the Charts HUD marks
+// its points, where the lap was furthest ahead and where it was furthest
+// behind - the lap in progress while the gap is live, else the whole lap
+// shown. Found at a rebuild (a few times a second), formatted only when a
+// peak's value changes; a lap never more than a hair ahead (or behind) has no
+// marker for that side.
+//
+// The chart is a DeltaTracePlot (delta_trace_plot.h), the same one the Dash's
+// Delta Trace page draws.
+//
 // READ-ONLY. It samples PluginData's PbGapTracker through LapDeltaProfile and
 // computes each point's gap with the tracker's own gapAt(), so it is the Gap
 // Bar's number drawn as a line rather than a second implementation of it. The
@@ -21,7 +31,7 @@
 #pragma once
 
 #include "base_hud.h"
-#include "../core/lap_delta_profile.h"
+#include "delta_trace_plot.h"
 #include "hud_defaults.h"
 
 class DeltaTraceHud : public BaseHud {
@@ -42,27 +52,25 @@ public:
     Reference getReference() const { return HudDefaults::reference(m_referenceDefault, m_reference); }
 
     // Points on the line at the last rebuild (0 = nothing plotted).
-    int plottedPoints() const { return m_plotted; }
+    int plottedPoints() const { return m_plot.plottedPoints(); }
     // Points of the previous lap drawn ahead of the rider (0 when none).
-    int previousPoints() const { return m_plottedPrevious; }
+    int previousPoints() const { return m_plot.previousPoints(); }
     // Whether the rider's marker was drawn at the last rebuild.
-    bool markerShown() const { return m_markerShown; }
+    bool markerShown() const { return m_plot.markerShown(); }
     // Rebuilds so far (the marker's in-place move is not one).
-    int rebuildCount() const { return m_rebuilds; }
+    int rebuildCount() const { return m_plot.drawCount(); }
+    void setShowPeaks(bool on) { m_showPeaks = on; setDataDirty(); }
+    bool showsPeaks() const { return m_showPeaks; }
+    // Peak markers drawn at the last rebuild, and their gaps (0 when that side has none).
+    int peaksShown() const { return m_plot.peaksShown(); }
+    int peakAheadMs() const { return m_plot.peakAheadMs(); }
+    int peakBehindMs() const { return m_plot.peakBehindMs(); }
 
     friend class SettingsHud;
     friend class SettingsManager;
 
 private:
     void rebuildRenderData() override;
-    void addSplitLines(float x, float y, float width, float height);
-    void addRiderMarker(float x, float y, float width, float height);
-    void addTrace(float x, float y, float width, float height);
-    // One lap of the profile: fills, then the line. `from`..`to` are points.
-    void addSeries(const float* gapMs, const bool* has, int from, int to, float opacity,
-                   float x, float y, float width, float height);
-    // Pre-format the axis labels for m_scaleMs (only when it changes).
-    void formatScaleLabels();
 
     static constexpr float START_X = 0.0f;
     static constexpr float START_Y = 0.0f;
@@ -74,22 +82,9 @@ private:
 
     Reference m_reference = Reference::SESSION_PB;   // when not Default
     bool m_referenceDefault = true;                  // follow General's reference
-    int m_lastRef = -1;                              // the reference of the last rebuild
     int m_graphRows = DEFAULT_GRAPH_ROWS;
+    bool m_showPeaks = true;
 
-    LapDeltaProfile m_profile;
-    int m_scaleMs = 0;            // half-height of the plot: the round step above m_scalePeakMs
-    int m_scalePeakMs = 0;        // the largest |gap| shown this lap; held, so the picture does
-                                  // not rescale with every swing (as the Gap Bar's Auto range)
-    char m_scaleTop[16] = {};     // axis labels for m_scaleMs: ahead at the top,
-    char m_scaleBottom[16] = {};  // behind at the bottom
-    int m_lastPoint = -1;         // the rider's profile point at the last rebuild
-    bool m_lastLive = false;      // whether the gap was live at the last rebuild
-    unsigned m_lastLapStamp = 0;  // PbGapTracker::lastLapStamp() at the last rebuild
-    int m_plotted = 0;
-    int m_plottedPrevious = 0;
-    int m_rebuilds = 0;
-    bool m_markerShown = false;    // and, when it is, it is the last quad
-    float m_markerPos = -1.0f;     // the track position it was drawn at
-    float m_plotX = 0.0f, m_plotY = 0.0f, m_plotW = 0.0f, m_plotH = 0.0f;   // the chart, as last laid out
+    // The chart itself, shared with the Dash's Delta Trace page (delta_trace_plot.h).
+    DeltaTracePlot m_plot;
 };

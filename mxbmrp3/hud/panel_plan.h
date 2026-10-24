@@ -64,15 +64,14 @@ struct ScaledDimensions {
 //     addPlanTitle(p, "Name", font, color);
 //     // rows at p.contentX(), p.contentY(section) + k * rowH
 //
-// EVERYTHING IS ON THE MODEL EXCEPT FOUR DELIBERATE HOLDOUTS, each annotated
-// at its own box: the corner buttons (Director/SettingsButton — themed BUTTON
-// slices, not panels); the dial gauges (Speedo/Tacho — the box IS the dial
+// EVERYTHING IS ON THE MODEL EXCEPT THREE DELIBERATE HOLDOUTS, each annotated
+// at its own box: the dial gauges (Speedo/Tacho — the box IS the dial
 // art); the shape-driven panels (Map/Radar/Pitboard/Gamepad — track shape,
 // radar circle, board and pad art drive the geometry); and the settings
 // panel's OUTER box (screen-ceiling constrained and content-anchored in X,
 // see the BOX-MODEL NOTE in settings_hud_render.cpp — every term it spends
 // still resolves from the box-model surface). The legacy chain below survives
-// solely as those four's vocabulary; anything else reaching for it is a HUD
+// solely as those three's vocabulary; anything else reaching for it is a HUD
 // that has not been migrated.
 //
 // Every derivation the old chain needed (titleRowHeight, panelContentY,

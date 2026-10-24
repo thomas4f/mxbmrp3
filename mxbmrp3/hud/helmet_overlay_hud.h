@@ -58,7 +58,14 @@ inline bool helmetStrengthActive(float strength) {
 class HelmetOverlayHud : public BaseHud {
 public:
     // In-game immersion effect, not a panel: see BaseHud::rendersOnCompanion().
+#if defined(MXBMRP3_TEST_BUILD)
+    // The demo reels record the companion window, so one can let the helmet draw
+    // there (MXBMRP3_Test_HelmetOnCompanion).
+    static inline bool s_testOnCompanion = false;
+    bool rendersOnCompanion() const override { return s_testOnCompanion; }
+#else
     bool rendersOnCompanion() const override { return false; }
+#endif
     // Full screen: fades in place, see BaseHud::motionStyle().
     MotionStyle motionStyle() const override { return MotionStyle::FADE; }
 
@@ -92,6 +99,13 @@ public:
     // Texture base names (AssetManager discovery)
     static constexpr const char* TEX_HELMET_UPPER = "helmet_upper";
     static constexpr const char* TEX_HELMET_LOWER = "helmet_lower";
+    // The Visor/Goggles tint's lens profile (tools/lens_gen.py), one variant per
+    // mode: Goggles (1) clearest in the middle, deeper toward the frame; Visor
+    // (2) deepest across the brow, clear lower down. Drawn at the tint opacity
+    // times LENS_EDGE_GAIN; the texture's clear part is 1 / that, so it shows
+    // the opacity the player set. Missing texture = the flat tint, as before.
+    static constexpr const char* TEX_HELMET_LENS = "helmet_lens";
+    static constexpr float LENS_EDGE_GAIN = 2.5f;
 
     // Getters for the settings tab (variant cycling goes through these helpers)
     int getHelmetUpperVariant() const { return m_helmetUpperVariant; }

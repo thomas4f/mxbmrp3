@@ -115,16 +115,13 @@ TEST_CASE("right-only [content]/[title] margins: content keeps its own box") {
         {PluginHost::HUD_SPEED, "speed"},
         {PluginHost::HUD_GEAR, "gear"},
         {PluginHost::HUD_CRASH, "crash"},
-        // VERSION anchors its row on the card box like the rest and was missing
-        // from this list -- the "a new HUD joins the target list" convention
-        // CLAUDE.md names, caught the hard way: it was also the panel whose
-        // centre-stack width and anchor had drifted (see center_stack_theme_test).
-        {PluginHost::HUD_VERSION, "version"},
         {PluginHost::HUD_BARS, "bars"},
         {PluginHost::HUD_GL_CONFIRM, "glconfirm"},
         {PluginHost::HUD_COMPASS, "compass"},
         {PluginHost::HUD_LEAN, "lean"},
         {PluginHost::HUD_PRESTIGE, "prestige"},
+        {PluginHost::HUD_DASH, "dash"},
+        {PluginHost::HUD_TOGGLES, "toggle_strip"},
     };
 
     // The Direct GL prompt builds nothing unless it is armed, and `present`
@@ -138,6 +135,10 @@ TEST_CASE("right-only [content]/[title] margins: content keeps its own box") {
     // under test here.
     REQUIRE(host.hasPrestige());
     host.setPrestige(1);
+    // The Toggles strip is the third: it draws only while the cursor shows. The
+    // cursor sits in the screen's bottom-left, clear of the strip's hover name.
+    REQUIRE(host.hasInjectedMouse());
+    host.injectMouse(true, 0.02f, 0.98f, 0);
     host.draw();
 
     std::vector<Snapshot> before(std::size(targets));
@@ -212,8 +213,9 @@ TEST_CASE("right-only [content]/[title] margins: content keeps its own box") {
     // exist at all: a silent skip would take it out of the sweep without taking
     // its row out of the list.
     for (size_t i = 0; i < std::size(targets); ++i)
-        if (targets[i].id == PluginHost::HUD_GL_CONFIRM)
-            CHECK_MESSAGE(present[i], "the Direct GL prompt produced no plan - it was "
+        if (targets[i].id == PluginHost::HUD_GL_CONFIRM
+            || targets[i].id == PluginHost::HUD_TOGGLES)
+            CHECK_MESSAGE(present[i], targets[i].name << " produced no plan - it was "
                                       "listed as swept but never actually looked at");
     host.glConfirmArm(false);
 
@@ -257,6 +259,7 @@ TEST_CASE("right-only [content]/[title] margins: content keeps its own box") {
         }
     }
 
+    host.injectMouse(false);
     host.shutdown();
 }
 
@@ -296,6 +299,7 @@ TEST_CASE("unthemed: every panel keeps the same side air around its card") {
         {PluginHost::HUD_GEAR, "gear", false},
         {PluginHost::HUD_CRASH, "crash", false},
         {PluginHost::HUD_GL_CONFIRM, "glconfirm", false},
+        {PluginHost::HUD_DASH, "dash", false},
     };
 
     // Standings is the reference: the panel the report compared against. Card

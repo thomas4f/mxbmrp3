@@ -5,6 +5,7 @@
 // file-budget: 1610 the settings panel's geometry in one place; split with the next tab rework
 #include "settings_layout.h"
 #include "../settings_hud.h"
+#include "../dropdown_list.h"
 #include "../../core/plugin_utils.h"
 #include "../../core/plugin_constants.h"
 #include "../../core/color_config.h"
@@ -15,7 +16,7 @@
 #include "../../core/input_manager.h"
 #include "../../core/tooltip_manager.h"
 #include "../gamepad_widget.h"   // the Gamepad row's pack cycle reads activePack()
-#include "../freeze_duration.h"
+#include "../hud_defaults.h"   // Default reference name; pulls freeze_duration.h
 #include "../pitboard_hud.h"     // ...and the Pitboard row's
 #include "../tacho_widget.h"     // ...and both gauge rows'
 
@@ -473,7 +474,7 @@ void SettingsLayoutContext::addLinkRow(const char* prefix, const char* url, int 
 
 float SettingsLayoutContext::addLinkCell(float x, const char* text,
                                          SettingsHud::ClickRegion::Type type, float fontScale,
-                                         bool enabled) {
+                                         bool enabled, const char* tooltipId) {
     ColorConfig& colors = ColorConfig::getInstance();
     const float fs = fontSize * fontScale;
     const float w = PluginUtils::calculateMonospaceTextWidth(
@@ -485,6 +486,7 @@ float SettingsLayoutContext::addLinkCell(float x, const char* text,
     }
     parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
         x, currentY, w, lineHeightNormal, type, nullptr));
+    if (tooltipId) parent->m_clickRegions.back().tooltipId = tooltipId;
     const bool hovered = parent->m_hoveredRegionIndex >= 0 &&
         parent->m_hoveredRegionIndex == static_cast<int>(parent->m_clickRegions.size()) - 1;
     parent->addString(text, x, currentY, PluginConstants::Justify::LEFT,
@@ -923,10 +925,10 @@ void SettingsLayoutContext::addFreezeControl(
 void SettingsLayoutContext::addReferenceControl(const char* label, bool* followDefault,
                                                PbGapTracker::Ref* ref, BaseHud* targetHud,
                                                const char* tooltipId, bool* enabled) {
-    static const char* const kNames[] = { "Off", "Default", "Session PB", "All-time", "Last lap" };
+    const char* const kNames[] = { "Off", HudDefaults::defaultReferenceName(), "Session PB", "All-time PB", "Last lap" };
     static_assert(sizeof(kNames) / sizeof(kNames[0]) == PbGapTracker::REF_COUNT + 2,
                   "Off, Default and one name per reference");
-    // Without `enabled` the list starts at Default: kNames + 1.
+    // Without `enabled` the list starts at Default (named for General's today): kNames + 1.
     const int first = enabled ? 0 : 1;
     SettingsHud::CycleControl c;
     c.count = PbGapTracker::REF_COUNT + 2 - first;
@@ -944,7 +946,7 @@ void SettingsLayoutContext::addReferenceControl(const char* label, bool* followD
         *followDefault = (v == 0);
         if (v > 0) *ref = static_cast<PbGapTracker::Ref>(v - 1);
     };
-    c.nameOf = [first](int i) { return std::string(kNames[first + i]); };
+    c.nameOf = [first, kNames](int i) { return std::string(kNames[first + i]); };
     c.dirtyHud = targetHud;
     const bool off = enabled && !*enabled;
     addCycleControl(label, kNames[first + c.get()], c, targetHud, true, off, tooltipId);
@@ -1022,28 +1024,13 @@ void SettingsLayoutContext::addSliderTrack(float x, float rowY, float width,
 
 void SettingsLayoutContext::addDropdownBox(float x, float rowY, float width, int cycleIndex,
                                            bool enabled, const char* tooltipId) {
-    ColorConfig& colors = ColorConfig::getInstance();
     const float cw = charWidth();
     const float boxX = x - cw * 0.3f;
     const float boxW = width + cw * 0.3f;
-    addSolidQuad(boxX, rowY + lineHeightNormal * 0.06f, boxW, lineHeightNormal * 0.88f,
-        PluginUtils::applyOpacity(colors.getPrimary(), enabled ? 0.10f : 0.05f));
     const bool open = enabled && parent->m_dropdown.open == cycleIndex &&
                       parent->m_dropdown.tab == parent->m_activeTab;
-    // Down while closed, up while open: the caret Rumble's split effects use,
-    // in the cell after the value (unturned, the sprite points up), centred on
-    // the box's height and kept off its right edge by the air the text has on
-    // the left, so a value that fills the field never runs under it.
-    const float caretHalf = fontSize * 0.2f;
-    const float caretX = x + width - cw * 0.3f - caretHalf;
-    const float caretY = rowY + lineHeightNormal * 0.5f;
-    const unsigned long caretColor = enabled ? colors.getAccent() : colors.getMuted();
-    // Unturned (up) while open, turned 180 (down) while closed; "^"/"v" with UI icons off.
-    const bool useIcons = UiConfig::getInstance().getTitleIcons();
-    const int caret = useIcons ? AssetManager::getInstance().getIconSpriteIndex("caret-up") : 0;
-    if (caret > 0) parent->addRotatedSpriteQuad(caretX, caretY, caretHalf, open ? 1.0f : -1.0f, 0.0f, caret, caretColor);
-    else if (!useIcons) parent->addString(open ? "^" : "v", caretX, rowY, PluginConstants::Justify::CENTER,
-                                          Fonts::getNormal(), caretColor, fontSize);
+    DropdownList::drawBox(*parent, x, rowY, width, lineHeightNormal, fontSize, enabled, open,
+                          DropdownList::globalStyle());
     if (!enabled) return;
     // The row's arrow regions are two cells wide and were pushed first, so the
     // up arrow's already covers the caret's cell (and the down arrow's the box's

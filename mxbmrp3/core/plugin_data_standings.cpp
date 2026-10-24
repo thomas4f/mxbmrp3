@@ -218,16 +218,38 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
         m_lastLeaderRaceNum = newLeader;
     }
 
-    // Capture finish time for each rider when they finish (elapsed time —
-    // the shared timed/lap-race formula lives in getSessionElapsedTime).
-    auto calculateElapsedTime = [&]() -> int { return getSessionElapsedTime(); };
+    // Capture finish time for each rider when they finish: the sum of their
+    // laps, the game's own figure to the millisecond. The session clock only
+    // ticks every ~30 ms, so read off it a finish lands up to a tick late, and
+    // RACE OVER restarts it (race_classification_handler holds it then). It
+    // stays the fallback for a rider whose laps were not all seen with a time
+    // (joined mid-race, a lap reported without one): the clock held at the
+    // leader's finish plus the restarted clock's count since, so a later
+    // finisher does not get the leader's time. Lap 1 runs from the start,
+    // so in a race the sum and the clock agree (recorded in-game: 428217 ms by
+    // laps, 428194 by the clock a tick before the line). Pinned by
+    // session_format_test.
+    auto calculateFinishTime = [&](int raceNum, int numLaps) -> int {
+        const std::deque<LapLogEntry>* log = getLapLog(raceNum);
+        if (log && numLaps > 0) {
+            int total = 0;
+            int expected = numLaps - 1;  // lapNum is 0-based, the log newest first
+            for (const LapLogEntry& e : *log) {
+                if (e.lapNum != expected || e.lapTime <= 0) break;
+                total += e.lapTime;
+                if (--expected < 0) return total;
+            }
+        }
+        const bool raceOver = (m_sessionData.sessionState & PluginConstants::SessionState::RACE_OVER) != 0;
+        return getSessionElapsedTime() + (raceOver ? m_sessionData.raceOverClock : 0);
+    };
 
     // Check each rider for finish
     bool leaderJustFinished = false;
     for (auto& [raceNum, standing] : m_standings) {
         // Only capture once (when finishTime transitions from -1)
         if (standing.finishTime < 0 && m_sessionData.isRiderFinished(standing.numLaps, standing.numLapsAtLeaderFinish)) {
-            standing.finishTime = calculateElapsedTime();
+            standing.finishTime = calculateFinishTime(raceNum, standing.numLaps);
             DEBUG_INFO_F("[RIDER FINISHED] Rider #%d finished race in %d ms", raceNum, standing.finishTime);
             anyChanged = true;
 

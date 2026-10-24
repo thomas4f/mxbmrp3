@@ -41,6 +41,70 @@ void StandingsHud::CachedIcons::ensureInitialized() {
     initialized = true;
 }
 
+StandingsHud::Status StandingsHud::statusFor(int raceNum, int state, bool finished) {
+    const PluginData& pluginData = PluginData::getInstance();
+    Status status;
+    // No status icons for non-participating riders (DNS/Retired/DSQ)
+    if (state == static_cast<int>(Unified::EntryState::DNS) ||
+        state == static_cast<int>(Unified::EntryState::Retired) ||
+        state == static_cast<int>(Unified::EntryState::DSQ)) {
+        return status;
+    }
+    const HazardType hazardType = pluginData.getRiderHazardType(raceNum);
+    if (DirectorManager::getInstance().isLocked() && DirectorManager::getInstance().getCurrentSubject() == raceNum) {
+        // Director lock: the broadcaster has deliberately pinned the director on this
+        // rider so it won't auto-cut away. Highest priority — it's an explicit
+        // production action, so its confirmation shouldn't be masked by any transient
+        // race-status icon.
+        status.mark = StatusMark::Lock;
+    } else if (hazardType != HazardType::None) {
+        // Hazard takes priority over every flag below
+        status.mark = StatusMark::Flag;
+        status.flag = RiderFlagIcons::forHazard(hazardType);
+    } else if (pluginData.isRiderBlueFlagged(raceNum)) {
+        // Blue flag icon (lower priority than hazard, higher than tracked)
+        status.mark = StatusMark::Flag;
+        status.flag = RiderFlagIcons::Kind::Blue;
+    } else {
+        const StandingsData* sd = pluginData.getStanding(raceNum);
+        const SessionData& session = pluginData.getSessionData();
+        if (sd && sd->pit == 1) {
+            // Wrench icon for riders in pits (higher priority than checkered/last lap)
+            status.mark = StatusMark::Pits;
+        } else if (finished) {
+            // Checkered flag for finished riders (race finish or non-race session finish)
+            status.mark = StatusMark::Flag;
+            status.flag = RiderFlagIcons::Kind::Finished;
+        } else if (sd && pluginData.isRaceSession() && session.isRiderOnLastLap(sd->numLaps, sd->numLapsAtLeaderFinish)) {
+            // White flag for riders on last lap
+            status.mark = StatusMark::Flag;
+            status.flag = RiderFlagIcons::Kind::LastLap;
+        }
+    }
+    return status;
+}
+
+RiderFlagIcons::Icon StandingsHud::statusIcon(Status status) {
+    RiderFlagIcons::Icon icon;
+    switch (status.mark) {
+        case StatusMark::Lock:
+            m_iconCache.ensureInitialized();
+            if (m_iconCache.lock > 0) { icon.sprite = m_iconCache.lock; icon.color = this->getColor(ColorSlot::WARNING); }
+            break;
+        case StatusMark::Pits:
+            m_iconCache.ensureInitialized();
+            if (m_iconCache.wrench > 0) { icon.sprite = m_iconCache.wrench; icon.color = this->getColor(ColorSlot::TERTIARY); }
+            break;
+        case StatusMark::Flag:
+            // Flag markers and their fixed colours: rider_flag_icons.h
+            icon = m_flagIcons.get(status.flag, this->getColor(ColorSlot::NEGATIVE));
+            break;
+        case StatusMark::None:
+            break;
+    }
+    return icon;
+}
+
 StandingsHud::ColumnPositions::ColumnPositions(float contentStartX, float scale, uint32_t enabledColumns, int nameWidth, int raceNumWidth) {
     float scaledFontSize = layoutDefaults().fontSizeNormal * scale;
     float current = contentStartX;
@@ -291,58 +355,22 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
                                          entry.state == static_cast<int>(Unified::EntryState::Retired) ||
                                          entry.state == static_cast<int>(Unified::EntryState::DSQ));
 
-                // Check for hazard icon override first (hazard takes priority over tracked icon)
-                HazardType hazardType = isNonParticipant ? HazardType::None : pluginData.getRiderHazardType(entry.raceNum);
-                bool showHazardIcon = (hazardType != HazardType::None);
-
-                int spriteIndex = -1;
-                unsigned long spriteColor = 0;
-                RiderFlagIcons::Kind flagKind = RiderFlagIcons::Kind::None;
-
-                if (!isNonParticipant && DirectorManager::getInstance().isLocked()
-                           && DirectorManager::getInstance().getCurrentSubject() == entry.raceNum) {
-                    // Director lock: the broadcaster has deliberately pinned the director on this
-                    // rider so it won't auto-cut away. Highest priority — it's an explicit
-                    // production action, so its confirmation shouldn't be masked by any transient
-                    // race-status icon. Semantic WARNING tint.
-                    m_iconCache.ensureInitialized();
-                    if (m_iconCache.lock > 0) { spriteIndex = m_iconCache.lock; spriteColor = this->getColor(ColorSlot::WARNING); }
-                } else if (showHazardIcon) {
-                    // Flag markers and their fixed colours: rider_flag_icons.h
-                    flagKind = RiderFlagIcons::forHazard(hazardType);
-                } else if (!isNonParticipant && pluginData.isRiderBlueFlagged(entry.raceNum)) {
-                    // Blue flag icon (lower priority than hazard, higher than tracked)
-                    flagKind = RiderFlagIcons::Kind::Blue;
-                } else if (!isNonParticipant) {
-                    const StandingsData* sd = pluginData.getStanding(entry.raceNum);
-                    const SessionData& session = pluginData.getSessionData();
-                    if (sd && sd->pit == 1) {
-                        // Wrench icon for riders in pits (higher priority than checkered/last lap)
-                        m_iconCache.ensureInitialized();
-                        if (m_iconCache.wrench > 0) { spriteIndex = m_iconCache.wrench; spriteColor = this->getColor(ColorSlot::TERTIARY); }
-                    } else if (entry.isFinishedRace || entry.sessionFinished) {
-                        // Checkered flag for finished riders (race finish or non-race session finish)
-                        flagKind = RiderFlagIcons::Kind::Finished;
-                    } else if (sd && pluginData.isRaceSession() && session.isRiderOnLastLap(sd->numLaps, sd->numLapsAtLeaderFinish)) {
-                        // White flag for riders on last lap
-                        flagKind = RiderFlagIcons::Kind::LastLap;
-                    } else {
-                        // Fall back to tracked rider icon
-                        const RaceEntryData* raceEntry = pluginData.getRaceEntry(entry.raceNum);
-                        if (raceEntry) {
-                            const TrackedRidersManager& trackedMgr = TrackedRidersManager::getInstance();
-                            const TrackedRiderConfig* trackedConfig = trackedMgr.getTrackedRider(raceEntry->name);
-                            if (trackedConfig) {
-                                spriteIndex = AssetManager::getInstance().iconSpriteForShape(trackedConfig->shapeIndex);
-                                spriteColor = trackedConfig->color;
-                            }
+                const Status status = isNonParticipant ? Status{}
+                    : statusFor(entry.raceNum, entry.state, entry.isFinishedRace || entry.sessionFinished);
+                const RiderFlagIcons::Icon icon = statusIcon(status);
+                int spriteIndex = icon.sprite;
+                unsigned long spriteColor = icon.color;
+                if (status.mark == StatusMark::None && !isNonParticipant) {
+                    // Fall back to tracked rider icon
+                    const RaceEntryData* raceEntry = pluginData.getRaceEntry(entry.raceNum);
+                    if (raceEntry) {
+                        const TrackedRidersManager& trackedMgr = TrackedRidersManager::getInstance();
+                        const TrackedRiderConfig* trackedConfig = trackedMgr.getTrackedRider(raceEntry->name);
+                        if (trackedConfig) {
+                            spriteIndex = AssetManager::getInstance().iconSpriteForShape(trackedConfig->shapeIndex);
+                            spriteColor = trackedConfig->color;
                         }
                     }
-                }
-                if (flagKind != RiderFlagIcons::Kind::None) {
-                    const RiderFlagIcons::Icon icon = m_flagIcons.get(flagKind, this->getColor(ColorSlot::NEGATIVE));
-                    spriteIndex = icon.sprite;
-                    spriteColor = icon.color;
                 }
 
                 if (spriteIndex > 0) {
@@ -375,6 +403,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
                     // Track the quad index for position updates in rebuildLayout
                     m_trackedIconQuads.push_back({m_quads.size(), rowIndex});
                     m_quads.push_back(sprite);
+                    shadowLastIcon();
                 }
             }
             continue;  // Skip text rendering for tracked column
@@ -415,6 +444,7 @@ void StandingsHud::renderRiderRow(const DisplayEntry& entry, bool isPlaceholder,
                                                         : this->getColor(ColorSlot::NEGATIVE);
                 m_posGainIconQuads.push_back({m_quads.size(), rowIndex, down});
                 m_quads.push_back(sprite);
+                shadowLastIcon();
             }
         }
 

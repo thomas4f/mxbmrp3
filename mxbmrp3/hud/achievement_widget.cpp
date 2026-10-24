@@ -171,9 +171,11 @@ void AchievementWidget::rebuildRenderData() {
     // UNLESS THE ACHIEVEMENTS TAB IS OPEN (isPreviewing): a card is up for a few
     // seconds a session, which is no time at all to drag it somewhere, so a sample
     // one stands in. Toasts switched OFF stays off -- that switch is the player
-    // saying they do not want these, and a preview would argue with it.
+    // saying they do not want these, and a preview would argue with it -- except
+    // for the Toggles strip's hover sample, which shows what switching them on
+    // would bring (BaseHud::isSampled).
     const bool toastsOn = AchievementManager::getInstance().isToastsEnabled();
-    if (!m_showing && !(isPreviewing() && toastsOn)) {
+    if (!m_showing && !(isPreviewing() && (toastsOn || isSampled()))) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
@@ -242,6 +244,7 @@ void AchievementWidget::rebuildRenderData() {
     const float y = p.contentY();
     if (sprite > 0) {
         addIcon(x + (iconSize / UI_ASPECT_RATIO) * 0.5f, y + rowH, sprite, iconColor, iconSize);
+        shadowLastIcon();
     }
     const float textX = x + iconColW;
     addString(title, textX, inkCenteredY(y, rowH, dim.fontSize),
@@ -256,7 +259,7 @@ void AchievementWidget::resetToDefaults() {
     m_bVisible = true;   // master gate is [Achievements] visible
     m_bShowTitle = false;
     setTextureVariant(0);
-    m_fBackgroundOpacity = 0.55f;  // readable over track without a texture
+    m_fBackgroundOpacity = 0.66f;  // readable over track without a texture
     setScale(1.0f);
     // The right corner, in the widget column above Speed and Gear: the right
     // edge on Speed's (168 + its 10 cells), the bottom a cell above their top

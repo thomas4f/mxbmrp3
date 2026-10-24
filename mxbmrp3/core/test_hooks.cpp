@@ -29,13 +29,11 @@
 #include "../hud/friends_hud.h"
 #include "../hud/gap_bar_hud.h"
 #include "../hud/pitboard_hud.h"
-#include "../hud/version_widget.h"
 #include "../hud/radar_hud.h"
 #include "../hud/standings_hud.h"
 #include "../hud/map_hud.h"
 #include "../hud/benchmark_widget.h"
 #include "../hud/helmet_overlay_hud.h"
-#include "../hud/director_widget.h"
 #include "../hud/event_log_hud.h"
 #include "../hud/notices_hud.h"
 #include "../hud/telemetry_hud.h"
@@ -74,6 +72,7 @@
 #if GAME_HAS_FMX
 #include "fmx_manager.h"
 #endif
+#include "system_messages.h"
 #include "update_checker.h"
 #include "update_downloader.h"
 #include "http_server.h"
@@ -1276,21 +1275,6 @@ __declspec(dllexport) int MXBMRP3_Test_SettingsProfileArrowRepeats() {
 // CYCLE_UP/CYCLE_DOWN regions on the ACTIVE settings tab through the real click
 // path (hit-test -> dispatchRegion -> applyCycleControl). No hold tier - cycles
 // never accelerate.
-// Click the Director tab's "Visible" row through the real click path, and read the
-// DirectorWidget's per-surface visibility. Together these pin that the row edits
-// the FOCUSED surface: a row that calls setVisible() unconditionally flips the game
-// flag on the companion window while the widget stays on screen and the label
-// reports the other surface.
-__declspec(dllexport) int MXBMRP3_Test_ClickDirectorHudVisible() {
-    return HudManager::getInstance().getSettingsHud().testClickDirectorHudVisible() ? 1 : 0;
-}
-
-__declspec(dllexport) void MXBMRP3_Test_DirectorWidgetVisibility(int* game, int* companion) {
-    DirectorWidget* w = HudManager::getInstance().getDirectorWidget();
-    if (game)      *game      = (w && w->isVisible()) ? 1 : 0;
-    if (companion) *companion = (w && w->getCompanionVisible()) ? 1 : 0;
-}
-
 // Perturb / reset the ACTIVE settings tab through the real click path. The pair
 // reset_tab_test drives: click everything the tab offers, press its Reset, and require
 // the saved file to come back. See SettingsHud::testPerturbActiveTab.
@@ -1489,42 +1473,16 @@ __declspec(dllexport) int MXBMRP3_Test_CompareVersions(const char* a, const char
 // Publish an UPDATE_AVAILABLE result with no network; "" clears back to the plain
 // version state. The only way to reach the update-available UI headlessly -- see
 // UpdateChecker::testSetUpdateAvailable for why setDebugMode() is not it. Also
-// enables updates, since both the settings footer and the Version widget gate the
-// state on isEnabled().
-// The two terms the Version widget lays its notification BUTTON ROW out from --
-// one text row and the [panel] junction gap -- in fixed point (x * 1e6).
-//
-// Positions are deliberately NOT here: the caller reads the drawn message and the
-// drawn button label out of MXBMRP3_Test_HudStringRows and checks the distance
-// between them is at least a row plus a junction. Two strings from the same list
-// are the only pair that compare cleanly -- the widget stores its button bounds
-// BEFORE the HUD offset while the strings carry it, so mixing the two measures the
-// widget's screen position instead of its layout (short by exactly the offset).
-//
-// The terms ride out so the test can state the RULE rather than a pixel count that
-// moves with the font, the UI scale and the theme; and they are measured at all
-// because a panel's HEIGHT cannot tell the junction from the button box -- a test
-// comparing the plain and button states passes on the box's contribution whether
-// the junction is spent or not.
-__declspec(dllexport) void MXBMRP3_Test_VersionRowTerms(int* rowH, int* junction) {
-    const VersionWidget& v = HudManager::getInstance().getVersionWidget();
-    auto q = [](float x) { return static_cast<int>(x * 1e6f + (x < 0 ? -0.5f : 0.5f)); };
-    if (rowH) *rowH = q(v.testRowHeight());
-    if (junction) *junction = q(v.testJunctionY());
-}
-
+// enables updates, since the settings footer gates the state on isEnabled().
 __declspec(dllexport) void MXBMRP3_Test_UpdateSetAvailable(const char* latest) {
     UpdateChecker& checker = UpdateChecker::getInstance();
     checker.setEnabled(true);
     checker.testSetUpdateAvailable(latest ? latest : "9.9.9");
-    // AND DRIVE THE WIDGET. testSetUpdateAvailable only publishes the checker's
-    // state; in the game the notification appears because the check's COMPLETION
-    // CALLBACK calls this (settings_manager.cpp), and no callback runs here. Without
-    // it the widget stays in its plain one-row state and a test measuring the
-    // button row measures nothing.
-    if (latest && *latest) {
-        HudManager::getInstance().getVersionWidget().showUpdateNotification();
-    }
+    // AND OFFER THE MESSAGE. testSetUpdateAvailable only publishes the checker's
+    // state; in the game the Dash's update message appears because the check's
+    // COMPLETION CALLBACK offers it (settings_manager.cpp), and no callback runs here.
+    if (latest && *latest) SystemMessages::getInstance().offerUpdate();
+    else SystemMessages::getInstance().resolveStartup(SystemMessages::Startup::Update);
     HudManager::getInstance().markAllHudsDirty();
 }
 
@@ -2316,14 +2274,14 @@ __declspec(dllexport) int MXBMRP3_Test_SpriteOrderMismatches(void) {
 
 // Build the broken-install warning as if discovery had found these counts (and,
 // with iconsComplete, every icon a button needs; with realText, in the real font
-// for comparison); returns its quad count (0 = no warning). Test builds never
+// for comparison); returns 1 when the Dash has a warning to say, else 0. Test builds never
 // build it on their own: the suite runs with no asset tree at all.
 __declspec(dllexport) int MXBMRP3_Test_InstallWarning(int fontCount, int iconCount, int iconsComplete,
                                                       int realText) {
     HudManager& hm = HudManager::getInstance();
     hm.testBuildInstallWarning(static_cast<size_t>(fontCount), static_cast<size_t>(iconCount),
                                iconsComplete != 0, realText != 0);
-    return static_cast<int>(hm.testInstallWarningQuads());
+    return SystemMessages::getInstance().installProblem() ? 1 : 0;
 }
 
 // Must-catch probe for the same checker: re-run it with two table entries

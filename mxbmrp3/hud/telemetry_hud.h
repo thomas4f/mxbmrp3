@@ -46,6 +46,9 @@ public:
         DISPLAY_DEFAULT = DISPLAY_BOTH
     };
 
+    // The inputs shown (ElementFlags), for the Dash's Telemetry page.
+    uint32_t getEnabledElements() const { return m_enabledElements; }
+
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
     friend class SettingsManager;

@@ -3,6 +3,7 @@
 // FMX (Freestyle Motocross) trick display HUD implementation
 // ============================================================================
 #include "fmx_hud.h"
+#include "default_slots.h"
 
 #include <cstdio>
 #include <cstring>
@@ -249,6 +250,14 @@ float FmxHud::buildTrickStack(const BuildCtx& ctx, float currentY) {
             // Orange throughout ACTIVE+GRACE — only turns yellow once banked into chain
             pushTrick(trick.type, trick.multiplier, orangeColor);
         }
+    }
+
+    // POSITIONING PREVIEW (isPreviewing) with nothing live: a sample chain, so
+    // the stack shows its real shape while the HUD is placed or hover-previewed.
+    if (m_trickStack.empty() && isPreviewing()) {
+        pushTrick(Fmx::TrickType::WHIP_LEFT, 1, this->getColor(ColorSlot::NEUTRAL));
+        pushTrick(Fmx::TrickType::BACKFLIP, 1, this->getColor(ColorSlot::NEUTRAL));
+        pushTrick(Fmx::TrickType::SCRUB_RIGHT, 1, this->getColor(ColorSlot::WARNING));
     }
 
     if (m_trickStack.empty()) {
@@ -828,6 +837,7 @@ void FmxHud::addTrickStatsRow(float x, float y, float maxWidth, const ScaledDime
         // the number is the point, the icon is the label.
         if (useIcons && items[i].sprite > 0) {
             addIcon(cursorX + iconW * 0.5f, centerY, items[i].sprite, color, iconSize);
+            shadowLastIcon();
             cursorX += iconW + iconGap;
         }
         addString(items[i].text, cursorX, y, Justify::LEFT,
@@ -910,9 +920,9 @@ void FmxHud::resetToDefaults() {
     m_bVisible = false;  // Disabled by default
     m_bShowTitle = true;
     setTextureVariant(0);
-    m_fBackgroundOpacity = 0.80f;
+    m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setScale(1.0f);
-    setPosition(cellsX(133), cellsY(50));
+    setPosition(DefaultSlots::rightColumnX(DefaultSlots::NARROW_CELLS), DefaultSlots::rightColumnY());
     m_comboArcFill = 0.0f;
     m_comboHold = ComboHold();
     m_comboArcGraceStartFill = -1.0f;

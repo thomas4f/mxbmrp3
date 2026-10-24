@@ -11,6 +11,8 @@
 #include "../core/plugin_utils.h"
 #include "../core/fmx_manager.h"
 
+#include <algorithm>
+
 // Log "Session started" event with optional format detail (e.g., "3:00 + 2 laps")
 static void logSessionStarted(PluginData& data, const char* sessionStr, int sessionLength, int sessionNumLaps) {
     char eventMsg[64];
@@ -62,6 +64,7 @@ void Handlers::handleRaceSession(Unified::RaceSessionData* psRaceSession) {
     PluginData::getInstance().setFinishLap(-1);
     PluginData::getInstance().setLastSessionTime(0);
     PluginData::getInstance().setLeaderFinishTime(-1);
+    PluginData::getInstance().setRaceOverClock(0);
     PluginData::getInstance().setSessionTimeExpired(false);
     PluginData::getInstance().resetStandingsFinishState();
     PluginData::getInstance().resetLeaderChangeTracking();
@@ -106,6 +109,43 @@ void Handlers::handleRaceSession(Unified::RaceSessionData* psRaceSession) {
     }
 }
 
+// Time+laps: the game's own "time is up". When the clock runs out the game
+// re-sends IN_PROGRESS (carrying the session length) one classification tick
+// AFTER the classification clock first reads negative, and the bonus laps count
+// from THIS moment: a leader who crosses the line inside that gap (~30 ms
+// offline, ~70 ms online) completed a lap the game counts as run before expiry.
+// The finish lap armed at the negative tick (race_classification_handler) is
+// then one short - CHECKERED, FINAL LAP and the finish a lap early. Re-derive it
+// here from the laps the leader has completed by now. Once only; a re-send long
+// after expiry is not this moment and leaves the armed lap alone, as does a
+// session that never sends one (pure-time sessions don't). Recorded in-game in
+// both a solo qualifying and an online race; pinned by session_format_test.
+static void confirmOvertimeFinishLap(PluginData& data, const Unified::RaceSessionStateData& state) {
+    const SessionData& s = data.getSessionData();
+    if (!(state.sessionState & PluginConstants::SessionState::IN_PROGRESS) ||
+        !(s.sessionState & PluginConstants::SessionState::IN_PROGRESS) ||
+        state.session != s.session || !s.overtimeStarted || s.finishLapConfirmed ||
+        s.sessionLength <= 0 || s.sessionNumLaps <= 0 || s.finishLap <= 0 ||
+        data.getSessionTime() < -SessionData::FINISH_LAP_CONFIRM_WINDOW_MS) {
+        return;
+    }
+
+    // RaceLap reaches the lap log at the crossing; the classification's lap count
+    // only on the next tick, which comes AFTER this callback.
+    int leaderLaps = s.finishLap - s.sessionNumLaps;
+    const std::vector<int>& order = data.getClassificationOrder();
+    if (!order.empty()) {
+        const std::deque<LapLogEntry>* log = data.getLapLog(order.front());
+        if (log && !log->empty()) leaderLaps = std::max(leaderLaps, log->front().lapNum + 1);
+    }
+    const int finishLap = leaderLaps + s.sessionNumLaps;
+    if (finishLap != s.finishLap) {
+        DEBUG_INFO_F("[OVERTIME CONFIRMED] leader crossed before the game's time-up, finishLap %d -> %d",
+            s.finishLap, finishLap);
+    }
+    data.setFinishLap(finishLap, /*confirmed=*/true);
+}
+
 void Handlers::handleRaceSessionState(Unified::RaceSessionStateData* psRaceSessionState) {
     HANDLER_NULL_CHECK(psRaceSessionState);
 
@@ -113,6 +153,8 @@ void Handlers::handleRaceSessionState(Unified::RaceSessionStateData* psRaceSessi
     DEBUG_INFO_F("RaceSessionState changed: session=%d (%s), state=0x%X (%s)",
         psRaceSessionState->session, PluginUtils::getSessionString(eventType, psRaceSessionState->session),
         psRaceSessionState->sessionState, PluginUtils::getSessionStateString(psRaceSessionState->sessionState));
+
+    confirmOvertimeFinishLap(PluginData::getInstance(), *psRaceSessionState);
 
     // When race transitions to "in progress" (state 16), reset timing state
     // This prevents false overtime detection when transitioning from pre-start (256)

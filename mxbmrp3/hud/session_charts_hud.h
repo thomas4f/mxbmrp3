@@ -47,6 +47,21 @@ public:
     struct TestSeries { int pointsPerLap = 0; int points = 0; };
     TestSeries testSeries() const;
 
+    // The Dash's Gap chart page: the Gap chart's series (gap to the leader at each
+    // lap, or each sector with Sector points in a race) of the displayed rider and
+    // the riders just ahead of and behind them in the classification now; a series
+    // is empty where there is no such rider, and its race number -1. Collects the
+    // whole field, so it is called on a rebuild, never per frame.
+    struct NeighbourGaps {
+        std::vector<long long> ahead, mine, behind;
+        int aheadNum = -1, mineNum = -1, behindNum = -1;
+        int pointsPerLap = 1;   // the resolution: GAME_SECTOR_COUNT with Sector points
+    };
+    void neighbourGaps(NeighbourGaps& out) const;
+    // Right margin reserved for the "#999" line tag (Line labels), here and on the
+    // Dash's Gap chart page.
+    static constexpr int TAG_WIDTH_CHARS = 5;
+
     // Set which charts are shown (bitmask of ChartFlags). Used by test hooks; the
     // settings tab toggles m_enabledCharts bits directly.
     void setEnabledCharts(uint32_t flags) { m_enabledCharts = flags; setDataDirty(); }
@@ -72,9 +87,10 @@ public:
         CHART_TRACE = 1 << 1,
         CHART_GAP   = 1 << 2,
         CHART_PACE  = 1 << 3,
-        // Default: Lap (order flow) + Pace (lap times) — a compact two-chart view
-        // that's meaningful in any session. Trace and Gap are opt-in.
-        CHART_DEFAULT = CHART_LAP | CHART_PACE,
+        // Default: Lap (order flow) alone, so the HUD fits its default spot above
+        // the widget strip (default_slots.h); each chart adds 11 rows. Pace, Trace
+        // and Gap are opt-in.
+        CHART_DEFAULT = CHART_LAP,
         CHART_ALLFLAGS = CHART_LAP | CHART_TRACE | CHART_GAP | CHART_PACE
     };
 
@@ -90,11 +106,12 @@ public:
         // Every rider's sector times are already known (RaceLap carries the whole lap's
         // splits; RaceSplit arrives live mid-lap), so this is 3-4x the resolution from data
         // the plugin already holds — it turns "the gap grew on lap 7" into "the gap grew in
-        // sector 2". Off by default: it is a density choice, and a busy grid is already
-        // dense at one point per lap (ELEM_DOTS is opt-in for the same reason).
+        // sector 2". On by default; off-race and with a hole in the sector data the charts
+        // fall back to one point per lap on their own.
         ELEM_SECTOR_POINTS   = 1 << 6,
 
-        ELEM_DEFAULT = ELEM_GRID | ELEM_AXIS_LABELS | ELEM_LEGEND | ELEM_ZERO_LINE | ELEM_FILTER_OUTLIERS,
+        ELEM_DEFAULT = ELEM_GRID | ELEM_AXIS_LABELS | ELEM_LEGEND | ELEM_ZERO_LINE | ELEM_FILTER_OUTLIERS |
+                       ELEM_SECTOR_POINTS,
         ELEM_COUNT   = 7
     };
 
@@ -227,7 +244,6 @@ private:
     static constexpr float START_X = 0.0f;
     static constexpr float START_Y = 0.0f;
     static constexpr int GRAPH_WIDTH_CHARS = 43;   // match Telemetry/Performance outer width (33+1+9)
-    static constexpr int TAG_WIDTH_CHARS = 5;      // right margin reserved for the "#999" line tag
     // Every chart is 10 rows tall, so a single-chart HUD is title(2) + subheading(1)
     // + 10 + padding(2) = 15 rows (matching the StandingsHud default), and the HUD
     // grows taller as charts are added (each adds a subheading + 10 rows). Multi-chart

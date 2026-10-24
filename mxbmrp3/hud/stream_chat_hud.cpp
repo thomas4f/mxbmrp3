@@ -4,6 +4,7 @@
 // ============================================================================
 
 #include "stream_chat_hud.h"
+#include "default_slots.h"
 #include "../core/twitch_chat_manager.h"
 #include "../core/twitch_irc.h"
 #include "../core/youtube_chat_manager.h"
@@ -43,9 +44,9 @@ void StreamChatHud::resetToDefaults() {
     m_bVisible = false;
     m_bShowTitle = true;
     setTextureVariant(0);
-    m_fBackgroundOpacity = 0.80f;
+    m_fBackgroundOpacity = 1.0f;
     setScale(1.0f);
-    setPosition(cellsX(133), cellsY(59));  // right-column tower, after Performance
+    setPosition(DefaultSlots::rightColumnX(DefaultSlots::WIDE_CELLS), DefaultSlots::rightColumnY());
     m_displayMode = DisplayMode::ON;
     m_maxRows = DEFAULT_ROWS;
     m_widthChars = DEFAULT_WIDTH_CHARS;
@@ -632,6 +633,7 @@ void StreamChatHud::rebuildRenderData() {
         quad.m_iSprite = sprite;
         quad.m_ulColor = color;
         m_quads.push_back(quad);
+        shadowLastIcon();
     };
 
     // Chat sits at the newest end of the panel with any empty space beyond its

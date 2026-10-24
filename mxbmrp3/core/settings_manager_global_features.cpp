@@ -19,7 +19,7 @@
 #include "system_messages.h"
 #include "../hud/settings/whats_new.h"
 #include "../hud/helmet_overlay_hud.h"
-#include "../hud/director_widget.h"
+#include "../hud/dash_hud.h"
 #include "../hud/achievement_widget.h"
 #include "../diagnostics/logger.h"
 #include "../game/game_config.h"
@@ -299,7 +299,11 @@ void SettingsManager::writeHelmetOverlaySettings(std::ostream& out, const HudMan
     out << "helmetVibrationSensitivity=" << hud.m_helmetVibrationSensitivity << "\n";
     out << "helmetZoom=" << hud.m_helmetZoom << "\n";
     out << "visorTintColor=" << PluginUtils::formatColorHex(hud.m_visorTintColor) << "\n";
-    out << "visorTintOpacity=" << hud.m_visorTintOpacity << "\n\n";
+    out << "visorTintOpacity=" << hud.m_visorTintOpacity << "\n";
+    // The impact vignette is its own HUD (hud/impact_vignette_hud.h) but set on
+    // this tab, so it lives in this section: the tab's Reset replays exactly it.
+    out << "impactVignette=" << UiConfig::getInstance().getImpactVignette() << "\n";
+    out << "impactVignetteFade=" << UiConfig::getInstance().getImpactVignetteFade() << "\n\n";
 }
 
 // Handle HelmetOverlay section (global, not per-profile)
@@ -328,6 +332,10 @@ void SettingsManager::applyHelmetOverlayLine(const std::string& key, const std::
             hud.m_helmetVibrationSensitivity = parseFiniteFloat(value);
         } else if (key == "helmetZoom") {
             hud.m_helmetZoom = parseFiniteFloat(value);
+        } else if (key == "impactVignette") {
+            UiConfig::getInstance().setImpactVignette(parseFiniteFloat(value));
+        } else if (key == "impactVignetteFade") {
+            UiConfig::getInstance().setImpactVignetteFade(parseFiniteFloat(value));
         } else if (key == "visorTintColor") {
             hud.m_visorTintColor = PluginUtils::parseColorHex(value, hud.m_visorTintColor);
         } else if (key == "visorTintOpacity") {
@@ -472,7 +480,7 @@ void SettingsManager::applySpotterLine(const std::string& key, const std::string
 }
 
 // Write Director section (global, not per-profile)
-void SettingsManager::writeDirectorSettings(std::ostream& out, const HudManager& hudManager) const {
+void SettingsManager::writeDirectorSettings(std::ostream& out, const HudManager& /*hudManager*/) const {
     const DirectorManager& director = DirectorManager::getInstance();
     out << "[Director]\n";
     out << "enabled=" << (director.isEnabled() ? 1 : 0) << "\n";
@@ -499,20 +507,11 @@ void SettingsManager::writeDirectorSettings(std::ostream& out, const HudManager&
     out << "holdSec=" << director.getHoldSec() << "\n";
     out << "incidentMaxSec=" << director.getIncidentMaxSec()
         << " ; Longest incident the director will hold a camera on, in seconds\n";
-    // The status-button HUD is global too (like HelmetOverlay) - persist its base
-    // settings here rather than in the per-profile HUD cache.
-    if (const DirectorWidget* hud = hudManager.getDirectorWidget()) {
-        out << "hudVisible=" << (hud->isVisible() ? 1 : 0) << "\n";
-        out << "hudX=" << hud->getOffsetX() << "\n";
-        out << "hudY=" << hud->getOffsetY() << "\n";
-        out << "hudScale=" << hud->getOwnScale() << "\n";
-        out << "hudOpacity=" << hud->getBackgroundOpacity() << "\n";
-    }
     out << "\n";
 }
 
 // Handle Director section (global, not per-profile)
-void SettingsManager::applyDirectorLine(const std::string& key, const std::string& value, HudManager& hudManager) {
+void SettingsManager::applyDirectorLine(const std::string& key, const std::string& value, HudManager& /*hudManager*/) {
     DirectorManager& director = DirectorManager::getInstance();
     try {
         if (key == "enabled") {
@@ -562,34 +561,16 @@ void SettingsManager::applyDirectorLine(const std::string& key, const std::strin
             director.setHoldSec(std::stoi(value));
         } else if (key == "incidentMaxSec") {
             director.setIncidentMaxSec(std::stoi(value));
-        } else if (key == "hudVisible") {
-            if (auto* h = hudManager.getDirectorWidget()) h->setVisible(std::stoi(value) != 0);
-        } else if (key == "hudX") {
-            // isfinite-guard persisted floats: a garbage/Inf/NaN value in the INI
-            // must not reach setPosition/setScale (invariant, like finiteOrZero in
-            // stats_manager). If it isn't finite, keep the constructor default.
-            // NOTE: use std::stof here, NOT parseFiniteFloat — parseFiniteFloat maps
-            // non-finite to 0.0f (which passes the isfinite check below and would set
-            // 0.0 instead of keeping the default). This site owns its own guard.
-            float v = std::stof(value);
-            if (std::isfinite(v)) { if (auto* h = hudManager.getDirectorWidget()) h->setPosition(v, h->getOffsetY()); }
-        } else if (key == "hudY") {
-            float v = std::stof(value);
-            if (std::isfinite(v)) { if (auto* h = hudManager.getDirectorWidget()) h->setPosition(h->getOffsetX(), v); }
-        } else if (key == "hudScale") {
-            float v = std::stof(value);
-            if (std::isfinite(v)) { if (auto* h = hudManager.getDirectorWidget()) h->setScale(v); }
-        } else if (key == "hudOpacity") {
-            float v = std::stof(value);
-            if (std::isfinite(v)) { if (auto* h = hudManager.getDirectorWidget()) h->setBackgroundOpacity(v); }
         }
+        // hudVisible/hudX/hudY/hudScale/hudOpacity were the camera button's, which
+        // the Toggles strip replaced; an older file's are ignored here.
     } catch (const std::exception& e) {
         DEBUG_WARN_F("Director: Failed to parse setting '%s': %s", key.c_str(), e.what());
     }
 }
 
-// Write Achievements section (global; the toast widget's geometry lives here
-// like the Director button's, so a profile switch never moves it).
+// Write Achievements section (global; the toast widget's geometry lives here,
+// so a profile switch never moves it).
 void SettingsManager::writeAchievementsSettings(std::ostream& out, const HudManager& hudManager) const {
     const AchievementManager& ach = AchievementManager::getInstance();
     out << "[Achievements]\n";
@@ -659,20 +640,23 @@ void SettingsManager::applyAchievementsLine(const std::string& key, const std::s
 }
 
 // Write Messages section: the system toasts' switch (Appearance > Messages) and
-// what the startup popups have already told (core/system_messages.h). The two
-// state keys are written unconditionally, so the factory snapshot carries them
-// and a full reset replays them to "nothing owed" rather than leaving them stale.
-void SettingsManager::writeMessagesSettings(std::ostream& out, const HudManager& /*hudManager*/) const {
+// what the startup messages and the Dash's first-step hint have already told
+// (core/system_messages.h, DashHud::stepTried). The state keys are written
+// unconditionally, so the factory snapshot carries them and a full reset
+// replays them to "nothing owed" rather than leaving them stale.
+void SettingsManager::writeMessagesSettings(std::ostream& out, const HudManager& hudManager) const {
     const SystemMessages& msgs = SystemMessages::getInstance();
     out << "[Messages]\n";
     out << "enabled=" << (msgs.isEnabled() ? 1 : 0) << "\n";
     out << "lastLine=" << msgs.lineToStore(WhatsNew::currentLine()) << "\n";
     out << "welcomed=" << msgs.welcomeState() << "\n";
+    // Whether the rider has stepped the Dash yet (its first-step hint).
+    out << "dashTried=" << (hudManager.getDashHud().stepTried() ? 1 : 0) << "\n";
     out << "\n";
 }
 
 // Handle Messages section (global, not per-profile)
-void SettingsManager::applyMessagesLine(const std::string& key, const std::string& value, HudManager& /*hudManager*/) {
+void SettingsManager::applyMessagesLine(const std::string& key, const std::string& value, HudManager& hudManager) {
     SystemMessages& msgs = SystemMessages::getInstance();
     try {
         if (key == "enabled") {
@@ -681,6 +665,8 @@ void SettingsManager::applyMessagesLine(const std::string& key, const std::strin
             msgs.setStoredLine(value);
         } else if (key == "welcomed") {
             msgs.setWelcomeState(std::stoi(value));
+        } else if (key == "dashTried") {
+            hudManager.getDashHud().setStepTried(std::stoi(value) != 0);
         }
     } catch (const std::exception& e) {
         DEBUG_WARN_F("Messages: Failed to parse setting '%s': %s", key.c_str(), e.what());

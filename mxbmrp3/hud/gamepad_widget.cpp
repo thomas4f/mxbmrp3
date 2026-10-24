@@ -3,6 +3,7 @@
 // Displays controller button overlay - shows pressed buttons, sticks, triggers
 // ============================================================================
 #include "gamepad_widget.h"
+#include "default_slots.h"
 #include "../core/layout_config.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
@@ -761,6 +762,6 @@ void GamepadWidget::resetToDefaults() {
     m_triggerFillMode = 0;
     m_fBackgroundOpacity = 1.0f;  // 100% opacity
     setScale(1.0f);
-    setPosition(cellsX(68), cellsY(62));
+    setPosition(DefaultSlots::lowLeftX(), DefaultSlots::lowLeftY());
     setDataDirty();
 }

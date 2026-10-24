@@ -43,6 +43,7 @@
 
 #include "../game/game_config.h"   // SPluginQuad_t / SPluginString_t
 #include "render_frame_buffer.h"
+#include "render_layers.h"         // hudlayers::Span, the frame's HUD stacking
 
 class PluginThread {
 public:
@@ -120,8 +121,10 @@ public:
     // (and leave params untouched) if the worker hasn't produced a frame yet. The
     // returned pointers stay valid until the NEXT takeFrame() call (triple-buffered),
     // which matches the game's "read the quads after Draw returns" contract.
+    // `layers`, when given, receives the same frame's HUD stacking.
     bool takeFrame(const SPluginQuad_t*& quads, int& numQuads,
-                   const SPluginString_t*& strings, int& numStrings);
+                   const SPluginString_t*& strings, int& numStrings,
+                   hudlayers::Layers* layers = nullptr);
 
     // Most recent draw state the game reported (worker reads this while building).
     int drawState() const { return m_drawState.load(std::memory_order_relaxed); }
@@ -217,6 +220,8 @@ private:
     struct Frame {
         std::vector<SPluginQuad_t> quads;
         std::vector<SPluginString_t> strings;
+        std::vector<hudlayers::Span> spans;   // HUD stacking, travels with its arrays
+        int layerCount = 0;
     };
     RenderFrameBuffer<Frame> m_frameBuffer;
 };

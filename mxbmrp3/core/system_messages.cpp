@@ -71,7 +71,7 @@ void SystemMessages::setEnabled(bool on) {
     if (!on) m_toasts.clear();
 }
 
-// ---- startup popups --------------------------------------------------------
+// ---- startup messages --------------------------------------------------------
 
 void SystemMessages::onStartup(bool freshInstall, const char* currentLine) {
     const char* line = currentLine ? currentLine : "";
@@ -91,25 +91,36 @@ void SystemMessages::onStartup(bool freshInstall, const char* currentLine) {
     m_currentLine = line;
 }
 
-SystemMessages::Popup SystemMessages::pendingPopup() const {
-    if (m_owesUpdated) return Popup::Updated;
-    if (m_owesWelcome) return Popup::Welcome;
-    return Popup::None;
+SystemMessages::Startup SystemMessages::pendingStartup() const {
+    if (m_owesUpdate) return Startup::Update;
+    if (m_owesUpdated) return Startup::Updated;
+    if (m_owesWelcome) return Startup::Welcome;
+    return Startup::None;
 }
 
-void SystemMessages::resolvePopup(Popup p) {
-    switch (p) {
-        case Popup::Updated:
+void SystemMessages::resolveStartup(Startup s) {
+    switch (s) {
+        case Startup::Update:
+            m_owesUpdate = false;
+            break;
+        case Startup::Updated:
             m_owesUpdated = false;
             m_lastLine = m_currentLine;
             break;
-        case Popup::Welcome:
+        case Startup::Welcome:
             m_owesWelcome = false;
             m_welcome = Welcome::Done;
             break;
-        case Popup::None:
+        case Startup::BrokenInstall:   // until the install is fixed
+        case Startup::None:
             break;
     }
+}
+
+void SystemMessages::onSettingsOpened() {
+    m_owesUpdate = false;
+    if (m_owesUpdated) resolveStartup(Startup::Updated);
+    if (m_owesWelcome) resolveStartup(Startup::Welcome);
 }
 
 #if defined(MXBMRP3_TEST_BUILD)
@@ -122,6 +133,8 @@ void SystemMessages::testReset() {
     m_welcome = Welcome::Unknown;
     m_lastLine.clear();
     m_currentLine.clear();
+    m_installProblem = nullptr;
+    m_owesUpdate = false;
     m_owesUpdated = m_owesWelcome = false;
 }
 #endif

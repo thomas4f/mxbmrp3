@@ -1,21 +1,15 @@
 // ============================================================================
 // hud/center_stack.h
-// Where the three centered top-of-screen panels sit: GapBar -> Notices -> Timing.
+// Where the centered top-of-screen panels sit: the Dash at the top, and the Gap
+// Bar, Notices and Timing sharing ONE spot under it.
 //
-// THE STACK IS DERIVED FROM THE BOXES, not from three frozen cell numbers.
-//
-// The tops are computed from the same metrics the HUDs build their boxes from, so a
-// padding change moves the whole stack instead of breaking it. Frozen cell numbers
-// hold only while the boxes are exactly the height they assume; a taller box puts
-// the GapBar's top edge ABOVE the screen (its top frame slice clipped away) while
-// the Notices box overlaps it -- and both are on screen together in an ordinary
-// race: gap bar plus a blue-flag or PB notice. Each line is rounded UP to a whole
-// cell, because a box height need not be integral and the stack has to stay on the
-// lattice its panels snap to.
+// The three shared that spot's predecessor -- the Dash's top -- until 1.33, as
+// alternatives to one another; the Dash shipping on made it a hidden spot, so they
+// moved under it. They SHARE it like every other default group (default_slots.h):
+// two switched on overlap until the player drags one.
 //
 // UNSCALED, from layoutDefaults(): these are DEFAULT POSITIONS, written once into
 // each HUD's offset, and a HUD's own scale is a user setting applied afterwards.
-// Scaling one panel of the stack moves it relative to the others.
 //
 // Deliberately NOT in widget_constants.h, which 26 headers include -- this needs
 // layout_config.h, and putting that on a universally-included header is what makes
@@ -36,86 +30,33 @@ inline float rowY(const LayoutMetrics& L, int cell) {
 inline float rowY(int cell) { return rowY(layoutDefaults(), cell); }
 
 // Every line below takes the metrics EXPLICITLY, with a no-argument overload that
-// reads the global defaults -- which is what the HUDs call.
-//
-// Not ceremony: the test asserts these hold at ARBITRARY padding, not just the
-// shipped value. Reading a singleton inside would make that claim untestable, so
-// the test would say "arbitrary" and check one.
+// reads the global defaults -- which is what the HUDs call. The test asserts these
+// at arbitrary padding, not only the shipped value; reading a singleton inside
+// would make that claim untestable.
 
-// TWO cells of air between boxes, and one above the first.
-//
-// One cell is what the boxes need UNTHEMED and one short of what they need under
-// either shipped theme: a theme adds its frame clearance to every panel's padding --
-// one cell at each end, so two cells of growth per box -- while these defaults do
-// not move, so a one-cell gap overlaps by exactly a cell at both boundaries.
-// Measured at the shipped defaults under a 2-cell frame:
-//
-//   unthemed  gapbar 1..7   notices 9..15   timing 17..23    (2 cells of air each)
-//   themed    gapbar 1..9   notices 9..17   timing 17..25    (flush, no overlap)
-//
-// So two cells is the number that holds in both, at the cost of a cell of extra air
-// unthemed. The alternative -- making these defaults theme-aware -- does not hold: a
-// stored offset computed from the live padding is stale the moment the theme changes,
-// and the offsets ARE stored (they are what a drag edits). A constant that is right
-// in both states beats a live one that is right in neither for long.
+// TWO cells of air under the Dash, the gap every default group keeps from the HUD
+// it sits under (default_slots.h).
 inline float boxGap(const LayoutMetrics& L) { return 2.0f * L.cellH; }
 
-// The two box HEIGHTS, mirroring what the HUDs actually build:
-//   GapBar   paddingV + lineHeightLarge + paddingV   (gap_bar_hud.cpp, boxHeight)
-//   Notices  paddingV + fontSizeLarge  + paddingV    (notices_hud.cpp, noticeQuadHeight)
-// UNTHEMED AND TITLE-OFF, which is the shipped default and the only state these
-// numbers describe. Two things move a real box off them and neither is visible from
-// here:
-//   - a TITLE, which adds its reserved row (the toggles default off);
-//   - a THEME, which widens it to ceilY(frameBorderY + the body card's
-//     border, where one is drawn, less the base padding). BOTH boxes carry a body
-//     card (gap_bar_hud.cpp, notices_hud.cpp), so both count that card's border in
-//     the need. The whole term is clamped away while the need stays under the
-//     panel's own 2-cell padding, which for a 1-cell card is true at [frame] size 1
-//     and false from size 2 -- one size earlier than for a card-less panel.
-//     (theme_geometry_test prints all four in its Notices/GapBar height case.)
-//
-// The consequence is bounded and deliberate rather than latent: these are DEFAULT
-// offsets, written once into each HUD's position, so a themed or captioned stack is
-// nudged by hand exactly as any other panel is. Making the stack itself theme- and
-// title-aware means making those two baked-in defaults live, which is a migration;
-// see the note at GapBarHud::resetToDefaults.
-// ONE NORMAL ROW of content each, which is what both HUDs draw (GapBar's bar and
-// Notices' slab are both BaseHud::bigValueRowHeight; each box is that row plus a
-// padding at each end, and untitled Notices spends its pair on the slab itself
-// because there the slab IS the box).
-//
-// Change either HUD's content row and change these: every stack line below a box is
-// derived from these heights, so an overstated height does not overlap anything --
-// it just leaves a gap nobody asked for between the boxes, and that drift is
-// invisible from here.
-// L.boxPanelPadding — the [Advanced] BUILT-IN the migrated panels actually spend
-// (square-on-screen: top/bottom sides convert by cellW * aspect) — and NOT a
-// theme's `[panel] padding`. These compute the three boxes' STORED default
-// offsets, written once by resetToDefaults(), so they follow the built-in at
-// reset/first-run but cannot follow a THEME at all — the stored-offset
-// limitation named at contentPaddingY(); a user who retunes the built-in
-// mid-flight keeps stale tops until a reset, exactly as with a thicker frame.
-inline float gapBarBoxHeight(const LayoutMetrics& L) {
-    return static_cast<float>(L.boxPanelPadding.t + L.boxPanelPadding.b)
-               * L.cellW * (16.0f / 9.0f)
-         + L.lineHeightNormal;
-}
-inline float noticesBoxHeight(const LayoutMetrics& L) {
-    return static_cast<float>(L.boxPanelPadding.t + L.boxPanelPadding.b)
-               * L.cellW * (16.0f / 9.0f)
-         + L.lineHeightNormal;
-}
-
-// ONE TOP FOR ALL THREE, one grid cell down. They do not stack by default: the
-// three are alternatives more often than companions -- few players run a gap bar, a
-// notice slab AND a timing panel at once -- so the default that serves most people is
-// "the good spot", not "three good spots in a column". Anyone who does want all three
-// drags two of them, which is a thing users do to every HUD anyway.
-//
-// The HEIGHT helpers above are what a caller needs to lay the three out deliberately,
-// and noticesBoxHeight is the figure center_stack_theme_test pins the panel against.
+// THE STACK'S TOP, one grid cell down: the Dash's spot.
 inline float stackBoxTop(const LayoutMetrics& L) { return rowY(L, 1); }
+
+// THE SHARED SPOT UNDER THE DASH: one box gap under the Dash's box, centred with it.
+// Every panel's offset is its box top (see below), so the one number places all
+// three.
+//
+// The Dash's height is not derived here: its plan (page rows as tall as the Gear
+// and Speed widgets' content, the strip, the caption reserve) has no closed form
+// worth mirroring. So its default bottom is a cell number, UNTHEMED AND TITLE-OFF
+// like every default position, and dash_test's fresh-install Gap Bar case pins it:
+// any change to the Dash's height fails there, by the cell. A theme or a caption
+// grows the Dash over the spot's top, and the player nudges the panel as with any
+// other default -- following the theme would make a stored offset live, which is a
+// persistence migration.
+constexpr int DASH_DEFAULT_BOTTOM_CELL = 9;
+inline float underDashBoxTop(const LayoutMetrics& L) {
+    return rowY(L, DASH_DEFAULT_BOTTOM_CELL) + boxGap(L);
+}
 
 // THE COLOURED BLOCK'S OVERHANG IS NOT HERE.
 //
@@ -163,9 +104,8 @@ inline float boxWidth(float fontSizeLarge, float padX) {
 // another.
 
 // --- what the HUDs call ---
-inline float boxGap()           { return boxGap(layoutDefaults()); }
-inline float gapBarBoxHeight()  { return gapBarBoxHeight(layoutDefaults()); }
-inline float noticesBoxHeight() { return noticesBoxHeight(layoutDefaults()); }
-inline float stackBoxTop()      { return stackBoxTop(layoutDefaults()); }
+inline float boxGap()          { return boxGap(layoutDefaults()); }
+inline float stackBoxTop()     { return stackBoxTop(layoutDefaults()); }
+inline float underDashBoxTop() { return underDashBoxTop(layoutDefaults()); }
 
 }  // namespace CenterStack

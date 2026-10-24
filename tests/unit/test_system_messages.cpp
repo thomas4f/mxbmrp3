@@ -1,13 +1,13 @@
 // ============================================================================
 // tests/unit/test_system_messages.cpp
 // SystemMessages (core/system_messages.h): the toast queue the achievement card
-// draws as its second feed, and the bookkeeping behind the Version widget's
-// startup popups.
+// draws as its second feed, and the bookkeeping behind the startup messages
+// the Dash tells.
 //
 // The queue rules each guard a visible failure: a key mashed five times must be
 // ONE card, a HUD switched back on must withdraw its "hidden" card, and the
 // hide-all hotkey's own card must sit at the front, the only place the widget
-// can take it from while everything else is hidden. The popup rules guard the
+// can take it from while everything else is hidden. The message rules guard the
 // two ways a startup message goes wrong: told twice, or told where it means
 // nothing (an "Updated to" on a fresh install, a welcome on an old one).
 // ============================================================================
@@ -20,7 +20,7 @@
 #include <cstring>
 
 namespace {
-using Popup = SystemMessages::Popup;
+using Startup = SystemMessages::Startup;
 
 SystemMessages& fresh() {
     SystemMessages& m = SystemMessages::getInstance();
@@ -112,47 +112,79 @@ TEST_CASE("system messages: the queue is bounded, oldest out") {
     CHECK(first == 1012);
 }
 
-TEST_CASE("startup popups: a fresh install owes the welcome and nothing else") {
+TEST_CASE("startup messages: a fresh install owes the welcome and nothing else") {
     SystemMessages& m = fresh();
     m.onStartup(true, "1.32");
-    CHECK(m.pendingPopup() == Popup::Welcome);
+    CHECK(m.pendingStartup() == Startup::Welcome);
     CHECK(m.welcomeState() == 0);
     CHECK(m.lineToStore("1.32") == "1.32");
 
     // Timed out: not answered, so it comes back next launch, but not again now.
-    m.expirePopup(Popup::Welcome);
-    CHECK(m.pendingPopup() == Popup::None);
+    m.expireStartup(Startup::Welcome);
+    CHECK(m.pendingStartup() == Startup::None);
     CHECK(m.welcomeState() == 0);
 
-    m.resolvePopup(Popup::Welcome);
+    m.resolveStartup(Startup::Welcome);
     CHECK(m.welcomeState() == 1);
 }
 
-TEST_CASE("startup popups: an upgrade from before this feature owes 'Updated' only") {
+TEST_CASE("startup messages: an upgrade from before this feature owes 'Updated' only") {
     SystemMessages& m = fresh();
     // Existing file, no [Messages] keys: lastLine empty, welcome unknown.
     m.onStartup(false, "1.32");
-    CHECK(m.pendingPopup() == Popup::Updated);
+    CHECK(m.pendingStartup() == Startup::Updated);
     CHECK(m.welcomeState() == 1);           // no welcome for a player who already knows
     CHECK(m.lineToStore("1.32") == "-");    // closed before it drew: owed again
 
-    m.expirePopup(Popup::Updated);          // told once, even unanswered
-    CHECK(m.pendingPopup() == Popup::None);
+    m.expireStartup(Startup::Updated);          // told once, even unanswered
+    CHECK(m.pendingStartup() == Startup::None);
     CHECK(m.lineToStore("1.32") == "1.32");
 }
 
-TEST_CASE("startup popups: 'Updated' outranks a still-owed welcome, and is told once") {
+TEST_CASE("startup messages: 'Updated' outranks a still-owed welcome, and is told once") {
     SystemMessages& m = fresh();
     m.setStoredLine("1.31");
     m.setWelcomeState(0);   // a welcome that timed out last launch
     m.onStartup(false, "1.32");
-    CHECK(m.pendingPopup() == Popup::Updated);
-    m.resolvePopup(Popup::Updated);
-    CHECK(m.pendingPopup() == Popup::Welcome);
-    m.resolvePopup(Popup::Welcome);
-    CHECK(m.pendingPopup() == Popup::None);
+    CHECK(m.pendingStartup() == Startup::Updated);
+    m.resolveStartup(Startup::Updated);
+    CHECK(m.pendingStartup() == Startup::Welcome);
+    m.resolveStartup(Startup::Welcome);
+    CHECK(m.pendingStartup() == Startup::None);
 
     // Next launch, same line: nothing.
     m.onStartup(false, "1.32");
-    CHECK(m.pendingPopup() == Popup::None);
+    CHECK(m.pendingStartup() == Startup::None);
+}
+
+TEST_CASE("startup messages: an offered update outranks the rest, and comes back each launch") {
+    SystemMessages& m = fresh();
+    m.setStoredLine("1.31");
+    m.onStartup(false, "1.32");
+    m.offerUpdate();
+    CHECK(m.pendingStartup() == Startup::Update);
+    m.expireStartup(Startup::Update);       // this launch only: nothing stored
+    CHECK(m.pendingStartup() == Startup::Updated);
+    m.offerUpdate();                        // the next launch's check
+    CHECK(m.pendingStartup() == Startup::Update);
+}
+
+TEST_CASE("startup messages: the settings menu opening answers every one") {
+    SystemMessages& m = fresh();
+    m.setStoredLine("1.31");
+    m.setWelcomeState(0);
+    m.onStartup(false, "1.32");
+    m.offerUpdate();
+    m.onSettingsOpened();
+    CHECK(m.pendingStartup() == Startup::None);
+    CHECK(m.welcomeState() == 1);
+    CHECK(m.lineToStore("1.32") == "1.32");
+
+    // Opened with nothing owed: the stored line stays as it was, so a later
+    // startup on a new line still owes "Updated to".
+    m.testReset();
+    m.setStoredLine("1.31");
+    m.onSettingsOpened();
+    m.onStartup(false, "1.32");
+    CHECK(m.pendingStartup() == Startup::Updated);
 }

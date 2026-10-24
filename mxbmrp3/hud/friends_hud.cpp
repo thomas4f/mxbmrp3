@@ -3,6 +3,7 @@
 // Friends HUD - renders the SteamFriendsManager roster as a table.
 // ============================================================================
 #include "friends_hud.h"
+#include "default_slots.h"
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
 #include "../core/plugin_constants.h"
@@ -285,8 +286,12 @@ void FriendsHud::rebuildRenderData() {
             const float badgeColW = PluginUtils::calculateMonospaceTextWidth(COL_BADGE_W, dim.fontSize);
             const float cx = xBadge + badgeColW * 0.25f;
             const float cy = currentY + dim.lineHeightNormal * 0.5f;
-            if (m_badgeIcon > 0) addIcon(cx, cy, m_badgeIcon, colBadge, BADGE_FULL_SIZE * m_fScale);
-            else                 addDot(cx, cy, colBadge, BADGE_FULL_SIZE * m_fScale * 0.7f);
+            if (m_badgeIcon > 0) {
+                addIcon(cx, cy, m_badgeIcon, colBadge, BADGE_FULL_SIZE * m_fScale);
+                shadowLastIcon();
+            } else {
+                addDot(cx, cy, colBadge, BADGE_FULL_SIZE * m_fScale * 0.7f);
+            }
         }
 
         // Name (always).
@@ -360,7 +365,7 @@ void FriendsHud::resetToDefaults() {
     setTextureVariant(0);
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setScale(1.0f);
-    setPosition(cellsX(133), cellsY(47));  // right-column tower, in settings order (after Event Log, before FMX)
+    setPosition(DefaultSlots::rightColumnX(DefaultSlots::WIDE_CELLS), DefaultSlots::rightColumnY());
     m_enabledColumns = COL_DEFAULT;
     m_maxDisplayRows = 8;
     m_bShowHeaders = true;

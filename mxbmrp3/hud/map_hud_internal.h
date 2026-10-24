@@ -7,6 +7,7 @@
 // ============================================================================
 #pragma once
 
+#include "default_slots.h"   // the Map's default anchor (MapHud::resetToDefaults)
 #include "../core/asset_manager.h"
 #include "../core/plugin_constants.h"
 #include <cmath>

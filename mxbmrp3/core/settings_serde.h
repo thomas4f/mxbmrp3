@@ -22,6 +22,8 @@
 // ============================================================================
 #pragma once
 
+#include <algorithm>
+
 #include "settings_manager.h"
 #include "settings_keys.h"
 #include "profile_manager.h"
@@ -496,6 +498,9 @@ namespace Settings {
             settings[COMPANION_Y] = std::to_string(hud.getCompanionOffsetY());
         }
 
+        // Stacking rank, once the user has dragged the HUD (absent = default order).
+        if (hud.getStackRank() > 0) settings[STACK] = std::to_string(hud.getStackRank());
+
         // Capture per-HUD color overrides (only if set)
         for (int i = 0; i < static_cast<int>(ColorSlot::COUNT); ++i) {
             ColorSlot slot = static_cast<ColorSlot>(i);
@@ -726,6 +731,7 @@ namespace Settings {
         // keys => the companion mirrors the game (authoritative apply, like colors).
         bool compConfigured = false, compVisible = true;
         bool sawTheme = false;
+        int stackRank = 0;   // authoritative: absent = never dragged
         float compX = 0, compY = 0;
 
         // Each profile's cache is the complete intended state for the HUD (base keys
@@ -770,6 +776,8 @@ namespace Settings {
                     compX = validateOffset(parseFiniteFloat(value));
                 } else if (key == COMPANION_Y) {
                     compY = validateOffset(parseFiniteFloat(value));
+                } else if (key == STACK) {
+                    stackRank = std::max(0, std::stoi(value));
                 } else {
                     // Per-HUD color/font overrides (power user INI feature)
                     ColorSlot colorSlot = parseColorKey(key);
@@ -813,6 +821,7 @@ namespace Settings {
         // values; absent => mirror the game.
         if (compConfigured) hud.applyCompanionState(compVisible, compX, compY);
         else hud.clearCompanionState();
+        hud.setStackRank(stackRank);
 
         // Same rule for the per-HUD theme override, and it is a rule rather than a
         // nicety: capture writes the key ONLY when the HUD has diverged, so absence

@@ -122,7 +122,7 @@ manual in-game.
 | Clean shutdown/unload after a busy session | lifecycle | survival | ✅ | teardown_test (web server live + full state → Shutdown → FreeLibrary is clean; guards the analytics-reported AV-on-unload class) |
 | Plugin worker thread (`[Advanced] pluginThread=1`): callbacks routed off the game thread | user (INI) / derived | A | ✅ | plugin_thread_test (same synthetic race → same standings off-thread, `PluginThreadFlush` barrier before asserting) · plugin_thread_golden_test (a real ~8238-callback tape reconstructs the identical golden result - nothing dropped/reordered/raced across the queue) · plugin_thread_switch_test (runtime legacy↔threaded toggle: flip the flag, next Draw's `reconcileEnabled()` starts/stops the worker; standings correct across each switch) · plugin_thread_teardown_test (Shutdown with the worker live + a callback still queued: joined first, queue drained inline - no hang/use-after-free) · plugin_thread_latency_test (an injected `produceFrame` stall is paid by Draw in sync mode, not threaded - the feature's point). Real-game thread scheduling/pacing stays a manual in-game check |
 | XInput I/O thread (blocking `XInputSetState` moved off-thread) | derived | C (posted command, via hook) | ✅ | xinput_thread_test (the rumble send policy - first-send, idle-silence, transition-to-zero, disabled-guard - and the 8-bit quantization stay on the caller in `setVibration()` and are asserted on the command it posts, with the I/O thread stopped so it can't drain the post first; the thread's start/stop/join lifecycle is exercised by every test's startup/shutdown). Rumble *feel* and the degraded-driver latency benefit stay manual (no controller under Wine) |
-| Notices: masked-consumption (timed notice hidden behind a higher-priority banner) | derived | C (pure) | ✅ | test_notice_priority (unit): `NoticePriority::stepTimer` holds a masked consumable notice instead of counting it down + clearing it unseen; window starts on unmask; re-trigger restarts it |
+| Notices: masked-consumption (timed notice hidden behind a higher-priority banner) | derived | C (pure) | ✅ | test_notice_priority (unit): `NoticePriority::stepTimer` holds a masked consumable notice instead of counting it down + clearing it unseen; window starts on unmask and resumes after a mask (a flickering banner cannot extend it); re-trigger restarts it |
 | Auto-by-session profile switch | derived | B / A | ✅ | autoswitch_test (session type → active profile; off = no override) |
 | FMX trick detection / scoring | derived | state (via hook) | ✅ | fmx_test: real RunTelemetry orientation/contact frames under the injectable FMX clock (`Fmx::clockNow()`, 10ms sim steps) - a sub-debounce hop banks nothing; a sustained airborne full-pitch rotation classifies as BACKFLIP, survives the landing grace, and its score banks into the session on chain expiry; a crash during grace fails it without touching the session score. State read via `MXBMRP3_Test_FmxState` (in-game-only, not in JSON) |
 | Records fetch (MXB-Ranked / CBR) | user / auto | D (net) + C (parse) | ⚠️/✅ | **parse ✅** (records_parse_test: canned CBR/MXB-Ranked responses through the real parse path via `MXBMRP3_Test_RecordsParse` - field mapping, malformed/absurd inputs); **worker + shutdown-mid-fetch join contract ✅** (stubbed fetch via `MXBMRP3_Test_RecordsSetFetchStub`, no network); live fetch (WinHTTP transport against the real endpoints) manual |
@@ -189,11 +189,11 @@ seam the harness doesn't have yet - recorded here so they're managed, not lost.
    the player also briefly went WRONG WAY counted down behind the banner and was
    cleared unseen ("incorrect notices"). Fixed by measuring the window from the
    *unmask* moment: `hud/notice_priority.h`'s pure `stepTimer({pending, masked,
-   triggerMs, unmaskAtMs}, now, duration)` HOLDS a masked notice (never shown,
-   never consumed) and starts its full window when the mask clears; taking the
-   later of trigger/unmask also preserves "a fresh re-trigger restarts the
-   window". `notices_hud.cpp` computes the status-tier `statusMasking` flag and
+   triggerMs, timer}, now, duration)` HOLDS a masked notice (never shown, never
+   consumed), starts its window when the mask clears and resumes it after a
+   later mask (shown time counts in total, so a flickering banner cannot keep a
+   PB up); a fresh re-trigger restarts the window. `notices_hud.cpp` computes the status-tier `statusMasking` flag and
    feeds it per consumable notice. Tested as pure logic in `tests/unit/`
    (test_notice_priority) - held-while-masked, window-from-unmask, mid-display
-   mask, re-trigger restart, not-pending reset. (The in-game render ladder itself
+   mask resuming, flickering mask, re-trigger restart, not-pending reset. (The in-game render ladder itself
    stays a manual check; the consumption *decision* is now unit-tested.)

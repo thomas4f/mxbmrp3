@@ -45,6 +45,12 @@ void MapHud::renderRiders(const RotationCache& rotation,
     // Get plugin data to access rider names/numbers
     const PluginData& pluginData = PluginData::getInstance();
     int displayRaceNum = pluginData.getDisplayRaceNum();
+    // In a race, the leader wears the crown (looked up once, not per rider).
+    int leaderRaceNum = -1;
+    if (pluginData.isRaceSession()) {
+        const std::vector<int>& order = pluginData.getDisplayClassificationOrder();
+        if (!order.empty()) leaderRaceNum = order.front();
+    }
 
     // Helper lambda to render a single rider (used for both passes)
     auto renderRider = [&](const Unified::TrackPositionData& pos, bool isLocalPlayer) {
@@ -202,8 +208,8 @@ void MapHud::renderRiders(const RotationCache& rotation,
         // Hazard/flag icon overrides — skip for the local player so their
         // own icon and color always stay consistent on the map.
         if (!isLocalPlayer) {
-            // Priority: hazard, then blue flag, then finished. Markers and their
-            // fixed colours: rider_flag_icons.h
+            // Priority: hazard, then blue flag, then finished, then the race
+            // leader's crown. Markers and their fixed colours: rider_flag_icons.h
             RiderFlagIcons::Kind flagKind = RiderFlagIcons::Kind::None;
             HazardType hazardType = pluginData.getRiderHazardType(pos.raceNum);
             if (hazardType != HazardType::None) {
@@ -214,6 +220,8 @@ void MapHud::renderRiders(const RotationCache& rotation,
                 const StandingsData* standing = pluginData.getStanding(pos.raceNum);
                 if (standing && pluginData.getSessionData().isRiderFinished(standing->numLaps, standing->numLapsAtLeaderFinish)) {
                     flagKind = RiderFlagIcons::Kind::Finished;
+                } else if (pos.raceNum == leaderRaceNum) {
+                    flagKind = RiderFlagIcons::Kind::Leader;
                 }
             }
             if (flagKind != RiderFlagIcons::Kind::None) {

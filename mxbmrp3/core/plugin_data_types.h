@@ -20,6 +20,7 @@
 #pragma once
 
 #include "history_ring.h"
+#include "wrong_way_detect.h"
 
 #include <cstdint>
 #include <unordered_map>
@@ -92,8 +93,12 @@ struct SessionData {
     // Overtime tracking for time+laps races
     bool overtimeStarted;   // True when sessionTime goes negative
     int finishLap;          // Lap number riders need to complete to finish (leaderLapAtOvertime + sessionNumLaps)
+    bool finishLapConfirmed; // finishLap re-derived at the game's own time-up callback (race_session_handler)
+    // How long after the clock first reads negative that callback can still come.
+    static constexpr int FINISH_LAP_CONFIRM_WINDOW_MS = 1000;
     int lastSessionTime;    // Previous sessionTime value for detecting overtime transition
     int leaderFinishTime;   // Leader's total race time in milliseconds (-1 if not finished)
+    int raceOverClock;      // The game's clock since RACE OVER restarted it from zero (0 before)
 
     // Non-race session expiry tracking (practice/warmup/qualifying)
     bool sessionTimeExpired; // True when sessionTime goes negative in non-race sessions
@@ -102,8 +107,8 @@ struct SessionData {
         shiftRPM(13500), limiterRPM(14000), maxRPM(0), steerLock(30.0f),
         engineOptTemperature(85.0f), engineTempAlarmLow(60.0f), engineTempAlarmHigh(110.0f),
         session(-1), sessionSeries(0), sessionGeneration(0), sessionState(-1), sessionLength(-1), sessionNumLaps(-1),
-        conditions(-1), airTemperature(-1.0f), trackTemperature(-1.0f), overtimeStarted(false), finishLap(-1), lastSessionTime(0), leaderFinishTime(-1),
-        sessionTimeExpired(false) {
+        conditions(-1), airTemperature(-1.0f), trackTemperature(-1.0f), overtimeStarted(false), finishLap(-1), finishLapConfirmed(false), lastSessionTime(0), leaderFinishTime(-1),
+        raceOverClock(0), sessionTimeExpired(false) {
         riderName[0] = '\0';
         bikeName[0] = '\0';
         category[0] = '\0';
@@ -144,8 +149,10 @@ struct SessionData {
         setupFileName[0] = '\0';
         overtimeStarted = false;
         finishLap = -1;
+        finishLapConfirmed = false;
         lastSessionTime = 0;
         leaderFinishTime = -1;
+        raceOverClock = 0;
         sessionTimeExpired = false;
     }
 
@@ -167,6 +174,13 @@ struct SessionData {
         // Pure lap or pure time race
         return (finishLap > 0 && numLaps > finishLap) ||
                (sessionNumLaps > 0 && finishLap <= 0 && numLaps >= sessionNumLaps);
+    }
+
+    // Time+laps, the clock just expired and the game's time-up callback not in
+    // yet: a crossing now completes a lap the game counts as run BEFORE expiry,
+    // so the armed finish lap may still be one short (race_session_handler).
+    bool finishLapUnconfirmed(int sessionTime) const {
+        return overtimeStarted && !finishLapConfirmed && sessionTime >= -FINISH_LAP_CONFIRM_WINDOW_MS;
     }
 
     bool isRiderOnLastLap(int numLaps, int numLapsAtLeaderFinish = -1) const {
@@ -293,7 +307,7 @@ struct RiderTrackState {
     static constexpr float TELEPORT_THRESHOLD = 0.05f;  // Single-frame jump > 5% of track = teleport (reset/pit exit)
     float previousTrackPos;   // Previous frame's trackPos for direction detection
     bool wrongWay;            // True if rider is going backwards on track
-    std::chrono::steady_clock::time_point wrongWaySince;  // When rider started going backward (epoch = inactive)
+    WrongWayDetector wrongWayDetector;  // Confirms and clears wrongWay (core/wrong_way_detect.h)
 
     // Hazard detection state
     float lastSignificantTrackPos;  // Track pos when last significant movement detected
@@ -565,6 +579,7 @@ struct BikeTelemetryData {
     float accelX;       // Lateral G-force (chassis-local; positive = right)
     float accelY;       // Vertical G-force (chassis-local; positive = up, ~1g at rest)
     float accelZ;       // Longitudinal G-force (chassis-local; positive = forward / throttle, negative = brake)
+    float impactPeakG;  // Largest |accel| sample since PluginData::takeImpactPeakG() (core/impact_vignette.h)
     float engineTemperature;    // Engine temperature in Celsius
     float waterTemperature;     // Water/coolant temperature in Celsius
     float treadTemperature[2][3];  // Tyre tread temps [wheel: 0=front,1=rear][section: 0=left,1=mid,2=right] (GP Bikes only)
@@ -581,7 +596,7 @@ struct BikeTelemetryData {
                           frontSuspLength(0.0f), rearSuspLength(0.0f),
                           frontSuspMaxTravel(0.0f), rearSuspMaxTravel(0.0f),
                           roll(0.0f), pitch(0.0f),
-                          accelX(0.0f), accelY(0.0f), accelZ(0.0f),
+                          accelX(0.0f), accelY(0.0f), accelZ(0.0f), impactPeakG(0.0f),
                           engineTemperature(0.0f), waterTemperature(0.0f),
                           treadTemperature{},
                           ecuMode(0), engineMapping{}, tractionControl(0),
@@ -645,9 +660,14 @@ struct HistoryBuffers {
     HistoryRing<StickSample, MAX_STICK_HISTORY> leftStick;   // Left analog stick (steering/throttle)
     HistoryRing<StickSample, MAX_STICK_HISTORY> rightStick;  // Right analog stick (rider lean)
 
+    // Bumped by every sample and every clear, so a reader can tell the graphs
+    // moved without walking them (the Dash's Telemetry page).
+    uint32_t revision = 0;
+
     // Add sample to history buffer
     void addSample(HistoryRing<float, MAX_TELEMETRY_HISTORY>& buffer, float value) {
         buffer.push(value);
+        ++revision;
     }
 
     void addStickSample(HistoryRing<StickSample, MAX_STICK_HISTORY>& buffer, float x, float y) {
@@ -655,6 +675,7 @@ struct HistoryBuffers {
     }
 
     void clear() {
+        ++revision;
         throttle.clear();
         frontBrake.clear();
         rearBrake.clear();
@@ -766,6 +787,15 @@ struct IdealLapData {
 };
 
 // Historical lap data for lap log HUD
+// The lap behind a PB notice and the best it beat (<= 0 = none, a first best),
+// so a notice can say by how much (the Dash's second notice row).
+struct PbNoticeLap {
+    int lapMs = -1;
+    int previousMs = -1;
+    bool hasGain() const { return lapMs > 0 && previousMs > 0; }
+    int gainMs() const { return lapMs - previousMs; }   // negative: faster
+};
+
 struct LapLogEntry {
     // ZERO-based: race_lap_handler builds this from completedLapNumZeroIndexed,
     // and LapLogHud prints `entry.lapNum + 1` to get the "L3" a rider expects.

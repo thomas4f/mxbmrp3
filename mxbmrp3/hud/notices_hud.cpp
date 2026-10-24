@@ -4,6 +4,7 @@
 // Shows centered notices above the timing HUD area
 // ============================================================================
 #include "notices_hud.h"
+#include "notice_tracker.h"
 #include "rider_flag_icons.h"
 
 #include <cstdio>
@@ -14,21 +15,10 @@
 #include "../core/plugin_utils.h"
 #include "../core/widget_constants.h"
 #include "../core/color_config.h"
-#include "notice_priority.h"
+#include "../core/ui_config.h"
 #include "center_stack.h"
 
 using namespace PluginConstants;
-
-// Ordinal suffix for position display (1ST, 2ND, 3RD, 4TH, ...)
-static const char* ordinalSuffix(int n) {
-    if (n % 100 >= 11 && n % 100 <= 13) return "TH";
-    switch (n % 10) {
-        case 1: return "ST";
-        case 2: return "ND";
-        case 3: return "RD";
-        default: return "TH";
-    }
-}
 
 // Center display positioning constants (fixed center-screen layout)
 namespace {
@@ -42,19 +32,6 @@ namespace {
 }
 
 NoticesHud::NoticesHud()
-    : m_bIsWrongWay(false)
-    , m_bShowOvertime(false)
-    , m_bOvertimeTriggered(false)
-    , m_bShowLastLap(false)
-    , m_bShowFinished(false)
-    , m_finishedPosition(-1)
-    , m_bLastLapTriggered(false)
-    , m_bFinishedTriggered(false)
-    , m_bShowSessionPB(false)
-    , m_bShowFastestLap(false)
-    , m_bShowAllTimePB(false)
-    , m_bShowDefaultSetup(false)
-    , m_bShowSegment(false)
 {
     // TITLE RESTORED, TEMPORARILY. This panel was one of the three the caption was taken
     // from (see BaseHud::m_titleSupported for the twelve that keep it off). It is back so
@@ -72,12 +49,12 @@ NoticesHud::NoticesHud()
     //
     // It costs NO height, which is what made the old gating look necessary and is not:
     // the slab already paid a padding at each end when it was the widget, and the panel
-    // pays exactly that now, so panelH is the number CenterStack::noticesBoxHeight()
-    // already states. The slab moves inside the card instead of being the box.
+    // pays exactly that now, so the box is no taller than the widget was. The slab
+    // moves inside the card instead of being the box.
     m_bContentCard = true;
     // One-time setup
     setDraggable(true);
-    m_quads.reserve(1);
+    m_quads.reserve(2);   // the slab and its glow (themed slices grow it once)
     m_strings.reserve(1);
 
     // Set texture base name for dynamic texture discovery
@@ -93,258 +70,19 @@ bool NoticesHud::handlesDataType(DataChangeType /*dataType*/) const {
     return false;  // We poll PluginData directly in update()
 }
 
-bool NoticesHud::isTimedNoticeActive(std::chrono::steady_clock::time_point triggerTime) const {
-    auto elapsed = std::chrono::steady_clock::now() - triggerTime;
-    return std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() < static_cast<long long>(m_noticeDurationMs);
-}
-
-NoticesHud::StatusTier NoticesHud::computeStatusTier() const {
-    // Reads the member flags update() has already refreshed (wrong-way grace, hazard
-    // poll, blue-flag, lapping, overtime timer). The render ladder gives blue flag
-    // precedence over lapper, so lapper is suppressed when blue flag shows.
-    StatusTier s;
-    s.wrongWay = m_bIsWrongWay && (m_enabledNotices & NOTICE_WRONG_WAY);
-    s.hazard   = m_bIsHazardAhead && !m_bFinishedTriggered;
-    s.blueFlag = m_bIsBlueFlagged && !m_bFinishedTriggered && (m_enabledNotices & NOTICE_BLUE_FLAG);
-    s.lapping  = m_bIsLapping && !m_bFinishedTriggered && !s.blueFlag && (m_enabledNotices & NOTICE_LAPPING);
-    s.overtime = m_bShowOvertime && (m_enabledNotices & NOTICE_OVERTIME);
-    return s;
-}
-
 void NoticesHud::update() {
-    // When invisible, still clean up expired timed notice flags in PluginData.
-    // Without this, flags linger until PluginData::clear() (session end), and toggling
-    // the widget visible could briefly flash a stale notice.
-    // When visible, checkTimedNotice() handles cleanup — no need to run both paths.
+    // The notice state is NoticeTracker's, stepped once per frame by HudManager
+    // before any HUD updates (including the drain of expired notices while nothing
+    // shows them). This panel only redraws when the notice it shows changes.
     if (!isVisibleAnySurface()) {
-        PluginData& pd = PluginData::getInstance();
-        if (pd.hasNewAllTimePB() && !isTimedNoticeActive(pd.getAllTimePBTime()))
-            pd.clearAllTimePB();
-        if (pd.hasNewFastestLap() && !isTimedNoticeActive(pd.getFastestLapTime()))
-            pd.clearFastestLap();
-        if (pd.hasNewSessionPB() && !isTimedNoticeActive(pd.getSessionPBTime()))
-            pd.clearSessionPB();
-        if (pd.hasDefaultSetupNotice() && !isTimedNoticeActive(pd.getDefaultSetupTime()))
-            pd.clearDefaultSetupNotice();
-        if (pd.hasSegmentNotice() && !isTimedNoticeActive(pd.getSegmentNoticeTime()))
-            pd.clearSegmentNotice();
         clearDataDirty();
         clearLayoutDirty();
         return;
     }
-
-    PluginData& pluginData = PluginData::getInstance();
-    const SessionData& sessionData = pluginData.getSessionData();
-
-    // Wrong-way notice, suppressed during a standing (grid) start until the rider clears the first
-    // split. The grid launch (facing sideways/backward on the grid, then the run to S/F) routinely
-    // trips wrong-way; the grid-start grace is sector-based (see PluginData::isInGridStartGrace),
-    // so it covers races AND grid qualifying and adapts to the variable gate hold, with no fixed
-    // duration or sessionTime math. Pit starts never enter this grace, so their behaviour is
-    // unchanged (wrong-way shows as before).
-    bool wrongWay = pluginData.isPlayerGoingWrongWay() && !pluginData.isInGridStartGrace();
-
-    if (wrongWay != m_bIsWrongWay) {
-        m_bIsWrongWay = wrongWay;
+    const uint32_t revision = NoticeTracker::getInstance().revision();
+    if (revision != m_renderedRevision) {
+        m_renderedRevision = revision;
         setDataDirty();
-    }
-
-    // Check hazard ahead status (poll cached query, filter by enabled notice types)
-    {
-        bool hazardAhead = false;
-        bool hazardIsWrongWay = false;
-        bool stationaryEnabled = (m_enabledNotices & NOTICE_HAZARD_STATIONARY) != 0;
-        bool wrongWayEnabled = (m_enabledNotices & NOTICE_HAZARD_WRONG_WAY) != 0;
-        if (stationaryEnabled || wrongWayEnabled) {
-            const auto& hazardRaceNums = pluginData.getHazardRaceNums();
-            for (int raceNum : hazardRaceNums) {
-                HazardType type = pluginData.getRiderHazardType(raceNum);
-                if (wrongWayEnabled && type == HazardType::WrongWay) {
-                    // Don't break: an oncoming rider outranks a stopped one for WORDING,
-                    // so once one is found it wins regardless of scan order.
-                    hazardAhead = true;
-                    hazardIsWrongWay = true;
-                    break;
-                }
-                if (stationaryEnabled && type == HazardType::Stationary) {
-                    hazardAhead = true;   // keep scanning in case a wrong-way rider follows
-                }
-            }
-        }
-        if (hazardAhead != m_bIsHazardAhead || hazardIsWrongWay != m_bHazardIsWrongWay) {
-            m_bIsHazardAhead = hazardAhead;
-            m_bHazardIsWrongWay = hazardIsWrongWay;
-            setDataDirty();
-        }
-    }
-
-    // Check blue flag status
-    bool isBlueFlagged = pluginData.isPlayerBlueFlagged();
-    if (isBlueFlagged != m_bIsBlueFlagged) {
-        m_bIsBlueFlagged = isBlueFlagged;
-        setDataDirty();
-    }
-
-    // Check lapping status (mirror of blue flag — player closing on a backmarker ahead)
-    bool isLapping = pluginData.isPlayerLapping();
-    if (isLapping != m_bIsLapping) {
-        m_bIsLapping = isLapping;
-        setDataDirty();
-    }
-
-    // Check overtime status - trigger timed notice when time+laps race enters overtime
-    {
-        bool overtime = sessionData.overtimeStarted;
-        if (overtime && !m_bOvertimeTriggered) {
-            m_overtimeTriggerTime = std::chrono::steady_clock::now();
-            m_bShowOvertime = true;
-            m_bOvertimeTriggered = true;
-            setDataDirty();
-        }
-        if (m_bShowOvertime && !isTimedNoticeActive(m_overtimeTriggerTime)) {
-            m_bShowOvertime = false;
-            setDataDirty();
-        }
-        // Reset triggered flag when overtime clears (new session)
-        if (!overtime && m_bOvertimeTriggered) {
-            m_bOvertimeTriggered = false;
-        }
-    }
-
-    // Check last lap / finished status - trigger timed notices on transitions
-    bool isLastLap = false;
-    bool isFinished = false;
-    int displayRaceNum = pluginData.getDisplayRaceNum();
-
-    // Reset triggered and display flags when spectated rider changes
-    if (displayRaceNum != m_lastDisplayRaceNum) {
-        m_bLastLapTriggered = false;
-        m_bFinishedTriggered = false;
-        m_bShowLastLap = false;
-        m_bShowFinished = false;
-        m_lastDisplayRaceNum = displayRaceNum;
-        setDataDirty();
-    }
-    const StandingsData* standing = (displayRaceNum > 0) ? pluginData.getStanding(displayRaceNum) : nullptr;
-    if (standing && standing->numLaps >= 0) {
-        isFinished = sessionData.isRiderFinished(standing->numLaps, standing->numLapsAtLeaderFinish);
-        if (!isFinished && pluginData.isRaceSession()) {
-            isLastLap = sessionData.isRiderOnLastLap(standing->numLaps, standing->numLapsAtLeaderFinish);
-        }
-    }
-
-    // Trigger last lap timed notice on transition to last lap (once per last-lap period)
-    if (isLastLap && !m_bLastLapTriggered) {
-        m_lastLapTriggerTime = std::chrono::steady_clock::now();
-        m_bShowLastLap = true;
-        m_bLastLapTriggered = true;
-        setDataDirty();
-    }
-
-    // Trigger finished timed notice on transition to finished (once per race)
-    if (isFinished && !m_bFinishedTriggered) {
-        m_finishedTriggerTime = std::chrono::steady_clock::now();
-        m_bShowFinished = true;
-        m_bFinishedTriggered = true;
-        m_finishedPosition = pluginData.getDisplayPositionForRaceNum(displayRaceNum);
-        setDataDirty();
-    }
-
-    // While finished notice is showing, track position changes (e.g., penalty applied)
-    if (m_bShowFinished && displayRaceNum > 0) {
-        int currentPos = pluginData.getDisplayPositionForRaceNum(displayRaceNum);
-        if (currentPos != m_finishedPosition) {
-            m_finishedPosition = currentPos;
-            setDataDirty();
-        }
-    }
-
-    // Expire last lap / finished timed notices
-    if (m_bShowLastLap && !isTimedNoticeActive(m_lastLapTriggerTime)) {
-        m_bShowLastLap = false;
-        setDataDirty();
-    }
-    if (m_bShowFinished && !isTimedNoticeActive(m_finishedTriggerTime)) {
-        m_bShowFinished = false;
-        setDataDirty();
-    }
-
-    // Reset triggered flags when conditions clear (e.g. new race starts)
-    // so the notices can fire again in subsequent races
-    if (!isLastLap && m_bLastLapTriggered) {
-        m_bLastLapTriggered = false;
-    }
-    if (!isFinished && m_bFinishedTriggered) {
-        m_bFinishedTriggered = false;
-    }
-
-    // Higher-priority *status* notices that legitimately co-occur with a PB/setup/
-    // segment on the same lap. While one of these is on screen, a consumable notice
-    // masked behind it must not run down its display timer and get cleared unseen.
-    // computeStatusTier() is the shared source with rebuildRenderData()'s render ladder,
-    // so the mask predicate and the display precedence can't drift. (Overtime is timed
-    // but still outranks the PB tier, so it masks too.)
-    const bool statusMasking = computeStatusTier().anyShowing();
-
-    auto nowMs = [] {
-        return std::chrono::duration_cast<std::chrono::milliseconds>(
-                   std::chrono::steady_clock::now().time_since_epoch()).count();
-    }();
-    auto toMs = [](std::chrono::steady_clock::time_point tp) {
-        return std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count();
-    };
-    const long long durationMs = static_cast<long long>(m_noticeDurationMs);
-
-    // Check timed notice flags - single check per type. The window is measured from
-    // when the notice became unmasked (see notice_priority.h), so a masked notice is
-    // held rather than consumed. A disabled notice is never held (it can't be seen
-    // anyway) so it drains normally.
-    auto checkTimedNotice = [&](bool hasNew, bool enabled, std::chrono::steady_clock::time_point triggerTime,
-                                long long& unmaskAnchor, auto clearFn, bool& showFlag) {
-        NoticePriority::TimerOut r = NoticePriority::stepTimer(
-            { hasNew, statusMasking && enabled, toMs(triggerTime), unmaskAnchor }, nowMs, durationMs);
-        unmaskAnchor = r.unmaskAtMs;
-        if (r.consume) clearFn();
-        if (r.show != showFlag) { showFlag = r.show; setDataDirty(); }
-    };
-
-    checkTimedNotice(pluginData.hasNewAllTimePB(), (m_enabledNotices & NOTICE_ALLTIME_PB) != 0,
-                     pluginData.getAllTimePBTime(), m_allTimePBUnmaskMs,
-                     [&]() { pluginData.clearAllTimePB(); }, m_bShowAllTimePB);
-    checkTimedNotice(pluginData.hasNewFastestLap(), (m_enabledNotices & NOTICE_FASTEST_LAP) != 0,
-                     pluginData.getFastestLapTime(), m_fastestLapUnmaskMs,
-                     [&]() { pluginData.clearFastestLap(); }, m_bShowFastestLap);
-    checkTimedNotice(pluginData.hasNewSessionPB(), (m_enabledNotices & NOTICE_SESSION_PB) != 0,
-                     pluginData.getSessionPBTime(), m_sessionPBUnmaskMs,
-                     [&]() { pluginData.clearSessionPB(); }, m_bShowSessionPB);
-
-    // Check default setup warning (only fires when RunHandler detects default setup)
-    checkTimedNotice(pluginData.hasDefaultSetupNotice(), (m_enabledNotices & NOTICE_DEFAULT_SETUP) != 0,
-                     pluginData.getDefaultSetupTime(), m_defaultSetupUnmaskMs,
-                     [&]() { pluginData.clearDefaultSetupNotice(); }, m_bShowDefaultSetup);
-
-    // Segment timer action notice (start set / end set / cleared) - carries a kind,
-    // so it can't use the checkTimedNotice helper directly. Re-render on kind change
-    // too (not just show/hide), so a second press replaces the notice immediately
-    // instead of queueing behind the one still on screen. (Always-enabled, so it is
-    // held while a status notice masks it, same as the PB tier.)
-    {
-        NoticePriority::TimerOut r = NoticePriority::stepTimer(
-            { pluginData.hasSegmentNotice(), statusMasking, toMs(pluginData.getSegmentNoticeTime()), m_segmentUnmaskMs },
-            nowMs, durationMs);
-        m_segmentUnmaskMs = r.unmaskAtMs;
-        if (r.consume) pluginData.clearSegmentNotice();
-        bool active = r.show;
-        PluginData::SegmentNoticeKind kind = active ? pluginData.getSegmentNoticeKind()
-                                                    : PluginData::SegmentNoticeKind::None;
-        int number = active ? pluginData.getSegmentNoticeNumber() : 0;
-        if (active != m_bShowSegment || kind != m_segmentNoticeKind ||
-            number != m_segmentNoticeNumber) {
-            m_bShowSegment = active;
-            m_segmentNoticeKind = kind;
-            m_segmentNoticeNumber = number;
-            setDataDirty();
-        }
     }
 
     // Handle dirty flags using base class helper
@@ -401,38 +139,27 @@ void NoticesHud::rebuildRenderData() {
     clearStrings();
     m_quads.clear();
 
-    // Check which notices are both active and enabled
-    // Status tier (wrong way / hazard / blue flag / lapper / overtime) — shared with
-    // update()'s masking predicate via computeStatusTier() so the two stay in lockstep.
-    const StatusTier status = computeStatusTier();
-    bool showWrongWay  = status.wrongWay;
-    bool showHazard    = status.hazard;
-    bool showBlueFlag  = status.blueFlag;
-    bool showLapping   = status.lapping;
-    bool showOvertime  = status.overtime;
-    bool showAllTimePB = m_bShowAllTimePB && (m_enabledNotices & NOTICE_ALLTIME_PB);
-    bool showFastestLap = m_bShowFastestLap && (m_enabledNotices & NOTICE_FASTEST_LAP);
-    bool showSessionPB = m_bShowSessionPB && (m_enabledNotices & NOTICE_SESSION_PB);
-    bool showFinished  = m_bShowFinished && (m_enabledNotices & NOTICE_FINISHED);
-    bool showLastLap   = m_bShowLastLap && (m_enabledNotices & NOTICE_LAST_LAP);
-    bool showDefaultSetup = m_bShowDefaultSetup && (m_enabledNotices & NOTICE_DEFAULT_SETUP);
-    bool showSegment   = m_bShowSegment;  // always on -- self-gated by the segment hotkey action
+    // The notice up right now, already resolved through the priority ladder and the
+    // enabled mask (NoticeTracker::resolveCurrent):
+    // WRONG WAY > HAZARD AHEAD > BLUE FLAG > LAPPER AHEAD > OVERTIME > ALL-TIME PB >
+    // FASTEST LAP > SESSION PB > SEGMENT > FINISHED > LAST LAP > DEFAULT SETUP
+    const NoticeTracker::Notice& notice = NoticeTracker::getInstance().current();
+    using Kind = NoticeTracker::Kind;
 
-    // Only render if there's something to show
-    // Priority: WRONG WAY > HAZARD AHEAD > BLUE FLAG > LAPPER AHEAD > OVERTIME > ALL-TIME PB > FASTEST LAP > SESSION PB > SEGMENT > FINISHED > LAST LAP > SETUP NAME
+    // Only render if there's something to show...
     //
     // ...or the Notices tab is open (isPreviewing), in which case a stand-in slab
-    // draws at the foot of the chain below. A notice is up for a second or two an
-    // hour, which is no time to drag the panel anywhere.
+    // draws in its place. A notice is up for a second or two an hour, which is no
+    // time to drag the panel anywhere.
     //
     // GATED ON HAVING ANY NOTICE SWITCHED ON, like every other element's preview
     // is gated on its own content switch: with the lot turned off this panel can
     // never show anything, so standing in for it would be arguing with the player.
-    // (m_bShowSegment is not in the mask -- it is self-gated by the segment hotkey
-    // -- so it is asked for separately.)
-    const bool preview = isPreviewing() && (m_enabledNotices != 0 || m_bShowSegment);
-    if (!showWrongWay && !showHazard && !showBlueFlag && !showLapping && !showOvertime && !showAllTimePB && !showFastestLap &&
-        !showSessionPB && !showSegment && !showLastLap && !showFinished && !showDefaultSetup && !preview) {
+    // (The segment notice is not in the mask -- it is self-gated by the segment
+    // hotkey -- so it is asked for separately.)
+    const bool segmentUp = notice.kind == Kind::SegmentAdded || notice.kind == Kind::SegmentRemoved;
+    const bool preview = isPreviewing() && (m_enabledNotices != 0 || segmentUp);
+    if (notice.kind == Kind::None && !preview) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
@@ -490,190 +217,95 @@ void NoticesHud::rebuildRenderData() {
     float noticeY = inkCenteredY(slabY, slabH, dim.fontSizeLarge);
     float noticeCenterX = slabX + slabW / 2.0f;
 
-    if (showWrongWay) {
-        // Add notice background (red for warning)
-        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(ColorSlot::NEGATIVE), m_fBackgroundOpacity));
-
-        // Add notice text (red)
-        addString("WRONG WAY", noticeCenterX, noticeY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE),
-            captionOnSlabColor(this->getColor(ColorSlot::NEGATIVE), m_fBackgroundOpacity),
-            dim.fontSizeLarge);
-    }
-    else if (showHazard) {
-        // Add notice background (yellow/warning for hazard)
-        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(ColorSlot::WARNING), m_fBackgroundOpacity));
-
-        // Same slot, same WARNING colour — only the wording separates a rider coming at
-        // you from one stopped on the track, which call for opposite reactions.
-        addString(m_bHazardIsWrongWay ? "RIDER ONCOMING" : "HAZARD AHEAD",
-            noticeCenterX, noticeY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE),
-            captionOnSlabColor(this->getColor(ColorSlot::WARNING), m_fBackgroundOpacity),
-            dim.fontSizeLarge);
-    }
-    else if (showBlueFlag) {
-        // Add notice background (blue for blue flag)
-        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(FlagColors::BLUE, m_fBackgroundOpacity));
-
-        addString("BLUE FLAG", noticeCenterX, noticeY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE),
-            captionOnSlabColor(FlagColors::BLUE, m_fBackgroundOpacity), dim.fontSizeLarge);
-    }
-    else if (showLapping) {
-        // Add notice background (neutral/yellow — informational caution; distinct from
-        // the orange WARNING that hazards use)
-        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(ColorSlot::NEUTRAL), m_fBackgroundOpacity));
-
-        addString("LAPPER AHEAD", noticeCenterX, noticeY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE),
-            captionOnSlabColor(this->getColor(ColorSlot::NEUTRAL), m_fBackgroundOpacity),
-            dim.fontSizeLarge);
-    }
-    else if (showOvertime) {
-        // Add notice background (neutral for overtime - informational race event)
-        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(ColorSlot::BACKGROUND), m_fBackgroundOpacity));
-
-        addString("OVERTIME", noticeCenterX, noticeY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
-    }
-    else if (showAllTimePB || showFastestLap || showSessionPB) {
-        // All positive notices share the same rendering (green bg + green text)
-        const char* text = showAllTimePB ? "ALL-TIME PB" :
-                           showFastestLap ? "FASTEST LAP" : "SESSION PB";
-
-        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(ColorSlot::POSITIVE), m_fBackgroundOpacity));
-
-        addString(text, noticeCenterX, noticeY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE),
-            captionOnSlabColor(this->getColor(ColorSlot::POSITIVE), m_fBackgroundOpacity),
-            dim.fontSizeLarge);
-    }
-    else if (showSegment) {
-        // Segment-timer action feedback. Adding a point = positive (green); removing = neutral.
-        bool isAdd = (m_segmentNoticeKind == PluginData::SegmentNoticeKind::Added);
-        ColorSlot slot = isAdd ? ColorSlot::POSITIVE : ColorSlot::PRIMARY;
-
-        // Name the point involved by its 1-based position ("SEG 3 ADDED"), so notices count
-        // up as you place points and down as you remove them — the last removal is
-        // "SEG 1 REMOVED" (no special "cleared" state). (The >= 1 guard is defensive —
-        // add/remove always carry a positive ordinal.)
-        char text[24] = "SEGMENT";
-        switch (m_segmentNoticeKind) {
-            case PluginData::SegmentNoticeKind::Added:
-                if (m_segmentNoticeNumber >= 1)
-                    snprintf(text, sizeof(text), "SEG %d ADDED", m_segmentNoticeNumber);
-                else
-                    strcpy_s(text, sizeof(text), "SEG ADDED");
-                break;
-            case PluginData::SegmentNoticeKind::Removed:
-                if (m_segmentNoticeNumber >= 1)
-                    snprintf(text, sizeof(text), "SEG %d REMOVED", m_segmentNoticeNumber);
-                else
-                    strcpy_s(text, sizeof(text), "SEG REMOVED");
-                break;
-            default: break;
-        }
-
-        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(isAdd ? ColorSlot::POSITIVE : ColorSlot::BACKGROUND), m_fBackgroundOpacity));
-
-        addString(text, noticeCenterX, noticeY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE), this->getColor(slot), dim.fontSizeLarge);
-    }
-    else if (showFinished) {
-        // Add notice background (semantic background color for finished)
-        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(ColorSlot::BACKGROUND), m_fBackgroundOpacity));
-
-        // Add notice text with position (e.g., "FINISHED 1ST")
-        char finishedText[32];
-        if (m_finishedPosition > 0) {
-            snprintf(finishedText, sizeof(finishedText), "FINISHED %d%s", m_finishedPosition, ordinalSuffix(m_finishedPosition));
-        } else {
-            snprintf(finishedText, sizeof(finishedText), "FINISHED");
-        }
-        addString(finishedText, noticeCenterX, noticeY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
-    }
-    else if (showLastLap) {
-        // Add notice background (white for last lap)
-        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(ColorSlot::BACKGROUND), m_fBackgroundOpacity));
-
-        // Add notice text (white)
-        addString(PluginConstants::DisplayStrings::SessionClock::FINAL_LAP, noticeCenterX, noticeY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::PRIMARY), dim.fontSizeLarge);
-    }
-    else if (showDefaultSetup) {
-        // Warn when using default setup (only fires for default/empty setups)
-        addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(this->getColor(ColorSlot::WARNING), m_fBackgroundOpacity));
-
-        addString("DEFAULT SETUP", noticeCenterX, noticeY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE),
-            captionOnSlabColor(this->getColor(ColorSlot::WARNING), m_fBackgroundOpacity),
-            dim.fontSizeLarge);
-    }
-
-    else if (preview) {
-        // LAST in the chain, so a real notice always wins: the sample only draws on
-        // a frame where nothing else would have. Accent rather than one of the
-        // notice colours, so it does not read as a warning that is actually up.
-        addNoticeBackground(slabX, slabY, slabW, slabH,
-            PluginUtils::applyOpacity(this->getColor(ColorSlot::ACCENT), m_fBackgroundOpacity));
-        // ONE WORD. This slot carries WRONG WAY and HAZARD AHEAD at a glance, so a
-        // sentence here reads as a notice rather than as the absence of one -- and
-        // the word says what it is, which is the whole job: something appeared
-        // that the player had not done anything to cause.
-        addString("PREVIEW", noticeCenterX, noticeY, Justify::CENTER,
-            this->getFont(FontCategory::TITLE),
-            captionOnSlabColor(this->getColor(ColorSlot::ACCENT), m_fBackgroundOpacity),
-            dim.fontSizeLarge);
-    }
+    // The slab's colour is the message (slabColors). The preview stand-in says one
+    // word: this slot carries WRONG WAY and HAZARD AHEAD at a glance, so a sentence
+    // here reads as a notice rather than as the absence of one.
+    unsigned long fill = 0, ink = 0;
+    slabColors(notice.kind, m_fBackgroundOpacity, fill, ink);
+    if (glows(notice.kind)) addGlow(slabX, slabY, slabW, slabH, slabH * GLOW_SPREAD, fill, glowOpacity(notice.kind));
+    addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(fill, m_fBackgroundOpacity));
+    addString(notice.kind == Kind::None ? "PREVIEW" : notice.text, noticeCenterX, noticeY, Justify::CENTER,
+              this->getFont(FontCategory::TITLE), ink, dim.fontSizeLarge);
 
     setBounds(panelX, panelY, panelX + panelW, panelY + plan.height());
 }
 
+// WRONG WAY and RIDER ONCOMING are the critical ones: full strength; the rest
+// at the calm share.
+float NoticesHud::glowOpacity(NoticeTracker::Kind kind) {
+    using Kind = NoticeTracker::Kind;
+    const bool critical = kind == Kind::WrongWay || kind == Kind::RiderOncoming;
+    return GLOW_OPACITY * (critical ? 1.0f : UiConfig::GLOW_CALM);
+}
+
+bool NoticesHud::glows(NoticeTracker::Kind kind) {
+    using Kind = NoticeTracker::Kind;
+    return kind == Kind::WrongWay || kind == Kind::HazardAhead ||
+           kind == Kind::RiderOncoming || kind == Kind::BlueFlag;
+}
+
+// The slab's colour is the message (red = wrong way, blue = blue flag). The caption
+// takes captionOnSlabColor where the slab is a strong colour, and plain PRIMARY over
+// the neutral BACKGROUND slab.
+void NoticesHud::slabColors(NoticeTracker::Kind kind, float opacity, unsigned long& fill,
+                            unsigned long& ink) const {
+    using Kind = NoticeTracker::Kind;
+    switch (kind) {
+        case Kind::WrongWay:      fill = getColor(ColorSlot::NEGATIVE); break;
+        // Same slot, same WARNING colour -- only the wording separates a rider
+        // coming at you from one stopped on the track.
+        case Kind::HazardAhead:
+        case Kind::RiderOncoming: fill = getColor(ColorSlot::WARNING); break;
+        case Kind::BlueFlag:      fill = FlagColors::BLUE; break;
+        // Neutral/yellow -- informational caution; distinct from the orange
+        // WARNING that hazards use.
+        case Kind::LapperAhead:   fill = getColor(ColorSlot::NEUTRAL); break;
+        case Kind::AllTimePB:
+        case Kind::FastestLap:
+        case Kind::SessionPB:     fill = getColor(ColorSlot::POSITIVE); break;
+        case Kind::SegmentAdded:
+            // Adding a point = positive (green); removing = neutral.
+            fill = ink = getColor(ColorSlot::POSITIVE);
+            return;
+        case Kind::DefaultSetup:  fill = getColor(ColorSlot::WARNING); break;
+        case Kind::Overtime:
+        case Kind::SegmentRemoved:
+        case Kind::Finished:
+        case Kind::LastLap:
+            fill = getColor(ColorSlot::BACKGROUND);
+            ink = getColor(ColorSlot::PRIMARY);
+            return;
+        case Kind::None:
+        default:
+            // The preview stand-in (a real notice always wins: it only draws on a
+            // frame where nothing else would have). Accent rather than one of the
+            // notice colours, so it does not read as a warning that is actually up.
+            fill = getColor(ColorSlot::ACCENT);
+            break;
+    }
+    ink = captionOnSlabColor(fill, opacity);
+}
+
 void NoticesHud::resetToDefaults() {
-    m_bVisible = true;
+    // Off by default since 1.33: the Dash shows each notice (Notice focus, on by
+    // default). Fresh installs only -- an upgraded INI keeps the panel on.
+    m_bVisible = false;
     // Off by DEFAULT, not unavailable -- the toggle is in the Notices tab. Switching
     // it on promotes this widget from a bare coloured slab to a real panel with the
     // slab as its content; see rebuildRenderData for why the panel keeps the slab's
     // outer width instead of growing around it.
     m_bShowTitle = false;
     setTextureVariant(0);  // No texture by default
-    m_fBackgroundOpacity = 0.1f;
+    m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setScale(1.0f);
-    // The stack's shared anchor: offsetX is the CENTRE (all four centred elements
-    // agree since settings v7), offsetY the shared top.
-    setPosition(CENTER_ANCHOR_X, CenterStack::stackBoxTop());
+    // The spot under the Dash that the Gap Bar and Timing share: offsetX is the
+    // CENTRE (all four centred elements agree since settings v7), offsetY the top.
+    setPosition(CENTER_ANCHOR_X, CenterStack::underDashBoxTop());
     m_enabledNotices = NOTICE_DEFAULT;
     m_noticeDurationMs = DEFAULT_NOTICE_DURATION_MS;
 
-    // Reset notice state
-    m_bIsWrongWay = false;
-    m_bIsHazardAhead = false;
-    m_bHazardIsWrongWay = false;
-    m_bIsBlueFlagged = false;
-    m_bShowOvertime = false;
-    m_bOvertimeTriggered = false;
-    m_bShowLastLap = false;
-    m_bShowFinished = false;
-    m_finishedPosition = -1;
-    m_bLastLapTriggered = false;
-    m_bFinishedTriggered = false;
-    m_bShowSessionPB = false;
-    m_bShowFastestLap = false;
-    m_bShowAllTimePB = false;
-    m_bShowDefaultSetup = false;
-    m_bShowSegment = false;
-    m_segmentNoticeKind = PluginData::SegmentNoticeKind::None;
-    m_overtimeTriggerTime = {};
-    m_lastLapTriggerTime = {};
-    m_finishedTriggerTime = {};
-    m_allTimePBUnmaskMs = 0;
-    m_fastestLapUnmaskMs = 0;
-    m_sessionPBUnmaskMs = 0;
-    m_defaultSetupUnmaskMs = 0;
-    m_segmentUnmaskMs = 0;
-    m_lastDisplayRaceNum = -1;
+    // The shared notice state starts over with the settings that step it
+    NoticeTracker::getInstance().reset();
 
     setDataDirty();
 }

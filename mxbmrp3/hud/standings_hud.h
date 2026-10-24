@@ -27,6 +27,41 @@ public:
     bool handlesDataType(DataChangeType dataType) const override;
     const char* getIconName() const override { return "hud-standings"; }
     void resetToDefaults();
+    // Read by the Dash's Standings page, which follows them (all INI-only).
+    int getShortNameChars() const { return m_shortNameChars; }
+    bool isClassicLayout() const { return m_bClassicLayout; }
+    bool getPlayerRowHighlight() const { return m_bPlayerRowHighlight; }
+    bool getPlayerRowHighlightBrand() const { return m_bPlayerRowHighlightBrand; }
+    // The gap table this HUD plans its gap column with: its Gap reference
+    // (Alternating resolved), Gap mode and Live gaps (races only). The Dash's
+    // Standings page plans its rows with it.
+    StandingsGap::Table gapTableFor(const std::vector<int>& classificationOrder, int displayRaceNum) const;
+    // The race-number plate's colour before PlateLayout::kPlateAlpha, one rule for
+    // this HUD and the Dash's Standings page: muted for a rider out of the race
+    // (DNS/DSQ/retired), else a tracked rider's own colour (a red points-leader
+    // plate beats the podium), else gold/silver/bronze for a finished top three,
+    // else `normal` (the secondary slot, so the dark number stays legible on it).
+    static unsigned long plateColor(bool outOfRace, unsigned long trackedColor, bool finished, int position,
+                                    unsigned long muted, unsigned long normal);
+    // The status column's marker for one rider, in the column's precedence:
+    // director lock, hazard, blue flag, in the pits, finished, last lap; None
+    // where the tracked rider's shape (if any) shows instead. One rule for this
+    // HUD and the Dash's Standings page. finished: through the flag, or the
+    // session over for them.
+    enum class StatusMark : uint8_t { None, Lock, Pits, Flag };
+    struct Status {
+        StatusMark mark = StatusMark::None;
+        RiderFlagIcons::Kind flag = RiderFlagIcons::Kind::None;   // for Flag
+        bool operator==(const Status& o) const { return mark == o.mark && flag == o.flag; }
+        bool operator!=(const Status& o) const { return !(*this == o); }
+    };
+    static Status statusFor(int raceNum, int state, bool finished);
+    // That marker's sprite and colour (sprite 0 = none, or missing from the set).
+    RiderFlagIcons::Icon statusIcon(Status status);
+    bool showsStatusColumn() const { return (m_enabledColumns & COL_TRACKED) != 0; }
+    bool showsPenaltyColumn() const { return (m_enabledColumns & COL_PENALTY) != 0; }
+    // A penalty as the penalty column prints it: whole seconds, "+5s".
+    static void formatPenalty(int penaltyMs, char* out, size_t size);
 
     // Column flags - each bit represents a column that can be toggled
     enum ColumnFlags : uint32_t {

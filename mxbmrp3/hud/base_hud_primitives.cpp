@@ -11,6 +11,7 @@
 #include "../core/plugin_constants.h"
 #include "../core/plugin_utils.h"
 #include "../core/asset_manager.h"
+#include "../core/ui_config.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -357,6 +358,27 @@ unsigned long BaseHud::calculateTemperatureColor(float temp, float optTemp,
     return PluginUtils::makeColor(r, g, b);
 }
 
+void BaseHud::addChartLapLines(float x, float y, float width, float height, float firstLaps, float endLaps) {
+    const float span = endLaps - firstLaps;
+    if (span <= 0.0f) return;
+    const float thickness = stripChartGridThickness();
+    const float perLap = width / span;
+    // Ten grid lines' width at the least between lines: past that, every 2nd,
+    // 5th, 10th... lap.
+    const float minGap = thickness * 10.0f;
+    int stride = 1;
+    for (int step : { 2, 5, 10, 20, 50 }) {
+        if (perLap * static_cast<float>(stride) >= minGap) break;
+        stride = step;
+    }
+    const unsigned long color = getColor(ColorSlot::MUTED);
+    for (int lap = static_cast<int>(std::ceil(firstLaps)); static_cast<float>(lap) <= endLaps; ++lap) {
+        if (lap % stride != 0) continue;
+        const float tx = x + (static_cast<float>(lap) - firstLaps) * perLap;
+        addLineSegment(tx, y, tx, y + height, color, thickness);
+    }
+}
+
 void BaseHud::addHorizontalGridLine(float x, float y, float width, unsigned long color, float thickness) {
     using namespace PluginConstants;
 
@@ -588,4 +610,47 @@ bool BaseHud::positionString(size_t stringIndex, float x, float y) {
     // so a caller cannot pass one that disagrees with what is on screen.
     m_strings[stringIndex].m_afPos[1] = y + rowCenterOffset(m_strings[stringIndex].m_fSize);
     return true;
+}
+
+// THE GLOW (Appearance > Glow). One extra textured quad per lit element: glow_1.tga
+// (white, Gaussian alpha; tools/glow_gen.py) stretched over the light's rect plus
+// spreadY on every side (x converted through the aspect ratio, so the halo is as
+// wide as it is tall), in the light's own colour. Callers add it BEFORE the light,
+// so the halo sits behind it. Alpha blend, not additive: the engine has one blend
+// mode, and it draws the same on every renderer. Each caller tunes its own reach
+// and strength; [Display] glowWidth / glowIntensity scale them for everyone.
+// The rule for what glows: lights that demand action now, not read data. The
+// Dash's Fuel bars are the one deliberate exception (Thomas's call): they glow
+// as the RPM page's lights beside them do.
+namespace {
+int glowSprite() {
+    // Resolved once (-1 = not installed): sprites register at startup and never
+    // move after, so neither answer needs asking again.
+    static int sprite = 0;
+    if (sprite == 0) {
+        sprite = AssetManager::getInstance().getSpriteIndex("glow", 1);
+        if (sprite <= 0) sprite = -1;
+    }
+    return sprite;
+}
+}  // namespace
+
+// Off, or no texture (an install missing glow_1.tga): nothing to draw, so callers skip.
+bool BaseHud::glowActive() {
+    return UiConfig::getInstance().getGlow() && glowSprite() > 0;
+}
+
+void BaseHud::addGlow(float x, float y, float w, float h, float spreadY, unsigned long color, float opacity) {
+    if (!glowActive()) return;
+    const UiConfig& ui = UiConfig::getInstance();
+    spreadY *= ui.getGlowWidth();
+    const float spreadX = spreadY / PluginConstants::UI_ASPECT_RATIO;
+    x -= spreadX;
+    y -= spreadY;
+    applyOffset(x, y);
+    SPluginQuad_t quad{};
+    setQuadPositions(quad, x, y, w + 2.0f * spreadX, h + 2.0f * spreadY);
+    quad.m_iSprite = glowSprite();
+    quad.m_ulColor = PluginUtils::applyOpacity(color, std::min(1.0f, opacity * ui.getGlowIntensity()));
+    m_quads.push_back(quad);
 }

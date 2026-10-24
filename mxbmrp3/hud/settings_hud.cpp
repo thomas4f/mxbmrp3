@@ -23,7 +23,7 @@
 #include "timing_hud.h"
 #include "gap_bar_hud.h"
 #include "bars_widget.h"
-#include "version_widget.h"
+#include "breakout_hud.h"
 #include "notices_hud.h"
 #include "fuel_widget.h"
 #include "pointer_widget.h"
@@ -49,7 +49,6 @@
 #include "helmet_overlay_hud.h"
 #include "fmx_hud.h"
 #include "stats_hud.h"
-#include "settings_button_widget.h"
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
 #include "../core/plugin_constants.h"
@@ -61,7 +60,6 @@
 #include "../core/update_checker.h"
 #include "../core/update_downloader.h"
 #include "../core/director_manager.h"
-#include "director_widget.h"
 #include "../core/hotkey_manager.h"
 #include "../core/twitch_chat_manager.h"
 #include "../core/youtube_chat_manager.h"
@@ -152,13 +150,12 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* f
                          StandingsHud* standings,
                          PerformanceHud* performance,
                          TelemetryHud* telemetry,
-                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, CrashWidget* crash, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, VersionWidget* version, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean, GForceWidget* gforce, CompassWidget* compass,
+                         TimeWidget* time, PositionWidget* position, LapWidget* lap, SessionHud* session, MapHud* mapHud, RadarHud* radarHud, SpeedWidget* speed, GearWidget* gear, CrashWidget* crash, SpeedoWidget* speedo, TachoWidget* tacho, TimingHud* timing, GapBarHud* gapBar, BarsWidget* bars, BreakoutHud* breakout, NoticesHud* notices, PitboardHud* pitboard, RecordsHud* records, FuelWidget* fuel, PointerWidget* pointer, RumbleHud* rumble, GamepadWidget* gamepad, LeanWidget* lean, GForceWidget* gforce, CompassWidget* compass,
                          FmxHud* fmxHud,
                          StatsHud* statsHud,
                          EventLogHud* eventLog,
                          ClockWidget* clock,
-                         HelmetOverlayHud* helmetOverlay,
-                         SettingsButtonWidget* settingsButton
+                         HelmetOverlayHud* helmetOverlay
 #if GAME_HAS_TYRE_TEMP
                          , TyreTempWidget* tyreTemp
 #endif
@@ -187,13 +184,12 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* f
       m_timing(timing),
       m_gapBar(gapBar),
       m_bars(bars),
-      m_version(version),
+      m_breakout(breakout),
       m_notices(notices),
       m_pitboard(pitboard),
       m_records(records),
       m_fuel(fuel),
       m_pointer(pointer),
-      m_settingsButton(settingsButton),
       m_rumble(rumble),
       m_helmetOverlay(helmetOverlay),
       m_gamepad(gamepad),
@@ -288,6 +284,7 @@ void SettingsHud::show() {
 
     m_bVisible = true;
     ++m_openSerial;
+    m_openingPress = InputManager::getInstance().getLeftButton().isPressed;
 
     // Re-measure on OPEN as well as on layout changes: a tab whose rows follow live
     // data (Riders lists the session's entries) can have changed while the menu was
@@ -393,6 +390,7 @@ void SettingsHud::showWhatsNew() {
 
 void SettingsHud::update() {
     if (!m_bVisible) return;  // vis-gate: menu is active-surface-only (see show())
+    if (m_openingPress && !InputManager::getInstance().getLeftButton().isPressed) m_openingPress = false;
 
     // Process dirty flag first (e.g., from showUpdatesTab() or external tab switch)
     if (isDataDirty()) {
@@ -405,6 +403,12 @@ void SettingsHud::update() {
     bool dirtyNow = SettingsManager::getInstance().isDirty();
     if (dirtyNow != m_lastSettingsDirty) {
         m_lastSettingsDirty = dirtyNow;
+        rebuildAndRecord();
+    }
+    // The Director's icon shows its live state (tabToggleColor): repaint on a change.
+    const DirectorState directorNow = directorState();
+    if (directorNow != m_lastDirectorState) {
+        m_lastDirectorState = directorNow;
         rebuildAndRecord();
     }
 
@@ -564,7 +568,7 @@ void SettingsHud::update() {
     // abort. (See findClickRegionAt + m_leftPressArmed.)
     // held-back-exempt: the menu is held back as a whole by HudManager::standsDown (no update at all)
     const auto& leftButton = input.getLeftButton();
-    if (leftButton.isClicked()) {
+    if (leftButton.isClicked() && !m_openingPress) {
         m_leftPressArmed = false;
         const int idx = cursor.isValid ? findClickRegionAt(cursor.x, cursor.y) : -1;
         // A slider grabs the press; an open list swallows a press outside it.

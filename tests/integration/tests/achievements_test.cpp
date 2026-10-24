@@ -1009,7 +1009,7 @@ TEST_CASE("achievements: a click on a toast opens the menu on the Achievements t
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup(kSaveWin);
-    if (!host.hasInjectedMouse() || !host.hasScreenEdges()) { MESSAGE("build without the hooks"); return; }
+    REQUIRE_MESSAGE((host.hasInjectedMouse() && host.hasScreenEdges()), "build without the hooks");
     host.draw();
     REQUIRE(host.achievementToastShowing());
     REQUIRE_FALSE(host.settingsVisible());
@@ -1066,7 +1066,7 @@ TEST_CASE("achievements: the toast defaults to the right corner above Speed and 
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup(kSaveWin);
-    if (!host.hasScreenEdges()) { MESSAGE("build without the hook"); return; }
+    REQUIRE_MESSAGE(host.hasScreenEdges(), "build without the hook");
     host.eventInit("TestTrack", "Alice");
     host.session(1, 0, 0);
     host.runInit(1);
@@ -1123,7 +1123,7 @@ TEST_CASE("achievements: the pager's buttons page through, and an end you cannot
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup(kSaveWin);
-    if (!host.hasInjectedMouse()) { MESSAGE("build without the mouse stand-in"); return; }
+    REQUIRE_MESSAGE(host.hasInjectedMouse(), "build without the mouse stand-in");
     host.showSettings(true);
     host.setActiveTab("Achievements");
     host.draw();

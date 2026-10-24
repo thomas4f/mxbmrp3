@@ -1396,12 +1396,12 @@ TEST_CASE("exploration: Tyre Kicker counts HUDs ever switched on, not on at once
         CHECK(defaults > 0.0);                            // the default setup has HUDs on
         CHECK(defaults < 100.0);                          // but not all of them
         host.setEveryHudVisible(true);
-        // The two HUDs that show THEMSELVES are not in the count: the Direct GL
-        // confirmation (armed by that setting's prompt) and the version widget
-        // (an update notice). Off, every switch still reads
+        // The HUDs that show THEMSELVES are not in the count: the Direct GL
+        // confirmation (armed by that setting's prompt) and the Breakout easter
+        // egg (five clicks on About). Off, every switch still reads
         // as 100%; counted, Platinum would need both events.
         REQUIRE(host.setHudVisible("gl_confirm", false));
-        REQUIRE(host.setHudVisible("version_widget", false));
+        REQUIRE(host.setHudVisible("breakout_hud", false));
         // Counted at the switch, not at the deferred save.
         CHECK(host.achievementValue("tyre_kicker") == doctest::Approx(100.0));
         host.save();

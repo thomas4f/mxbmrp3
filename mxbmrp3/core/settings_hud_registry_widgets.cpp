@@ -34,10 +34,9 @@
 #include "../hud/timing_hud.h"
 #include "../hud/gap_bar_hud.h"
 #include "../hud/bars_widget.h"
-#include "../hud/version_widget.h"
 #include "../hud/notices_hud.h"
 #include "../hud/fuel_widget.h"
-#include "../hud/settings_button_widget.h"
+#include "../hud/toggle_strip_widget.h"
 #include "../hud/pointer_widget.h"
 #include "../hud/map_hud.h"
 #include "../hud/radar_hud.h"
@@ -90,7 +89,6 @@
 #include "hotkey_manager.h"
 #include "director_manager.h"
 #include "companion_window.h"
-#include "../hud/director_widget.h"
 #include "tracked_riders_manager.h"
 #include "asset_manager.h"
 #include "../game/game_config.h"
@@ -539,24 +537,6 @@ void SettingsManager::app_BarsWidget(HudManager& hudManager, const SettingsManag
         }
 }
 
-void SettingsManager::cap_VersionWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
-    HudSettings settings;
-    const VersionWidget& hud = hudManager.getVersionWidget();
-    captureBaseHudSettings(settings, hud);
-    // A popup forces the widget on; the profile keeps the player's own value.
-    settings[Keys::Base::VISIBLE] = std::to_string(hud.visibleSetting() ? 1 : 0);
-    cache[name] = std::move(settings);
-}
-
-void SettingsManager::app_VersionWidget(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
-    auto it = cache.find(name);
-    if (it == cache.end()) return;
-    VersionWidget& hud = hudManager.getVersionWidget();
-    applyBaseHudSettings(hud, it->second);
-    hud.onVisibilityApplied();
-    hud.setDataDirty();
-}
-
 void SettingsManager::cap_NoticesHud(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
         HudSettings settings;
         const auto& hud = hudManager.getNoticesHud();
@@ -800,17 +780,19 @@ void SettingsManager::app_EcuWidget(HudManager& hudManager, const SettingsManage
 }
 #endif
 
-void SettingsManager::cap_SettingsButtonWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
+void SettingsManager::cap_ToggleStripWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
     HudSettings settings;
-    const BaseHud& hud = hudManager.getSettingsButtonWidget();
+    const BaseHud& hud = hudManager.getToggleStripWidget();
     captureBaseHudSettings(settings, hud);
     cache[name] = std::move(settings);
 }
 
-void SettingsManager::app_SettingsButtonWidget(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
+void SettingsManager::app_ToggleStripWidget(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
+    // A file from before the strip has the settings button's switches carried
+    // onto it at load (SettingsManager::migrateSettingsButton).
     auto it = cache.find(name);
     if (it == cache.end()) return;
-    BaseHud& hud = hudManager.getSettingsButtonWidget();
+    BaseHud& hud = hudManager.getToggleStripWidget();
     applyBaseHudSettings(hud, it->second);
     hud.setDataDirty();
 }

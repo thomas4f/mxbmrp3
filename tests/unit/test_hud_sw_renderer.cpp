@@ -19,6 +19,8 @@
 //  5. setViewport maps normalized [0,1] into the centered sub-rect while
 //     coords outside [0,1] still land in the surrounding window area (a
 //     scale viewport, NOT a letterbox clip).
+//  6. A layered frame (HUD stacking) draws the later HUD's panel over the
+//     earlier HUD's text where the two overlap; the flat order would not.
 //
 // Uses the real shipped assets (mxbmrp3_data/fonts + icons), located relative
 // to this file so the test runs from any cwd.
@@ -28,6 +30,7 @@
 #include "core/hud_sw_renderer.h"
 
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <string>
@@ -327,4 +330,62 @@ TEST_CASE("hud_sw_renderer: minified text keeps its antialiased edges") {
                                 "antialiased text is dominated by partial pixels");
     CHECK_MESSAGE(partial * 2 > lit, "only " << partial << " of " << lit
                   << " lit pixels carry partial coverage");
+}
+
+TEST_CASE("hud_sw_renderer: a layered frame draws the later HUD's panel over the earlier one's text") {
+    // HUD STACKING (core/render_layers.h): where two HUDs overlap, the one on top
+    // must cover the text of the one below, so the walk draws layer by layer --
+    // the lower HUD's quads AND strings, then the upper's. The flat order (every
+    // quad, then every string) would print the lower HUD's text over the upper
+    // HUD's panel. Two spans: A = a panel + red "888", B = an opaque blue panel
+    // over that text.
+    const std::string fontPath = assetRoot() + "/fonts/RobotoMono-Regular.fnt";
+    REQUIRE_MESSAGE(std::ifstream(fontPath).good(), "shipped font missing: ", fontPath);
+    auto redInBox = [](const hudsw::Image& im) {
+        int n = 0;
+        for (int y = 64; y < 152; ++y)
+            for (int x = 56; x < 190; ++x) {
+                const Px p = at(im, x, y);
+                if (p.r > 180 && p.g < 60 && p.b < 60) ++n;
+            }
+        return n;
+    };
+    auto drawFrame = [&](bool layered) {
+        hudsw::Image im; im.resize(640, 360);
+        TestFrame tf;
+        tf.fonts = { "RobotoMono-Regular" };
+        tf.quads.push_back(quad(0.05f, 0.15f, 0.40f, 0.50f, abgr(40, 40, 40)));    // A's panel
+        SPluginString_t s{};
+        snprintf(s.m_szString, sizeof(s.m_szString), "%s", "888");
+        s.m_afPos[0] = 0.1f; s.m_afPos[1] = 0.2f;   // pen (64, 72) px
+        s.m_iFont = 1;
+        s.m_fSize = 0.2f;
+        s.m_iJustify = 0;
+        s.m_ulColor = abgr(255, 0, 0);
+        tf.strings.push_back(s);                                                  // A's text
+        tf.quads.push_back(quad(0.05f, 0.15f, 0.35f, 0.45f, abgr(0, 0, 250)));     // B's panel
+        hudlayers::Span spans[2];
+        spans[0].q0 = 0; spans[0].q1 = 1; spans[0].s0 = 0; spans[0].s1 = 1;
+        spans[1].q0 = 1; spans[1].q1 = 2; spans[1].s0 = 1; spans[1].s1 = 1;
+        hudlayers::Rect rects[2];
+        rects[0].l = 0.05f; rects[0].t = 0.15f; rects[0].r = 0.40f; rects[0].b = 0.50f;
+        rects[1].l = 0.05f; rects[1].t = 0.15f; rects[1].r = 0.35f; rects[1].b = 0.45f;
+        hudsw::Frame& fr = tf.build();
+        if (layered) {
+            fr.layers.spans = spans;
+            fr.layers.spanCount = 2;
+            fr.layers.layerCount = hudlayers::assignLayers(spans, rects, 2);
+            REQUIRE(fr.layers.layerCount == 2);
+        }
+        hudsw::Renderer r;
+        r.render(im, fr, 0, 0, 0);
+        return im;
+    };
+    // Flat: the text lands on top of B's panel. (The control: the region does
+    // hold the text, so the layered case below is not empty by accident.)
+    CHECK(redInBox(drawFrame(false)) > 50);
+    // Layered: B's panel covers it.
+    const hudsw::Image layered = drawFrame(true);
+    CHECK(redInBox(layered) == 0);
+    CHECK(at(layered, 120, 100).b == 250);
 }

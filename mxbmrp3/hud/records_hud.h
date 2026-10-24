@@ -5,6 +5,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "dropdown_list.h"
 #include "../core/thread_safety.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
@@ -59,12 +60,15 @@ public:
         PROVIDER_RIGHT,
         CATEGORY_LEFT,
         CATEGORY_RIGHT,
+        CATEGORY_BOX,       // the category's dropdown box: opens its list
+        CATEGORY_OPTION,    // one entry of the open list (entry = category index)
         FETCH_BUTTON
     };
 
     struct ClickRegion {
         float x, y, width, height;
         ClickRegionType type;
+        int entry = -1;
     };
 
     // Record entry from API response (defined next to the parse code that
@@ -163,6 +167,11 @@ private:
     void handleClick(float mouseX, float mouseY);
     void cycleProvider(int direction);
     void cycleCategory(int direction);
+    void closeCategoryList();
+    // The category dropdown: its list, drawn last over the rows, and the HUD's
+    // palette and face for it (DropdownList).
+    void addCategoryList(float panelWidth, float panelHeight);
+    DropdownList::Style dropdownStyle() const;
 
     // Personal best integration
     // Returns the position the player's PB would have in the records list (1-based)
@@ -267,6 +276,9 @@ private:
 
     // UI state
     bool m_fetchButtonHovered;
+    bool m_categoryOpen = false;             // the category list is open
+    int m_hoveredCategory = -1;              // the list entry under the cursor
+    DropdownList::Anchor m_categoryAnchor;   // the box, recorded as the filter row draws it
     static constexpr unsigned long FETCH_RESULT_DISPLAY_MS = 3000;  // Show success/error for 3 seconds
     static constexpr unsigned long FETCH_COOLDOWN_MS = 5000;  // Minimum time between fetches (prevent spam)
     // Atomic: written by the fetch worker, read by the game thread (display

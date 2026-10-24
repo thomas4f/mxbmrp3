@@ -12,6 +12,7 @@
 #include "../compass_widget.h"
 #include "../crash_widget.h"
 #include "../rpm_widget.h"
+#include "../toggle_strip_widget.h"
 #include "../fuel_widget.h"
 #include "../gamepad_widget.h"
 #include "../gear_widget.h"
@@ -21,12 +22,10 @@
 #include "../lean_widget.h"
 #include "../pointer_widget.h"
 #include "../position_widget.h"
-#include "../settings_button_widget.h"
 #include "../speed_widget.h"
 #include "../speedo_widget.h"
 #include "../tacho_widget.h"
 #include "../time_widget.h"
-#include "../version_widget.h"
 #if GAME_HAS_TYRE_TEMP
 #include "../tyre_temp_widget.h"
 #endif
@@ -111,8 +110,7 @@ BaseHud* SettingsHud::renderTabWidgets(SettingsLayoutContext& ctx) {
     ctx.addWidgetRow("ECU", ctx.parent->getEcuWidget(), true, true, true, true, "widgets.ecu");
 #endif
     ctx.addSectionHeading("Misc");
-    ctx.addWidgetRow("Settings", ctx.parent->getSettingsButtonWidget(), true, true, true, true, "widgets.settings_button");
-    ctx.addWidgetRow("Version", ctx.parent->getVersionWidget(), true, true, true, true, "widgets.version");
+    ctx.addWidgetRow("Toggles", &HudManager::getInstance().getToggleStripWidget(), true, true, true, true, "widgets.toggles");
     // The Gamepad's Texture column picks the PAD (gamepads/<name>/) rather than a
     // texture variant; addWidgetRow routes on BaseHud::m_packKind, so there is no
     // flag to pass here and no way for this call site to disagree with it.

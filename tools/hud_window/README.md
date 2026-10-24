@@ -109,10 +109,10 @@ Tracked so they aren't forgotten:
   cursor mapping to the focused/companion window's rect so clicks are unambiguous with
   both open. (Fine today when the companion window is the only surface - e.g. the
   replay tool with no game running.)
-- **Companion mode hides the in-game HUD - including the settings button.** In
+- **Companion mode hides the in-game HUD - including the Toggles strip.** In
   `HUD Display = Companion` the in-game HUD is suppressed except while the settings
-  menu is open, so to switch back you reopen settings with the settings hotkey (the
-  gear button is hidden). Could keep the settings button visible in that mode.
+  menu is open, so to switch back you reopen settings with the settings hotkey.
+  Could keep the strip visible in that mode.
 - **Asset root is cwd-relative.** `plugins/mxbmrp3_data` resolves relative to the
   host's working directory - parity with the plugin's own asset loading, so it works
   wherever the in-game HUD does. A host launched from a different cwd needs the

@@ -232,14 +232,15 @@ float BaseHud::centerStackPaddingX() const {
 // [frame] 1, 2 and 4 and with the caption on or off. Six configurations, one number. The
 // model is right.
 //
-// What stopped it is the centre stack. Each box grows five cells against a two-cell
-// boxGap, so the three panels overlap by three. Making noticesBoxTop()/timingTop() take
-// the live themed padding fixes Notices, which computes its y every rebuild -- but NOT
-// Timing, whose default is a STORED offset written once by resetToDefaults(). A stored
-// offset cannot follow a theme change without re-deriving defaults for every HUD still
-// sitting at one, while leaving anyone who has dragged alone. That is a persistence
-// migration, not a layout change, and it is the real prerequisite -- the header at
-// gapBarBoxTop() has named it as such since before any of this work.
+// What stopped it was the centre stack, then three panels stacked under the Dash. Each
+// box grew five cells against a two-cell boxGap, so the three overlapped by three.
+// Making the stack's tops take the live themed padding fixed Notices, which computed its
+// y every rebuild -- but NOT Timing, whose default is a STORED offset written once by
+// resetToDefaults(). A stored offset cannot follow a theme change without re-deriving
+// defaults for every HUD still sitting at one, while leaving anyone who has dragged
+// alone. That is a persistence migration, not a layout change, and it is the real
+// prerequisite -- the header at underDashBoxTop() names it as such. (The three share
+// one spot since 1.33, so that seam is gone; the Dash's grows the same way.)
 //
 // One smaller consequence, measured and cheap once the above is settled: TimingHud
 // spelled panelHeight()'s terms itself, so it came out 19.667 cells the moment the
@@ -308,9 +309,9 @@ float BaseHud::contentPaddingY() const {
     // adding the base itself. Folding them removed the ambiguity of one word naming both
     // the part and the whole -- but it does NOT make the composition additive. Additive
     // padding (base + frame + card, the CSS form) was built and measured: it closes the
-    // card flip to exactly one border on both axes, and it overlaps the centre stack by
-    // three cells because Timing's default offset is STORED. See the note at
-    // panelContentY() and gapBarBoxTop() -- the prerequisite is a persistence migration.
+    // card flip to exactly one border on both axes, and it grew the centre stack into
+    // the Dash because the default offsets are STORED. See the note at
+    // panelContentY() and underDashBoxTop() -- the prerequisite is a persistence migration.
     return (need > have) ? have + layout().ceilY(need - have) : have;
 }
 

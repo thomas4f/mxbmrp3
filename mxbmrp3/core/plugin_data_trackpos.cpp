@@ -45,7 +45,7 @@ void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, b
             // Large non-wraparound jump = teleport. Reset state to prevent false wrong-way.
             data.previousTrackPos = trackPos;
             data.wrongWay = false;
-            data.wrongWaySince = {};
+            data.wrongWayDetector.reset();
             data.trackPos = trackPos;
             data.numLaps = numLaps;
             data.sessionTime = sessionTime;
@@ -75,20 +75,7 @@ void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, b
         // Detect wrong-way using per-sample direction + timestamp confirmation.
         // rawDelta is already wraparound-aware (computed above for teleport check).
         auto now = std::chrono::steady_clock::now();
-        bool goingBackward = (rawDelta < 0.0f);
-
-        if (goingBackward) {
-            // Start or maintain wrong-way timer
-            if (data.wrongWaySince.time_since_epoch().count() == 0) {
-                data.wrongWaySince = now;
-            }
-        } else {
-            // Moving forward (or stationary) — reset wrong-way timer
-            data.wrongWaySince = {};
-        }
-
-        bool wrongWay = (data.wrongWaySince.time_since_epoch().count() != 0) &&
-            (std::chrono::duration_cast<std::chrono::milliseconds>(now - data.wrongWaySince).count() >= m_proximity.hazardWrongWayDurationMs);
+        bool wrongWay = data.wrongWayDetector.update(rawDelta, now, m_proximity.hazardWrongWayDurationMs);
         data.previousTrackPos = trackPos;
 
         // === Hazard detection (stationary) ===
@@ -142,7 +129,7 @@ void PluginData::updateTrackPosition(int raceNum, float trackPos, int numLaps, b
                 data.hazardClearedAt = {};
             } else {
                 // Not yet confirmed — apply duration thresholds.
-                // Wrong-way: confirmed via wrongWaySince timer (duration already checked above).
+                // Wrong-way: confirmed via wrongWayDetector (duration already checked above).
                 // Stationary: confirmed via the stationarySince timer above.
                 if (crashed) {
                     // Crashed = immediate hazard, no timer needed

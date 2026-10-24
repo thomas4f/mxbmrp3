@@ -3,7 +3,7 @@
 // Tab renderer for Achievements: the lifetime numbers the plugin keeps, shown
 // as tiered progress toward the next Bronze/Silver/Gold/Platinum threshold --
 // one entry is both the number and the achievement it feeds. Plus the toast
-// card's controls (global, like the Director's status button). The on-track
+// card's controls (global, like the Director's settings). The on-track
 // Stats HUD is not here: it keeps its own per-profile tab (settings_tab_stats).
 //
 // Global manager tab, like Spotter/Director: drives AchievementManager

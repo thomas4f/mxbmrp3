@@ -72,7 +72,7 @@ public:
     bool getScreenClamping() const { return m_bScreenClamping; }
     void setScreenClamping(bool enabled) { m_bScreenClamping = enabled; }
 
-    // Menu-only cursor: when enabled, the mouse cursor + settings button only
+    // Menu-only cursor: when enabled, the mouse cursor + Toggles strip only
     // appear while the settings menu is open (toggled via the TOGGLE_SETTINGS
     // hotkey). Movement no longer summons the cursor. Intended for controller
     // users whose analog stick registers as mouse movement, which would
@@ -100,7 +100,7 @@ public:
     void setHoldRepeatFastMs(int ms) { m_holdRepeatFastMs = (ms < 10) ? 10 : (ms > 500) ? 500 : ms; }
 
     // Cursor activation threshold (INI-only): how far the mouse must move from rest
-    // before the cursor + settings button appear. Normalized UI units (0-1 across the
+    // before the cursor + Toggles strip appear. Normalized UI units (0-1 across the
     // screen). Larger = ignores small bumps. Clamped to a tiny non-zero floor so the
     // cursor can never become impossible to summon.
     float getCursorActivationThreshold() const { return m_fCursorActivationThreshold; }
@@ -255,7 +255,14 @@ public:
         m_renderProbeTextChars.store(std::clamp(n, 1, MAX_PROBE_TEXT_CHARS), std::memory_order_relaxed);
     }
 
-    // Drop shadow settings (for text rendering)
+    // Drop shadow settings (for text rendering). On in shipping builds; off in the
+    // test build, like Glow: a second string per string would shift every count the
+    // suite pins. drop_shadow_test switches it on.
+#if defined(MXBMRP3_TEST_BUILD)
+    static constexpr bool DROP_SHADOW_DEFAULT = false;
+#else
+    static constexpr bool DROP_SHADOW_DEFAULT = true;
+#endif
     bool getDropShadow() const { return m_bDropShadow; }
     void setDropShadow(bool enabled) { m_bDropShadow = enabled; }
     float getDropShadowOffsetX() const { return m_fDropShadowOffsetX; }
@@ -269,10 +276,47 @@ public:
     Motion::Level getMotion() const { return m_motion; }
     void setMotion(Motion::Level level) { m_motion = level; }
 
+    // Glow: a soft halo behind the signal lights (BaseHud::addGlow). The two
+    // scales are INI-only tuning on top of each light's own reach and strength:
+    // intensity multiplies the halo's opacity, width its reach past the light.
+    // Off in the test build, like Motion: the shipped data carries the glow
+    // texture, and a halo per light would shift every quad count the suite pins.
+    // glow_test switches it on.
+#if defined(MXBMRP3_TEST_BUILD)
+    static constexpr bool GLOW_DEFAULT = false;
+#else
+    static constexpr bool GLOW_DEFAULT = true;
+#endif
+    // A light that is only a warning glows at this share of a critical one's
+    // strength (red RPM, red low fuel, wrong way, rider oncoming, the rev limiter).
+    static constexpr float GLOW_CALM = 0.5f;
+    static constexpr float GLOW_SCALE_MIN = 0.0f;
+    static constexpr float GLOW_SCALE_MAX = 3.0f;
+    bool getGlow() const { return m_bGlow; }
+    void setGlow(bool enabled) { m_bGlow = enabled; }
+    float getGlowIntensity() const { return m_fGlowIntensity; }
+    float getGlowWidth() const { return m_fGlowWidth; }
+    void setGlowIntensity(float s) { m_fGlowIntensity = clampGlowScale(s); }
+    void setGlowWidth(float s) { m_fGlowWidth = clampGlowScale(s); }
+
+    // Impact vignette strength, 0 = Off (core/impact_vignette.h).
+    float getImpactVignette() const { return m_fImpactVignette; }
+    // Seconds a full hit takes to clear; clamped where it is used.
+    float getImpactVignetteFade() const { return m_fImpactVignetteFade; }
+    void setImpactVignetteFade(float s) { m_fImpactVignetteFade = (s == s) ? s : 1.5f; }
+    void setImpactVignette(float s) {
+        m_fImpactVignette = !(s == s) ? 0.0f : (s < 0.0f) ? 0.0f : (s > 1.0f) ? 1.0f : s;
+    }
+
     // Reset all settings to defaults
     void resetToDefaults();
 
 private:
+    // A non-finite scale (a hand-edited "inf") falls back to 1, the default.
+    static float clampGlowScale(float s) {
+        return !std::isfinite(s) ? 1.0f : std::clamp(s, GLOW_SCALE_MIN, GLOW_SCALE_MAX);
+    }
+
     UiConfig();
     ~UiConfig() = default;
     UiConfig(const UiConfig&) = delete;
@@ -310,9 +354,14 @@ private:
     unsigned long m_ulGridOverlayMajorColor = 0x9933CCFF;  // Major lines (light blue)
 
     // Drop shadow settings
-    bool m_bDropShadow = false;                      // Off by default: every shadowed string is a second draw
+    bool m_bDropShadow = DROP_SHADOW_DEFAULT;        // On (shipping builds); each shadowed string is a second draw
     float m_fDropShadowOffsetX = 0.03f;              // 3% of font size
     float m_fDropShadowOffsetY = 0.04f;              // 4% of font size
     unsigned long m_ulDropShadowColor = 0xAA000000;  // Semi-transparent black
     Motion::Level m_motion = Motion::DEFAULT_LEVEL;
+    bool m_bGlow = GLOW_DEFAULT;                     // On (shipping builds)
+    float m_fGlowIntensity = 1.0f;                   // INI-only opacity scale
+    float m_fGlowWidth = 1.0f;                       // INI-only reach scale
+    float m_fImpactVignette = 1.0f;                  // ImpactVignette::STRENGTH_DEFAULT
+    float m_fImpactVignetteFade = 1.5f;              // ImpactVignette::FADE_DEFAULT_S
 };

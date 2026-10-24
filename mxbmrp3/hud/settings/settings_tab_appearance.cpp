@@ -223,8 +223,9 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
         ctx.setRowLabelChars(0);
     }
 
-    // The rest of Display side by side: short labels and short values.
-    ctx.beginColumns(2, 10, DISPLAY_LABEL_CHARS);
+    // The rest of Display side by side: short labels and short values. The
+    // count is the rows below; one short and the last row lands on the next.
+    ctx.beginColumns(2, 11, DISPLAY_LABEL_CHARS);
 
     // Speed unit toggle
     {
@@ -276,7 +277,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
         "appearance.drop_shadow");
 
     // UI icons toggle (HUD title icons, settings tab/section icons, carets and pager
-    // chevrons, settings + director buttons; off = text stand-ins)
+    // chevrons, the Toggles strip; off = text stand-ins)
     ctx.addToggleControl("UI icons", UiConfig::getInstance().getTitleIcons(),
         SettingsHud::ClickRegion::TITLE_ICONS_TOGGLE, nullptr, nullptr, 0, true,
         "appearance.hud_icons");
@@ -291,6 +292,19 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
         motion.nameOf = [](int v) { return std::string(Motion::levelName(static_cast<Motion::Level>(v))); };
         ctx.addCycleControl("Motion", Motion::levelName(level), motion, nullptr, true,
                             level == Motion::Level::OFF, "appearance.motion");
+    }
+
+    // Glow: a soft halo behind the signal lights (BaseHud::addGlow). Its look is
+    // INI-only ([Display] glowIntensity / glowWidth).
+    {
+        const bool on = UiConfig::getInstance().getGlow();
+        static const char* const kOnOff[] = { "Off", "On" };
+        SettingsHud::CycleControl glow;
+        glow.count = 2;
+        glow.get = []() { return UiConfig::getInstance().getGlow() ? 1 : 0; };
+        glow.set = [](int v) { UiConfig::getInstance().setGlow(v != 0); };
+        glow.nameOf = [](int v) { return std::string(kOnOff[v]); };
+        ctx.addCycleControl("Glow", on ? "On" : "Off", glow, nullptr, true, !on, "appearance.glow");
     }
 
     // Messages: the system toasts (core/system_messages.h) -- what a hotkey hid,

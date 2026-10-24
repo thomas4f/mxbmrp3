@@ -79,7 +79,12 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
         if (sessionData.sessionLength > 0) {
             // Timed+laps race: use finishLap (set during overtime)
             isFinished = sessionData.finishLap > 0 && completedLapNum > sessionData.finishLap;
-            isLastLap = sessionData.finishLap > 0 && completedLapNum == sessionData.finishLap;
+            // Not while the armed lap may be one short: with one added lap, the
+            // leader crossing in the gap before the game's time-up completes the
+            // armed lap, a lap the game counts as run before expiry, and the
+            // white flag fired a lap early. The re-derived lap brings it back.
+            isLastLap = sessionData.finishLap > 0 && completedLapNum == sessionData.finishLap &&
+                        !sessionData.finishLapUnconfirmed(data.getSessionTime());
         } else {
             // Pure lap race: completedLap = laps finished so far
             isFinished = completedLapNum >= sessionData.sessionNumLaps;
@@ -287,6 +292,10 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
             pbEntry.setupName = sessionData.setupFileName;
             pbEntry.conditions = sessionData.conditions;
             pbEntry.timestamp = std::time(nullptr);
+            // The best this lap is up against, read before the update replaces it.
+            const StatsPersonalBestData* previousPb = StatsManager::getInstance().getPersonalBest(
+                sessionData.trackId, sessionData.bikeName);
+            const int previousPbMs = previousPb ? previousPb->lapTime : -1;
 
             // The store is always keyed by track+bike, but the notice must reflect what
             // the player is SHOWN as their all-time reference — under the default
@@ -305,7 +314,7 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
                 StatsManager::getInstance().exploration().onSandbag();
             }
             if (isAllTimePB) {
-                data.notifyAllTimePB();
+                data.notifyAllTimePB(lapTime, previousPbMs);
                 // The spotter speaks the same edge the notice latches on —
                 // taken here so it never has to read (or worse, clear) the
                 // consumable notice flags NoticesHud owns.
@@ -325,9 +334,12 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
             if (isAllTimePB) {
                 // All-time PB is the highest tier — skip fastest lap and session PB
             } else if (isFastestLap) {
-                data.notifyFastestLap();
+                // The fastest lap until now (still the previous one: set below).
+                const LapLogEntry* previousFastest = data.getOverallBestLap();
+                data.notifyFastestLap(lapTime, previousFastest ? previousFastest->lapTime : -1);
             } else {
-                data.notifySessionPB();
+                // hadPreviousBest: the rider's session best until this lap.
+                data.notifySessionPB(lapTime, data.getBestLapEntry(raceNum)->lapTime);
                 // Third tier of the same ladder, and not one to skip: in
                 // practice this is the most common good-news moment there is.
                 SpotterManager::getInstance().onSessionBest(
@@ -343,7 +355,20 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
             data.setOverallBestLap(completedLap);
         }
 
-        // Event log: overall fastest lap only (personal bests are too noisy for a race feed)
+        // Event log: your own personal bests (local player only - other riders'
+        // PBs would flood a full grid). One line per lap, naming the higher of
+        // the two: an all-time PB is also a session PB. Session PB needs a
+        // previous best, like its notice - the first clean lap is not news.
+        // Independent of the fastest-lap line below; each has its own toggle.
+        if (raceNum == playerRaceNum && isLapValid && (isAllTimePB || hadPreviousBest)) {
+            char lapTimeStr[16];
+            PluginUtils::formatLapTime(lapTime, lapTimeStr, sizeof(lapTimeStr));
+            data.addEventLogEntry(isAllTimePB ? EventLogType::AllTimePB : EventLogType::SessionPB,
+                                  isAllTimePB ? "All-time PB" : "Session PB", lapTimeStr,
+                                  -1, raceNum, EventNumbers::lapTime(lapTime));
+        }
+
+        // Event log: overall fastest lap, any rider
         if (isLapValid && psRaceLap->bestFlag == 2) {
             const RaceEntryData* entry = data.getRaceEntry(raceNum);
             const char* riderLabel = entry ? entry->formattedRaceNum : "???";

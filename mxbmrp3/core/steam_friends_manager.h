@@ -118,6 +118,12 @@ public:
     // the start/join contract does not, and that is the part a teardown can hang on.
     bool testStartWorker() { startWorker(); return m_worker.joinable(); }
     bool testWorkerRunning() const { return m_worker.joinable(); }
+    // Demo reels: a staged roster, as if Steam were connected (no worker runs).
+    void testInjectFriend(const SteamFriend& f, bool self) {
+        m_status = Status::CONNECTED;
+        if (self) { m_self = f; return; }
+        MutexLock lock(m_mutex); m_roster.push_back(f);
+    }
 #endif
 
 private:

@@ -5,7 +5,7 @@
 #
 # THE INVARIANT (CLAUDE.md "Maintenance Invariants"): a flag written off the
 # game thread is `std::atomic<bool>`. Background workers legitimately call
-# setDataDirty() / showUpdateNotification() and set their own run/shutdown
+# setDataDirty() / SystemMessages::offerUpdate() and set their own run/shutdown
 # flags, and a torn or cached plain `bool` there is the classic never-wakes /
 # never-stops bug — invisible in review because the declaration looks fine.
 #

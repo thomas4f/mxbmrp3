@@ -21,6 +21,14 @@ namespace HudDefaults {
             ? static_cast<PbGapTracker::Ref>(UiConfig::getInstance().getDefaultReference())
             : own;
     }
+    // A reference row's "Default", naming the reference it stands for today, so
+    // the player need not open General to learn it. Literals, no formatting.
+    inline const char* defaultReferenceName() {
+        static constexpr const char* kNames[PbGapTracker::REF_COUNT] = {
+            "Default (Session PB)", "Default (All-time PB)", "Default (Last lap)" };
+        const int i = UiConfig::getInstance().getDefaultReference();
+        return kNames[i >= 0 && i < PbGapTracker::REF_COUNT ? i : 0];
+    }
     // A hold in ms: its own, or General's for FreezeDuration::FOLLOW_DEFAULT.
     inline int freezeMs(int own) {
         return own < FreezeDuration::MIN_MS ? UiConfig::getInstance().getDefaultFreezeMs() : own;

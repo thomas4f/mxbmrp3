@@ -88,7 +88,7 @@ void CrashWidget::rebuildRenderData() {
 
     PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::CRASH_WIDTH, dim.fontSize);
-    // NO junction gap above the chip, unlike VersionWidget's hand-laid button row:
+    // NO junction gap above the chip, unlike a hand-laid button row:
     // this is not a row appended below the content, it is the SAME second row Speed
     // spends on "MPH" and Gear leaves empty. A seam here would break the tiling for
     // air the other two do not pay for.
@@ -127,7 +127,7 @@ void CrashWidget::rebuildRenderData() {
     if (withButton) {
         // THE CONTENT WIDTH, not the label's. Sizing a button from its label is
         // right where the panel is sized from something else (RecordsHud's Compare
-        // under a wide table, VersionWidget's chips) -- here the panel is eight
+        // under a wide table) -- here the panel is eight
         // characters wide and the label plus the theme's button insets came out
         // WIDER than that, so the chip hung over the panel padding by half its
         // width on each side while the caption and the count sat inside it.
@@ -167,7 +167,7 @@ void CrashWidget::rebuildRenderData() {
 }
 
 void CrashWidget::handleClickDetection() {
-    // Any-surface, like VersionWidget's chips: a widget enabled only on the
+    // Any-surface: a widget enabled only on the
     // companion still has a clickable button there.
     if (!isVisibleAnySurface() || isHeldBack() || !m_bShowResetButton) return;
 

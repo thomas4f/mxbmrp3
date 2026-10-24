@@ -3,11 +3,12 @@
 // The link rows: a click opens a browser and changes no setting.
 //
 // COMMON, NOT A TAB'S. The General tab has the Docs, Discussion and overlay
-// rows, the About page the three thanks links, and About has no click handler
-// of its own (its registry row routes clicks straight to dispatchRegion) -- so
-// while these cases lived in handleClickTabGeneral, every About link fell
-// through to the "Unknown ClickRegion" default and did nothing. dispatchRegion
-// asks here before its own switch, for every tab.
+// rows, the About page the three thanks links, Updates the release notes link,
+// and About has no click handler of its own (its registry row routes clicks
+// straight to dispatchRegion) -- so while these cases lived in
+// handleClickTabGeneral, every About link fell through to the "Unknown
+// ClickRegion" default and did nothing. dispatchRegion asks here before its
+// own switch, for every tab.
 //
 // NO GATE CAN CLICK THEM: isPerturbSafe keeps the OPEN_LINK_* regions out of
 // the click sweep precisely because they reach outside the game, so this is
@@ -58,6 +59,13 @@ bool SettingsHud::handleLinkClick(const ClickRegion& region) {
             AnalyticsManager::getInstance().trackEvent("link_clicked", {{"target", "github"}, {"source", "settings"}});
 #endif
             ShellExecuteA(nullptr, "open", "https://github.com/thomas4f/mxbmrp3", nullptr, nullptr, SW_SHOWNORMAL);
+            return true;
+
+        case ClickRegion::OPEN_LINK_RELEASES:
+#if GAME_HAS_ANALYTICS
+            AnalyticsManager::getInstance().trackEvent("link_clicked", {{"target", "releases"}, {"source", "settings"}});
+#endif
+            ShellExecuteA(nullptr, "open", "https://github.com/thomas4f/mxbmrp3/releases", nullptr, nullptr, SW_SHOWNORMAL);
             return true;
 
         case ClickRegion::OPEN_LINK_OVERLAY:
