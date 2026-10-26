@@ -43,7 +43,8 @@ public:
         SegmentRemoved,
         Finished,
         LastLap,
-        DefaultSetup
+        DefaultSetup,
+        TrackChanged   // Now playing: the title as the text, the artist as the detail
     };
 
     // The notice and its text, formatted once when it changes so a renderer only
@@ -68,6 +69,12 @@ public:
     // Bumped whenever current() changes, so a renderer can rebuild only then.
     uint32_t revision() const { return m_revision; }
 
+    // The caption to draw: a track's title cut to what fits `width` at
+    // `fontSize` in `font` (the engine index it is drawn in, measured by its
+    // glyphs: AssetManager::fitChars), never ellipsised; every fixed caption as
+    // it is (each is sized for the slab). Valid until the next call.
+    static const char* caption(const Notice& notice, float width, float fontSize, int font);
+
     // Back to the start-up state (the Notices HUD's reset).
     void reset();
 
@@ -84,11 +91,15 @@ private:
     StatusTier computeStatusTier(uint32_t enabledNotices) const;
     bool isTimedNoticeActive(std::chrono::steady_clock::time_point triggerTime, int durationMs) const;
     void drainExpired(int durationMs);
+    // Now playing: notes a new track from MediaManager's snapshot (copied only
+    // when its revision moves) and times its notice out.
+    void followTrack(int durationMs);
     // Re-derive current() from the flags below; bumps the revision on a change.
     void resolveCurrent(uint32_t enabledNotices);
 
     Notice m_current;
     int m_currentNumber = 0;   // the number m_current.text was formatted with, 0 = none
+    uint32_t m_currentTrack = 0;   // the track serial m_current was formatted with, 0 = none
     PbNoticeLap m_currentLap;   // the lap m_current.detail was formatted with
     uint32_t m_revision = 0;
 
@@ -128,6 +139,16 @@ private:
     NoticePriority::Timer m_sessionPBTimer;
     NoticePriority::Timer m_defaultSetupTimer;
     NoticePriority::Timer m_segmentTimer;
+
+    // Now playing: the track last seen, and its notice. The first track seen is
+    // the one already playing when the integration starts, not a change.
+    uint32_t m_mediaRevision = 0;
+    bool m_trackSeen = false;
+    char m_trackTitle[128] = "";
+    char m_trackArtist[128] = "";
+    uint32_t m_trackSerial = 0;              // bumped per new track
+    bool m_bShowTrack = false;
+    std::chrono::steady_clock::time_point m_trackTriggerTime{};
 
     // Spectate tracking: the triggered flags restart when the displayed rider changes
     int m_lastDisplayRaceNum = -1;

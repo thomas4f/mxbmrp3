@@ -63,6 +63,8 @@
     static void app_CrashWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_RpmWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_RpmWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
+    static void cap_NowPlayingWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
+    static void app_NowPlayingWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_SpeedoWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_SpeedoWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_TachoWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);

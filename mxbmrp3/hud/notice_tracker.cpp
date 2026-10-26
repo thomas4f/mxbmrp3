@@ -9,7 +9,10 @@
 
 #include "notices_hud.h"
 #include "notice_priority.h"
+#include "../core/asset_manager.h"
+#include "../core/media_manager.h"
 #include "../core/plugin_constants.h"
+#include "../core/plugin_utils.h"
 
 namespace {
 // Ordinal suffix for position display (1ST, 2ND, 3RD, 4TH, ...)
@@ -27,6 +30,15 @@ const char* ordinalSuffix(int n) {
 NoticeTracker& NoticeTracker::getInstance() {
     static NoticeTracker instance;
     return instance;
+}
+
+const char* NoticeTracker::caption(const Notice& notice, float width, float fontSize, int font) {
+    if (notice.kind != Kind::TrackChanged) return notice.text;
+    // One caption drawn at a time, at once: a static buffer is enough.
+    static char cut[sizeof(Notice::text)];
+    const int chars = AssetManager::getInstance().fitChars(font, notice.text, width, fontSize);
+    snprintf(cut, sizeof(cut), "%.*s", chars, notice.text);
+    return cut;
 }
 
 void NoticeTracker::reset() {
@@ -68,7 +80,35 @@ void NoticeTracker::drainExpired(int durationMs) {
         pd.clearSegmentNotice();
 }
 
+void NoticeTracker::followTrack(int durationMs) {
+    const MediaManager& media = MediaManager::getInstance();
+    const uint32_t revision = media.revision();
+    if (revision != m_mediaRevision) {
+        m_mediaRevision = revision;
+        MediaManager::Snapshot np;
+        media.getSnapshot(np);
+        // A new title or artist while playing; a pause, a seek or the volume is not.
+        if (media.isEnabled() && np.state == MediaManager::State::PLAYING && np.title[0] &&
+            (std::strcmp(np.title, m_trackTitle) != 0 || std::strcmp(np.artist, m_trackArtist) != 0)) {
+            if (m_trackSeen) {
+                ++m_trackSerial;
+                m_bShowTrack = true;
+                m_trackTriggerTime = std::chrono::steady_clock::now();
+            }
+            m_trackSeen = true;
+            snprintf(m_trackTitle, sizeof(m_trackTitle), "%s", np.title);
+            snprintf(m_trackArtist, sizeof(m_trackArtist), "%s", np.artist);
+        }
+    }
+    if (m_bShowTrack && !isTimedNoticeActive(m_trackTriggerTime, durationMs)) {
+        m_bShowTrack = false;
+    }
+}
+
 void NoticeTracker::step(uint32_t enabledNotices, int durationMs, bool watched) {
+    // Followed whether watched or not, so a panel switched on later does not
+    // show a track that changed long ago.
+    followTrack(durationMs);
     // Nothing shows a notice: drain the expired timed flags in PluginData so one does
     // not linger until session end and flash when a panel is switched on.
     if (!watched) {
@@ -250,7 +290,7 @@ void NoticeTracker::step(uint32_t enabledNotices, int durationMs, bool watched) 
 
 void NoticeTracker::resolveCurrent(uint32_t enabledNotices) {
     // Priority: WRONG WAY > HAZARD AHEAD > BLUE FLAG > LAPPER AHEAD > OVERTIME > ALL-TIME PB >
-    // FASTEST LAP > SESSION PB > SEGMENT > FINISHED > LAST LAP > DEFAULT SETUP
+    // FASTEST LAP > SESSION PB > SEGMENT > FINISHED > LAST LAP > DEFAULT SETUP > TRACK CHANGED
     //
     // Runs every frame, so it only DECIDES here (a kind, a fixed text, a number);
     // the text is formatted below, once, when that decision changes.
@@ -296,17 +336,23 @@ void NoticeTracker::resolveCurrent(uint32_t enabledNotices) {
     } else if (m_bShowDefaultSetup && (enabledNotices & NoticesHud::NOTICE_DEFAULT_SETUP)) {
         kind = Kind::DefaultSetup;  text = "DEFAULT SETUP";
     }
+    uint32_t track = 0;   // the Now playing track's serial; its text is the title
+    if (kind == Kind::None && m_bShowTrack && (enabledNotices & NoticesHud::NOTICE_TRACK_CHANGED)) {
+        kind = Kind::TrackChanged;  track = m_trackSerial;
+    }
 
     // A fixed text is compared as-is; a numbered one by its number (the text it
     // formats to follows from kind + number).
     // A PB beaten again while its notice is up keeps kind and text: the lap tells.
-    const bool same = kind == m_current.kind && number == m_currentNumber &&
-                      (number != 0 || std::strcmp(text, m_current.text) == 0) &&
+    // A track is compared by its serial (its title can repeat).
+    const bool same = kind == m_current.kind && number == m_currentNumber && track == m_currentTrack &&
+                      (number != 0 || track != 0 || std::strcmp(text, m_current.text) == 0) &&
                       lap.lapMs == m_currentLap.lapMs && lap.previousMs == m_currentLap.previousMs;
     if (same) return;
 
     m_current.kind = kind;
     m_currentNumber = number;
+    m_currentTrack = track;
     m_currentLap = lap;
     m_current.detail[0] = '\0';
     if (lap.lapMs > 0) {
@@ -320,7 +366,12 @@ void NoticeTracker::resolveCurrent(uint32_t enabledNotices) {
             snprintf(m_current.detail, sizeof(m_current.detail), "%s", time);
         }
     }
-    if (number == 0) {
+    if (track != 0) {
+        // Cut to the buffers here; each panel cuts the title again to its own
+        // width (caption), the Notices slab narrower than the Dash's card.
+        snprintf(m_current.text, sizeof(m_current.text), "%s", m_trackTitle);
+        snprintf(m_current.detail, sizeof(m_current.detail), "%s", m_trackArtist);
+    } else if (number == 0) {
         snprintf(m_current.text, sizeof(m_current.text), "%s", text);
     } else if (kind == Kind::Finished) {
         snprintf(m_current.text, sizeof(m_current.text), "FINISHED %d%s", number, ordinalSuffix(number));

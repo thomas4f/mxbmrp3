@@ -1,0 +1,31 @@
+<!--
+  GitHub Pages only: the primer theme includes this file in every page's <head>;
+  github.com never reads it.
+
+  The README's demo is a bare github.com/user-attachments URL on its own line.
+  github.com turns that into an inline player, but Pages renders it as a plain-
+  text paragraph, and the URL serves no video off github.com. A <video> tag in
+  the README cannot cover both: github.com strips one whose src is not a GitHub
+  upload. So the README keeps the bare URL and this swaps that paragraph for a
+  player on the committed assets/demo.mp4. Replacing the reel means uploading
+  the new file to GitHub for the README AND replacing assets/demo.mp4.
+-->
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var prefix = "https://github.com/user-attachments/assets/";
+    var paragraphs = document.querySelectorAll(".markdown-body > p");
+    for (var i = 0; i < paragraphs.length; i++) {
+      var p = paragraphs[i];
+      if (p.textContent.trim().indexOf(prefix) !== 0) continue;
+      var video = document.createElement("video");
+      video.src = "{{ '/assets/demo.mp4' | relative_url }}";
+      video.controls = true;
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = "metadata";
+      video.style.width = "100%";
+      p.replaceWith(video);
+      break;
+    }
+  });
+</script>

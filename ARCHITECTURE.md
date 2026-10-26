@@ -588,6 +588,7 @@ Abstract base class that all HUDs inherit from. Provides:
 - `LapWidget` - Current lap number
 - `TimeWidget` - Session time remaining
 - `ClockWidget` - Real-time clock
+- `NowPlayingWidget` - What Windows' media controls are playing (`MediaManager`, GSMTC via C++/WinRT, MSVC-only) with transport buttons and the player's Volume Mixer level; its rows are `NowPlayingCard`'s, which the Dash's Now Playing page lays out too
 - `GearWidget` - Current gear indicator
 - `CrashWidget` - A resettable crash tally for streaming (`GlobalStats::crashTally`), deliberately not StatsManager's per-track+bike `crashCount`
 - `RpmWidget` - Shift-light strip under Gear + Speed: green, amber, red from the shift point, the red ones flashing on the limiter

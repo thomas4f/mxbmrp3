@@ -786,6 +786,7 @@ namespace Settings {
         using namespace Keys::Notices;
         saveBitAsKey(settings, WRONG_WAY, notices, NoticesHud::NOTICE_WRONG_WAY);
         saveBitAsKey(settings, BLUE_FLAG, notices, NoticesHud::NOTICE_BLUE_FLAG);
+        saveBitAsKey(settings, LAPPER_AHEAD, notices, NoticesHud::NOTICE_LAPPING);
         saveBitAsKey(settings, LAST_LAP, notices, NoticesHud::NOTICE_LAST_LAP);
         saveBitAsKey(settings, FINISHED, notices, NoticesHud::NOTICE_FINISHED);
         saveBitAsKey(settings, ALLTIME_PB, notices, NoticesHud::NOTICE_ALLTIME_PB);
@@ -795,6 +796,7 @@ namespace Settings {
         saveBitAsKey(settings, OVERTIME, notices, NoticesHud::NOTICE_OVERTIME);
         saveBitAsKey(settings, HAZARD_STATIONARY, notices, NoticesHud::NOTICE_HAZARD_STATIONARY);
         saveBitAsKey(settings, HAZARD_WRONG_WAY, notices, NoticesHud::NOTICE_HAZARD_WRONG_WAY);
+        saveBitAsKey(settings, TRACK_CHANGED, notices, NoticesHud::NOTICE_TRACK_CHANGED);
     }
 
     // NoticesHud: load notices from named keys
@@ -802,6 +804,7 @@ namespace Settings {
         using namespace Keys::Notices;
         loadBitFromKey(settings, WRONG_WAY, notices, NoticesHud::NOTICE_WRONG_WAY);
         loadBitFromKey(settings, BLUE_FLAG, notices, NoticesHud::NOTICE_BLUE_FLAG);
+        loadBitFromKey(settings, LAPPER_AHEAD, notices, NoticesHud::NOTICE_LAPPING);
         loadBitFromKey(settings, LAST_LAP, notices, NoticesHud::NOTICE_LAST_LAP);
         loadBitFromKey(settings, FINISHED, notices, NoticesHud::NOTICE_FINISHED);
         loadBitFromKey(settings, ALLTIME_PB, notices, NoticesHud::NOTICE_ALLTIME_PB);
@@ -811,6 +814,7 @@ namespace Settings {
         loadBitFromKey(settings, OVERTIME, notices, NoticesHud::NOTICE_OVERTIME);
         loadBitFromKey(settings, HAZARD_STATIONARY, notices, NoticesHud::NOTICE_HAZARD_STATIONARY);
         loadBitFromKey(settings, HAZARD_WRONG_WAY, notices, NoticesHud::NOTICE_HAZARD_WRONG_WAY);
+        loadBitFromKey(settings, TRACK_CHANGED, notices, NoticesHud::NOTICE_TRACK_CHANGED);
     }
 
     // TelemetryHud: save elements as named keys

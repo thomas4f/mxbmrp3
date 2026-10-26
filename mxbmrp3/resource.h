@@ -11,7 +11,7 @@
 #pragma once
 
 #define VER_MAJOR 1
-#define VER_MINOR 33
+#define VER_MINOR 34
 #define VER_PATCH 0
 
 // Generated per build (git-ignored); defines VER_BUILD_AUTO = git commit count.

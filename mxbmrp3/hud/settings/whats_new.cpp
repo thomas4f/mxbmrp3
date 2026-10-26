@@ -19,32 +19,21 @@ namespace {
 // check_whats_new.sh fails the build if a version here falls behind resource.h,
 // so the review is not optional.
 //
-// 1.33 is the Dash release: its tab bands the Visible switch, as 1.32's Delta
-// Trace did, so the tag leads to a card that is already up. The Dash, Dash +
-// and Dash - hotkeys that toggle and step it, the Appearance tab's Glow, the
-// Delta Trace's Peaks, the Helmet tab's Impact vignette and the Widgets tab's
-// Toggles are the release's other new rows. The Event Log's Session PB and
-// All-time PB stay unmarked: the tab sits under More, and moving it up for
-// one release would reorder the sidebar for everyone. The 1.32 markers - the
-// Delta Trace's Visible switch, the Map's Lap delta, Tilt, Adaptive range and
-// Mode, the Gap Bar's Range, the Timing panel's Gap, the Stream Chat's
-// Display order, the Appearance tab's Motion, Messages, UI scale and
-// Companion bg, the General tab's Reference and Freeze, the Delta Trace
-// hotkey and the RPM widget - are gone: each had its release, and a tag still
-// lit a release later says nothing.
+// 1.34 is the Now Playing release: its General row, the Widgets tab's widget,
+// the Dash tab's page and the Notices tab's new-track notice are marked. The
+// Toggles strip's docking has no row of its own to mark. The 1.33 markers -
+// the Dash's Visible switch, the Dash, Dash + and Dash - hotkeys, Glow, Peaks,
+// the Impact vignette and the Toggles widget - are gone: each had its release,
+// and a tag still lit a release later says nothing.
 //
 // Prestige is the table's one Gate::Unlocked row: it is not new in a release,
 // it is new the moment a player trades their ladder for it, and the row it
 // bands does not exist on the Widgets tab until then.
 const Marker kMarkers[] = {
-    { SettingsHud::TAB_DASH,         "common.visible",           "1.33" },
-    { SettingsHud::TAB_HOTKEYS,      "hotkeys.dash",             "1.33" },
-    { SettingsHud::TAB_HOTKEYS,      "hotkeys.dash_next",        "1.33" },
-    { SettingsHud::TAB_HOTKEYS,      "hotkeys.dash_prev",        "1.33" },
-    { SettingsHud::TAB_APPEARANCE,   "appearance.glow",          "1.33" },
-    { SettingsHud::TAB_DELTA_TRACE,  "delta_trace.peaks",        "1.33" },
-    { SettingsHud::TAB_HELMET,       "helmet.impact_vignette",   "1.33" },
-    { SettingsHud::TAB_WIDGETS,      "widgets.toggles",          "1.33" },
+    { SettingsHud::TAB_GENERAL,      "general.now_playing",      "1.34" },
+    { SettingsHud::TAB_WIDGETS,      "widgets.now_playing",      "1.34" },
+    { SettingsHud::TAB_DASH,         "dash.page_nowplaying",     "1.34" },
+    { SettingsHud::TAB_NOTICES,      "notices.track_changed",    "1.34" },
     { SettingsHud::TAB_WIDGETS,      "widgets.prestige",         nullptr, Gate::Unlocked },
 };
 

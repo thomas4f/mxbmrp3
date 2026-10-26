@@ -173,6 +173,7 @@ void SettingsHud::resetTabGeneral() {
 #if GAME_HAS_DISCORD
     keys.push_back({ "General", "discordRichPresence" });
 #endif
+    keys.push_back({ "General", "nowPlaying" });
 #if GAME_HAS_HTTP_SERVER
     keys.push_back({ "General", "webServer" });
     keys.push_back({ "Advanced", Settings::IniOnly::Advanced::WEB_SERVER_PORT.key });
@@ -272,7 +273,7 @@ void SettingsHud::resetTabWidgets() {
         "SpeedoWidget", "TachoWidget", "BarsWidget", "FuelWidget",
         "GamepadWidget", "LeanWidget", "GForceWidget", "CompassWidget", "ClockWidget",
         "PointerWidget", "CrashWidget", "PrestigeWidget", "RpmWidget",
-        "ToggleStripWidget"
+        "ToggleStripWidget", "NowPlayingWidget"
     };
 #if GAME_HAS_TYRE_TEMP
     widgets.push_back("TyreTempWidget");

@@ -81,6 +81,8 @@
 #if GAME_HAS_DISCORD
 #include "discord_manager.h"
 #endif
+#include "media_manager.h"
+#include "media_app_filter.h"
 #if GAME_HAS_STEAM_FRIENDS
 #include "steam_friends_manager.h"
 #endif
@@ -229,6 +231,12 @@ void SettingsManager::writeGeneralSettings(std::ostream& out, [[maybe_unused]] c
 #if GAME_HAS_DISCORD
     out << "discordRichPresence=" << (DiscordManager::getInstance().isEnabled() ? 1 : 0) << "\n";
 #endif
+    out << "nowPlaying=" << (MediaManager::getInstance().isEnabled() ? 1 : 0) << "\n";
+    {
+        char apps[MediaAppFilter::MAX_CHARS + 1];
+        MediaManager::getInstance().getAppFilter(apps, sizeof(apps));
+        out << "nowPlayingApps=" << apps << " ; players to follow, as the log names them (e.g. spotify, chrome); empty = any\n";
+    }
 #if GAME_HAS_STEAM_FRIENDS
     out << "steamFriends=" << (SteamFriendsManager::getInstance().isEnabled() ? 1 : 0) << "\n";
 #endif
@@ -315,6 +323,12 @@ void SettingsManager::applyGeneralLine(const std::string& key, const std::string
             DiscordManager::getInstance().setEnabled(std::stoi(value) != 0);
         }
 #endif
+        else if (key == "nowPlaying") {
+            MediaManager::getInstance().setEnabled(std::stoi(value) != 0);
+        }
+        else if (key == "nowPlayingApps") {
+            MediaManager::getInstance().setAppFilter(value.c_str());
+        }
 #if GAME_HAS_STEAM_FRIENDS
         else if (key == "steamFriends") {
             SteamFriendsManager::getInstance().setEnabled(std::stoi(value) != 0);

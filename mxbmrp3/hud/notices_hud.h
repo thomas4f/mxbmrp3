@@ -28,10 +28,13 @@ public:
         NOTICE_OVERTIME          = 1 << 10,
         // bit 11 was NOTICE_SEGMENT (removed; segment-timer feedback is always on)
         NOTICE_LAPPING           = 1 << 12,
+        // A new track on Now playing (MediaManager); fires only with the
+        // integration on, which is off by default.
+        NOTICE_TRACK_CHANGED     = 1 << 13,
         NOTICE_DEFAULT     = NOTICE_WRONG_WAY | NOTICE_LAST_LAP | NOTICE_FINISHED
                            | NOTICE_ALLTIME_PB | NOTICE_FASTEST_LAP | NOTICE_SESSION_PB
                            | NOTICE_DEFAULT_SETUP | NOTICE_HAZARD_STATIONARY | NOTICE_HAZARD_WRONG_WAY
-                           | NOTICE_LAPPING
+                           | NOTICE_LAPPING | NOTICE_TRACK_CHANGED
     };
 
     // Timed notice display duration bounds (covers PB notices)

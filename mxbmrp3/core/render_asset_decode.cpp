@@ -166,6 +166,24 @@ FntFont decodeFnt(const std::vector<uint8_t>& d) {
     return fo;
 }
 
+static_assert(FNT_TABLE_BYTES == size_t(FNT_BITMAP_HDR), "the measured part of a .fnt is its glyph table");
+
+bool decodeFntAdvances(const uint8_t* d, size_t size, float out[256]) {
+    if (size < FNT_TABLE_BYTES || std::memcmp(d, "FNT\0", 4) != 0) return false;
+    auto i32 = [&](size_t o) -> int {
+        int32_t v; std::memcpy(&v, &d[o], 4); return v;
+    };
+    const int cellH = i32(FNT_HEIGHT_OFF);
+    if (cellH <= 0) return false;
+    for (int cp = 0; cp < 256; ++cp) {
+        const size_t o = FNT_TABLE_OFF + size_t(cp) * FNT_REC_STRIDE;
+        // The advance decodeFnt gives a glyph, so the layout measures what the renderers draw.
+        const int adv = i32(o + 4) + i32(o + 8) + i32(o + 12);
+        out[cp] = static_cast<float>(std::max(adv, 0)) / static_cast<float>(cellH);
+    }
+    return true;
+}
+
 Texture decodeTga(const std::vector<uint8_t>& d) {
     Texture t;
     if (d.size() >= 18) {

@@ -634,6 +634,7 @@ namespace Settings {
         } else if (hudName == "NoticesHud") {
             if (key == Notices::WRONG_WAY.key) return Notices::WRONG_WAY.description;
             if (key == Notices::BLUE_FLAG.key) return Notices::BLUE_FLAG.description;
+            if (key == Notices::LAPPER_AHEAD.key) return Notices::LAPPER_AHEAD.description;
             if (key == Notices::LAST_LAP.key) return Notices::LAST_LAP.description;
             if (key == Notices::FINISHED.key) return Notices::FINISHED.description;
             if (key == Notices::ALLTIME_PB.key) return Notices::ALLTIME_PB.description;
@@ -641,6 +642,7 @@ namespace Settings {
             if (key == Notices::SESSION_PB.key) return Notices::SESSION_PB.description;
             if (key == Notices::DEFAULT_SETUP.key) return Notices::DEFAULT_SETUP.description;
             if (key == Notices::PB_DURATION.key) return Notices::PB_DURATION.description;
+            if (key == Notices::TRACK_CHANGED.key) return Notices::TRACK_CHANGED.description;
         } else if (hudName == "StandingsHud") {
             if (key == Standings::TOP_POSITIONS.key) return Standings::TOP_POSITIONS.description;
             if (key == Standings::PLAYER_ROW_HIGHLIGHT.key) return Standings::PLAYER_ROW_HIGHLIGHT.description;

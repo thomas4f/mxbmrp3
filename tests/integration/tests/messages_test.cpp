@@ -50,7 +50,7 @@ namespace {
 
 enum { MSG_NONE = 0, MSG_UPDATE, MSG_UPDATED, MSG_WELCOME };
 // DashHud::Page: the page a fresh install opens on, and the card a message holds.
-enum { PAGE_TIMING = 1, PAGE_NOTICES = 14 };
+enum { PAGE_TIMING = 1, PAGE_NOTICES = 15 };
 
 // The settings folder exists once a startup has run; a case that writes its
 // INI before the first startup makes it.
@@ -277,12 +277,12 @@ TEST_CASE("messages: \"Updated to\" goes after its time on the card; the welcome
         REQUIRE(host.loaded());
         startQuiet(host);
         onTrackQuiet(host);
-        host.messagesStartup(/*fresh=*/false, "1.33", "1.32");
+        host.messagesStartup(/*fresh=*/false, "1.34", "1.33");
         host.draw();
         int onCard = -1;
         REQUIRE(host.startupMessage(&onCard) == MSG_UPDATED);
         CHECK(onCard == MSG_UPDATED);
-        CHECK(dashSays(host, "UPDATED TO 1.33"));
+        CHECK(dashSays(host, "UPDATED TO 1.34"));
         CHECK(dashSays(host, "Click here to see what's new"));
 
         host.startupMessageAdvance(4000);
@@ -296,7 +296,7 @@ TEST_CASE("messages: \"Updated to\" goes after its time on the card; the welcome
         REQUIRE(host.save());
         host.shutdown();
     }
-    CHECK(ini::readFile(kIniPath).find("lastLine=1.33") != std::string::npos);   // told once
+    CHECK(ini::readFile(kIniPath).find("lastLine=1.34") != std::string::npos);   // told once
 
     // The welcome never times out: however long it is up, riding or not, it is
     // still there; only an answer ends it.
@@ -363,7 +363,7 @@ TEST_CASE("messages: a Dash step answers the message; an update for this launch 
         REQUIRE(host.loaded());
         startQuiet(host);
         onTrackQuiet(host);
-        host.messagesStartup(/*fresh=*/false, "1.33", "1.32");
+        host.messagesStartup(/*fresh=*/false, "1.34", "1.33");
         host.draw();
         REQUIRE(host.startupMessage() == MSG_UPDATED);
         REQUIRE(host.injectHotkey("dash_prev"));
@@ -372,7 +372,7 @@ TEST_CASE("messages: a Dash step answers the message; an update for this launch 
         REQUIRE(host.save());
         host.shutdown();
     }
-    CHECK(ini::readFile(kIniPath).find("lastLine=1.33") != std::string::npos);
+    CHECK(ini::readFile(kIniPath).find("lastLine=1.34") != std::string::npos);
 }
 
 TEST_CASE("messages: the menu opening lands on the tab the message names") {
@@ -476,7 +476,7 @@ TEST_CASE("messages: a click on the Dash's card opens the tab the message names"
     REQUIRE(host.loaded());
     startQuiet(host);
     onTrackQuiet(host);
-    host.messagesStartup(/*fresh=*/false, "1.33", "1.32");
+    host.messagesStartup(/*fresh=*/false, "1.34", "1.33");
     host.draw();
     REQUIRE(host.startupMessage() == MSG_UPDATED);
     clickDash(host);
@@ -528,7 +528,7 @@ TEST_CASE("messages: a Dash switched off shows for the update messages, not the 
         host.setUpdateCheckEnabled(checker);
         onTrackQuiet(host);
         REQUIRE(host.setHudVisible("dash_hud", false));
-        host.messagesStartup(/*fresh=*/false, "1.33", "1.32");
+        host.messagesStartup(/*fresh=*/false, "1.34", "1.33");
         host.draw();
         REQUIRE(host.startupMessage() == MSG_UPDATED);
         CHECK(host.dashBorrowed() == (checker ? 1 : 0));

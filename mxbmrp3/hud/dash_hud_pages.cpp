@@ -747,22 +747,21 @@ void DashHud::drawGapBar(float rowL, float rowR, float contentY, float pageCente
         addString(text, pageCenterX, inkCenteredY(contentY, bandH, dim.fontSizeLarge), Justify::CENTER,
                   digits, ink, dim.fontSizeLarge);
     }
-    // Labelled as on the Ideal page; the best in the positive colour,
-    // as the Laps page marks it.
+    // Labelled and coloured as on the Ideal page: both times plain, so
+    // the gap above is the one reading here in the delta colours.
     const float lapsY = contentY + bandH;
     const float charW = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
     const unsigned long labelColor = getColor(ColorSlot::TERTIARY);
     addLabel("Last", rowL, lapsY, Justify::LEFT, labelColor, dim);
     addLabel("Best", rowR - charW * static_cast<float>(LAPS_TIME_CHARS), lapsY, Justify::RIGHT,
              labelColor, dim);
-    const struct { int ms; float x; int justify; unsigned long color; LapText& cache; } laps[] = {
-        { m_shownBar.lastMs, rowL + charW * static_cast<float>(IDEAL_LABEL_CHARS), Justify::LEFT, primary,
-          m_lastText },
-        { m_shownBar.bestMs, rowR, Justify::RIGHT, getColor(ColorSlot::POSITIVE), m_bestText },
+    const struct { int ms; float x; int justify; LapText& cache; } laps[] = {
+        { m_shownBar.lastMs, rowL + charW * static_cast<float>(IDEAL_LABEL_CHARS), Justify::LEFT, m_lastText },
+        { m_shownBar.bestMs, rowR, Justify::RIGHT, m_bestText },
     };
     for (const auto& lap : laps) {
         addString(lap.cache.get(lap.ms), lap.x, lapsY, lap.justify, digits,
-                  lap.ms > 0 ? lap.color : muted, dim.fontSize);
+                  lap.ms > 0 ? primary : muted, dim.fontSize);
     }
 }
 

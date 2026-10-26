@@ -611,36 +611,129 @@ static bool isPerturbSafe(SettingsHud::ClickRegion::Type t) {
     }
 }
 
-int SettingsHud::testPerturbActiveTab() {
-    int clicked = 0;
-    // ONE CLICK PER CONTROL, not per region. Every row helper emits its control
-    // TWICE - the "<" and ">" arrows are separate regions - and for the two-state
-    // rows both carry the same type, so clicking every region flipped each setting
-    // there and back and perturbed nothing at all. The pair is always adjacent
-    // within a row, so skipping the region after each click is enough, and it still
-    // reaches each control of a multi-control row (a widget row's Visible, Opacity
-    // and Scale are three pairs in a row).
+// Whether b is a's other half: the ">" beside a "<". A two-state row emits its
+// control twice with the same type and target; a stepper or cycle emits a DOWN and
+// an UP on the same descriptor.
+static bool isPartnerRegion(const SettingsHud::ClickRegion& a, const SettingsHud::ClickRegion& b) {
+    using CR = SettingsHud::ClickRegion;
+    auto stepped = [](CR::Type t) { return t == CR::STEPPED_UP || t == CR::STEPPED_DOWN; };
+    auto cycle = [](CR::Type t) { return t == CR::CYCLE_UP || t == CR::CYCLE_DOWN; };
+    if (stepped(a.type) && stepped(b.type)) return a.type != b.type && a.steppedIndex == b.steppedIndex;
+    if (cycle(a.type) && cycle(b.type)) return a.type != b.type && a.cycleIndex == b.cycleIndex;
+    return a.type == b.type && a.targetHud == b.targetHud && a.flagBit == b.flagBit &&
+           a.steppedIndex == b.steppedIndex && a.cycleIndex == b.cycleIndex;
+}
+
+// Change the control at region i the way a player would. Most controls change on a
+// click at their centre, but two do not: a SLIDER moves on press-and-drag, so a
+// centre click sets the middle of its range (often where it already is), and a
+// DROPDOWN's box only opens its list. Those go through their own press/pick paths,
+// to a value that differs from the current one. `alternate` takes the other way
+// (the other end of a slider, the previous list entry). Returns false ONLY for a
+// control with nothing to change to - a list of one entry (an asset folder with one
+// pack) - so a press or list that fails to take still counts as a change attempt.
+bool SettingsHud::testPerturbRegion(size_t i, bool alternate) {
+    const ClickRegion r = m_clickRegions[i];
+    if (r.type == ClickRegion::SLIDER) {
+        if (r.steppedIndex < 0 || r.steppedIndex >= static_cast<int>(m_sliders.size())) return false;
+        const SliderControl& control = m_sliders[r.steppedIndex];
+        if (!control.get) return false;
+        // The end the value is not at; the other one when asked.
+        const bool atHigh = std::fabs(control.valueAt(1.0f) - control.get()) < 1e-6f;
+        const float fraction = (atHigh != alternate) ? 0.0f : 1.0f;
+        float trackX = r.x, trackY = r.y;
+        applyOffset(trackX, trackY);
+        const float cursorX = trackX + r.width * fraction;
+        // A press that does not take reports as changed, so the caller sees a slider
+        // that did not move rather than skipping it.
+        if (handleControlPress(static_cast<int>(i), cursorX)) {
+            updateSliderDrag(cursorX, false);   // release: ends the drag and saves, as the mouse does
+        }
+        return true;
+    }
+    if (r.type == ClickRegion::DROPDOWN) {
+        if (r.cycleIndex < 0 || r.cycleIndex >= static_cast<int>(m_cycleControls.size())) return false;
+        const int count = m_cycleControls[r.cycleIndex].count;
+        if (count <= 1) return false;
+        const int current = m_cycleControls[r.cycleIndex].get ? m_cycleControls[r.cycleIndex].get() : 0;
+        const int pick = (current + (alternate ? count - 1 : 1)) % count;
+        // Open the list, rebuild so its entries exist, then click the one wanted.
+        handleClick(r.x + r.width * 0.5f, r.y + r.height * 0.5f);
+        rebuildRenderData();
+        for (const ClickRegion& entry : m_clickRegions) {
+            if (entry.type != ClickRegion::DROPDOWN_OPTION || static_cast<int>(entry.flagBit) != pick) continue;
+            const ClickRegion picked = entry;
+            handleClick(picked.x + picked.width * 0.5f, picked.y + picked.height * 0.5f);
+            return true;
+        }
+        return true;   // no list opened: reported as changed, so the caller sees it did not
+    }
+    if ((r.type == ClickRegion::CYCLE_UP || r.type == ClickRegion::CYCLE_DOWN) &&
+        r.cycleIndex >= 0 && r.cycleIndex < static_cast<int>(m_cycleControls.size()) &&
+        m_cycleControls[r.cycleIndex].count <= 1) {
+        return false;
+    }
+    // Every other control is a click; its other way is the partner arrow beside it.
+    const bool partner = i + 1 < m_clickRegions.size() && isPartnerRegion(r, m_clickRegions[i + 1]);
+    const ClickRegion& target = (alternate && partner) ? m_clickRegions[i + 1] : r;
+    handleClick(target.x + target.width * 0.5f, target.y + target.height * 0.5f);
+    return true;
+}
+
+// The sweep's walk, shared by the whole-tab and the one-control seams so the two
+// can never disagree about what "a control" is. ONE CLICK PER CONTROL, not per
+// region. Most row helpers emit a control TWICE - the "<" and ">" arrows are
+// separate regions - and for the two-state rows both carry the same type, so
+// clicking every region flipped each setting there and back and perturbed nothing
+// at all. So the region after each click is skipped when it is that control's
+// other half (isPartnerRegion) - and only then: skipping it blindly paired the
+// wrong regions in rows that emit three per value (the Rumble cells' "<", ">" and
+// slider), which left every second cell reached only by an arrow already at its
+// limit.
+//
+// From the content pass only: the sidebar's per-tab checkboxes are click regions on
+// every tab, and they are not this tab's to reset. By INDEX, re-reading the vector
+// each time: a click can rebuild the layout (a toggle that reveals a row), which
+// invalidates any iterator or reference held across it. Regions inserted below the
+// cursor are still reached; one inserted above is not, and that is an acceptable
+// miss for a sweep whose job is breadth.
+//
+// `only` < 0 changes every control; otherwise only that one (0-based), and returns
+// 1 when it was changed, 2 when it had nothing to change to, 0 when there is no
+// such control.
+int SettingsHud::testPerturbWalk(int only, bool alternate, std::string* idOut) {
+    int controls = 0;
     bool skipNext = false;
-    // From the content pass only: the sidebar's per-tab checkboxes are click regions
-    // on every tab, and they are not this tab's to reset.
-    // By INDEX, re-reading the vector each time: a click can rebuild the layout (a
-    // toggle that reveals a row), which invalidates any iterator or reference held
-    // across it. Regions inserted below the cursor are still reached; one inserted
-    // above is not, and that is an acceptable miss for a sweep whose job is breadth.
+    std::string rowId;
     for (size_t i = static_cast<size_t>(m_testContentRegionBegin); i < m_clickRegions.size(); ++i) {
         const ClickRegion& r = m_clickRegions[i];
         // A row-wide tooltip region marks a row boundary (it is emitted first by
         // every row helper), so a pending skip cannot leak into the next row.
-        if (r.type == ClickRegion::TOOLTIP_ROW) { skipNext = false; continue; }
+        if (r.type == ClickRegion::TOOLTIP_ROW) { skipNext = false; rowId = r.tooltipId; continue; }
         if (!isPerturbSafe(r.type)) continue;
         if (skipNext) { skipNext = false; continue; }
-        skipNext = true;
-        const float cx = r.x + r.width * 0.5f;
-        const float cy = r.y + r.height * 0.5f;
-        handleClick(cx, cy);
-        ++clicked;
+        skipNext = i + 1 < m_clickRegions.size() && isPartnerRegion(r, m_clickRegions[i + 1]);
+        if (only < 0) {
+            testPerturbRegion(i, false);
+            ++controls;
+            continue;
+        }
+        if (controls++ != only) continue;
+        if (idOut) *idOut = rowId + "|" + r.tooltipId;
+        return testPerturbRegion(i, alternate) ? 1 : 2;
     }
-    return clicked;
+    return only < 0 ? controls : 0;
+}
+
+int SettingsHud::testPerturbActiveTab() {
+    return testPerturbWalk(-1, false, nullptr);
+}
+
+int SettingsHud::testPerturbControl(int index, bool alternate, char* idOut, int cap) {
+    std::string id;
+    const int result = testPerturbWalk(index, alternate, &id);
+    if (idOut && cap > 0) snprintf(idOut, static_cast<size_t>(cap), "%s", id.c_str());
+    return result;
 }
 
 bool SettingsHud::testClickResetTab(int clicks) {

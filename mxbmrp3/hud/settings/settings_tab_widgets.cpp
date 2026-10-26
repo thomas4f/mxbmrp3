@@ -11,6 +11,7 @@
 #include "../clock_widget.h"
 #include "../compass_widget.h"
 #include "../crash_widget.h"
+#include "../now_playing_widget.h"
 #include "../rpm_widget.h"
 #include "../toggle_strip_widget.h"
 #include "../fuel_widget.h"
@@ -116,6 +117,8 @@ BaseHud* SettingsHud::renderTabWidgets(SettingsLayoutContext& ctx) {
     // flag to pass here and no way for this call site to disagree with it.
     ctx.addWidgetRow("Gamepad", ctx.parent->getGamepadWidget(), true, true, true, true, "widgets.gamepad");
     ctx.addWidgetRow("Clock", ctx.parent->getClockWidget(), true, true, true, true, "widgets.clock");
+    ctx.addWidgetRow("Now Playing", &HudManager::getInstance().getNowPlayingWidget(), true, true, true, true,
+                     "widgets.now_playing");
     // Pointer: the visibility toggle drives the menu-only-cursor mode (On = shown while
     // racing, Off = only in the settings menu). It can't toggle the widget's real
     // visibility because the pointer must stay drawable to appear in the menu.

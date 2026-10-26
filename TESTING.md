@@ -300,6 +300,7 @@ game API is an integration test instead. The authoritative TU list is
 - `test_director_airtime.cpp` - the director's two airtime helpers: the lull round-robin (`pickNextAirtimeNum`), whose cursor keys on race number rather than grid position, and the dead-air floor (`pickBaselineSubject`), which hands the camera to the broadcaster's own rider once forced rotation is off - and degrades to the leader when that rider is gone, so "Max shot = Off" can never mean dead air
 - `test_session_charts_math.cpp` - race-progression chart maths in `hud/session_charts_math.h`
 - `test_tooltip_length.cpp` - every settings tooltip fits the 2-line/~120-char render limit (compiles the real tooltip table)
+- `test_media_app_filter.cpp` - `nowPlayingApps` matching
 - `test_update_asset_select.cpp` - the updater's release-asset picker (the symbols-zip-matched-first regression)
 - `test_update_version_match.cpp` - `UpdateChecker::isSameRelease`, the "is the running DLL the update we just installed?" test.
 - `test_ui_config.cpp` - INI-only grid-overlay defaults + the `majorEvery` clamp
@@ -485,7 +486,7 @@ without a row here, so a new test can't land invisibly:
 | `card_anchor_sweep_test.cpp` | every HUD's content anchors to **the box that owns it** - the card for body content, the title band for the caption - never to the outer panel. |
 | `crash_widget_test.cpp` | the crash widget's **streaming tally outlives every boundary that scopes the ordinary crash count**. |
 | `rpm_widget_test.cpp` | the RPM strip **spans Gear + Speed, turns red exactly at the shift point** and flashes its red ones on the limiter. |
-| `toggle_strip_test.cpp` | Toggles strip: Settings icon, **mirrors the sidebar's switches**, Director too, outlives its Widgets switch, inherits a hidden Settings icon, folds, previews. |
+| `toggle_strip_test.cpp` | Toggles strip: Settings icon, **mirrors the sidebar's switches**, Director too, outlives its Widgets switch, inherits a hidden Settings icon, folds, previews, docks at an edge (row or column). |
 | `render_probe_test.cpp` | the **render probe emits the primitive it claims to**: `renderProbeType` 0 adds N *untextured* quads, type 1 adds none, a pinned `renderProbeSprite` is the only sprite in the frame, and an **out-of-range pin falls back to cycling rather than to sprite 0**. |
 | `about_tab_test.cpp` | **About opens from the footer, not a tab**; **Updates tag follows the available version**; **5 clicks: Breakout** |
 | `whats_new_test.cpp` | the **"New" markers on settings tabs and rows appear, dismiss by their own rule, and stay dismissed**. |
@@ -498,8 +499,9 @@ without a row here, so a new test can't land invisibly:
 | `director_events_test.cpp` | director **transparency events**: shot decisions and state changes reach the event log as Director-typed entries, state transitions carry the director button's state colors (cuts keep the per-type default), and they're emitted **unconditionally** - the in-game toggle and the overlay filter at *display* time (raw-data contract). |
 | `event_log_pb_test.cpp` | player **PB log rows**: one per lap; none on a first, rival or invalid lap |
 | `theme_override_test.cpp` | **Per-HUD panel-theme override clears when absent**: the key is captured sparsely, so reset and entering a profile that carries no theme key must UNPIN the HUD -- while a set override still survives a save/load round trip |
-| `reset_test.cpp` | **Reset All scope** (#212/#214): per-profile HUD settings revert to factory default, global sections (Rumble/Hotkeys) untouched. Per-TAB resets are `reset_tab_test.cpp`'s |
+| `reset_test.cpp` | **Reset All scope** (#212/#214): per-profile HUD settings revert to factory default, global sections (Rumble/Hotkeys) untouched |
 | `reset_tab_test.cpp` | **Per-tab "Reset `<tab>`" completeness**: for every settings tab, clicks every control the tab emits, presses that tab's Reset, and requires the saved INI back at factory. |
+| `settings_control_persist_test.cpp` | **Every settings control is saved**: changed alone, it must change the INI and survive a reload |
 | `reset_profile_test.cpp` | per-profile **operations** on the profile-diff (`[HudName:Profile]`): active-profile / per-HUD reset scope, copy-to-all, and switch-profile persistence |
 | `autoswitch_test.cpp` | **auto-by-session profile switch**: with the flag armed, the active profile follows the session type (Practice/Qualify/Race); with it off, a session change no longer overrides a manual pick |
 | `pack_texture_variant_test.cpp` | a **pack HUD keeps its artwork across an upgrade**: an INI written before the pit board and gamepad pad became packs still carries `textureVariant=1`, and `applyBaseSettings` walks a section's keys in map order, so `showBackgroundTexture=1` was applied first and the variant turned it straight back off. |
@@ -547,6 +549,7 @@ without a row here, so a new test can't land invisibly:
 | `pack_skin_test.cpp` | A pack SKIN (`base = <pack>` in the `[pack]` section) layers over its base: missing sprites and omitted geometry keys resolve from the base pack, own files and keys win - the spotter voice pack rule applied to gamepad and pit board packs, which is what makes a reskin two files instead of a copy of seventeen. |
 | `gauges_migration_test.cpp` | Custom dial art drawn BEFORE gauges packs survives the upgrade. |
 | `dash_test.cpp` | Dash: the shared notice, pages, the +/- cycle |
+| `now_playing_test.cpp` | Now Playing: widget, Dash page, controls, notice |
 | `default_positions_test.cpp`, `spotter_position_test.cpp` | Default spots clear of shipped-on HUDs; v11, v12 moves |
 | `delta_trace_test.cpp` | Delta Trace: no reference plots nothing; the line covers exactly the half lap ridden, restarts with the next lap over the previous one, keeps it when riding back, holds through the line window, marks the rider (moving without a rebuild), recovers after the out-lap and a new session, shows the lap just completed in the pits, empties with a new session; no quad is wound the way the game culls |
 | `map_lap_delta_test.cpp` | Map **lap delta**: Off tints nothing; On tints the stretch ridden green where gaining and red where losing, in many shades; the previous lap stays ahead of the rider; a new session drops the tint with its reference |
@@ -694,8 +697,6 @@ plugin, perturb a few anchor keys in the INI on disk, pull them into live state
 with the `MXBMRP3_Test_LoadSettings` hook (the "set live state" seam), run the
 reset, re-save, and diff the file with `harness/ini.h`. It runs in one process -
 no capture-default-in-a-separate-run dance.
-
-Per-profile and per-tab resets are `reset_profile_test.cpp` / `reset_tab_test.cpp`.
 
 ### Real-data replay (callback tapes)
 

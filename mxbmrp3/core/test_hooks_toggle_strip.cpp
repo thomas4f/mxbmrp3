@@ -4,7 +4,8 @@
 // and which tab it switches, so toggle_strip_test can click it; its reveal, so a
 // case can end one started by a Draw gap rather than race its 4 s; the cursor's
 // idle timeout, which hovering the strip holds off; the director's on/off,
-// which its Director switch flips; and the hover sample.
+// which its Director switch flips; the hover sample; and its shape, with a
+// horizontal strip's per-group cards.
 //
 // Same rules as core/test_hooks.cpp: the whole file is gated on
 // MXBMRP3_TEST_BUILD and mxbmrp3/CMakeLists.txt removes it from every shipping
@@ -27,13 +28,19 @@
 
 extern "C" {
 
-// Row i's centre (screen units), switch (1 on) and tab name; returns the rows drawn, which is 0
+// Row i's centre (screen units, on the active surface), switch (1 on) and tab name; returns the rows drawn, which is 0
 // while the strip is hidden with the cursor.
 __declspec(dllexport) int MXBMRP3_Test_ToggleStripRow(int i, float* x, float* y, int* on,
                                                       char* name, int cap) {
     const char* n = nullptr;
     bool lit = false;
-    const int rows = HudManager::getInstance().getToggleStripWidget().testRow(i, x, y, &lit, &n);
+    const ToggleStripWidget& w = HudManager::getInstance().getToggleStripWidget();
+    const int rows = w.testRow(i, x, y, &lit, &n);
+    // On the companion window, where the cursor is: the strip at its offset there.
+    if (InputManager::getInstance().getActiveSurface() == InputManager::Surface::Companion) {
+        if (x) *x += w.getCompanionOffsetX() - w.getOffsetX();
+        if (y) *y += w.getCompanionOffsetY() - w.getOffsetY();
+    }
     if (on) *on = lit ? 1 : 0;
     if (name && cap > 0) snprintf(name, static_cast<size_t>(cap), "%s", n ? n : "");
     return rows;
@@ -41,6 +48,31 @@ __declspec(dllexport) int MXBMRP3_Test_ToggleStripRow(int i, float* x, float* y,
 
 __declspec(dllexport) int MXBMRP3_Test_ToggleStripHoverRow() {
     return HudManager::getInstance().getToggleStripWidget().testHoverRow();
+}
+
+// The strip's shape: 1 horizontal, 0 vertical. `set` 0/1 sets it first, as a drag
+// to an edge would; -1 only reads.
+__declspec(dllexport) int MXBMRP3_Test_ToggleStripHorizontal(int set) {
+    ToggleStripWidget& w = HudManager::getInstance().getToggleStripWidget();
+    if (set >= 0) w.setHorizontal(set != 0);
+    return w.isHorizontal() ? 1 : 0;
+}
+
+// Column `col`'s card in the strip's last placed plan (pre-offset, x1e6: left,
+// top, width, height), for a horizontal strip whose groups are columns; 0 if
+// there is no such column.
+__declspec(dllexport) int MXBMRP3_Test_ToggleStripColumnCard(int col, int* out) {
+    const PanelPlan* plan = HudManager::getInstance().getToggleStripWidget().testPlacedPlan();
+    if (!plan || col < 0 || plan->g.bands.empty() ||
+        static_cast<size_t>(col) >= plan->g.bands[0].columns.size()) return 0;
+    const PanelBox::ColumnGeom& c = plan->g.bands[0].columns[static_cast<size_t>(col)];
+    if (c.sections.empty()) return 0;
+    auto q = [](float v) { return static_cast<int>(v * 1e6f + (v < 0 ? -0.5f : 0.5f)); };
+    out[0] = q(plan->X(c.cardLeft));
+    out[1] = q(plan->Y(c.sections.front().top));
+    out[2] = q(plan->W(c.cardW));
+    out[3] = q(plan->H(c.sections.back().bot - c.sections.front().top));
+    return 1;
 }
 
 // The strip's switch on each surface, and whether its companion copy is configured

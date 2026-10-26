@@ -18,6 +18,31 @@ file; their wording is preserved too.
 
 ## [Unreleased]
 
+## [1.34.0] - 2026-10-25
+
+Now Playing shows what Spotify or another player in Windows' media
+controls is playing, with its controls, and the Toggles strip turns to fit
+any screen edge.
+
+### Added
+- **Toggles** strip turns to fit the edge it is dragged to: a column on
+  the left or right edge, a row along the top or bottom.
+- **Now Playing** (Settings > General > Now playing): what Windows' media
+  controls are playing, such as Spotify or a browser tab, on a new **Now
+  Playing** widget and Dash page, with previous, play/pause, next and the
+  player's volume. A new track can show as a notice (Settings > Notices).
+  `nowPlayingApps` under `[General]` in the settings file limits it to
+  the players named there, such as `spotify`. Off by default
+
+### Changed
+- **Toggles** strip: the settings button is a gear.
+- **Dash** Gap Bar page: the best lap is no longer green, so only the
+  gap is coloured.
+
+### Fixed
+- Turning off the **Lapper ahead** notice (Settings > Notices) is kept
+  after restarting the game
+
 ## [1.33.0] - 2026-10-24
 
 A new look out of the box: a Dash card that steps through timing, gaps and

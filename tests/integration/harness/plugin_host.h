@@ -168,6 +168,8 @@ public:
         m_cursorIdle = sym<void(*)()>("MXBMRP3_Test_CursorIdle");
         m_directorEnabled = sym<int(*)()>("MXBMRP3_Test_DirectorEnabled");
         m_toggleStripSurfaces = sym<void(*)(int*,int*,int*)>("MXBMRP3_Test_ToggleStripSurfaces");
+        m_toggleStripHorizontal = sym<int(*)(int)>("MXBMRP3_Test_ToggleStripHorizontal");
+        m_toggleStripColumnCard = sym<int(*)(int,int*)>("MXBMRP3_Test_ToggleStripColumnCard");
         m_hudSampled = sym<int(*)(const char*)>("MXBMRP3_Test_HudSampled");
         m_helmetOnCompanion = sym<void(*)(int)>("MXBMRP3_Test_HelmetOnCompanion");
         m_frameAlphaSum = sym<double(*)()>("MXBMRP3_Test_GameFrameAlphaSum");
@@ -227,6 +229,7 @@ public:
         m_regionSig    = sym<void(*)(char*,int)>("MXBMRP3_Test_SettingsRegionSignature");
         m_cycleClick   = sym<int(*)(int,int)>("MXBMRP3_Test_SettingsClickCycle");
         m_perturbTab   = sym<int(*)()>("MXBMRP3_Test_SettingsPerturbActiveTab");
+        m_perturbControl = sym<int(*)(int,int,char*,int)>("MXBMRP3_Test_SettingsPerturbControl");
         m_clickResetTab = sym<int(*)()>("MXBMRP3_Test_SettingsClickResetTab");
         m_ruBumpsLight = sym<float(*)()>("MXBMRP3_Test_RumbleActiveBumpsLight");
         m_companion = sym<void(*)(int)>("MXBMRP3_Test_CompanionWindow");
@@ -296,6 +299,8 @@ public:
         m_finishLap = sym<int(*)()>("MXBMRP3_Test_FinishLap");
         m_riderFinishTime = sym<int(*)(int)>("MXBMRP3_Test_RiderFinishTime");
         m_dashFirstIcon = sym<int(*)()>("MXBMRP3_Test_DashFirstIcon");
+        m_mediaPublish = sym<void(*)(const char*,const char*,int,int,int,int)>("MXBMRP3_Test_MediaPublish");
+        m_mediaPending = sym<int(*)(int)>("MXBMRP3_Test_MediaPending");
         m_liveGapToPb = sym<int(*)(int*)>("MXBMRP3_Test_LiveGapToPb");
         m_liveGapRef = sym<int(*)(int,int*)>("MXBMRP3_Test_LiveGapRef");
         m_setThemeIcon      = sym<int(*)(const char*,int,int)>("MXBMRP3_Test_SetThemeIconOverride");
@@ -1443,6 +1448,11 @@ public:
         return n;
     }
     int toggleStripHoverRow() { return m_toggleStripHover ? m_toggleStripHover() : -2; }
+    // The strip's shape (1 horizontal, 0 vertical, -1 without the hook); set 0/1 sets it.
+    bool hasToggleStripShape() const { return m_toggleStripHorizontal && m_toggleStripColumnCard; }
+    int toggleStripHorizontal(int set = -1) {
+        return m_toggleStripHorizontal ? m_toggleStripHorizontal(set) : -1;
+    }
     // The hover preview: whether a HUD is drawn as a sample (1/0, -1 unknown/no hook).
     bool hasHoverSample() const { return m_hudSampled && m_frameAlphaSum; }
     // Every game-frame quad's alpha, summed (-1 without the hook).
@@ -1682,6 +1692,15 @@ public:
     // Click every control on the active settings tab (see reset_tab_test); returns
     // how many were clicked, -1 if the hook is missing.
     int perturbActiveTab() { return m_perturbTab ? m_perturbTab() : -1; }
+    // One control of that sweep: 1 changed, 2 nothing to change to, 0 no such control,
+    // -1 hook missing. `id` gets "<row tooltip>|<tooltip>".
+    int perturbControl(int index, bool alternate, std::string& id) {
+        if (!m_perturbControl) return -1;
+        char buf[160] = "";
+        const int r = m_perturbControl(index, alternate ? 1 : 0, buf, static_cast<int>(sizeof(buf)));
+        id = buf;
+        return r;
+    }
     // Press the active tab's "Reset <tab>" footer button.
     bool clickResetTab() { return m_clickResetTab && m_clickResetTab() != 0; }
     bool clickCycle(int index, bool up) {
@@ -2522,7 +2541,7 @@ public:
     // NAME now (testHudByName in core/test_hooks.cpp), so this enum is a convenience
     // for the panels tests name often, not the addressing mechanism -- hudName() below
     // is the only place it is translated, and every hook wrapper also takes a bare
-    // const char*, so all 44 registered elements are reachable whether or not they
+    // const char*, so all 45 registered elements are reachable whether or not they
     // appear here. Adding an element to a sweep needs no plugin-side edit.
     //
     // WHAT THIS REPLACED, because the shape is worth not rebuilding: a 21-case switch
@@ -2780,6 +2799,14 @@ public:
     // A HUD's quads as rects, in draw order. See the hook.
     struct QuadRect { double l = 0, t = 0, r = 0, b = 0; };
     bool hasQuadRects() const { return m_quadRects != nullptr; }
+    // A horizontal strip's group `col` card, pre-offset like hudCardRect.
+    bool toggleStripColumnCard(int col, QuadRect* out) {
+        int v[4] = {0, 0, 0, 0};
+        if (!m_toggleStripColumnCard || m_toggleStripColumnCard(col, v) == 0) return false;
+        out->l = v[0] / 1e6; out->t = v[1] / 1e6;
+        out->r = (v[0] + v[2]) / 1e6; out->b = (v[1] + v[3]) / 1e6;
+        return true;
+    }
 
     // The Gap Bar's split ticks (MXBMRP3_Test_GapBarShowSplits).
     bool hasGapBarShowSplits() const { return m_gapBarShowSplits != nullptr; }
@@ -2800,6 +2827,16 @@ public:
     // Where the Dash's strip icons start among its quads; -1 without the hook.
     // See MXBMRP3_Test_DashFirstIcon.
     int dashFirstIcon() { return m_dashFirstIcon ? m_dashFirstIcon() : -1; }
+    // Now playing: publish a player as MediaManager's worker would (state is
+    // MediaManager::State: 2 no player, 3 paused, 4 playing), and read what the
+    // controls queued (0 = the command: 1 previous, 2 play/pause, 3 next; 1 = the
+    // volume, -1 = none). See core/test_hooks_media.cpp.
+    bool hasMediaHooks() const { return m_mediaPublish && m_mediaPending; }
+    void mediaPublish(const char* title, const char* artist, int state, int positionMs = 0,
+                      int durationMs = 0, int volume = -1) {
+        if (m_mediaPublish) m_mediaPublish(title, artist, state, positionMs, durationMs, volume);
+    }
+    int mediaPending(int which) { return m_mediaPending ? m_mediaPending(which) : -2; }
     // Plant a live gap in the Gap Bar so its fill draws (see the hook).
     bool gapBarForceGap(int ms, bool valid) {
         if (!m_gapBarForceGap) return false;
@@ -3623,6 +3660,8 @@ private:
     void        (*m_cursorIdle)() = nullptr;
     int         (*m_directorEnabled)() = nullptr;
     void        (*m_toggleStripSurfaces)(int*,int*,int*) = nullptr;
+    int         (*m_toggleStripHorizontal)(int) = nullptr;
+    int         (*m_toggleStripColumnCard)(int,int*) = nullptr;
     void        (*m_setUiScale)(float) = nullptr;
     int         (*m_hudScales)(const char*,int*,int*) = nullptr;
     int         (*m_maxQuadArea)(const char*) = nullptr;
@@ -3666,6 +3705,7 @@ private:
     void        (*m_regionSig)(char*,int) = nullptr;
     int         (*m_cycleClick)(int,int) = nullptr;
     int         (*m_perturbTab)() = nullptr;
+    int         (*m_perturbControl)(int,int,char*,int) = nullptr;
     int         (*m_clickResetTab)() = nullptr;
     float       (*m_ruBumpsLight)() = nullptr;
     void        (*m_showSettings)(int) = nullptr;
@@ -3740,6 +3780,8 @@ private:
     int         (*m_finishLap)() = nullptr;
     int         (*m_riderFinishTime)(int) = nullptr;
     int         (*m_dashFirstIcon)() = nullptr;
+    void        (*m_mediaPublish)(const char*,const char*,int,int,int,int) = nullptr;
+    int         (*m_mediaPending)(int) = nullptr;
     int         (*m_liveGapToPb)(int*) = nullptr;
     int         (*m_liveGapRef)(int,int*) = nullptr;
     void        (*m_updateSetAvailable)(const char*) = nullptr;

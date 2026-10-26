@@ -46,6 +46,11 @@ struct FontAsset {
     // "Roboto" should not also offer "Roboto Medium" as a separate answer, and
     // the categories that want weight ask for it themselves (FontConfig::getFont).
     bool emphasisOnly = false;
+    // Each codepoint's advance as a share of the font size, in build-space x,
+    // read from the .fnt's glyph table at discovery (see fitChars). False when
+    // the file could not be read: the font then measures as the grid's cells.
+    bool measured = false;
+    std::array<float, 256> advance{};
 };
 
 // "Roboto-Medium" -> "Roboto-Regular"; empty when this stem is not a heavier cut
@@ -598,6 +603,14 @@ public:
     // binding a const char* to the std::string parameter allocated on each call for
     // the four shipped font names that exceed SSO. Same lookup, no temporary.
     int getFontIndexByName(const char* name) const;
+
+    // How many leading characters of `text` fit `width` at `fontSize` in the
+    // font at this engine index, each its own glyph's width: what the game will
+    // draw, where a grid cell a character cuts a proportional face (the Title
+    // font, Enter Sansman, is about three quarters of a cell) a quarter early.
+    // A font not measured counts a grid cell a character. On a rebuild, not per
+    // frame: one add per character.
+    int fitChars(int fontIndex, const char* text, float width, float fontSize) const;
 
     // ========================================================================
     // Texture Access

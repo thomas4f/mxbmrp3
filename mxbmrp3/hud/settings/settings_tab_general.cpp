@@ -17,6 +17,7 @@
 #include "../../core/color_config.h"
 #include "../../core/ui_config.h"
 #include "../../core/system_messages.h"
+#include "../../core/media_manager.h"
 #if GAME_HAS_DISCORD
 #include "../../core/discord_manager.h"
 #endif
@@ -107,6 +108,11 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
             }
             return true;
 #endif
+
+        case ClickRegion::NOW_PLAYING_TOGGLE:
+            MediaManager::getInstance().setEnabled(!MediaManager::getInstance().isEnabled());
+            setDataDirty();
+            return true;
 
 #if GAME_HAS_ANALYTICS
         case ClickRegion::ANALYTICS_TOGGLE:
@@ -511,6 +517,17 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             "general.discord", statusColor);
     }
 #endif
+
+    // Now playing: Off / On; Not available (disabled row) in a build without
+    // WinRT, like Steam. What is playing shows on the widget and the Dash page.
+    {
+        const bool supported = MediaManager::isSupported();
+        const bool on = supported && MediaManager::getInstance().isEnabled();
+        ctx.addCycleControl("Now playing", !supported ? Placeholders::NOT_AVAILABLE : on ? "On" : "Off",
+            SettingsHud::ClickRegion::NOW_PLAYING_TOGGLE,
+            SettingsHud::ClickRegion::NOW_PLAYING_TOGGLE,
+            nullptr, supported, /*isOff=*/!on, "general.now_playing");
+    }
 
 #if GAME_HAS_ANALYTICS
     // Anonymous usage analytics toggle (opt-out). Simple On/Off; no connection

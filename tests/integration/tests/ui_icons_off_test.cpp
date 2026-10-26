@@ -53,7 +53,7 @@ TEST_CASE("UI icons off: the strip's Settings icon draws = / x instead of its gl
         const std::filesystem::path tree = "Z:\\tmp\\mxbmrp3-tests\\ui_icons_off_tree";
         const std::filesystem::path icons = tree / "plugins" / "mxbmrp3_data" / "icons";
         std::filesystem::create_directories(icons);
-        for (const char* icon : { "hud-menu", "hud-close" }) {
+        for (const char* icon : { "gear", "hud-close" }) {
             const std::string src = std::string(MXB_REPO_DATA_DIR "/icons/") + icon + ".tga";
             REQUIRE(CopyFileA(src.c_str(), (icons / (std::string(icon) + ".tga")).string().c_str(), FALSE) != 0);
         }

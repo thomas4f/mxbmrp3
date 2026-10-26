@@ -224,7 +224,8 @@ void NoticesHud::rebuildRenderData() {
     slabColors(notice.kind, m_fBackgroundOpacity, fill, ink);
     if (glows(notice.kind)) addGlow(slabX, slabY, slabW, slabH, slabH * GLOW_SPREAD, fill, glowOpacity(notice.kind));
     addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(fill, m_fBackgroundOpacity));
-    addString(notice.kind == Kind::None ? "PREVIEW" : notice.text, noticeCenterX, noticeY, Justify::CENTER,
+    addString(notice.kind == Kind::None ? "PREVIEW" : NoticeTracker::caption(notice, slabW, dim.fontSizeLarge, this->getFont(FontCategory::TITLE)),
+              noticeCenterX, noticeY, Justify::CENTER,
               this->getFont(FontCategory::TITLE), ink, dim.fontSizeLarge);
 
     setBounds(panelX, panelY, panelX + panelW, panelY + plan.height());
@@ -269,6 +270,7 @@ void NoticesHud::slabColors(NoticeTracker::Kind kind, float opacity, unsigned lo
             return;
         case Kind::DefaultSetup:  fill = getColor(ColorSlot::WARNING); break;
         case Kind::Overtime:
+        case Kind::TrackChanged:
         case Kind::SegmentRemoved:
         case Kind::Finished:
         case Kind::LastLap:

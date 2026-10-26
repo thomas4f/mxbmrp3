@@ -10,6 +10,7 @@
 #include "../core/color_config.h"
 #include "../core/ui_config.h"
 #include "../core/asset_manager.h"
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 
@@ -98,11 +99,80 @@ int ToggleStripWidget::rowAt(float cursorX, float cursorY) const {
     if (!isVisibleOnActiveSurface() || !isPointInActiveBounds(cursorX, cursorY)) return -1;
     float x = cursorX, y = cursorY;
     mapCursorToHudSpace(x, y);
-    const float local = y - getOffsetY();
+    const float localX = x - getOffsetX();
+    const float localY = y - getOffsetY();
     for (int i = 0; i < m_rowCount; ++i) {
-        if (local >= m_rows[i].y && local < m_rows[i].y + m_rowH) return i;
+        const Row& r = m_rows[i];
+        if (localX >= r.x && localX < r.x + m_hitW && localY >= r.y && localY < r.y + m_hitH) return i;
     }
     return -1;   // a gap between the sections
+}
+
+bool ToggleStripWidget::handleMouseInput(bool allowInput) {
+    // The row a drag grabs, read on the press (before the base starts the drag),
+    // so only a right click pays for the lookup.
+    const bool wasDragging = isDragging();
+    int grabbed = -1;
+    const InputManager& input = InputManager::getInstance();
+    if (!wasDragging && allowInput && input.getRightButton().isClicked()) {
+        const CursorPosition& cursor = input.getCursorPosition();
+        if (cursor.isValid) grabbed = rowAt(cursor.x, cursor.y);
+    }
+    const bool dragging = BaseHud::handleMouseInput(allowInput);
+    if (dragging && !wasDragging) {
+        m_dragRow = grabbed >= 0 ? grabbed : 0;
+        m_dragMoved = false;
+        m_pressX = input.getCursorPosition().x;
+        m_pressY = input.getCursorPosition().y;
+    }
+    if (dragging) dockToPointer();
+    return dragging;
+}
+
+void ToggleStripWidget::dockToPointer() {
+    const InputManager& input = InputManager::getInstance();
+    const CursorPosition& cursor = input.getCursorPosition();
+    if (!cursor.isValid || !input.getRightButton().isPressed) return;
+    // Not before the pointer moves: a right click that drags nowhere leaves it
+    // exactly where it was, even one cell short of the edge.
+    if (!m_dragMoved && cursor.x == m_pressX && cursor.y == m_pressY) return;
+    m_dragMoved = true;
+    const WindowBounds& b = input.getWindowBounds();
+    const bool side = std::min(cursor.x - b.left, b.right - cursor.x) < cellsX(static_cast<float>(DOCK_CELLS));
+    const bool end = std::min(cursor.y - b.top, b.bottom - cursor.y) < cellsY(static_cast<float>(DOCK_CELLS));
+    if (side == end) return;   // a corner or the middle keeps the shape
+
+    // Only a turn is the dock's: otherwise the drag, grid snap and screen clamp
+    // place it as they place any HUD, flush against the edge included.
+    if (end == m_horizontal) return;
+
+    // Turning to the other shape: its rows now, since the grabbed one is placed
+    // by them, with that icon under the pointer.
+    const bool companion = isDraggingCompanion();   // the drag edits that surface's position
+    m_horizontal = end;
+    setDataDirty();
+    processDirtyFlags();
+    if (m_dragRow < 0 || m_dragRow >= m_rowCount) m_dragRow = 0;
+    float x = cursor.x - m_rows[m_dragRow].cx;
+    float y = cursor.y - m_rows[m_dragRow].cy;
+    if (UiConfig::getInstance().getScreenClamping()) clampPositionToBounds(x, y, b);
+    if (companion) setCompanionPosition(x, y);
+    else setPosition(x, y);
+    // Only on a turn: rebasing every frame would stack the grid snap of each
+    // frame onto the next, and the strip would creep off the pointer.
+    rebaseDrag(cursor.x, cursor.y, x, y);
+    // The other window's copy turned too, where it sits: pulled back on screen,
+    // or a column at the right edge would become a row running off it. Nothing
+    // re-clamps a HUD at rest, so this is the only chance.
+    if (companion) {
+        float ox = getOffsetX(), oy = getOffsetY();
+        clampPositionToBounds(ox, oy, b);
+        setPosition(ox, oy);
+    } else if (isCompanionConfigured()) {
+        float ox = getCompanionOffsetX(), oy = getCompanionOffsetY();
+        clampPositionToBounds(ox, oy, b);
+        setCompanionPosition(ox, oy);
+    }
 }
 
 const char* ToggleStripWidget::rowName(int row) const {
@@ -152,7 +222,23 @@ PanelWant ToggleStripWidget::stripWant(const ScaledDimensions& dim, int controls
     // Settings, the Global switches and the Profile switches are sections, so the
     // gaps between them are the panel's own section gap -- the sidebar's split.
     PanelWant want;
-    want.contentW = dim.fontSize * SettingsHud::TAB_ICON_SCALE / UI_ASPECT_RATIO;
+    const float iconW = dim.fontSize * SettingsHud::TAB_ICON_SCALE / UI_ASPECT_RATIO;
+    if (m_horizontal) {
+        // The same cells laid along X: one row of icons, each group a column
+        // (so a theme cards each one), a row's height becoming the same length
+        // across and the icon column's width the strip's height.
+        const float pitch = dim.lineHeightNormal / UI_ASPECT_RATIO;
+        want.bands.resize(1);
+        for (const int n : { controls, globals, profiles }) {
+            if (n <= 0) continue;
+            PanelWant::ColumnWant column;
+            column.contentW = pitch * static_cast<float>(n);
+            column.sectionH = { iconW * UI_ASPECT_RATIO };
+            want.bands[0].columns.push_back(std::move(column));
+        }
+        return want;
+    }
+    want.contentW = iconW;
     want.sectionH = { dim.lineHeightNormal * static_cast<float>(controls) };
     if (globals > 0) want.sectionH.push_back(dim.lineHeightNormal * static_cast<float>(globals));
     if (profiles > 0) want.sectionH.push_back(dim.lineHeightNormal * static_cast<float>(profiles));
@@ -173,6 +259,9 @@ void ToggleStripWidget::rebuildRenderData() {
 
     auto dim = getScaledDimensions();
     const float rowH = dim.lineHeightNormal;
+    // The sidebar's icon size, so the strip's icons are the same glyphs at the
+    // same size as the ones it mirrors.
+    const float iconSize = dim.fontSize * SettingsHud::TAB_ICON_SCALE;
     // The reveal shows Settings alone; the cursor adds the caret under it, and
     // the switches unless they are folded away (m_itemCount is 0 then).
     const int controls = m_show == Show::All ? MAX_CONTROLS : 1;
@@ -185,21 +274,38 @@ void ToggleStripWidget::rebuildRenderData() {
     const float h = p.height();
     addPlanBackground(p, 0.0f, 0.0f);
 
-    m_rowH = rowH;
     m_stripW = w;
-    m_rows[m_rowCount++] = { Click::Settings, -1, p.contentY(0) };
-    if (controls > 1) m_rows[m_rowCount++] = { Click::Collapse, -1, p.contentY(0) + rowH };
+    m_stripH = h;
+    // Each row's group (0 the controls, then Global, then Profile) and place in it.
+    const float pitch = rowH / UI_ASPECT_RATIO;   // horizontal: a row's height, across
+    m_hitW = m_horizontal ? pitch : w;
+    m_hitH = m_horizontal ? h : rowH;
+    auto addRow = [&](Click kind, int item, size_t group, int k) {
+        Row r;
+        r.kind = kind;
+        r.item = item;
+        if (m_horizontal) {
+            // Centred in the group's own content box, which is the icon's height:
+            // the card itself can be taller where it absorbs the panel's rounding,
+            // and centring on that would put one group off the others' line.
+            const PanelBox::ColumnGeom& c = p.col(0, group);
+            r.x = p.colContentX(c) + pitch * static_cast<float>(k);
+            r.cx = r.x + pitch * 0.5f;
+            r.cy = p.colContentY(c) + iconSize * 0.5f;
+        } else {
+            r.y = p.contentY(group) + rowH * static_cast<float>(k);
+            r.cx = p.sectionBoxCenterX();
+            r.cy = r.y + rowH * 0.5f;
+        }
+        m_rows[m_rowCount++] = r;
+    };
+    addRow(Click::Settings, -1, 0, 0);
+    if (controls > 1) addRow(Click::Collapse, -1, 0, 1);
     for (int i = 0; i < switches; ++i) {
         const bool global = i < globals;
-        const size_t section = global ? 1 : (globals > 0 ? 2 : 1);
-        const int k = global ? i : i - globals;
-        m_rows[m_rowCount++] = { Click::Tab, i, p.contentY(section) + rowH * static_cast<float>(k) };
+        addRow(Click::Tab, i, global ? 1 : (globals > 0 ? 2 : 1), global ? i : i - globals);
     }
 
-    const float iconX = p.sectionBoxCenterX();
-    // The sidebar's icon size, so the strip's icons are the same glyphs at the
-    // same size as the ones it mirrors.
-    const float iconSize = dim.fontSize * SettingsHud::TAB_ICON_SCALE;
     const bool icons = UiConfig::getInstance().getTitleIcons();
     AssetManager& assets = AssetManager::getInstance();
     if (m_iconSpriteGen != assets.themeGeneration()) {
@@ -225,12 +331,17 @@ void ToggleStripWidget::rebuildRenderData() {
                 m_iconName[r] = CARET;
                 m_iconSprite[r] = assets.getIconSpriteIndex(CARET);
             }
+            // Unturned it points up, at Settings above it; horizontal, a quarter
+            // turn points it left, at Settings there.
+            const float turn = m_collapsed ? -1.0f : 1.0f;
             if (icons && m_iconSprite[r] > 0) {
-                addRotatedSpriteQuad(iconX, row.y + rowH * 0.5f, iconSize * CARET_SCALE,
-                                     m_collapsed ? -1.0f : 1.0f, 0.0f, m_iconSprite[r], color);
+                addRotatedSpriteQuad(row.cx, row.cy, iconSize * CARET_SCALE,
+                                     m_horizontal ? 0.0f : turn, m_horizontal ? -turn : 0.0f,
+                                     m_iconSprite[r], color);
                 shadowLastIcon();
             } else if (!icons) {
-                addString(m_collapsed ? "v" : "^", iconX, row.y, Justify::CENTER,
+                const char* caret = m_horizontal ? (m_collapsed ? ">" : "<") : (m_collapsed ? "v" : "^");
+                addString(caret, row.cx, row.cy - rowH * 0.5f, Justify::CENTER,
                           getFont(FontCategory::NORMAL), color, dim.fontSize);
             }
             continue;   // an icons folder without the caret gets the broken-install warning
@@ -241,7 +352,7 @@ void ToggleStripWidget::rebuildRenderData() {
         unsigned long color = 0;
         if (row.kind == Click::Settings) {
             // The menu's own button, in the accent like the old settings chip.
-            icon = m_settingsOpen ? "hud-close" : "hud-menu";
+            icon = m_settingsOpen ? "hud-close" : "gear";
             text = m_settingsOpen ? "x" : "=";
             color = getColor(ColorSlot::ACCENT);
             if (hovered) color = PluginUtils::lightenColor(color, 0.25f);
@@ -262,10 +373,10 @@ void ToggleStripWidget::rebuildRenderData() {
             m_iconSprite[r] = (icon && icon[0]) ? assets.getIconSpriteIndex(icon) : 0;
         }
         if (icons && m_iconSprite[r] > 0) {
-            addIcon(iconX, row.y + rowH * 0.5f, m_iconSprite[r], color, iconSize);
+            addIcon(row.cx, row.cy, m_iconSprite[r], color, iconSize);
             shadowLastIcon();   // bare icons over the scene, like the letters and the hover name
         } else {
-            addString(text, iconX, row.y, Justify::CENTER, getFont(FontCategory::NORMAL), color, dim.fontSize);
+            addString(text, row.cx, row.cy - rowH * 0.5f, Justify::CENTER, getFont(FontCategory::NORMAL), color, dim.fontSize);
         }
     }
 
@@ -280,16 +391,33 @@ void ToggleStripWidget::rebuildRenderData() {
     // bounds, so it is never a drag or click target. Bare text like every other
     // HUD's, relying on the drop shadow over a busy scene. A strip dragged to the
     // screen's left edge has no room there, so the name flips to its right side,
-    // left-aligned. Decided here, so only on a hover change or a move.
+    // left-aligned. Horizontal, it sits one cell below the icon, or above it in
+    // the screen's lower half, kept on screen. Decided here, so only on a hover
+    // change or a move.
     if (m_hoverRow >= 0 && m_hoverRow < m_rowCount) {
         const char* name = rowName(m_hoverRow);
+        const Row& row = m_rows[m_hoverRow];
         const float textW = PluginUtils::calculateMonospaceTextWidth(
             static_cast<int>(std::strlen(name)), dim.fontSize);
-        const float screenLeft = InputManager::getInstance().getWindowBounds().left;   // < 0 on ultrawide
-        const bool left = getOffsetX() - dim.cellW - textW >= screenLeft;
-        addString(name, left ? -dim.cellW : w + dim.cellW, m_rows[m_hoverRow].y,
-                  left ? Justify::RIGHT : Justify::LEFT,
-                  getFont(FontCategory::NORMAL), getColor(ColorSlot::PRIMARY), dim.fontSize);
+        const InputManager& input = InputManager::getInstance();
+        const WindowBounds& screen = input.getWindowBounds();   // left < 0 on ultrawide
+        // Where the strip sits on the surface the cursor is on, which is where it
+        // is hovered.
+        const bool companion = input.getActiveSurface() == InputManager::Surface::Companion;
+        const float offX = companion ? getCompanionOffsetX() : getOffsetX();
+        const float offY = companion ? getCompanionOffsetY() : getOffsetY();
+        if (m_horizontal) {
+            const float left = std::clamp(offX + row.cx - textW * 0.5f, screen.left,
+                                          std::max(screen.left, screen.right - textW));
+            const bool below = offY + h * 0.5f < (screen.top + screen.bottom) * 0.5f;
+            addString(name, left - offX, below ? h + dim.cellH : -dim.cellH - rowH,
+                      Justify::LEFT, getFont(FontCategory::NORMAL), getColor(ColorSlot::PRIMARY), dim.fontSize);
+        } else {
+            const bool left = offX - dim.cellW - textW >= screen.left;
+            addString(name, left ? -dim.cellW : w + dim.cellW, row.cy - rowH * 0.5f,
+                      left ? Justify::RIGHT : Justify::LEFT,
+                      getFont(FontCategory::NORMAL), getColor(ColorSlot::PRIMARY), dim.fontSize);
+        }
     }
 
     setBounds(0.0f, 0.0f, w, h);
@@ -301,6 +429,7 @@ void ToggleStripWidget::resetToDefaults() {
     setTextureVariant(0);
     m_fBackgroundOpacity = 1.0f;
     setScale(1.0f);
+    m_horizontal = false;
     // Right edge on RIGHT_CELLS. The width is the box rebuildRenderData() fits,
     // in whole cells, and does not depend on the row count.
     const ScaledDimensions dim = getScaledDimensions();

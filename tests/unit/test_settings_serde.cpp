@@ -388,3 +388,29 @@ TEST_CASE("readFloat with a fallback: absent reads as nothing, malformed reads a
     CHECK(*readFloat(s, "junk", 9.0f) == doctest::Approx(9.0f));
     CHECK_FALSE(readFloat(s, "missing", 9.0f).has_value());
 }
+
+// Every Notices switch is its own INI key. The bits are saved one key per bit
+// by hand-written lists, so a switch missing from them shows in Settings and
+// works until restart, then quietly reverts ("Lapper ahead" did exactly that).
+// Each bit is turned off alone and must come back off over every other bit on.
+TEST_CASE("every Notices switch round-trips through its own key") {
+    // Hand-built: a new switch that is off by default must be added here too,
+    // or it escapes this check along with the save list.
+    constexpr uint32_t kAll = NoticesHud::NOTICE_DEFAULT
+                            | NoticesHud::NOTICE_BLUE_FLAG | NoticesHud::NOTICE_OVERTIME;
+    SettingsManager::HudSettings all;
+    saveNotices(all, kAll);
+    int flags = 0;
+    for (uint32_t bit = 1; bit != 0; bit <<= 1) {
+        if (!(kAll & bit)) continue;
+        ++flags;
+        for (const uint32_t saved : { kAll & ~bit, bit }) {
+            SettingsManager::HudSettings s;
+            saveNotices(s, saved);
+            uint32_t loaded = saved ^ kAll;   // every bit starts opposite to what was saved
+            loadNotices(s, loaded);
+            CHECK_MESSAGE(loaded == saved, "notice bit " << bit);
+        }
+    }
+    CHECK(all.size() == static_cast<size_t>(flags));   // no two switches share a key
+}

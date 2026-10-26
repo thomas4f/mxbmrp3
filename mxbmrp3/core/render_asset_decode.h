@@ -137,6 +137,26 @@ struct FntFont {
 void buildFntMips(FntFont& f);
 FntFont decodeFnt(const std::vector<uint8_t>& bytes);
 
+// ---- Measuring without the atlas --------------------------------------------
+// The bytes before a .fnt's atlas: the header and the glyph table. A layout
+// that only MEASURES text (the plugin cutting a caption to its box, while the
+// game draws it) reads this much of the file, not the megabytes behind it.
+constexpr size_t FNT_TABLE_BYTES = 10508;
+// Each codepoint's advance as a share of the cell height, which is the
+// string's font size. False (out untouched) when the bytes are not a .fnt.
+bool decodeFntAdvances(const uint8_t* bytes, size_t size, float out[256]);
+// How many leading characters of `text` fit `width`, each taking its own
+// advance (in the caller's units per unit of font size) at `fontSize`.
+inline int fitFntChars(const float* advance, const char* text, float width, float fontSize) {
+    float x = 0.0f;
+    int n = 0;
+    for (const char* c = text; *c; ++c, ++n) {
+        x += advance[static_cast<unsigned char>(*c)] * fontSize;
+        if (x > width * 1.0001f) break;   // the slack: a string that exactly fills its box fits
+    }
+    return n;
+}
+
 // ---- Text layout (the game's own metrics) ----------------------------------
 // The atlas cell height maps 1:1 to the string's normalized size, so
 // scale = normSize * viewportH / cellH gives the exact on-screen metrics the

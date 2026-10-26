@@ -26,6 +26,7 @@
 #include "../hud/spotter_widget.h"
 #include "../hud/clock_widget.h"
 #include "../hud/prestige_widget.h"
+#include "../hud/now_playing_widget.h"
 #include "../hud/position_widget.h"
 #include "../hud/lap_widget.h"
 #include "../hud/session_hud.h"
@@ -207,6 +208,23 @@ void SettingsManager::app_PrestigeWidget(HudManager& hudManager, const SettingsM
         if (it != cache.end()) {
             applyBaseHudSettings(*hud, it->second);
             hud->setDataDirty();
+        }
+}
+
+// Now Playing has nothing of its own to serialize: what it shows is the media
+// integration's ([General] nowPlaying). Here for its position, scale and opacity.
+void SettingsManager::cap_NowPlayingWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
+        HudSettings settings;
+        captureBaseHudSettings(settings, hudManager.getNowPlayingWidget());
+        cache[name] = std::move(settings);
+}
+
+void SettingsManager::app_NowPlayingWidget(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
+        auto it = cache.find(name);
+        if (it != cache.end()) {
+            auto& hud = hudManager.getNowPlayingWidget();
+            applyBaseHudSettings(hud, it->second);
+            hud.setDataDirty();
         }
 }
 
@@ -782,8 +800,11 @@ void SettingsManager::app_EcuWidget(HudManager& hudManager, const SettingsManage
 
 void SettingsManager::cap_ToggleStripWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
     HudSettings settings;
-    const BaseHud& hud = hudManager.getToggleStripWidget();
+    const ToggleStripWidget& hud = hudManager.getToggleStripWidget();
     captureBaseHudSettings(settings, hud);
+    // The shape it was docked in, beside the position it goes with. No control:
+    // dragging to an edge sets it (ToggleStripWidget::dockToPointer).
+    settings["horizontal"] = hud.isHorizontal() ? "1" : "0";
     cache[name] = std::move(settings);
 }
 
@@ -792,8 +813,17 @@ void SettingsManager::app_ToggleStripWidget(HudManager& hudManager, const Settin
     // onto it at load (SettingsManager::migrateSettingsButton).
     auto it = cache.find(name);
     if (it == cache.end()) return;
-    BaseHud& hud = hudManager.getToggleStripWidget();
+    ToggleStripWidget& hud = hudManager.getToggleStripWidget();
     applyBaseHudSettings(hud, it->second);
+    // Absent (a file from before it docked) is vertical, set authoritatively so
+    // a profile switch never carries the last profile's shape over.
+    bool horizontal = false;
+    try {
+        if (auto v = readBool(it->second, "horizontal")) horizontal = *v;
+    } catch (const std::exception& e) {
+        DEBUG_WARN_F("ToggleStripWidget: Failed to parse settings: %s", e.what());
+    }
+    hud.setHorizontal(horizontal);
     hud.setDataDirty();
 }
 

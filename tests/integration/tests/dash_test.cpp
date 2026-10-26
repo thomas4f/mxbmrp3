@@ -144,7 +144,7 @@ int startDash(PluginHost& host, const std::string& saveWin, bool icons = true) {
         for (const char* icon : { "hud-standings", "hud-timing", "hud-laplog", "hud-clock", "hud-fuel",
                                   "hud-gapbar", "hud-flatmap", "hud-ideallap", "hud-gauge", "hud-deltatrace",
                                   "hud-sessioncharts", "hud-session", "hud-telemetry", "hud-eventlog",
-                                  "hud-notices" }) {
+                                  "hud-notices", "hud-nowplaying" }) {
             const std::string src = std::string(MXB_REPO_DATA_DIR "/icons/") + icon + ".tga";
             const std::string dst = (icons / (std::string(icon) + ".tga")).string();
             REQUIRE_MESSAGE(CopyFileA(src.c_str(), dst.c_str(), FALSE) != 0, "shipped icon missing: " << src);
@@ -605,6 +605,41 @@ TEST_CASE("dash: Gap bar fills from the centre toward the side the gap is on") {
     host.shutdown();
 }
 
+TEST_CASE("dash: Gap bar prints the last and best lap plain, as the Ideal page") {
+    // The best was drawn in the positive colour, the green that on this page
+    // also means "ahead" on the gap above it, so it read as a second delta.
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    REQUIRE(host.hasInkHooks());
+    // Notice focus off, or the DEFAULT SETUP notice of runInit takes it over.
+    startWithIni(host, "Z:\\tmp\\mxbmrp3-tests\\dash_gapbar_laps\\",
+                 "[DashHud]\nvisible=1\npage=gapbar\nnotice_takeover=0\n"
+                 "color_primary=0xFFFFFFFF\ncolor_positive=0xFF00FF00\n");
+    REQUIRE(host.hasStringRows());
+    host.draw();
+    REQUIRE(host.dashPage() == 5);   // Gap bar
+
+    host.eventInit("TestTrack", "Alice");
+    host.raceEvent("TestTrack");
+    host.session(6, /*numLaps=*/10, /*lengthMs=*/0);
+    host.addEntry(10, "Alice");
+    host.runInit(6);
+    host.raceLap(6, 10, 1, 89000, /*best=*/1, 29000, 62000);
+    host.raceLap(6, 10, 2, 90000, /*best=*/0, 30000, 62000);
+    host.draw();
+    host.draw();
+    auto inkOf = [&](const char* text) -> unsigned long {
+        const auto rows = host.hudStringRows("dash_hud");
+        for (size_t i = 0; i < rows.size(); ++i)
+            if (rows[i].text == text) return host.stringColor("dash_hud", static_cast<int>(i));
+        return 0;
+    };
+    CHECK(inkOf("1:30.000") == 0xFFFFFFFFul);   // last
+    CHECK(inkOf("1:29.000") == 0xFFFFFFFFul);   // best: plain, not the positive green
+
+    host.shutdown();
+}
+
 TEST_CASE("dash: Timing holds the official gap through a split's freeze") {
     // The first Timing page read the live gap raw, so at every split it showed a
     // different number from the Timing HUD and Gap Bar beside it, which hold the
@@ -780,7 +815,7 @@ TEST_CASE("dash: a fresh install's Gap Bar sits under the Dash, clear of every H
         "timing_hud", "bars_widget", "notices_hud", "spotter_widget",
         "fuel_widget", "dash_hud", "achievement_widget", "gamepad_widget", "lean_widget",
         "gforce_widget", "compass_widget", "clock_widget", "prestige_widget",
-        "tyre_temp_widget", "ecu_widget", "toggle_strip_widget",
+        "tyre_temp_widget", "ecu_widget", "toggle_strip_widget", "now_playing_widget",
     };
     int measured = 0;
     for (const char* name : shown) {
@@ -1047,7 +1082,7 @@ TEST_CASE("dash: a notice takes the card over, then the rider's page comes back"
     onTrack(host);   // raises DEFAULT SETUP
     host.draw();
     host.draw();
-    CHECK(host.dashPage() == 14);   // Notices, for as long as it is up
+    CHECK(host.dashPage() == 15);   // Notices, for as long as it is up
     CHECK(shows(host, "dash_hud", "DEFAULT SETUP"));
     {   // The strip stays on the rider's page: a notice is not a page they chose.
         const auto held = icons();
@@ -1068,7 +1103,7 @@ TEST_CASE("dash: a notice takes the card over, then the rider's page comes back"
     host.runInit(1);   // DEFAULT SETUP again
     host.draw();
     host.draw();
-    REQUIRE(host.dashPage() == 14);
+    REQUIRE(host.dashPage() == 15);
     REQUIRE(host.injectHotkey("dash_next"));
     host.draw();
     host.draw();
@@ -1328,7 +1363,7 @@ TEST_CASE("dash: with Page names on, a step shows the page's name, then its cont
     onTrack(host);
     at(T0);
     at(T0 + 1000);
-    REQUIRE(host.dashPage() == 14);   // Notices
+    REQUIRE(host.dashPage() == 15);   // Notices
     CHECK(alphaOf("Notices") == -1);
     // Nor is the rider's page coming back after it.
     REQUIRE(host.injectHotkey("dash_next"));
@@ -2634,4 +2669,42 @@ TEST_CASE("dash: with custom segments set, the Timing page times them as the Tim
     CHECK(count(isDelta) == 1);
 
     host.shutdown();
+}
+
+// Now Playing is off a fresh install's cycle: it needs General's
+// integration on. The headless build has no Windows media controls, so the page
+// says so and lays out no controls -- a click on it sends nothing and moves nothing.
+TEST_CASE("dash: Now Playing is off by default, and without media controls says N/A") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    startWithIni(host, "Z:\\tmp\\mxbmrp3-tests\\dash_nowplaying\\",
+                 "[DashHud]\nvisible=1\npage=nowplaying\nnotice_takeover=0\npage_names=0\npage_nowplaying=1\n");
+    host.draw();
+    host.draw();
+    REQUIRE(host.dashPage() == 14);   // Now Playing
+    CHECK(shows(host, "dash_hud", "N/A"));
+    CHECK_FALSE(shows(host, "dash_hud", "Now playing is off"));
+    const auto rects = host.hudQuadRects("dash_hud");
+    REQUIRE(!rects.empty());
+    const float x = static_cast<float>((rects[0].l + rects[0].r) / 2.0);
+    const float y = static_cast<float>((rects[0].t + rects[0].b) / 2.0);
+    host.injectMouse(true, x, y, 0); host.draw();
+    host.injectMouse(true, x, y, 1); host.draw();
+    host.injectMouse(true, x, y, 0); host.draw();
+    host.draw();
+    CHECK(host.dashPage() == 14);
+    CHECK(host.hudQuadRects("dash_hud").size() == rects.size());
+    host.shutdown();
+
+    PluginHost fresh(dllPath());
+    REQUIRE(fresh.loaded());
+    startWithIni(fresh, "Z:\\tmp\\mxbmrp3-tests\\dash_nowplaying_fresh\\", "[DashHud]\nvisible=1\nnotice_takeover=0\n");
+    fresh.draw();
+    for (int i = 0; i < 16; ++i) {
+        REQUIRE(fresh.injectHotkey("dash_next"));
+        fresh.draw();
+        fresh.draw();
+        CHECK(fresh.dashPage() != 14);
+    }
+    fresh.shutdown();
 }

@@ -1281,6 +1281,11 @@ __declspec(dllexport) int MXBMRP3_Test_SettingsProfileArrowRepeats() {
 __declspec(dllexport) int MXBMRP3_Test_SettingsPerturbActiveTab() {
     return HudManager::getInstance().getSettingsHud().testPerturbActiveTab();
 }
+// One control of that sweep alone (SettingsHud::testPerturbControl), for
+// settings_control_persist_test.
+__declspec(dllexport) int MXBMRP3_Test_SettingsPerturbControl(int index, int alternate, char* idOut, int cap) {
+    return HudManager::getInstance().getSettingsHud().testPerturbControl(index, alternate != 0, idOut, cap);
+}
 __declspec(dllexport) int MXBMRP3_Test_SettingsClickResetTab() {
     return HudManager::getInstance().getSettingsHud().testClickResetTab() ? 1 : 0;
 }

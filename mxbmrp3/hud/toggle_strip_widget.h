@@ -1,7 +1,7 @@
 // ============================================================================
 // hud/toggle_strip_widget.h
-// Toggles widget: the plugin's on-screen controls in one vertical strip. On top,
-// the Settings icon (opens and closes the menu). Below it, every on/off switch
+// Toggles widget: the plugin's on-screen controls in one strip. First (top, or
+// left when horizontal), the Settings icon (opens and closes the menu). After it, every on/off switch
 // in the settings sidebar -- its red/green identity icons without their labels,
 // the Global section's (Rumble, Helmet, Director, ...) then the Profile
 // section's -- so a feature or HUD can be switched without opening the menu.
@@ -9,8 +9,20 @@
 // off shows what it would put on screen, dimmed; clicking a switch is the sidebar
 // checkbox's own click (SettingsHud::toggleTab).
 //
-// COLLAPSIBLE: under Settings, the dropdowns' caret (down while collapsed, up
-// while open) folds the switches away, leaving Settings and the caret -- the
+// DOCKS AT AN EDGE: dragged, only the POINTER decides the shape. Within
+// DOCK_CELLS of a side edge the strip turns vertical; of the top or bottom
+// edge, horizontal; a corner (both) and the middle (neither) keep the shape.
+// The dock decides only the shape: where it sits is the drag's, under grid
+// snap and screen clamp like any HUD, so it can lie flush on the edge. On a
+// turn the icon that was grabbed lands under the pointer and the drag carries
+// on from there, so nothing desyncs and, as the box never decides, a turn
+// cannot set off the next. Decided only while dragging, never at rest (the
+// default spot is a corner), and saved per profile beside the position. One shape serves both surfaces (the companion draws the same
+// geometry at its own offset), so a drag on either window turns both; only
+// the dragged one moves.
+//
+// COLLAPSIBLE: after Settings, the dropdowns' caret (pointing back at Settings
+// while open, away while folded) folds the switches away along the strip, leaving Settings and the caret -- the
 // single button players knew before the strip. One choice for every profile
 // ([Display] togglesCollapsed); collapsed, update() does not read the switches
 // at all. Opening fades the switches in as Motion's part (core/motion.h), like
@@ -40,6 +52,7 @@ public:
 
     void update() override;
     bool handlesDataType(DataChangeType dataType) const override;
+    bool handleMouseInput(bool allowInput = true) override;
     void resetToDefaults();
 
     // What a click this frame landed on. Polled by HudManager (handleToggleStrip).
@@ -61,6 +74,14 @@ public:
     // The controls above the switches: Settings, and the caret that folds them.
     static constexpr int MAX_CONTROLS = 2;
 
+    // How close to an edge, in grid cells, the pointer docks the strip there.
+    static constexpr int DOCK_CELLS = 5;
+
+    bool isHorizontal() const { return m_horizontal; }
+    void setHorizontal(bool horizontal) {
+        if (horizontal != m_horizontal) { m_horizontal = horizontal; setDataDirty(); }
+    }
+
     bool isCollapsed() const { return m_collapsed; }
     void setCollapsed(bool collapsed) {
         if (collapsed != m_collapsed) { m_collapsed = collapsed; setDataDirty(); }
@@ -72,8 +93,8 @@ public:
     // 0 while hidden.
     int testRow(int i, float* x, float* y, bool* on, const char** name) const {
         if (i < 0 || i >= m_rowCount) return m_rowCount;
-        if (x) *x = getOffsetX() + m_stripW * 0.5f;
-        if (y) *y = getOffsetY() + m_rows[i].y + m_rowH * 0.5f;
+        if (x) *x = getOffsetX() + m_rows[i].cx;
+        if (y) *y = getOffsetY() + m_rows[i].cy;
         if (on) *on = m_rows[i].kind == Click::Tab && m_items[m_rows[i].item].on;
         if (name) *name = rowName(i);
         return m_rowCount;
@@ -88,11 +109,14 @@ private:
     struct Row {
         Click kind = Click::None;
         int item = -1;      // index into m_items for a Tab row
-        float y = 0.0f;     // top, build space (offset not applied)
+        float x = 0.0f, y = 0.0f;     // hit box's top-left, build space (offset not applied)
+        float cx = 0.0f, cy = 0.0f;   // the icon's centre, same space
     };
 
     void rebuildRenderData() override;
     PanelWant stripWant(const ScaledDimensions& dim, int controls, int globals, int profiles) const;
+    // Mid-drag: turn the strip if the pointer has reached an edge of the other kind.
+    void dockToPointer();
     // The row under the cursor on the active surface, or -1.
     int rowAt(float cursorX, float cursorY) const;
     const char* rowName(int row) const;
@@ -110,6 +134,11 @@ private:
     // The switches folded away. Global ([Display] togglesCollapsed), so
     // resetToDefaults() leaves it to the global reset.
     bool m_collapsed = false;
+    // Lies along the top or bottom edge. Per profile, saved with the position.
+    bool m_horizontal = false;
+    int m_dragRow = 0;   // the row the running drag grabbed, kept under the pointer on a turn
+    bool m_dragMoved = false;            // the running drag has left the press point
+    float m_pressX = 0.0f, m_pressY = 0.0f;
     // Row geometry from the last rebuild, in build space (offset not applied).
     Row m_rows[MAX_CONTROLS + MAX_ITEMS] = {};
     // Each row's icon sprite and the name it was looked up for (static storage),
@@ -120,6 +149,6 @@ private:
     int m_iconSprite[MAX_CONTROLS + MAX_ITEMS] = {};
     unsigned int m_iconSpriteGen = 0xFFFFFFFFu;
     int m_rowCount = 0;
-    float m_rowH = 0.0f;
-    float m_stripW = 0.0f;
+    float m_hitW = 0.0f, m_hitH = 0.0f;   // one row's hit box
+    float m_stripW = 0.0f, m_stripH = 0.0f;
 };

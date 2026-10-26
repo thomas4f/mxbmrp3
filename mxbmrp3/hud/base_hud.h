@@ -419,6 +419,7 @@ public:
     void setDraggable(bool draggable) { m_bDraggable = draggable; }
     bool isDraggable() const { return m_bDraggable; }
     bool isDragging() const { return m_bDragging; }
+    bool isDraggingCompanion() const { return m_bDragging && m_bDragCompanion; }
 
     void setPosition(float offsetX, float offsetY) {
         if (m_fOffsetX != offsetX || m_fOffsetY != offsetY) {
@@ -599,6 +600,10 @@ public:
 
 protected:
     bool clampPositionToBounds(float& offsetX, float& offsetY, const WindowBounds& windowBounds) const;
+    // Carry a running drag on from here, for a HUD that reshapes under the pointer (Toggles' edge dock).
+    void rebaseDrag(float cursorX, float cursorY, float offX, float offY) {
+        m_fDragStartX = cursorX; m_fDragStartY = cursorY; m_fInitialOffsetX = offX; m_fInitialOffsetY = offY;
+    }
     virtual void rebuildRenderData() = 0;
     virtual void rebuildLayout() { rebuildRenderData(); }
 

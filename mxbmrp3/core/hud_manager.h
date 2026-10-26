@@ -374,6 +374,7 @@ public:
     // both null-check rather than assert, so a build without it is not a crash.
     class PrestigeWidget* getPrestigeWidget() const { return m_pPrestige; }
     class RpmWidget& getRpmWidget() const { assert(m_pRpm && "HudManager not initialized"); return *m_pRpm; }
+    class NowPlayingWidget& getNowPlayingWidget() const { assert(m_pNowPlaying && "HudManager not initialized"); return *m_pNowPlaying; }
 #if GAME_HAS_TYRE_TEMP
     class TyreTempWidget& getTyreTempWidget() const { assert(m_pTyreTemp && "HudManager not initialized"); return *m_pTyreTemp; }
 #endif
@@ -585,6 +586,7 @@ private:
     class ClockWidget* m_pClock;
     class PrestigeWidget* m_pPrestige = nullptr;
     class RpmWidget* m_pRpm = nullptr;
+    class NowPlayingWidget* m_pNowPlaying = nullptr;
 #if GAME_HAS_TYRE_TEMP
     class TyreTempWidget* m_pTyreTemp;
 #endif

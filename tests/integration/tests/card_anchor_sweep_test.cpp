@@ -264,6 +264,95 @@ TEST_CASE("right-only [content]/[title] margins: content keeps its own box") {
 }
 
 // ============================================================================
+// The HORIZONTAL Toggles strip: its groups are columns, each with a card of its
+// own, so the probe above (one card per panel) cannot read it. Under the same
+// right-only margin every column's card moves right by the margins of the
+// columns before it, and every icon inside a card must move with THAT card --
+// not stay with the panel's first card, nor follow the panel's centre.
+// ============================================================================
+TEST_CASE("right-only [content] margin: a horizontal Toggles strip's icons keep their group's card") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\card_anchor_strip\\");
+    REQUIRE(host.hasThemeGeometry());
+    REQUIRE(host.hasQuadRects());
+    REQUIRE(host.hasStringRows());
+    REQUIRE_MESSAGE((host.hasInjectedMouse() && host.hasToggleStripShape()), "build without the hooks");
+    host.installTheme("anchor", /*inset=*/1.0f, /*cardBorder=*/1.0f,
+                      /*titleBand=*/1, /*card=*/1);
+    REQUIRE(host.setThemeContentMargin(0.0f, 0.0f, 0.0f, 0.0f));
+    const char* hud = "toggle_strip_widget";
+    const float offX = 0.05f, offY = 0.3f;
+    REQUIRE(host.toggleStripHorizontal(1) == 1);
+    REQUIRE(host.setHudOffset(hud, offX, offY));
+    host.injectMouse(true, 0.02f, 0.98f, 0);   // the cursor shows it, clear of its hover name
+    host.draw();
+
+    auto cards = [&]() {
+        std::vector<PluginHost::QuadRect> out;
+        PluginHost::QuadRect c;
+        for (int i = 0; host.toggleStripColumnCard(i, &c); ++i) {
+            c.l += offX; c.r += offX; c.t += offY; c.b += offY;   // into drawn space
+            out.push_back(c);
+        }
+        return out;
+    };
+    const std::vector<PluginHost::QuadRect> cards0 = cards();
+    const std::vector<PluginHost::QuadRect> quads0 = host.hudQuadRects(hud);
+    const std::vector<PluginHost::StringRow> strings0 = host.hudStringRows(hud);
+    REQUIRE(cards0.size() == 3);               // the controls, Global, Profile
+
+    REQUIRE(host.setThemeContentMargin(0.0f, 8.0f, 0.0f, 0.0f));
+    host.draw();
+    const std::vector<PluginHost::QuadRect> cards1 = cards();
+    const std::vector<PluginHost::QuadRect> quads1 = host.hudQuadRects(hud);
+    REQUIRE(cards1.size() == cards0.size());
+    REQUIRE(quads1.size() == quads0.size());
+    // The probe moved the later cards, or it measured nothing.
+    CHECK(cards1[1].l - cards0[1].l > EPS);
+    CHECK(cards1[2].l - cards1[1].l > cards0[2].l - cards0[1].l + EPS);
+
+    int inside = 0;
+    for (size_t q = 0; q < quads0.size(); ++q) {
+        const PluginHost::QuadRect& a = quads0[q];
+        if (a.r - a.l < EPS || a.b - a.t < EPS) continue;   // a placeholder
+        for (size_t c = 0; c < cards0.size(); ++c) {
+            const PluginHost::QuadRect& k = cards0[c];
+            // An icon centred in this card (a slice of the frame or the fill
+            // is wider than any one group's card).
+            const double cx = (a.l + a.r) / 2, cy = (a.t + a.b) / 2;
+            if (cx < k.l || cx > k.r || cy < k.t || cy > k.b || a.r - a.l > k.r - k.l + EPS) continue;
+            INFO("quad " << q << " in card " << c);
+            ++inside;
+            CHECK(std::fabs((quads1[q].l - cards1[c].l) - (a.l - k.l)) < EPS);
+            CHECK(std::fabs((quads1[q].t - cards1[c].t) - (a.t - k.t)) < EPS);
+            break;
+        }
+    }
+    // Without the icons folder (this harness's tree) each icon is its two
+    // letters, centred on the same spot: the same rule, read off the strings.
+    const std::vector<PluginHost::StringRow>& rows0 = strings0;
+    const std::vector<PluginHost::StringRow> rows1 = host.hudStringRows(hud);
+    REQUIRE(rows1.size() == rows0.size());
+    for (size_t r = 0; r < rows0.size(); ++r) {
+        for (size_t c = 0; c < cards0.size(); ++c) {
+            const PluginHost::QuadRect& k = cards0[c];
+            if (rows0[r].x < k.l || rows0[r].x > k.r) continue;
+            INFO("string '" << rows0[r].text << "' in card " << c);
+            ++inside;
+            CHECK(std::fabs((rows1[r].x - cards1[c].l) - (rows0[r].x - k.l)) < EPS);
+            CHECK(std::fabs((rows1[r].y - cards1[c].t) - (rows0[r].y - k.t)) < EPS);
+            break;
+        }
+    }
+    CHECK(inside > 10);   // every icon, at least
+    REQUIRE(host.setThemeContentMargin(0.0f, 0.0f, 0.0f, 0.0f));
+    host.toggleStripHorizontal(0);
+    host.injectMouse(false);
+    host.shutdown();
+}
+
+// ============================================================================
 // The unthemed convention: every plan-based panel keeps the SAME side air --
 // the panel padding -- between its edges and its card, and keeps it on both
 // sides. The deliberate exception is contentFillsPanel (Gap Bar, Notices):

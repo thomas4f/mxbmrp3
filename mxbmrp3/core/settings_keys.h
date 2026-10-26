@@ -312,6 +312,7 @@ namespace Settings {
         namespace Notices {
             constexpr const char* WRONG_WAY = "notice_wrong_way";
             constexpr const char* BLUE_FLAG = "notice_blue_flag";
+            constexpr const char* LAPPER_AHEAD = "notice_lapper_ahead";
             constexpr const char* LAST_LAP = "notice_last_lap";
             constexpr const char* FINISHED = "notice_finished";
             constexpr const char* ALLTIME_PB = "notice_alltime_pb";
@@ -321,6 +322,7 @@ namespace Settings {
             constexpr const char* OVERTIME = "notice_overtime";
             constexpr const char* HAZARD_STATIONARY = "notice_hazard_stationary";
             constexpr const char* HAZARD_WRONG_WAY = "notice_hazard_wrong_way";
+            constexpr const char* TRACK_CHANGED = "notice_track_changed";
         }
 
         // TelemetryHud elements
@@ -490,6 +492,7 @@ namespace Settings {
         namespace Notices {
             constexpr Setting WRONG_WAY = {"notice_wrong_way", "Show wrong way warning (1 = on, default; 0 = off)"};
             constexpr Setting BLUE_FLAG = {"notice_blue_flag", "Show blue flag notice (1 = on; 0 = off, default)"};
+            constexpr Setting LAPPER_AHEAD = {"notice_lapper_ahead", "Show notice when closing on a lapped rider ahead (1 = on, default; 0 = off)"};
             constexpr Setting LAST_LAP = {"notice_last_lap", "Show final lap notice (1 = on, default; 0 = off)"};
             constexpr Setting FINISHED = {"notice_finished", "Show finished notice (1 = on, default; 0 = off)"};
             constexpr Setting ALLTIME_PB = {"notice_alltime_pb", "Show all-time PB notice (1 = on, default; 0 = off)"};
@@ -500,6 +503,7 @@ namespace Settings {
             constexpr Setting PB_DURATION = {"pbDurationMs", "Timed notice display duration in milliseconds (1000-30000, default 5000; out-of-range values are ignored)"};
             constexpr Setting HAZARD_STATIONARY = {"notice_hazard_stationary", "Show hazard notice for stationary riders ahead (1 = on, default; 0 = off)"};
             constexpr Setting HAZARD_WRONG_WAY = {"notice_hazard_wrong_way", "Show hazard notice for wrong-way riders ahead (1 = on, default; 0 = off)"};
+            constexpr Setting TRACK_CHANGED = {"notice_track_changed", "Show the new track when Now playing changes track (1 = on, default; 0 = off)"};
         }
 
         // StandingsHud settings

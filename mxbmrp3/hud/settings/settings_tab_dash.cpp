@@ -53,6 +53,7 @@ BaseHud* SettingsHud::renderTabDash(SettingsLayoutContext& ctx) {
         { DashHud::Page::SESSION, "Session", "dash.page_session" },
         { DashHud::Page::TELEMETRY, "Telemetry", "dash.page_telemetry" },
         { DashHud::Page::EVENT_LOG, "Event Log", "dash.page_eventlog" },
+        { DashHud::Page::NOW_PLAYING, "Now Playing", "dash.page_nowplaying" },
     };
     const bool lastOne = (hud->m_enabledPages & (hud->m_enabledPages - 1)) == 0;
     ctx.beginColumns(2, static_cast<int>(sizeof(kRows) / sizeof(kRows[0])));

@@ -171,7 +171,10 @@ int countTooltipRows(const std::vector<std::string>& regions, const char* toolti
 //
 // OPEN_LINK_RELEASES (the Updates tab's release-notes link) was appended:
 // one more type, no ordinal moved.
-constexpr int kClickRegionTypeCount = 119;
+//
+// NOW_PLAYING_TOGGLE (the Now playing row) was appended: one more type, no
+// ordinal moved.
+constexpr int kClickRegionTypeCount = 120;
 
 }  // namespace
 
@@ -373,6 +376,11 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
     // typecount 119 -> 118, and every later ordinal one lower -- a pure renumbering.
     // The Toggles widget (1.33) tags the Widgets sidebar row: strings 121 -> 122.
     // OPEN_LINK_RELEASES (appended): typecount 118 -> 119.
+    // Now playing: one disabled row after Steam (no WinRT in this build, so like
+    // Steam it renders without click regions); one appended type, typecount
+    // 119 -> 120, strings 122 -> 126.
+    // At 1.34 the 1.33 tags (Appearance, Hotkeys, Helmet, Dash, Widgets) gave
+    // way to General, Widgets, Dash and Notices: strings 126 -> 125.
     static const char* kGolden =
         "52:general;52:appearance;52:hotkeys;52:riders;54:-;52:rumble;61:-;52:helmet;77:-;52:director;10:-;52"
         ":stream_chat;78:-;52:spotter;93:-;52:achievements;40:-;52:updates;47:-;48:-;51:-;52:widgets;10:-;52:"
@@ -381,10 +389,11 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
         "reference;4:general.reference;3:general.reference;115:general.reference;72:general.freeze;2:general."
         "freeze;1:general.freeze;114:general.freeze;72:general.auto_save;41:-;41:-;72:general.grid_snap;35:-;"
         "35:-;72:general.screen_clamp;36:-;36:-;72:general.direct_gl;108:-;108:-;72:general.controller;4:gene"
-        "ral.controller;3:general.controller;115:general.controller;72:general.steam_friends;72:general.web_s"
-        "erver;44:-;44:-;72:general.web_port;45:-;46:-;72:general.auto_switch;49:-;49:-;72:general.copy_profi"
+        "ral.controller;3:general.controller;115:general.controller;72:general.steam_friends;72:general.now_p"
+        "laying;72:general.web_server;44:-;44:-;72:general.web_port;45:-;46:-;72:general.auto_switch;49:-;49:-"
+        ";72:general.copy_profi"
         "le;4:general.copy_profile;3:general.copy_profile;115:general.copy_profile;8:general.reset_profile;9:"
-        "general.reset_all;53:-;6:-;71:-;typecount=119;strings=122";
+        "general.reset_all;53:-;6:-;71:-;typecount=120;strings=125";
 
     MESSAGE("General tab signature: " << sig);
     CHECK(sig == kGolden);

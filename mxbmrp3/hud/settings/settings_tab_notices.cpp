@@ -108,6 +108,13 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_SESSION_PB, true,
         "notices.session_pb");
+    ctx.addSectionHeading("Media");
+
+    bool trackChangedOn = (hud->m_enabledNotices & NoticesHud::NOTICE_TRACK_CHANGED) != 0;
+    ctx.addToggleControl("Track change", trackChangedOn,
+        SettingsHud::ClickRegion::CHECKBOX, hud,
+        &hud->m_enabledNotices, NoticesHud::NOTICE_TRACK_CHANGED, true,
+        "notices.track_changed");
 
     return hud;
 }

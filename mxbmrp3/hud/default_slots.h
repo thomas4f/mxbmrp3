@@ -11,7 +11,7 @@
 //   RIGHT COLUMN  under the Map, each panel's RIGHT edge on the Map's, which is
 //                 one cell clear of the Toggles strip: Friends, Telemetry, Delta
 //                 Trace, Rumble, Event Log, Stream Chat, Lap Log, Ideal Lap,
-//                 Speedo, Tacho -- the panels short enough to end above Gear and
+//                 Now Playing, Speedo, Tacho -- the panels short enough to end above Gear and
 //                 Speed -- and the taller Charts, Performance, Stats, FMX and
 //                 Records, which reach into them (the column has 24 cells above
 //                 Gear; accepted for 1.33, default_positions_test names them). One

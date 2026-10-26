@@ -353,6 +353,7 @@ public:
             // Appended, not grouped with the Map's other toggles: see COUNT.
             MAP_RANGE_ADAPTIVE_TOGGLE, // Toggle Follow's range growing with speed (MapHud)
             OPEN_LINK_RELEASES,        // Open the GitHub releases page (Updates tab release notes)
+            NOW_PLAYING_TOGGLE,        // Toggle the Now playing integration
 
             // Sentinel, always last. settings_layout_test.cpp's golden encodes
             // region types as raw ORDINALS, and this enum is unnumbered and
@@ -832,6 +833,13 @@ public:
     // and the only list of what a tab can change that cannot go stale is the one the
     // tab itself emits. A NEW control type is clicked by default.
     int testPerturbActiveTab();
+    // ONE control of that sweep, by its place in it (0-based): the per-control half,
+    // settings_control_persist_test - every control, changed by itself, must reach the
+    // saved file and come back from it. `alternate` changes it the other way (the other
+    // arrow, a slider's other end), for a control already at the limit the first way
+    // pushes against. Returns 0 past the last control, 2 for one with nothing to change
+    // to (a list of one entry), else 1; `idOut` names it as "<row tooltip>|<tooltip>".
+    int testPerturbControl(int index, bool alternate, char* idOut, int cap);
     // Press the footer's "Reset <tab>" button through the real click path (the
     // perturbation sweep deliberately skips it).
     bool testClickResetTab(int clicks = 2);
@@ -1450,6 +1458,8 @@ private:
     // Index of the first click region belonging to the ACTIVE TAB's content (the
     // sidebar's regions precede it). See testPerturbActiveTab.
     int m_testContentRegionBegin = 0;
+    int testPerturbWalk(int only, bool alternate, std::string* idOut);
+    bool testPerturbRegion(size_t i, bool alternate);
     // See testContentColumnX().
     float m_testLabelX = 0.0f;
     float m_testControlX = 0.0f;

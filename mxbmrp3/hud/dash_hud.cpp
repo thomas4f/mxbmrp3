@@ -68,6 +68,7 @@ constexpr PageInfo kPages[static_cast<int>(DashHud::Page::COUNT)] = {
     { "session", "page_session", "hud-session", "Session", "SE", "Dash: Session" },
     { "telemetry", "page_telemetry", "hud-telemetry", "Telemetry", "TE", "Dash: Telemetry" },
     { "eventlog", "page_eventlog", "hud-eventlog", "Event Log", "EL", "Dash: Event Log" },
+    { "nowplaying", "page_nowplaying", "hud-nowplaying", "Now Playing", "NP", "Dash: Now Playing" },
     // Not in the cycle: only up while a notice holds the card.
     { "notices", nullptr,        "hud-notices",   "Notices", "NO", "Dash: Notices" },
 };
@@ -327,6 +328,7 @@ void DashHud::update() {
     followNotices();
     tickMessage();
     followMessageClick();
+    followMediaInput();
 
     // Integer compares only: a rebuild runs when a shown value changes, not at the
     // telemetry rate. The RPM and Fuel pages also follow their widgets' look
@@ -385,6 +387,8 @@ void DashHud::update() {
         changed = changed || readGapChart() != m_shownGapChart;
     } else if (m_page == Page::EVENT_LOG) {
         changed = changed || readEvents() != m_shownEvents;
+    } else if (m_page == Page::NOW_PLAYING) {
+        changed = changed || m_nowPlaying.changed();
     } else if (m_page == Page::SESSION) {
         changed = changed || sessionInfoChanged();
     }
@@ -602,14 +606,18 @@ void DashHud::rebuildRenderData() {
                 // With a second line (a PB's lap and gain), the caption takes the
                 // large row and the line the row under it, as the Timing page.
                 if (notice.detail[0] == '\0') {
-                    addString(notice.text, pageCenterX, largeY, Justify::CENTER,
-                              getFont(FontCategory::TITLE), ink, dim.fontSizeLarge);
+                    addString(NoticeTracker::caption(notice, rowW, dim.fontSizeLarge, getFont(FontCategory::TITLE)), pageCenterX,
+                              largeY, Justify::CENTER, getFont(FontCategory::TITLE), ink, dim.fontSizeLarge);
                     break;
                 }
-                addString(notice.text, pageCenterX, inkCenteredY(contentY, dim.lineHeightLarge, dim.fontSizeLarge),
+                addString(NoticeTracker::caption(notice, rowW, dim.fontSizeLarge, getFont(FontCategory::TITLE)), pageCenterX,
+                          inkCenteredY(contentY, dim.lineHeightLarge, dim.fontSizeLarge),
                           Justify::CENTER, getFont(FontCategory::TITLE), ink, dim.fontSizeLarge);
+                // A lap time in the digits font; a track's artist is words.
                 addString(notice.detail, pageCenterX, contentY + dim.lineHeightLarge, Justify::CENTER,
-                          getFont(FontCategory::DIGITS), ink, dim.fontSize);
+                          getFont(notice.kind == NoticeTracker::Kind::TrackChanged ? FontCategory::NORMAL
+                                                                                    : FontCategory::DIGITS),
+                          ink, dim.fontSize);
                 break;
             }
             case Page::STANDINGS:
@@ -802,6 +810,9 @@ void DashHud::rebuildRenderData() {
                 break;
             case Page::EVENT_LOG:
                 drawEvents(rowL, rowR, contentY, dim);
+                break;
+            case Page::NOW_PLAYING:
+                drawNowPlaying(rowL, rowR, contentY, dim);
                 break;
             case Page::SESSION:
                 drawSessionInfo(rowL, rowR, contentY, dim);

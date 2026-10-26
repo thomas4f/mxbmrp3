@@ -31,7 +31,7 @@ https://github.com/user-attachments/assets/4d5e126e-6940-4ec9-92bd-2083ff99521c
 > 1. Download the installer above and run it
 > 2. Launch the game and load a track
 > 3. Move the mouse to bring up the pointer, then right-click and drag to reposition elements
-> 4. Click an icon in the **Toggles** strip (right edge, shown while the mouse moves) to switch it on or off, or the top icon - or **Tilde (~)** - for the settings menu
+> 4. Click an icon in the **Toggles** strip (right edge, shown while the mouse moves) to switch it on or off, or the gear at its start - or **Tilde (~)** - for the settings menu
 >
 > The installer isn't signed yet, so Windows will warn about an "unknown publisher" - [why & how to proceed](#windows-warns-me-when-downloading-or-installing).
 
@@ -178,9 +178,10 @@ Four separate profiles store complete HUD layout configurations:
 | **Compass** | Heading dial (classic needle or modern rotating card) |
 | **Tyre Temp** | Front and rear tyre temperatures (GP Bikes only) |
 | **ECU** | Engine map, traction control, engine braking and anti-wheeling (GP Bikes only) |
-| **Toggles** | The settings button and every on/off switch from the menu in one strip, shown while the mouse moves; the arrow under the settings button folds the switches away, and resting the mouse on a switch that is off shows a dimmed preview of it |
+| **Toggles** | The settings button and every on/off switch from the menu in one strip, shown while the mouse moves; drag it to a side edge for a column or to the top or bottom edge for a row; the arrow after the settings button folds the switches away, and resting the mouse on a switch that is off shows a dimmed preview of it |
 | **Gamepad** | Controller visualization |
 | **Clock** | Real-time clock |
+| **Now Playing** | What Windows' media controls are playing (Spotify, a browser tab, ...) with previous, play/pause, next and the player's volume. Turn on Now playing in General; `nowPlayingApps=spotify` under `[General]` in the settings file follows only the players named |
 | **Pointer** | The mouse cursor. Off = settings menu only, which helps if a pad reads as a mouse |
 | **Prestige** | A badge earned by trading in a completed achievement ladder (MX Bikes only) |
 

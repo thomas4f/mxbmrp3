@@ -8,6 +8,9 @@
 #include "icon_resolve.h"
 #include "layout_config.h"
 #include "../diagnostics/logger.h"
+#include "plugin_constants.h"
+#include "plugin_utils.h"
+#include "render_asset_decode.h"
 #include <windows.h>
 #include <algorithm>
 #include <cctype>
@@ -229,6 +232,18 @@ void AssetManager::discoverFonts() {
             font.filename = baseName;
             font.displayName = generateDisplayName(baseName);
             font.fontIndex = fontIndex++;
+            // The glyph table only (not the atlas), so text can be cut to the
+            // width the game will draw it at: fitChars.
+            {
+                std::ifstream in(std::string(DISCOVERY_DIR) + "\\" + FONTS_SUBDIR + "\\" + filename, std::ios::binary);
+                std::array<uint8_t, hudassets::FNT_TABLE_BYTES> table;
+                if (in.read(reinterpret_cast<char*>(table.data()), static_cast<std::streamsize>(table.size())) &&
+                    hudassets::decodeFntAdvances(table.data(), table.size(), font.advance.data())) {
+                    // A share of the cell HEIGHT; build-space x is 16:9 wide.
+                    for (float& a : font.advance) a /= PluginConstants::UI_ASPECT_RATIO;
+                    font.measured = true;
+                }
+            }
 
             m_fontNameToIndex[baseName] = m_fonts.size();
             m_fonts.push_back(font);
@@ -658,6 +673,15 @@ std::string AssetManager::getFontPath(size_t index) const {
     }
 
     return std::string(RESOURCE_DIR) + "\\" + FONTS_SUBDIR + "\\" + m_fonts[index].filename + ".fnt";
+}
+
+int AssetManager::fitChars(int fontIndex, const char* text, float width, float fontSize) const {
+    const size_t pos = static_cast<size_t>(fontIndex - 1);
+    if (fontIndex >= 1 && pos < m_fonts.size() && m_fonts[pos].measured)
+        return hudassets::fitFntChars(m_fonts[pos].advance.data(), text, width, fontSize);
+    const float cellW = PluginUtils::calculateMonospaceTextWidth(1, fontSize);
+    const int cells = cellW > 0.0f ? static_cast<int>(width / cellW + 0.01f) : 0;
+    return std::min(cells, static_cast<int>(std::strlen(text)));
 }
 
 const FontAsset* AssetManager::getFontByName(const std::string& name) const {

@@ -47,7 +47,7 @@ const char* const kShippedOff[] = {
     "session_widget", "crash_widget", "speedo_widget", "tacho_widget", "timing_hud",
     "gap_bar_hud", "bars_widget", "notices_hud", "fuel_widget",
     "gamepad_widget", "lean_widget", "gforce_widget", "compass_widget",
-    "tyre_temp_widget", "ecu_widget", "prestige_widget", "pitboard_hud",
+    "tyre_temp_widget", "ecu_widget", "prestige_widget", "pitboard_hud", "now_playing_widget",
 };
 
 // The default-off HUDs that draw nothing here without content: no notice up, no

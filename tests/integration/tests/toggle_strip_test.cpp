@@ -37,11 +37,23 @@
 //    install; once folded it stays folded in every profile and across a reload.
 //  - Unfolding fades the switches in as Motion's part and settles to the frame
 //    Motion Off draws; with Motion Off it is that frame at once.
+//  - Horizontal, it is the same strip along X: Settings first (left), the caret
+//    after it, every icon on one line, a click still the sidebar's click, the
+//    fold shortening it along its axis, and the hovered name under the icon.
+//  - Dragged, only the pointer docks it: at the top or bottom edge it turns
+//    horizontal flat against that edge, at a side edge vertical, with the
+//    grabbed icon under the pointer; a corner and the middle keep the shape, so
+//    a drag along an edge or across the screen never turns it twice. The shape
+//    is saved per profile, a file without it (fresh install, upgrade) is
+//    vertical, and a profile switch never carries it over.
+//    A drag on the companion window docks it there too: one shape for both
+//    windows, but only the dragged copy moves.
 // ============================================================================
 #include "doctest.h"
 #include "integration_main.h"
 #include "plugin_host.h"
 #include "ini.h"
+#include <algorithm>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -699,5 +711,259 @@ TEST_CASE("toggle strip: unfolding fades the switches in with Motion, at once wi
     CHECK(frames(30) == off);                              // and settled to the Off frame
 
     host.setMotion(OFF);
+    host.injectMouse(false);
+}
+
+TEST_CASE("toggle strip: horizontal, the same strip along X, Settings first") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSave);
+    REQUIRE_MESSAGE((host.hasInjectedMouse() && host.hasToggleStrip() && host.hasToggleStripShape() &&
+                     host.hasStringRows()), "build without the hooks");
+    const char* hud = "toggle_strip_widget";
+    REQUIRE(host.toggleStripHorizontal(1) == 1);
+    REQUIRE(host.setHudOffset(hud, 0.1f, 0.01f));
+    wake(host);
+    const int n = host.toggleStripRow(0);
+    REQUIRE(n > 10);
+    std::string name;
+    host.toggleStripRow(0, nullptr, nullptr, &name);
+    CHECK(name == "Settings");
+    CHECK(rowNamed(host, "Collapse") == 1);
+    float x0 = 0.0f, y0 = 0.0f;
+    host.toggleStripRow(0, &x0, &y0);
+    float prevX = x0;
+    for (int i = 1; i < n; ++i) {
+        float x = 0.0f, y = 0.0f;
+        host.toggleStripRow(i, &x, &y);
+        CHECK(std::fabs(y - y0) < 1e-4);   // one line
+        CHECK(x > prevX);                  // left to right
+        prevX = x;
+    }
+
+    // A click is still the sidebar's click.
+    const int row = rowNamed(host, "Standings");
+    REQUIRE(row > 1);
+    bool before = false, after = false;
+    host.toggleStripRow(row, nullptr, nullptr, nullptr, &before);
+    clickRow(host, row);
+    host.draw();
+    host.toggleStripRow(row, nullptr, nullptr, nullptr, &after);
+    CHECK(after != before);
+    clickRow(host, row);
+    host.draw();
+
+    // The hovered name: under the icon, centred on it, no plate.
+    float x = 0.0f, y = 0.0f;
+    host.toggleStripRow(row, &x, &y, &name);
+    host.injectMouse(true, x, y, 0); host.draw(); host.draw();
+    REQUIRE(host.toggleStripHoverRow() == row);
+    const std::vector<PluginHost::QuadRect> quads = host.hudQuadRects(hud);
+    REQUIRE(!quads.empty());
+    double stripBottom = quads[0].b;
+    for (const PluginHost::QuadRect& q : quads) stripBottom = q.b > stripBottom ? q.b : stripBottom;
+    bool found = false;
+    for (const PluginHost::StringRow& r : host.hudStringRows(hud)) {
+        if (r.text != name) continue;
+        found = true;
+        CHECK(r.y > stripBottom);
+        CHECK(r.y < stripBottom + 0.04);   // within a cell or so: hugs the strip
+        CHECK(r.x < x);                    // it starts left of the icon's centre...
+        CHECK(r.x > x - 0.1);              // ...about half a short name away
+    }
+    CHECK(found);
+
+    // Folded, it shortens along X and keeps Settings where it was.
+    const int caret = rowNamed(host, "Collapse");
+    clickRow(host, caret);
+    host.draw();
+    CHECK(host.toggleStripRow(0) == 2);
+    float fx = 0.0f, fy = 0.0f;
+    host.toggleStripRow(0, &fx, &fy);
+    CHECK(std::fabs(fx - x0) < 1e-4);
+    CHECK(std::fabs(fy - y0) < 1e-4);
+    clickRow(host, 1);
+    host.draw();
+    CHECK(host.toggleStripRow(0) == n);
+    host.toggleStripHorizontal(0);
+    host.injectMouse(false);
+}
+
+TEST_CASE("toggle strip: the pointer docks it at an edge, the grabbed icon under it") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSave);
+    REQUIRE_MESSAGE((host.hasInjectedMouse() && host.hasToggleStrip() && host.hasToggleStripShape()),
+                    "build without the hooks");
+    host.writeSettingsFile(kSave, "[Settings]\nversion=11\n");   // a fresh install's file
+    host.loadSettings(kSave);
+    // The dock decides only the shape: where it sits is the drag's, so it reaches
+    // every edge (it once held one cell in, the last grid unit unreachable
+    // whatever clamp and snap said).
+    wake(host);
+    REQUIRE(host.toggleStripHorizontal() == 0);                    // fresh install: vertical
+    const PluginHost::LayoutCells cells = host.layoutCells();
+    const int grab = 4;
+    // The strip's drawn box.
+    auto box = [&]() {
+        const std::vector<PluginHost::QuadRect> q = host.hudQuadRects("toggle_strip_widget");
+        PluginHost::QuadRect r = q.empty() ? PluginHost::QuadRect{} : q[0];
+        for (const PluginHost::QuadRect& e : q) {
+            if (e.r - e.l < 1e-6) continue;
+            r.l = std::min(r.l, e.l); r.t = std::min(r.t, e.t);
+            r.r = std::max(r.r, e.r); r.b = std::max(r.b, e.b);
+        }
+        return r;
+    };
+    float gx = 0.0f, gy = 0.0f;
+    REQUIRE(host.toggleStripRow(grab, &gx, &gy) > grab);
+
+    // Press on an icon, then walk the pointer, counting turns.
+    int turns = 0;
+    int shape = host.toggleStripHorizontal();
+    host.injectMouse(true, gx, gy, 0); host.draw();
+    host.injectMouse(true, gx, gy, 2); host.draw();
+    auto walk = [&](float x1, float y1, int steps) {
+        for (int i = 1; i <= steps; ++i) {
+            const float t = static_cast<float>(i) / static_cast<float>(steps);
+            host.injectMouse(true, gx + (x1 - gx) * t, gy + (y1 - gy) * t, 2);
+            host.draw();
+            const int now = host.toggleStripHorizontal();
+            if (now != shape) { ++turns; shape = now; }
+        }
+        gx = x1; gy = y1;
+    };
+    // The grabbed icon is under the pointer: along the strip to within the snap
+    // grid, across it within the strip (docked flat, the pointer can be nearer
+    // the edge than the icon's centre).
+    auto underPointer = [&]() {
+        float x = 0.0f, y = 0.0f;
+        host.toggleStripRow(grab, &x, &y);
+        const bool horizontal = host.toggleStripHorizontal() == 1;
+        const double along = horizontal ? std::fabs(x - gx) : std::fabs(y - gy);
+        const double across = horizontal ? std::fabs(y - gy) : std::fabs(x - gx);
+        INFO("icon " << x << "," << y << " pointer " << gx << "," << gy);
+        CHECK(along <= (horizontal ? cells.cellW : cells.cellH) + 1e-4);
+        CHECK(across <= 0.03);
+        return along <= (horizontal ? cells.cellW : cells.cellH) + 1e-4 && across <= 0.03;
+    };
+
+    walk(0.5f, 0.5f, 8);                       // across the middle: no turn
+    CHECK(turns == 0);
+    CHECK(underPointer());
+    walk(0.5f, 0.005f, 8);                     // the top edge: horizontal, flat on it
+    CHECK(turns == 1);
+    CHECK(shape == 1);
+    CHECK(underPointer());
+    {
+        float x = 0.0f, y = 0.0f;
+        host.toggleStripRow(0, &x, &y);
+        CHECK(y < 0.03f);                      // against the top edge
+        CHECK(box().t < 0.5 * cells.cellH);    // at the edge, not held a cell in
+    }
+    walk(0.3f, 0.005f, 8);                     // along it: still horizontal
+    CHECK(turns == 1);
+    CHECK(underPointer());
+    walk(0.003f, 0.005f, 6);                   // into the corner: keeps the shape
+    CHECK(turns == 1);
+    walk(0.003f, 0.5f, 10);                    // down the left edge: vertical, flat on it
+    CHECK(turns == 2);
+    CHECK(shape == 0);
+    CHECK(underPointer());
+    {
+        float x = 0.0f, y = 0.0f;
+        host.toggleStripRow(0, &x, &y);
+        CHECK(x < 0.02f);                      // against the left edge
+        CHECK(box().l < 0.5 * cells.cellW);    // at the edge
+    }
+    walk(0.5f, 0.995f, 12);                    // to the bottom edge: horizontal
+    CHECK(turns == 3);
+    CHECK(shape == 1);
+    CHECK(underPointer());
+    CHECK(box().b > 1.0 - 0.5 * cells.cellH);   // at the edge
+    walk(0.997f, 0.5f, 12);                    // the right edge: a column again...
+    CHECK(turns == 4);
+    CHECK(shape == 0);
+    CHECK(box().r > 1.0 - 0.5 * cells.cellW);   // ...at the edge
+    walk(0.5f, 0.995f, 12);                    // and back to the bottom
+    CHECK(turns == 5);
+    // Screen clamp keeps it on screen, flush on the edge it is docked at.
+    REQUIRE(host.hasScreenEdges());
+    host.setScreenClamping(true);
+    walk(0.6f, 0.999f, 6);
+    CHECK(turns == 5);
+    CHECK(std::fabs(box().b - 1.0) < 1e-4);
+    host.setScreenClamping(false);
+    host.injectMouse(true, gx, gy, 0); host.draw();   // drop
+
+    // Saved per profile with the position; another profile keeps its own.
+    REQUIRE(host.save());
+    const std::string iniPath = std::string(kSave) + "mxbmrp3\\mxbmrp3_settings.ini";
+    const std::string text = ini::readFile(iniPath);
+    CHECK(text.find("horizontal=1") != std::string::npos);
+    host.loadSettings(kSave);                  // survives a reload
+    wake(host);
+    CHECK(host.toggleStripHorizontal() == 1);
+    host.switchProfile(2);
+    wake(host);
+    CHECK(host.toggleStripHorizontal() == 0);
+    host.switchProfile(0);
+    wake(host);
+    CHECK(host.toggleStripHorizontal() == 1);
+
+    // A file from before it docked has no shape: vertical, whatever was drawn.
+    host.writeSettingsFile(kSave, "[Settings]\nversion=11\n\n[ToggleStripWidget]\nvisible=1\n");
+    host.loadSettings(kSave);
+    wake(host);
+    CHECK(host.toggleStripHorizontal() == 0);
+    host.injectMouse(false);
+}
+
+TEST_CASE("toggle strip: a drag on the companion window docks it there, moving only that copy") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSave);
+    REQUIRE_MESSAGE((host.hasInjectedMouse() && host.hasToggleStrip() && host.hasToggleStripShape() &&
+                     host.hasForceSurface()), "build without the hooks");
+    host.writeSettingsFile(kSave, "[Settings]\nversion=11\n");
+    host.loadSettings(kSave);
+    host.stSetCompanionVisible(true);
+    // The game copy where a fresh install has it: a column at the top right
+    // (the DLL stays loaded between cases, so the last case's drag is still on it).
+    REQUIRE(host.toggleStripHorizontal(0) == 0);
+    REQUIRE(host.setHudOffset("toggle_strip_widget", 0.97f, 0.01f));
+    float gameX = 0.0f, gameY = 0.0f;
+    wake(host);
+    REQUIRE(host.toggleStripRow(0, &gameX, &gameY) > 4);
+    host.forceActiveSurface(1);
+    wake(host);
+    float x = 0.0f, y = 0.0f;
+    REQUIRE(host.toggleStripRow(4, &x, &y) > 4);
+    host.injectMouse(true, x, y, 0); host.draw();
+    host.injectMouse(true, x, y, 2); host.draw();
+    for (int i = 1; i <= 8; ++i) {
+        const float t = static_cast<float>(i) / 8.0f;
+        host.injectMouse(true, x + (0.5f - x) * t, y + (0.995f - y) * t, 2);
+        host.draw();
+    }
+    CHECK(host.toggleStripHorizontal() == 1);     // one shape for both windows
+    float cx = 0.0f, cy = 0.0f;
+    host.toggleStripRow(4, &cx, &cy);             // the companion copy, under the pointer
+    CHECK(std::fabs(cx - 0.5f) < 0.02f);
+    CHECK(cy > 0.95f);
+    host.injectMouse(true, 0.5f, 0.995f, 0); host.draw();
+    host.forceActiveSurface(0);
+    wake(host);
+    float gx = 0.0f, gy = 0.0f;
+    host.toggleStripRow(0, &gx, &gy);
+    CHECK(std::fabs(gy - gameY) < 0.02f);         // the game copy stayed at the top
+    // ...turned into a row there, but pulled back on screen, its last icon too.
+    const int n = host.toggleStripRow(0);
+    REQUIRE(n > 4);
+    float lx = 0.0f, ly = 0.0f;
+    host.toggleStripRow(n - 1, &lx, &ly);
+    CHECK(lx < 1.0f);
+    CHECK(lx > gx);
+    host.toggleStripHorizontal(0);
     host.injectMouse(false);
 }

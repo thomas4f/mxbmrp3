@@ -45,6 +45,7 @@
 #if GAME_HAS_DISCORD
 #include "discord_manager.h"
 #endif
+#include "media_manager.h"
 #if GAME_HAS_STEAM_FRIENDS
 #include "steam_friends_manager.h"
 #endif
@@ -188,6 +189,9 @@ void PluginManager::initialize(const char* savePath) {
     DiscordManager::getInstance().initialize();
 #endif
 
+    // Now playing (GSMTC): starts its worker if the saved setting is on.
+    MediaManager::getInstance().initialize();
+
 #if GAME_HAS_STEAM_FRIENDS
     // Experimental Steam friends probe (game thread only, no background thread).
     // Hooks the game's already-loaded steam_api64.dll; safe no-op if absent.
@@ -249,6 +253,7 @@ void PluginManager::initialize(const char* savePath) {
 #if GAME_HAS_DISCORD
         try { DiscordManager::getInstance().shutdown(); } catch (...) {}
 #endif
+        try { MediaManager::getInstance().shutdown(); } catch (...) {}
 #if GAME_HAS_STEAM_FRIENDS
         // Joins the friend-scan worker and clears any presence initialize()
         // published, so a failed init leaves neither a live thread nor stale
@@ -307,6 +312,9 @@ void PluginManager::shutdown() {
     // Shutdown Discord Rich Presence (clears presence from Discord)
     DiscordManager::getInstance().shutdown();
 #endif
+
+    // Join the Now playing worker (each GSMTC call it may be in is bounded).
+    MediaManager::getInstance().shutdown();
 
 #if GAME_HAS_STEAM_FRIENDS
     // Clear our Steam rich presence

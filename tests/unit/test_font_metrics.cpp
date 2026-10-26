@@ -16,6 +16,11 @@
 // A screenshot cannot tell you that — it can only tell you it looks wrong once
 // somebody notices. The atlas can, so this asks the atlas.
 //
+// It also pins the MEASURE the plugin cuts text with (hudassets::
+// decodeFntAdvances + fitFntChars, behind AssetManager::fitChars): counting a
+// grid cell a character cut a Now Playing title in the Title font to 18 where
+// about 25 fit.
+//
 // It parses the .fnt directly instead of going through Renderer::fnt(), whose
 // glyph table is private; the layout it walks is the one documented at the top
 // of core/hud_sw_renderer.cpp, and a change there breaks this loudly.
@@ -24,6 +29,7 @@
 
 #include "core/layout_metrics.h"
 #include "core/plugin_constants.h"
+#include "core/render_asset_decode.h"
 #include "vendor/miniz/miniz.h"
 
 #include <algorithm>
@@ -176,4 +182,56 @@ TEST_CASE("font metrics: every shipped font's digits are fixed-width") {
             CHECK(f.g[unsigned(c)].adv() == zero);
         }
     }
+}
+
+TEST_CASE("font metrics: text is cut by its own font's glyphs, the grid's cell for digits") {
+    const double cell = LayoutMetrics{}.charWidthRatio;
+    const float size = 0.03f;   // the Notices / Dash caption size
+    const float dashCaption = static_cast<float>(18 * cell) * size;   // 18 cells, the Dash notice's box
+    for (const auto& p : shippedFonts()) {
+        CAPTURE(p.filename().string());
+        std::ifstream in(p, std::ios::binary);
+        std::vector<uint8_t> table(hudassets::FNT_TABLE_BYTES);
+        REQUIRE(in.read(reinterpret_cast<char*>(table.data()), static_cast<std::streamsize>(table.size())));
+        float adv[256];
+        REQUIRE(hudassets::decodeFntAdvances(table.data(), table.size(), adv));
+        for (float& a : adv) a /= PluginConstants::UI_ASPECT_RATIO;   // as AssetManager stores it
+        // Digits advance one cell each (to 1%, above), so 18 and a half cells
+        // hold 18 digits in every font.
+        const float digitBox = static_cast<float>(18.5 * cell) * size;
+        CHECK(hudassets::fitFntChars(adv, "012345678901234567890123", digitBox, size) == 18);
+        // A title: the count the font's own advances give, from this file's parser.
+        const Font f = loadFnt(p.string());
+        REQUIRE(f.ok);
+        const char* title = "Golem II: The Bionic Vapour Boy";
+        double x = 0.0;
+        int fits = 0;
+        for (const char* c = title; *c; ++c) {
+            x += double(f.g[static_cast<unsigned char>(*c)].adv()) / f.cellH / PluginConstants::UI_ASPECT_RATIO * size;
+            if (x > dashCaption * 1.0001) break;
+            ++fits;
+        }
+        CHECK(hudassets::fitFntChars(adv, title, dashCaption, size) == fits);
+    }
+}
+
+TEST_CASE("font metrics: the Title font holds more of a title than a cell a character") {
+    std::ifstream in(std::filesystem::path(MXB_DATA_DIR) / "fonts" / "EnterSansman-Italic.fnt", std::ios::binary);
+    std::vector<uint8_t> table(hudassets::FNT_TABLE_BYTES);
+    REQUIRE(in.read(reinterpret_cast<char*>(table.data()), static_cast<std::streamsize>(table.size())));
+    float adv[256];
+    REQUIRE(hudassets::decodeFntAdvances(table.data(), table.size(), adv));
+    for (float& a : adv) a /= PluginConstants::UI_ASPECT_RATIO;
+    const float size = 0.03f;
+    const float box = static_cast<float>(18 * LayoutMetrics{}.charWidthRatio) * size;
+    const int fits = hudassets::fitFntChars(adv, "Golem II: The Bionic Vapour Boy", box, size);
+    CHECK(fits > 22);   // 25 today; the grid's count is 18
+    CHECK(fits < 31);   // and not the whole title
+
+    // Not a .fnt: refused, and the table left as it was.
+    float untouched[256] = { 1.0f };
+    const uint8_t junk[16] = { 'N', 'O', 'P', 'E' };
+    CHECK_FALSE(hudassets::decodeFntAdvances(junk, sizeof(junk), untouched));
+    CHECK_FALSE(hudassets::decodeFntAdvances(table.data(), 100, untouched));
+    CHECK(untouched[0] == 1.0f);
 }

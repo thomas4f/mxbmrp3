@@ -83,6 +83,7 @@
 #include "../hud/event_log_hud.h"
 #include "../hud/benchmark_widget.h"
 #include "../hud/toggle_strip_widget.h"
+#include "../hud/now_playing_widget.h"
 #include "hotkey_manager.h"
 #if GAME_HAS_HTTP_SERVER
 #include "http_server.h"
@@ -145,7 +146,8 @@ bool HudManager::isWidgetHud(const BaseHud* hud) const {
            hud == m_pSpeed || hud == m_pGear || hud == m_pSpeedo || hud == m_pTacho ||
            hud == m_pBars || hud == m_pFuel ||
            hud == m_pGamepad || hud == m_pLean || hud == m_pGforce || hud == m_pCompass ||
-           hud == m_pClock || hud == m_pCrash || hud == m_pPrestige || hud == m_pRpm;
+           hud == m_pClock || hud == m_pCrash || hud == m_pPrestige || hud == m_pRpm ||
+           hud == m_pNowPlaying;
 }
 
 bool HudManager::isHeldBack(const BaseHud* hud) const {
@@ -874,7 +876,7 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
 bool HudManager::requiredIconsPresent() {
     // The icons buttons, carets and the Dash/Toggles strips draw: a stale or
     // partial icons folder lacking one gets the warning, or a chip draws empty.
-    static const char* const kRequiredIcons[] = { "hud-menu", "hud-close", "hud-video", "caret-up", "hud-dash",
+    static const char* const kRequiredIcons[] = { "gear", "hud-close", "hud-video", "caret-up", "hud-dash",
                                                   "hud-clock", "hud-fuel", "hud-flatmap", "hud-gauge" };
     for (const char* name : kRequiredIcons)
         if (AssetManager::getInstance().getIconSpriteIndex(name) <= 0) return false;

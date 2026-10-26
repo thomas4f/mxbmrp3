@@ -54,6 +54,7 @@ set(MXB_UNIT_SOURCES
     test_fmx_scoring.cpp
     test_font_metrics.cpp
     test_tooltip_length.cpp
+    test_media_app_filter.cpp
     test_update_asset_select.cpp
     test_update_version_match.cpp
     test_ui_config.cpp

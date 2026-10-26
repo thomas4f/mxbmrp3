@@ -95,12 +95,12 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
     }
 
     SUBCASE("opening a tagged tab clears its tag and no row") {
-        // The Appearance tab has room for the tag (unlike Achievements and Stream
+        // The Notices tab has room for the tag (unlike Achievements and Stream
         // Chat and Delta Trace, whose names fill the sidebar: WhatsNew::tabCanTag).
-        REQUIRE(host.whatsNewTabTagged("Appearance"));
+        REQUIRE(host.whatsNewTabTagged("Notices"));
 
-        REQUIRE(host.openSettingsTab("Appearance"));
-        CHECK_FALSE(host.whatsNewTabTagged("Appearance"));
+        REQUIRE(host.openSettingsTab("Notices"));
+        CHECK_FALSE(host.whatsNewTabTagged("Notices"));
         // The rows on it are untouched: opening the tab says you know something
         // is here, not that you found it.
         CHECK(host.whatsNewLiveCount() == total);
@@ -119,7 +119,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         CHECK_FALSE(host.whatsNewTabTagged("Widgets"));
         // Off the tab before the panel next closes: closing dismisses the tab
         // it closes on, and the unlock is taken on the Achievements tab anyway.
-        REQUIRE(host.openSettingsTab("Appearance"));
+        REQUIRE(host.openSettingsTab("Notices"));
 
         host.setPrestige(1);
         host.showSettings(true);
@@ -135,37 +135,42 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
     SUBCASE("a tab whose name fills the sidebar bands its sidebar row instead of the tag, and its rows band") {
         // "Delta Trace" (like "Stream Chat" and "Achievements") is 11 of the
         // sidebar's 13 label cells; the tag would overflow it. Its rows are still
-        // marked.
-        CHECK_FALSE(host.whatsNewTabTagged("Delta Trace"));
+        // marked. Only a release that marks a row on one of them can exercise
+        // this: 1.34 marks none, so the case says so rather than passing quietly.
+        const char* fullName = nullptr;
+        for (const char* tab : { "Delta Trace", "Stream Chat", "Achievements" }) {
+            if (host.whatsNewTabHighlighted(tab)) { fullName = tab; break; }
+        }
+        if (!fullName) {
+            MESSAGE("no marker on a tab whose name fills the sidebar this release: "
+                    "the sidebar band is unpinned until one is marked");
+            return;
+        }
+        CHECK_FALSE(host.whatsNewTabTagged(fullName));
         // Its sidebar row is banded instead, until hovered like any banded row.
         // A tab that has room keeps the tag, unbanded, and hovering it leaves the
         // tag alone (that one clears on open).
-        CHECK(host.whatsNewTabHighlighted("Delta Trace"));
-        CHECK_FALSE(host.whatsNewTabHighlighted("Appearance"));
-        REQUIRE(host.hoverSettingsTab("Appearance"));
-        CHECK(host.whatsNewTabTagged("Appearance"));
-        REQUIRE(host.hoverSettingsTab("Delta Trace"));
-        CHECK_FALSE(host.whatsNewTabHighlighted("Delta Trace"));
-        REQUIRE(host.openSettingsTab("Delta Trace"));
-        const int before = host.whatsNewLiveCount();
-        host.hoverSettingsRow("delta_trace.peaks");
-        CHECK(host.whatsNewLiveCount() == before - 1);
+        CHECK_FALSE(host.whatsNewTabHighlighted("Notices"));
+        REQUIRE(host.hoverSettingsTab("Notices"));
+        CHECK(host.whatsNewTabTagged("Notices"));
+        REQUIRE(host.hoverSettingsTab(fullName));
+        CHECK_FALSE(host.whatsNewTabHighlighted(fullName));
     }
 
     SUBCASE("hovering a marked row clears that row and no other") {
-        REQUIRE(host.openSettingsTab("Appearance"));
+        REQUIRE(host.openSettingsTab("Notices"));
         const int before = host.whatsNewLiveCount();
         REQUIRE(before >= 1);
 
-        host.hoverSettingsRow("appearance.glow");
+        host.hoverSettingsRow("notices.track_changed");
         CHECK(host.whatsNewLiveCount() == before - 1);
 
         // Hovering it again is not a second dismissal.
-        host.hoverSettingsRow("appearance.glow");
+        host.hoverSettingsRow("notices.track_changed");
         CHECK(host.whatsNewLiveCount() == before - 1);
 
         // An unmarked row on the same tab dismisses nothing.
-        host.hoverSettingsRow("appearance.motion");
+        host.hoverSettingsRow("notices.session_pb");
         CHECK(host.whatsNewLiveCount() == before - 1);
     }
 
@@ -181,7 +186,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // the case can see it.
         REQUIRE_MESSAGE(host.hasMarkDirty(), "MXBMRP3_Test_FlushIfDirty/IsDirty absent");
         host.setAutoSave(true);
-        REQUIRE(host.openSettingsTab("Appearance"));
+        REQUIRE(host.openSettingsTab("Notices"));
 
         // SAVE FIRST, to clear the flag. Opening a tab persists [Profiles] activeTab
         // and marks dirty by itself, so a dirty check straight after the click passes
@@ -190,7 +195,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         host.save();
         REQUIRE_FALSE(host.isDirty());
 
-        host.hoverSettingsRow("appearance.glow");
+        host.hoverSettingsRow("notices.track_changed");
         const int afterDismiss = host.whatsNewLiveCount();
         REQUIRE(afterDismiss == total - 1);
         CHECK_MESSAGE(host.isDirty(),
@@ -204,7 +209,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         REQUIRE(host.whatsNewLiveCount() == total);
         host.loadSettings(saveWin);
         CHECK(host.whatsNewLiveCount() == afterDismiss);
-        CHECK_FALSE(host.whatsNewTabTagged("Appearance"));   // the tab dismissal too
+        CHECK_FALSE(host.whatsNewTabTagged("Notices"));   // the tab dismissal too
     }
 
     SUBCASE("starting up does not silently dismiss a tab") {
@@ -224,9 +229,9 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // open", so that is what is asserted, and hiding an already-hidden panel is
         // exactly what the constructor does.
         //
-        // Read through the dismissed SET rather than a live count: no marker names
-        // TAB_GENERAL today, so the stray key is invisible to every other accessor.
-        // The trap is armed for whoever adds one.
+        // Read through the dismissed SET rather than a live count: a stray General
+        // key would also hide General's own marker (1.34's Now playing row), but
+        // the set names it whatever the table holds.
         host.whatsNewReset();
         host.showSettings(false);           // hide an ALREADY-hidden panel
         const std::string afterNoOpHide = host.whatsNewSerialize();
@@ -259,14 +264,14 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // anywhere near this. Written against resetAll() alone, a test here would pass
         // while checking half a button.
         REQUIRE_MESSAGE(host.hasResetGlobals(), "MXBMRP3_Test_ResetGlobals not exported");
-        REQUIRE(host.openSettingsTab("Appearance"));
-        host.hoverSettingsRow("appearance.glow");
+        REQUIRE(host.openSettingsTab("Notices"));
+        host.hoverSettingsRow("notices.track_changed");
         REQUIRE(host.whatsNewLiveCount() == total - 1);
-        REQUIRE_FALSE(host.whatsNewTabTagged("Appearance"));
+        REQUIRE_FALSE(host.whatsNewTabTagged("Notices"));
 
         host.resetEverything();
         CHECK(host.whatsNewLiveCount() == total - 1);
-        CHECK_FALSE(host.whatsNewTabTagged("Appearance"));
+        CHECK_FALSE(host.whatsNewTabTagged("Notices"));
     }
 
     host.shutdown();

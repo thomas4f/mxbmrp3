@@ -21,8 +21,9 @@
 // Delta trace (the Delta Trace HUD's chart, drawn by the same DeltaTracePlot),
 // Gap chart (the Session Charts HUD's Gap chart for the rider and the riders
 // just ahead and behind), Session
-// (the Session HUD's rows), Telemetry (the Telemetry HUD's traces) and Event
-// log (the Event Log's three newest events). The pages carry no title: the
+// (the Session HUD's rows), Telemetry (the Telemetry HUD's traces), Event
+// log (the Event Log's three newest events) and Now Playing (the Now Playing
+// widget's rows; off by default). The pages carry no title: the
 // strip's highlighted icon names the page, and the card's three rows go to
 // data. Settings > Dash > Appearance > Page names (on by default) shows a
 // stepped-to page's name in its place for a moment first (see PAGE NAMES
@@ -56,6 +57,7 @@
 #include "session_charts_hud.h"
 #include "split_crossing.h"
 #include "delta_trace_plot.h"
+#include "now_playing_card.h"
 #include "rider_flag_icons.h"
 #include "../core/system_messages.h"
 #include "../game/unified_types.h"
@@ -67,7 +69,7 @@ public:
     // notice holds the card (Notice focus).
     enum class Page : uint8_t {
         STANDINGS, TIMING, LAPS, TIME, FUEL, GAP_BAR, FLAT_MAP, IDEAL, RPM, DELTA_TRACE,
-        GAP_CHART, SESSION, TELEMETRY, EVENT_LOG, NOTICES, COUNT
+        GAP_CHART, SESSION, TELEMETRY, EVENT_LOG, NOW_PLAYING, NOTICES, COUNT
     };
     static constexpr int CYCLE_PAGES = static_cast<int>(Page::NOTICES);
     // The page a fresh install opens on: Timing, which stands in for the Timing
@@ -115,7 +117,7 @@ public:
 
     // A cycle page's settings key ("standings", "timing", "laps", "time", "fuel",
     // "gapbar", "flatmap", "ideal", "rpm", "deltatrace", "gapchart", "session",
-    // "telemetry", "eventlog"), and back; an unknown key is DEFAULT_PAGE. Saved by name so
+    // "telemetry", "eventlog", "nowplaying"), and back; an unknown key is DEFAULT_PAGE. Saved by name so
     // reordering the pages moves nobody's choice.
     static const char* pageKey(Page page);
     static Page pageFromKey(const char* key);
@@ -130,10 +132,12 @@ public:
     static constexpr int TELEMETRY_MAX_SEGMENTS = 8 * static_cast<int>(HistoryBuffers::MAX_TELEMETRY_HISTORY - 1);
     static constexpr uint32_t ALL_PAGES = (1u << CYCLE_PAGES) - 1u;
     // A fresh install's cycle: all but Standings, Time and RPM, whose HUDs (the
-    // Standings HUD, the session clock, the RPM widget) are on screen anyway.
+    // Standings HUD, the session clock, the RPM widget) are on screen anyway, and
+    // Now Playing, which needs the General tab's integration switched on. Absent
+    // from an older INI = this default, so upgraders get it off too.
     static constexpr uint32_t DEFAULT_PAGES =
         ALL_PAGES & ~((1u << static_cast<int>(Page::STANDINGS)) | (1u << static_cast<int>(Page::TIME)) |
-                      (1u << static_cast<int>(Page::RPM)));
+                      (1u << static_cast<int>(Page::RPM)) | (1u << static_cast<int>(Page::NOW_PLAYING)));
     bool pageEnabled(Page page) const { return (m_enabledPages & pageBit(page)) != 0; }
     // Settings > Dash options, one bit each in m_options, saved by key.
     static constexpr uint32_t OPT_PAGE_NAMES = 1u << 0;        // on by default
@@ -479,6 +483,13 @@ private:
     void drawTelemetry(float x, float y, float w, float h);
     // The Standings page (dash_hud_pages.cpp): three rows across the card's width.
     void drawStandings(float rowLeft, float right, float contentY, const ScaledDimensions& dim);
+    // The Now Playing page (dash_hud_nowplaying.cpp): the Now Playing widget's
+    // rows, laid out by the same NowPlayingCard. Rebuilt when MediaManager's
+    // revision moves; followMediaInput reads the clicks and the volume drag once
+    // a frame while the page is up.
+    void drawNowPlaying(float rowL, float rowR, float contentY, const ScaledDimensions& dim);
+    void followMediaInput();
+    NowPlayingCard m_nowPlaying;
 
     // The values shown, as last rendered: update() rebuilds when one differs.
     RpmWidget::Lights m_shownLights;   // the RPM page's, as RpmWidget::readLights gives them

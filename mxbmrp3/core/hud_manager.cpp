@@ -35,6 +35,7 @@
 #include "../hud/gear_widget.h"
 #include "../hud/crash_widget.h"
 #include "../hud/rpm_widget.h"
+#include "../hud/now_playing_widget.h"
 #include "../hud/toggle_strip_widget.h"
 #include "../hud/gl_confirm_hud.h"
 #include "../hud/speedo_widget.h"
@@ -217,6 +218,7 @@ void HudManager::initialize() {
     createHud(m_pGforce, "gforce_widget");
     createHud(m_pCompass, "compass_widget");
     createHud(m_pClock, "clock_widget");
+    createHud(m_pNowPlaying, "now_playing_widget");
     // The badge draws nothing until a prestige level is taken (prestige_widget.h),
     // so on a game that HAS achievements it is registered like every other widget
     // -- the lock is a question the widget asks, not a slot that is sometimes
