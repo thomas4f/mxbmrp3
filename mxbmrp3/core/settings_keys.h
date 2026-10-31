@@ -70,6 +70,8 @@ namespace Settings {
             constexpr const char* SHOW_HEADERS = "showHeaders";
             constexpr const char* SHOW_SESSION_INFO = "showSessionInfo";
             constexpr const char* LIVE_GAPS = "liveGaps";
+            constexpr const char* SHOW_MODE = "showMode";
+            constexpr const char* FREEZE_DURATION = "freezeDuration";
         }
 
         // The two by-name asset keys that live in GLOBAL sections rather than a

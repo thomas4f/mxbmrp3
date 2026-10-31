@@ -51,39 +51,41 @@ BaseHud* SettingsHud::renderTabPerformance(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, PerformanceHud::ELEM_CPU, true,
         "performance.cpu");
 
+    // === DIAGNOSTICS SECTION ===
+    // The profiler is for everyone: it is what a player runs to send a stutter
+    // report, and the developer mode it once needed also unlocks Prestige and
+    // marks the install as a developer in the usage survey.
+    BenchmarkWidget* benchmark = HudManager::getInstance().getBenchmarkWidget();
+    if (benchmark) {
+        ctx.addSectionHeading("Diagnostics");
+        // Active surface: the row emits HUD_TOGGLE, which edits the focused
+        // surface, so the state shown must come from the same one.
+        ctx.addToggleControl("Benchmark profiler", benchmark->isVisibleOnActiveSurface(),
+            SettingsHud::ClickRegion::HUD_TOGGLE, benchmark, nullptr, 0, true,
+            "performance.benchmark");
+    }
+
     // === DEVELOPER SECTION (only visible in developer mode) ===
-    if (SettingsManager::getInstance().isDeveloperMode()) {
-        BenchmarkWidget* benchmark = HudManager::getInstance().getBenchmarkWidget();
-        if (benchmark) {
-            ctx.addSectionHeading("Developer");
-            // Active surface: the row emits HUD_TOGGLE, which edits the focused
-            // surface, so the state shown must come from the same one.
-            ctx.addToggleControl("Benchmark profiler", benchmark->isVisibleOnActiveSurface(),
-                SettingsHud::ClickRegion::HUD_TOGGLE, benchmark, nullptr, 0, true,
-                "performance.benchmark");
+    if (benchmark && SettingsManager::getInstance().isDeveloperMode()) {
+        ctx.addSectionHeading("Developer");
 
-            // The render-probe sweep, beside the profiler it complements: that one
-            // measures OUR cpu per callback and per panel, this one measures what the
-            // engine charges to draw what we hand it -- a cost no in-plugin timer can
-            // see. It lives here rather than on a hotkey because it is a thing you run
-            // deliberately, once, while looking at the screen: it takes about a minute,
-            // drops the frame rate on purpose, and writes a report. A key binding for
-            // that is a key you press by accident.
-            // The gap the Updates tab puts before Check Now. A button hard against
-            // the row above it reads as part of that row rather than as its own act.
-            ctx.addSpacing();
-
-            RenderProbeSweep& sweep = RenderProbeSweep::getInstance();
-            const bool running = sweep.isRunning();
-            // Both labels 9 characters, so the button does not resize mid-sweep.
-            ctx.addActionButton(running ? "  Stop   " : "Run sweep", 11,
-                                SettingsHud::ClickRegion::PROBE_SWEEP,
-                                running ? SettingsLayoutContext::ButtonRole::Negative
-                                        : SettingsLayoutContext::ButtonRole::Positive,
-                                true, "performance.probe_sweep");
-            ctx.addInlineNote(running ? "Sweeping - about a minute, frame rate drops."
-                                      : "Measures the engine's per-primitive draw cost.");
-        }
+        // The render-probe sweep, a companion to the profiler: that one measures
+        // OUR cpu per callback and per panel, this one measures what the engine
+        // charges to draw what we hand it -- a cost no in-plugin timer can see. It
+        // lives here rather than on a hotkey because it is a thing you run
+        // deliberately, once, while looking at the screen: it takes about a minute,
+        // drops the frame rate on purpose, and writes a report. A key binding for
+        // that is a key you press by accident. Developer-only for the same reason.
+        RenderProbeSweep& sweep = RenderProbeSweep::getInstance();
+        const bool running = sweep.isRunning();
+        // Both labels 9 characters, so the button does not resize mid-sweep.
+        ctx.addActionButton(running ? "  Stop   " : "Run sweep", 11,
+                            SettingsHud::ClickRegion::PROBE_SWEEP,
+                            running ? SettingsLayoutContext::ButtonRole::Negative
+                                    : SettingsLayoutContext::ButtonRole::Positive,
+                            true, "performance.probe_sweep");
+        ctx.addInlineNote(running ? "Sweeping - about a minute, frame rate drops."
+                                  : "Measures the engine's per-primitive draw cost.");
     }
 
     return hud;

@@ -1,15 +1,15 @@
 // ============================================================================
 // hud/benchmark_widget.h
-// Developer-only widget showing per-callback and per-HUD timing breakdown
-// Requires developerMode=1 in INI to be accessible
+// Profiler widget showing per-callback and per-HUD timing breakdown
+// (Settings > Performance > Benchmark profiler); see exportReport for the report
 // ============================================================================
 #pragma once
 
 #include "base_hud.h"
 #include "../core/plugin_constants.h"
 #include "../core/plugin_data_types.h"   // BenchmarkMetrics::MAX_* -- see the caps below
+#include "../core/frame_time_stats.h"
 #include <array>
-#include <vector>
 #include <chrono>
 
 class BenchmarkWidget : public BaseHud {
@@ -21,9 +21,13 @@ public:
     bool handlesDataType(DataChangeType dataType) const override;
     void resetToDefaults();
 
+    // Write the stint's report so far, if the profiler is running. Called on
+    // leaving the track and from Shutdown(); see the definition.
+    void saveStint();
+
     // Export current snapshot data to a text file in the save path
-    // Returns true if export succeeded
-    bool exportReport(const char* savePath) const;
+    // Returns true if export succeeded; `writtenPath` (optional) gets the file's path
+    bool exportReport(const char* savePath, std::string* writtenPath = nullptr) const;
 
     // HUD rebuild snapshots
     struct HudRebuildSnapshot {
@@ -135,27 +139,36 @@ private:
     int m_totalQuadCount = 0;
     int m_totalStringCount = 0;
 
+    // The report written when the profiler is switched off, read back once the
+    // writer has had time to land it, then toasted (saved, with its folder, or not
+    // saved). See pollReportResult.
+    void pollReportResult();
+    std::string m_reportPath;
+    std::chrono::steady_clock::time_point m_reportCheckAt{};
+    bool m_reportCheckPending = false;
+
     // Benchmark session FPS / duration tracking (full-session, not per-snapshot)
     std::chrono::steady_clock::time_point m_sessionStart{};
     std::chrono::steady_clock::time_point m_lastFrameTime{};
     bool m_haveLastFrameTime = false;
-    long long m_frameSampleCount = 0;   // total frames sampled this session
 
-    // Rolling frame-time samples for ALL frame-rate stats (min/avg/max FPS AND the
-    // percentiles / 1% low). A single average hides stutter — at high refresh the
-    // "feel" lives in the tail, so the headline metric is p99 frame time (=1% low
-    // FPS). Deriving every frame-rate figure from THIS one window keeps them
-    // mutually consistent (no all-time vs windowed "max" mismatch). Ring buffer of
-    // the most recent MAX_FRAME_SAMPLES intervals; older ones age out (bounded mem).
-    static constexpr int MAX_FRAME_SAMPLES = 16384;
-    // Allocated on first sample, not at construction. As a std::array this was
-    // 128 KB resident in every player's process for a dev tool almost nobody
-    // enables; as a vector it costs one pointer until the widget actually runs.
-    // Sized once to MAX_FRAME_SAMPLES (never grown), so the hot path below is
-    // still a plain indexed store into a fixed buffer.
-    std::vector<double> m_frameSamples;
-    int m_frameSampleWrite = 0;
-    bool m_frameSamplesWrapped = false;
+    // Every frame-rate figure in the report (min/avg/max FPS, the percentiles, the
+    // 1% low, the worst-frames list) comes from THIS one whole-stint record, so they
+    // cannot disagree. See frame_time_stats.h for why it replaced a raw-sample ring.
+    FrameTimeStats m_frameStats;
+    // Sum of every callback's stint time at the previous sample: the difference at
+    // the next one is what the plugin spent inside that frame interval.
+    long long m_lastPluginTotalUs = 0;
+    // The last frame, held until the next sample adds its plugin time (see
+    // sampleFrameTime for why a frame is recorded one sample late).
+    FrameTimeStats::Spike m_pendingFrame{};
+    bool m_havePendingFrame = false;
+    // The stint's report file name (its start time), so every save rewrites one file.
+    char m_reportStamp[20] = "";
+    // The game process's private memory (MB) when the stint began; the report
+    // prints it beside the figure at save time. 0 = unknown.
+    double m_startMemMB = 0.0;
+    static double processMemoryMB();
 
     // Session high-water mark of the primitive counts handed to the engine (the
     // render-handoff cost the CPU times don't capture — see the perf drivers).
@@ -163,6 +176,8 @@ private:
     int m_peakStringCount = 0;
 
     void resetSessionStats();
+    void beginStint();
+    void appendSummary(std::string& out, const FrameTimeStats& fs) const;
     void sampleFrameTime();
 
     void takeSnapshot();

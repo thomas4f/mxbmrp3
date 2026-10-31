@@ -36,7 +36,11 @@ void DashHud::findNeighbours(Neighbour (&rows)[STANDINGS_ROWS]) {
     const PluginData& pd = PluginData::getInstance();
     const int me = pd.getDisplayRaceNum();
     if (me <= 0) return;
-    const std::vector<int>& order = pd.getDisplayClassificationOrder();
+    // The rows in the Standings HUD's running order (live with its Live updates
+    // on Both), the gaps planned against the official one, as that HUD does.
+    StandingsHud& standings = HudManager::getInstance().getStandingsHud();
+    const std::vector<int>& official = pd.getDisplayClassificationOrder();
+    const std::vector<int>& order = standings.runningOrder();
     const int count = static_cast<int>(order.size());
     int index = -1;
     for (int i = 0; i < count; ++i) {
@@ -50,8 +54,7 @@ void DashHud::findNeighbours(Neighbour (&rows)[STANDINGS_ROWS]) {
     // the guards a bare subtraction misses -- a rider not yet through a split,
     // a lap down, out of the race. The player's row is this order's.
     const SessionData& session = pd.getSessionData();
-    const StandingsHud& standings = HudManager::getInstance().getStandingsHud();
-    StandingsGap::Table table = standings.gapTableFor(order, me);
+    StandingsGap::Table table = standings.gapTableFor(official, me);
     const bool status = standings.showsStatusColumn();
     table.playerRowIndex = index;
     const bool gapsOff = table.scope == StandingsGap::Scope::OFF;   // no gap column at all

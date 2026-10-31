@@ -25,5 +25,7 @@ private:
     void rebuildRenderData() override;
 
     // Calculate player's current position (1-based)
-    int calculatePlayerPosition() const;
+    int calculatePlayerPosition();
+
+    uint32_t m_shownOrderRevision = 0;  // StandingsHud::runningOrderRevision() last drawn
 };

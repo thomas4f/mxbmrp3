@@ -588,6 +588,10 @@ int main(int argc, char** argv) {
         // what the hook behind clickAbout presses.
         if (std::string(tab) == "About") host.clickAbout();
         else host.setActiveTab(tab);
+        // "find <query>": the settings Find page on that query (as if typed + Enter).
+        for (int a = 1; a + 1 < argc; ++a) {
+            if (std::string(argv[a]) == "find") host.settingsFind(argv[a + 1]);
+        }
         // Page through with the mouse stand-in, before the surface is pinned below:
         // the pager's next button is found by its tooltip id on the game surface.
         for (int p = 1; p < page; ++p) {

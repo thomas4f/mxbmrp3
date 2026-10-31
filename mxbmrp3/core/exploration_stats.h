@@ -169,7 +169,7 @@ public:
     void onFinishedOnFumes();
     // Seconds spent in another rider's roost, BATCHED the way
     // onFuelBurnt is: the caller (StatsManager::recordProximity) accumulates
-    // on the ~30Hz position path and flushes about once a second, so the
+    // on the per-batch position path and flushes about once a second, so the
     // evaluation this triggers never lands on that path.
     void onProximityTime(double roostSeconds);
     void onRaceLeft();
@@ -180,7 +180,7 @@ public:
     // it owns the crash edge; this only takes the best one seen.
     void onCrashSpotRun(int run);
     // Riders already down around the player while the player is down too
-    // (Pile-Up). Fed from the ~30Hz position path and written to cost one
+    // (Pile-Up). Fed from the per-batch position path and written to cost one
     // compare there: raise() evaluates nothing unless this is a new worst.
     void onRidersDown(int down);
     // The same count taken from outside the heap (Peace Out). Same shape, same

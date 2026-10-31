@@ -19,21 +19,29 @@ namespace {
 // check_whats_new.sh fails the build if a version here falls behind resource.h,
 // so the review is not optional.
 //
-// 1.34 is the Now Playing release: its General row, the Widgets tab's widget,
-// the Dash tab's page and the Notices tab's new-track notice are marked. The
-// Toggles strip's docking has no row of its own to mark. The 1.33 markers -
-// the Dash's Visible switch, the Dash, Dash + and Dash - hotkeys, Glow, Peaks,
-// the Impact vignette and the Toggles widget - are gone: each had its release,
-// and a tag still lit a release later says nothing.
+// 1.34.1 is the first stable 1.34 (1.34.0 was a pre-release), so the line
+// is "1.34" and it marks both: the Standings' Show mode and Live updates, the
+// Server best behind General's Gap reference, and the Updates tab's Update
+// channel, now shown to everyone; and from 1.34.0, Now playing on General and
+// its widget. Click to spectate has no row to mark. The Benchmark profiler,
+// also shown to everyone now, stays unmarked: the Performance tab sits under
+// More, and moving it up for one release would reorder the sidebar for
+// everyone (the README's troubleshooting entry points players to it instead).
+// The Now Playing Dash page and new-track notice stay unmarked to keep the
+// table short. The Find box in the title band, new in 1.34.1, leads: it is
+// the Find tab's row, banded on every tab until the pointer reaches it.
 //
 // Prestige is the table's one Gate::Unlocked row: it is not new in a release,
 // it is new the moment a player trades their ladder for it, and the row it
 // bands does not exist on the Widgets tab until then.
 const Marker kMarkers[] = {
+    { SettingsHud::TAB_FIND,         "find.field",               "1.34" },
+    { SettingsHud::TAB_STANDINGS,    "standings.live_updates",   "1.34" },
+    { SettingsHud::TAB_STANDINGS,    "standings.show_mode",      "1.34" },
+    { SettingsHud::TAB_GENERAL,      "general.reference",        "1.34" },
     { SettingsHud::TAB_GENERAL,      "general.now_playing",      "1.34" },
     { SettingsHud::TAB_WIDGETS,      "widgets.now_playing",      "1.34" },
-    { SettingsHud::TAB_DASH,         "dash.page_nowplaying",     "1.34" },
-    { SettingsHud::TAB_NOTICES,      "notices.track_changed",    "1.34" },
+    { SettingsHud::TAB_UPDATES,      "updates.channel",          "1.34" },
     { SettingsHud::TAB_WIDGETS,      "widgets.prestige",         nullptr, Gate::Unlocked },
 };
 
@@ -143,6 +151,8 @@ bool tabHighlightsRow(int tabId) {
 
 int firstTabWithNews() {
     for (int i = 0; i < MARKER_COUNT; ++i) {
+        // The Find field is not a tab to open: it is in the title band of every one.
+        if (kMarkers[i].tabId == SettingsHud::TAB_FIND) continue;
         if (tabHasNews(kMarkers[i].tabId)) return kMarkers[i].tabId;
     }
     return -1;

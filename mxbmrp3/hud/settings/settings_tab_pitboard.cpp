@@ -69,9 +69,9 @@ BaseHud* SettingsHud::renderTabPitboard(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, PitboardHud::ROW_GAP, true,
         "pitboard.gap");
 
-    // Gap compare mode (Auto/Leader/Session PB/Ideal/All-time/Overall/Record)
+    // Gap compare mode (Auto/Leader/Session PB/Ideal/All-time PB/Server best/Record)
     static const char* const kGapModes[] = {
-        "Auto", "Leader", "Session PB", "Ideal", "All-time PB", "Overall", "Record" };
+        "Auto", "Leader", "Session PB", "Ideal", "All-time PB", "Server best", "Record" };
     static_assert(sizeof(kGapModes) / sizeof(kGapModes[0]) == PitboardHud::GAP_COUNT,
                   "one name per gap mode");
     const char* gapModeText = cycleName(kGapModes, hud->m_gapCompareMode);

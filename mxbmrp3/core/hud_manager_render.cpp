@@ -22,9 +22,11 @@
 #include "plugin_data.h"
 #include "plugin_manager.h"
 #include "settings_manager.h"
+#include "stats_manager.h"
 #include "director_manager.h"
 #include "profile_manager.h"
 #include "ui_config.h"
+#include "engine_cull.h"
 #include "render_probe_sweep.h"
 #include "hud_gl_renderer.h"
 #include "ui_viewport.h"
@@ -125,11 +127,24 @@ void HudManager::draw(int iState, int* piNumQuads, void** ppQuad, int* piNumStri
     if (m_bSuppressInGame) {
         *piNumQuads = 0; *ppQuad = nullptr;
         *piNumString = 0; *ppString = nullptr;
-    } else {
+    } else if (UiConfig::getInstance().getRenderProbeQuads() > 0) {
+        // The render-load probe's quads are the instrument (alpha 0 and zero-area
+        // are two of the things it measures): handed over uncut.
         *piNumQuads = static_cast<int>(m_quads.size());
         *ppQuad = m_quads.empty() ? nullptr : m_quads.data();
         *piNumString = static_cast<int>(m_strings.size());
         *ppString = m_strings.empty() ? nullptr : m_strings.data();
+    } else {
+        // Only what can put a pixel on screen (core/engine_cull.h): the probe
+        // above measured an alpha-0 quad charged in full.
+        const auto& quads = EngineCull::visibleOnly(m_quads, m_engineQuads,
+            [](const SPluginQuad_t& q) { return EngineCull::invisibleQuad(q); });
+        const auto& strings = EngineCull::visibleOnly(m_strings, m_engineStrings,
+            [](const SPluginString_t& st) { return EngineCull::invisibleString(st); });
+        *piNumQuads = static_cast<int>(quads.size());
+        *ppQuad = quads.empty() ? nullptr : const_cast<SPluginQuad_t*>(quads.data());
+        *piNumString = static_cast<int>(strings.size());
+        *ppString = strings.empty() ? nullptr : const_cast<SPluginString_t*>(strings.data());
     }
 }
 
@@ -204,7 +219,10 @@ void HudManager::produceFrame(int iState) {
             if (m_pToggleStrip) m_pToggleStrip->reveal(PluginConstants::WIDGET_REVEAL_MS);
         }
         m_lastDrawTime = now;
-        if (firstDraw) announceAllHiddenAtStart();   // m_lastDrawTime never resets: once per session
+        if (firstDraw) {   // m_lastDrawTime never resets: once per session
+            announceAllHiddenAtStart();
+            announceStartupProblems();
+        }
     }
 
     auto& bm = PluginData::getInstance().getBenchmarkMetrics();
@@ -220,6 +238,7 @@ void HudManager::produceFrame(int iState) {
         InputManager::getInstance().updateFrame();
         HotkeyManager::getInstance().update();
         SettingsManager::getInstance().pollSaveResult();   // a writer-thread save's outcome
+        StatsManager::getInstance().pollSaveResult();      // ...and the stats file's
         if (bm.active) bm.framePollTimeUs += DrawHandler::getCurrentTimeUs() - pollStart;
     }
 

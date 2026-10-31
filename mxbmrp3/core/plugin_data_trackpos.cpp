@@ -353,8 +353,11 @@ bool PluginData::isPlayerGoingWrongWay() const {
 }
 
 const RiderTrackState* PluginData::getPlayerTrackPosition() const {
-    int displayRaceNum = getDisplayRaceNum();
-    auto it = m_trackPositions.find(displayRaceNum);
+    return getRiderTrackState(getDisplayRaceNum());
+}
+
+const RiderTrackState* PluginData::getRiderTrackState(int raceNum) const {
+    auto it = m_trackPositions.find(raceNum);
     if (it != m_trackPositions.end()) {
         return &it->second;
     }

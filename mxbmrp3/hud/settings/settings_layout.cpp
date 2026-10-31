@@ -128,6 +128,7 @@ std::string SettingsLayoutContext::formatValue(const char* value, int maxWidth, 
 }
 
 float SettingsLayoutContext::addSectionHeading(const char* title, const char* hint) {
+    parent->m_find.setSection(title);   // the Find index (settings_find.h)
     // A section card is a FULL 9-slice over the whole section -- top/left/right/
     // bottom edges and four corners, exactly like the outer panel. Its bottom edge
     // is drawn by the bottom edge slice; nothing special-cases it.
@@ -700,10 +701,13 @@ void SettingsLayoutContext::beginUntitledSection() {
     m_hadSection = true;
 }
 
-// The row-wide hover region every labelled row carries. Test builds record a
-// row with no id, or an id with no text: tooltip_coverage_test asks for none.
-void SettingsLayoutContext::addRowTooltip([[maybe_unused]] const char* label, const char* tooltipId) {
+// The row-wide hover region every labelled row carries, and its Find index entry.
+// Test builds record a row with no id, or an id with no text: tooltip_coverage_test asks for none.
+void SettingsLayoutContext::addRowTooltip(const char* label, const char* tooltipId) {
     const bool hasId = tooltipId && tooltipId[0] != '\0';
+    if (parent->m_find.indexing)   // settings_find.h
+        parent->m_find.addRow(parent->m_activeTab, label, tooltipId,
+                              hasId ? TooltipManager::getInstance().getControlTooltip(tooltipId) : "");
     if (hasId) {
         parent->m_clickRegions.push_back(SettingsHud::ClickRegion(
             labelX, currentY, rowSpanWidth(), lineHeightNormal, tooltipId));
@@ -787,6 +791,7 @@ void SettingsLayoutContext::addCycleControl(
     // Value with fixed width (formatted, left-aligned for consistent positioning)
     const int valueWidth = valueChars();
     std::string formattedValue = formatValue(value, valueWidth, false);  // left-align for consistency
+    parent->m_find.noteValue(value);   // the Find index's value column (settings_find.h)
     parent->addString(formattedValue.c_str(), currentX, currentY, Justify::LEFT,
         Fonts::getNormal(), valueColor, fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(valueWidth, fontSize);
@@ -925,7 +930,9 @@ void SettingsLayoutContext::addFreezeControl(
 void SettingsLayoutContext::addReferenceControl(const char* label, bool* followDefault,
                                                PbGapTracker::Ref* ref, BaseHud* targetHud,
                                                const char* tooltipId, bool* enabled) {
-    const char* const kNames[] = { "Off", HudDefaults::defaultReferenceName(), "Session PB", "All-time PB", "Last lap" };
+    using Ref = PbGapTracker::Ref;
+    const char* const kNames[] = { "Off", HudDefaults::defaultReferenceName(), PbGapTracker::refName(Ref::SESSION_PB),
+        PbGapTracker::refName(Ref::ALLTIME_PB), PbGapTracker::refName(Ref::LAST_LAP), PbGapTracker::refName(Ref::SERVER_BEST) };
     static_assert(sizeof(kNames) / sizeof(kNames[0]) == PbGapTracker::REF_COUNT + 2,
                   "Off, Default and one name per reference");
     // Without `enabled` the list starts at Default (named for General's today): kNames + 1.
@@ -1157,6 +1164,7 @@ void SettingsLayoutContext::addToggleControl(
     currentX += cw * 2;
 
     // Value with fixed width
+    parent->m_find.noteValue(formattedValue.c_str());
     parent->addString(formattedValue.c_str(), currentX, currentY, Justify::LEFT,
         Fonts::getNormal(), valueColor, fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(valueWidth, fontSize);
@@ -1220,6 +1228,7 @@ void SettingsLayoutContext::addToggleControl(
     currentX += cw * 2;
 
     // Value
+    parent->m_find.noteValue(formattedValue.c_str());
     parent->addString(formattedValue.c_str(), currentX, currentY, Justify::LEFT,
         Fonts::getNormal(), valueColor, fontSize);
     currentX += PluginUtils::calculateMonospaceTextWidth(valueWidth, fontSize);
@@ -1492,6 +1501,7 @@ void SettingsLayoutContext::addWidgetRow(
         addInlineCycle(cols.visX, pointerOn ? "On" : "Off", 3,
             SettingsHud::ClickRegion::MENU_ONLY_CURSOR_TOGGLE,
             SettingsHud::ClickRegion::MENU_ONLY_CURSOR_TOGGLE, hud, true, !pointerOn);
+        parent->m_find.noteValue(pointerOn ? "On" : "Off");   // the Find index's value column
     } else {
         // Show the ACTIVE surface's visibility, like the per-HUD tabs: on the companion
         // window the toggle already edits the companion instance (HUD_TOGGLE routes by
@@ -1501,6 +1511,7 @@ void SettingsLayoutContext::addWidgetRow(
         addInlineCycle(cols.visX, visOn ? "On" : "Off", 3,
             SettingsHud::ClickRegion::HUD_TOGGLE, SettingsHud::ClickRegion::HUD_TOGGLE,
             hud, enableVisibility, !visOn);
+        parent->m_find.noteValue(visOn ? "On" : "Off");
     }
 
     // Title toggle, greyed on a widget that carries no caption. The column is shared by

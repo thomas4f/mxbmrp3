@@ -1063,7 +1063,8 @@ __declspec(dllexport) int MXBMRP3_Test_LiveGapToPb(int* gapMs) {
 }
 
 // The same against a chosen reference (PbGapTracker::Ref by value: 0 session
-// PB, 1 all-time PB, 2 last lap) -- pb_trace_persist_test reads the all-time one.
+// PB, 1 all-time PB, 2 last lap, 3 server best) -- pb_trace_persist_test reads
+// the all-time one, server_best_test the server best.
 __declspec(dllexport) int MXBMRP3_Test_LiveGapRef(int ref, int* gapMs) {
     if (ref < 0 || ref >= PbGapTracker::REF_COUNT) return 0;
     const PluginData& data = PluginData::getInstance();
@@ -1392,7 +1393,10 @@ __declspec(dllexport) void MXBMRP3_Test_CompanionWindow(int on) {
 
 __declspec(dllexport) void MXBMRP3_Test_GetActiveTab(char* out, int cap) {
     if (!out || cap <= 0) return;
-    const char* name = HudManager::getInstance().getSettingsHud().getActiveTabName();
+    // The tab ON SCREEN (getActiveTabName is the one that is saved, and names the
+    // tab a Find page was opened from).
+    const SettingsHud& settings = HudManager::getInstance().getSettingsHud();
+    const char* name = settings.testTabNameForIndex(settings.testActiveTab());
     strncpy(out, name ? name : "", cap - 1);
     out[cap - 1] = '\0';
 }

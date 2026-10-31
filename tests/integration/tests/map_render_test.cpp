@@ -57,6 +57,18 @@ std::vector<TrackSegmentRow> lineTrack(int segs = 64, float trackLen = 1600.0f) 
     return v;
 }
 
+// A stadium: two long straights joined by half circles, so the zoomed map's
+// straight runs have something to merge (circleTrack has no straight at all).
+std::vector<TrackSegmentRow> stadiumTrack() {
+    std::vector<TrackSegmentRow> v;
+    const float radius = 60.0f, arc = 3.14159265f * radius / 8.0f;
+    for (int side = 0; side < 2; ++side) {
+        v.push_back({ .type = 0, .length = 300.0f });
+        for (int i = 0; i < 8; ++i) v.push_back({ .type = 1, .length = arc, .radius = radius });
+    }
+    return v;
+}
+
 struct MapStats { int count; double sumX, sumY; int nonFinite; };
 }
 
@@ -177,6 +189,94 @@ TEST_CASE("map: world-ribbon cache is transparent across LOD + view-mode round-t
     CHECK(flatAgain.sumY == doctest::Approx(zoom.sumY));
     MapZoom(0);
 
+    host.shutdown();
+}
+
+// STRAIGHT RUNS (renderTrack): the zoomed map cuts a straight every few meters,
+// and a run of whole, same-coloured pieces is drawn as the one rectangle they
+// make. The engine pays per quad, so this must cut the count and nothing else:
+// the same frame drawn with the runs off covers the same area.
+TEST_CASE("map: a straight's pieces draw as one quad, covering the same area") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    REQUIRE(host.startup("Z:\\tmp\\mxbmrp3-tests\\map-runs\\") >= 0);
+    auto MapVisible = host.sym<PFN_MapI>("MXBMRP3_Test_MapSetVisible");
+    auto MapRotate  = host.sym<PFN_MapI>("MXBMRP3_Test_MapSetRotate");
+    auto MapZoom    = host.sym<PFN_MapI>("MXBMRP3_Test_MapSetZoom");
+    auto MapDetail  = host.sym<PFN_MapI>("MXBMRP3_Test_MapSetDetail");
+    auto MapTilt    = host.sym<PFN_MapI>("MXBMRP3_Test_MapSetTilt");
+    auto Runs       = host.sym<PFN_MapI>("MXBMRP3_Test_MapStraightRuns");
+    auto Area       = host.sym<int (*)(double*, double*)>("MXBMRP3_Test_MapQuadArea");
+    REQUIRE(MapVisible); REQUIRE(MapRotate); REQUIRE(MapZoom); REQUIRE(MapDetail);
+    REQUIRE(MapTilt); REQUIRE(Runs); REQUIRE(Area);
+
+    host.eventInit("Stadium", "Player");
+    host.raceEvent("Stadium");
+    host.session(6, 2);
+    host.addEntry(1, "Rider 1");
+    host.trackCenterline(stadiumTrack(), { 150.0f, 400.0f, 450.0f, 0.0f });
+    host.classify(6, 120000, { { .num = 1, .best = 90000, .gap = 0 } });
+    // On the first straight, heading along it: the zoom window holds straight
+    // and curve both.
+    host.raceTrackPosition({ { .num = 1, .trackPos = 0.25f, .posX = 0.0f, .posZ = 260.0f, .yaw = 0.0f } });
+    MapVisible(1);
+
+    // One frame, the runs on or off. The detail round-trip changes the ribbon
+    // key, so the frame is tessellated afresh rather than served from the cache.
+    // Area per colour too: a run must never swallow a piece of another colour.
+    double byColor = 0.0;
+    auto frame = [&](int runs, double& area) {
+        Runs(runs);
+        MapDetail(1); host.draw();
+        MapDetail(2); host.draw();
+        return Area(&area, &byColor);
+    };
+    for (int tilt : { 0, 30 }) {
+        for (int rotate : { 0, 1 }) {
+            MapTilt(tilt); MapRotate(rotate); MapZoom(1);
+            double pieceArea = 0.0, runArea = 0.0;
+            const int pieces = frame(0, pieceArea);
+            const double pieceByColor = byColor;
+            const int runs = frame(1, runArea);
+            INFO("tilt=" << tilt << " rotate=" << rotate << " pieces=" << pieces << " runs=" << runs);
+            CHECK(pieceArea > 0.0);
+            CHECK(runs < pieces * 3 / 4);   // the straights are most of what is on screen
+            CHECK(runArea == doctest::Approx(pieceArea).epsilon(1e-4));
+            CHECK(byColor == doctest::Approx(pieceByColor).epsilon(1e-4));
+        }
+    }
+    // Unzoomed, a straight is one quad already: nothing to merge.
+    MapTilt(0); MapRotate(0); MapZoom(0);
+    double pieceArea = 0.0, runArea = 0.0;
+    CHECK(frame(0, pieceArea) == frame(1, runArea));
+    Runs(1);
+    host.shutdown();
+}
+
+// The map rebuilds every frame, so a rebuild allocates nothing. With the rider
+// shape Off, the player's marker fell back to the default icon by NAME, a
+// std::string past the small-string buffer, built every frame.
+TEST_CASE("map: a rebuild allocates nothing, rider shape Off included") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    REQUIRE(host.startup("Z:\\tmp\\mxbmrp3-tests\\map-allocs\\") >= 0);
+    auto MapVisible = host.sym<PFN_MapI>("MXBMRP3_Test_MapSetVisible");
+    auto Allocs = host.sym<unsigned long long (*)(int)>("MXBMRP3_Test_MapRebuildAllocs");
+    REQUIRE(MapVisible); REQUIRE(Allocs);
+    host.eventInit("PerfTrack", "Player");
+    host.raceEvent("PerfTrack");
+    host.session(6, 2);
+    for (int i = 1; i <= 3; ++i) host.addEntry(i, ("Rider " + std::to_string(i)).c_str());
+    host.trackCenterline(circleTrack(), { 800.0f, 400.0f, 1200.0f, 0.0f });
+    host.raceTrackPosition({
+        { .num = 1, .trackPos = 0.00f, .posX = 100.0f, .posZ = 50.0f, .yaw = 45.0f },
+        { .num = 2, .trackPos = 0.30f },
+        { .num = 3, .trackPos = 0.60f },
+    });
+    MapVisible(1);
+    host.draw();
+    CHECK(Allocs(1) == 0);   // a shape of its own
+    CHECK(Allocs(0) == 0);   // Off: the default icon
     host.shutdown();
 }
 

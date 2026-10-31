@@ -360,7 +360,7 @@ void SettingsManager::cap_TimingHud(const HudManager& hudManager, SettingsManage
         saveTimingReadouts(settings, hud.m_enabledReadouts);
         // Gap section: -1 off, else its reference as the Gap Bar stores one.
         settings["gapRow"] = std::to_string(!hud.m_liveGapOn ? -1
-            : hud.m_liveGapDefault ? HudDefaults::REFERENCE_FOLLOW : static_cast<int>(hud.m_liveGapRef));
+            : HudDefaults::storeReference(hud.m_liveGapDefault, hud.m_liveGapRef));
         cache[name] = std::move(settings);
 }
 
@@ -389,13 +389,8 @@ void SettingsManager::app_TimingHud(HudManager& hudManager, const SettingsManage
                 if (auto v = readInt(settings, "gapRow")) {
                     if (*v == -1) {
                         hud.m_liveGapOn = false;
-                    } else if (*v == HudDefaults::REFERENCE_FOLLOW) {
+                    } else if (HudDefaults::loadReference(*v, &hud.m_liveGapDefault, &hud.m_liveGapRef)) {
                         hud.m_liveGapOn = true;
-                        hud.m_liveGapDefault = true;
-                    } else if (*v >= 0 && *v < PbGapTracker::REF_COUNT) {
-                        hud.m_liveGapOn = true;
-                        hud.m_liveGapDefault = false;
-                        hud.m_liveGapRef = static_cast<PbGapTracker::Ref>(*v);
                     }
                 }
             } catch (const std::exception& e) {
@@ -411,8 +406,7 @@ void SettingsManager::cap_GapBarHud(const HudManager& hudManager, SettingsManage
         captureBaseHudSettings(settings, hud);
         settings["freezeDuration"] = std::to_string(hud.m_freezeDurationMs);
         settings["markerMode"] = std::to_string(static_cast<int>(hud.m_markerMode));
-        settings["reference"] = std::to_string(hud.m_referenceDefault ? HudDefaults::REFERENCE_FOLLOW
-                                                                      : static_cast<int>(hud.m_reference));
+        settings["reference"] = std::to_string(HudDefaults::storeReference(hud.m_referenceDefault, hud.m_reference));
         // Persist by filename (not positional index) so the choice survives icon-set
         // reordering, matching map/radar. 0 = "use default icon" serializes as "Off".
         settings["riderIcon"] = shapeIndexToFilename(hud.m_riderIconIndex);
@@ -460,12 +454,7 @@ void SettingsManager::app_GapBarHud(HudManager& hudManager, const SettingsManage
                     hud.m_markerMode = GapBarHud::MarkerMode::GHOST;
                 }
                 if (auto v = readInt(settings, "reference")) {
-                    if (*v == HudDefaults::REFERENCE_FOLLOW) {
-                        hud.m_referenceDefault = true;
-                    } else if (*v >= 0 && *v < GapBarHud::REFERENCE_COUNT) {
-                        hud.m_reference = static_cast<GapBarHud::Reference>(*v);
-                        hud.m_referenceDefault = false;
-                    }
+                    HudDefaults::loadReference(*v, &hud.m_referenceDefault, &hud.m_reference);
                 }
                 // Rider icon (name-based; 0/"Off" = use default icon)
                 if (settings.count("riderIcon")) {

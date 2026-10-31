@@ -28,8 +28,10 @@
 //     and committed whole
 //   - THREE REFERENCES from one sampling: every committed lap is LAST_LAP, a
 //     session PB is SESSION_PB, a lap the caller rates all-time best is
-//     ALLTIME_PB; a table can be planted from outside (the persisted PB) and
-//     read back; forgetBestLap() spares the all-time one, reset() does not
+//     ALLTIME_PB; a table can be planted from outside (the persisted PB, the
+//     server best) and read back; forgetBestLap() spares the all-time one but
+//     not the server best, reset() spares none; no lap ever commits as
+//     SERVER_BEST, and clearReference() drops a planted one
 //   - a non-PB lap leaves the reference alone; forgetBestLap() drops the
 //     reference but keeps sampling; clearCurrentLap() (pit exit) drops the
 //     in-progress samples and keeps the reference; reset() drops everything
@@ -455,17 +457,30 @@ TEST_CASE("THREE REFERENCES: last lap always, session PB when told, all-time PB 
     CHECK(t.bestLapTimeMs(Ref::SESSION_PB) == 59000);
     CHECK(t.bestLapTimeMs(Ref::ALLTIME_PB) == 58000);
 
-    SUBCASE("forgetBestLap drops the session's two, not the all-time one") {
+    // No lap of the tracker's own rider ever becomes the server best: it is planted.
+    CHECK_FALSE(t.hasBestLap(Ref::SERVER_BEST));
+    t.setReference(Ref::SERVER_BEST, t.referenceTable(Ref::LAST_LAP), 58000);
+
+    SUBCASE("forgetBestLap drops the session's three, not the all-time one") {
         t.forgetBestLap();
         CHECK_FALSE(t.hasBestLap(Ref::SESSION_PB));
         CHECK_FALSE(t.hasBestLap(Ref::LAST_LAP));
+        CHECK_FALSE(t.hasBestLap(Ref::SERVER_BEST));
         CHECK(t.hasBestLap(Ref::ALLTIME_PB));
     }
-    SUBCASE("reset drops all three") {
+    SUBCASE("reset drops all four") {
         t.reset();
         CHECK_FALSE(t.hasBestLap(Ref::SESSION_PB));
         CHECK_FALSE(t.hasBestLap(Ref::LAST_LAP));
         CHECK_FALSE(t.hasBestLap(Ref::ALLTIME_PB));
+        CHECK_FALSE(t.hasBestLap(Ref::SERVER_BEST));
+    }
+    SUBCASE("clearReference drops one planted reference and nothing else") {
+        CHECK(t.hasBestLap(Ref::SERVER_BEST));
+        t.clearReference(Ref::SERVER_BEST);
+        CHECK_FALSE(t.hasBestLap(Ref::SERVER_BEST));
+        CHECK(t.hasBestLap(Ref::ALLTIME_PB));
+        CHECK(t.hasBestLap(Ref::SESSION_PB));
     }
     SUBCASE("a planted table is read like a committed one, and read back intact") {
         PbGapTracker fresh;

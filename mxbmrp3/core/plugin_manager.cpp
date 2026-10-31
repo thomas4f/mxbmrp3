@@ -9,6 +9,7 @@
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include "hud_manager.h"
+#include "../hud/benchmark_widget.h"
 #include "settings_manager.h"
 #include "input_manager.h"
 #include "hotkey_manager.h"
@@ -320,6 +321,11 @@ void PluginManager::shutdown() {
     // Clear our Steam rich presence
     SteamFriendsManager::getInstance().shutdown();
 #endif
+
+    // A Benchmark profiler still running writes its report: quitting with it on
+    // used to throw the capture away. Before PluginData::clear() (the report reads
+    // the track and grid) and AtomicFileWriter::stop() (which writes it).
+    if (BenchmarkWidget* bench = HudManager::getInstance().getBenchmarkWidget()) bench->saveStint();
 
     // Save rumble profiles before shutdown
     RumbleProfileManager::getInstance().save();

@@ -278,7 +278,9 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
         HotkeyAction::TOGGLE_TIMING,
         HotkeyAction::TOGGLE_LAP_LOG,
         HotkeyAction::TOGGLE_GAP_BAR,
-        HotkeyAction::TOGGLE_DELTA_TRACE,
+#if GAME_HAS_RECORDS_PROVIDER
+        HotkeyAction::TOGGLE_RECORDS,
+#endif
         HotkeyAction::TOGGLE_PITBOARD,
         HotkeyAction::TOGGLE_RADAR,
         HotkeyAction::TOGGLE_IDEAL_LAP,
@@ -286,9 +288,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
         HotkeyAction::TOGGLE_PERFORMANCE,
         HotkeyAction::TOGGLE_STATS,
         HotkeyAction::TOGGLE_TELEMETRY,
-#if GAME_HAS_RECORDS_PROVIDER
-        HotkeyAction::TOGGLE_RECORDS,
-#endif
+        HotkeyAction::TOGGLE_DELTA_TRACE,
 #if GAME_HAS_FMX
         HotkeyAction::TOGGLE_FMX,
 #endif

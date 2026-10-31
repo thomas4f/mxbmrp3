@@ -98,6 +98,10 @@
 //  44. A page whose icon file is missing draws its mark, not a filled square.
 //      (The other cases start from a tree holding the strip's icons, startDash:
 //      the harness ships none.)
+//  45. While spectating, a left click on a Standings row or a Flat map marker
+//      puts the camera on that rider, as the Gap Bar's own markers do; a
+//      rider out of the race, the gap between markers and the view on track
+//      ask for nobody.
 //
 // Self-contained doctest; see run_tests.sh.
 // ============================================================================
@@ -1452,7 +1456,7 @@ TEST_CASE("dash: the Telemetry page draws the Telemetry HUD's traces, and fills 
         for (int i = 0; i < n; ++i) {
             TelemetryRow r;
             r.rpm = 6000 + i * 10;
-            r.throttle = 0.25f + 0.01f * static_cast<float>(i % 50);
+            r.throttle = 0.25f + 0.3f * static_cast<float>(i % 2);   // jumping: no two pieces in line
             host.telemetryFrame(r);
         }
     };
@@ -2063,7 +2067,9 @@ TEST_CASE("dash: the Gap chart page draws the rider and the riders around them, 
 
     const int pace[4] = { 60000, 60500, 61000, 63000 };   // riders 1..4
     for (int lap = 1; lap <= 4; ++lap)
-        for (int r = 1; r <= 4; ++r) host.raceLap(6, r, lap, pace[r - 1] + lap * 10 * r);
+        // Every other lap slower, more so further back: each gap line bends at
+        // every lap (a straight one would draw as one quad, BaseHud::addChartSegment).
+        for (int r = 1; r <= 4; ++r) host.raceLap(6, r, lap, pace[r - 1] + (lap % 2) * 300 * r);
     host.classify(6, 120000, {
         { .num = 1, .laps = 4, .gap = 0 },
         { .num = 2, .laps = 4, .gap = 2000 },
@@ -2073,7 +2079,8 @@ TEST_CASE("dash: the Gap chart page draws the rider and the riders around them, 
     host.draw();
     host.draw();
     CHECK_FALSE(shows(host, "dash_hud", "-"));
-    CHECK(host.hudQuadRects("dash_hud").size() == bare + 9 + 4);   // and a lap line at each of the four laps
+    // The leader's line, level at a zero gap, is one quad (BaseHud::addChartSegment).
+    CHECK(host.hudQuadRects("dash_hud").size() == bare + 7 + 4);   // and a lap line at each of the four laps
     // The parent's Line labels (on by default): each line's race number at its
     // end, the three a small row apart although the lines end close together.
     CHECK(shows(host, "dash_hud", "#1"));
@@ -2092,10 +2099,10 @@ TEST_CASE("dash: the Gap chart page draws the rider and the riders around them, 
         CHECK(ys[2] - ys[1] >= 1.4 * cellH);
     }
     // A lap logged with the same riders around: one more segment each.
-    for (int r = 1; r <= 4; ++r) host.raceLap(6, r, 5, pace[r - 1]);
+    for (int r = 1; r <= 4; ++r) host.raceLap(6, r, 5, pace[r - 1] + 300 * r);
     host.draw();
     host.draw();
-    CHECK(host.hudQuadRects("dash_hud").size() == bare + 12 + 5);
+    CHECK(host.hudQuadRects("dash_hud").size() == bare + 9 + 5);   // the leader's still one
 
     host.spectateVehicles({ { 4, "Fourth" } }, /*curSelection=*/0);
     host.draw();
@@ -2352,6 +2359,112 @@ TEST_CASE("dash: Flat map lays the riders along the card, the race leader crowne
         start(host, "Z:\\tmp\\mxbmrp3-tests\\dash_flatmap_practice\\");
         ride(host, 2);
         CHECK(goldAt(host).empty());
+        host.shutdown();
+    }
+}
+
+TEST_CASE("dash: a click on a Standings row or a Flat map marker spectates that rider, as on the Gap Bar") {
+    // Race numbers apart from the positions, so a marker's race-number label
+    // names only it. The camera on the player, #52.
+    const std::vector<std::pair<int, std::string>> grid = { { 41, "Leader" }, { 52, "Player" }, { 63, "Third" } };
+    auto ride = [&](PluginHost& host, int thirdState) {
+        host.eventInit("CircleTrack", "Player");
+        host.raceEvent("CircleTrack");
+        host.addEntry(52, "Player");   // first entry after EventInit = the player
+        host.addEntry(41, "Leader");
+        host.addEntry(63, "Third");
+        host.session(6, 10);   // Race1
+        host.classify(6, 120000, {
+            { .num = 41, .laps = 3, .gap = 0 },
+            { .num = 52, .laps = 3, .gap = 1500 },
+            { .num = 63, .laps = 3, .gap = 4000, .state = thirdState },
+        });
+        host.spectateVehicles(grid, 1);
+        host.raceTrackPosition({
+            { .num = 41, .trackPos = 0.80f, .posX = 0.0f, .posZ = 0.0f, .yaw = 0.0f },
+            { .num = 52, .trackPos = 0.50f, .posX = 0.0f, .posZ = 0.0f, .yaw = 0.0f },
+            { .num = 63, .trackPos = 0.20f, .posX = 0.0f, .posZ = 0.0f, .yaw = 0.0f },
+        });
+        // The flat maps redraw at the Gap Bar's rate (DashHud::FLAT_MAP_INTERVAL_MS).
+        host.draw();
+        Sleep(30);
+        host.draw();
+    };
+    // The rider a left click at (x, y) asks for, as the game's next
+    // SpectateVehicles call answers it; -1 for none. draw() is the spectate view.
+    auto clickAsks = [&](PluginHost& host, double x, double y, int view = 1) {
+        host.injectMouse(true, static_cast<float>(x), static_cast<float>(y), 0); host.drawWithState(view);
+        host.injectMouse(true, static_cast<float>(x), static_cast<float>(y), 1); host.drawWithState(view);
+        host.injectMouse(true, static_cast<float>(x), static_cast<float>(y), 0); host.drawWithState(view);
+        host.spectateVehicles(grid, 1);
+        const int select = host.spectateSelect();
+        return select == 1 || select < 0 ? -1 : grid[static_cast<size_t>(select)].first;
+    };
+    // Where a HUD drew `text` (its first string reading exactly that).
+    auto at = [](PluginHost& host, const char* hud, const char* text, double& x, double& y) {
+        for (const auto& row : host.hudStringRows(hud)) {
+            if (row.text != text) continue;
+            x = row.x;
+            y = row.y;
+            return true;
+        }
+        return false;
+    };
+    // The Gap Bar's markers with their race numbers under them, as the Dash's.
+    const char* barIni = "[GapBarHud]\nvisible=1\nmarkerMode=1\nlabelMode=2\n";
+    auto start = [&](PluginHost& host, const char* dir, const char* page) {
+        REQUIRE(host.loaded());
+        REQUIRE(host.hasInjectedMouse());
+        REQUIRE(host.hasStringRows());
+        const std::string body = std::string("[DashHud]\nvisible=1\nnotice_takeover=0\npage_names=0\npage=") +
+                                 page + "\n\n" + barIni;
+        startWithIni(host, dir, body.c_str());
+        host.draw();
+    };
+
+    SUBCASE("Flat map and Gap Bar: the marker clicked, nobody between markers") {
+        PluginHost host(dllPath());
+        start(host, "Z:\\tmp\\mxbmrp3-tests\\dash_click_map\\", "flatmap");
+        REQUIRE(host.dashPage() == 6);   // Flat map
+        ride(host, 0);
+        for (const char* hud : { "dash_hud", "gap_bar_hud" }) {
+            CAPTURE(hud);
+            double x41 = 0, y41 = 0, x63 = 0, y63 = 0;
+            REQUIRE(at(host, hud, "41", x41, y41));
+            REQUIRE(at(host, hud, "63", x63, y63));
+            CHECK(clickAsks(host, x41, y41) == 41);
+            CHECK(clickAsks(host, x63, y63) == 63);
+            // Halfway between the two: no marker there.
+            CHECK(clickAsks(host, (x41 + x63) / 2.0, y41) == -1);
+            // On track the clicks are the player's own: nobody.
+            CHECK(clickAsks(host, x41, y41, /*view=*/0) == -1);
+        }
+        host.shutdown();
+    }
+    SUBCASE("Flat map and Gap Bar: a retired rider's marker asks for nobody") {
+        PluginHost host(dllPath());
+        start(host, "Z:\\tmp\\mxbmrp3-tests\\dash_click_map_out\\", "flatmap");
+        ride(host, /*retired=*/3);
+        for (const char* hud : { "dash_hud", "gap_bar_hud" }) {
+            CAPTURE(hud);
+            double x = 0, y = 0;
+            REQUIRE(at(host, hud, "63", x, y));
+            CHECK(clickAsks(host, x, y) == -1);
+        }
+        host.shutdown();
+    }
+    SUBCASE("Standings: the row clicked, the rider's own asking for nobody") {
+        PluginHost host(dllPath());
+        start(host, "Z:\\tmp\\mxbmrp3-tests\\dash_click_rows\\", "standings");
+        REQUIRE(host.dashPage() == 0);   // Standings
+        ride(host, 0);
+        double x = 0, y = 0;
+        REQUIRE(at(host, "dash_hud", "63", x, y));
+        CHECK(clickAsks(host, x, y + 0.002) == 63);
+        REQUIRE(at(host, "dash_hud", "41", x, y));
+        CHECK(clickAsks(host, x, y + 0.002) == 41);
+        REQUIRE(at(host, "dash_hud", "52", x, y));
+        CHECK(clickAsks(host, x, y + 0.002) == -1);
         host.shutdown();
     }
 }

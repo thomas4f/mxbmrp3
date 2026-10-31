@@ -287,7 +287,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         reference.set = [](int v) { UiConfig::getInstance().setDefaultReference(v); };
         reference.nameOf = [](int i) { return std::string(PbGapTracker::refName(static_cast<PbGapTracker::Ref>(i))); };
         reference.postStep = []() { HudManager::getInstance().markAllHudsDirty(); };
-        ctx.addCycleControl("PB reference", PbGapTracker::refName(static_cast<PbGapTracker::Ref>(reference.get())), reference,
+        ctx.addCycleControl("Gap reference", PbGapTracker::refName(static_cast<PbGapTracker::Ref>(reference.get())), reference,
                             nullptr, true, false, "general.reference");
 
         const int freezeMs = UiConfig::getInstance().getDefaultFreezeMs();

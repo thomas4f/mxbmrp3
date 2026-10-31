@@ -240,6 +240,8 @@ public:
         m_injectMouse = sym<void(*)(int,float,float,int)>("MXBMRP3_Test_InjectMouse");
         m_settingsRegionCenter = sym<int(*)(const char*,float*,float*)>("MXBMRP3_Test_SettingsRegionCenter");
         m_settingsUntipped = sym<int(*)(char*,int)>("MXBMRP3_Test_SettingsUntippedRows");
+        m_settingsFind = sym<int(*)(const char*,char*,int)>("MXBMRP3_Test_SettingsFind");
+        m_settingsFindLanding = sym<int(*)(char*,int)>("MXBMRP3_Test_SettingsFindLanding");
         m_settingsControlSpan = sym<int(*)(const char*,int,float*,float*,float*)>("MXBMRP3_Test_SettingsControlSpan");
         m_achievementsPage = sym<int(*)(char*,int)>("MXBMRP3_Test_AchievementsPage");
         m_glInGameGet = sym<int(*)()>("MXBMRP3_Test_GlInGameGet");
@@ -447,6 +449,7 @@ public:
         m_setMotion      = sym<void(*)(int)>("MXBMRP3_Test_SetMotion");
         m_setMotionNowUs = sym<void(*)(long long)>("MXBMRP3_Test_SetMotionNowUs");
         m_gameFrameHash  = sym<unsigned long long(*)()>("MXBMRP3_Test_GameFrameHash");
+        m_gameFrameCounts = sym<void(*)(int*,int*)>("MXBMRP3_Test_GameFrameCounts");
         m_mapMotionLayers = sym<int(*)(int*,int*)>("MXBMRP3_Test_MapMotionLayers");
         m_setHudVisibleBoth = sym<int(*)(const char*,int)>("MXBMRP3_Test_SetHudVisibleBoth");
         m_hudVisible    = sym<int(*)(const char*)>("MXBMRP3_Test_HudVisible");
@@ -843,7 +846,11 @@ public:
         int select = curSelection;
         if (m_spectate) m_spectate((int)riders.size(), a.data(), curSelection, &select);
         draw();
+        m_spectateSelect = select;
     }
+    // The index the plugin asked the camera onto at the last spectateVehicles()
+    // (a click-to-spectate request lands there); curSelection when it asked none.
+    int spectateSelect() const { return m_spectateSelect; }
 
     // SpectateCameras: the game's per-track camera list. Unlike every other
     // callback this one is an OPAQUE blob with no element size — the names are
@@ -960,8 +967,9 @@ public:
         m_lastGameQuads = nq; m_lastGameStrings = ns;   // what draw() EMITTED to the game
     }
     // Quad/string counts the last draw() emitted to the game surface (0 when the
-    // in-game HUD is suppressed in COMPANION mode). Distinct from the raw game
-    // frame in getGameQuads() (which is always the full frame).
+    // in-game HUD is suppressed in COMPANION mode), after the handoff drops what
+    // draws nothing. Distinct from the raw game frame in getGameQuads() (always
+    // the full frame; gameFrameQuads()).
     int lastGameQuads() const { return m_lastGameQuads; }
     int lastGameStrings() const { return m_lastGameStrings; }
 
@@ -1653,6 +1661,26 @@ public:
     }
     // Settings rows built since the last call with no tooltip, or an id with no
     // text ("tab: label"), clearing the record. -1 entry count: hook missing.
+    // The settings Find page on `query`, as if typed and Enter pressed (empty closes
+    // it). Hits as "Tab|label|value|tooltipId|section", name hits first. -1 = hook absent or
+    // empty index. MXBMRP3_Test_SettingsFind.
+    int settingsFind(const char* query, std::vector<std::string>* hits = nullptr) {
+        if (!m_settingsFind) return -1;
+        static char buf[65536];
+        const int n = m_settingsFind(query, buf, static_cast<int>(sizeof(buf)));
+        if (hits) {
+            hits->clear();
+            std::string all(buf);
+            for (size_t p = 0, e; (e = all.find('\n', p)) != std::string::npos; p = e + 1)
+                hits->push_back(all.substr(p, e - p));
+        }
+        return n;
+    }
+    // The row a Find result opened while it stays lit (until the pointer moves), or "".
+    std::string settingsFindLanding() {
+        char buf[64] = {0};
+        return m_settingsFindLanding && m_settingsFindLanding(buf, static_cast<int>(sizeof(buf))) ? buf : "";
+    }
     int settingsUntippedRows(std::vector<std::string>* rows = nullptr) {
         if (!m_settingsUntipped) return -1;
         static char buf[16384];
@@ -2401,6 +2429,10 @@ public:
     void setMotion(int level) { if (m_setMotion) m_setMotion(level); }
     void setMotionNowUs(long long us) { if (m_setMotionNowUs) m_setMotionNowUs(us); }
     unsigned long long gameFrameHash() { return m_gameFrameHash ? m_gameFrameHash() : 0; }
+    // The plugin's frame, invisible primitives included - see
+    // MXBMRP3_Test_GameFrameCounts; lastGameQuads() is what the engine was handed.
+    int gameFrameQuads() { int q = 0; if (m_gameFrameCounts) m_gameFrameCounts(&q, nullptr); return q; }
+    int gameFrameStrings() { int s = 0; if (m_gameFrameCounts) m_gameFrameCounts(nullptr, &s); return s; }
     // A HUD on or off on both surfaces (setHudVisible is the game surface only).
     bool setHudVisibleBoth(const char* name, bool on) {
         return m_setHudVisibleBoth && m_setHudVisibleBoth(name, on ? 1 : 0) == 1;
@@ -2850,11 +2882,14 @@ public:
         return m_liveGapToPb && m_liveGapToPb(&gapMs) != 0;
     }
     // The same against a chosen reference: 0 session PB, 1 all-time PB, 2 last
-    // lap (PbGapTracker::Ref). See MXBMRP3_Test_LiveGapRef.
+    // lap, 3 server best (PbGapTracker::Ref). See MXBMRP3_Test_LiveGapRef.
     bool liveGapRef(int ref, int& gapMs) {
         gapMs = 0;
         return m_liveGapRef && m_liveGapRef(ref, &gapMs) != 0;
     }
+    // The lap timer's clock (LapTimer::now), which the live gaps and the field
+    // lap traces read: µs on the steady_clock timeline, -1 restores the real clock.
+    void lapTimerSetNowUs(long long us) { if (m_lapTimerSetNowUs) m_lapTimerSetNowUs(us); }
 
     // The placed card rect of a HUD's memoized plan, pre-offset (see the hook).
     // `panel`, when asked for, is the panel's own rect in the SAME space -- the
@@ -3547,6 +3582,7 @@ private:
     int         (*m_hazCount)() = nullptr;
     int         (*m_takeATPB)() = nullptr;
     int         (*m_spectatable)(int) = nullptr;
+    int         m_spectateSelect = -1;
     int         (*m_evtRegions)() = nullptr;
     void        (*m_evtAutoHide)(int,int) = nullptr;
     void        (*m_chartSeries)(int,int*) = nullptr;
@@ -3719,6 +3755,8 @@ private:
     void        (*m_injectMouse)(int,float,float,int) = nullptr;
     int         (*m_settingsRegionCenter)(const char*,float*,float*) = nullptr;
     int         (*m_settingsUntipped)(char*,int) = nullptr;
+    int         (*m_settingsFind)(const char*,char*,int) = nullptr;
+    int         (*m_settingsFindLanding)(char*,int) = nullptr;
     int         (*m_settingsControlSpan)(const char*,int,float*,float*,float*) = nullptr;
     int         (*m_achievementsPage)(char*,int) = nullptr;
     int         (*m_glInGameGet)() = nullptr;
@@ -3903,6 +3941,7 @@ private:
     void        (*m_setMotion)(int) = nullptr;
     void        (*m_setMotionNowUs)(long long) = nullptr;
     unsigned long long (*m_gameFrameHash)() = nullptr;
+    void (*m_gameFrameCounts)(int*, int*) = nullptr;
     int         (*m_mapMotionLayers)(int*,int*) = nullptr;
     int         (*m_setHudVisibleBoth)(const char*,int) = nullptr;
     int         (*m_hudVisible)(const char*) = nullptr;

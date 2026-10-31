@@ -264,3 +264,19 @@ TEST_CASE("niceGapScaleMs: the smallest round step that holds the gap, capped at
     CHECK(PU::niceGapScaleMs(29999) == 30000);
     CHECK(PU::niceGapScaleMs(120000) == 30000);
 }
+
+TEST_CASE("trimInPlace: strips the padding around the registry's CPU name") {
+    // The profiler report printed "CPU: AMD Ryzen 9 5950X 16-Core Processor
+    // <12 spaces>, 32 logical cores" on a real PC: AMD pads the name's end.
+    auto trim = [](const char* in) {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%s", in);
+        return std::string(PU::trimInPlace(buf));
+    };
+    CHECK(trim("AMD Ryzen 9 5950X 16-Core Processor            ") == "AMD Ryzen 9 5950X 16-Core Processor");
+    CHECK(trim("       Intel(R) Core(TM) i7-8700K CPU @ 3.70GHz") == "Intel(R) Core(TM) i7-8700K CPU @ 3.70GHz");
+    CHECK(trim(" \t name \r\n") == "name");
+    CHECK(trim("Apple M1") == "Apple M1");             // nothing to trim: untouched
+    CHECK(trim("   ").empty());
+    CHECK(trim("").empty());
+}

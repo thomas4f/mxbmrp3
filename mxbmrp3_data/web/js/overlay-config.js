@@ -184,7 +184,7 @@ var CONFIG = {
     battleFastLap: true,     // Show the rider's fastest (session best) lap
     battleIdeal: false,      // Show the rider's ideal lap (sum of best sectors)
     // Real-time interval to the front of the battle where available (both
-    // riders in the game's ~10-closest track-position batch), else the
+    // riders in the game's latest track-position batch), else the
     // official split. Presentation-only — the plugin always sends the live-gap
     // data; this just picks which the card shows. Off by default (opt-in): the
     // official split is the stable, familiar value; live gaps are for casters who

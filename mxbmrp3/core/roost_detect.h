@@ -19,7 +19,7 @@
 // someone's roost from racing them side by side. The two are mutually
 // exclusive by construction: the along-track bands do not overlap.
 //
-// PERFORMANCE CONTRACT (this is on the ~30Hz RaceTrackPosition path with up to
+// PERFORMANCE CONTRACT (this is on the RaceTrackPosition path, about one a frame, with up to
 // 50 riders):
 //   - one linear pass over a CONTIGUOUS array the caller already owns. No map
 //     lookups inside the loop - blue_flag_detect.h's header says what happened

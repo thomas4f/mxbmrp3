@@ -36,6 +36,10 @@ void Handlers::handleRaceTrackPosition(int iNumVehicles, Unified::TrackPositionD
         );
     }
 
+    // Every rider's lap as a trace, for the Server best reference. Every
+    // session: the server best matters most in practice and qualifying.
+    pluginData.recordFieldLapTraces(iNumVehicles, pasRaceTrackPosition);
+
     // Spotter proximity/hazard detectors tick on this batch. BEFORE the
     // race-session early-return below: the spotter also calls practice and
     // qualifying (blue flags, hazards, riders closing). One bool test when

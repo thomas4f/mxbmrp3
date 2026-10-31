@@ -118,7 +118,8 @@ public:
     // (hud_defaults.h); one set to a value keeps its own. The reference is a
     // PbGapTracker::Ref as an int, so this header needs none of the gap tracker.
     int getDefaultReference() const { return m_defaultReference; }
-    void setDefaultReference(int ref) { m_defaultReference = (ref < 0 || ref > 2) ? 0 : ref; }
+    void setDefaultReference(int ref) { m_defaultReference = (ref < 0 || ref >= REFERENCE_COUNT) ? 0 : ref; }
+    static constexpr int REFERENCE_COUNT = 4;   // PbGapTracker::REF_COUNT, static_asserted in hud_defaults.h
     int getDefaultFreezeMs() const { return m_defaultFreezeMs; }
     // Whole seconds, like the rows that show it: a hand-edited 2500 would read
     // "2s" and hold 2.5.
@@ -362,6 +363,6 @@ private:
     bool m_bGlow = GLOW_DEFAULT;                     // On (shipping builds)
     float m_fGlowIntensity = 1.0f;                   // INI-only opacity scale
     float m_fGlowWidth = 1.0f;                       // INI-only reach scale
-    float m_fImpactVignette = 1.0f;                  // ImpactVignette::STRENGTH_DEFAULT
+    float m_fImpactVignette = 0.5f;                  // ImpactVignette::STRENGTH_DEFAULT
     float m_fImpactVignetteFade = 1.5f;              // ImpactVignette::FADE_DEFAULT_S
 };

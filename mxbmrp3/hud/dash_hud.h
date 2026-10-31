@@ -469,6 +469,13 @@ private:
     // raw-cache: as GapBarHud's (see there)
     std::vector<Unified::TrackPositionData> m_riderPositions;
     std::chrono::steady_clock::time_point m_mapDrawnAt{};
+    // CLICK TO SPECTATE, as on the Standings HUD and the Gap Bar: while
+    // spectating or in a replay, a left click on a Standings row or a Flat map
+    // marker (GapBarHud::riderAt) puts the camera on that rider, once a frame.
+    // Where each was last drawn, before the offset.
+    void followRiderClick();
+    float m_rowsLeft = 0.0f, m_rowsRight = 0.0f, m_rowsTop = 0.0f, m_rowHeight = 0.0f;
+    float m_mapLeft = 0.0f, m_mapWidth = 0.0f, m_mapTop = 0.0f, m_mapBottom = 0.0f, m_mapIconSize = 0.0f;
     RiderFlagIcons m_flagIcons;
     // The first-step hint, over the card's content box at the page's alpha.
     void addStepHint(float centerX, float width, float y, const ScaledDimensions& dim, float alpha);

@@ -24,6 +24,7 @@
 #include "../core/plugin_utils.h"    // isColorDark (chipGlyphColor)
 #include "nine_slice.h"
 #include "panel_plan.h"
+#include "chart_run.h"
 
 namespace DigitRoll { class Roller; }
 
@@ -1604,6 +1605,8 @@ protected:
     // the height in normalized units; the sprite is tinted by color.
     void addIcon(float x, float y, int spriteIndex, unsigned long color, float size);
     void addLineSegment(float x1, float y1, float x2, float y2, unsigned long color, float thickness);
+    // A graph line's piece; one carrying on in line with `run` redraws that quad (chart_run.h, base_hud_primitives.cpp).
+    void addChartSegment(ChartRun& run, float x1, float y1, float x2, float y2, unsigned long color, float thickness);
     void addHorizontalGridLine(float x, float y, float width, unsigned long color, float thickness);
     static void setQuadPositions(SPluginQuad_t& quad, float x, float y, float width, float height);
 
@@ -1791,17 +1794,17 @@ protected:
                                   float lineThickness, size_t maxHistory) {
         if (history.size() < 2) return;
         const float pointSpacing = width / (maxHistory - 1);
-        // Offset so the newest sample is always at the right edge.
+        ChartRun run;   // a straight stretch is one quad (addChartSegment); offset pins the newest sample right
         const size_t offset = maxHistory - history.size();
         for (size_t i = 0; i < history.size() - 1; ++i) {
             const float value1 = std::max(0.0f, std::min(1.0f, history[i]));
             const float value2 = std::max(0.0f, std::min(1.0f, history[i + 1]));
-            if (value1 < 0.01f && value2 < 0.01f) continue;   // both flat: nothing to draw
+            if (value1 < 0.01f && value2 < 0.01f) { run.reset(); continue; }   // both flat: nothing to draw
             const float x1 = x + (offset + i) * pointSpacing;
             const float x2 = x + (offset + i + 1) * pointSpacing;
             const float y1 = y + height - (value1 * height);
             const float y2 = y + height - (value2 * height);
-            addLineSegment(x1, y1, x2, y2, color, lineThickness);
+            addChartSegment(run, x1, y1, x2, y2, color, lineThickness);
         }
     }
 

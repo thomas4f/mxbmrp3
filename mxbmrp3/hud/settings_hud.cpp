@@ -290,6 +290,7 @@ void SettingsHud::show() {
     // data (Riders lists the session's entries) can have changed while the menu was
     // closed, and none of that dirties the layout.
     invalidateTallestTab();
+    m_find.indexStale = true;   // values can have moved while the menu was closed
 
     rebuildRenderData();
 }
@@ -345,6 +346,8 @@ void SettingsHud::hide() {
     // one behind locks out every hotkey including the one that reopens this
     // menu. Pinned by hotkey_capture_test.cpp, which has the story.
     HotkeyManager::getInstance().cancelCapture();
+    // The Find page is a view of the box, not a place: the menu reopens where it was opened from.
+    if (m_activeTab == TAB_FIND) closeFind();
     clearStrings();
     m_quads.clear();
     m_clickRegions.clear();
@@ -465,7 +468,12 @@ void SettingsHud::update() {
     // a different spot on the companion surface (no-op in-game / when not diverged).
     CursorPosition cursor = input.getCursorPosition();
     mapCursorToHudSpace(cursor.x, cursor.y);
-    if (cursor.isValid) {
+    // A Find result's landing row stays lit until the pointer moves off the spot it was clicked from.
+    if (!m_find.landTooltipId.empty() && (cursor.x != m_find.landX || cursor.y != m_find.landY)) {
+        m_find.landTooltipId.clear();
+        setDataDirty();
+    }
+    if (cursor.isValid && m_find.landTooltipId.empty()) {
         // An open dropdown's entries first (findClickRegionAt), then the panel's.
         int newHoveredIndex = (m_dropdown.firstRegion >= 0) ? findClickRegionAt(cursor.x, cursor.y) : -1;
         if (newHoveredIndex < m_dropdown.firstRegion) newHoveredIndex = -1;
@@ -491,6 +499,9 @@ void SettingsHud::update() {
                     // a dozen places, drifting.
                     //
                     dismissMarkedRow(region.tooltipId.c_str());
+                    // The Find field sits in the title band on every tab; its marker is the Find tab's.
+                    if (region.type == ClickRegion::FIND_FIELD && WhatsNew::dismissRow(TAB_FIND, "find.field"))
+                        markSettingsDirty();
                     if (region.type == ClickRegion::TAB) dismissMarkedTab(region.tabIndex);
                 } else {
                     const char* tooltipId = getTooltipIdForRegion(region.type, m_activeTab);
@@ -673,6 +684,8 @@ void SettingsHud::update() {
         // ESC cancels; a key binding rebuilds every frame (modifier feedback), a text field on an edit.
         if ((GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0) {
             hotkeyMgr.cancelCapture();
+            if (m_textField == TextField::FIND) closeFind();   // Esc empties the box and goes back
+            m_textField = TextField::NONE;
             rebuildAndRecord();
         } else if (hotkeyMgr.getCaptureType() != CaptureType::TEXT ||
                    hotkeyMgr.getCaptureText() != m_shownCaptureText ||
@@ -686,7 +699,7 @@ void SettingsHud::update() {
     if (hotkeyMgr.wasCaptureCompleted()) {
         // A text field (a chat channel) commits on the same edge as a binding.
         std::string committed;
-        if (hotkeyMgr.consumeTextCommit(committed)) {
+        if (hotkeyMgr.consumeTextCommit(committed) && m_textField != TextField::FIND) {   // Find filters as you type
             if (m_textField == TextField::YOUTUBE_CHANNEL) YouTubeChatManager::getInstance().setChannel(committed);
             else TwitchChatManager::getInstance().setChannel(committed);
         }
@@ -750,7 +763,8 @@ const char* SettingsHud::getTabName(int tabIndex) const {
 }
 
 const char* SettingsHud::getActiveTabName() const {
-    return getTabName(m_activeTab);
+    // Saved with Find open, the menu reopens where the box was opened from.
+    return getTabName(m_activeTab == TAB_FIND ? m_find.returnTab : m_activeTab);
 }
 
 void SettingsHud::setActiveTabByName(const char* name) {

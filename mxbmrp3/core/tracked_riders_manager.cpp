@@ -10,6 +10,7 @@
 #include "../diagnostics/logger.h"
 #include "../vendor/nlohmann/json.hpp"
 #include <algorithm>
+#include <cstring>
 #include <sstream>
 #include <iomanip>
 #include <fstream>
@@ -169,21 +170,21 @@ bool TrackedRidersManager::removeTrackedRider(const std::string& name) {
     return true;
 }
 
-bool TrackedRidersManager::isTracked(const std::string& name) const {
-    // Fast path: no tracked riders configured (the default). Skip normalizeName's
-    // string allocations entirely — this runs per rider per StandingsHud rebuild.
-    if (m_trackedRiders.empty()) return false;
-    std::string normalizedName = normalizeName(name);
-    return m_trackedRiders.find(normalizedName) != m_trackedRiders.end();
-}
-
-const TrackedRiderConfig* TrackedRidersManager::getTrackedRider(const std::string& name) const {
-    // Fast path: no tracked riders configured (the default). Skip normalizeName's
-    // 1-3 string allocations — this runs per rider per StandingsHud rebuild, so on
-    // a full grid with the (default) empty map it was ~100-300 wasted allocs/rebuild.
-    if (m_trackedRiders.empty()) return nullptr;
-    std::string normalizedName = normalizeName(name);
-    auto it = m_trackedRiders.find(normalizedName);
+const TrackedRiderConfig* TrackedRidersManager::getTrackedRider(const char* name) const {
+    // Fast path: no tracked riders configured (the default). Nothing is built at
+    // all - this runs per rider per frame on Map/Radar/GapBar and per rebuild on
+    // Standings, so on a full grid it was dozens of allocations a frame.
+    if (m_trackedRiders.empty() || !name) return nullptr;
+    // normalizeName's trim, on the pointer range, into a reused key buffer: once
+    // it has grown to the longest name it never allocates again (C++17's
+    // unordered_map has no lookup by string_view).
+    const char* b = name;
+    while (*b == ' ' || *b == '\t' || *b == '\n' || *b == '\r') ++b;
+    const char* e = b + std::strlen(b);
+    while (e > b && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\n' || e[-1] == '\r')) --e;
+    if (e == b) return nullptr;
+    m_lookupKey.assign(b, e);
+    auto it = m_trackedRiders.find(m_lookupKey);
     if (it != m_trackedRiders.end()) {
         return &it->second;
     }

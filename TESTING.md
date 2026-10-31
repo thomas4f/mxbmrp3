@@ -277,8 +277,7 @@ Add a case to `tests/unit/test_plugin_utils.cpp` (or a new `tests/unit/test_*.cp
 list it in `tests/unit/CMakeLists.txt`). A function belongs here iff it depends on
 nothing but the C++ standard library - anything reaching into `PluginData` or the
 game API is an integration test instead. The authoritative TU list is
-`MXB_UNIT_SOURCES` in `tests/unit/CMakeLists.txt` (census:
-`ls tests/unit/test_*.cpp`); that list also compiles the production
+`MXB_UNIT_SOURCES` in `tests/unit/CMakeLists.txt`; that list also compiles the production
 `mxbmrp3/core/ui_config.cpp` under test. What each pins:
 
 - `test_plugin_utils.cpp` - color/time/hex helpers in `core/plugin_utils.h` (also owns the doctest impl + `main`)
@@ -288,9 +287,10 @@ game API is an integration test instead. The authoritative TU list is
 - `test_hold_repeat.cpp` - `core/hold_repeat.h`
 - `test_cursor_idle.cpp` - `core/cursor_idle.h`
 - `test_text_edit.cpp` - `core/text_edit.h`
+- `test_settings_find.cpp` - `hud/settings/settings_find.h`
 - `test_hotkey_names.cpp` / `test_slider_control.cpp` - hotkey names fit; slider mapping
 - `test_system_messages.cpp` - `core/system_messages.h`: the toast queue and which startup message is owed
-- `test_achievements.cpp` - `core/achievements.h` + `core/exploration_signals.h`: the catalogue's own invariants (unique ids, ascending thresholds within a row's tier count, a `%s` in every tiered template, a sentence for every one-shot, hidden rows on the Hidden page), the removal rule (every metric and every signal feeds exactly one row, every disabled id is a real row), tier stepping, one-shot tags, the step-relative progress bar, the km/h/s/count formatting, and `docs/achievements.md`, which it GENERATES from the table and diffs against the committed copy
+- `test_achievements.cpp` - `core/achievements.h` + `core/exploration_signals.h`: the catalogue's own invariants (listed in its header), the removal rule (every metric and every signal feeds exactly one row, every disabled id is a real row), tier stepping, one-shot tags, the step-relative progress bar, the km/h/s/count formatting, and `docs/achievements.md`, which it GENERATES from the table and diffs against the committed copy
 - `test_analytics_remote_config.cpp` - the remote sampling cost lever (`parseFullSample`/`shouldSendFull`): fails open to full, deterministic 0.0/1.0 endpoints
 - `test_analytics_endpoint.cpp` - App-Key → Aptabase ingest-region routing (unknown/self-hosted → "" = no send)
 - `test_analytics_redact.cpp` - the install id is stripped from a logged request body.
@@ -318,15 +318,17 @@ game API is an integration test instead. The authoritative TU list is
 - `test_blue_flag_detect.cpp` - the blue-flag/lapping proximity core (`core/blue_flag_detect.h`): start/finish wraparound, directionality, the deliberately asymmetric backmarker-vs-lapper eligibility, stale-sample rejection, the first-lapper-wins ordering the director depends on, and output clearing (the containers are reused every rebuild).
 - `test_roost_detect.cpp` - `core/roost_detect.h`, the pairwise proximity core behind Roost (Side by Side no longer has a row, but is still classified - it is how the detector says "alongside, not behind").
 - `test_wrong_way_detect.cpp` - `core/wrong_way_detect.h`: a repeated sample keeps the flag.
-- `test_battle_groups.cpp` - the battle-group partitioning core (`core/battle_groups.h`) behind the director's battle scoring and the overlay battle panel: adjacency chaining (each consecutive delta within threshold, regardless of total spread), the strictly-positive-delta rule that keeps the pre-first-split field (everyone at gap 0) from fusing into one giant group, lap boundaries never chaining, the maxLeaderPos group filter, and position-sort independence from input order.
+- `test_battle_groups.cpp` - battle-group partitioning (`core/battle_groups.h`) behind the director and the overlay battle panel: adjacency chaining, strictly positive deltas, lap boundaries, the leader filter, input-order independence.
 - `test_lap_timer.cpp` - the display rider's live lap-timer state machine (`core/lap_timer.h`): S/F detection, the grid-start grace and its exits, split resync, invalidation.
 - `test_delta_color.cpp` - the one colour rule for a time delta (`deltaColorSlot`): ahead, behind, exactly even.
 - `test_split_crossing.cpp` - `timeToCrossing` (GP Bikes' third split included) and `HoldTimer`.
-- `test_pb_gap_tracker.cpp` - the live gap-to-PB engine (`core/pb_gap_tracker.h`): commit gated on an observed lap start, the lap fence in both orders, sign and interpolation, the sample fallbacks, the ghost position, the three references, the last lap's gaps, and what forget/clear/reset each drop.
+- `test_pb_gap_tracker.cpp` - the live gap-to-PB engine (`core/pb_gap_tracker.h`): commit gated on an observed lap start, the lap fence in both orders, sign and interpolation, the sample fallbacks, the ghost position, the four references, the last lap's gaps, and what forget/clear/reset each drop.
+- `test_field_lap_traces.cpp` - per-rider lap traces and the server best (`core/field_lap_traces.h`): line order, keep checks, faster only, erase.
+- `test_hud_defaults.cpp` - a reference key's stored value: a saved Default stays Default, every reference round-trips.
 - `test_lap_delta_rate.cpp` - the Map's lap delta colouring (`LapDeltaRate` in `core/lap_delta_profile.h`): gain reads negative and loss positive, the lap's largest slope scales to 1, the rate moves smoothly between profile points, nothing is read past the last sampled point, and the previous lap shows past the overwrite gap; plus `PluginUtils::mixColor`.
 - `test_pb_trace_store.cpp` - the persisted PB tables (`core/pb_trace_store.h`): round-trip with holes, malformed input refused alone, fastest lap per key, clear.
 - `test_live_gap_engine.cpp` - the live leader-relative gap core (`core/live_gap_engine.h`): gap direction per session format (countdown vs count-up clocks - reversed subtraction shows every gap frozen), the freeze-vs-set semantics (stale/finished/unstamped/non-positive all keep the last shown value; leader and lapped riders are explicitly SET), the sub-threshold return that keeps full grids from rebuilding every HUD per 30Hz batch, trackPos quantization incl. the 1.0 clamp, and lap pruning.
-- `test_marker_label.cpp` - the shared rider-marker label core (`hud/marker_label.h`) that Map/Radar/GapBar all render through: the exact `P%d [#%d]` text per mode, the no-position fallbacks (POSITION renders nothing, BOTH drops to "#%d"), podium gold/silver/bronze applied only in position-showing modes, and the enum's numeric values, which are GapBar's on-disk INI representation.
+- `test_marker_label.cpp` - the rider-marker label core (`hud/marker_label.h`) behind Map, Radar and Gap Bar: the text per mode, the no-position fallbacks, podium colours, and the enum values the Gap Bar saves.
 - `test_settings_serde.cpp` - the enum<->string converter pairs in `core/settings_serde.h` + `core/settings_serde_hud.h`, the entire on-disk representation of every enum setting.
 - `test_director_scoring.cpp` - the auto-director's story-score formulas (`core/director_scoring.h`).
 - `test_director_detect.cpp` - the overtake/drop edge detectors (`core/director_detect.h`).
@@ -345,7 +347,8 @@ game API is an integration test instead. The authoritative TU list is
 - `test_motion.cpp` - Motion's timing (`core/motion.h`): fades start settled, turn round mid-way, and step at most 50 ms a frame.
 - `test_impact_vignette.cpp` - the vignette's envelope (`core/impact_vignette.h`).
 - `test_peak_marker.cpp` - the shared "max marker" state machine (`hud/peak_marker.h`), which replaced six copies across LeanWidget, BarsWidget and RumbleHud.
-- `test_standings_gap_plan.cpp` - the standings gap-column decision (`hud/standings_gap_plan.h`): which value each cell shows, in which style, with which tint.
+- `test_standings_gap_plan.cpp` - the standings gap-column decision (`hud/standings_gap_plan.h`): value, style and tint per cell.
+- `test_standings_live_order.cpp` - Standings' live order: pass hold, stale riders.
 - `test_thread_detach_grace.cpp` - the spin-then-detach teardown POLICY (`core/thread_detach_grace.h`), shared by the three singletons that own a worker thread.
 - `test_text_wrap.cpp` - the settings tooltip box's greedy word wrap (`hud/settings/text_wrap.h`), extracted from a lambda in `rebuildRenderData()` that wrapped and emitted in one loop.
 - `test_spotter_phrase.cpp` - the spotter's phrase composition (`core/spotter_phrase.h`): the racing-style number words ("four seventy six", "two oh six") asserted verbatim against `tests/fixtures/spotter_number_words.txt` - the SAME fixture the pack generator's `spottergen-selftest` gate asserts, so C++ wording and every baked `num_*.wav` can only pass together - lap times speaking tenths only (".007" is zero tenths), "you" vs "rider N" phrasing incl. the raceNum -1 guard that keeps session events from matching a -1 focus, and the empty-string "never spoken" contract (Director cues, your own retirement)
@@ -358,20 +361,24 @@ game API is an integration test instead. The authoritative TU list is
 - `test_spotter_mix.cpp` - the spotter's wav chunk mixer (`core/spotter_mix.h`). parseWav is a trust boundary (chunk wavs arrive in SHARED packs): the malformed cases - lying chunk sizes, truncation, stereo/float/8-bit formats, data-before-fmt - must reject whole, and the `unit-asan` flavor is what gives the bounds checks teeth.
 - `test_install_prefs.cpp` - the installer's analytics opt-out marker (`core/install_prefs.h`), which is how Setup's Privacy-page choice reaches a plugin whose settings file does not exist yet.
 - `test_pack_ini_path.cpp` - the pack-ini resolution rule (`core/pack_ini_path.h`) with the filesystem replaced by a set of paths.
-- `test_pack_types.cpp` - censuses `AssetManager::PACK_TYPES` (the one table both user-asset copies walk: the startup sync and the RELOAD_CONFIG re-copy) against the shipped `mxbmrp3_data/`.
+- `test_pack_types.cpp` - censuses `AssetManager::PACK_TYPES` (the one table both user-asset copies walk) against the shipped `mxbmrp3_data/`.
 - `test_spotter_pack_census.cpp` - walks the SHIPPED pack (`mxbmrp3_data/spotters/default/spotter.ini`) against the two published namespaces, in both directions.
-- `test_completion_floor.cpp` - `core/completion_floor.h`, the Sweep rows' per-metal percentages, which replaced a single lowest-tier FLOOR that sat at zero until the last row moved.
+- `test_completion_floor.cpp` - `core/completion_floor.h`, the Sweep rows' per-metal percentages.
 - `test_finish_margin.cpp` - `core/finish_margin.h`, the winner-to-runner-up margin behind Photo Finish.
 - `test_fuel_estimate.cpp` - the fuel arithmetic (`core/fuel_estimate.h`), shared by the Fuel widget's readout and the spotter's warning.
 - `test_spotter_vars.cpp` - the `{variable}` namespace (`core/spotter_vars.h`), which is FROZEN once packs are written against it.
 - `test_spotter_stretch.cpp` - the pitch-preserving time stretch (`core/spotter_stretch.h`) behind the speed setting on the wav paths.
-- `test_spotter_cue_pack.cpp` - the cue-pack format (`core/spotter_cue_pack.h`), the contract every shared pack is written against: `cueKeyFor`'s stable key names (a rename orphans every pack's override of that cue), the tolerant parse with empty-value-as-mute distinct from absent-as-fallback, the `_wav` path-escape rejection (a shared pack naming `..\..\x.wav` must never reach PlaySound), and `expand`'s punctuation tidy-up that lets one template serve events with and without a lap time
+- `test_spotter_cue_pack.cpp` - the cue-pack format (`core/spotter_cue_pack.h`), every shared pack's contract: `cueKeyFor`'s stable key names (a rename orphans pack overrides), the tolerant parse (empty = mute, absent = fallback), the `_wav` path-escape rejection, and `expand`'s punctuation tidy-up (one template, with or without a lap time)
 - `test_spotter_queue.cpp` - the spotter's pending-cue queue (`core/spotter_queue.h`): FIFO order across mixed cue kinds, the drop-OLDEST overflow rule, and the expiry of `perishable` cues at pop.
 - `test_cpp_js_parity.cpp` - the C++ side of the cross-renderer mirror vectors (`tests/fixtures/cpp_js_parity.json`): `PluginUtils::isColorDark` and `session_charts_math.h` `formatSecs` against the SAME golden file `tests/web/tests/parity.spec.js` asserts on the overlay JS - a one-sided edit fails one of the two suites
 - `asset_path_test.cpp` - `AssetPath::renderName` (`core/asset_path.h`): the display name a discovered asset gets.
 - `history_ring_test.cpp` - `HistoryRing<T, N>` (`core/history_ring.h`): a fixed-capacity rolling history, including the wrap.
+- `test_frame_time_stats.cpp` - `FrameTimeStats` (`core/frame_time_stats.h`): the profiler's whole-stint frame record.
 - `small_vec_test.cpp` - `SmallVec<T, N>` (`core/small_vec.h`): inline storage up to N, heap spill beyond, and the move paths.
-- `viewport_test.cpp` - `UiViewport::compute` (`core/ui_viewport.h`): the ONE centered-16:9 UI-rect computation the companion paint loop and InputManager's cursor / window-bounds maps all share - previously three inline copies (integer vs float truncation) that could disagree by a pixel at odd client sizes, so a click landed beside the thing it clicked.
+- `test_flat_int_map.cpp` - `FlatIntSet`/`FlatIntMap` (`core/flat_int_map.h`): std set/map semantics; a refill never reallocates.
+- `test_engine_cull.cpp` - `core/engine_cull.h`: only pixel-less primitives leave the engine handoff.
+- `test_chart_run.cpp` - `hud/chart_run.h`: the quarter-pixel merge boundary.
+- `viewport_test.cpp` - `UiViewport::compute` (`core/ui_viewport.h`): the one centered-16:9 UI rect the companion paint loop and InputManager's cursor maps share (three copies once disagreed by a pixel).
 - `nine_slice_test.cpp` - the pure geometry of `hud/nine_slice.h`: how a slice grid divides a rect.
 - `panel_box_test.cpp` - `core/panel_box.h` against the box model's golden vectors.
 - `layout_ini_test.cpp` - the layout/theme ini FORMAT, one line at a time.
@@ -463,9 +470,10 @@ without a row here, so a new test can't land invisibly:
 | `ideal_lap_test.cpp` | `idealLapMs` = the sum of a rider's **best sectors** across laps (faster than any real lap) |
 | `posdelta_split_test.cpp` | `posDeltaSplit` from `RaceSplit`: positions a rider gained/lost since the last split |
 | `trackpos_test.cpp` | **real-time leader gap** from `RaceTrackPosition`, read via the `MXBMRP3_Test_GetRealTimeGap` white-box hook (never in `/api/state`); tracks live; a lapped rider → gap 0 |
-| `trackpos_stale_test.cpp` | a rider outside the **~10-closest** track-position batch keeps a **frozen** gap, not one recomputed from a stale position (the leader-dropout corruption) |
+| `trackpos_stale_test.cpp` | a rider missing from the **latest** track-position batch keeps a **frozen** gap, not one recomputed from a stale position (the leader-dropout corruption) |
 | `telemetry_companion_test.cpp` | **the producer half of the visibility gate**: telemetry history keeps accumulating for a HUD shown only on the OPEN companion window, and stops once no surface shows it. |
 | `benchmark_companion_test.cpp` | the same gate for the **benchmark profiler's collection switch** (`bm.active`), from a real report: enabled only on the companion window, the profiler rendered its tables and never filled them. |
+| `benchmark_report_test.cpp` | the profiler report: saved on leaving the track and at quit (one file per stint); a game freeze shows little plugin time. |
 | `spectate_click_test.cpp` | **click-to-spectate is offered on exactly the riders it can reach**: `PluginData::isRiderSpectatable()` is the one gate for Standings / Map / Event Log / Session Charts (DNS/retired/DSQ/pitted/unknown-rider all excluded, and a pit exit re-enables it), plus the Event Log end-to-end - a row is clickable only when the event names a rider AND that rider is still reachable, so a retirement's own row (and the earlier rows about the same rider) go inert; plus **auto-hide drops the click targets with the rows** |
 | `chart_sectors_test.cpp` | **Session Charts at sector resolution** (`ELEM_SECTOR_POINTS`, off by default): three completed-lap samples become nine, the LIVE in-progress lap extends the series on each RaceSplit (before any lap completes), practice stays per-lap (off-race ranking is by best lap, which has no sector analogue), one rider's broken splits fall the WHOLE field back to per-lap rather than ranking a sector against a lap, and the snapshot carries the per-sector series (plus the `sectorCount` stride) the web overlay draws from |
 | `hazard_reach_test.cpp` | a **wrong-way** hazard is scanned for further ahead (`hazardWrongWayAwarenessDistance`, 250m) than a **stationary** one (`hazardAwarenessDistance`, 100m), because an oncoming rider closes the gap at roughly double the rate and the 1.5s wrong-way confirmation eats most of the warning. |
@@ -510,6 +518,7 @@ without a row here, so a new test can't land invisibly:
 | `achievements_test.cpp` | **Achievements** end to end: tiers awarded at the record point with one toast each and never re-toasted; a pre-achievements stats file granted silently with ONE summary toast; `visible=0` earns but queues nothing; the rows through the real detectors |
 | `messages_test.cpp` | **System messages**: hotkey toasts, the hide-all card, startup messages on the Dash, Reset's Confirm |
 | `tooltip_coverage_test.cpp` | every settings row on every tab has a **tooltip with text** |
+| `settings_find_test.cpp` | settings **Find**: the index, every page fits, a result opens its row |
 | `ui_icons_off_test.cpp` | **UI icons off** draws text |
 | `settings_heavy_steps_test.cpp` | **heavy settings steps run once**: no held repeat; Spotter lists read per open |
 | `hidden_input_test.cpp` | A HUD the frame is not drawing **takes no input**: the hide-all hotkey and the Widgets toggle hide at draw time, so a hidden HUD could still be right-dragged and its click targets fired. |
@@ -540,6 +549,7 @@ without a row here, so a new test can't land invisibly:
 | `gap_bar_auto_range_test.cpp` | Gap Bar Auto range: fits the lap's largest gap, holds it, starts over each lap |
 | `pb_gap_golden_test.cpp` | **real-data golden for the live gap to PB**: a recorded grid-start race and a practice with a pit-out (`forest_short_race2_practice_gaps.tape.gz`, unthinned at the line) replayed on the recorded clock -- no gap on the grid lap, the gap at every line within 0.5 s of the official delta, no jump at any lap boundary |
 | `pb_trace_persist_test.cpp` | **the all-time PB gap trace outlives the session**: a PB from one plugin lifetime is the all-time reference on the next lifetime's first flying lap, session and last-lap still empty; class scope plants the class's fastest trace on another bike, bike scope none |
+| `server_best_test.cpp` | **Server best gap reference**: a rival's traced lap is read as it in both orders at the line; an untraceable faster lap or a new session drops it |
 | `settings_apply_values_test.cpp` | **apply-path coverage (non-defaults)**: `[Hud:Practice]` overrides carrying non-default enum/float/int values survive a load→save round-trip only if `applyProfile` applied them to the live HUD (re-captured as a sparse diff) - closes the idempotency test's default-only blind spot (`stringToX`/`validateX`/`std::stoi`) |
 | `settings_defer_test.cpp` | **deferred auto-save**: `markDirty()` applies a change live but writes *nothing* to disk; `flushIfDirty()` (the leave-track flush) then writes exactly once; a flush with nothing dirty is a no-op - the "no settings write while the player is on track" contract |
 | `companion_decouple_test.cpp` | **per-surface companion decoupling** on the live StandingsHud (via the `MXBMRP3_Test_Standings*` hooks): mirror-while-unconfigured → snapshot-on-first-edit (diverge) → clear-reverts-to-mirror; a diverged HUD persists its `companion*` keys through the real serializer while a configured-but-equal HUD writes **none** (upgrade-safe sparse save); per-surface render routing (game-frame suppression, companion filtering + offset, X-close fallback); and a HUD hidden in-game but shown on the companion still updates. |
@@ -564,9 +574,10 @@ without a row here, so a new test can't land invisibly:
 | `title_band_test.cpp` | **The caption row under every `[card]` switch combination**. |
 | `box_terms_test.cpp` | **Every air term reaches an UNTHEMED panel.** The box model states eight terms and the settings menu documents all eight, but four - `titleMargin`, `titlePadding`, `contentMargin`, `contentPadding` - did nothing unless a theme was selected, which is not the default: `PanelBox::layoutPanel` collapsed the whole title/content BOX on "is there art to draw a border with" when only the border needs art, and `SettingsHud::cardPad*()` gated its content padding the same way, separately. |
 | `ui_scale_test.cpp` | **UI scale**: drawn = own Scale x UI scale, the INI keeps own, positions untouched. |
-| `center_stack_theme_test.cpp` | **The centre stack's stored-offset contract.** `[card] hud-content` must not move a panel's top edge (the Gap Bar slid when a skinner flipped it - its top was derived by subtracting a flag-gated padding from its stored offset); the Gap Bar's absolute top is one grid cell (the same root cause once computed it to y=0, top frame slice clipped, with both states agreeing); the three share one top **unthemed** (the configuration the stored defaults are derived for); and a theme landing moves **no** top - the stored tops follow the `[Advanced]` built-in, not the theme (center_stack.h). |
+| `center_stack_theme_test.cpp` | **The centre stack's stored-offset contract.** `[card] hud-content` must not move a panel's top edge; the Gap Bar's absolute top is one grid cell; the three share one top **unthemed** (the configuration the stored defaults are derived for); and a theme landing moves **no** top - the stored tops follow the `[Advanced]` built-in, not the theme (center_stack.h). |
 | `settings_layout_test.cpp` | **The settings panel's click-region surface as behaviour**: regions are hit-tested in emission order, so a converted control that swaps its arrow pair or drops its tooltip row is silently broken while rendering perfectly. |
-| `standings_layout_test.cpp` | **The plate number's two placement paths agree, and both are right.** Standings places row text via full rebuild and via the drag fast path; the plate nudge went into one path first (centred at rest, jumped high mid-drag), and the later glyph-centring move applied the offset **twice** with both paths agreeing about it - so the agreement case carries a correctness case beside it (inset < 2% of plate height, every row, tolerance an order under the ±9% failures it pins) |
+| `standings_layout_test.cpp` | **The plate number's two placement paths agree, and both are right.** Standings places row text via full rebuild and via the drag fast path; the plate nudge went into one path first (centred at rest, jumped high mid-drag), and the later glyph-centring move applied the offset **twice** with both paths agreeing about it - so the agreement case carries a correctness case beside it |
+| `standings_show_mode_test.cpp` | Standings Show mode: each mode's crossings and hold |
 | `settings_button_theme_test.cpp` | **Every settings-footer button is a themed button**: a themed button is nine quads, a flat one is one, so "did this go through `addButtonQuad`" has an integer answer. |
 | `stripchart_parity_test.cpp` | **Per-primitive golden fingerprints of the four strip-chart HUDs** (Telemetry, Rumble, Performance, Session Charts): counts + position/colour/sprite/text checksums plus order-sensitive rolling hashes, each HUD isolated. |
 | `settings_fit_test.cpp` | **The settings panel is tall enough for every tab, and the same height on all of them.** |
@@ -767,7 +778,8 @@ script:
 | `run_persist_test.sh` | property | flips every boolean setting, then that all survive a save→load→save round-trip (the per-HUD registry "silently reverts on restart" write-back trap) |
 | `run_fuzz.sh` | survival | a corpus of malformed `settings.ini` + the six JSON config files must never crash or abort the load |
 | `run_fuzz_callbacks.sh` | survival | every DLL-boundary callback survives adversarial sizes/counts/bytes (found + guards a real `TrackCenterline` OOB read) |
-| `run_perf.sh` | baseline | runs two drivers against a full 50-rider grid on a long/complex ~2400m circuit (`perf_scenario.h`, a heavier superset of the real Farm14 tape): `perf_driver` (isolated per-callback cost) + `map_perf_driver` (the interleaved MAP hot loop). |
+| `run_perf.sh` | baseline | times a 50-rider grid (`perf_scenario.h`): `perf_driver` (per callback) + `map_perf_driver` (MAP loop), then the ledger |
+| `run_perf_ledger.sh` | exact | busy synthetic tape, virtual clock; counters vs `perf_ledger_baseline.txt` |
 | `run_tape_bench.sh` | real-data | replays a committed `.tape.gz` (default the multiplayer Farm14 24-rider capture) through `tape_bench_driver` (PluginHost), profiles the reconstructed real field with every HUD visible, and runs `tools/benchmark_report.py` - the per-HUD **render footprint** (`default` vs `max` settings). |
 | `run_installer_test.sh` | outcome | builds `packaging/mxbmrp3.nsi` with makensis, drives `Setup.exe` + the uninstaller headless under Wine, asserts the install/uninstall/registry/data-wipe mechanics (see below) |
 

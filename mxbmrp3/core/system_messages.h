@@ -63,6 +63,10 @@ public:
         KEY_PROFILE_COPIED,
         KEY_TAB_RESET,
         KEY_ALL_HIDDEN_AT_START,
+        KEY_PROFILER_REPORT,
+        KEY_STATS_SAVE_FAILED,
+        KEY_STATS_UNREADABLE,
+        KEY_WEB_OVERLAY_FAILED,
         KEY_HOTKEY_BASE = 1000,
     };
 
@@ -92,6 +96,12 @@ public:
 
     bool isEnabled() const { return m_enabled; }
     void setEnabled(bool on);
+
+    // A folder as a toast can show it: from "Documents\" on when the path has
+    // one (the rest is the player's user folder, and too long for the card), else
+    // its last three folders; leading folders are dropped until it fits `cap`.
+    // Never cut mid-name. A trailing separator is dropped.
+    static void formatFolder(const char* path, char* out, size_t cap);
 
     // Observability for the headless tests: every toast ever posted this run,
     // and the last one, whether or not it was shown.

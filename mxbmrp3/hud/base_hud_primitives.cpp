@@ -159,44 +159,59 @@ void BaseHud::addIcon(float x, float y, int spriteIndex, unsigned long color, fl
     m_quads.push_back(quadEntry);
 }
 
+// A line's quad from its (offset-applied) ends: the two ends pushed apart by
+// half the thickness, aspect-corrected, in the corner order the stick trail
+// uses (p1+perp, p1-perp, p2-perp, p2+perp). False for a zero-length line.
+static bool lineCorners(SPluginQuad_t& q, float x1, float y1, float x2, float y2, float thickness) {
+    const float dx = x2 - x1;
+    const float dy = y2 - y1;
+    const float len = std::sqrt(dx * dx + dy * dy);
+    if (len < 0.0001f) return false;
+    // Half thickness along the perpendicular (horizontal component aspect-corrected)
+    const float hx = (dy / len * thickness * 0.5f) / PluginConstants::UI_ASPECT_RATIO;
+    const float hy = (-dx / len) * thickness * 0.5f;
+    q.m_aafPos[0][0] = x1 + hx;
+    q.m_aafPos[0][1] = y1 + hy;
+    q.m_aafPos[1][0] = x1 - hx;
+    q.m_aafPos[1][1] = y1 - hy;
+    q.m_aafPos[2][0] = x2 - hx;
+    q.m_aafPos[2][1] = y2 - hy;
+    q.m_aafPos[3][0] = x2 + hx;
+    q.m_aafPos[3][1] = y2 + hy;
+    return true;
+}
+
 void BaseHud::addLineSegment(float x1, float y1, float x2, float y2, unsigned long color, float thickness) {
-    using namespace PluginConstants;
-
-    SPluginQuad_t quadEntry;
-
-    // Apply offset
     applyOffset(x1, y1);
     applyOffset(x2, y2);
-
-    // Calculate perpendicular direction for thickness
-    float dx = x2 - x1;
-    float dy = y2 - y1;
-    float len = std::sqrt(dx * dx + dy * dy);
-
-    if (len < 0.0001f) return;  // Skip zero-length segments
-
-    // Perpendicular vector (normalized) - try reversed direction
-    float px = dy / len;
-    float py = -dx / len;
-
-    // Half thickness offset (apply aspect ratio correction to horizontal component)
-    float hx = (px * thickness * 0.5f) / PluginConstants::UI_ASPECT_RATIO;
-    float hy = py * thickness * 0.5f;
-
-    // Create rectangle quad (match stick trail pattern exactly: p1+perp, p1-perp, p2-perp, p2+perp)
-    quadEntry.m_aafPos[0][0] = x1 + hx;
-    quadEntry.m_aafPos[0][1] = y1 + hy;
-    quadEntry.m_aafPos[1][0] = x1 - hx;
-    quadEntry.m_aafPos[1][1] = y1 - hy;
-    quadEntry.m_aafPos[2][0] = x2 - hx;
-    quadEntry.m_aafPos[2][1] = y2 - hy;
-    quadEntry.m_aafPos[3][0] = x2 + hx;
-    quadEntry.m_aafPos[3][1] = y2 + hy;
-
-    quadEntry.m_iSprite = SpriteIndex::SOLID_COLOR;
+    SPluginQuad_t quadEntry;
+    if (!lineCorners(quadEntry, x1, y1, x2, y2, thickness)) return;  // Skip zero-length segments
+    quadEntry.m_iSprite = PluginConstants::SpriteIndex::SOLID_COLOR;
     quadEntry.m_ulColor = color | 0xFF000000;  // Ensure full alpha
-
     m_quads.push_back(quadEntry);
+}
+
+// A graph's line is one quad per sample step, and the engine pays per quad. A
+// piece that carries on from `run`'s end, in its colour and thickness, and keeps
+// every joint so far within a quarter pixel of one straight line (chart_run.h),
+// redraws the run's quad from its start to the new end instead of adding one: a
+// held input is one quad, a steady slope a few. `run` is the caller's per-line
+// state; reset it wherever something drawn between two pieces must stay on top.
+void BaseHud::addChartSegment(ChartRun& run, float x1, float y1, float x2, float y2, unsigned long color,
+                              float thickness) {
+    float sx = x1, sy = y1, ex = x2, ey = y2;
+    applyOffset(sx, sy);
+    applyOffset(ex, ey);
+    const unsigned long stored = color | 0xFF000000;
+    if (run.quad >= 0 && run.quad < static_cast<int>(m_quads.size()) && run.color == stored &&
+        run.thickness == thickness && run.extend(sx, sy, ex, ey)) {
+        lineCorners(m_quads[run.quad], run.sx, run.sy, ex, ey, thickness);
+        return;
+    }
+    const size_t before = m_quads.size();
+    addLineSegment(x1, y1, x2, y2, color, thickness);
+    if (m_quads.size() == before + 1) run.start(static_cast<int>(before), stored, thickness, sx, sy, ex, ey);
+    else run.reset();
 }
 
 void BaseHud::addNeedleQuad(float centerX, float centerY, float angleRad,

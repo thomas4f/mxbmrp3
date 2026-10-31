@@ -135,7 +135,9 @@ void SettingsManager::cap_StandingsHud(const HudManager& hudManager, SettingsMan
         settings[ANIMATION_MODE] = animationModeToString(hud.m_animationMode);
         settings[SHOW_HEADERS] = hud.m_bShowHeaders ? "1" : "0";
         settings[SHOW_SESSION_INFO] = hud.m_bShowSessionInfo ? "1" : "0";
-        settings[LIVE_GAPS] = hud.m_bLiveGaps ? "1" : "0";
+        settings[LIVE_GAPS] = std::to_string(static_cast<int>(hud.m_liveMode));
+        settings[SHOW_MODE] = standingsShowModeToString(hud.m_showMode);
+        settings[FREEZE_DURATION] = std::to_string(hud.m_freezeDurationMs);
         settings[IniOnly::Standings::TOP_POSITIONS.key] = std::to_string(hud.m_topPositionsCount);
         settings[IniOnly::Standings::PLAYER_ROW_HIGHLIGHT.key] = hud.m_bPlayerRowHighlight ? "1" : "0";
         settings[IniOnly::Standings::PLAYER_ROW_HIGHLIGHT_BRAND.key] = hud.m_bPlayerRowHighlightBrand ? "1" : "0";
@@ -234,8 +236,16 @@ void SettingsManager::app_StandingsHud(HudManager& hudManager, const SettingsMan
                 if (auto v = readBool(settings, SHOW_SESSION_INFO)) {
                     hud.m_bShowSessionInfo = *v;
                 }
-                if (auto v = readBool(settings, LIVE_GAPS)) {
-                    hud.m_bLiveGaps = *v;
+                if (auto v = readInt(settings, LIVE_GAPS)) {
+                    if (*v >= 0 && *v < static_cast<int>(StandingsHud::LiveMode::COUNT)) {
+                        hud.m_liveMode = static_cast<StandingsHud::LiveMode>(*v);
+                    }
+                }
+                if (auto v = readStr(settings, SHOW_MODE)) hud.m_showMode = stringToStandingsShowMode(*v);
+                if (auto v = readInt(settings, FREEZE_DURATION)) {
+                    if (*v >= FreezeDuration::PITBOARD_MIN_MS && *v <= FreezeDuration::MAX_MS) {
+                        hud.m_freezeDurationMs = *v;
+                    }
                 }
                 if (auto v = readInt(settings, IniOnly::Standings::ANIMATION_DURATION_MS.key)) {
                     int durationMs = *v;
@@ -513,8 +523,7 @@ void SettingsManager::cap_LapLogHud(const HudManager& hudManager, SettingsManage
         settings["maxDisplayLaps"] = std::to_string(hud.m_maxDisplayLaps);
         settings["displayOrder"] = std::to_string(static_cast<int>(hud.m_displayOrder));
         settings["showGapRow"] = hud.m_showGapRow ? "1" : "0";
-        settings["reference"] = std::to_string(hud.m_gapReferenceDefault ? HudDefaults::REFERENCE_FOLLOW
-                                                                         : static_cast<int>(hud.m_gapReference));
+        settings["reference"] = std::to_string(HudDefaults::storeReference(hud.m_gapReferenceDefault, hud.m_gapReference));
         settings["freezeDuration"] = std::to_string(hud.m_freezeDurationMs);
         settings["showHeaders"] = hud.m_bShowHeaders ? "1" : "0";
         cache[name] = std::move(settings);
@@ -536,12 +545,7 @@ void SettingsManager::app_LapLogHud(HudManager& hudManager, const SettingsManage
                 }
                 if (auto v = readStr(settings, "showGapRow")) hud.m_showGapRow = (*v == "1");
                 if (auto v = readInt(settings, "reference")) {
-                    if (*v == HudDefaults::REFERENCE_FOLLOW) {
-                        hud.m_gapReferenceDefault = true;
-                    } else if (*v >= 0 && *v < PbGapTracker::REF_COUNT) {
-                        hud.m_gapReference = static_cast<PbGapTracker::Ref>(*v);
-                        hud.m_gapReferenceDefault = false;
-                    }
+                    HudDefaults::loadReference(*v, &hud.m_gapReferenceDefault, &hud.m_gapReference);
                 }
                 if (auto v = readInt(settings, "freezeDuration")) {
                     if (*v == FreezeDuration::FOLLOW_DEFAULT ||
@@ -920,8 +924,7 @@ void SettingsManager::cap_DeltaTraceHud(const HudManager& hudManager, SettingsMa
         HudSettings settings;
         const auto& hud = hudManager.getDeltaTraceHud();
         captureBaseHudSettings(settings, hud);
-        settings["reference"] = std::to_string(hud.m_referenceDefault ? HudDefaults::REFERENCE_FOLLOW
-                                                                      : static_cast<int>(hud.m_reference));
+        settings["reference"] = std::to_string(HudDefaults::storeReference(hud.m_referenceDefault, hud.m_reference));
         settings["graphRows"] = std::to_string(hud.m_graphRows);
         settings["peaks"] = hud.m_showPeaks ? "1" : "0";
         cache[name] = std::move(settings);
@@ -936,12 +939,7 @@ void SettingsManager::app_DeltaTraceHud(HudManager& hudManager, const SettingsMa
             const auto& settings = it->second;
             try {
                 if (auto v = readInt(settings, "reference")) {
-                    if (*v == HudDefaults::REFERENCE_FOLLOW) {
-                        hud.m_referenceDefault = true;
-                    } else if (*v >= 0 && *v < DeltaTraceHud::REFERENCE_COUNT) {
-                        hud.m_reference = static_cast<DeltaTraceHud::Reference>(*v);
-                        hud.m_referenceDefault = false;
-                    }
+                    HudDefaults::loadReference(*v, &hud.m_referenceDefault, &hud.m_reference);
                 }
                 if (auto v = readInt(settings, "graphRows")) hud.m_graphRows = std::clamp(*v,
                     DeltaTraceHud::MIN_GRAPH_ROWS, DeltaTraceHud::MAX_GRAPH_ROWS);
@@ -1054,8 +1052,9 @@ const std::vector<HudSectionSerializer>& hudSectionRegistry() {
 // because this TU already includes every HUD header and SettingsManager is their
 // friend. Compiled out of shipping DLLs.
 void SettingsManager::testMaxAllHudSettings(HudManager& hudManager) {
-    {   // Standings: all 10 columns, max rows, long names, all gaps + posgain + colored anim
+    {   // Standings: all 10 columns, max rows, long names, all gaps + posgain + colored anim, live order
         StandingsHud& h = hudManager.getStandingsHud();
+        h.m_liveMode = StandingsHud::LiveMode::BOTH;
         h.m_enabledColumns = 0x3FF;
         h.m_displayRowCount = 50;
         h.m_nameMode = StandingsHud::NameMode::LONG;

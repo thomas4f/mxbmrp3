@@ -307,158 +307,162 @@ void TelemetryHud::addCombinedInputGraph(const HistoryBuffers& history, const Bi
     float pointSpacing = width / (HistoryBuffers::MAX_TELEMETRY_HISTORY - 1);
     float lineThickness = stripChartLineThickness();  // Line thickness for graph rendering
 
-    // ONE PASS over the history for every input (one O(199) loop rather than one
-    // per input). Inputs render in order within each iteration: brake, clutch, RPM,
-    // then throttle, so throttle appears on top.
-    for (size_t i = 0; i < HistoryBuffers::MAX_TELEMETRY_HISTORY - 1; ++i) {
-        // Front brake graph (always available - available for player and spectated riders)
-        if (m_enabledElements & ELEM_FRONT_BRAKE) {
-            const auto& data = history.frontBrake;
-            if (i < data.size() && (i + 1) < data.size()) {
-                // Offset so newest data is always at right edge
-                size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
-                float x1 = x + (offset + i) * pointSpacing;
-                float x2 = x + (offset + i + 1) * pointSpacing;
+    // ONE LINE AT A TIME, in layer order: brake, clutch, RPM, suspension, gear,
+    // then throttle, so throttle is on top. A line drawn whole is what lets a held
+    // input or a steady slope be one quad (addChartSegment); interleaving the lines
+    // sample by sample would put every later line's piece above the stretched one.
+    for (int line = 0; line < 8; ++line) {
+        ChartRun lineRun;   // this line's open run (addChartSegment)
+        for (size_t i = 0; i < HistoryBuffers::MAX_TELEMETRY_HISTORY - 1; ++i) {
+            // Front brake graph (always available - available for player and spectated riders)
+            if (line == 0 && (m_enabledElements & ELEM_FRONT_BRAKE)) {
+                const auto& data = history.frontBrake;
+                if (i < data.size() && (i + 1) < data.size()) {
+                    // Offset so newest data is always at right edge
+                    size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
+                    float x1 = x + (offset + i) * pointSpacing;
+                    float x2 = x + (offset + i + 1) * pointSpacing;
 
-                float value1 = std::max(0.0f, std::min(1.0f, data[i]));
-                float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
+                    float value1 = std::max(0.0f, std::min(1.0f, data[i]));
+                    float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
 
-                if (value1 >= 0.01f || value2 >= 0.01f) {
-                    float y1 = y + height - (value1 * height);
-                    float y2 = y + height - (value2 * height);
-                    addLineSegment(x1, y1, x2, y2, PluginConstants::SemanticColors::FRONT_BRAKE, lineThickness);
+                    if (value1 >= 0.01f || value2 >= 0.01f) {
+                        float y1 = y + height - (value1 * height);
+                        float y2 = y + height - (value2 * height);
+                        addChartSegment(lineRun, x1, y1, x2, y2, PluginConstants::SemanticColors::FRONT_BRAKE, lineThickness);
+                    }
                 }
             }
-        }
 
-        // Rear brake graph (only available when ON_TRACK, not in spectate/replay)
-        if ((m_enabledElements & ELEM_REAR_BRAKE) && hasFullTelemetry) {
-            const auto& data = history.rearBrake;
-            if (i < data.size() && (i + 1) < data.size()) {
-                size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
-                float x1 = x + (offset + i) * pointSpacing;
-                float x2 = x + (offset + i + 1) * pointSpacing;
+            // Rear brake graph (only available when ON_TRACK, not in spectate/replay)
+            if (line == 1 && (m_enabledElements & ELEM_REAR_BRAKE) && hasFullTelemetry) {
+                const auto& data = history.rearBrake;
+                if (i < data.size() && (i + 1) < data.size()) {
+                    size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
+                    float x1 = x + (offset + i) * pointSpacing;
+                    float x2 = x + (offset + i + 1) * pointSpacing;
 
-                float value1 = std::max(0.0f, std::min(1.0f, data[i]));
-                float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
+                    float value1 = std::max(0.0f, std::min(1.0f, data[i]));
+                    float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
 
-                if (value1 >= 0.01f || value2 >= 0.01f) {
-                    float y1 = y + height - (value1 * height);
-                    float y2 = y + height - (value2 * height);
-                    addLineSegment(x1, y1, x2, y2, PluginConstants::SemanticColors::REAR_BRAKE, lineThickness);
+                    if (value1 >= 0.01f || value2 >= 0.01f) {
+                        float y1 = y + height - (value1 * height);
+                        float y2 = y + height - (value2 * height);
+                        addChartSegment(lineRun, x1, y1, x2, y2, PluginConstants::SemanticColors::REAR_BRAKE, lineThickness);
+                    }
                 }
             }
-        }
 
-        // Clutch graph (only available when ON_TRACK, not in spectate/replay)
-        if ((m_enabledElements & ELEM_CLUTCH) && hasFullTelemetry) {
-            const auto& data = history.clutch;
-            if (i < data.size() && (i + 1) < data.size()) {
-                size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
-                float x1 = x + (offset + i) * pointSpacing;
-                float x2 = x + (offset + i + 1) * pointSpacing;
+            // Clutch graph (only available when ON_TRACK, not in spectate/replay)
+            if (line == 2 && (m_enabledElements & ELEM_CLUTCH) && hasFullTelemetry) {
+                const auto& data = history.clutch;
+                if (i < data.size() && (i + 1) < data.size()) {
+                    size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
+                    float x1 = x + (offset + i) * pointSpacing;
+                    float x2 = x + (offset + i + 1) * pointSpacing;
 
-                float value1 = std::max(0.0f, std::min(1.0f, data[i]));
-                float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
+                    float value1 = std::max(0.0f, std::min(1.0f, data[i]));
+                    float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
 
-                if (value1 >= 0.01f || value2 >= 0.01f) {
-                    float y1 = y + height - (value1 * height);
-                    float y2 = y + height - (value2 * height);
-                    addLineSegment(x1, y1, x2, y2, PluginConstants::SemanticColors::CLUTCH, lineThickness);
+                    if (value1 >= 0.01f || value2 >= 0.01f) {
+                        float y1 = y + height - (value1 * height);
+                        float y2 = y + height - (value2 * height);
+                        addChartSegment(lineRun, x1, y1, x2, y2, PluginConstants::SemanticColors::CLUTCH, lineThickness);
+                    }
                 }
             }
-        }
 
-        // RPM graph
-        if (m_enabledElements & ELEM_RPM) {
-            const auto& data = history.rpm;
-            if (i < data.size() && (i + 1) < data.size()) {
-                size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
-                float x1 = x + (offset + i) * pointSpacing;
-                float x2 = x + (offset + i + 1) * pointSpacing;
+            // RPM graph
+            if (line == 3 && (m_enabledElements & ELEM_RPM)) {
+                const auto& data = history.rpm;
+                if (i < data.size() && (i + 1) < data.size()) {
+                    size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
+                    float x1 = x + (offset + i) * pointSpacing;
+                    float x2 = x + (offset + i + 1) * pointSpacing;
 
-                float value1 = std::max(0.0f, std::min(1.0f, data[i]));
-                float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
+                    float value1 = std::max(0.0f, std::min(1.0f, data[i]));
+                    float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
 
-                if (value1 >= 0.01f || value2 >= 0.01f) {
-                    float y1 = y + height - (value1 * height);
-                    float y2 = y + height - (value2 * height);
-                    addLineSegment(x1, y1, x2, y2, ColorPalette::GRAY, lineThickness);
+                    if (value1 >= 0.01f || value2 >= 0.01f) {
+                        float y1 = y + height - (value1 * height);
+                        float y2 = y + height - (value2 * height);
+                        addChartSegment(lineRun, x1, y1, x2, y2, ColorPalette::GRAY, lineThickness);
+                    }
                 }
             }
-        }
 
-        // Front suspension graph (only available when ON_TRACK, not in spectate/replay)
-        if ((m_enabledElements & ELEM_FRONT_SUSP) && hasFullTelemetry && bikeTelemetry.frontSuspMaxTravel > 0) {
-            const auto& data = history.frontSusp;
-            if (i < data.size() && (i + 1) < data.size()) {
-                size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
-                float x1 = x + (offset + i) * pointSpacing;
-                float x2 = x + (offset + i + 1) * pointSpacing;
+            // Front suspension graph (only available when ON_TRACK, not in spectate/replay)
+            if (line == 4 && (m_enabledElements & ELEM_FRONT_SUSP) && hasFullTelemetry && bikeTelemetry.frontSuspMaxTravel > 0) {
+                const auto& data = history.frontSusp;
+                if (i < data.size() && (i + 1) < data.size()) {
+                    size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
+                    float x1 = x + (offset + i) * pointSpacing;
+                    float x2 = x + (offset + i + 1) * pointSpacing;
 
-                float value1 = std::max(0.0f, std::min(1.0f, data[i]));
-                float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
+                    float value1 = std::max(0.0f, std::min(1.0f, data[i]));
+                    float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
 
-                if (value1 >= 0.01f || value2 >= 0.01f) {
-                    float y1 = y + height - (value1 * height);
-                    float y2 = y + height - (value2 * height);
-                    addLineSegment(x1, y1, x2, y2, PluginConstants::SemanticColors::FRONT_SUSP, lineThickness);
+                    if (value1 >= 0.01f || value2 >= 0.01f) {
+                        float y1 = y + height - (value1 * height);
+                        float y2 = y + height - (value2 * height);
+                        addChartSegment(lineRun, x1, y1, x2, y2, PluginConstants::SemanticColors::FRONT_SUSP, lineThickness);
+                    }
                 }
             }
-        }
 
-        // Rear suspension graph (only available when ON_TRACK, not in spectate/replay)
-        if ((m_enabledElements & ELEM_REAR_SUSP) && hasFullTelemetry && bikeTelemetry.rearSuspMaxTravel > 0) {
-            const auto& data = history.rearSusp;
-            if (i < data.size() && (i + 1) < data.size()) {
-                size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
-                float x1 = x + (offset + i) * pointSpacing;
-                float x2 = x + (offset + i + 1) * pointSpacing;
+            // Rear suspension graph (only available when ON_TRACK, not in spectate/replay)
+            if (line == 5 && (m_enabledElements & ELEM_REAR_SUSP) && hasFullTelemetry && bikeTelemetry.rearSuspMaxTravel > 0) {
+                const auto& data = history.rearSusp;
+                if (i < data.size() && (i + 1) < data.size()) {
+                    size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
+                    float x1 = x + (offset + i) * pointSpacing;
+                    float x2 = x + (offset + i + 1) * pointSpacing;
 
-                float value1 = std::max(0.0f, std::min(1.0f, data[i]));
-                float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
+                    float value1 = std::max(0.0f, std::min(1.0f, data[i]));
+                    float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
 
-                if (value1 >= 0.01f || value2 >= 0.01f) {
-                    float y1 = y + height - (value1 * height);
-                    float y2 = y + height - (value2 * height);
-                    addLineSegment(x1, y1, x2, y2, PluginConstants::SemanticColors::REAR_SUSP, lineThickness);
+                    if (value1 >= 0.01f || value2 >= 0.01f) {
+                        float y1 = y + height - (value1 * height);
+                        float y2 = y + height - (value2 * height);
+                        addChartSegment(lineRun, x1, y1, x2, y2, PluginConstants::SemanticColors::REAR_SUSP, lineThickness);
+                    }
                 }
             }
-        }
 
-        // Gear graph (always available)
-        if (m_enabledElements & ELEM_GEAR) {
-            const auto& data = history.gear;
-            if (i < data.size() && (i + 1) < data.size()) {
-                size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
-                float x1 = x + (offset + i) * pointSpacing;
-                float x2 = x + (offset + i + 1) * pointSpacing;
+            // Gear graph (always available)
+            if (line == 6 && (m_enabledElements & ELEM_GEAR)) {
+                const auto& data = history.gear;
+                if (i < data.size() && (i + 1) < data.size()) {
+                    size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
+                    float x1 = x + (offset + i) * pointSpacing;
+                    float x2 = x + (offset + i + 1) * pointSpacing;
 
-                float value1 = std::max(0.0f, std::min(1.0f, data[i]));
-                float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
+                    float value1 = std::max(0.0f, std::min(1.0f, data[i]));
+                    float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
 
-                // Render even at 0 (neutral) for gear
-                float y1 = y + height - (value1 * height);
-                float y2 = y + height - (value2 * height);
-                addLineSegment(x1, y1, x2, y2, PluginConstants::SemanticColors::GEAR, lineThickness);
-            }
-        }
-
-        // Throttle graph (rendered last within each iteration so it appears on top)
-        if (m_enabledElements & ELEM_THROTTLE) {
-            const auto& data = history.throttle;
-            if (i < data.size() && (i + 1) < data.size()) {
-                size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
-                float x1 = x + (offset + i) * pointSpacing;
-                float x2 = x + (offset + i + 1) * pointSpacing;
-
-                float value1 = std::max(0.0f, std::min(1.0f, data[i]));
-                float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
-
-                if (value1 >= 0.01f || value2 >= 0.01f) {
+                    // Render even at 0 (neutral) for gear
                     float y1 = y + height - (value1 * height);
                     float y2 = y + height - (value2 * height);
-                    addLineSegment(x1, y1, x2, y2, PluginConstants::SemanticColors::THROTTLE, lineThickness);
+                    addChartSegment(lineRun, x1, y1, x2, y2, PluginConstants::SemanticColors::GEAR, lineThickness);
+                }
+            }
+
+            // Throttle graph: line 7, drawn last so it appears on top
+            if (line == 7 && (m_enabledElements & ELEM_THROTTLE)) {
+                const auto& data = history.throttle;
+                if (i < data.size() && (i + 1) < data.size()) {
+                    size_t offset = HistoryBuffers::MAX_TELEMETRY_HISTORY - data.size();
+                    float x1 = x + (offset + i) * pointSpacing;
+                    float x2 = x + (offset + i + 1) * pointSpacing;
+
+                    float value1 = std::max(0.0f, std::min(1.0f, data[i]));
+                    float value2 = std::max(0.0f, std::min(1.0f, data[i + 1]));
+
+                    if (value1 >= 0.01f || value2 >= 0.01f) {
+                        float y1 = y + height - (value1 * height);
+                        float y2 = y + height - (value2 * height);
+                        addChartSegment(lineRun, x1, y1, x2, y2, PluginConstants::SemanticColors::THROTTLE, lineThickness);
+                    }
                 }
             }
         }

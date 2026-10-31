@@ -47,7 +47,9 @@ struct Shot { unsigned long long hash; int quads; int strings; };
 
 Shot shot(PluginHost& host) {
     host.draw();
-    return { host.gameFrameHash(), host.lastGameQuads(), host.lastGameStrings() };
+    // The plugin's frame, as the hash is: a fading HUD's alpha-0 frame still
+    // holds its quads, which only the engine handoff leaves out.
+    return { host.gameFrameHash(), host.gameFrameQuads(), host.gameFrameStrings() };
 }
 
 // Advance Motion's clock by stepMs per frame for `frames` frames.

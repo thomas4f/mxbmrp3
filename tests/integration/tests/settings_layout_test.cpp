@@ -174,7 +174,14 @@ int countTooltipRows(const std::vector<std::string>& regions, const char* toolti
 //
 // NOW_PLAYING_TOGGLE (the Now playing row) was appended: one more type, no
 // ordinal moved.
-constexpr int kClickRegionTypeCount = 120;
+//
+// LIVE_GAPS_TOGGLE then left the enum (Standings' Live gaps switch became the
+// Live updates dropdown, a shared cycle descriptor): one fewer type, and every
+// ordinal past it dropped by one -- a pure renumbering.
+//
+// The Find box appended FIND_FIELD, FIND_RESULT, FIND_PAGE_PREV and
+// FIND_PAGE_NEXT: four more types, no ordinal moved.
+constexpr int kClickRegionTypeCount = 123;
 
 }  // namespace
 
@@ -381,19 +388,27 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
     // 119 -> 120, strings 122 -> 126.
     // At 1.34 the 1.33 tags (Appearance, Hotkeys, Helmet, Dash, Widgets) gave
     // way to General, Widgets, Dash and Notices: strings 126 -> 125.
+    // At 1.35 they gave way to Standings and Updates: strings 125 -> 123.
+    // 1.35 shipped as 1.34.1, which also marks General (Gap reference, Now
+    // playing) and Widgets: strings 123 -> 125.
+    // Records took Delta Trace's sidebar row after the Gap Bar and Delta Trace
+    // moved into More: "52:delta_trace" became "52:records", strings unchanged.
+    // LIVE_GAPS_TOGGLE left ClickRegion::Type: 115/114/108 became 114/113/107,
+    // typecount 120 -> 119, nothing else moved.
+    // The Find box in the title band: one appended "119:find.field" region,
+    // typecount 119 -> 123, strings 125 -> 127 (the field and its text).
     static const char* kGolden =
         "52:general;52:appearance;52:hotkeys;52:riders;54:-;52:rumble;61:-;52:helmet;77:-;52:director;10:-;52"
         ":stream_chat;78:-;52:spotter;93:-;52:achievements;40:-;52:updates;47:-;48:-;51:-;52:widgets;10:-;52:"
         "dash;10:-;52:map;10:-;52:notices;10:-;52:standings;10:-;52:friends;10:-;52:timing;10:-;52:lap_log;10"
-        ":-;52:gap_bar;10:-;52:delta_trace;10:-;52:pitboard;52:more;72:general.pb_scope;34:-;34:-;72:general."
-        "reference;4:general.reference;3:general.reference;115:general.reference;72:general.freeze;2:general."
-        "freeze;1:general.freeze;114:general.freeze;72:general.auto_save;41:-;41:-;72:general.grid_snap;35:-;"
-        "35:-;72:general.screen_clamp;36:-;36:-;72:general.direct_gl;108:-;108:-;72:general.controller;4:gene"
-        "ral.controller;3:general.controller;115:general.controller;72:general.steam_friends;72:general.now_p"
-        "laying;72:general.web_server;44:-;44:-;72:general.web_port;45:-;46:-;72:general.auto_switch;49:-;49:-"
-        ";72:general.copy_profi"
-        "le;4:general.copy_profile;3:general.copy_profile;115:general.copy_profile;8:general.reset_profile;9:"
-        "general.reset_all;53:-;6:-;71:-;typecount=120;strings=125";
+        ":-;52:gap_bar;10:-;52:records;10:-;52:pitboard;52:more;72:general.pb_scope;34:-;34:-;72:general.refe"
+        "rence;4:general.reference;3:general.reference;114:general.reference;72:general.freeze;2:general.free"
+        "ze;1:general.freeze;113:general.freeze;72:general.auto_save;41:-;41:-;72:general.grid_snap;35:-;35:-"
+        ";72:general.screen_clamp;36:-;36:-;72:general.direct_gl;107:-;107:-;72:general.controller;4:general."
+        "controller;3:general.controller;114:general.controller;72:general.steam_friends;72:general.now_playi"
+        "ng;72:general.web_server;44:-;44:-;72:general.web_port;45:-;46:-;72:general.auto_switch;49:-;49:-;72"
+        ":general.copy_profile;4:general.copy_profile;3:general.copy_profile;114:general.copy_profile;8:gener"
+        "al.reset_profile;9:general.reset_all;53:-;6:-;71:-;119:find.field;typecount=123;strings=127";
 
     MESSAGE("General tab signature: " << sig);
     CHECK(sig == kGolden);
@@ -1245,9 +1260,10 @@ TEST_CASE("settings Hotkeys: every HUD toggle has a row") {
     // which is also the README's: read down the left column, then the right.
     static const char* const kRows[] = {
         "hotkeys.settings", "hotkeys.map", "hotkeys.notices", "hotkeys.standings",
-        "hotkeys.timing", "hotkeys.lap_log", "hotkeys.gap_bar", "hotkeys.delta_trace",
+        "hotkeys.timing", "hotkeys.lap_log", "hotkeys.gap_bar", "hotkeys.records",
         "hotkeys.pitboard", "hotkeys.radar", "hotkeys.ideal_lap", "hotkeys.session",
-        "hotkeys.performance", "hotkeys.stats", "hotkeys.telemetry", "hotkeys.event_log",
+        "hotkeys.performance", "hotkeys.stats", "hotkeys.telemetry", "hotkeys.delta_trace",
+        "hotkeys.event_log",
         "hotkeys.session_charts", "hotkeys.rumble", "hotkeys.helmet", "hotkeys.stream_chat",
     };
     float prevX = -1.0f, prevY = -1.0f;

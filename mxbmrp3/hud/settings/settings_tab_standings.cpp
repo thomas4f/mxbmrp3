@@ -23,14 +23,6 @@ bool SettingsHud::handleClickTabStandings(const ClickRegion& region) {
         // Gap column (Off/Player/Adjacent/All) is a data-driven CYCLE control
         // now - registered in renderTabStandings via ctx.addCycleControl.
 
-        case ClickRegion::LIVE_GAPS_TOGGLE:
-            if (standingsHud) {
-                standingsHud->m_bLiveGaps = !standingsHud->m_bLiveGaps;
-                standingsHud->setDataDirty();
-                rebuildRenderData();
-            }
-            return true;
-
         case ClickRegion::FILTER_DNS_TOGGLE:
             {
                 PluginData& pd = PluginData::getInstance();
@@ -77,7 +69,18 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
     ctx.addSectionHeading("Layout");
-    ctx.beginColumns(2, 6);   // side by side (beginColumns)
+    ctx.beginColumns(2, 8);   // side by side (beginColumns)
+
+    // Show mode (Always / At laps / At splits) and its hold, as on the Pitboard tab
+    static const char* const kShowModes[] = { "Always", "At laps", "At splits" };
+    static_assert(sizeof(kShowModes) / sizeof(kShowModes[0]) == StandingsHud::SHOW_COUNT,
+                  "one name per show mode");
+    ctx.addCycleControl("Show mode", cycleName(kShowModes, hud->m_showMode),
+        SettingsHud::CycleControl::enumMember(hud, &StandingsHud::m_showMode,
+            StandingsHud::SHOW_COUNT, hud, kShowModes),
+        hud, true, false, "standings.show_mode");
+    ctx.addFreezeControl("Freeze", &hud->m_freezeDurationMs, false, hud,
+        hud->m_showMode != StandingsHud::SHOW_ALWAYS, "standings.freeze");
 
     // Row count: a plain +-2 clamped stepper with no hold acceleration (fixedInt),
     // the same control the Charts tab builds. postStep keeps the pinned top-N no
@@ -138,13 +141,17 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
             hud, refRelevant, false, "standings.gap_reference");
     }
 
-    // Live gaps toggle (per-profile StandingsHud member). nullptr boolPtr matches
-    // the Column-headers toggle: the LIVE_GAPS_TOGGLE click handler flips the member.
-    ctx.addToggleControl("Live gaps",
-        hud->m_bLiveGaps,
-        SettingsHud::ClickRegion::LIVE_GAPS_TOGGLE, hud,
-        static_cast<bool*>(nullptr), true,
-        "standings.live_gaps", nullptr);
+    // Live updates in races (Off / Gaps / Both): Both is live gaps and live
+    // order, which the Position widget and the Dash's Standings page follow.
+    {
+        static const char* const kLiveModes[] = { "Off", "Gaps", "Both" };
+        static_assert(sizeof(kLiveModes) / sizeof(kLiveModes[0]) ==
+                      static_cast<size_t>(StandingsHud::LiveMode::COUNT), "one name per live mode");
+        ctx.addCycleControl("Live updates", cycleName(kLiveModes, static_cast<int>(hud->m_liveMode)),
+            SettingsHud::CycleControl::enumMember(hud, &StandingsHud::m_liveMode,
+                static_cast<int>(StandingsHud::LiveMode::COUNT), hud, kLiveModes),
+            hud, true, hud->m_liveMode == StandingsHud::LiveMode::OFF, "standings.live_updates");
+    }
 
     // Animate position changes (Off / Basic / Colored)
     {

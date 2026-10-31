@@ -251,7 +251,7 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
                 const int colorIdx = static_cast<int>(ctx.parent->m_cycleControls.size());
                 ctx.parent->m_cycleControls.push_back(paletteCycle(
                     [riderName]() {
-                        const TrackedRiderConfig* r = TrackedRidersManager::getInstance().getTrackedRider(riderName);
+                        const TrackedRiderConfig* r = TrackedRidersManager::getInstance().getTrackedRider(riderName.c_str());
                         return r ? r->color : 0UL;
                     },
                     [riderName](unsigned long c) { TrackedRidersManager::getInstance().setTrackedRiderColor(riderName, c); },
@@ -259,7 +259,7 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
                 const int shapeIdx = static_cast<int>(ctx.parent->m_cycleControls.size());
                 ctx.parent->m_cycleControls.push_back(iconCycle(
                     [riderName]() {
-                        const TrackedRiderConfig* r = TrackedRidersManager::getInstance().getTrackedRider(riderName);
+                        const TrackedRiderConfig* r = TrackedRidersManager::getInstance().getTrackedRider(riderName.c_str());
                         return r ? r->shapeIndex : 1;
                     },
                     [riderName](int v) { TrackedRidersManager::getInstance().setTrackedRiderShape(riderName, v); },

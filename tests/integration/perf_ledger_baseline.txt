@@ -1,0 +1,174 @@
+# Perf ledger baseline: exact counters from run_perf_ledger.sh on the
+# synthetic busy tape (make_perf_tape.cpp). Regenerate with
+#   ./tests/integration/run_perf_ledger.sh --update
+# in the same commit as the change that moves them.
+# toolchain: mingw 13-posix / wine-9.0 (Ubuntu 9.0~repack-4build3)
+defaults replay.frames 35519
+defaults replay.quads 5421054
+defaults replay.quads_max 309
+defaults replay.strings 4340653
+defaults replay.strings_max 200
+defaults replay.glyphs 17334311
+defaults replay.sprite_switches 0
+defaults replay.engine_us_per_frame 239.0
+defaults replay.draw_allocs 504
+defaults replay.draw_alloc_bytes 1418663
+defaults replay.draw_alloc_frames 304
+defaults replay.draw_allocs_max 12
+defaults idle.frames 1201
+defaults idle.quads 128507
+defaults idle.quads_max 107
+defaults idle.strings 129708
+defaults idle.strings_max 108
+defaults idle.glyphs 557264
+defaults idle.sprite_switches 0
+defaults idle.engine_us_per_frame 189.1
+defaults idle.draw_allocs 0
+defaults idle.draw_alloc_bytes 0
+defaults idle.draw_alloc_frames 0
+defaults idle.draw_allocs_max 0
+defaults cb.RaceClassification.calls 8880
+defaults cb.RaceClassification.allocs 60
+defaults cb.RaceClassification.alloc_bytes 2184
+defaults cb.RaceCommunication.calls 2
+defaults cb.RaceCommunication.allocs 1
+defaults cb.RaceCommunication.alloc_bytes 480
+defaults cb.RaceLap.calls 115
+defaults cb.RaceLap.allocs 469
+defaults cb.RaceLap.alloc_bytes 97267
+defaults cb.RaceSession.calls 1
+defaults cb.RaceSession.allocs 0
+defaults cb.RaceSession.alloc_bytes 0
+defaults cb.RaceSessionState.calls 4
+defaults cb.RaceSessionState.allocs 2
+defaults cb.RaceSessionState.alloc_bytes 960
+defaults cb.RaceSplit.calls 238
+defaults cb.RaceSplit.allocs 134
+defaults cb.RaceSplit.alloc_bytes 4640
+defaults cb.RaceTrackPosition.calls 35520
+defaults cb.RaceTrackPosition.allocs 125
+defaults cb.RaceTrackPosition.alloc_bytes 415784
+defaults cb.RaceVehicleData.calls 35520
+defaults cb.RaceVehicleData.allocs 0
+defaults cb.RaceVehicleData.alloc_bytes 0
+defaults cb.RunDeinit.calls 1
+defaults cb.RunDeinit.allocs 263
+defaults cb.RunDeinit.alloc_bytes 31408
+defaults cb.RunStop.calls 1
+defaults cb.RunStop.allocs 302
+defaults cb.RunStop.alloc_bytes 73372
+defaults cb.RunTelemetry.calls 29600
+defaults cb.RunTelemetry.allocs 0
+defaults cb.RunTelemetry.alloc_bytes 0
+defaults heap.net_live_bytes 771472
+defaults http.snapshot_builds 0
+defaults frame_hash 3ff415b9d189b8e9
+all replay.frames 35519
+all replay.quads 58393774
+all replay.quads_max 2829
+all replay.strings 55248743
+all replay.strings_max 1658
+all replay.glyphs 236524101
+all replay.sprite_switches 1180466
+all replay.engine_us_per_frame 2843.3
+all replay.draw_allocs 190522
+all replay.draw_alloc_bytes 86604436
+all replay.draw_alloc_frames 2761
+all replay.draw_allocs_max 618
+all idle.frames 1201
+all idle.quads 1540553
+all idle.quads_max 1287
+all idle.strings 1913481
+all idle.strings_max 1595
+all idle.glyphs 9672790
+all idle.sprite_switches 38432
+all idle.engine_us_per_frame 2728.1
+all idle.draw_allocs 662
+all idle.draw_alloc_bytes 81470
+all idle.draw_alloc_frames 11
+all idle.draw_allocs_max 622
+all cb.RaceClassification.calls 8880
+all cb.RaceClassification.allocs 24235
+all cb.RaceClassification.alloc_bytes 15256201
+all cb.RaceCommunication.calls 2
+all cb.RaceCommunication.allocs 1
+all cb.RaceCommunication.alloc_bytes 480
+all cb.RaceLap.calls 115
+all cb.RaceLap.allocs 644
+all cb.RaceLap.alloc_bytes 152149
+all cb.RaceSession.calls 1
+all cb.RaceSession.allocs 8
+all cb.RaceSession.alloc_bytes 199812
+all cb.RaceSessionState.calls 4
+all cb.RaceSessionState.allocs 476
+all cb.RaceSessionState.alloc_bytes 313259
+all cb.RaceSplit.calls 238
+all cb.RaceSplit.allocs 313
+all cb.RaceSplit.alloc_bytes 159061
+all cb.RaceTrackPosition.calls 35520
+all cb.RaceTrackPosition.allocs 2955
+all cb.RaceTrackPosition.alloc_bytes 1688316
+all cb.RaceVehicleData.calls 35520
+all cb.RaceVehicleData.allocs 0
+all cb.RaceVehicleData.alloc_bytes 0
+all cb.RunDeinit.calls 1
+all cb.RunDeinit.allocs 263
+all cb.RunDeinit.alloc_bytes 31408
+all cb.RunStop.calls 1
+all cb.RunStop.allocs 302
+all cb.RunStop.alloc_bytes 73372
+all cb.RunTelemetry.calls 29600
+all cb.RunTelemetry.allocs 25212
+all cb.RunTelemetry.alloc_bytes 14002974
+all heap.net_live_bytes 2994173
+all http.snapshot_builds 2160
+all frame_hash a571ff5be1a55038
+all HUD helmet_overlay rebuilds=37322 quads=0 strings=0
+all HUD impact_vignette rebuilds=0 quads=0 strings=0
+all HUD standings_hud rebuilds=9692 quads=150 strings=452
+all HUD map_hud rebuilds=34501 quads=219 strings=5
+all HUD radar_hud rebuilds=34499 quads=6 strings=4
+all HUD lap_log_hud rebuilds=32131 quads=41 strings=157
+all HUD friends_hud rebuilds=9672 quads=0 strings=0
+all HUD ideal_lap_hud rebuilds=359 quads=41 strings=19
+all HUD telemetry_hud rebuilds=29206 quads=44 strings=12
+all HUD performance_hud rebuilds=37322 quads=44 strings=13
+all HUD delta_trace_hud rebuilds=945 quads=44 strings=5
+all HUD pitboard_hud rebuilds=9929 quads=0 strings=0
+all HUD records_hud rebuilds=289 quads=74 strings=24
+all HUD session_charts_hud rebuilds=121 quads=93 strings=16
+all HUD fmx_hud rebuilds=29206 quads=85 strings=12
+all HUD stats_hud rebuilds=440 quads=41 strings=44
+all HUD event_log_hud rebuilds=295 quads=41 strings=91
+all HUD stream_chat_hud rebuilds=1 quads=41 strings=3
+all HUD lap_widget rebuilds=9672 quads=18 strings=2
+all HUD position_widget rebuilds=9632 quads=18 strings=2
+all HUD time_widget rebuilds=287 quads=18 strings=2
+all HUD session_widget rebuilds=287 quads=41 strings=4
+all HUD speed_widget rebuilds=37321 quads=9 strings=3
+all HUD gear_widget rebuilds=37321 quads=9 strings=2
+all HUD crash_widget rebuilds=37322 quads=36 strings=3
+all HUD rpm_widget rebuilds=29208 quads=24 strings=1
+all HUD gl_confirm rebuilds=0 quads=0 strings=0
+all HUD speedo_widget rebuilds=37321 quads=21 strings=2
+all HUD tacho_widget rebuilds=37321 quads=19 strings=0
+all HUD timing_hud rebuilds=29146 quads=41 strings=6
+all HUD gap_bar_hud rebuilds=27175 quads=32 strings=2
+all HUD bars_widget rebuilds=37321 quads=35 strings=7
+all HUD breakout_hud rebuilds=0 quads=0 strings=0
+all HUD notices_hud rebuilds=5 quads=0 strings=0
+all HUD spotter_widget rebuilds=0 quads=0 strings=0
+all HUD fuel_widget rebuilds=37322 quads=27 strings=7
+all HUD dash_hud rebuilds=11 quads=41 strings=7
+all HUD rumble_hud rebuilds=29206 quads=41 strings=3
+all HUD achievement_widget rebuilds=2 quads=0 strings=0
+all HUD gamepad_widget rebuilds=29206 quads=17 strings=0
+all HUD lean_widget rebuilds=37322 quads=59 strings=2
+all HUD gforce_widget rebuilds=37322 quads=57 strings=3
+all HUD compass_widget rebuilds=37322 quads=29 strings=5
+all HUD clock_widget rebuilds=6 quads=18 strings=2
+all HUD now_playing_widget rebuilds=1 quads=27 strings=2
+all HUD prestige_widget rebuilds=1 quads=0 strings=0
+all HUD settings_hud rebuilds=0 quads=0 strings=0
+all HUD toggle_strip_widget rebuilds=2 quads=0 strings=0
+all HUD pointer_widget rebuilds=37321 quads=0 strings=0

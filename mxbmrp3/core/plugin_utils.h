@@ -169,6 +169,19 @@ public:
         return w;
     }
 
+    // Strip leading and trailing whitespace from a C string, in place (no
+    // allocation): cuts the tail with a NUL and returns a pointer to the first
+    // non-blank character. For text from outside the plugin that arrives padded,
+    // like the registry's ProcessorNameString ("AMD Ryzen 9 5950X 16-Core
+    // Processor" followed by a run of spaces).
+    static char* trimInPlace(char* s) {
+        while (*s != '\0' && std::isspace(static_cast<unsigned char>(*s))) ++s;
+        size_t len = std::strlen(s);
+        while (len > 0 && std::isspace(static_cast<unsigned char>(s[len - 1]))) --len;
+        s[len] = '\0';
+        return s;
+    }
+
     // Column position helper - used by standings and lap log HUDs
     // Sets target column position if flag is enabled, or -1.0 if disabled
     // Advances current position by the column width if enabled

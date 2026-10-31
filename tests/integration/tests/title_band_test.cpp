@@ -686,6 +686,7 @@ TEST_CASE("the settings caption block spends its terms on every branch") {
         for (const auto& r : host.hudStringRows(PluginHost::HUD_SETTINGS)) {
             if (r.text.empty()) continue;
             if (r.text == settingsCaption) { caption = r.y; continue; }
+            if (r.text == "Find") continue;   // the Find field: title-band chrome, not content
             best = (std::min)(best, r.y);
         }
         REQUIRE(caption < 1e8);

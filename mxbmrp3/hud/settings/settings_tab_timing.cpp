@@ -100,7 +100,7 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::TIMING_GAP_ALLTIME_TOGGLE, hud, nullptr, 0, true, "timing.gap_alltime");
     ctx.addToggleControl("Ideal", hud->isComparisonEnabled(GAP_TO_IDEAL),
         SettingsHud::ClickRegion::TIMING_GAP_IDEAL_TOGGLE, hud, nullptr, 0, true, "timing.gap_ideal");
-    ctx.addToggleControl("Overall", hud->isComparisonEnabled(GAP_TO_OVERALL),
+    ctx.addToggleControl("Server best", hud->isComparisonEnabled(GAP_TO_OVERALL),
         SettingsHud::ClickRegion::TIMING_GAP_OVERALL_TOGGLE, hud, nullptr, 0, true, "timing.gap_overall");
     ctx.addToggleControl("Last lap", hud->isComparisonEnabled(GAP_TO_LASTLAP),
         SettingsHud::ClickRegion::TIMING_GAP_LASTLAP_TOGGLE, hud, nullptr, 0, true, "timing.gap_lastlap");

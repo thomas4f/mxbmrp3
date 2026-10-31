@@ -672,6 +672,9 @@ void PluginData::clearAllLapLog() {
     // The reference lap is gone with the logs: the live gap reads invalid until the
     // next PB, while the lap in progress keeps being sampled as a candidate.
     m_pbGap.forgetBestLap();
+    // The server best went with the logs; every rider's lap in progress too, as
+    // a new session starts here (a lap fenced before it is not one of its laps).
+    m_fieldLapTraces.clear();
 
     DEBUG_INFO("All riders' lap log cleared");
     notifyHudManager(DataChangeType::LapLog);

@@ -111,18 +111,20 @@ public:
     // Ahead of the rider the previous lap stays on, fainter, until the new lap
     // draws over it (LapDeltaProfile).
     // OFF, or the lap it compares against (the Gap Bar's references, in its order),
-    // or DEFAULT: General's reference (hud_defaults.h). DEFAULT is last so the
-    // stored values of the others never moved.
+    // or DEFAULT: General's reference (hud_defaults.h). Stored by value, so a
+    // reference added later goes after DEFAULT and the others never moved.
     enum class LapDelta : uint8_t {
         OFF = 0,
         SESSION_PB = 1,
         ALLTIME_PB = 2,
         LAST_LAP = 3,
-        DEFAULT = 4
+        DEFAULT = 4,
+        SERVER_BEST = 5
     };
-    static constexpr int LAP_DELTA_COUNT = 5;
+    static constexpr int LAP_DELTA_COUNT = 6;
     // The reference lap delta compares against (meaningless while OFF).
     PbGapTracker::Ref lapDeltaReference() const {
+        if (m_lapDelta == LapDelta::SERVER_BEST) return PbGapTracker::Ref::SERVER_BEST;
         return HudDefaults::reference(m_lapDelta == LapDelta::DEFAULT,
             static_cast<PbGapTracker::Ref>(static_cast<int>(m_lapDelta) - 1));
     }

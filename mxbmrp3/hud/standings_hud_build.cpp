@@ -35,9 +35,31 @@ void StandingsHud::rebuildRenderData() {
     m_raceNumPlateQuads.clear(); // Reset race number plate quad tracking
     m_slideHighlightQuads.clear(); // Reset slide-highlight quad tracking
 
+    // Show mode. Drawn anyway while the Standings tab is open (isPreviewing), as
+    // the Pitboard is: a HUD up for a few seconds a lap is no HUD to drag. And
+    // while its Toggles strip icon is hovered (isSampled), or the sample is empty.
+    m_bShownLastRebuild = shouldBeVisible() || isPreviewing() || isSampled();
+    if (!m_bShownLastRebuild) {
+        m_riderClickRegions.clear();
+        m_hoveredRowIndex = -1;
+        // Forget the rows, so they snap into place when the HUD comes back
+        // rather than sliding through every change made while it was down.
+        m_previousPositions.clear();
+        m_previousSlots.clear();
+        m_activeAnimations.clear();
+        setBounds(0.0f, 0.0f, 0.0f, 0.0f);
+        return;
+    }
+
     const PluginData& pluginData = PluginData::getInstance();
     int displayRaceNum = pluginData.getDisplayRaceNum();
     const auto& classificationOrder = pluginData.getDisplayClassificationOrder();
+    // The rows' order: the official one, or with Live updates on Both the
+    // live one. Gaps stay measured from the OFFICIAL leader (formatDisplayEntries
+    // and the session info take the official order): that is the rider the
+    // live-gap engine baselines on.
+    const auto& rowOrder = runningOrder();
+    m_builtOrderRevision = m_runningOrderRevision;
 
     pruneIconCache(classificationOrder);
 
@@ -45,7 +67,7 @@ void StandingsHud::rebuildRenderData() {
     uint32_t savedEnabledColumns = m_enabledColumns;
     m_enabledColumns = computeEffectiveColumns();
 
-    buildDisplayEntries(classificationOrder, displayRaceNum, pluginData);
+    buildDisplayEntries(rowOrder, displayRaceNum, pluginData);
     formatDisplayEntries(classificationOrder, displayRaceNum, pluginData);
     applyNameMode();
 
@@ -146,6 +168,67 @@ void StandingsHud::rebuildRenderData() {
 
     // Restore m_enabledColumns to the profile-set value (we temporarily modified it for gap mode filtering)
     m_enabledColumns = savedEnabledColumns;
+}
+
+// Live order (Live updates: Both): the official order with the passes the
+// track positions have held for StandingsLiveOrder::Tracker::HOLD_MS applied.
+// Races in progress only; anywhere else the tracker forgets its passes, so one
+// race's pairs never carry into the next. Who may move is decided HERE, from
+// PluginData; the pair logic is standings_live_order.h's.
+const std::vector<int>& StandingsHud::runningOrder() {
+    const PluginData& pluginData = PluginData::getInstance();
+    const std::vector<int>& official = pluginData.getDisplayClassificationOrder();
+    const SessionData& sessionData = pluginData.getSessionData();
+    const bool live = m_liveMode == LiveMode::BOTH && pluginData.isRaceSession() &&
+        (sessionData.sessionState & SessionState::IN_PROGRESS) != 0;
+    if (!live) {
+        if (m_liveOrderActive) {   // hand the official order back, once
+            m_liveOrderActive = false;
+            m_liveOrder.reset();
+            ++m_runningOrderRevision;
+        }
+        return official;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    const auto since = now - m_liveOrderTime;
+    if (m_liveOrderActive && since < std::chrono::milliseconds(LIVE_ORDER_POLL_MS) &&
+        official == m_liveOrderInput) {
+        return m_liveOrderRows;
+    }
+    if (since >= std::chrono::milliseconds(LIVE_ORDER_IDLE_MS)) m_liveOrder.reset();
+    m_liveOrderTime = now;
+    m_liveOrderInput.assign(official.begin(), official.end());
+
+    m_liveOrderRiders.clear();
+    m_liveOrderRiders.reserve(official.size());
+    for (int raceNum : official) {
+        StandingsLiveOrder::Rider rider;
+        rider.raceNum = raceNum;
+        const StandingsData* standing = pluginData.getStanding(raceNum);
+        const RiderTrackState* track = pluginData.getRiderTrackState(raceNum);
+        if (standing && track) {
+            rider.numLaps = standing->numLaps;
+            rider.trackPos = track->trackPos;
+            // Going the wrong way (a crash, a reset) is no evidence either way,
+            // like a missing sample: the rider keeps any pass already shown
+            // rather than jumping back to their official row and out again.
+            rider.fresh = pluginData.hasActiveTrackPos(raceNum) && !track->wrongWay;
+            rider.racing = standing->state == RiderState::NORMAL && standing->pit == 0 &&
+                standing->gapLaps == 0 &&
+                !sessionData.isRiderFinished(standing->numLaps, standing->numLapsAtLeaderFinish);
+        }
+        m_liveOrderRiders.push_back(rider);
+    }
+
+    const int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now.time_since_epoch()).count();
+    m_liveOrderNext.reserve(official.size());
+    m_liveOrder.update(m_liveOrderRiders, nowMs, m_liveOrderNext);
+    if (!m_liveOrderActive || m_liveOrderNext != m_liveOrderRows) ++m_runningOrderRevision;
+    m_liveOrderRows.swap(m_liveOrderNext);
+    m_liveOrderActive = true;
+    return m_liveOrderRows;
 }
 
 // Prune stale icon cache entries for riders no longer in the classification
@@ -327,7 +410,7 @@ StandingsGap::Table StandingsHud::buildGapTable(const std::vector<int>& classifi
     bool isRace = pluginData.isRaceSession();
 
     // Determine gap data source: use live gap in race sessions when enabled
-    bool useLiveGap = isRace && m_bLiveGaps;
+    bool useLiveGap = isRace && m_liveMode != LiveMode::OFF;
 
     // Gather the table-wide gap inputs once. Everything the gap decision needs
     // from PluginData is read HERE; StandingsGap::planGap() (formatDisplayEntries) sees only
@@ -392,7 +475,7 @@ StandingsGap::Table StandingsHud::buildGapTable(const std::vector<int>& classifi
     // The player-relative live gap subtracts the player's realTimeGap as the
     // reference for every other rider, so it must be a FRESH value. If the player
     // (spectated/target rider) has dropped out of the current track-position batch
-    // its realTimeGap is stale (the game only sends the ~10 closest vehicles) —
+    // its realTimeGap is stale (a batch often misses one to four riders) —
     // gate on hasActiveTrackPos exactly as the per-rider live path does, so a
     // stale reference doesn't skew every rider's gap. The leader is always valid.
     const bool playerLiveGapUsable = playerStanding &&

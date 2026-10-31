@@ -28,12 +28,15 @@
 #include "../core/color_config.h"
 #include "../core/hotkey_manager.h"
 #include "../core/hud_manager.h"
+#include "../core/input_manager.h"
 #include "../core/plugin_constants.h"
 #include "../core/plugin_data.h"
+#include "../core/plugin_manager.h"
 #include "../core/plugin_utils.h"
 #include "../core/tracked_riders_manager.h"
 #include "../core/pixel_text.h"
 #include "../core/update_checker.h"
+#include "../diagnostics/logger.h"
 
 using namespace PluginConstants;
 
@@ -100,7 +103,7 @@ void DashHud::drawStandings(float rowLeft, float right, float contentY, const Sc
             tint.raceNum = n.raceNum;
             snprintf(tint.name, sizeof(tint.name), "%s", riderName);
             const TrackedRiderConfig* tracked =
-                entry ? TrackedRidersManager::getInstance().getTrackedRider(std::string(entry->name)) : nullptr;
+                entry ? TrackedRidersManager::getInstance().getTrackedRider(entry->name) : nullptr;
             tint.color = tracked ? tracked->color : 0;
             tint.sprite = tracked ? AssetManager::getInstance().iconSpriteForShape(tracked->shapeIndex) : 0;
         }
@@ -245,6 +248,10 @@ void DashHud::drawStandings(float rowLeft, float right, float contentY, const Sc
                   dim.fontSize);
         return;
     }
+    m_rowsLeft = rowLeft;
+    m_rowsRight = right;
+    m_rowsTop = contentY;
+    m_rowHeight = dim.lineHeightNormal;
     for (int i = 0; i < STANDINGS_ROWS; ++i) {
         if (m_shownRows[i].raceNum >= 0)
             row(m_shownRows[i], contentY + dim.lineHeightNormal * static_cast<float>(i), m_plateTint[i]);
@@ -341,12 +348,13 @@ void DashHud::drawGapChart(float x, float y, float w, float h, const ScaledDimen
     auto line = [&](const std::vector<long long>& series, int raceNum, unsigned long color, float thickness) {
         bool hasPrev = false;
         float prevX = 0.0f, prevY = 0.0f;
+        ChartRun run;   // a straight stretch draws as one quad (addChartSegment); a dot breaks it
         for (size_t i = 0; i < series.size(); ++i) {
             const long long g = std::max<long long>(0, std::min(gapMax, series[i]));
             const float px = x + plotW * SessionChartsMath::xFracForLaps(static_cast<float>(i), 0.0f, lastIndex);
             const float py = y + static_cast<float>(g) / static_cast<float>(gapMax) * h;
-            if (hasPrev) addLineSegment(prevX, prevY, px, py, color, thickness);
-            if (on & SessionChartsHud::ELEM_DOTS) addDot(px, py, color, dotSize);
+            if (hasPrev) addChartSegment(run, prevX, prevY, px, py, color, thickness);
+            if (on & SessionChartsHud::ELEM_DOTS) { addDot(px, py, color, dotSize); run.reset(); }
             hasPrev = true;
             prevX = px;
             prevY = py;
@@ -526,6 +534,11 @@ void DashHud::drawFlatMap(float left, float width, float boxY, float boxH, const
     const float markerScale = bar.getMarkerScale();
     const float iconSize = GapBarHud::DEFAULT_MARKER_BASE_SIZE * m_fScale * markerScale;
     const float boxCenterY = boxY + boxH / 2.0f;
+    m_mapLeft = left;
+    m_mapWidth = width;
+    m_mapTop = boxY;
+    m_mapBottom = boxY + boxH;
+    m_mapIconSize = iconSize;
     auto centerFor = [&](float halfSize, float boost) {
         if (labelMode == GapBarHud::LabelMode::NONE) return boxCenterY;
         return boxCenterY + MarkerLabel::blockCenterShift(anchor, halfSize, dim.fontSizeSmall * markerScale * boost);
@@ -572,6 +585,40 @@ void DashHud::drawFlatMap(float left, float width, float boxY, float boxH, const
         addString(label, lp.x, lp.y, lp.justify, getFont(FontCategory::SMALL),
                   MarkerLabel::color(labelMode, position, getColor(ColorSlot::PRIMARY)), fontSize, false);
     }
+}
+
+void DashHud::followRiderClick() {
+    if ((m_page != Page::STANDINGS && m_page != Page::FLAT_MAP) || isHeldBack()) return;
+    const PluginData& data = PluginData::getInstance();
+    const int drawState = data.getDrawState();
+    if (drawState != ViewState::SPECTATE && drawState != ViewState::REPLAY) return;
+    const InputManager& input = InputManager::getInstance();
+    if (!input.getLeftButton().isClicked()) return;
+    // Into build space, so the click lands on a Dash moved elsewhere on the
+    // companion (a no-op in-game).
+    CursorPosition cursor = input.getCursorPosition();
+    mapCursorToHudSpace(cursor.x, cursor.y);
+    if (!cursor.isValid || !isPointInBounds(cursor.x, cursor.y)) return;
+    const float x = cursor.x - m_fOffsetX;
+    const float y = cursor.y - m_fOffsetY;
+    int raceNum = -1;
+    if (m_page == Page::STANDINGS) {
+        // The row under the cursor, across the card; the displayed rider's own
+        // is already the one watched.
+        if (m_rowHeight <= 0.0f || x < m_rowsLeft || x > m_rowsRight || y < m_rowsTop) return;
+        const int row = static_cast<int>((y - m_rowsTop) / m_rowHeight);
+        if (row >= STANDINGS_ROWS || m_shownRows[row].self) return;
+        raceNum = m_shownRows[row].raceNum;
+        if (raceNum < 0 || !data.isRiderSpectatable(raceNum)) return;
+    } else {
+        if (m_mapWidth <= 0.0f || y < m_mapTop || y > m_mapBottom) return;
+        raceNum = HudManager::getInstance().getGapBarHud().riderAt(
+            m_riderPositions.data(), static_cast<int>(m_riderPositions.size()),
+            m_mapLeft, m_mapWidth, m_mapIconSize, x);
+        if (raceNum < 0) return;
+    }
+    DEBUG_INFO_F("DashHud: Switching to rider #%d", raceNum);
+    PluginManager::getInstance().requestSpectateRider(raceNum);
 }
 
 void DashHud::addStepHint(float centerX, float width, float y, const ScaledDimensions& dim, float alpha) {

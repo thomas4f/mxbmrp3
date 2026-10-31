@@ -10,15 +10,17 @@
 // the track WAS the reference lap at this elapsed time" -- which places the
 // Gap Bar's ghost marker.
 //
-// THREE REFERENCES, one sampling. Every committed lap becomes LAST_LAP; a
+// FOUR REFERENCES, one sampling. Every committed lap becomes LAST_LAP; a
 // session PB becomes SESSION_PB; a lap the caller says beat the all-time PB
-// becomes ALLTIME_PB. The Gap Bar's Reference setting picks which one is read.
+// becomes ALLTIME_PB. SERVER_BEST is planted from outside: the session's
+// fastest lap by anyone, traced by core/field_lap_traces.h. The Gap Bar's
+// Reference setting picks which one is read.
 // ALLTIME_PB is the one that outlives the session: PluginData plants it from
 // core/pb_trace_store.h (the persisted table of the rider's own PB on this
 // track and bike) whenever the tracker is re-bound to the player, and hands
 // the table back to the store when a lap beats it. Session change and spectate
-// change reset() all three; forgetBestLap() (lap logs cleared) drops only the
-// two the session owns.
+// change reset() all four (PluginData re-plants the two planted ones);
+// forgetBestLap() (lap logs cleared) drops only the three the session owns.
 //
 // WHY IT LIVES IN core/ AND NOT IN THE GAP BAR. It used to be GapBarHud's:
 // its own wall-clock anchor (a copy of LapTimer's, minus the grid-start grace),
@@ -102,13 +104,15 @@ public:
     enum class Ref : uint8_t {
         SESSION_PB = 0,   // the session's best lap
         ALLTIME_PB = 1,   // the all-time best on this track and bike (persisted)
-        LAST_LAP = 2      // the lap just completed
+        LAST_LAP = 2,     // the lap just completed
+        SERVER_BEST = 3   // the session's fastest lap by anyone (planted, see above)
     };
-    static constexpr int REF_COUNT = 3;
+    static constexpr int REF_COUNT = 4;
     // A reference's name, the one spelling Settings lists it by and the HUDs
     // caption their gaps with.
     static constexpr const char* refName(Ref ref) {
-        return ref == Ref::ALLTIME_PB ? "All-time PB" : ref == Ref::LAST_LAP ? "Last lap" : "Session PB";
+        return ref == Ref::ALLTIME_PB ? "All-time PB" : ref == Ref::LAST_LAP ? "Last lap"
+             : ref == Ref::SERVER_BEST ? "Server best" : "Session PB";
     }
 
     // Everything: session change, spectate target change. The all-time
@@ -138,16 +142,19 @@ public:
     void forgetBestLap() {
         m_refs[at(Ref::SESSION_PB)] = Reference{};
         m_refs[at(Ref::LAST_LAP)] = Reference{};
+        m_refs[at(Ref::SERVER_BEST)] = Reference{};
         clearLastLapGaps();
     }
 
-    // Plant a reference from outside -- the persisted all-time table.
+    // Plant a reference from outside -- the persisted all-time table, the
+    // server best trace -- or drop one that no longer stands.
     void setReference(Ref ref, const Table& table, int lapTimeMs) {
         Reference& r = m_refs[at(ref)];
         r.table = table;
         r.lapTimeMs = lapTimeMs;
         r.has = lapTimeMs > 0;
     }
+    void clearReference(Ref ref) { m_refs[at(ref)] = Reference{}; }
     const Table& referenceTable(Ref ref) const { return m_refs[at(ref)].table; }
 
     // The in-progress lap died (pit exit): drop its samples and anything set

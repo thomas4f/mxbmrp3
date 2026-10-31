@@ -1016,8 +1016,8 @@ def read_tab_registry(failures, check_name):
             in_profile = False
         elif tab == "TAB_GROUP":
             pass  # a purpose-group header inside a section, not a tab
-        elif tab == "TAB_MORE":
-            pass  # the More page a group's row opens, not a tab of its own
+        elif tab in ("TAB_MORE", "TAB_FIND"):
+            pass  # the More page a group's row opens / the Find box's results, not tabs of their own
         elif in_profile:
             prof.append(name)
         else:

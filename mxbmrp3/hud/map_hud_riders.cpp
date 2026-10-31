@@ -201,7 +201,7 @@ void MapHud::renderRiders(const RotationCache& rotation,
             shapeIndex = AssetManager::getInstance().shapeIndexForSprite(spriteIndex);
         } else {
             // Non-tracked rider - use global shape (0=OFF defaults to circle for local player)
-            shapeIndex = (m_riderShapeIndex > 0) ? m_riderShapeIndex : getShapeIndexByFilename(DEFAULT_RIDER_ICON);
+            shapeIndex = (m_riderShapeIndex > 0) ? m_riderShapeIndex : defaultRiderShapeIndex();
             spriteIndex = AssetManager::getInstance().iconSpriteForShape(shapeIndex);
         }
 
@@ -569,8 +569,7 @@ void MapHud::renderOffTrackPointer(const RotationCache& rotation,
         // This is also the path the headless tests take: run_tests.sh stages no
         // assets, so an early return here made the whole feature untestable, which
         // is how the fallback came to be written.
-        spriteIndex = AssetManager::getInstance().iconSpriteForShape(
-            getShapeIndexByFilename(DEFAULT_RIDER_ICON));
+        spriteIndex = AssetManager::getInstance().iconSpriteForShape(defaultRiderShapeIndex());
     }
 
     // The direction from the MAP'S CENTRE, not from the player's icon: in zoom mode

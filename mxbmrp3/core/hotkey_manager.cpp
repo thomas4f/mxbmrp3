@@ -223,9 +223,9 @@ void HotkeyManager::startCapture(HotkeyAction action, CaptureType type) {
                  static_cast<int>(action));
 }
 
-void HotkeyManager::startTextCapture(const std::string& initial, size_t maxLen, bool handlePunctuation) {
+void HotkeyManager::startTextCapture(const std::string& initial, size_t maxLen, TextKeys keys) {
     m_captureType = CaptureType::TEXT;
-    m_captureHandlePunctuation = handlePunctuation;
+    m_captureKeys = keys;
     m_captureCompleted = false;
     m_textCommitted = false;
     m_captureEdit.reset(initial, maxLen);
@@ -470,10 +470,11 @@ void HotkeyManager::updateTextCapture() {
         if (isKeyClicked(static_cast<uint8_t>(vk))) append(static_cast<char>('0' + (vk - VK_NUMPAD0)));
     }
     // Shift+minus is '_' on most layouts. A bare '-' (and '.') is typed only
-    // for a YouTube handle: a Twitch name cannot contain one, and its
+    // for a YouTube handle or a search: a Twitch name cannot contain one, and its
     // normalizeChannel would silently cut "abc-def" to "abc" at it.
     if (shift && isKeyClicked(VK_OEM_MINUS)) append('_');
-    if (m_captureHandlePunctuation && !shift) {
+    if (m_captureKeys == TextKeys::SEARCH && isKeyClicked(VK_SPACE)) append(' ');
+    if (m_captureKeys != TextKeys::NAME && !shift) {
         if (isKeyClicked(VK_OEM_MINUS) || isKeyClicked(VK_SUBTRACT)) append('-');
         if (isKeyClicked(VK_OEM_PERIOD) || isKeyClicked(VK_DECIMAL)) append('.');
     }

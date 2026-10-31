@@ -295,6 +295,7 @@ void PerformanceHud::rebuildRenderData() {
                                fpsTopBuf, fpsMidBuf, "0 FPS", dims);
 
             // Render FPS graph (continuous line segments)
+            ChartRun run;   // a straight stretch draws as one quad (addChartSegment)
             for (int i = 0; i < GRAPH_HISTORY_SIZE - 1; ++i) {
                 int histIdx1 = (m_historyIndex + i) % GRAPH_HISTORY_SIZE;
                 int histIdx2 = (m_historyIndex + i + 1) % GRAPH_HISTORY_SIZE;
@@ -322,7 +323,7 @@ void PerformanceHud::rebuildRenderData() {
                         color = colBad;       // Red: bad performance
                     }
 
-                    addLineSegment(x1, y1, x2, y2, color, lineThickness);
+                    addChartSegment(run, x1, y1, x2, y2, color, lineThickness);
                 }
             }
         }
@@ -395,6 +396,7 @@ void PerformanceHud::rebuildRenderData() {
                                msTopBuf, msMidBuf, "0.0 ms", dims);
 
             // Render Plugin Time graph (continuous line segments, 0-4ms range)
+            ChartRun run;   // a straight stretch draws as one quad (addChartSegment)
             for (int i = 0; i < GRAPH_HISTORY_SIZE - 1; ++i) {
                 int histIdx1 = (m_historyIndex + i) % GRAPH_HISTORY_SIZE;
                 int histIdx2 = (m_historyIndex + i + 1) % GRAPH_HISTORY_SIZE;
@@ -423,7 +425,7 @@ void PerformanceHud::rebuildRenderData() {
                         color = colBad;       // over three quarters of budget
                     }
 
-                    addLineSegment(x1, y1, x2, y2, color, lineThickness);
+                    addChartSegment(run, x1, y1, x2, y2, color, lineThickness);
                 }
             }
         }

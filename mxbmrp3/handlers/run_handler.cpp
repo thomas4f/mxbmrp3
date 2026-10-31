@@ -11,6 +11,7 @@
 #include "../core/stats_manager.h"
 #include "../core/settings_manager.h"
 #include "../hud/fuel_widget.h"
+#include "../hud/benchmark_widget.h"
 #include "../diagnostics/logger.h"
 
 void Handlers::handleRunInit(Unified::SessionData* psSessionData) {
@@ -127,6 +128,9 @@ void Handlers::handleRunDeinit() {
 
     // Exiting the run: flush any deferred settings changes (no-op if nothing changed).
     SettingsManager::getInstance().flushIfDirty(HudManager::getInstance());
+
+    // A running Benchmark profiler saves its report so far (see saveStint).
+    if (BenchmarkWidget* bench = HudManager::getInstance().getBenchmarkWidget()) bench->saveStint();
 
     // Off the track: take the in-game overlay's HUD off screen immediately
     // instead of waiting out its staleness backstop (see notifyGameInactive) —

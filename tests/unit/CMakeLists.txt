@@ -34,10 +34,14 @@ set(MXB_UNIT_SOURCES
     test_twitch_irc.cpp
     test_youtube_chat.cpp
     test_hold_repeat.cpp
+    test_flat_int_map.cpp
+    test_engine_cull.cpp
+    test_chart_run.cpp
     test_cursor_idle.cpp
     test_hotkey_names.cpp
     test_slider_control.cpp
     test_text_edit.cpp
+    test_settings_find.cpp
     test_achievements.cpp
     test_system_messages.cpp
     test_analytics_remote_config.cpp
@@ -67,6 +71,8 @@ set(MXB_UNIT_SOURCES
     test_delta_color.cpp
     test_split_crossing.cpp
     test_pb_gap_tracker.cpp
+    test_field_lap_traces.cpp
+    test_hud_defaults.cpp
     test_lap_delta_rate.cpp
     test_pb_trace_store.cpp
     test_live_gap_engine.cpp
@@ -95,6 +101,7 @@ set(MXB_UNIT_SOURCES
     test_icon_resolve.cpp
     test_peak_marker.cpp
     test_standings_gap_plan.cpp
+    test_standings_live_order.cpp
     test_text_wrap.cpp
     test_hud_sw_renderer.cpp
     test_hud_sw_assets.cpp
@@ -124,6 +131,7 @@ set(MXB_UNIT_SOURCES
     asset_path_test.cpp
     small_vec_test.cpp
     history_ring_test.cpp
+    test_frame_time_stats.cpp
     viewport_test.cpp
     test_thread_detach_grace.cpp
     test_gl_state_fingerprint.cpp

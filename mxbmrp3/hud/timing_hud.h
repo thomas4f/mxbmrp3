@@ -152,7 +152,7 @@ inline constexpr GapTypeInfo GAP_TYPE_INFO[] = {
     { GAP_TO_PB,      "Session PB"  },
     { GAP_TO_ALLTIME, "All-time PB" },
     { GAP_TO_IDEAL,   "Ideal"    },
-    { GAP_TO_OVERALL, "Overall"  },
+    { GAP_TO_OVERALL, "Server best" },
     { GAP_TO_LASTLAP, "Last lap" },
 #if GAME_HAS_RECORDS_PROVIDER
     { GAP_TO_RECORD,  "Record"   }
@@ -194,7 +194,7 @@ struct OfficialTimingData {
     // Gap data for each comparison type (display names in quotes)
     GapData gapToPB;          // "Session PB" - gap to personal best this session
     GapData gapToIdeal;       // "Ideal" - gap to ideal lap (sum of best sectors)
-    GapData gapToOverall;     // "Overall" - gap to overall best lap by anyone in session
+    GapData gapToOverall;     // "Server best" - gap to overall best lap by anyone in session
     GapData gapToAllTime;     // "All-Time PB" - gap to all-time personal best
     GapData gapToRecord;      // "Record" - gap to fastest record from provider
     GapData gapToLastLap;     // "Last lap" - gap to the previously completed lap

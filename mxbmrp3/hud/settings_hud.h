@@ -8,6 +8,7 @@
 #include "base_hud.h"
 #include "../core/layout_metrics.h"
 #include "settings/settings_controls.h"
+#include "settings/settings_find.h"
 #include <variant>
 #include <string>
 #include <cmath>
@@ -224,7 +225,7 @@ public:
             TIMING_TIME_TOGGLE,        // Toggle the big time row on/off (TimingHud)
             TIMING_GAP_PB_TOGGLE,      // Toggle "Session PB" comparison row (TimingHud)
             TIMING_GAP_IDEAL_TOGGLE,   // Toggle "Ideal" comparison row (TimingHud)
-            TIMING_GAP_OVERALL_TOGGLE, // Toggle "Overall" comparison row (TimingHud)
+            TIMING_GAP_OVERALL_TOGGLE, // Toggle "Server best" comparison row (TimingHud)
             TIMING_GAP_ALLTIME_TOGGLE, // Toggle "All-Time PB" comparison row (TimingHud)
             TIMING_GAP_RECORD_TOGGLE,  // Toggle "Record" comparison row (TimingHud)
             TIMING_GAP_LASTLAP_TOGGLE, // Toggle "Last Lap" comparison row (TimingHud)
@@ -327,7 +328,6 @@ public:
             // Event Log HUD
             EVENT_LOG_ICONS_TOGGLE,    // Toggle event type icons (EventLogHud)
             // Standings tab toggles
-            LIVE_GAPS_TOGGLE,          // Toggle live gap display in races (StandingsHud per-profile member)
             FILTER_DNS_TOGGLE,         // Toggle DNS rider filtering (PluginData global)
             HEADERS_TOGGLE,            // Toggle column-header row in the standings (StandingsHud)
             SESSION_INFO_TOGGLE,       // Toggle session-info row (clock/laps/overtime) in the standings (StandingsHud)
@@ -354,6 +354,7 @@ public:
             MAP_RANGE_ADAPTIVE_TOGGLE, // Toggle Follow's range growing with speed (MapHud)
             OPEN_LINK_RELEASES,        // Open the GitHub releases page (Updates tab release notes)
             NOW_PLAYING_TOGGLE,        // Toggle the Now playing integration
+            FIND_FIELD, FIND_RESULT, FIND_PAGE_PREV, FIND_PAGE_NEXT,   // the title band's Find box + its page
 
             // Sentinel, always last. settings_layout_test.cpp's golden encodes
             // region types as raw ORDINALS, and this enum is unnumbered and
@@ -601,6 +602,7 @@ public:
     // The About page. Hidden from the tab list; opened by the footer's About button.
     static BaseHud* renderTabAbout(SettingsLayoutContext& ctx);
     static BaseHud* renderTabMore(SettingsLayoutContext& ctx);   // hidden; a More row opens it
+    static BaseHud* renderTabFind(SettingsLayoutContext& ctx);   // hidden; the Find box opens it (settings_hud_find.cpp)
 
     // Static click handler functions (implemented in tab files)
     // Return true if the click was handled, false otherwise
@@ -640,6 +642,7 @@ public:
     bool handleClickTabFmx(const ClickRegion& region);
     bool handleClickTabAchievements(const ClickRegion& region);
     bool handleClickTabStreamChat(const ClickRegion& region);
+    bool handleClickTabFind(const ClickRegion& region);
     bool handleClickTabStats(const ClickRegion& region);
     bool handleClickTabEventLog(const ClickRegion& region);
     // (Notices has no tab-specific click handler: its Duration control is a
@@ -723,6 +726,8 @@ public:
     // what's-new markers key on those ids, and one naming a row that does not
     // exist draws nothing and says nothing.
     std::vector<std::string>& testUntippedRows() { return m_testUntippedRows; }
+    SettingsFind::State& testFind() { return m_find; }
+    void testFindQuery(const char* q);   // as if typed + Enter (settings_hud_find.cpp)
     bool testHasRegionWithTooltip(const char* tooltipId) const {
         if (!tooltipId) return false;
         for (const ClickRegion& r : m_clickRegions) {
@@ -1266,8 +1271,11 @@ private:
     int m_cachedYouTubeStatus = -1;  // Stream Chat tab: last YouTube status drawn (live refresh)
     // Which text field the running TEXT capture belongs to: the commit in
     // update() sends the typed text to that field's channel.
-    enum class TextField : uint8_t { NONE, TWITCH_CHANNEL, YOUTUBE_CHANNEL };
+    enum class TextField : uint8_t { NONE, TWITCH_CHANNEL, YOUTUBE_CHANNEL, FIND };
     TextField m_textField = TextField::NONE;
+    SettingsFind::State m_find;   // the Find box: index, query, hits (settings_hud_find.cpp)
+    void buildFindIndex(const ScaledDimensions& dim); void openFind(); void closeFind();
+    void buildFindField(const ScaledDimensions& dim, const PanelPlan& plan, const PanelBox::ColumnGeom& mainCol);
     std::string m_shownCaptureText;  // the text field at its last rebuild (rebuilt only on an edit)
     size_t m_shownCaptureCursor = 0;
 
@@ -1320,7 +1328,8 @@ public:
         TAB_DELTA_TRACE = 31,  // Delta Trace HUD (gap to a reference lap across the lap)
         TAB_MORE = 32,         // A section's More page (hidden; its sidebar row opens it)
         TAB_DASH = 33,         // Dash (one card stepping through pages)
-        TAB_COUNT = 34
+        TAB_FIND = 34,         // Find results (hidden; the title band's Find box opens it)
+        TAB_COUNT = 35
     };
 private:
     int m_activeTab;

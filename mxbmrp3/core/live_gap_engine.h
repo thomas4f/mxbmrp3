@@ -28,7 +28,7 @@
 // and a lapped rider is SET 0 because a same-lap delta is meaningless for them
 // (display falls back to the official lapped-gap fields).
 //
-// PERFORMANCE CONTRACT (this runs on every RaceTrackPosition batch, ~30Hz):
+// PERFORMANCE CONTRACT (this runs on every RaceTrackPosition batch, about one a frame):
 // the caller owns and reuses the rider/result arrays, so a steady state
 // allocates nothing; here only a new lap's timing array allocates, bounded by
 // MAX_LAPS_TO_KEEP.

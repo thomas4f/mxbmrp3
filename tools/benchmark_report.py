@@ -183,17 +183,24 @@ def analyze_one(rep):
     print(f"\n=== {rep['path']} ===")
     print(f"Scenario : {fmt_scenario(b)}")
     print(f"Target   : {target} fps  ({budget:.0f} us/frame budget)")
-    # Every figure below this line comes from the ring window (frames_sampled),
-    # NOT from the session total (frames) — print both so a long capture can't
-    # read as if all of its frames backed the p99. Older reports predate
-    # frames_sampled=; fall back rather than misreport.
+    # Reports from 1.34.1 on derive every figure from the whole stint (frames_sampled
+    # == frames). Older ones used a ring of the last 16,384 frames, so a long capture
+    # there could not back its p99 with all of its frames -- say which window it is.
     sampled = b.get("frames_sampled")
-    window = f"{sampled} sampled" if sampled is not None else "sample window unknown"
+    frames = b.get("frames")
+    if sampled is None:
+        window = "sample window unknown"
+    elif sampled == frames:
+        window = "whole stint"
+    else:
+        window = f"last {sampled} frames only"
     print(f"Frames   : {b.get('frames','?')} over {b.get('dur_s','?')} s  ({window})")
     print(f"FPS      : min {b.get('fps_min','?')}  avg {b.get('fps_avg','?')}  max {b.get('fps_max','?')}"
-          f"   [from the {window} frames]")
+          f"   [{window}]")
     print(f"Frame us : p50 {b.get('ft_p50_us','?')}  p99 {b.get('ft_p99_us','?')}  max {b.get('ft_max_us','?')}")
     print(f"1% low   : {b.get('lowfps_1pct','?')} fps")
+    if "hitches_50ms" in b:
+        print(f"Hitches  : {b['hitches_50ms']} frames over 50 ms, {b.get('hitches_100ms','?')} over 100 ms")
     print(f"Handoff  : {b.get('quads','?')} quads ({b.get('quads_peak','?')} peak), "
           f"{b.get('strings','?')} strings ({b.get('strings_peak','?')} peak)")
     # DRAW, ATTRIBUTED -- the three per-frame timers that together account for the

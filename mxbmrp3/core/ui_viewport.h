@@ -10,8 +10,9 @@
 //     outside [0,1] use the surrounding area, deliberately not a letterbox);
 //   - InputManager::updateCursorPosition: the inverse map, client cursor px ->
 //     normalized UI coordinates, for hit-testing on either surface;
-//   - InputManager's window-bounds update: the visible client area expressed
-//     in UI coordinates, for HUD position validation.
+//   - InputManager's window-bounds update (bounds() below): the visible client
+//     area expressed in UI coordinates, for HUD position validation and the
+//     full-screen effects.
 // Before this header each site carried its own copy of the arithmetic — the
 // paint loop in integer math, the input ones via float UI_ASPECT_RATIO with
 // truncation — which could disagree by a pixel at odd client sizes. One
@@ -59,6 +60,22 @@ inline Rect compute(int clientW, int clientH) {
     r.x = (clientW - r.w) / 2;
     r.y = (clientH - r.h) / 2;
     return r;
+}
+
+// The whole client area in UI units (the UI rect's 0..1): {0,0,1,1} at 16:9,
+// wider than 0..1 on an ultrawide, taller on a narrower screen. What a
+// full-screen effect stretches to, so it reaches every edge (the impact
+// vignette, the visor tint).
+struct Bounds {
+    float left = 0.0f, top = 0.0f, right = 1.0f, bottom = 1.0f;
+};
+inline Bounds bounds(int clientW, int clientH) {
+    clientW = std::max(1, clientW);
+    clientH = std::max(1, clientH);
+    const Rect vp = compute(clientW, clientH);
+    const float w = static_cast<float>(vp.w), h = static_cast<float>(vp.h);
+    return {static_cast<float>(-vp.x) / w, static_cast<float>(-vp.y) / h,
+            static_cast<float>(clientW - vp.x) / w, static_cast<float>(clientH - vp.y) / h};
 }
 
 }  // namespace UiViewport

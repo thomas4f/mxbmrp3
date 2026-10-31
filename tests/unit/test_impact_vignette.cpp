@@ -81,6 +81,31 @@ TEST_CASE("a light hit sits further out than a hard one") {
     CHECK(opacity(1.0f, 1.0f) == 1.0f);
 }
 
+TEST_CASE("the vignette covers the whole screen at any aspect ratio") {
+    // A full hit fills exactly the visible screen: 16:9, 21:9, 32:9, 4:3.
+    struct Screen { float l, t, r, b; };
+    const float wide21 = (21.0f / 9.0f) / (16.0f / 9.0f), wide32 = 2.0f, tall43 = (16.0f / 9.0f) / (4.0f / 3.0f);
+    const Screen screens[] = {
+        {0.0f, 0.0f, 1.0f, 1.0f},
+        {0.5f - 0.5f * wide21, 0.0f, 0.5f + 0.5f * wide21, 1.0f},
+        {0.5f - 0.5f * wide32, 0.0f, 0.5f + 0.5f * wide32, 1.0f},
+        {0.0f, 0.5f - 0.5f * tall43, 1.0f, 0.5f + 0.5f * tall43},
+    };
+    for (const Screen& s : screens) {
+        const Corners full = corners(1.0f, s.l, s.t, s.r, s.b);
+        CHECK(full.l == doctest::Approx(s.l));
+        CHECK(full.r == doctest::Approx(s.r));
+        CHECK(full.t == doctest::Approx(s.t));
+        CHECK(full.b == doctest::Approx(s.b));
+        // A light hit spreads past every edge, never inside one.
+        const Corners light = corners(0.2f, s.l, s.t, s.r, s.b);
+        CHECK(light.l < s.l);
+        CHECK(light.r > s.r);
+        CHECK(light.t < s.t);
+        CHECK(light.b > s.b);
+    }
+}
+
 TEST_CASE("a spawn or reset glitch is not a hit") {
     CHECK(PlausibleG::ok(12.0f));
     CHECK(PlausibleG::ok(PlausibleG::MAX));

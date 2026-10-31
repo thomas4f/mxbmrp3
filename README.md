@@ -105,7 +105,7 @@ Launch the game and load a track - a few elements are on by default, so the HUD 
 - **Move Mouse** - Show mouse pointer and the Toggles strip (hides 3 seconds after the mouse stops, but not while it rests on the strip)
 - **Left Click** - Interact with settings menu and HUD elements
 - **Right Click & Drag** - Reposition elements (the one dragged last draws on top)
-- **Left Click a rider** - On the Map, Standings, Event Log or Charts HUD, switch the spectate camera to that rider
+- **Left Click a rider** - On the Map, Standings, Gap Bar, Dash, Event Log or Charts HUD, switch the spectate camera to that rider
 
 ### Keyboard Shortcuts
 
@@ -192,12 +192,12 @@ Four separate profiles store complete HUD layout configurations:
 | <img src="assets/icons/hud-dash.svg" width="20" height="20" alt=""> | **Dash** | Compact card that steps through pages drawn from other HUDs (Dash + / Dash - hotkeys) and shows new notices |
 | <img src="assets/icons/hud-map.svg" width="20" height="20" alt=""> | **Map** | Top-down track map with rider positions (click to spectate), a zoomed Follow view you can tilt and that can show more track the faster you go, and lap delta colours |
 | <img src="assets/icons/hud-notices.svg" width="20" height="20" alt=""> | **Notices** | Race status notices (wrong way, blue flag, PB alerts, last lap, finished) |
-| <img src="assets/icons/hud-standings.svg" width="20" height="20" alt=""> | **Standings** | Live race positions with gaps, status, and tracked rider indicators |
+| <img src="assets/icons/hud-standings.svg" width="20" height="20" alt=""> | **Standings** | Race positions with gaps, live between the splits if you like, status, and tracked rider indicators |
 | <img src="assets/icons/hud-friends.svg" width="20" height="20" alt=""> | **Friends** | Steam friends in-game: their server/track and who's joined your session |
 | <img src="assets/icons/hud-timing.svg" width="20" height="20" alt=""> | **Timing** | Split and lap times, a live gap and gap comparisons |
 | <img src="assets/icons/hud-laplog.svg" width="20" height="20" alt=""> | **Lap Log** | Historical lap times with PB indicators |
 | <img src="assets/icons/hud-gapbar.svg" width="20" height="20" alt=""> | **Gap Bar** | Live gap to your all-time or session PB or last lap, with ghost and markers |
-| <img src="assets/icons/hud-deltatrace.svg" width="20" height="20" alt=""> | **Delta Trace** | Your gap to your all-time or session PB or last lap across the whole lap |
+| <img src="assets/icons/hud-records.svg" width="20" height="20" alt=""> | **Records** | Online lap records (CBR or MXB-Ranked) with personal bests (MX Bikes only) |
 | <img src="assets/icons/hud-pitboard.svg" width="20" height="20" alt=""> | **Pitboard** | Pitboard-style lap information display |
 | <img src="assets/icons/hud-radar.svg" width="20" height="20" alt=""> | **Radar** | Proximity radar with approach alerts and distance arrows |
 | <img src="assets/icons/hud-ideallap.svg" width="20" height="20" alt=""> | **Ideal Lap** | Best sector times and theoretical ideal lap |
@@ -205,7 +205,7 @@ Four separate profiles store complete HUD layout configurations:
 | <img src="assets/icons/hud-performance.svg" width="20" height="20" alt=""> | **Performance** | FPS and the plugin's own per-frame time |
 | <img src="assets/icons/hud-stats.svg" width="20" height="20" alt=""> | **Stats** | Riding stats with columns for last lap, session, and all-time totals |
 | <img src="assets/icons/hud-telemetry.svg" width="20" height="20" alt=""> | **Telemetry** | Throttle, brake, suspension graphs |
-| <img src="assets/icons/hud-records.svg" width="20" height="20" alt=""> | **Records** | Online lap records (CBR or MXB-Ranked) with personal bests (MX Bikes only) |
+| <img src="assets/icons/hud-deltatrace.svg" width="20" height="20" alt=""> | **Delta Trace** | Your gap to your all-time or session PB or last lap across the whole lap |
 | <img src="assets/icons/hud-fmx.svg" width="20" height="20" alt=""> | **FMX** | Freestyle trick detection, scoring and chain combos (MX Bikes and GP Bikes only) |
 | <img src="assets/icons/hud-eventlog.svg" width="20" height="20" alt=""> | **Event Log** | Timestamped feed of race events (laps, penalties, finishes, pit activity) |
 | <img src="assets/icons/hud-sessioncharts.svg" width="20" height="20" alt=""> | **Charts** | Session-progression charts: position, race trace, gap to leader, pace |
@@ -342,7 +342,7 @@ Installing manually from the [ZIP archive](#manual-installation) avoids most of 
 
 ### Make Sure You're on the Latest Version
 - Many issues are already fixed in a newer release, so update before troubleshooting further
-- Check your version in Settings > Updates and install a newer one from there - no manual download or reinstall needed. The plugin also notifies you on startup when a stable release is out
+- Check your version in Settings > Updates and install a newer one from there - no manual download or reinstall needed. The plugin also notifies you on startup when a stable release is out, or a pre-release too if you set **Update channel** to Prerelease
 - If the in-game updater is set to **Off** or unavailable, download the latest release manually from [GitHub Releases](https://github.com/thomas4f/mxbmrp3/releases) and reinstall
 
 ### HUD Not Appearing
@@ -377,6 +377,10 @@ Installing manually from the [ZIP archive](#manual-installation) avoids most of 
 ### Stream Chat Shows Unavailable
 - YouTube chat is read through YouTube's public web chat without an API key, which is unofficial: when YouTube changes it, the chat panel shows **Unavailable**, the YouTube **Status** (Settings > Stream Chat) reads **Can't read**, and its chat can't be read
 - Twitch chat is unaffected. The plugin is not affiliated with Twitch or YouTube
+
+### Stutters or FPS Drops
+- The plugin's cost is steady: about the same work every frame, growing with the HUDs you have on and the riders on track. While you ride it writes no files and makes no network calls on the game's thread (it saves when you pause, pit or leave the track). A stutter that comes and goes very likely has a cause that comes and goes too, such as background apps, Windows updates or antivirus scans, recording software, or the PC running hot; see the [MX Bikes Troubleshooting Guide](https://gist.github.com/thomas4f/1fd379fafb4ab402b48424ae1c9cf2bd)
+- To check, turn on **Benchmark profiler** (Settings > Performance, under More), ride until it happens, and send the report from `Documents\PiBoSo\[Game]\mxbmrp3\benchmarks\` together with `mxbmrp3_log.txt`
 
 ### Game Fails to Launch, Crashes, or Shows Black Screen
 - See the [MX Bikes Troubleshooting Guide](https://gist.github.com/thomas4f/1fd379fafb4ab402b48424ae1c9cf2bd) for general game issues (crashes, mods, plugins, RAM, controllers)

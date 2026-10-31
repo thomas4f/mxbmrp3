@@ -328,6 +328,7 @@ void DashHud::update() {
     followNotices();
     tickMessage();
     followMessageClick();
+    followRiderClick();
     followMediaInput();
 
     // Integer compares only: a rebuild runs when a shown value changes, not at the

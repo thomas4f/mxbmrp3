@@ -369,8 +369,8 @@ set_tests_properties(web-overlay eslint
 #
 # RUN_SERIAL is CTest's own answer (the test runs with no other test
 # concurrent), so this stays a property rather than a rule about how to invoke
-# ctest. Cost is bounded: perf is ~40s of a suite whose wall clock is dominated
-# by `integration`.
+# ctest. Cost is bounded: perf is ~2 min (the timing drivers, then the ledger)
+# of a suite whose wall clock is dominated by `integration`.
 #
 # SCOPE: local `ctest -j` only. CI does NOT run perf through CTest —
 # .github/workflows/tests.yml invokes ./tests/integration/run_perf.sh directly as

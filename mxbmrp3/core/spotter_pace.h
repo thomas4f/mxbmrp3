@@ -23,7 +23,7 @@
 // WHICH CLOCK, precisely, because "their crossing times" reads like the game's
 // and is not. The caller stamps each crossing with PluginData's session clock
 // as the callback ARRIVES (getSessionElapsedTime, refreshed from the
-// RaceTrackPosition batch and from RaceClassification, so ~30Hz). It is not
+// RaceTrackPosition batch, about one a frame, and from RaceClassification). It is not
 // the game's own splitTimeMs, which the callback also carries: that figure is
 // elapsed-since-LAP-START, so subtracting two riders' split times compares
 // their pace to that point and says nothing about the distance between them

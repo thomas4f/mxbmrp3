@@ -45,6 +45,11 @@ from datetime import date, timedelta
 from html import unescape as html_unescape
 
 try:
+    import resource  # POSIX only; the peak-memory line is skipped elsewhere.
+except ImportError:
+    resource = None
+
+try:
     import pandas as pd
 except ImportError:
     sys.exit("error: pandas is required (pip install -r tools/requirements.txt)")
@@ -265,7 +270,8 @@ def load(paths):
         subset=["timestamp", "user_id", "session_id", "event_name",
                 "string_props", "numeric_props"]
     ).reset_index(drop=True)
-    return derive(df)
+    # The raw payload strings are parsed by derive() and read by nothing after it.
+    return derive(df).drop(columns=["string_props", "numeric_props"])
 
 
 def derive(df):
@@ -277,42 +283,64 @@ def derive(df):
     past the developer exclusion), and a fixture that is not shaped like the real thing
     tests something else."""
 
-    def parse(col):
-        out = []
-        for v in df[col]:
-            try:
-                d = json.loads(v) if v else {}
-                out.append(d if isinstance(d, dict) else {})
-            except Exception:  # noqa: BLE001
-                out.append({})
-        return out
-
-    df["_s"] = parse("string_props")
-    df["_n"] = parse("numeric_props")
-    # HASHED HERE, ONCE, so the raw id cannot reach a committed artifact by any later
-    # route: the rollup digest stores whatever this column holds. It is popped from the
-    # props for the same reason -- an install's latest string_props IS persisted, and
-    # the id would ride along inside it. Nothing downstream reads _s["install_id"].
-    df["install_id"] = [rollup.iid(s.pop("install_id", None)) or None for s in df["_s"]]
-    df["game"] = [s.get("game") or "Unknown" for s in df["_s"]]
-    # Which fields each launch was ABLE to report, as a mask. The coverage table asks
-    # this per launch, and a launch that is already in the rollup no longer carries the
-    # props to answer it -- only this mask, which the digest stores. Computed for every
-    # export the same way so the two paths cannot drift.
-    df["cov"] = [rollup.coverage_bits(sp, np_, ov) if ev == "app_started" else 0
-                 for ev, sp, np_, ov in zip(df["event_name"], df["_s"], df["_n"],
-                                            df["os_version"])]
-    # Marks a row that came from an export rather than the rollup; see build().
-    df["hist"] = False
+    # Dated first, so the launch picked as each install's snapshot below is picked
+    # from the rows that survive. Anything undated is a malformed row. Drop it loudly
+    # rather than letting a NaT propagate into `date` and surface as an unrelated
+    # TypeError in a min()/max() reduction hundreds of lines away.
     df["ts"] = to_utc(df["timestamp"])
-    # Anything still undated is a malformed row. Drop it loudly rather than letting a
-    # NaT propagate into `date` and surface as an unrelated TypeError in a min()/max()
-    # reduction hundreds of lines away.
     undated = int(df["ts"].isna().sum())
     if undated:
         print("warning: dropped {} row(s) with an unparseable timestamp".format(undated),
               file=sys.stderr)
         df = df[df["ts"].notna()].reset_index(drop=True)
+
+    def parse(v):
+        try:
+            d = json.loads(v) if v else {}
+            return d if isinstance(d, dict) else {}
+        except Exception:  # noqa: BLE001
+            return {}
+
+    # A LAUNCH KEEPS ITS PROPS ONLY IF IT IS ITS INSTALL'S SNAPSHOT. An app_started
+    # carries a few hundred numeric props, and a month of launches held as dicts was
+    # most of the ~10 GB that got the usage-survey runner killed. Nothing reads them
+    # per launch: the snapshot (latest_per_install) is the only consumer, and the
+    # per-launch questions are answered here, once, into `cov` and `launch_count` --
+    # the same two things a rolled-up launch keeps. So every launch is parsed, reduced,
+    # and the full payload re-parsed below for the one launch per install that
+    # latest_per_install() will pick. Other events keep theirs: sessions and crashes
+    # are read per event, and their payloads are small.
+    install_ids, games, covs, ss, ns = [], [], [], [], []
+    for ev, sv, nv, ov in zip(df["event_name"], df["string_props"], df["numeric_props"],
+                              df["os_version"]):
+        s, n = parse(sv), parse(nv)
+        # HASHED HERE, ONCE, so the raw id cannot reach a committed artifact by any
+        # later route: the rollup digest stores whatever this column holds. It is
+        # popped from the props for the same reason -- an install's latest
+        # string_props IS persisted, and the id would ride along inside it. Nothing
+        # downstream reads _s["install_id"].
+        install_ids.append(rollup.iid(s.pop("install_id", None)) or None)
+        games.append(s.get("game") or "Unknown")
+        # Which fields each launch was ABLE to report, as a mask. The coverage table
+        # asks this per launch, and a launch that is already in the rollup no longer
+        # carries the props to answer it -- only this mask, which the digest stores.
+        # Computed for every export the same way so the two paths cannot drift.
+        if ev == "app_started":
+            covs.append(rollup.coverage_bits(s, n, ov))
+            s, n = {}, ({"launch_count": n["launch_count"]} if "launch_count" in n else {})
+        else:
+            covs.append(0)
+        ss.append(s)
+        ns.append(n)
+    df["_s"], df["_n"] = ss, ns
+    df["install_id"], df["game"], df["cov"] = install_ids, games, covs
+    # Marks a row that came from an export rather than the rollup; see build().
+    df["hist"] = False
+    for i in latest_per_install(df[df["event_name"] == "app_started"]).index:
+        s = parse(df.at[i, "string_props"])
+        s.pop("install_id", None)
+        df.at[i, "_s"] = s
+        df.at[i, "_n"] = parse(df.at[i, "numeric_props"])
     df["date"] = df["ts"].dt.date
     return df.reset_index(drop=True)
 
@@ -2265,6 +2293,16 @@ def selftest():
                  for lc in (2, 1)])   # deliberately the wrong way round in the frame
     assert latest_per_install(tied)["_n"].iloc[0]["launch_count"] == 2, \
         "a timestamp tie must resolve to the later launch, not to frame order"
+    # Only the snapshot launch keeps its payload (derive() says why: a month of full
+    # payloads got the runner killed); any other launch keeps launch_count and its
+    # `cov` mask, which is all a rolled-up launch keeps too.
+    assert latest_per_install(tied)["_n"].iloc[0] == {"launch_count": 2}
+    a1 = core[(core.event_name == "app_started") & (core.user_id == "userA1")].iloc[0]
+    a2 = core[(core.event_name == "app_started") & (core.user_id == "userA2")].iloc[0]
+    assert a1["_s"] == {} and a1["_n"] == {"launch_count": 2} and a1["cov"], \
+        "a launch that is not its install's snapshot must drop its props, keep cov"
+    assert a2["_s"].get("panel_theme") == "carbon-dark" and a2["_n"].get("hud_map") == 1, \
+        "the snapshot launch must keep its full payload"
 
     fa = dict((k, (en, rep)) for k, en, rep in flag_adoption(snap, "hud_"))
     assert "hud_count" not in fa, "hud_count must not be treated as an adoption flag"
@@ -3020,6 +3058,12 @@ def main():
         manifest = rollup.write(rollup_dir, df, snap)
         print("Rollup updated: {} month(s), {:,} installs in {}".format(
             len(manifest["months"]), manifest["installs"], rollup_dir))
+    # Last, so a checkpoint run counts the rollup write too. The usage-survey
+    # runner has ~7 GB and dies without a traceback when this outgrows it, so say
+    # how close a run came.
+    if resource is not None:
+        print("Peak memory: {:,} MB".format(
+            resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024))
 
 
 if __name__ == "__main__":

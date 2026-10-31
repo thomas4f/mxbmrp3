@@ -170,21 +170,26 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
 
     // Lap delta: Off, Default (General's reference), or the reference lap the
     // track colours compare against (the Gap Bar's names, in its order). The
-    // list order differs from the enum's, where DEFAULT came last to keep the
-    // stored values: Off, Default (named for General's today), then the references.
+    // list order differs from the enum's, where DEFAULT sits before Server best to
+    // keep the stored values: Off, Default (named for General's today), then the
+    // references.
     using Ref = PbGapTracker::Ref;
     const char* const kLapDeltas[] = { "Off", HudDefaults::defaultReferenceName(),
         PbGapTracker::refName(Ref::SESSION_PB), PbGapTracker::refName(Ref::ALLTIME_PB),
-        PbGapTracker::refName(Ref::LAST_LAP) };
+        PbGapTracker::refName(Ref::LAST_LAP), PbGapTracker::refName(Ref::SERVER_BEST) };
     static_assert(sizeof(kLapDeltas) / sizeof(kLapDeltas[0]) == MapHud::LAP_DELTA_COUNT, "one name per state");
+    static_assert(static_cast<int>(MapHud::LapDelta::SERVER_BEST) == MapHud::LAP_DELTA_COUNT - 1,
+                  "Server best is the last state of both the enum and the list");
     SettingsHud::CycleControl lapDelta;
     lapDelta.count = MapHud::LAP_DELTA_COUNT;
     lapDelta.get = [hud]() {
         const int v = static_cast<int>(hud->m_lapDelta);
+        if (hud->m_lapDelta == MapHud::LapDelta::SERVER_BEST) return v;
         return hud->m_lapDelta == MapHud::LapDelta::DEFAULT ? 1 : (v == 0 ? 0 : v + 1);
     };
     lapDelta.set = [hud](int i) {
         hud->m_lapDelta = (i == 1) ? MapHud::LapDelta::DEFAULT
+                        : (i == MapHud::LAP_DELTA_COUNT - 1) ? MapHud::LapDelta::SERVER_BEST
                         : static_cast<MapHud::LapDelta>(i == 0 ? 0 : i - 1);
     };
     lapDelta.nameOf = [kLapDeltas](int i) { return std::string(kLapDeltas[i]); };

@@ -6,6 +6,7 @@
 #include "../core/plugin_utils.h"
 #include "../core/asset_manager.h"
 #include "../core/color_config.h"
+#include "../core/input_manager.h"
 #include "../diagnostics/logger.h"
 #include <algorithm>
 #include <cmath>
@@ -319,12 +320,16 @@ void HelmetOverlayHud::rebuildRenderData() {
 
     // Helper: emit the full-screen tint (no rotation/translation), through the
     // mode's lens profile when it is installed (TEX_HELMET_LENS), else flat.
+    // Stretched to the visible screen, not the centred 16:9 UI area, so it
+    // reaches the sides of an ultrawide (and the top and bottom of a narrower one).
     auto emitTint = [&]() {
         if (!hasTint || m_visorTintColor == 0) return;
         const int lens = resolveSpriteIndex(TEX_HELMET_LENS, m_visorMode == VISOR_MODE ? 2 : 1);
         const float opacity = std::clamp(m_visorTintOpacity, 0.0f, 1.0f);
+        const WindowBounds& screen = InputManager::getInstance().getWindowBounds();
         auto fullScreen = [&](int sprite, float alpha) {
-            addOverlayQuad(sprite, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, pivotX, pivotY, 0.0f,
+            addOverlayQuad(sprite, screen.left, screen.top, screen.right, screen.bottom,
+                           1.0f, 0.0f, pivotX, pivotY, 0.0f,
                            PluginUtils::applyOpacity(m_visorTintColor, alpha));
         };
         if (lens <= 0) {

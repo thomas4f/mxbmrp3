@@ -7,6 +7,7 @@
 #include "../core/asset_manager.h"
 #include "../core/ui_config.h"
 #include "../core/hud_manager.h"
+#include "../core/input_manager.h"
 #include "helmet_overlay_hud.h"
 
 ImpactVignetteHud::ImpactVignetteHud() {
@@ -107,8 +108,10 @@ void ImpactVignetteHud::rebuildRenderData() {
 
     const float level = m_envelope.level;
     const float alpha = ImpactVignette::opacity(level, UiConfig::getInstance().getImpactVignette());
-    const float half = ImpactVignette::halfExtent(level);
-    const float l = 0.5f - half, r = 0.5f + half, t = 0.5f - half, b = 0.5f + half;
+    const WindowBounds& screen = InputManager::getInstance().getWindowBounds();
+    const ImpactVignette::Corners c =
+        ImpactVignette::corners(level, screen.left, screen.top, screen.right, screen.bottom);
+    const float l = c.l, r = c.r, t = c.t, b = c.b;
 
     // Vertex order (matches BaseHud::setQuadPositions):
     //   0 = top-left, 1 = bottom-left, 2 = bottom-right, 3 = top-right

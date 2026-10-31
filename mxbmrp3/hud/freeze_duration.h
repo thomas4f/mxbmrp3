@@ -7,8 +7,9 @@
 // They drifted apart once (Timing at 5 s, the gap HUDs at 3 s).
 // The Pitboard's At Splits Freeze shares the range and step but not the rest:
 // no Off (a zero hold would hide the board for good) and its own 10 s default,
-// the fixed hold it had before it was a setting.
-// All four tabs draw the row with SettingsLayoutContext::addFreezeControl.
+// the fixed hold it had before it was a setting. The Standings' At laps / At
+// splits hold takes the Pitboard's range and default.
+// All five tabs draw the row with SettingsLayoutContext::addFreezeControl.
 // The three gap holds also take FOLLOW_DEFAULT: the General tab's Freeze
 // (UiConfig::getDefaultFreezeMs, resolved in hud_defaults.h).
 // ============================================================================
@@ -23,7 +24,7 @@ namespace FreezeDuration {
     // slider runs Default, Off, 1 s ... 10 s and the arrows step through it too.
     constexpr int FOLLOW_DEFAULT = MIN_MS - STEP_MS;
 
-    // The Pitboard's At Splits hold: no Off, and its own default
+    // The Pitboard's At Splits hold (and the Standings' Show mode): no Off, and its own default
     constexpr int PITBOARD_MIN_MS = STEP_MS;
     constexpr int PITBOARD_DEFAULT_MS = 10000;
 }

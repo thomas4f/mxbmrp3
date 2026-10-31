@@ -17,7 +17,7 @@
 // tests/integration/tests/blueflag_test.cpp, which drives the real callbacks —
 // the two layers check different things and both are worth having.
 //
-// PERFORMANCE CONTRACT (this code is on a ~30Hz path with up to 50 riders):
+// PERFORMANCE CONTRACT (this code runs on every position batch, about one a frame, with up to 50 riders):
 //   - the caller owns the arrays and reuses them across rebuilds, so a steady
 //     state allocates nothing; nothing here allocates except the output
 //     containers growing on first use
@@ -91,7 +91,7 @@ struct Player {
 //
 // (Reachability was always slim — it needs two riders on different laps at
 // bitwise-identical float positions, the scan continues so another lapper in
-// range still flags, and the next 30Hz sample separates them — so this was a
+// range still flags, and the next sample separates them — so this was a
 // latent wrong answer rather than a reported bug. Fixed on its own rather than
 // inside the refactor that surfaced it, so the behaviour change is visible in
 // history instead of buried in a "no functional change" commit.)

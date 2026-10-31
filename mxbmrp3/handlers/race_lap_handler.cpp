@@ -410,4 +410,8 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
     // Reset centralized lap timer for new lap (start timing from 0)
     // lapNum is the new lap number we're starting
     data.resetLapTimerForNewLap(raceNum, psRaceLap->lapNum, isLapValid, bikePbStored, isAllTimePB);
+
+    // The server best reference, AFTER the display rider's own lap was committed:
+    // that lap's last-lap gaps read against the server best it was ridden against.
+    data.onFieldLapCompleted(raceNum, lapTime, isLapValid, psRaceLap->bestFlag == 2);
 }

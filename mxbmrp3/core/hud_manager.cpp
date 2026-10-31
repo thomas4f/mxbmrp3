@@ -176,9 +176,7 @@ void HudManager::initialize() {
     createHud(m_pEventLog, "event_log_hud");
     createHud(m_pStreamChat, "stream_chat_hud");
 
-    // Benchmark Widget (always created, but only accessible via settings when developer mode is on)
-    // Note: Must be created unconditionally because isDeveloperMode() returns false here -
-    // settings are loaded later in initialize(). The settings tab gates access at render time.
+    // Benchmark Widget (hidden by default; Settings > Performance > Benchmark profiler)
     createHud(m_pBenchmark, "benchmark_widget");
 
     // Widgets

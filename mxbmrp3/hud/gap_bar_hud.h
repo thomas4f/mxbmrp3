@@ -43,12 +43,11 @@ public:
     static constexpr int SPLIT_SLOTS = 3;
 
     // Which lap the bar and its ghost compare against (the Lap Log has its own):
-    // PluginData's tracker holds the session PB, the persisted all-time PB and
-    // the last lap (core/pb_gap_tracker.h). Session PB by default -- what the
+    // PluginData's tracker holds the session PB, the persisted all-time PB, the
+    // last lap and the server best (core/pb_gap_tracker.h). Session PB by default -- what the
     // bar always did -- because a PB set before traces were persisted has no
     // table, and an All-time default would show nothing until it was beaten.
     using Reference = PbGapTracker::Ref;
-    static constexpr int REFERENCE_COUNT = PbGapTracker::REF_COUNT;
     // The reference in use: its own, or General's while it follows Default.
     Reference getReference() const { return HudDefaults::reference(m_referenceDefault, m_reference); }
     // How long it holds an official gap (General's while on Default).
@@ -129,6 +128,13 @@ public:
     // has a live gap, then the displayed rider on top. Returns how many.
     int collectMarkers(const Unified::TrackPositionData* riders, int count, bool opponents, bool ghost,
                        Marker* out, int max) const;
+    // CLICK TO SPECTATE, as on the Map: the opponent whose marker is under `x`
+    // on a flat map drawn `width` wide from `left` with icons `iconSize` across
+    // (all before the HUD offset), the nearest where markers overlap, among the
+    // riders isRiderSpectatable; -1 for none. Asked only on a click, so its
+    // collectMarkers pass costs no frame. The Dash's Flat map page asks it too.
+    int riderAt(const Unified::TrackPositionData* riders, int count, float left, float width,
+                float iconSize, float x) const;
     // What this bar's Markers setting shows.
     bool showsOpponents() const {
         return m_markerMode == MarkerMode::OPPONENTS || m_markerMode == MarkerMode::GHOST_OPPONENTS;
@@ -239,6 +245,14 @@ private:
     // draw order of overlapping opponent markers. No headless test covers this bar's
     // markers, so (2) wants an in-game look before anyone commits to it.
     std::vector<Unified::TrackPositionData> m_riderPositions;
+    // Where the markers were last drawn (renderRiderMarkers, before the offset),
+    // for riderAt; a width of 0 = none drawn.
+    float m_markerLeft = 0.0f;
+    float m_markerWidth = 0.0f;
+    float m_markerIconSize = 0.0f;
+    // A left click on an opponent's marker, while spectating or in a replay,
+    // puts the camera on them (riderAt), once a frame while shown.
+    void followSpectateClick();
 
     // Marker scale constants (matches MapHud pattern)
     static constexpr float DEFAULT_MARKER_SCALE = 1.0f;        // Default 100%

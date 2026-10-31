@@ -358,6 +358,23 @@ namespace Settings {
         return defaultVal;
     }
 
+    inline const char* standingsShowModeToString(uint8_t mode) {
+        switch (mode) {
+            case StandingsHud::SHOW_ALWAYS: return "ALWAYS";
+            case StandingsHud::SHOW_LAPS:   return "LAPS";
+            case StandingsHud::SHOW_SPLITS: return "SPLITS";
+            default: return "ALWAYS";
+        }
+    }
+
+    inline uint8_t stringToStandingsShowMode(const std::string& str, uint8_t defaultVal = StandingsHud::SHOW_ALWAYS) {
+        if (str == "ALWAYS") return StandingsHud::SHOW_ALWAYS;
+        if (str == "LAPS") return StandingsHud::SHOW_LAPS;
+        if (str == "SPLITS") return StandingsHud::SHOW_SPLITS;
+        DEBUG_WARN_F("Unknown StandingsShowMode '%s', using default", str.c_str());
+        return defaultVal;
+    }
+
     inline const char* pitboardGapCompareModeToString(uint8_t mode) {
         switch (mode) {
             case PitboardHud::GAP_AUTO:       return "AUTO";

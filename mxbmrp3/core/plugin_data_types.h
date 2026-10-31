@@ -19,6 +19,7 @@
 // ============================================================================
 #pragma once
 
+#include "flat_int_map.h"
 #include "history_ring.h"
 #include "wrong_way_detect.h"
 
@@ -473,6 +474,13 @@ struct BenchmarkMetrics {
     int totalQuads = 0;                 // Total quads rendered this frame
     int totalStrings = 0;               // Total strings rendered this frame
 
+    // The longest single callback since the profiler's last frame sample, and
+    // which one: read and reset by BenchmarkWidget::sampleFrameTime(), so each
+    // worst frame can say whether its plugin time was one stuck call or many
+    // small ones (the latter points at a busy PC, not a slow callback).
+    long long sampleMaxCallUs = 0;
+    int sampleMaxCallIdx = -1;
+
     // Active flag - when false, timing macros skip per-callback recording
     bool active = false;
 
@@ -531,6 +539,7 @@ struct BenchmarkMetrics {
         }
         callbacks[index].stintTotalTimeUs += timeUs;
         callbacks[index].stintCallCount++;
+        if (timeUs > sampleMaxCallUs) { sampleMaxCallUs = timeUs; sampleMaxCallIdx = index; }
         if (timeUs > callbacks[index].stintPeakTimeUs) {
             callbacks[index].stintPeakTimeUs = timeUs;
         }

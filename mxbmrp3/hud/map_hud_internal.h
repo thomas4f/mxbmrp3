@@ -11,6 +11,7 @@
 #include "../core/asset_manager.h"
 #include "../core/plugin_constants.h"
 #include <cmath>
+#include <string>
 
 namespace map_hud_detail {
 
@@ -81,13 +82,22 @@ inline bool clipSegment(float x0, float y0, float x1, float y1,
 }
 
 // Helper to get shape index from filename (returns 1 if not found)
-inline int getShapeIndexByFilename(const char* filename) {
+inline int getShapeIndexByFilename(const std::string& filename) {
     const auto& assetMgr = AssetManager::getInstance();
     // BASE index: this maps a name to its position in the vocabulary, which a theme
     // override must not move (see AssetManager::getBaseIconSpriteIndex).
     int spriteIndex = assetMgr.getBaseIconSpriteIndex(filename);
     if (spriteIndex <= 0) return 1;  // Fallback to first icon
     return assetMgr.shapeIndexForSprite(spriteIndex);
+}
+
+// The default rider icon's shape, for the per-frame paths (the player's marker
+// with the global shape Off, the off-track pointer). The lookup takes a
+// std::string and this name is past the small-string buffer, so a literal
+// argument allocated every frame; the name is built once instead.
+inline int defaultRiderShapeIndex() {
+    static const std::string kName = DEFAULT_RIDER_ICON;
+    return getShapeIndexByFilename(kName);
 }
 
 }  // namespace map_hud_detail

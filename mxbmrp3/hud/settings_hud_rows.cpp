@@ -136,8 +136,16 @@ void SettingsHud::checkTabOverflow(const PanelPlan& plan, const PanelBox::Column
 }
 
 void SettingsHud::addHoveredRowHighlight(const PanelPlan& plan, const PanelBox::ColumnGeom& mainCol) {
-    if (m_hoveredRegionIndex >= 0 && m_hoveredRegionIndex < static_cast<int>(m_clickRegions.size())) {
-        const ClickRegion& hoveredRegion = m_clickRegions[m_hoveredRegionIndex];
+    // A Find result's landing row is lit as if hovered, until the pointer moves.
+    int lit = m_hoveredRegionIndex;
+    for (int i = 0; !m_find.landTooltipId.empty() && i < static_cast<int>(m_clickRegions.size()); ++i) {
+        if (m_clickRegions[i].type == ClickRegion::TOOLTIP_ROW && m_clickRegions[i].tooltipId == m_find.landTooltipId) {
+            lit = i;
+            break;
+        }
+    }
+    if (lit >= 0 && lit < static_cast<int>(m_clickRegions.size())) {
+        const ClickRegion& hoveredRegion = m_clickRegions[lit];
         if (hoveredRegion.type == ClickRegion::TOOLTIP_ROW) {
             // THE CONTENT COLUMN, from the plan (rowBandX/W) -- the same band the
             // sidebar, StandingsHud and RecordsHud span, inset by [content] padding

@@ -10,7 +10,7 @@
 //   - LAPPED and FINISHED riders must fall back to the OFFICIAL gap. A live gap
 //     between riders on different laps is meaningless — it reads as a small
 //     time difference when the truth is "+1 lap".
-//   - A rider outside the game's ~10-closest track-position batch has a STALE
+//   - A rider missing from the latest track-position batch has a STALE
 //     realTimeGap. The leader is the exception: its live gap is 0 by definition,
 //     so it is always fresh.
 //   - PLAYER reference subtracts the player's own live gap from every row, so a
@@ -223,7 +223,7 @@ TEST_CASE("a FINISHED rider uses the official gap, never the live gap") {
 }
 
 TEST_CASE("a rider outside the track-position batch keeps the official gap") {
-    // The ~10-closest-vehicles rule: realTimeGap is present but STALE.
+    // Missing from the latest batch: realTimeGap is present but STALE.
     Row r = runningRow();
     r.hasActiveTrackPos = false;
 

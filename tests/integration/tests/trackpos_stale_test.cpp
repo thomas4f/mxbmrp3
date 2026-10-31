@@ -1,7 +1,7 @@
 // ============================================================================
 // tests/integration/tests/trackpos_stale_test.cpp
-// Real-time gap vs the ~10-closest RaceTrackPosition window. The game only
-// reports the vehicles nearest the camera each batch, but PluginData retains the
+// Real-time gap vs riders missing from a RaceTrackPosition batch. A batch often
+// misses one to four riders on track, but PluginData retains the
 // last-seen position for EVERY rider. If updateRealTimeGaps recomputes from those
 // retained (stale) positions for riders outside the current batch, the live gap
 // drifts into garbage as the session clock advances — the "partner/target rider

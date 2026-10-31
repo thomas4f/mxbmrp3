@@ -7,9 +7,14 @@
 #include "base_hud.h"
 #include "plate_geometry.h"
 #include "../core/plugin_data.h"
+#include "../core/flat_int_map.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
 #include "rider_flag_icons.h"
+#include "split_crossing.h"
+#include "hold_timer.h"
+#include "freeze_duration.h"
+#include "standings_live_order.h"
 #include <vector>
 #include <unordered_map>
 #include <chrono>
@@ -33,9 +38,26 @@ public:
     bool getPlayerRowHighlight() const { return m_bPlayerRowHighlight; }
     bool getPlayerRowHighlightBrand() const { return m_bPlayerRowHighlightBrand; }
     // The gap table this HUD plans its gap column with: its Gap reference
-    // (Alternating resolved), Gap mode and Live gaps (races only). The Dash's
+    // (Alternating resolved), Gap mode and Live updates (races only). The Dash's
     // Standings page plans its rows with it.
     StandingsGap::Table gapTableFor(const std::vector<int>& classificationOrder, int displayRaceNum) const;
+    // The running order this HUD's rows, the Position widget and the Dash's
+    // Standings page show: the official classification, or with Live updates
+    // on Both in a race the live one (standings_live_order.h). Re-read at most
+    // every LIVE_ORDER_POLL_MS, and whenever the official order moves; the
+    // first reader in a frame pays, the rest get the cached answer.
+    const std::vector<int>& runningOrder();
+    // Whether runningOrder() can differ from the official order: Both, or the
+    // live order not yet handed back.
+    bool watchesRunningOrder() const { return m_liveMode == LiveMode::BOTH || m_liveOrderActive; }
+    // Advances whenever runningOrder() answers differently, polling it first
+    // only while watched: else two member reads, cheap enough for a reader to
+    // compare every frame. Compare it rather than watchesRunningOrder(), as the
+    // first reader to poll after Both is left hands the official order back.
+    uint32_t runningOrderRevision() {
+        if (watchesRunningOrder()) runningOrder();
+        return m_runningOrderRevision;
+    }
     // The race-number plate's colour before PlateLayout::kPlateAlpha, one rule for
     // this HUD and the Dash's Standings page: muted for a rider out of the race
     // (DNS/DSQ/retired), else a tracked rider's own colour (a red points-leader
@@ -113,6 +135,16 @@ public:
         COLORED = 2   // Slide + tint rows positive/negative during the animation
     };
 
+    // Live updates in races, between the game's own updates at the splits.
+    // No order without gaps: a live order with official gaps would put a
+    // rider's gap out of step with the row they sit on.
+    enum class LiveMode : uint8_t {
+        OFF = 0,   // Gaps and order update at the splits only
+        GAPS = 1,  // Live gaps
+        BOTH = 2,  // Live gaps and live order (standings_live_order.h)
+        COUNT
+    };
+
     // Positions gained/lost reference (what the +/- delta is measured against).
     // Mirrors GapMode/NameMode: a single multi-state control with OFF folded in.
     enum class PosGainMode : uint8_t {
@@ -120,6 +152,17 @@ public:
         RACE_START = 1,  // Delta vs grid position at race start (falls back to LAST_SF on mid-race join)
         LAST_SF = 2,     // Delta vs position at the rider's last start/finish crossing (resets each lap)
         LAST_SPLIT = 3   // Delta vs position at the rider's last split crossing (resets each split)
+    };
+
+    // Show mode - when the HUD is on screen (the Pitboard's Show mode, with the
+    // line alone as a second trigger). At laps / At splits hold it up for
+    // m_freezeDurationMs after the display rider crosses the line / a split or
+    // the line; the hold's range and default are the Pitboard's.
+    enum ShowMode : uint8_t {
+        SHOW_ALWAYS = 0,  // Always visible
+        SHOW_LAPS   = 1,  // After the line
+        SHOW_SPLITS = 2,  // After each split and the line
+        SHOW_COUNT  = 3   // Number of show modes
     };
 
     // Column indices (used with ColumnDef::columnIndex to identify columns)
@@ -162,6 +205,11 @@ private:
 
     // Calculate dynamic width based on enabled columns
     int getBackgroundWidthChars() const;
+
+    // Show mode: Always, or inside the hold after a crossing
+    bool shouldBeVisible() const {
+        return m_showMode == SHOW_ALWAYS || m_showHold.running(m_freezeDurationMs);
+    }
 
     struct DisplayEntry {
         int position;
@@ -305,8 +353,11 @@ private:
     // contains the caption band — the plan does — only the optional session-info
     // row folded in so every "titleHeight + headerHeight" offset downstream
     // keeps working unchanged.
+    // The plan is a REFERENCE to this HUD's plan cache (BaseHud::planPanel): a
+    // copy duplicated its three geometry vectors on every call, which the fast
+    // path makes nearly every frame (the perf ledger counted ~2 allocations each).
     struct HudDimensions {
-        PanelPlan plan;
+        PanelPlan& plan;
         float backgroundWidth;
         float backgroundHeight;
         float titleHeight;        // session-info row only (the band is the plan's)
@@ -344,6 +395,13 @@ private:
     std::vector<RiderClickRegion> m_riderClickRegions;  // Click regions for rider selection
     ColumnPositions m_columns;
     uint32_t m_enabledColumns = COL_DEFAULT;  // Bitfield of enabled columns (managed by profile system)
+
+    // Show mode (see ShowMode)
+    uint8_t m_showMode = SHOW_ALWAYS;
+    int m_freezeDurationMs = FreezeDuration::PITBOARD_DEFAULT_MS;  // At laps / At splits: how long it shows
+    SplitCrossingDetector m_crossings;
+    HoldTimer m_showHold;
+    bool m_bShownLastRebuild = true;  // what the last rebuild drew (false = nothing, hidden by Show mode)
 
     // Gap display settings
     GapMode m_gapMode = GapMode::ALL;
@@ -501,10 +559,26 @@ private:
     bool m_bClassicLayout = false;  // Classic layout: no number plates, no brand strip, primary-colored race numbers
     bool m_bShowHeaders = false;     // Show a column-header row labeling each enabled column above the rider rows
     bool m_bShowSessionInfo = true;  // Show a session-info row ("<session>: <clock / leader lap / overtime>") below the title
-    bool m_bLiveGaps = false;        // Show real-time estimated gaps during races (per-profile; was a global toggle)
+    LiveMode m_liveMode = LiveMode::OFF;  // Live gaps / order in races (per-profile; INI liveGaps 0/1/2)
     NameMode m_nameMode = NameMode::SHORT;  // Rider name display mode (Off/Short/Long)
     int m_shortNameChars = DEFAULT_SHORT_NAME_CHARS;  // INI-only: visible chars in SHORT name mode (1-31, default 3)
     int m_longNameChars = DEFAULT_LONG_NAME_CHARS;  // INI-only: static visible chars in LONG name mode (4-24, default 16)
+
+    // Live order (LiveMode::BOTH), behind runningOrder(). Kept whether or not
+    // this HUD shows, as the Position widget and the Dash read it too; when no
+    // reader has asked for LIVE_ORDER_IDLE_MS it starts over, as a pass held
+    // across a gap nobody watched proves nothing.
+    static constexpr int LIVE_ORDER_POLL_MS = 100;
+    static constexpr int LIVE_ORDER_IDLE_MS = 1000;
+    StandingsLiveOrder::Tracker m_liveOrder;
+    std::vector<StandingsLiveOrder::Rider> m_liveOrderRiders;
+    std::vector<int> m_liveOrderRows;    // the live answer
+    std::vector<int> m_liveOrderNext;    // scratch, swapped with m_liveOrderRows
+    std::vector<int> m_liveOrderInput;   // the official order it was read from
+    bool m_liveOrderActive = false;      // runningOrder() answers m_liveOrderRows
+    uint32_t m_runningOrderRevision = 0;
+    uint32_t m_builtOrderRevision = 0;   // the revision the last rebuild drew
+    std::chrono::steady_clock::time_point m_liveOrderTime{};
 
     // ========================================================================
     // Position Animation
@@ -520,10 +594,10 @@ private:
         std::chrono::steady_clock::time_point startTime;
     };
     std::unordered_map<int, RowAnimation> m_activeAnimations;  // raceNum -> active animation
-    std::unordered_map<int, int> m_previousPositions;           // raceNum -> last known race position
-    std::unordered_map<int, int> m_previousSlots;               // raceNum -> last known display slot (visibility check)
-    std::unordered_map<int, int> m_scratchPositions;            // reused scratch for updateAnimationState (avoids per-rebuild map alloc)
-    std::unordered_map<int, int> m_scratchSlots;                //   "  (clear()+swap() keeps bucket capacity across rebuilds)
+    FlatIntMap<int> m_previousPositions;                        // raceNum -> last known race position
+    FlatIntMap<int> m_previousSlots;                            // raceNum -> last known display slot (visibility check)
+    FlatIntMap<int> m_scratchPositions;                         // reused scratch for updateAnimationState (avoids per-rebuild map alloc)
+    FlatIntMap<int> m_scratchSlots;                             //   "  (clear()+swap() keeps the buffers across rebuilds)
     std::chrono::steady_clock::time_point m_frameTime = std::chrono::steady_clock::now();
 
     float m_animationDurationMs = 500.0f;  // Duration of position slide animation (configurable 50-1000)

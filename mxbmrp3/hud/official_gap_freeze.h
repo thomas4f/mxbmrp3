@@ -19,6 +19,8 @@
 //     scope's, as PluginData plants it), cached BEFORE each lap completes --
 //     by then the stats may already hold this lap as the PB. The local
 //     player's only: there is none to compare a spectated rider against.
+//   - Server best: the session's fastest lap by anyone, as the game timed it;
+//     on the line that SETS it, the one it beat (as Session PB).
 // WHAT IS NOT HELD. The freeze holds the official value of the gap the HUD
 // shows, so where it shows none it holds none: an invalid lap (cut, or through
 // the pits) starts over at the line, and the out-lap from the pits and a grid

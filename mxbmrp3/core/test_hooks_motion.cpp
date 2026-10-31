@@ -40,6 +40,16 @@ __declspec(dllexport) void MXBMRP3_Test_SetMotionNowUs(long long us) {
     HudManager::testSetMotionNowUs(us);
 }
 
+// Quad/string counts of the last-collected game frame - the plugin's frame,
+// before the engine handoff drops what draws nothing (core/engine_cull.h). A
+// test about what a HUD put in the frame reads these; the counts the engine got
+// are PluginHost::lastGameQuads().
+__declspec(dllexport) void MXBMRP3_Test_GameFrameCounts(int* quads, int* strings) {
+    const HudManager& hm = HudManager::getInstance();
+    if (quads) *quads = static_cast<int>(hm.getGameQuads().size());
+    if (strings) *strings = static_cast<int>(hm.getGameStrings().size());
+}
+
 // FNV-1a over every drawn field of the last-collected game frame: each quad's
 // corners, sprite and colour, each string's text (to its terminator - the bytes
 // after it are whatever the buffer held), position, font, size, justification

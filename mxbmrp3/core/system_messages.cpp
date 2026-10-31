@@ -4,6 +4,8 @@
 // ============================================================================
 #include "system_messages.h"
 
+#include <cctype>
+#include <cstdio>
 #include <cstring>
 
 SystemMessages& SystemMessages::getInstance() {
@@ -31,6 +33,44 @@ void SystemMessages::post(const Toast& toast) {
     // the front one.
     if (toast.throughHideAll) m_toasts.push_front(toast);
     else m_toasts.push_back(toast);
+}
+
+void SystemMessages::formatFolder(const char* path, char* out, size_t cap) {
+    if (!out || cap == 0) return;
+    out[0] = '\0';
+    if (!path) return;
+    size_t len = std::strlen(path);
+    while (len > 0 && (path[len - 1] == '\\' || path[len - 1] == '/')) --len;
+
+    // Start at "Documents\" when the path has one (case-insensitive, as Windows is).
+    static const char kDocs[] = "documents";
+    const size_t docsLen = sizeof(kDocs) - 1;
+    size_t start = len;   // len = not found yet
+    for (size_t i = 0; i + docsLen <= len; ++i) {
+        if (i > 0 && path[i - 1] != '\\' && path[i - 1] != '/') continue;
+        if (i + docsLen < len && path[i + docsLen] != '\\' && path[i + docsLen] != '/') continue;
+        size_t k = 0;
+        while (k < docsLen && std::tolower(static_cast<unsigned char>(path[i + k])) == kDocs[k]) ++k;
+        if (k == docsLen) { start = i; break; }
+    }
+    if (start == len) {
+        // No Documents folder: the last three folders.
+        start = 0;
+        int seps = 0;
+        for (size_t i = len; i > 0; --i) {
+            if (path[i - 1] == '\\' || path[i - 1] == '/') {
+                if (++seps == 3) { start = i; break; }
+            }
+        }
+    }
+    // Drop leading folders until it fits.
+    while (len - start >= cap) {
+        size_t next = start;
+        while (next < len && path[next] != '\\' && path[next] != '/') ++next;
+        if (next >= len) break;   // one name longer than the card: shown cut, the only way left
+        start = next + 1;
+    }
+    std::snprintf(out, cap, "%.*s", static_cast<int>(len - start), path + start);
 }
 
 void SystemMessages::cancel(int key) {

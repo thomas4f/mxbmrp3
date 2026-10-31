@@ -111,15 +111,16 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
 
     ctx.addSectionHeading("Settings");
 
-    // Developer mode only settings
+    // Debug mode toggle (for testing updates) - developer mode only
     if (SettingsManager::getInstance().isDeveloperMode()) {
-        // Debug mode toggle (for testing updates)
         bool isDebugMode = UpdateChecker::getInstance().isDebugMode();
         ctx.addToggleControl("Debug mode (test)", isDebugMode,
                             SettingsHud::ClickRegion::UPDATE_DEBUG_MODE, nullptr,
                             nullptr, 0, true, "updates.debug_mode");
+    }
 
-        // Update channel selector (Stable / Prerelease)
+    // Update channel selector (Stable / Prerelease)
+    {
         bool isPrerelease = UpdateChecker::getInstance().isPrereleaseChannel();
         const char* channelText = isPrerelease ? "Prerelease" : "Stable";
         // Stable / Prerelease; a switch re-checks on the new channel.

@@ -418,12 +418,12 @@ void InputManager::refreshWindowInformation() {
     // Calculate window bounds in UI coordinate space whenever dimensions change
     // This allows HUD position validation to work without requiring cursor to be
     // enabled. Same UiViewport::compute rect as the cursor map above and the
-    // companion paint loop (its w/h are never 0 — the old inline division guard).
-    const UiViewport::Rect vp = UiViewport::compute(m_windowWidth, m_windowHeight);
-    m_windowBounds.left = static_cast<float>(-vp.x) / static_cast<float>(vp.w);
-    m_windowBounds.top = static_cast<float>(-vp.y) / static_cast<float>(vp.h);
-    m_windowBounds.right = static_cast<float>(m_windowWidth - vp.x) / static_cast<float>(vp.w);
-    m_windowBounds.bottom = static_cast<float>(m_windowHeight - vp.y) / static_cast<float>(vp.h);
+    // companion paint loop, via UiViewport::bounds.
+    const UiViewport::Bounds b = UiViewport::bounds(m_windowWidth, m_windowHeight);
+    m_windowBounds.left = b.left;
+    m_windowBounds.top = b.top;
+    m_windowBounds.right = b.right;
+    m_windowBounds.bottom = b.bottom;
 }
 
 void InputManager::updateCursorVisibility() {

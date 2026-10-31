@@ -30,6 +30,12 @@
 //      Draw, with the way into settings; never again that session (hiding may
 //      be deliberate), and never when one HUD is on. A widget under the
 //      saved Widgets master switch draws nothing, so it does not count as on.
+//  11. Out-of-sight writes say how they went: the Benchmark profiler switched
+//      off toasts its report's folder from "Documents\" on (the full path
+//      does not fit the card), a stats write that fails says so once per run
+//      of failures, an unreadable stats file is copied aside before anything
+//      can overwrite it and the first Draw says so, and a web overlay whose
+//      port is taken says so at the first Draw.
 //
 // Self-contained doctest; see run_tests.sh.
 // ============================================================================
@@ -636,4 +642,125 @@ TEST_CASE("messages: a widget under the Widgets master switch does not count as 
     CHECK(host.messagesPosted() == before + 1);
     CHECK(host.lastMessage().rfind("All HUDs hidden|", 0) == 0);
     host.shutdown();
+}
+
+// ---- 11. out-of-sight writes ------------------------------------------------
+
+static const std::string kStatsPath = "Z:\\tmp\\mxbmrp3-tests\\messages\\mxbmrp3\\mxbmrp3_stats.json";
+
+TEST_CASE("messages: the profiler switched off toasts where its report went") {
+    cleanSaveDir();
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    REQUIRE(host.hasBenchmarkSurfaces());
+    startQuiet(host);
+    onTrack(host);
+    host.bmSetVisible(true);
+    host.draw();
+    host.draw();
+    const unsigned int before = host.messagesPosted();
+    host.bmSetVisible(false);
+    host.draw();                                   // the falling edge: the report is written
+    CHECK(host.messagesPosted() == before);        // told once the writer has landed it
+    Sleep(1700);
+    host.draw();
+    CHECK(host.messagesPosted() == before + 1);
+    const std::string last = host.lastMessage();
+    INFO(last);
+    // The test's save dir has no Documents folder: its last three folders.
+    CHECK(last.rfind("Profiler report saved|messages\\mxbmrp3\\benchmarks|floppy-disk|13|0", 0) == 0);
+    host.draw();
+    CHECK(host.messageShowing() == "Profiler report saved");
+    host.shutdown();
+}
+
+TEST_CASE("messages: a stats write that fails says so once") {
+    cleanSaveDir();
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    startQuiet(host);
+    onTrack(host);
+    host.draw();
+    // A target the writer cannot replace.
+    std::remove(kStatsPath.c_str());
+    REQUIRE(CreateDirectoryA(kStatsPath.c_str(), nullptr));
+    const unsigned int before = host.messagesPosted();
+    host.runStop();                                // the run's stats are the save
+    Sleep(1700);
+    host.draw();
+    CHECK(host.messagesPosted() == before + 1);
+    CHECK(host.lastMessage().rfind("Stats not saved|Could not write mxbmrp3_stats.json. Is it read-only?|"
+                                   "triangle-exclamation|-1|1", 0) == 0);
+    // The writer retries at the next save point; the player already knows.
+    host.runInit(1);
+    host.runStop();
+    Sleep(1700);
+    host.draw();
+    CHECK(host.messagesPosted() == before + 1);
+    host.shutdown();
+    RemoveDirectoryA(kStatsPath.c_str());
+}
+
+TEST_CASE("messages: an unreadable stats file is copied aside before anything overwrites it") {
+    cleanSaveDir();
+    const char* broken = "{\"version\": 3, \"personalBests\": [ oops";
+    REQUIRE(ini::writeFile(kStatsPath, broken));
+    {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        startQuiet(host);
+        onTrack(host);
+        const unsigned int before = host.messagesPosted();
+        host.draw();
+        CHECK(host.messagesPosted() == before + 1);
+        CHECK(host.lastMessage().rfind("Stats file unreadable|Started fresh. A copy is kept in the mxbmrp3 folder|"
+                                       "triangle-exclamation|-1|1", 0) == 0);
+        host.runDeinit();                          // a save point: the fresh file replaces the broken one
+        host.shutdown();
+    }
+    // The copy holds the old bytes, word for word.
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA("Z:\\tmp\\mxbmrp3-tests\\messages\\mxbmrp3\\mxbmrp3_stats_unreadable_*.json", &fd);
+    REQUIRE(h != INVALID_HANDLE_VALUE);
+    std::string copy;
+    int copies = 0;
+    do {
+        copy = std::string("Z:\\tmp\\mxbmrp3-tests\\messages\\mxbmrp3\\") + fd.cFileName;
+        ++copies;
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+    CHECK(copies == 1);
+    CHECK(ini::readFile(copy) == broken);
+    DeleteFileA(copy.c_str());
+}
+
+TEST_CASE("messages: a web overlay whose port is taken says so at the first Draw") {
+    cleanSaveDir();
+    WSADATA wsa;
+    REQUIRE(WSAStartup(MAKEWORD(2, 2), &wsa) == 0);
+    SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    REQUIRE(s != INVALID_SOCKET);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = 0;                              // any free port, then hold it
+    REQUIRE(bind(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
+    REQUIRE(listen(s, 1) == 0);
+    int len = sizeof(addr);
+    REQUIRE(getsockname(s, reinterpret_cast<sockaddr*>(&addr), &len) == 0);
+    const int port = ntohs(addr.sin_port);
+    REQUIRE(port >= 1024);
+    REQUIRE(ini::writeFile(kIniPath, "[General]\nwebServer=1\n\n[Advanced]\nwebServerPort=" +
+                                     std::to_string(port) + "\n"));
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    startQuiet(host);
+    onTrack(host);
+    host.draw();
+    const std::string want = "Web overlay not started|Could not open port " + std::to_string(port) +
+                             ". Is it in use?|triangle-exclamation|0|1";
+    CHECK(host.lastMessage() == want);
+    host.shutdown();
+    closesocket(s);
+    WSACleanup();
 }

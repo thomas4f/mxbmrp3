@@ -12,6 +12,8 @@
 //
 //    Pinned: the heavy rows the test install draws (HUD display, Voice pack,
 //    Update channel) fire once; an ordinary tab's cycles still repeat.
+//    Update channel is drawn WITHOUT developer mode: any player can opt into
+//    pre-releases, while Debug mode (test) stays a developer row (1.34.1).
 // 2. The Spotter tab reads its pack folders and SAPI voices (a directory scan
 //    and a COM enumeration) once per menu opening. 1.32 moved both from its
 //    click handlers into the tab's render, which runs twice per rebuild, and
@@ -54,8 +56,13 @@ TEST_CASE("settings: heavy cycle steps fire once; ordinary cycles still repeat")
     // display on Appearance and Voice pack on Spotter (the shipped default).
     CHECK(onceOn("Appearance") >= 1);
     CHECK(onceOn("Spotter") >= 1);
-    host.setDeveloperMode(true);     // Update channel is a developer row
     CHECK(onceOn("Updates") >= 1);   // each step starts an update check
+    float x = 0.0f, y = 0.0f;
+    CHECK(host.settingsRegionCenter("updates.channel", &x, &y));
+    CHECK_FALSE(host.settingsRegionCenter("updates.debug_mode", &x, &y));
+    host.setDeveloperMode(true);     // Debug mode (test) is a developer row
+    host.draw();
+    CHECK(host.settingsRegionCenter("updates.debug_mode", &x, &y));
     host.setDeveloperMode(false);
     host.setActiveTab("Standings");
     host.draw();

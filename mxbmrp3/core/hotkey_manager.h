@@ -23,6 +23,13 @@ enum class CaptureType {
     TEXT
 };
 
+// Which characters a TEXT capture types beyond letters, digits and '_'.
+enum class TextKeys : uint8_t {
+    NAME,     // nothing more (a Twitch channel)
+    HANDLE,   // a bare '-' and '.' (a YouTube handle)
+    SEARCH    // those and a space (the settings Find box)
+};
+
 // Callback type for when a hotkey action is triggered
 using HotkeyCallback = std::function<void(HotkeyAction)>;
 
@@ -78,9 +85,10 @@ public:
     // caller normalizes); Enter commits. The committed text is handed over once
     // through consumeTextCommit(); wasCaptureCompleted() fires on the same frame
     // like any other capture.
-    // `handlePunctuation` also types a bare '-' and '.', which YouTube handles
-    // can contain and Twitch names cannot (see updateTextCapture).
-    void startTextCapture(const std::string& initial, size_t maxLen, bool handlePunctuation);
+    // `keys` (TextKeys) says what else types: a bare '-' and '.', which YouTube
+    // handles can contain and Twitch names cannot (see updateTextCapture), and a
+    // space for the settings Find box.
+    void startTextCapture(const std::string& initial, size_t maxLen, TextKeys keys);
     const std::string& getCaptureText() const { return m_captureEdit.text; }
     size_t getCaptureCursor() const { return m_captureEdit.cursor; }
     bool consumeTextCommit(std::string& out);
@@ -138,7 +146,7 @@ private:
     HotkeyAction m_captureAction;
     bool m_captureCompleted;
     TextEdit::Buffer m_captureEdit;  // TEXT capture buffer + cursor
-    bool m_captureHandlePunctuation = false;
+    TextKeys m_captureKeys = TextKeys::NAME;
     bool m_textCommitted = false;    // a TEXT capture ended with Enter/commit, not consumed yet
     // Hold-to-repeat for the editing keys (Backspace, Delete, Left, Right): the
     // one last pressed inside the field, 0 when none is held.

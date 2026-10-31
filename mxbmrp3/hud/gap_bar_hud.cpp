@@ -11,6 +11,8 @@
 
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
+#include "../core/input_manager.h"
+#include "../core/plugin_manager.h"
 #include "../core/color_config.h"
 #include "../core/asset_manager.h"
 #include "../core/tracked_riders_manager.h"
@@ -130,6 +132,7 @@ void GapBarHud::update() {
     // OPTIMIZATION: Only process dirty flags and rebuild when visible
     if (isVisibleAnySurface()) {
         processDirtyFlags();
+        followSpectateClick();
     } else {
         clearDataDirty();
         clearLayoutDirty();
@@ -144,6 +147,7 @@ void GapBarHud::rebuildLayout() {
 void GapBarHud::rebuildRenderData() {
     clearStrings();
     m_quads.clear();
+    m_markerWidth = 0.0f;   // renderRiderMarkers sets it again where markers draw
 
     // Get scaled dimensions
     auto dim = getScaledDimensions();
@@ -651,8 +655,10 @@ int GapBarHud::collectMarkers(const Unified::TrackPositionData* riders, int coun
         spriteIndex = assetMgr.iconSpriteForShape(m_riderIconIndex);
         globalShapeIndex = m_riderIconIndex;
     } else {
-        // Default to circle-chevron-up
-        spriteIndex = assetMgr.getIconSpriteIndex("circle-chevron-up");
+        // Default to circle-chevron-up. A static name: the lookup takes a
+        // std::string, and a literal this long built one on the heap every rebuild.
+        static const std::string kDefaultIcon = "circle-chevron-up";
+        spriteIndex = assetMgr.getIconSpriteIndex(kDefaultIcon);
         globalShapeIndex = assetMgr.shapeIndexForSprite(spriteIndex);
     }
 
@@ -756,6 +762,9 @@ void GapBarHud::renderRiderMarkers(float innerX, float innerY, float innerWidth,
             m_labelAnchor, halfSize, dim.fontSizeSmall * m_fMarkerScale * boost);
     };
     const float markerY = centerFor(iconHalfSize, 1.0f);
+    m_markerLeft = innerX;
+    m_markerWidth = innerWidth;
+    m_markerIconSize = iconSize;
 
     Marker markers[MAX_MARKERS];
     const int count = collectMarkers(m_riderPositions.data(), static_cast<int>(m_riderPositions.size()),
@@ -787,6 +796,48 @@ void GapBarHud::renderRiderMarkers(float innerX, float innerY, float innerWidth,
                               dim, selfBoost);
         }
     }
+}
+
+// ============================================================================
+// Click to spectate: the opponent under the cursor
+// ============================================================================
+int GapBarHud::riderAt(const Unified::TrackPositionData* riders, int count, float left, float width,
+                       float iconSize, float x) const {
+    Marker markers[MAX_MARKERS];
+    const int n = collectMarkers(riders, count, true, false, markers, MAX_MARKERS);
+    const PluginData& pluginData = PluginData::getInstance();
+    // Within the icon's half width, as the Map's click regions (markerQuad's
+    // aspect-corrected X); a later marker draws on top, so it wins a tie.
+    float nearest = iconSize / 2.0f / UI_ASPECT_RATIO;
+    int raceNum = -1;
+    for (int i = 0; i < n; ++i) {
+        const Marker& m = markers[i];
+        if (m.kind != MarkerKind::OPPONENT) continue;
+        const float distance = std::fabs(left + width * m.trackPos - x);
+        if (distance <= nearest && pluginData.isRiderSpectatable(m.raceNum)) {
+            nearest = distance;
+            raceNum = m.raceNum;
+        }
+    }
+    return raceNum;
+}
+
+void GapBarHud::followSpectateClick() {
+    if (m_markerWidth <= 0.0f || !showsOpponents() || isHeldBack()) return;
+    const int drawState = PluginData::getInstance().getDrawState();
+    if (drawState != ViewState::SPECTATE && drawState != ViewState::REPLAY) return;
+    const InputManager& input = InputManager::getInstance();
+    if (!input.getLeftButton().isClicked()) return;
+    // Into build space, so the click lands on a bar moved elsewhere on the
+    // companion (a no-op in-game).
+    CursorPosition cursor = input.getCursorPosition();
+    mapCursorToHudSpace(cursor.x, cursor.y);
+    if (!cursor.isValid || !isPointInBounds(cursor.x, cursor.y)) return;
+    const int raceNum = riderAt(m_riderPositions.data(), static_cast<int>(m_riderPositions.size()),
+                                m_markerLeft, m_markerWidth, m_markerIconSize, cursor.x - m_fOffsetX);
+    if (raceNum < 0) return;
+    DEBUG_INFO_F("GapBarHud: Switching to rider #%d", raceNum);
+    PluginManager::getInstance().requestSpectateRider(raceNum);
 }
 
 // ============================================================================

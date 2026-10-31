@@ -92,14 +92,14 @@ function computeGap(rider, session) {
 // Interval from the front of a battle to rider r, in ms. Prefer the real-time
 // (live) gap when the overlay's Live Gaps toggle is on (CONFIG.battleLiveGaps)
 // AND both the front rider and r report a valid live gap (both currently in the
-// game's ~10-closest track-position batch, same lap, not lapped/finished);
+// game's latest track-position batch, same lap, not lapped/finished);
 // otherwise fall back to the official split. liveGapMs is leader-relative for
 // everyone, so the difference is the rider-to-rider interval regardless of who
 // leads the race. Returns { ms, live } so the card can mark a live value.
 function battleInterval(front, r) {
     if (CONFIG.battleLiveGaps && front && front.liveGapValid && r.liveGapValid) {
         var liveMs = (r.liveGapMs || 0) - (front.liveGapMs || 0);
-        // The live gap jitters frame-to-frame as the game's ~10-closest batch is
+        // The live gap jitters frame-to-frame as each track-position batch is
         // recomputed and can momentarily invert (<= 0), which formatGap() renders as
         // an empty string -> a visible flash. A rider in a battle is behind the front
         // by definition, so treat a non-positive live interval as noise and fall

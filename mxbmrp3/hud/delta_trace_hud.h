@@ -48,7 +48,6 @@ public:
     // value like the Gap Bar's, or Default: General's (hud_defaults.h). A change
     // of the reference in use, either way, refits the scale (update()).
     using Reference = PbGapTracker::Ref;
-    static constexpr int REFERENCE_COUNT = PbGapTracker::REF_COUNT;
     Reference getReference() const { return HudDefaults::reference(m_referenceDefault, m_reference); }
 
     // Points on the line at the last rebuild (0 = nothing plotted).

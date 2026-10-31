@@ -161,5 +161,13 @@ else
     echo "== (skipping benchmark analyzer contract check: python3 not found) =="
 fi
 
+# The exact half: the perf ledger (run_perf_ledger.sh) - primitives, engine
+# cost estimate, allocations, rebuilds, snapshot builds on a busy synthetic
+# tape and a virtual clock, gated against perf_ledger_baseline.txt. Timings
+# above catch a gross regression; this catches every change, in both
+# directions, and makes the PR that moves a counter carry the new baseline.
+echo "== Perf ledger (exact counters vs perf_ledger_baseline.txt) =="
+"${HERE}/run_perf_ledger.sh" || { echo "== PERF FAIL: perf ledger (see above) =="; exit 1; }
+
 echo "== PERF OK (Draw avg ${draw_avg}us < ${DRAW_MAX_US}us ceiling; Draw p99 ${draw_p99}us, worst map p99 ${map_p99}us < ${BUDGET_US}us 480fps budget) =="
 exit 0

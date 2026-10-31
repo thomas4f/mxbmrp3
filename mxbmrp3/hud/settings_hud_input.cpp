@@ -314,6 +314,9 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
         case ClickRegion::TAB:
             handleTabClick(region);
             return;  // Don't save settings, just UI state change
+        case ClickRegion::FIND_FIELD:
+            openFind();   // settings_hud_find.cpp
+            return;
         case ClickRegion::CLOSE_BUTTON:
             handleCloseButtonClick();
             return;  // Don't save settings, just close the menu
@@ -589,6 +592,12 @@ static bool isPerturbSafe(SettingsHud::ClickRegion::Type t) {
         case CR::VERSION_CLICK:
         case CR::PROFILE_CYCLE_UP:
         case CR::PROFILE_CYCLE_DOWN:
+        // The Find box: it opens another page and starts typing, and its results
+        // open other tabs -- navigation, no setting.
+        case CR::FIND_FIELD:
+        case CR::FIND_RESULT:
+        case CR::FIND_PAGE_PREV:
+        case CR::FIND_PAGE_NEXT:
         // Writes to ANOTHER profile, which no per-tab reset claims to undo.
         case CR::COPY_BUTTON:
         // Leaves the menu waiting for a keypress that never comes.

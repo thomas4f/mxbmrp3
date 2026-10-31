@@ -3,6 +3,8 @@
 // Position widget - displays rider position in minimal format (e.g., "1/24")
 // ============================================================================
 #include "position_widget.h"
+#include "standings_hud.h"
+#include "../core/hud_manager.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include "../core/plugin_utils.h"
@@ -63,6 +65,15 @@ void PositionWidget::update() {
     // (Standings) and the entry count with a join or leave (RaceEntries), and this
     // widget now subscribes to both, plus SpectateTarget for whose position is
     // shown. There is no path that moves this readout without one of the three.
+    //
+    // The one exception is opt-in: with Standings' Live updates on Both, the
+    // live order moves the position between the game's updates. Its revision
+    // is an integer compare, and the order is re-read at most every 100 ms.
+    StandingsHud& standings = HudManager::getInstance().getStandingsHud();
+    if (standings.runningOrderRevision() != m_shownOrderRevision) {
+        setDataDirty();
+    }
+
     if (isDataDirty()) {
         rebuildAndRecord();
         clearDataDirty();
@@ -74,12 +85,21 @@ void PositionWidget::update() {
     }
 }
 
-int PositionWidget::calculatePlayerPosition() const {
+int PositionWidget::calculatePlayerPosition() {
     const PluginData& pluginData = PluginData::getInstance();
     int displayRaceNum = pluginData.getDisplayRaceNum();
 
     if (displayRaceNum <= 0) {
         return -1;  // No rider to display
+    }
+
+    // Standings' running order, live with Live updates on Both
+    StandingsHud& standings = HudManager::getInstance().getStandingsHud();
+    m_shownOrderRevision = standings.runningOrderRevision();
+    if (standings.watchesRunningOrder()) {
+        const std::vector<int>& order = standings.runningOrder();
+        const auto it = std::find(order.begin(), order.end(), displayRaceNum);
+        return it == order.end() ? -1 : static_cast<int>(it - order.begin()) + 1;
     }
 
     // Use centralized position cache (O(1) lookup instead of O(n) linear search)

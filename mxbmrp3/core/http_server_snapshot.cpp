@@ -555,7 +555,7 @@ void appendStandings(std::string& out, const SnapshotCtx& ctx) {
                 // Live (real-time) gap: leader-relative ms (0 for the leader), plus
                 // whether that value is trustworthy right NOW. Validity = it's the
                 // leader (its 0 is valid data), OR the rider is in the current
-                // ~10-closest track-position batch with a computed same-lap gap and
+                // latest track-position batch with a computed same-lap gap and
                 // isn't lapped/finished. A rider that dropped out of the batch has a
                 // stale realTimeGap, so liveGapValid is false and the client falls
                 // back to the official split. Race sessions only. (This is a pure

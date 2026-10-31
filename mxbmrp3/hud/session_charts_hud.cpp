@@ -595,11 +595,13 @@ void SessionChartsHud::drawLapChart(float px, float py, float pw, float ph,
         const DrawnRider& d = drawn[di];
         float thick = d.isPlayer ? lineThickness * 1.6f : lineThickness;
         Pt prev, tag;
+        ChartRun run;   // a straight stretch draws as one quad (addChartSegment)
         for (int lap = 0; lap < static_cast<int>(rowOf[di].size()); ++lap) {
             if (rowOf[di][lap] < 0) { prev.ok = false; continue; }
             Pt cur{ xForPoint(px, pw, lap, field), yForRow(rowOf[di][lap]), true };
-            if (prev.ok) addLineSegment(prev.x, prev.y, cur.x, cur.y, d.color, thick);
-            if (m_enabledElements & ELEM_DOTS) addDot(cur.x, cur.y, d.color, dotSize);
+            if (prev.ok) addChartSegment(run, prev.x, prev.y, cur.x, cur.y, d.color, thick);
+            // A dot sits between two pieces, under the next: one quad would draw beneath it.
+            if (m_enabledElements & ELEM_DOTS) { addDot(cur.x, cur.y, d.color, dotSize); run.reset(); }
             prev = cur; tag = cur;
         }
         if ((m_enabledElements & ELEM_LEGEND) && tag.ok)
@@ -684,12 +686,14 @@ void SessionChartsHud::drawTraceChart(float px, float py, float pw, float ph,
         const std::vector<long long>& cum = field.cumulative[d.fieldIdx];
         float thick = d.isPlayer ? lineThickness * 1.6f : lineThickness;
         Pt prev, tag;
+        ChartRun run;   // a straight stretch draws as one quad (addChartSegment)
         for (size_t l = 0; l < cum.size(); ++l) {
             long long v = SessionChartsMath::traceValueAtSector(
                 field.refPaceMs, static_cast<int>(l), field.pointsPerLap, cum[l]);
             Pt cur{ xForPoint(px, pw, static_cast<int>(l), field), yForVal(v), true };
-            if (prev.ok) addLineSegment(prev.x, prev.y, cur.x, cur.y, d.color, thick);
-            if (m_enabledElements & ELEM_DOTS) addDot(cur.x, cur.y, d.color, dotSize);
+            if (prev.ok) addChartSegment(run, prev.x, prev.y, cur.x, cur.y, d.color, thick);
+            // A dot sits between two pieces, under the next: one quad would draw beneath it.
+            if (m_enabledElements & ELEM_DOTS) { addDot(cur.x, cur.y, d.color, dotSize); run.reset(); }
             prev = cur; tag = cur;
         }
         if ((m_enabledElements & ELEM_LEGEND) && tag.ok)
@@ -749,10 +753,12 @@ void SessionChartsHud::drawGapChart(float px, float py, float pw, float ph,
         const std::vector<long long>& cum = field.cumulative[d.fieldIdx];
         float thick = d.isPlayer ? lineThickness * 1.6f : lineThickness;
         Pt prev, tag;
+        ChartRun run;   // a straight stretch draws as one quad (addChartSegment)
         for (size_t l = 0; l < cum.size(); ++l) {
             Pt cur{ xForPoint(px, pw, static_cast<int>(l), field), yForGap(gaps[l]), true };
-            if (prev.ok) addLineSegment(prev.x, prev.y, cur.x, cur.y, d.color, thick);
-            if (m_enabledElements & ELEM_DOTS) addDot(cur.x, cur.y, d.color, dotSize);
+            if (prev.ok) addChartSegment(run, prev.x, prev.y, cur.x, cur.y, d.color, thick);
+            // A dot sits between two pieces, under the next: one quad would draw beneath it.
+            if (m_enabledElements & ELEM_DOTS) { addDot(cur.x, cur.y, d.color, dotSize); run.reset(); }
             prev = cur; tag = cur;
         }
         if ((m_enabledElements & ELEM_LEGEND) && tag.ok)
@@ -845,11 +851,13 @@ void SessionChartsHud::drawPaceChart(float px, float py, float pw, float ph,
         const std::vector<int>& laps = field.lapMs[d.fieldIdx];
         float thick = d.isPlayer ? lineThickness * 1.6f : lineThickness;
         Pt prev, tag;
+        ChartRun run;   // a straight stretch draws as one quad (addChartSegment)
         for (size_t l = 0; l < laps.size(); ++l) {
             if (!included(d.fieldIdx, static_cast<int>(l), laps[l])) { prev.ok = false; continue; }
             Pt cur{ xForLap(px, pw, static_cast<int>(l), paceDomainEnd), yForVal(laps[l]), true };
-            if (prev.ok) addLineSegment(prev.x, prev.y, cur.x, cur.y, d.color, thick);
-            if (m_enabledElements & ELEM_DOTS) addDot(cur.x, cur.y, d.color, dotSize);
+            if (prev.ok) addChartSegment(run, prev.x, prev.y, cur.x, cur.y, d.color, thick);
+            // A dot sits between two pieces, under the next: one quad would draw beneath it.
+            if (m_enabledElements & ELEM_DOTS) { addDot(cur.x, cur.y, d.color, dotSize); run.reset(); }
             prev = cur; tag = cur;
         }
         if ((m_enabledElements & ELEM_LEGEND) && tag.ok)

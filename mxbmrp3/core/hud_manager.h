@@ -389,7 +389,7 @@ public:
     class StatsHud& getStatsHud() const { assert(m_pStatsHud && "HudManager not initialized"); return *m_pStatsHud; }
     class EventLogHud& getEventLogHud() const { assert(m_pEventLog && "HudManager not initialized"); return *m_pEventLog; }
     class StreamChatHud& getStreamChatHud() const { assert(m_pStreamChat && "HudManager not initialized"); return *m_pStreamChat; }
-    class BenchmarkWidget* getBenchmarkWidget() const { return m_pBenchmark; }  // May be null if developer mode is off
+    class BenchmarkWidget* getBenchmarkWidget() const { return m_pBenchmark; }  // Always created (the profiler is offered to every player)
     class SettingsHud& getSettingsHud() const { assert(m_pSettingsHud && "HudManager not initialized"); return *m_pSettingsHud; }
 
 #if defined(MXBMRP3_TEST_BUILD)
@@ -474,6 +474,9 @@ private:
     void announceMasterToggle(HotkeyAction action, bool nowShown);
     // Once per game session, at the first Draw: every HUD switched off.
     void announceAllHiddenAtStart();
+    // Same first Draw: what went wrong out of sight while loading (an unreadable
+    // stats file, the web overlay's port taken).
+    void announceStartupProblems();
     void announceProfileSwitch(ProfileType profile);
     void collectRenderData();
     // Build one surface's frame into the given vectors. companion=false reproduces
@@ -617,6 +620,10 @@ private:
     // Collected render data from all HUDs
     std::vector<SPluginQuad_t> m_quads;
     std::vector<SPluginString_t> m_strings;
+    // The game frame as handed to the engine, without its invisible primitives
+    // (core/engine_cull.h); used only on frames that have some. Reused buffers.
+    std::vector<SPluginQuad_t> m_engineQuads;
+    std::vector<SPluginString_t> m_engineStrings;
     // Companion-surface frame (built only while the companion window is open).
     std::vector<SPluginQuad_t> m_companionQuads;
     std::vector<SPluginString_t> m_companionStrings;

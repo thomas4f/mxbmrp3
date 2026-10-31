@@ -50,11 +50,15 @@ public:
     // Returns true if removed, false if not found
     bool removeTrackedRider(const std::string& name);
 
-    // Check if a rider is tracked
-    bool isTracked(const std::string& name) const;
+    // Check if a rider is tracked (a C string for the reason at getTrackedRider)
+    bool isTracked(const char* name) const { return getTrackedRider(name) != nullptr; }
 
-    // Get tracked rider config (returns nullptr if not tracked)
-    const TrackedRiderConfig* getTrackedRider(const std::string& name) const;
+    // Get tracked rider config (returns nullptr if not tracked). Takes the
+    // name as a C string because every HUD calls it per rider per rebuild with
+    // a RaceEntryData char array: a std::string parameter built a temporary
+    // there (a heap allocation for any name past the SSO length) before the
+    // empty-map fast path inside could skip anything.
+    const TrackedRiderConfig* getTrackedRider(const char* name) const;
 
     // Update tracked rider settings
     void setTrackedRiderColor(const std::string& name, unsigned long color);
@@ -94,6 +98,7 @@ private:
 
     // Tracked riders storage (key = normalized name)
     std::unordered_map<std::string, TrackedRiderConfig> m_trackedRiders;
+    mutable std::string m_lookupKey;   // getTrackedRider's reused key (game thread only, like every caller)
 
     // Save path (set during load)
     std::string m_savePath;

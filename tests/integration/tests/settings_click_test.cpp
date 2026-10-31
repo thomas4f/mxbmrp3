@@ -94,11 +94,11 @@ static std::string iniStr(const char* path, const std::string& section, const st
 static const int kStd = 2;
 
 // The Gap Bar's Reference cycle position from the saved key: Default (written
-// as HudDefaults::REFERENCE_FOLLOW, 3) is state 0, then Session PB, All-time
-// and Last lap.
+// as HudDefaults::REFERENCE_FOLLOW, 3) is state 0, then Session PB, All-time,
+// Last lap and Server best (stored past Default, as 4).
 static int iniRefState(const char* path, const std::string& section) {
     const int v = iniInt(path, section, "reference");
-    return v == 3 ? 0 : v + 1;
+    return v == 3 ? 0 : (v < 3 ? v + 1 : v);
 }
 
 static int iniLabelMode(const char* path, const std::string& section) {
@@ -256,16 +256,16 @@ TEST_CASE("settings clicks: cycle controls wrap both directions and persist") {
     host.save();
     CHECK(iniInt(INI_CYCLE, "GapBarHud", "showSplits") == splits0);
 
-    // --- Reference (index 0, N=4): Default / Session PB / All-time / Last lap
+    // --- Reference (index 0, N=5): Default / Session PB / All-time / Last lap / Server best
     REQUIRE(host.clickCycle(0, true));
     host.save();
-    CHECK(iniRefState(INI_CYCLE, "GapBarHud") == (ref0 + 1) % 4);
-    for (int i = 0; i < 3; ++i) REQUIRE(host.clickCycle(0, true));
+    CHECK(iniRefState(INI_CYCLE, "GapBarHud") == (ref0 + 1) % 5);
+    for (int i = 0; i < 4; ++i) REQUIRE(host.clickCycle(0, true));
     host.save();
     CHECK(iniRefState(INI_CYCLE, "GapBarHud") == ref0);   // wrapped home
     REQUIRE(host.clickCycle(0, false));
     host.save();
-    CHECK(iniRefState(INI_CYCLE, "GapBarHud") == (ref0 + 3) % 4);
+    CHECK(iniRefState(INI_CYCLE, "GapBarHud") == (ref0 + 4) % 5);
     REQUIRE(host.clickCycle(0, true));
     host.save();
     CHECK(iniRefState(INI_CYCLE, "GapBarHud") == ref0);

@@ -113,3 +113,39 @@ TEST_CASE("cursor round-trip through the call sites' forward/inverse math") {
         }
     }
 }
+
+TEST_CASE("bounds: the whole screen in UI units at 16:9, 21:9, 32:9 and 4:3") {
+    // What the full-screen effects (impact vignette, visor tint) stretch to:
+    // 0..1 is the centred 16:9 area, so an ultrawide reaches past it on both
+    // sides and a 4:3 screen above and below it.
+    const UiViewport::Bounds b169 = UiViewport::bounds(1920, 1080);
+    CHECK(b169.left == doctest::Approx(0.0f));
+    CHECK(b169.right == doctest::Approx(1.0f));
+    CHECK(b169.top == doctest::Approx(0.0f));
+    CHECK(b169.bottom == doctest::Approx(1.0f));
+
+    const float wide21 = (2560.0f / 1080.0f) / (16.0f / 9.0f);
+    const UiViewport::Bounds b219 = UiViewport::bounds(2560, 1080);
+    CHECK(b219.left == doctest::Approx(0.5f - 0.5f * wide21).epsilon(0.001));
+    CHECK(b219.right == doctest::Approx(0.5f + 0.5f * wide21).epsilon(0.001));
+    CHECK(b219.top == doctest::Approx(0.0f));
+    CHECK(b219.bottom == doctest::Approx(1.0f));
+
+    const UiViewport::Bounds b329 = UiViewport::bounds(5120, 1440);
+    CHECK(b329.left == doctest::Approx(-0.5f));
+    CHECK(b329.right == doctest::Approx(1.5f));
+    CHECK(b329.top == doctest::Approx(0.0f));
+    CHECK(b329.bottom == doctest::Approx(1.0f));
+
+    const float tall43 = (16.0f / 9.0f) / (4.0f / 3.0f);
+    const UiViewport::Bounds b43 = UiViewport::bounds(1600, 1200);
+    CHECK(b43.left == doctest::Approx(0.0f));
+    CHECK(b43.right == doctest::Approx(1.0f));
+    CHECK(b43.top == doctest::Approx(0.5f - 0.5f * tall43));
+    CHECK(b43.bottom == doctest::Approx(0.5f + 0.5f * tall43));
+
+    // A degenerate client still yields a finite, non-empty rect.
+    const UiViewport::Bounds b0 = UiViewport::bounds(0, 0);
+    CHECK(b0.right > b0.left);
+    CHECK(b0.bottom > b0.top);
+}

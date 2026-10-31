@@ -188,3 +188,32 @@ TEST_CASE("startup messages: the settings menu opening answers every one") {
     m.onStartup(false, "1.32");
     CHECK(m.pendingStartup() == Startup::Updated);
 }
+
+// formatFolder: a folder a toast can show on its one detail line (63 chars).
+// The player's user folder is what makes a full path too long, so the path is
+// shown from "Documents\" on; never cut inside a folder name.
+TEST_CASE("system messages: a folder is shown from Documents on") {
+    char out[64];
+    SystemMessages::formatFolder("C:\\Users\\Some Long Name\\Documents\\PiBoSo\\MX Bikes\\mxbmrp3\\benchmarks\\",
+                                 out, sizeof(out));
+    CHECK(std::strcmp(out, "Documents\\PiBoSo\\MX Bikes\\mxbmrp3\\benchmarks") == 0);
+    // Case as Windows has it, and only a whole folder named so.
+    SystemMessages::formatFolder("D:\\MyDocumentsX\\documents\\PiBoSo\\GP Bikes\\mxbmrp3", out, sizeof(out));
+    CHECK(std::strcmp(out, "documents\\PiBoSo\\GP Bikes\\mxbmrp3") == 0);
+}
+
+TEST_CASE("system messages: a folder with no Documents keeps its last three folders") {
+    char out[64];
+    SystemMessages::formatFolder("E:\\Games\\Saves\\PiBoSo\\MX Bikes\\mxbmrp3\\benchmarks", out, sizeof(out));
+    CHECK(std::strcmp(out, "MX Bikes\\mxbmrp3\\benchmarks") == 0);
+    SystemMessages::formatFolder("benchmarks", out, sizeof(out));
+    CHECK(std::strcmp(out, "benchmarks") == 0);
+}
+
+TEST_CASE("system messages: a folder too long for the line loses whole leading folders") {
+    char out[24];
+    SystemMessages::formatFolder("C:\\Users\\X\\Documents\\PiBoSo\\Kart Racing Pro\\mxbmrp3\\benchmarks",
+                                 out, sizeof(out));
+    CHECK(std::strcmp(out, "mxbmrp3\\benchmarks") == 0);   // "Kart Racing Pro\..." is 34
+    CHECK(std::strlen(out) < sizeof(out));
+}

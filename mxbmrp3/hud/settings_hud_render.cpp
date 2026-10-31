@@ -101,11 +101,11 @@ using namespace PluginConstants;
 //   sidebar: its one row opens the More page (TAB_MORE, settings_tab_more.cpp),
 //   which lists them -- so the sidebar's height does not depend on the tab. The profile
 //   tabs follow the usage survey's HUD adoption (MX Bikes, Oct 2026), Widgets
-//   first because widgets out-adopt every HUD; Delta Trace is too new to rank and
-//   sits beside the Gap Bar. A tab carrying what's-new markers sits ABOVE its
-//   section's More: the More header has no "New" tag (its tag slot shows the
-//   on-count), so news inside a closed More would draw nowhere. Pinned by
-//   whats_new_test.
+//   first because widgets out-adopt every HUD; Records sits beside the Gap
+//   Bar and Delta Trace opens from More. A tab carrying what's-new markers
+//   sits ABOVE its section's More: the More header has no "New" tag (its tag
+//   slot shows the on-count), so news inside a closed More would draw
+//   nowhere. Pinned by whats_new_test.
 // - Game-gated tabs (Records/FMX/Friends) are gated at RUNTIME via
 //   gameGated + a null HUD pointer (the 'Disabling a Feature Per-Game'
 //   pattern), so rows need no #if guards.
@@ -151,6 +151,7 @@ const SettingsHud::TabDescriptor SettingsHud::s_tabRegistry[] = {
     { TAB_ABOUT,        "About",      "about",         nullptr,                                                              false, &SettingsHud::renderTabAbout,           nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr, true },
     // HIDDEN too: a section's More row opens it (m_moreGroupRow says which section).
     { TAB_MORE,         "More",       "more",          nullptr,                                                              false, &SettingsHud::renderTabMore,            nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr, true },
+    { TAB_FIND,         "Find",       "find",          nullptr,                                                              false, &SettingsHud::renderTabFind,            &SettingsHud::handleClickTabFind,         nullptr,            nullptr,                                nullptr, nullptr, true },
     { TAB_SECTION_PROFILE,  nullptr,  nullptr,         nullptr,                                                              false, nullptr,                                nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr },
     { TAB_WIDGETS,      "Widgets",    "widgets",       nullptr,                                                              false, &SettingsHud::renderTabWidgets,         nullptr,                                  nullptr,            &SettingsHud::resetTabWidgets,          nullptr, nullptr },
     { TAB_DASH,         "Dash",       "dash",          [](const SettingsHud&) -> BaseHud* { return &HudManager::getInstance().getDashHud(); },
@@ -162,10 +163,7 @@ const SettingsHud::TabDescriptor SettingsHud::s_tabRegistry[] = {
     { TAB_TIMING,       "Timing",     "timing",        [](const SettingsHud& s) -> BaseHud* { return s.m_timing; },          false, &SettingsHud::renderTabTiming,          &SettingsHud::handleClickTabTiming,       "TimingHud",        nullptr,                                nullptr, nullptr },
     { TAB_LAP_LOG,      "Lap Log",    "lap_log",       [](const SettingsHud& s) -> BaseHud* { return s.m_lapLog; },          false, &SettingsHud::renderTabLapLog,          &SettingsHud::handleClickTabLapLog,       "LapLogHud",        nullptr,                                nullptr, nullptr },
     { TAB_GAP_BAR,      "Gap Bar",    "gap_bar",       [](const SettingsHud& s) -> BaseHud* { return s.m_gapBar; },          false, &SettingsHud::renderTabGapBar,          &SettingsHud::handleClickTabGapBar,       "GapBarHud",        nullptr,                                nullptr, nullptr },
-    // NO badge: "Delta Trace" is 11 of the sidebar's 13 label cells, like Stream
-    // Chat above; its news bands the sidebar row instead (WhatsNew::tabCanTag).
-    { TAB_DELTA_TRACE,  "Delta Trace","delta_trace",   [](const SettingsHud&) -> BaseHud* { return &HudManager::getInstance().getDeltaTraceHud(); },
-                                                                                                                                      false, &SettingsHud::renderTabDeltaTrace,      nullptr,                                  "DeltaTraceHud",    nullptr,                                nullptr, nullptr },
+    { TAB_RECORDS,      "Records",    "records",       [](const SettingsHud& s) -> BaseHud* { return s.m_records; },         true,  &SettingsHud::renderTabRecords,         &SettingsHud::handleClickTabRecords,      "RecordsHud",       &SettingsHud::resetTabRecordsExtra,     nullptr, nullptr },
     { TAB_PITBOARD,     "Pitboard",   "pitboard",      [](const SettingsHud& s) -> BaseHud* { return s.m_pitboard; },        false, &SettingsHud::renderTabPitboard,        nullptr,                                  "PitboardHud",      nullptr,                                nullptr, nullptr },
     { TAB_GROUP,        "More",       nullptr,         nullptr,                                                              false, nullptr,                                nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr },
     { TAB_RADAR,        "Radar",      "radar",         [](const SettingsHud& s) -> BaseHud* { return s.m_radarHud; },        false, &SettingsHud::renderTabRadar,           nullptr,                                  "RadarHud",         nullptr,                                nullptr, nullptr },
@@ -174,7 +172,10 @@ const SettingsHud::TabDescriptor SettingsHud::s_tabRegistry[] = {
     { TAB_PERFORMANCE,  "Performance","performance",   [](const SettingsHud& s) -> BaseHud* { return s.m_performance; },     false, &SettingsHud::renderTabPerformance,     &SettingsHud::handleClickTabPerformance,  "PerformanceHud",   nullptr,                                nullptr, nullptr },
     { TAB_STATS,        "Stats",      "stats",         [](const SettingsHud& s) -> BaseHud* { return s.m_statsHud; },        false, &SettingsHud::renderTabStats,           &SettingsHud::handleClickTabStats,        "StatsHud",         nullptr,                                nullptr, nullptr },
     { TAB_TELEMETRY,    "Telemetry",  "telemetry",     [](const SettingsHud& s) -> BaseHud* { return s.m_telemetry; },       false, &SettingsHud::renderTabTelemetry,       nullptr,                                  "TelemetryHud",     nullptr,                                nullptr, nullptr },
-    { TAB_RECORDS,      "Records",    "records",       [](const SettingsHud& s) -> BaseHud* { return s.m_records; },         true,  &SettingsHud::renderTabRecords,         &SettingsHud::handleClickTabRecords,      "RecordsHud",       &SettingsHud::resetTabRecordsExtra,     nullptr, nullptr },
+    // NO badge: "Delta Trace" is 11 of the sidebar's 13 label cells, like Stream
+    // Chat (WhatsNew::tabCanTag); marked, it moves above More and its row bands.
+    { TAB_DELTA_TRACE,  "Delta Trace","delta_trace",   [](const SettingsHud&) -> BaseHud* { return &HudManager::getInstance().getDeltaTraceHud(); },
+                                                                                                                                      false, &SettingsHud::renderTabDeltaTrace,      nullptr,                                  "DeltaTraceHud",    nullptr,                                nullptr, nullptr },
     { TAB_FMX,          "FMX",        "fmx",           [](const SettingsHud& s) -> BaseHud* { return s.m_fmxHud; },          true,  &SettingsHud::renderTabFmx,             &SettingsHud::handleClickTabFmx,          "FmxHud",           nullptr,                                nullptr, nullptr },
     { TAB_EVENT_LOG,    "Event Log",  "event_log",     [](const SettingsHud& s) -> BaseHud* { return s.m_eventLog; },        false, &SettingsHud::renderTabEventLog,        &SettingsHud::handleClickTabEventLog,     "EventLogHud",      nullptr,                                nullptr, nullptr },
     { TAB_SESSION_CHARTS, "Charts",   "session_charts",[](const SettingsHud& s) -> BaseHud* { return s.m_sessionCharts; },   false, &SettingsHud::renderTabSessionCharts,   nullptr,                                  "SessionChartsHud", nullptr,                                nullptr, nullptr },
@@ -696,10 +697,6 @@ const char* settingsTitle() {
 }
 }  // namespace
 
-
-
-
-
 float SettingsHud::cardPadTopY() const {
     const ThemeAsset* th = activeTheme();
     const LayoutMetrics& L = layout();
@@ -1014,6 +1011,7 @@ void SettingsHud::rebuildRenderData() {
     m_cachedWindowHeight = input.getWindowHeight();
 
     auto dim = getScaledDimensions();
+    if (m_activeTab == TAB_FIND && m_find.indexStale) buildFindIndex(dim);   // before anything is drawn
 
     constexpr float sectionSpacing = 0.0150f;
 
@@ -1138,6 +1136,7 @@ void SettingsHud::rebuildRenderData() {
     // Bottom button row: [Reset <Tab>] ... [Save/Saved] [Close] ... [About]
     // (settings_hud_footer.cpp).
     buildFooterButtons(dim, plan, sideCol, mainCol, startX, panelWidth);
+    buildFindField(dim, plan, mainCol);
 
     // This panel rebuilds DIRECTLY from its ~30 interaction sites rather than
     // through processDirtyFlags, which is where every other HUD's fill gets cut

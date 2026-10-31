@@ -63,7 +63,7 @@ constexpr float SPREAD = 0.6f;
 // Settings > Helmet is on, which starts off.
 constexpr float STRENGTH_STEP = 0.1f;
 constexpr float STRENGTH_MAX = 1.0f;
-constexpr float STRENGTH_DEFAULT = 1.0f;
+constexpr float STRENGTH_DEFAULT = 0.5f;
 
 // 0..1 hit size for a sample of `g` total acceleration.
 inline float hitFromG(float g) {
@@ -91,6 +91,21 @@ struct Envelope {
 // Half the quad's size in screen units (0.5 = exactly the screen) at `level`.
 inline float halfExtent(float level) {
     return 0.5f * (1.0f + (1.0f - std::clamp(level, 0.0f, 1.0f)) * SPREAD);
+}
+
+// The quad's corners at `level`, centred on and scaled to the visible screen
+// (left/top/right/bottom in UI units, InputManager::getWindowBounds()). The
+// UI's 0..1 is the centred 16:9 area, so a quad sized to it leaves the sides
+// of an ultrawide screen (and the top and bottom of a narrower one) clear; the
+// vignette instead stretches to whatever the screen is.
+struct Corners {
+    float l, t, r, b;
+};
+inline Corners corners(float level, float left, float top, float right, float bottom) {
+    const float half = halfExtent(level);
+    const float cx = 0.5f * (left + right), cy = 0.5f * (top + bottom);
+    const float hw = half * (right - left), hh = half * (bottom - top);
+    return {cx - hw, cy - hh, cx + hw, cy + hh};
 }
 
 // The quad's opacity at `level` for the player's strength.

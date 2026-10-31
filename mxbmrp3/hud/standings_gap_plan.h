@@ -21,7 +21,7 @@
 //
 //   - a LAPPED or FINISHED rider always reads from the OFFICIAL gap, because a
 //     live gap is only meaningful between riders on the same lap
-//   - a rider outside the game's ~10-closest track-position batch has a STALE
+//   - a rider missing from the latest track-position batch has a STALE
 //     realTimeGap, so the live path additionally needs a fresh sample
 //     (Row::hasActiveTrackPos). The leader row is exempt from the FRESHNESS
 //     requirement only — it must still carry a strictly positive realTimeGap,

@@ -166,6 +166,9 @@ public:
     void load(const char* savePath);
     // Writes the stats file and the PB gap traces together (both no-ops when unchanged).
     void save();
+    // From Draw: reads back the outcome of the last stats write once the writer has
+    // had time to land it, and toasts the first failure of a run (see the definition).
+    void pollSaveResult();
 
     // ========================================================================
     // Recording (called from handlers)
@@ -226,7 +229,7 @@ public:
     // interval instead of crediting it — off track, crashed, or nobody to race.
     // Seconds accrue against the same injectable clock the odometer integrates
     // on, and are flushed to the exploration sums about once a second so the
-    // achievement evaluation never lands on the ~30Hz position path.
+    // achievement evaluation never lands on the per-batch position path.
     void recordProximity(Roost::Contact contact, bool measuring);
 
     // Pile-Up: how many OTHER riders are down within a few metres while the
@@ -372,6 +375,12 @@ public:
     // level above reads 0 whatever the file says. A missing file is not this:
     // that is a player who has never taken one.
     bool lastLoadUnreadable() const { return m_loadUnreadable; }
+    // What load() did with an unreadable file, so the old stats are never lost to
+    // the next save: copied aside (then the file is written fresh as usual), or,
+    // when even the copy failed, left alone with every stats write off for the
+    // session. See keepUnreadableFile().
+    bool unreadableCopied() const { return m_unreadableCopied; }
+    bool writesBlocked() const { return m_writesBlocked; }
 #if defined(MXBMRP3_TEST_BUILD)
     void testSetLoadUnreadable(bool on) { m_loadUnreadable = on; }
 #endif
@@ -406,6 +415,8 @@ public:
 
 private:
     void writeStatsFile();   // the stats file alone; save() pairs it with the traces
+    void keepUnreadableFile(const std::string& filePath);
+    void announceSaveResult(bool ok);
     StatsManager() = default;
     ~StatsManager() = default;
     StatsManager(const StatsManager&) = delete;
@@ -465,6 +476,13 @@ private:
     // Prestige levels taken. See prestige().
     int m_prestige = 0;
     bool m_loadUnreadable = false;
+    bool m_unreadableCopied = false;
+    bool m_writesBlocked = false;
+    // pollSaveResult: a write is in flight and when to read its result; and the
+    // failure already toasted for the current run of failures.
+    bool m_saveCheckPending = false;
+    std::chrono::steady_clock::time_point m_saveCheckAt{};
+    bool m_saveFailureAnnounced = false;
 
     // Cached category PB (needed because getPersonalBest returns a pointer to synthesized data)
     mutable StatsPersonalBestData m_cachedCategoryPB;

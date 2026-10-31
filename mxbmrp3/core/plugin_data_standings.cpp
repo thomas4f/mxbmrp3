@@ -403,7 +403,7 @@ int PluginData::getPositionForRaceNum(int raceNum) const {
         m_bPositionCacheDirty = false;
     }
 
-    // Lookup position in cache (O(1) operation)
+    // Lookup position in cache (binary search over the field)
     auto it = m_positionCache.find(raceNum);
     if (it != m_positionCache.end()) {
         return it->second;

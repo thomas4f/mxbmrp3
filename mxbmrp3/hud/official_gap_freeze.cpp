@@ -61,6 +61,12 @@ int OfficialGapFreeze::referenceTime(Ref ref, int splitIndex) const {
         case Ref::ALLTIME_PB:
             if (!displayRiderIsPlayer(data)) return -1;
             return splitIndex < 0 ? m_allTimeLap : m_allTimeSplits[splitIndex];
+        case Ref::SERVER_BEST: {
+            // The official times of the lap the live reference traces, whoever's:
+            // the session's fastest lap, which the game times for every rider.
+            const LapLogEntry* best = data.getOverallBestLap();
+            return best ? timeTo(*best, splitIndex) : -1;
+        }
     }
     return -1;
 }
@@ -98,6 +104,18 @@ bool OfficialGapFreeze::update(Ref ref, int durationMs) {
         if (durationMs <= 0 || time <= 0) return;
         int refTime = referenceTime(ref, splitIndex);
         const LapLogEntry* sessionPb = ref == Ref::SESSION_PB ? data.getBestLapEntry() : nullptr;
+        if (splitIndex < 0 && ref == Ref::SERVER_BEST && idealLapData) {
+            // This line set the server best: the rider's best lap is the lap
+            // just completed, and the fastest anyone has. Its gap is against
+            // the server best it beat, as the session PB's is below.
+            const LapLogEntry* ownBest = data.getBestLapEntry();
+            const LapLogEntry* serverBest = data.getOverallBestLap();
+            const LapLogEntry* beaten = data.getPreviousOverallBestLap();
+            if (ownBest && serverBest && ownBest->lapNum == idealLapData->lastCompletedLapNum &&
+                ownBest->lapNum == serverBest->lapNum && ownBest->lapTime == serverBest->lapTime) {
+                refTime = beaten ? beaten->lapTime : -1;
+            }
+        }
         if (splitIndex < 0 && sessionPb && idealLapData &&
             sessionPb->lapNum == idealLapData->lastCompletedLapNum) {
             // This line set the session PB (the best lap IS the lap just

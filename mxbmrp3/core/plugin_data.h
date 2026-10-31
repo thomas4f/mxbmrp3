@@ -6,6 +6,7 @@
 // buffers, ...) live in plugin_data_types.h, which this header includes — so
 // existing includers see no change. Include that header directly when you only
 // need the data and not the singleton.
+// file-budget: 1010 state store; the field lap traces' plumbing tipped it over
 // ============================================================================
 #pragma once
 
@@ -14,6 +15,7 @@
 #include "live_gap_engine.h"
 #include "lap_timer.h"
 #include "pb_gap_tracker.h"
+#include "field_lap_traces.h"
 
 class PluginData {
 public:
@@ -107,6 +109,9 @@ public:
     const LapLogEntry* getOverallBestLap() const;
     const LapLogEntry* getPreviousOverallBestLap() const;
     void clearOverallBestLap() { m_overallBestLap.lapNum = -1; m_previousOverallBestLap.lapNum = -1; }
+    // Every rider's lap traced from the position batches, the overall best kept as the gap reference (field_lap_traces.h)
+    void recordFieldLapTraces(int numVehicles, const Unified::TrackPositionData* positions);
+    void onFieldLapCompleted(int raceNum, int lapTimeMs, bool lapValid, bool overallBest);
 
     // Convenience methods for display race number (uses getDisplayRaceNum internally)
     const CurrentLapData* getCurrentLapData() const { return getCurrentLapData(getDisplayRaceNum()); }
@@ -240,7 +245,7 @@ public:
     const std::unordered_map<int, StandingsData>& getStandings() const { return m_standings; }  // Collection (never null)
     // The session's best lap by ANYONE, -1 when nobody has set one. Lives here
     // rather than on a HUD because it is a question about the STANDINGS with
-    // three consumers: TimingHud's "Overall" row, the pit board's lap
+    // three consumers: TimingHud's "Server best" row, the pit board's lap
     // reference, and the spotter's {overall_best} — and a core singleton must
     // not reach into a HUD.
     int getOverallBestLapTime() const {
@@ -399,6 +404,7 @@ public:
     void updateTrackPosition(int raceNum, float trackPos, int numLaps, bool crashed, int sessionTime);
     void updateActiveTrackPosRiders(int numVehicles, const Unified::TrackPositionData* positions);
     bool hasActiveTrackPos(int raceNum) const { return m_activeTrackPosRiders.count(raceNum) > 0; }
+    const RiderTrackState* getRiderTrackState(int raceNum) const;  // nullptr until the rider's first position
     void updateRealTimeGaps();  // Calculate gaps using time deltas
     void clearLiveGapTimingPoints();  // Clear timing points for new session
 
@@ -600,7 +606,7 @@ public:
     // still rather than dropping to the placeholder.
     // ========================================================================
     // `ref` picks the reference lap (the Gap Bar's and the Lap Log's own Reference
-    // settings): the session PB, the persisted all-time PB, or the last lap.
+    // settings): the session PB, the persisted all-time PB, the last lap or the server best.
     using GapRef = PbGapTracker::Ref;
     // Whether the lap timer (and so the PB gap tracker) follows the rider on
     // display: false between a spectate switch and the new rider's first
@@ -863,7 +869,7 @@ private:
     // served a tower cut off at that rider (http_test.cpp pins it).
     std::vector<int> m_classificationScratch;
     int m_lastLeaderRaceNum = -1;  // Previous race leader (for leader change detection, race sessions only)
-    mutable std::unordered_map<int, int> m_positionCache;  // Cached position lookup (race number -> position), rebuilt when classification changes
+    mutable FlatIntMap<int> m_positionCache;  // Cached position lookup (race number -> position), rebuilt when classification changes
     mutable bool m_bPositionCacheDirty;  // Flag to rebuild position cache
     PerRider<std::unordered_map<int, int>> m_raceStartPositions{*this};  // raceNum -> official starting position (1-based), snapshotted at race green flag
     PerRider<std::unordered_map<int, int>> m_lastSfPositions{*this};     // raceNum -> position at last start/finish crossing (rolling, "Since S/F" mode)
@@ -875,14 +881,14 @@ private:
 
     // DNS-filtered cache (derived from official classification order, rebuilt when dirty)
     mutable std::vector<int> m_filteredClassificationOrder;
-    mutable std::unordered_map<int, int> m_filteredPositionCache;
+    mutable FlatIntMap<int> m_filteredPositionCache;
     mutable bool m_bFilteredOrderDirty = true;
 
     PerRider<std::unordered_map<int, RiderTrackState>> m_trackPositions{*this};  // Real-time track positions
     // Riders in the most recent API track position batch. Feeds liveGapValid;
     // no batches arrive while the player sits in menus, so a departed rider's
     // stale "active" bit would never refresh out on its own (hence PerRider).
-    PerRider<std::unordered_set<int>> m_activeTrackPosRiders{*this};
+    PerRider<FlatIntSet> m_activeTrackPosRiders{*this};
     PerRider<std::unordered_set<int>> m_lapViaPits{*this};   // riders whose lap in progress visited the pits (see markLapViaPits)
     mutable bool m_cachedPlayerBlueFlagged = false;        // Cached: is the display rider blue-flagged?
     mutable bool m_cachedPlayerLapping = false;            // Cached: is the display rider lapping a backmarker ahead?
@@ -898,7 +904,7 @@ private:
 
     // Hazard detection state and configuration
     mutable std::vector<int> m_cachedHazardRaceNums;     // Cached hazard result (recomputed when dirty)
-    mutable std::unordered_map<int, HazardType> m_cachedHazardTypes;  // Cached per-rider hazard type (recomputed when dirty)
+    mutable FlatIntMap<HazardType> m_cachedHazardTypes;  // Cached per-rider hazard type (recomputed when dirty)
     mutable bool m_hazardsDirty = true;                  // Invalidated when track positions change
     mutable bool m_hazardTypesDirty = true;              // Invalidated alongside m_hazardsDirty
     ProximityTuning m_proximity;   // INI-only blue-flag + hazard tuning
@@ -908,6 +914,7 @@ private:
     PerRider<std::unordered_map<int, LapLogEntry>> m_riderBestLap{*this};  // Best lap entry per rider (for easy access)
     LapLogEntry m_overallBestLap;          // Overall best lap (any rider) with splits for gap comparison
     LapLogEntry m_previousOverallBestLap;  // Previous overall best (for showing improvement)
+    PerRider<FieldLapTraces> m_fieldLapTraces{*this};  // every rider's lap in progress + the server best trace
 
     // Single centralized lap timer for display rider only (follows GapBarHud pattern)
     // Resets when spectate target changes - no need to track all riders
@@ -936,8 +943,7 @@ private:
     std::chrono::steady_clock::time_point m_lastGapNotify{};
     bool m_gapNotifyPending = false;
     LiveGap::Engine m_liveGapEngine;
-    // Scratch buffers reused across updateRealTimeGaps calls (steady state
-    // allocates nothing on the ~30Hz path).
+    // Scratch buffers reused across updateRealTimeGaps calls (no steady-state allocation).
     std::vector<LiveGap::Rider> m_liveGapRiders;
     std::vector<StandingsData*> m_liveGapStandings;  // index-parallel with m_liveGapRiders
     std::vector<int> m_liveGapPrev;
@@ -961,10 +967,11 @@ private:
 
     // Live gap to PB: the reference-lap engine, driven from the lap-timer transitions.
     PbGapTracker m_pbGap;
-    // Plant the player's persisted all-time PB table (core/pb_trace_store.h)
-    // as the tracker's ALLTIME_PB reference, for the bike the stats file's PB
-    // scope resolves to. Called wherever the tracker is (re)bound to the player.
-    void plantAllTimeGapReference();
+    // Plant the server best trace, then the player's persisted all-time PB table
+    // (core/pb_trace_store.h) as the tracker's ALLTIME_PB reference, for the bike the
+    // stats file's PB scope resolves to. Called wherever the tracker is (re)bound.
+    void plantGapReferences();
+    void plantServerBestReference();   // SERVER_BEST while the trace is the overall best, else none
     bool m_allTimePbWithoutTrace = false;  // isAllTimeTraceMissing(), set by the plant
     bool m_liveGapForced = false;          // test plant (testForceLiveGap) outranks the computed gap
     int m_forcedLiveGapMs = 0;

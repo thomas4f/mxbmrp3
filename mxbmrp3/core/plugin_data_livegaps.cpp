@@ -45,11 +45,12 @@ void PluginData::updateRealTimeGaps() {
     }
 
     // Flatten the field in classification order (leader first) for the pure
-    // engine. The game only reports the ~10 vehicles closest to the camera in
-    // each RaceTrackPosition batch, but m_trackPositions RETAINS the last-seen
-    // entry for every rider (it's only erased on removeRaceEntry) — so a rider
-    // outside the current batch still has a stale trackPos/sessionTime here
-    // while m_currentLap etc. keep advancing from RaceClassification. The
+    // engine. A RaceTrackPosition batch (about one a frame) carries the whole
+    // field on track but often misses one to four riders, and m_trackPositions
+    // RETAINS the last-seen entry for every rider (it's only erased on
+    // removeRaceEntry) — so a rider outside the current batch still has a
+    // stale trackPos/sessionTime here while m_currentLap etc. keep advancing
+    // from RaceClassification. The
     // `active` flag (from m_activeTrackPosRiders, exactly like the
     // blue-flag/hazard code) is what lets the engine freeze those riders
     // instead of drifting their gap off a frozen position; if the LEADER isn't

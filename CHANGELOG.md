@@ -18,6 +18,69 @@ file; their wording is preserved too.
 
 ## [Unreleased]
 
+## [1.34.1] - 2026-10-31
+
+Compare your laps to the server best, see what Spotify is playing, find
+any setting by typing its name, and get a HUD that is cheaper to draw.
+It is the first stable 1.34, so the 1.34.0 changes below come with it.
+
+### Added
+- **Find** box in the settings title: type a HUD or widget, a setting's
+  name, or a word from its description to list every match with where it
+  lives and its current value. Click one to open it.
+- **Server best** reference for the **Gap Bar**, **Delta Trace**, **Lap
+  Log**, **Timing** and the **Map**'s lap delta (and General's default):
+  your gap to the fastest lap anyone has set this session, traced from
+  where that rider was on track. A fastest lap that could not be traced,
+  such as one set before you joined, leaves it empty until someone beats
+  it.
+- **Standings**, the **Position** widget and the Dash's Standings page
+  can move riders as they pass, between the game's own updates at the
+  splits (Settings > Standings > Live updates: Both). A pass shows once
+  it has held half a second. Off by default, races only; the Live gaps
+  switch is now this list, and Gaps keeps the live gaps alone.
+- **Click to spectate** on the **Gap Bar**'s rider markers and on the
+  **Dash**'s Flat map and Standings pages, as on the Map and Standings:
+  left click a rider while spectating or in a replay to watch them.
+- **Standings** Show mode (Settings > Standings), as on the Pitboard:
+  Always (the default), At laps or At splits. At laps shows it after the
+  line and At splits after each split and the line, for the time set by
+  the new Freeze.
+- **Messages**: a card names the folder the **Benchmark profiler** saved
+  its report to when it is switched off, and warns when the stats file
+  cannot be written or read, or the web overlay cannot open its port.
+
+### Changed
+- The HUD costs the game less to draw, about 7% more FPS in our test
+  (Forest Raceway, map with lap delta, Telemetry on): the map and every
+  graph draw each straight stretch as one piece instead of dozens,
+  nothing invisible is handed to the game, and it no longer allocates
+  memory on every frame.
+- Settings > General > PB reference is now Gap reference, as it can
+  pick a lap that is not yours.
+- Timing's Overall row and the Pitboard's Overall gap are now called
+  Server best, as in the gap references.
+- Records moves up beside the Gap Bar in Settings and the Toggles strip,
+  and Delta Trace now opens from More.
+- On fresh installs, and after Reset on the Helmet tab, the Impact
+  vignette (Settings > Helmet > Impact) starts at 50%.
+- **Updates**: the update channel (Settings > Updates > Update channel)
+  is shown to everyone, so any player can opt into pre-releases. Stable
+  stays the default.
+- **Benchmark profiler** (Settings > Performance, under More) is shown
+  to everyone. Its report covers the whole run, lists the longest frames
+  with the plugin's time in each, notes the PC it ran on, and is saved on
+  leaving the track and on quitting as well as when switched off.
+
+### Fixed
+- The Impact vignette covers the whole of an ultrawide screen.
+- The Goggles and Visor tint (Settings > Helmet) covers the whole of an
+  ultrawide screen.
+- A stats file that cannot be read at startup is copied aside as
+  `mxbmrp3_stats_unreadable_<date>.json` before anything replaces it.
+  Until now the next save overwrote it, along with the personal bests in
+  it.
+
 ## [1.34.0] - 2026-10-25
 
 Now Playing shows what Spotify or another player in Windows' media

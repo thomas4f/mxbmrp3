@@ -52,6 +52,8 @@ public:
     // elements on is the only way to give this HUD the shape those gates exist to check.
     // See core/test_hooks.cpp, which is excluded from every shipping target.
     friend void MXBMRP3_Test_SetPerformanceElementsImpl(unsigned int);
+    // Fills the FPS history to count the graph's quads (core/test_hooks_perf.cpp).
+    friend int MXBMRP3_Test_PerformanceFpsQuadsImpl(float fps, float swing);
 
 private:
     // Clears the graph history on the ANY-SURFACE show edge; see the definition.

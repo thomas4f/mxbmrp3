@@ -245,7 +245,8 @@ void DeltaTracePlot::addTrace(BaseHud& host, float x, float y, float width, floa
 
 // A fill between the line and zero (green where ahead, red where behind; a
 // segment that crosses zero is split at the crossing), then the line on top.
-// Each piece is one of the game's own four-cornered quads.
+// Each piece is one of the game's own four-cornered quads; pieces in line to a
+// quarter pixel are one (chart_run.h), the fill and the line alike.
 void DeltaTracePlot::addSeries(BaseHud& host, const float* gapMs, const bool* has, int from, int to, float opacity,
                                float x, float y, float width, float height) {
     const float midY = y + height * 0.5f;
@@ -260,6 +261,7 @@ void DeltaTracePlot::addSeries(BaseHud& host, const float* gapMs, const bool* ha
 
     auto px = [&](int p) { return x + width * LapDeltaProfile::pointPos(p); };
     auto py = [&](float gap) { return midY + std::clamp(gap / scale, -1.0f, 1.0f) * half; };
+    ChartRun fillRun;   // the fill's curved edge, merged like the line (chart_run.h)
     auto fill = [&](float x0, float g0, float x1, float g1) {
         // Top-left, bottom-left, bottom-right, top-right, whichever side of zero
         // the piece is on: the game culls a quad wound the other way, so a fill
@@ -275,7 +277,24 @@ void DeltaTracePlot::addSeries(BaseHud& host, const float* gapMs, const bool* ha
             q.m_aafPos[i][1] = pts[i][1];
         }
         q.m_iSprite = SpriteIndex::SOLID_COLOR;
-        q.m_ulColor = (g0 + g1) > 0.0f ? behind : ahead;
+        const bool isBehind = (g0 + g1) > 0.0f;
+        q.m_ulColor = isBehind ? behind : ahead;
+        // The curved edge is the line's side: below zero when behind (corners 1
+        // and 2), above when ahead (0 and 3); the other edge is the zero line. A
+        // piece of the same colour carrying on in line stretches the open one.
+        const int c0 = isBehind ? 1 : 0, c1 = isBehind ? 2 : 3;
+        if (fillRun.quad >= 0 && fillRun.color == q.m_ulColor) {
+            SPluginQuad_t& open = host.m_quads[fillRun.quad];
+            if (open.m_aafPos[3][0] == q.m_aafPos[0][0] && open.m_aafPos[3][1] == q.m_aafPos[0][1] &&
+                open.m_aafPos[2][0] == q.m_aafPos[1][0] && open.m_aafPos[2][1] == q.m_aafPos[1][1] &&
+                fillRun.extend(q.m_aafPos[c0][0], q.m_aafPos[c0][1], q.m_aafPos[c1][0], q.m_aafPos[c1][1])) {
+                open.m_aafPos[2][0] = q.m_aafPos[2][0]; open.m_aafPos[2][1] = q.m_aafPos[2][1];
+                open.m_aafPos[3][0] = q.m_aafPos[3][0]; open.m_aafPos[3][1] = q.m_aafPos[3][1];
+                return;
+            }
+        }
+        fillRun.start(static_cast<int>(host.m_quads.size()), q.m_ulColor, 0.0f, q.m_aafPos[c0][0], q.m_aafPos[c0][1],
+                      q.m_aafPos[c1][0], q.m_aafPos[c1][1]);
         host.m_quads.push_back(q);
     };
 
@@ -301,10 +320,11 @@ void DeltaTracePlot::addSeries(BaseHud& host, const float* gapMs, const bool* ha
         prev = p;
     }
     prev = -1;
+    ChartRun run;   // a straight stretch draws as one quad (addChartSegment)
     for (int p = from; p <= to; ++p) {
         if (!has[p]) continue;
         if (prev >= 0 && p - prev <= 3) {
-            host.addLineSegment(px(prev), py(gapMs[prev]), px(p), py(gapMs[p]), lineColor, lineThickness);
+            host.addChartSegment(run, px(prev), py(gapMs[prev]), px(p), py(gapMs[p]), lineColor, lineThickness);
         }
         prev = p;
     }

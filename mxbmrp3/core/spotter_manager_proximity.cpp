@@ -66,7 +66,7 @@ void SpotterManager::onTrackPositions(
 
     // Proximity ("rider behind"/"clear"): nearest non-excluded rider behind
     // the focused rider along the racing line, from THIS batch — the game
-    // sends the ~10 closest riders, which is exactly the set that matters.
+    // sends the whole field on track, the nearby riders among them.
     // Suppressed on the pre-start grid and during the launch (a packed grid
     // is not a rival closing on you), same grace the hazard detector uses.
     // Also quiet once YOUR race is over — the same reasoning at the other end.

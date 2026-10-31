@@ -606,7 +606,7 @@ Abstract base class that all HUDs inherit from. Provides:
 - `PrestigeWidget` - The prestige badge: artwork shown only once the player has a prestige level, otherwise drawing nothing
 - `ToggleStripWidget` - The Toggles strip: the settings menu button and every settings-tab on/off switch (Global, then Profile), shown with the cursor
 - `PointerWidget` - Customizable mouse pointer rendered with quads (internal; the on-screen cursor)
-- `BenchmarkWidget` - Developer-only per-callback/per-HUD timing breakdown (requires `developerMode=1` in INI)
+- `BenchmarkWidget` - Per-callback/per-HUD timing breakdown and a whole-stint frame report (Settings > Performance > Benchmark profiler)
 
 ### HUD Lifecycle
 

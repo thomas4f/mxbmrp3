@@ -42,6 +42,30 @@
 //    their exact grid thickness). The polyline is intentionally not pinned.
 //  * Session Charts: fed a fixed 3-rider, 3-lap race; all four charts enabled.
 //
+// GOLDEN REFRESH, 2026-10-28 (fourteenth) -- STRAIGHT CHART LINES AS ONE QUAD.
+// Telemetry's QUAD COUNT, POSITION SUM, COLOUR SUM and ORDER HASH only; strings
+// are byte-identical. Graph pieces in line to a quarter pixel are now one quad
+// (chart_run.h), not only level ones, and this ramp's traces are straight runs
+// (throttle steps by 0.1, RPM by 300), so 102 pieces draw as 34.
+//   telemetry   nq 102 -> 34   qpos 623.018796563 -> 207.410613775
+//               qcol 434181829164 -> 142927536684   qorder -> 0x9068e0f4806f3437
+//
+// GOLDEN REFRESH, 2026-10-28 (thirteenth) -- LEVEL CHART LINES AS ONE QUAD.
+// Charts' QUAD COUNT, POSITION SUM, COLOUR SUM and ORDER HASH only; strings are
+// byte-identical. A line that stays level across laps (a position held, the
+// leader's zero gap) is one stretched quad (BaseHud::addChartSegment), drawing
+// the same pixels: four pieces fewer here.
+//   charts      nq 66 -> 62   qpos 480.080022216 -> 453.877876639
+//               qcol 280126160289 -> 262971650919   qorder -> 0x1272d5c94fda05d8
+//
+// GOLDEN REFRESH, 2026-10-28 (twelfth) -- TELEMETRY LINES DRAWN WHOLE.
+// Telemetry's QUAD ORDER HASH only; every count and sum is byte-identical. Its
+// input lines are drawn one whole line at a time in layer order (throttle on
+// top) instead of interleaved sample by sample, so that a held input's level
+// stretch can be one quad (BaseHud::addChartSegment). This ramp holds nothing
+// level, so nothing merges here: the order is the only change.
+//   telemetry   qorder 0xae946c690e75fc87 -> 0x91a33d4ddbefda87
+//
 // GOLDEN REFRESH, 2026-10-23 (eleventh) -- PERFORMANCE UNDER THE MAP.
 // Performance's POSITION SUMS and ORDER HASHES only; every count, colour and
 // metadata sum is byte-identical. The spot under Standings is gone: its members
@@ -527,10 +551,10 @@ TEST_CASE("strip-chart HUDs: primitive parity goldens") {
         MESSAGE("telemetry:  " << fpStr(f));
         CHECK(fpStr(f2) == fpStr(f));         // stable across draws
         // GOLDEN(telemetry)
-        checkAgainst(f, { 102, 24,
-                          623.018796563, 434181829164.0, 0.0,
+        checkAgainst(f, { 34, 24,
+                          207.410613775, 142927536684.0, 0.0,
                           35.136136293, 85684202790.0, 24000.43, 14463422246.0,
-                          0xae946c690e75fc87ULL, 0x8a2360ba07ced4adULL });
+                          0x9068e0f4806f3437ULL, 0x8a2360ba07ced4adULL });
     }
 
     // =========================================================================
@@ -652,10 +676,10 @@ TEST_CASE("strip-chart HUDs: primitive parity goldens") {
         CHECK(fpStr(f2) == fpStr(f));
         // GOLDEN(charts) - re-pinned when Grid lines gained a line at each lap
         // (BaseHud::addChartLapLines): twelve more quads, strings unchanged.
-        checkAgainst(f, { 66, 66,
-                          480.080022216, 280126160289.0, 0.0,
+        checkAgainst(f, { 62, 66,
+                          453.877876639, 262971650919.0, 0.0,
                           125.092050314, 235651418535.0, 70801.06, 37242547186.0,
-                          0x995bc3ea77787570ULL, 0xf761394389121b6dULL });
+                          0x1272d5c94fda05d8ULL, 0xf761394389121b6dULL });
     }
 
     // --- Baseline again: phases must leave nothing behind -----------------------
@@ -666,5 +690,66 @@ TEST_CASE("strip-chart HUDs: primitive parity goldens") {
     CHECK(tail.nq == base.nq);
     CHECK(tail.ns == base.ns);
 
+    host.shutdown();
+}
+
+// A held input is a level line, and a straight line is one quad: the graph draws
+// a line per sample step, and BaseHud::addChartSegment redraws the open piece to
+// the new end while every joint stays within a quarter pixel (chart_run.h). Full
+// throttle held, then a steady ramp, against the throttle jumping every sample
+// (throttle is a default line; gear is not).
+TEST_CASE("telemetry: a held or steady input is one quad, a jumping one a quad per step") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\telemetry_held\\");
+    auto throttleQuads = host.sym<int (*)()>("MXBMRP3_Test_TelemetryThrottleQuads");
+    REQUIRE(throttleQuads);
+    host.session(/*session=*/1, /*numLaps=*/0);
+    host.runInit(1);
+    host.runStart();
+    host.tmSetVisible(true);
+    enum Mode { MOVING, HELD, RAMP };
+    auto feed = [&](Mode mode) {
+        host.tmClearHistory();
+        for (int i = 0; i < 300; ++i) {
+            TelemetryRow r;
+            r.speed = 30.0f;
+            r.rpm = 8000;
+            r.gear = 3;
+            r.throttle = mode == HELD ? 1.0f
+                       : mode == RAMP ? static_cast<float>(i) / 299.0f
+                                      : 0.2f + 0.6f * static_cast<float>(i % 2);
+            r.time = 10.0f + i * 0.01f;
+            host.telemetryFrame(r);
+        }
+        host.drawWithState(0);   // on track: full telemetry
+        host.drawWithState(0);
+    };
+    feed(MOVING);
+    const int moving = throttleQuads();
+    INFO("moving throttle=" << moving);
+    CHECK(moving > 50);             // a quad per step: the line is drawn
+    feed(HELD);
+    CHECK(throttleQuads() == 1);    // held: one
+    feed(RAMP);
+    CHECK(throttleQuads() <= 2);    // a steady ramp: one, give or take float rounding at a joint
+    host.shutdown();
+}
+
+
+// The same for the Performance HUD's FPS graph, the case that is common in
+// game: past the graph's 250 FPS ceiling (Direct GL on a fast PC) the whole
+// history clamps to the top, one level line.
+TEST_CASE("performance: a held frame rate is one quad, a moving one a quad per step") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\performance_held\\");
+    auto fpsQuads = host.sym<int (*)(float, float)>("MXBMRP3_Test_PerformanceFpsQuads");
+    REQUIRE(fpsQuads);
+    const int moving = fpsQuads(120.0f, 20.0f);
+    INFO("moving fps=" << moving);
+    CHECK(moving > 50);                    // a quad per step: the line is drawn
+    CHECK(fpsQuads(120.0f, 0.0f) == 1);    // held: one
+    CHECK(fpsQuads(400.0f, 80.0f) == 1);   // over the ceiling, however it moves: one
     host.shutdown();
 }

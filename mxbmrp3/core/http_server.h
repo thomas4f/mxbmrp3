@@ -63,6 +63,13 @@ public:
         MutexLock lock(m_dataMutex);
         return m_sseSequence;
     }
+
+    // Test-only: count as a polling client NOW, which is what /api/state does,
+    // so frequent-type snapshot rebuilds run as they would with an overlay
+    // open -- without the socket round trip, which a replay that runs many times
+    // faster than real time could never keep inside the activity window. Used
+    // by the perf ledger (perf_ledger_driver.cpp).
+    void testMarkClientActive() { m_lastStatePollMs.store(steadyNowMs()); }
 #endif
 
     // Lifecycle (called by PluginManager)

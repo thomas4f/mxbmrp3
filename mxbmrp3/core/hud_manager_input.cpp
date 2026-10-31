@@ -611,3 +611,38 @@ void HudManager::announceAllHiddenAtStart() {
     SystemMessages::getInstance().post(t);
     DEBUG_INFO("Startup: every HUD is switched off");
 }
+
+// Things that went wrong while loading, where nothing on screen would say so: the
+// stats file would not load (StatsManager::keepUnreadableFile kept the old one),
+// and the web overlay, switched on, could not open its port -- that one is only
+// an "Error" on a settings row a player who is not looking never sees. Once, at
+// the first Draw.
+void HudManager::announceStartupProblems() {
+    const StatsManager& stats = StatsManager::getInstance();
+    if (stats.lastLoadUnreadable()) {
+        SystemMessages::Toast t;
+        snprintf(t.title, sizeof(t.title), "Stats file unreadable");
+        snprintf(t.detail, sizeof(t.detail), "%s",
+                 stats.writesBlocked() ? "Left as it is. Stats are not saved this session"
+                                       : "Started fresh. A copy is kept in the mxbmrp3 folder");
+        snprintf(t.icon, sizeof(t.icon), "triangle-exclamation");
+        t.key = SystemMessages::KEY_STATS_UNREADABLE;
+        t.severity = SystemMessages::Severity::Warning;
+        t.durationMs = SystemMessages::WARNING_DURATION_MS;
+        SystemMessages::getInstance().post(t);
+    }
+#if GAME_HAS_HTTP_SERVER
+    const HttpServer& server = HttpServer::getInstance();
+    if (server.isEnabled() && !server.isRunning()) {
+        SystemMessages::Toast t;
+        snprintf(t.title, sizeof(t.title), "Web overlay not started");
+        snprintf(t.detail, sizeof(t.detail), "Could not open port %d. Is it in use?", server.getPort());
+        snprintf(t.icon, sizeof(t.icon), "triangle-exclamation");
+        t.key = SystemMessages::KEY_WEB_OVERLAY_FAILED;
+        t.tab = SettingsHud::TAB_GENERAL;
+        t.severity = SystemMessages::Severity::Warning;
+        t.durationMs = SystemMessages::WARNING_DURATION_MS;
+        SystemMessages::getInstance().post(t);
+    }
+#endif
+}

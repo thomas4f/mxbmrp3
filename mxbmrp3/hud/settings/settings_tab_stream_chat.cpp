@@ -70,10 +70,10 @@ bool SettingsHud::handleClickTabStreamChat(const ClickRegion& region) {
                 hk.cancelCapture();
                 if (twitchToggle) {
                     m_textField = TextField::TWITCH_CHANNEL;
-                    hk.startTextCapture("", TwitchIrc::MAX_CHANNEL_LEN, false);
+                    hk.startTextCapture("", TwitchIrc::MAX_CHANNEL_LEN, TextKeys::NAME);
                 } else {
                     m_textField = TextField::YOUTUBE_CHANNEL;
-                    hk.startTextCapture("", YouTubeChat::MAX_CHANNEL_LEN - 1, true);
+                    hk.startTextCapture("", YouTubeChat::MAX_CHANNEL_LEN - 1, TextKeys::HANDLE);
                 }
             }
         }
@@ -92,13 +92,13 @@ bool SettingsHud::handleClickTabStreamChat(const ClickRegion& region) {
         hk.cancelCapture();
         m_textField = field;
         if (twitchEdit) {
-            hk.startTextCapture(TwitchChatManager::getInstance().getChannel(), TwitchIrc::MAX_CHANNEL_LEN, false);
+            hk.startTextCapture(TwitchChatManager::getInstance().getChannel(), TwitchIrc::MAX_CHANNEL_LEN, TextKeys::NAME);
         } else {
             // A handle is edited without its '@' (the field shows one), so the
             // typed part is at most 30 characters; a pasted URL goes through the
             // paste path, which is capped separately (HotkeyManager).
             hk.startTextCapture(YouTubeChat::editableChannel(YouTubeChatManager::getInstance().getChannel()),
-                YouTubeChat::MAX_CHANNEL_LEN - 1, true);
+                YouTubeChat::MAX_CHANNEL_LEN - 1, TextKeys::HANDLE);
         }
     }
     setDataDirty();

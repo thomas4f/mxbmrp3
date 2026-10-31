@@ -24,7 +24,9 @@
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 
 // ============================================================================
@@ -49,7 +51,7 @@ bool PluginData::updateLapTimerTrackPosition(int raceNum, float trackPos, int la
         m_displayLapTimer.reset();
         m_pbGap.reset();
         m_displayLapTimerRaceNum = displayRaceNum;
-        plantAllTimeGapReference();
+        plantGapReferences();
     }
 
     bool sfCrossingDetected = m_displayLapTimer.onTrackPosition(trackPos, lapNum);
@@ -125,7 +127,8 @@ bool PluginData::isAllTimeTraceMissing() const {
     return m_allTimePbWithoutTrace && !m_pbGap.hasBestLap(GapRef::ALLTIME_PB);
 }
 
-void PluginData::plantAllTimeGapReference() {
+void PluginData::plantGapReferences() {
+    plantServerBestReference();
     m_allTimePbWithoutTrace = false;
     if (m_displayLapTimerRaceNum < 0 || m_displayLapTimerRaceNum != getPlayerRaceNum()) return;
     // The bike the active PB scope resolves to (under the class scope, the
@@ -156,6 +159,53 @@ void PluginData::plantAllTimeGapReference() {
                  lapTimeMs, bikeName.c_str());
 }
 
+// ============================================================================
+// Server best: every rider's lap traced from the position batches, and the
+// session's overall best lap kept as the SERVER_BEST reference
+// (core/field_lap_traces.h). Unlike the other references it belongs to no
+// rider on display, so a spectate switch re-plants the same trace.
+// ============================================================================
+
+namespace {
+// The lap timer's clock, so the trace and the display rider's elapsed time are
+// read on one timeline (and a clocked tape replay drives both).
+std::int64_t fieldTraceNowMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        LapTimer::now().time_since_epoch()).count();
+}
+}  // namespace
+
+void PluginData::recordFieldLapTraces(int numVehicles, const Unified::TrackPositionData* positions) {
+    const std::int64_t nowMs = fieldTraceNowMs();
+    bool bestChanged = false;
+    for (int i = 0; i < numVehicles; ++i) {
+        bestChanged |= m_fieldLapTraces.onSample(positions[i].raceNum, positions[i].trackPos, nowMs);
+    }
+    if (bestChanged) plantServerBestReference();
+}
+
+void PluginData::onFieldLapCompleted(int raceNum, int lapTimeMs, bool lapValid, bool overallBest) {
+    if (!overallBest) return;
+    m_fieldLapTraces.onLapCompleted(raceNum, lapTimeMs, overallBest && lapValid, fieldTraceNowMs());
+    // The overall best moved whether or not this lap could be traced: plant it,
+    // or drop the trace of the lap it beat.
+    plantServerBestReference();
+}
+
+void PluginData::plantServerBestReference() {
+    const FieldLapTraces::Best& best = m_fieldLapTraces.best();
+    const LapLogEntry* overall = getOverallBestLap();
+    if (best.lapTimeMs > 0 && overall && overall->lapTime == best.lapTimeMs) {
+        if (m_pbGap.bestLapTimeMs(GapRef::SERVER_BEST) == best.lapTimeMs) return;   // already planted
+        m_pbGap.setReference(GapRef::SERVER_BEST, best.table, best.lapTimeMs);
+        DEBUG_INFO_F("LapTimer: server best lap %d ms (#%d) traced, planted as a live-gap reference",
+                     best.lapTimeMs, best.raceNum);
+    } else if (m_pbGap.hasBestLap(GapRef::SERVER_BEST)) {
+        m_pbGap.clearReference(GapRef::SERVER_BEST);
+        DEBUG_INFO("LapTimer: server best lap not traced, its live-gap reference dropped");
+    }
+}
+
 void PluginData::startLapTimerAtRaceStart(int raceNum) {
     // Only the display rider has a live timer.
     if (raceNum != getDisplayRaceNum()) {
@@ -169,7 +219,7 @@ void PluginData::startLapTimerAtRaceStart(int raceNum) {
     // A bind like any other: the all-time trace is planted here too, so a gate
     // drop that precedes the player's first position sample does not leave the
     // race without it (idempotent when a sample already bound and planted).
-    plantAllTimeGapReference();
+    plantGapReferences();
 
     DEBUG_INFO_F("LapTimer: Anchored at race start (gate drop) for raceNum=%d", raceNum);
 }
@@ -179,7 +229,7 @@ void PluginData::resetLapTimer(int raceNum) {
     if (raceNum == m_displayLapTimerRaceNum) {
         m_displayLapTimer.reset();
         m_pbGap.reset();
-        plantAllTimeGapReference();
+        plantGapReferences();
         DEBUG_INFO_F("LapTimer: Reset for raceNum=%d", raceNum);
     }
 }

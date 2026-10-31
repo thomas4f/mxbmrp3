@@ -21,7 +21,8 @@ The cross-build powers the Layer-2 and Layer-3 tests (see `../../TESTING.md`):
 ./run_persist_test.sh   # settings round-trip property test
 ./run_fuzz.sh           # config-file survival fuzzing
 ./run_fuzz_callbacks.sh # DLL-boundary callback survival fuzzing
-./run_perf.sh           # CPU performance baseline (50-rider grid)
+./run_perf.sh           # CPU performance baseline (50-rider grid), then the ledger
+./run_perf_ledger.sh    # exact cost counters vs perf_ledger_baseline.txt (--update)
 ./run_installer_test.sh # NSIS installer install/uninstall mechanics (makensis + Wine)
 ./run_tape_bench.sh     # per-HUD render footprint over a real tape (inspection, not gated)
 ```

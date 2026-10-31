@@ -21,13 +21,15 @@ namespace {
 
 constexpr int ON_TRACK = 0, SPECTATE = 1;
 
-// Quads handed to the game on the frame after one telemetry sample at `g`.
+// Quads in the game frame after one telemetry sample at `g`. The plugin's
+// frame, not the engine handoff: the vignette's first frame can be alpha 0
+// (it fades in), which the handoff drops as drawing nothing.
 int quadsAfterHit(PluginHost& host, float g, int view) {
     TelemetryRow r;
     r.accelY = g;
     host.telemetryFrame(r);
     host.drawWithState(view);
-    return host.lastGameQuads();
+    return host.gameFrameQuads();
 }
 
 }  // namespace

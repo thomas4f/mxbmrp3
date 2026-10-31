@@ -672,6 +672,11 @@ void StandingsHud::addDisplayEntries(int startIdx, int endIdx, int positionBase,
                     break;  // OFF: column not shown
             }
             int curPos = pluginData.getPositionForRaceNum(raceNum);
+            // With the live order shown, the rows a rider has moved live, so the
+            // count agrees with the position on their row.
+            if (m_liveOrderActive && curPos > 0) {
+                curPos += displayEntry.position - pluginData.getDisplayPositionForRaceNum(raceNum);
+            }
             if (refPos > 0 && curPos > 0) {
                 displayEntry.posDelta = refPos - curPos;
                 displayEntry.hasPosDelta = true;
@@ -721,32 +726,27 @@ void StandingsHud::buildColumnTable() {
 }
 
 StandingsHud::HudDimensions StandingsHud::calculateHudDimensions(const ScaledDimensions& dim, int rowCount) const {
-    HudDimensions result;
-
     // The caption band belongs to the plan; the session-info row is CONTENT (the
     // first row of the section), folded into titleHeight so every downstream
     // "titleHeight + headerHeight" offset keeps working unchanged.
-    result.titleHeight = m_bShowSessionInfo ? dim.lineHeightNormal : 0.0f;
-    result.headerHeight = m_bShowHeaders ? dim.lineHeightNormal : 0.0f;
+    const float titleHeight = m_bShowSessionInfo ? dim.lineHeightNormal : 0.0f;
+    const float headerHeight = m_bShowHeaders ? dim.lineHeightNormal : 0.0f;
     int actualRowCount = (rowCount >= 0) ? rowCount : m_displayRowCount;
     float totalRowsHeight = actualRowCount * dim.lineHeightNormal;
 
     PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(getBackgroundWidthChars(), dim.fontSize);
-    want.sectionH = { result.titleHeight + result.headerHeight + totalRowsHeight };
+    want.sectionH = { titleHeight + headerHeight + totalRowsHeight };
     want.captionW = planTitleWidth(dim, "Standings", TitleTier::Large);
     want.tier = TitleTier::Large;
-    result.plan = planPanel(dim, want);
+    PanelPlan& plan = planPanel(dim, want);
     // Placed here (not only at addPlanBackground) so the fast path reads
-    // absolute positions from the same struct the build used.
-    result.plan.x0 = START_X;
-    result.plan.y0 = START_Y;
+    // absolute positions from the same plan the build used.
+    plan.x0 = START_X;
+    plan.y0 = START_Y;
 
-    result.backgroundWidth = result.plan.width();
-    result.backgroundHeight = result.plan.height();
-    result.contentStartX = result.plan.contentX();
-    result.contentStartY = result.plan.contentY();
-    return result;
+    return HudDimensions{ plan, plan.width(), plan.height(), titleHeight, headerHeight,
+                          plan.contentX(), plan.contentY() };
 }
 
 StandingsHud::StandingsHud()

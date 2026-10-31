@@ -31,6 +31,27 @@ void StandingsHud::update() {
         return;
     }
 
+    // Show mode: a crossing by the display rider (the line, and in At splits
+    // each split too) starts the hold. A new session or display rider adopts
+    // what is there and takes the HUD down. Polled in Always as well, so a
+    // switch to At laps does not report a crossing from long ago.
+    const SplitCrossingDetector::Result crossing = m_crossings.poll();
+    if (crossing.adopted) m_showHold.stop();
+    if (m_showMode != SHOW_ALWAYS
+        && (crossing.line || (m_showMode == SHOW_SPLITS && crossing.splitIndex >= 0))) {
+        m_showHold.start();
+    }
+    m_showHold.expire(m_freezeDurationMs);
+    const bool shown = shouldBeVisible() || isPreviewing() || isSampled();
+    if (shown != m_bShownLastRebuild) {
+        setDataDirty();
+    } else if (!shown) {
+        // Hidden and already drawn as nothing: no input, no rebuilds until it shows
+        clearDataDirty();
+        clearLayoutDirty();
+        return;
+    }
+
     // Handle mouse input for rider selection (LMB for clicking, RMB for dragging)
     const InputManager& input = InputManager::getInstance();
 
@@ -114,6 +135,16 @@ void StandingsHud::update() {
         }
     }
 
+    // Live order: re-read at most every 100 ms and rebuild only when it moved.
+    // Track positions alone notify nothing (only a changed gap does), so a pass
+    // between two riders whose gaps hold steady would otherwise never show; and
+    // leaving Both (a loaded profile, the race ending) has to put the official
+    // order back. Never polled while the order is the official one and Both is
+    // off, so Off and Gaps rebuild exactly as before.
+    if (runningOrderRevision() != m_builtOrderRevision) {
+        setDataDirty();
+    }
+
     // Clean up finished animations before rebuilds so we don't do wasteful lookups
     if (hasActiveAnimations()) {
         for (auto it = m_activeAnimations.begin(); it != m_activeAnimations.end(); ) {
@@ -141,6 +172,8 @@ void StandingsHud::update() {
 }
 
 void StandingsHud::rebuildLayout() {
+    // Hidden by Show mode: nothing to move
+    if (!m_bShownLastRebuild) return;
 
     // Fast path - only update positions
     // Apply scale to all dimensions
@@ -408,7 +441,10 @@ void StandingsHud::resetToDefaults() {
     m_animationDurationMs = 500.0f;
     m_bShowHeaders = false;
     m_bShowSessionInfo = true;
-    m_bLiveGaps = false;
+    m_liveMode = LiveMode::OFF;
+    m_showMode = SHOW_ALWAYS;
+    m_freezeDurationMs = FreezeDuration::PITBOARD_DEFAULT_MS;
+    m_showHold.stop();
     m_activeAnimations.clear();
     m_previousPositions.clear();
     m_previousSlots.clear();

@@ -61,11 +61,12 @@ void StandingsHud::updateAnimationState() {
     auto now = std::chrono::steady_clock::now();
 
     // Build current maps: raceNum -> race position, raceNum -> display slot index.
-    // Reuse persistent scratch maps (clear retains bucket capacity) instead of
+    // Reuse persistent scratch maps (flat: clear() keeps the buffer) instead of
     // allocating two fresh maps every rebuild — this runs on every standings data
-    // rebuild, so on a full grid it was ~2 bucket arrays + up to ~100 node allocs/rebuild.
-    std::unordered_map<int, int>& currentPositions = m_scratchPositions;
-    std::unordered_map<int, int>& currentSlots = m_scratchSlots;
+    // rebuild, so on a full grid it was ~2 bucket arrays + up to ~100 node allocs/rebuild
+    // (an unordered_map's clear() still freed every node; the perf ledger counted them).
+    FlatIntMap<int>& currentPositions = m_scratchPositions;
+    FlatIntMap<int>& currentSlots = m_scratchSlots;
     currentPositions.clear();
     currentSlots.clear();
     for (int i = 0; i < static_cast<int>(m_displayEntries.size()); ++i) {
@@ -110,9 +111,9 @@ void StandingsHud::updateAnimationState() {
     // This method only runs on data change; cleanup must run every frame.
 
     // Update previous positions/slots for next comparison. SWAP (not move) so the
-    // scratch maps keep their bucket capacity: after the swap, m_previous* hold this
+    // scratch maps keep their buffers: after the swap, m_previous* hold this
     // frame's data and m_scratch* hold the old previous — which is clear()'d (not
-    // freed) at the top of the next call. Steady-state node allocation -> ~0.
+    // freed) at the top of the next call. Steady-state allocation -> 0.
     m_previousPositions.swap(currentPositions);
     m_previousSlots.swap(currentSlots);
 }

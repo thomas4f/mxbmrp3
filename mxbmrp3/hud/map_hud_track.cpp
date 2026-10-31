@@ -19,6 +19,12 @@
 #include <algorithm>
 #include <unordered_map>
 
+#if defined(MXBMRP3_TEST_BUILD)
+// map_render_test draws the same frame with the straight runs off, to pin that
+// they change the quad count and nothing else (MXBMRP3_Test_MapStraightRuns).
+bool g_mapStraightRunsOff = false;
+#endif
+
 using namespace PluginConstants;
 using namespace PluginConstants::Math;
 
@@ -137,11 +143,23 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
     const unsigned long lossColor = tintByDelta ? this->getColor(ColorSlot::NEGATIVE) : 0;
     float prevRate = 0.0f;
     bool prevHasRate = false;
+    // STRAIGHT RUNS: the ribbon samples a straight every lodSpacing meters (the
+    // zoom's clipping and the lap delta's per-quad colour need the cuts), so a
+    // run of whole, same-coloured quads along one straight is one rectangle
+    // drawn in pieces. It is drawn as that one rectangle instead: the quad is
+    // stretched to the new edge rather than a new one emitted. On a straight
+    // every sample carries the bit-identical perpendicular (the walk emits them
+    // with one heading), which is what marks the run; a cut or faded part, a
+    // colour change or a cull break ends it. The engine pays per quad.
+    size_t runQuad = SIZE_MAX;            // m_quads index of the run's quad, if it ends at the previous point
+    float runUpx = 0.0f, runUpy = 0.0f;  // the run's perpendicular
+    float prevUpx = 0.0f, prevUpy = 0.0f;
     for (const auto& p : m_worldRibbon) {
         // World-space cull: outside bounds breaks the ribbon (matches the old
         // per-segment cull; anything culled here maps outside the clip rect anyway).
         if (!isPointInBounds(p.cx, p.cy)) {
             hasPrevPoint = false;
+            runQuad = SIZE_MAX;
             continue;
         }
 
@@ -171,9 +189,28 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
                 color = PluginUtils::mixColor(trackColor, r > 0.0f ? lossColor : gainColor,
                                               LapDeltaRate::weight(r));
             }
+            // A whole quad continuing the run's straight in its colour stretches the
+            // run's quad instead of adding one (see STRAIGHT RUNS above).
+            const bool onStraight = p.upx == prevUpx && p.upy == prevUpy;
+            const size_t quadsBefore = m_quads.size();
+            bool extended = false, whole = false;
             // The part of the quad from ta to tb along it (0 = previous edge, 1 =
             // current), counter-clockwise to match the engine.
             auto emitPart = [&](float ta, float tb, unsigned long c) {
+                bool runs = true;
+#if defined(MXBMRP3_TEST_BUILD)
+                runs = !g_mapStraightRunsOff;
+#endif
+                if (runs && ta == 0.0f && tb == 1.0f && onStraight && runQuad == quadsBefore - 1 &&
+                    runQuad < m_quads.size() && m_quads[runQuad].m_ulColor == c &&
+                    p.upx == runUpx && p.upy == runUpy) {
+                    SPluginQuad_t& run = m_quads[runQuad];
+                    run.m_aafPos[1][0] = screenLeftX;  run.m_aafPos[1][1] = screenLeftY;
+                    run.m_aafPos[2][0] = screenRightX; run.m_aafPos[2][1] = screenRightY;
+                    extended = true;
+                    return;
+                }
+                whole = ta == 0.0f && tb == 1.0f;
                 SPluginQuad_t quad;
                 quad.m_aafPos[0][0] = prevLeftX + (screenLeftX - prevLeftX) * ta;
                 quad.m_aafPos[0][1] = prevLeftY + (screenLeftY - prevLeftY) * ta;
@@ -216,9 +253,17 @@ void MapHud::renderTrack(const RotationCache& rotation, unsigned long trackColor
                                               screenRightX, screenRightY, prevRightX, prevRightY)) {
                 emitPart(0.0f, 1.0f, color);
             }
+            // The run goes on from here only through a whole straight quad: one
+            // that extended it, or a lone whole one that can start one.
+            if (!extended) {
+                const bool starts = onStraight && whole && m_quads.size() == quadsBefore + 1;
+                runQuad = starts ? quadsBefore : SIZE_MAX;
+                runUpx = p.upx; runUpy = p.upy;
+            }
         }
         prevRate = curRate;
         prevHasRate = curHasRate;
+        prevUpx = p.upx; prevUpy = p.upy;
 
         // Continuity is preserved even when the quad was clipped (matches old behavior).
         prevLeftX = screenLeftX; prevLeftY = screenLeftY;

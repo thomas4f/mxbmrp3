@@ -12,6 +12,7 @@
 #include "pb_trace_store.h"
 #include "plugin_data.h"
 #include "plugin_utils.h"
+#include "system_messages.h"
 #include "ui_config.h"
 #include "../diagnostics/logger.h"
 #include "../vendor/nlohmann/json.hpp"
@@ -76,6 +77,8 @@ void StatsManager::load(const char* savePath) {
     m_trackNames.clear();
     m_prestige = 0;
     m_loadUnreadable = false;
+    m_unreadableCopied = false;
+    m_writesBlocked = false;
     m_globalStats = GlobalStats();
     m_fmx = FmxLifetimeStats();
     m_exploration.clear();
@@ -91,6 +94,7 @@ void StatsManager::load(const char* savePath) {
     if (!file.is_open()) {
         // There but not openable (locked, permissions) is not "no stats".
         m_loadUnreadable = GetFileAttributesA(filePath.c_str()) != INVALID_FILE_ATTRIBUTES;
+        if (m_loadUnreadable) keepUnreadableFile(filePath);
         DEBUG_INFO_F("[StatsManager] No stats file found at %s", filePath.c_str());
         migrateOldFiles();
         m_exploration.onStartup(m_savePath);
@@ -297,6 +301,7 @@ void StatsManager::load(const char* savePath) {
     } catch (const nlohmann::json::exception& e) {
         DEBUG_INFO_F("[StatsManager] Failed to parse JSON: %s — starting fresh", e.what());
         m_loadUnreadable = true;
+        keepUnreadableFile(filePath);
         m_trackBikeStats.clear();
         m_personalBests.clear();
         m_bikeOdometers.clear();
@@ -308,6 +313,7 @@ void StatsManager::load(const char* savePath) {
     } catch (const std::exception& e) {
         DEBUG_INFO_F("[StatsManager] Error loading stats: %s — starting fresh", e.what());
         m_loadUnreadable = true;
+        keepUnreadableFile(filePath);
         m_trackBikeStats.clear();
         m_personalBests.clear();
         m_bikeOdometers.clear();
@@ -322,6 +328,59 @@ void StatsManager::load(const char* savePath) {
     // grants for anything already met, one summary toast if there were any.
     m_exploration.onStartup(m_savePath);
     achievements.onStatsLoaded();
+}
+
+// A stats file that would not load starts the session fresh, and the next save
+// would replace it: a player's PBs, odometers and level gone for a file that may
+// only have been locked by a sync tool, or hand-edited one comma short. So it is
+// copied aside first, named by the time, never overwriting an earlier copy. If
+// even that fails, nothing writes the stats file this session and the original
+// stays as it is. Either way the first Draw says so (HudManager::announceStartupProblems).
+void StatsManager::keepUnreadableFile(const std::string& filePath) {
+    time_t now = time(nullptr);
+    struct tm timeInfo;
+    // cppcheck-suppress uninitvar
+    localtime_s(&timeInfo, &now);
+    char stamp[20];
+    strftime(stamp, sizeof(stamp), "%Y%m%d_%H%M%S", &timeInfo);
+    const std::string base = filePath.substr(0, filePath.find_last_of("\\/") + 1);
+    const std::string copy = base + "mxbmrp3_stats_unreadable_" + stamp + ".json";
+    if (CopyFileA(filePath.c_str(), copy.c_str(), TRUE)) {
+        m_unreadableCopied = true;
+        DEBUG_WARN_F("[StatsManager] Unreadable stats file copied to %s", copy.c_str());
+    } else {
+        m_writesBlocked = true;
+        DEBUG_WARN_F("[StatsManager] Unreadable stats file could not be copied (error %lu): "
+                     "stats are not saved this session", GetLastError());
+    }
+}
+
+// Read the outcome of the last write back from the writer, like the settings save
+// (SettingsManager::pollSaveResult): a failed stats write is otherwise one log
+// line, and the PBs and odometers of the session are not on disk. Once per run of
+// failures, since the writer retries at every save point.
+void StatsManager::pollSaveResult() {
+    if (!m_saveCheckPending) return;
+    if (std::chrono::steady_clock::now() < m_saveCheckAt) return;
+    m_saveCheckPending = false;
+    announceSaveResult(!AtomicFileWriter::needsRetry(getFilePath()));
+}
+
+void StatsManager::announceSaveResult(bool ok) {
+    if (ok) {
+        m_saveFailureAnnounced = false;
+        return;
+    }
+    if (m_saveFailureAnnounced) return;
+    m_saveFailureAnnounced = true;
+    SystemMessages::Toast t;
+    snprintf(t.title, sizeof(t.title), "Stats not saved");
+    snprintf(t.detail, sizeof(t.detail), "Could not write %s. Is it read-only?", STATS_FILENAME);
+    snprintf(t.icon, sizeof(t.icon), "triangle-exclamation");
+    t.key = SystemMessages::KEY_STATS_SAVE_FAILED;
+    t.severity = SystemMessages::Severity::Warning;
+    t.durationMs = SystemMessages::WARNING_DURATION_MS;
+    SystemMessages::getInstance().post(t);
 }
 
 static nlohmann::json serializePersonalBest(const StatsPersonalBestData& pb) {
@@ -352,6 +411,7 @@ void StatsManager::writeStatsFile() {
     // nowhere else to be written from.
     AchievementManager& achievements = AchievementManager::getInstance();
     if (achievements.isDirty() || m_exploration.isDirty()) m_dirty = true;
+    if (m_writesBlocked) return;   // an unreadable file that could not be copied aside: keep it
     std::string filePath = getFilePath();
     // m_dirty cleared when the last write was handed over; if the writer then failed it,
     // write again now.
@@ -559,8 +619,12 @@ void StatsManager::writeStatsFile() {
             achievements.clearDirty();
             m_exploration.clearDirty();
             DEBUG_INFO_F("[StatsManager] Saved stats to %s", filePath.c_str());
+            // Handed over, not yet on disk: read the outcome back shortly.
+            m_saveCheckPending = true;
+            m_saveCheckAt = std::chrono::steady_clock::now() + std::chrono::milliseconds(1500);
         } else {
             DEBUG_WARN_F("[StatsManager] Failed to save stats to %s", filePath.c_str());
+            announceSaveResult(false);
         }
 
     } catch (const std::exception& e) {
