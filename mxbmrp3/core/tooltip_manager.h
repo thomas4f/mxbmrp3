@@ -259,6 +259,7 @@ private:
             // because they are one feature, and the row's own label already says
             // which reading it is.
             {"timing.readouts", "Extra rows below the comparisons: position, lap, time left, session format, fuel, server and track."},
+            {"timing.target", "Splits shows each row's time at the next split. Full lap shows its whole-lap time all the way round."},
             {"timing.gap_pb", "Add a comparison row against your session personal best."},
             {"timing.gap_alltime", "Add a comparison row against your all-time personal best."},
             {"timing.gap_ideal", "Add a comparison row against your ideal lap (sum of best sectors)."},
@@ -403,7 +404,7 @@ private:
             {"widgets.pointer", "On = shown while racing; Off = only in the settings menu (helps controllers seen as a mouse)."},
             {"widgets.tyre_temp", "Shows front and rear tyre temperatures."},
             {"widgets.ecu", "Shows ECU aids: map, traction, engine braking, anti-wheeling. Chips brighten on intervention."},
-            {"widgets.now_playing", "What Windows' media controls are playing, with its controls and volume. Needs Now playing in General."},
+            {"widgets.now_playing", "Spotify or any player in Windows' media controls, with its controls and volume. Needs Now playing in General."},
             {"widgets.prestige", "Earned by trading in a completed achievement ladder. Texture picks the badge."},
 
             {"hotkeys.settings", "Toggle the settings menu on/off."},

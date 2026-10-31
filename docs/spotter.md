@@ -19,6 +19,8 @@ Out of the box the callouts are read by Windows text-to-speech, using whichever 
 
 **Speed** changes the pace of the voice without changing its pitch.
 
+**On Linux (Proton)**, text-to-speech needs Valve's free **Proton Voice Files** from Steam, and Proton may not find them by itself: if the subtitles show but you hear nothing, point it at them with the Steam launch option `PROTON_VOICE_FILES="/path/to/Proton Voice Files" %command%`, using the folder Steam installed them to under `steamapps/common`. Keep the quotes: the folder name has spaces.
+
 Voice packs with *recorded* audio are a separate download - tens of megabytes that most installs never need. Once extracted into `spotters\` under your [Documents plugin folder](../README.md#modding) they appear under **Voice pack**.
 
 Cycling either one plays a sample line, so you pick by ear rather than by name. It's the same line every time, on purpose - it's a comparison - and it's built to expose what actually differs between voices: a rider number and a lap time, both stitched together from that voice's number clips, which is where packs sound most unlike each other.

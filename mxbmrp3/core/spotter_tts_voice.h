@@ -3,7 +3,7 @@
 // Picking WHICH Windows TTS voice the spotter speaks with, without leaving
 // the game. Pure (strings in, strings out) so the unit suite drives every
 // edge (test_spotter_tts_voice.cpp); SpotterManager enumerates the installed
-// voices and its worker speaks the wrapped text.
+// voices and its worker speaks the phrase as plain text.
 //
 // SELECTION IS ISpVoice::SetVoice, NOT `<voice required="Name=...">` MARKUP.
 // It was the markup, and it did not work: every non-default voice showed its
@@ -39,41 +39,23 @@
 
 namespace SpotterTtsVoice {
 
-// XML entity-escape for CHARACTER DATA, which is the only place this text ever
-// lands: `&` and `<` must go, `>` follows them by convention, and that is the
-// whole list XML requires.
+// The flags every cue is spoken with: SPF_ASYNC | SPF_IS_NOT_XML, as raw
+// SAPI values so this header stays pure and the unit suite can pin them
+// (spotter_manager_audio.cpp static_asserts they equal the sapi.h names).
 //
-// QUOTES ARE DELIBERATELY NOT ESCAPED. An earlier revision escaped ' and " as
-// well, on the theory that one helper could also serve attribute values -- but
-// nothing builds an attribute any more (voice selection is SetVoice, see the
-// header), and SAPI does not resolve &apos; back into an apostrophe. It read
-// the entity as a word break instead, so "you're" came out "you-reh" and
-// "it's" came out "it-ess". Escaping a character that needs no escaping is
-// never free: it either round-trips or it corrupts, and here it corrupted every
-// contraction in the pack. If an attribute value ever needs building again,
-// give it its own helper rather than widening this one.
-inline std::string escapeXml(const std::string& in) {
-    std::string out;
-    out.reserve(in.size() + 8);
-    for (char c : in) {
-        switch (c) {
-            case '&':  out += "&amp;";  break;
-            case '<':  out += "&lt;";   break;
-            case '>':  out += "&gt;";   break;
-            default:   out += c;        break;
-        }
-    }
-    return out;
-}
-
-// The string to hand ISpVoice::Speak. Escaped, never wrapped: the WHICH-voice
-// question is answered by SetVoice before the call (see the header), and this
-// is only about surviving SPF_IS_XML. Always escaped, never conditionally, so
-// a stray "&" in a pack phrase fails the same way every time rather than only
-// in some configurations.
-inline std::string speakable(const std::string& text) {
-    return escapeXml(text);
-}
+// PLAIN TEXT, NOT XML. The spotter used to pass SPF_IS_XML and entity-escape
+// every phrase to survive it. Nothing needed the XML: voice selection is
+// SetVoice (see the header) and no pack phrase uses SAPI markup. It only cost:
+// Wine/Proton's SAPI parser rejects plain text in XML mode (Speak returns
+// 0x80045003, SPERR_UNSUPPORTED_FORMAT), so the spotter was silent on Linux
+// with a correct subtitle; and the escaping itself once turned every
+// contraction into two words (SAPI read &apos; as a word break). IS_NOT_XML
+// rather than the default also stops a phrase that happens to start with `<`
+// from being sniffed as markup. Pinned by test_spotter_tts_voice.cpp.
+inline constexpr unsigned long kSapiAsync    = 1UL;   // SPF_ASYNC
+inline constexpr unsigned long kSapiIsXml    = 8UL;   // SPF_IS_XML
+inline constexpr unsigned long kSapiIsNotXml = 16UL;  // SPF_IS_NOT_XML
+inline constexpr unsigned long kSpeakFlags = kSapiAsync | kSapiIsNotXml;
 
 // The voice actually usable right now: the stored name when it is installed,
 // else "" (the system default). Matching is exact — SAPI's own name lookup is,

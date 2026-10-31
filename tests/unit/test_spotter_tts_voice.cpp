@@ -2,12 +2,17 @@
 // tests/unit/test_spotter_tts_voice.cpp
 // Pins the in-game TTS voice picker's pure half (core/spotter_tts_voice.h).
 //
-// ESCAPING IS THE REASON THIS FILE EXISTS. Every spoken cue goes to SAPI with
-// SPF_IS_XML, and cue phrases are USER-authored (pack inis are meant to be
-// hand-edited). One unescaped "&" makes SAPI reject the utterance, so the
-// spotter would go mute on exactly the packs people customise — a failure
-// that shows up as silence, with nothing on screen to explain it. The
-// subtitle would still be correct, which makes it worse.
+// PLAIN TEXT IS THE FIRST THING THIS FILE PINS. Every spoken cue goes to
+// SAPI as plain text (SPF_IS_NOT_XML), exactly as the pack wrote it. In
+// 1.34.1 and earlier it went with SPF_IS_XML and every phrase was
+// entity-escaped to survive that. Wine/Proton's SAPI rejects plain text in
+// XML mode with 0x80045003, so on Linux the spotter was silent behind a
+// correct subtitle (public issue #29: the reporter byte-patched the flag in
+// the .dlo and it spoke). The escaping had already cost once on Windows too:
+// SAPI read &apos; as a word break, so "you're" came out "you-reh". Nothing
+// needs XML (no pack uses markup, voice selection is SetVoice), so the flag
+// check below fails if XML mode comes back, and this header is the reason
+// not to.
 //
 // NOTE ON WHAT IS NOT HERE. There used to be a wrap() building
 // `<voice required="Name=...">` around the text, and it never worked: the
@@ -32,32 +37,13 @@
 
 using namespace SpotterTtsVoice;
 
-TEST_CASE("escapeXml: every character that would break an utterance") {
-    CHECK(escapeXml("Rider behind.") == "Rider behind.");
-    // The one that matters in practice: a pack author writing "P1 & P2".
-    CHECK(escapeXml("P1 & P2") == "P1 &amp; P2");
-    CHECK(escapeXml("<voice>") == "&lt;voice&gt;");
-    // Quotes are NOT escaped. SAPI does not resolve &apos; back into an
-    // apostrophe -- it reads the entity as a word break, so escaping turned
-    // "you're" into "you-reh" and "it's" into "it-ess" for every contraction in
-    // the pack. Character data needs & and < gone; quotes need nothing.
-    CHECK(escapeXml("say \"go\"") == "say \"go\"");
-    CHECK(escapeXml("it's clear") == "it's clear");
-    CHECK(escapeXml("You're the leader now.") == "You're the leader now.");
-    // Order matters: an escaped ampersand must not be re-escaped into
-    // "&amp;amp;" — one pass, left to right.
-    CHECK(escapeXml("a & b < c") == "a &amp; b &lt; c");
-    CHECK(escapeXml("") == "");
-}
-
-TEST_CASE("speakable: escaped, never wrapped, whichever voice is speaking") {
-    CHECK(speakable("Rider behind.") == "Rider behind.");
-    CHECK(speakable("P1 & P2") == "P1 &amp; P2");
-    // Unconditional: the utterance carries no voice markup at all now, so
-    // there is no second mode in which a pack phrase could escape differently.
-    // A `<` a pack author typed is text, not the start of an element.
-    CHECK(speakable("<voice>") == "&lt;voice&gt;");
-    CHECK(speakable("") == "");
+TEST_CASE("speak flags: async plain text, never XML") {
+    CHECK((kSpeakFlags & kSapiAsync) != 0);
+    // Explicitly NOT XML, rather than SAPI's default sniffing: a pack phrase
+    // that happens to start with "<" must still be spoken as text.
+    CHECK((kSpeakFlags & kSapiIsNotXml) != 0);
+    CHECK((kSpeakFlags & kSapiIsXml) == 0);
+    CHECK(kSpeakFlags == (kSapiAsync | kSapiIsNotXml));
 }
 
 TEST_CASE("resolve: stored by name, degrading to the default when absent") {

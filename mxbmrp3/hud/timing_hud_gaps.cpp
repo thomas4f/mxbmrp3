@@ -513,6 +513,6 @@ int TimingHud::cumulativeReferenceMs(GapTypeFlags type, int targetSplit) const {
 }
 
 int TimingHud::passiveReferenceMs(GapTypeFlags type) const {
-    return cumulativeReferenceMs(type, currentTargetSplit());
+    return cumulativeReferenceMs(type, referenceTargetSplit());
 }
 

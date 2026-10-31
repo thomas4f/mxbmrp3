@@ -377,8 +377,9 @@ void TimingHud::rebuildRenderData() {
     formatTimeCell(pluginData, sv, timeCell);
 
     // === COMPARISON VALUE RESOLUTION (normal, non-segment rows) ===
-    // The split boundary the rider is driving toward, so the passive reference tracks the sector.
-    int targetSplit = sv.active ? -1 : currentTargetSplit();
+    // The split boundary the rider is driving toward, so the passive reference tracks the
+    // sector (or the full lap throughout, per the Target setting).
+    int targetSplit = sv.active ? -1 : referenceTargetSplit();
     // Show the +/- delta while frozen on a split/lap; otherwise the progressive reference time.
     // (An invalid lap clears the gaps, so those cells just fall back to their reference — the
     // "INVALID" flag is shown once, in the time cell.)
@@ -855,6 +856,7 @@ void TimingHud::resetToDefaults() {
 
     // Comparison rows: Session PB + All-Time PB by default
     m_enabledComparisons = GAP_DEFAULT_ENABLED;
+    m_fullLapTarget = false;                     // Target: Splits
     // Readout rows: none. This panel is read at a glance mid-corner, so extra
     // rows are opt-in rather than a new default (see ReadoutFlags).
     m_enabledReadouts = READOUT_DEFAULT_ENABLED;

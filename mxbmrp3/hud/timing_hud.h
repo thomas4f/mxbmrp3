@@ -273,9 +273,12 @@ public:
     //  - currentTargetSplit(): the split boundary the rider is driving toward (0=S1, 1=S2, …;
     //    -1 = timer idle / heading to the finish => full lap).
     //  - cumulativeReferenceMs(type, split): the cumulative target time for that split.
+    //  - referenceTargetSplit(): the split the rows compare against = currentTargetSplit(),
+    //    or -1 (full lap) all the way round when Target is "Full lap".
     //  - passiveReferenceMs(type): what the chip shows now = cumulativeReferenceMs(type,
-    //    currentTargetSplit()).
+    //    referenceTargetSplit()).
     int currentTargetSplit() const;
+    int referenceTargetSplit() const { return m_fullLapTarget ? -1 : currentTargetSplit(); }
     int cumulativeReferenceMs(GapTypeFlags type, int targetSplit) const;
     int passiveReferenceMs(GapTypeFlags type) const;
 
@@ -410,6 +413,10 @@ private:
     float m_fTestContentBot = 0.0f;
     bool m_showTime;                 // Show the big centered time row at the top
     uint8_t m_enabledComparisons;    // Bitfield of comparison rows to show (GapTypeFlags)
+    // Target: the comparison rows show the cumulative split target (S1, S1+S2, lap; false)
+    // or the full-lap time the whole way round (true). Reference values only: the frozen
+    // gap after a crossing is the official split gap either way.
+    bool m_fullLapTarget = false;
     // uint32_t, not the narrower type the flags would fit: the settings tab's
     // generic CHECKBOX region toggles a bitfield through a uint32_t*, which is
     // what lets these rows exist without a ClickRegion enum value each.

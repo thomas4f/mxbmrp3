@@ -125,6 +125,54 @@ TEST_CASE("timing reference: live target tracks the lap-timer sector from the fi
     host.shutdown();
 }
 
+// Target = Full lap (public issue #30): the rows compare against the full-lap time the
+// whole way round instead of the split target. The live sector still advances (the time
+// cell and the split freezes use it); only the rows' reference stops following it.
+TEST_CASE("timing reference: Target Full lap shows the whole-lap reference mid-lap") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    const char* save = "Z:\\tmp\\mxbmrp3-tests\\timing_ref_fulllap\\";
+    host.startup(save);
+    host.writeSettingsFile(save,
+        "[Settings]\nversion=6\n\n[TimingHud]\nvisible=1\nfullLapTarget=1\n");
+    host.loadSettings(save);
+
+    host.eventInit("TestTrack", "Thomas");
+    host.raceEvent("TestTrack", /*type=*/2);
+    host.session(RACE, /*numLaps=*/10, /*lengthMs=*/0);
+    host.addEntry(4, "Thomas");
+    host.draw();
+    host.spectateVehicles({ { 4, "Thomas" } }, /*curSelectionIndex=*/0);
+    host.classify(RACE, 200000, { { .num = 4, .best = 90000, .laps = 1, .gap = 0 } });
+    host.raceLap(RACE, 4, /*lapNum=*/1, 90000, /*best=*/2, 30000, 61000);
+
+    host.raceTrackPosition({ { .num = 4, .trackPos = 0.92f } }); host.draw();
+    host.raceTrackPosition({ { .num = 4, .trackPos = 0.03f } }); host.draw();   // sector 1
+    CHECK(host.timingTargetSplit() == 0);
+    for (int gap : { GAP_PB, GAP_OVERALL, GAP_LASTLAP }) {
+        CAPTURE(gap);
+        CHECK(host.timingReferenceMs(gap, -999) == 90000);   // full lap, not S1's 30.000
+    }
+    host.raceSplit(RACE, 4, /*lapNum=*/0, /*splitIndex=*/0, /*splitTimeMs=*/31000);
+    CHECK(host.timingTargetSplit() == 1);
+    CHECK(host.timingReferenceMs(GAP_PB, -999) == 90000);    // full lap, not S1+S2's 61.000
+    // The freeze after the crossing still shows the official SPLIT gap (31.000 vs S1's
+    // 30.000), not a gap against the full lap: Target changes reference values only.
+    host.draw();
+    std::string shown;
+    for (const auto& r : host.hudStringRows(PluginHost::HUD_TIMING)) shown += "[" + r.text + "]";
+    INFO("timing strings: " << shown);
+    CHECK(shown.find("+1.000") != std::string::npos);
+
+    // Back to Splits (the default): the same sector reads its split target again.
+    host.writeSettingsFile(save,
+        "[Settings]\nversion=6\n\n[TimingHud]\nvisible=1\nfullLapTarget=0\n");
+    host.loadSettings(save);
+    CHECK(host.timingReferenceMs(GAP_PB, -999) == 61000);
+
+    host.shutdown();
+}
+
 TEST_CASE("timing reference: the chips show the whole lap exactly while the clock shows its placeholder") {
     // The reported annoyance: out of the pits before the lap has started, the time cell
     // reads its "-" placeholder but a chip named the S1 target. The chip's target is gated on the

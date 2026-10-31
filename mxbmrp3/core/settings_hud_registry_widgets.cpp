@@ -357,6 +357,7 @@ void SettingsManager::cap_TimingHud(const HudManager& hudManager, SettingsManage
         settings["displayDuration"] = std::to_string(hud.m_displayDurationMs);
         // Comparison rows (one bit per gap type) — reuses the per-key bitmask serializer.
         saveTimingSecondaryGaps(settings, hud.m_enabledComparisons);
+        settings["fullLapTarget"] = hud.m_fullLapTarget ? "1" : "0";
         saveTimingReadouts(settings, hud.m_enabledReadouts);
         // Gap section: -1 off, else its reference as the Gap Bar stores one.
         settings["gapRow"] = std::to_string(!hud.m_liveGapOn ? -1
@@ -385,6 +386,9 @@ void SettingsManager::app_TimingHud(HudManager& hudManager, const SettingsManage
                     }
                 }
                 loadTimingSecondaryGaps(settings, hud.m_enabledComparisons);
+                if (settings.count("fullLapTarget")) {
+                    hud.m_fullLapTarget = settings.at("fullLapTarget") == "1";
+                }
                 loadTimingReadouts(settings, hud.m_enabledReadouts);
                 if (auto v = readInt(settings, "gapRow")) {
                     if (*v == -1) {

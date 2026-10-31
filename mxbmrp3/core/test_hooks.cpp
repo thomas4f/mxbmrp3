@@ -1815,7 +1815,7 @@ __declspec(dllexport) void MXBMRP3_Test_TimingReadouts(unsigned int mask) {
 
 // The Timing HUD's reference (ms) for a gap type at a given split boundary: the cumulative
 // target (S1 / S1+S2 / … ; -1 = full lap), or -1 if unavailable. targetSplit == -999 uses the
-// LIVE sector the rider is driving toward (passiveReferenceMs, i.e. currentTargetSplit()).
+// LIVE sector the rider is driving toward (passiveReferenceMs, i.e. referenceTargetSplit()).
 // The rendered chip text isn't in /api/state, so this exposes the progressive-reference
 // selection for a headless test (see timing_hud.cpp).
 __declspec(dllexport) int MXBMRP3_Test_TimingReferenceMs(int gapFlag, int targetSplit) {

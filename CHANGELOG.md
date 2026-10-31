@@ -18,6 +18,26 @@ file; their wording is preserved too.
 
 ## [Unreleased]
 
+## [1.34.2] - 2026-10-31
+
+Timing can now compare to the full lap the whole way round, and the
+spotter speaks again on Linux (Proton).
+
+### Added
+- **Timing** can compare its rows to the full lap the whole way round
+  instead of the next split's time (Settings > Timing > Target: Full
+  lap). Splits stays the default. (thanks @TheosIsTrash, #30)
+
+### Changed
+- Updated vendored cpp-httplib to 0.63.0
+- Searching "Spotify" in the settings Find box now finds the Now Playing
+  widget too, not just the Now playing switch in General.
+
+### Fixed
+- The spotter's text-to-speech is no longer silent on Linux (Proton).
+  The Spotter page of the docs has the launch option Proton may also
+  need to find its voices. (thanks @Ethan-Ryan-Anderson, #29)
+
 ## [1.34.1] - 2026-10-31
 
 Compare your laps to the server best, see what Spotify is playing, find

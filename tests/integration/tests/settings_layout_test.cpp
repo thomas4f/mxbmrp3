@@ -397,6 +397,8 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
     // typecount 120 -> 119, nothing else moved.
     // The Find box in the title band: one appended "119:find.field" region,
     // typecount 119 -> 123, strings 125 -> 127 (the field and its text).
+    // 1.34.2 marks the Timing tab's Target row, which tags its sidebar row:
+    // strings 127 -> 128.
     static const char* kGolden =
         "52:general;52:appearance;52:hotkeys;52:riders;54:-;52:rumble;61:-;52:helmet;77:-;52:director;10:-;52"
         ":stream_chat;78:-;52:spotter;93:-;52:achievements;40:-;52:updates;47:-;48:-;51:-;52:widgets;10:-;52:"
@@ -408,7 +410,7 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
         "controller;3:general.controller;114:general.controller;72:general.steam_friends;72:general.now_playi"
         "ng;72:general.web_server;44:-;44:-;72:general.web_port;45:-;46:-;72:general.auto_switch;49:-;49:-;72"
         ":general.copy_profile;4:general.copy_profile;3:general.copy_profile;114:general.copy_profile;8:gener"
-        "al.reset_profile;9:general.reset_all;53:-;6:-;71:-;119:find.field;typecount=123;strings=127";
+        "al.reset_profile;9:general.reset_all;53:-;6:-;71:-;119:find.field;typecount=123;strings=128";
 
     MESSAGE("General tab signature: " << sig);
     CHECK(sig == kGolden);

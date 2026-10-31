@@ -30,6 +30,7 @@ namespace {
 // The Now Playing Dash page and new-track notice stay unmarked to keep the
 // table short. The Find box in the title band, new in 1.34.1, leads: it is
 // the Find tab's row, banded on every tab until the pointer reaches it.
+// 1.34.2 adds the Timing tab's Target row (Splits / Full lap).
 //
 // Prestige is the table's one Gate::Unlocked row: it is not new in a release,
 // it is new the moment a player trades their ladder for it, and the row it
@@ -42,6 +43,7 @@ const Marker kMarkers[] = {
     { SettingsHud::TAB_GENERAL,      "general.now_playing",      "1.34" },
     { SettingsHud::TAB_WIDGETS,      "widgets.now_playing",      "1.34" },
     { SettingsHud::TAB_UPDATES,      "updates.channel",          "1.34" },
+    { SettingsHud::TAB_TIMING,       "timing.target",            "1.34" },
     { SettingsHud::TAB_WIDGETS,      "widgets.prestige",         nullptr, Gate::Unlocked },
 };
 

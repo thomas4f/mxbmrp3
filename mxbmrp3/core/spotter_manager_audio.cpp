@@ -24,6 +24,15 @@
 #include <cmath>
 #include <cstring>
 
+// spotter_tts_voice.h spells the speak flags as raw numbers so the unit suite
+// can pin them without sapi.h; these make sure they mean what they say.
+static_assert(SpotterTtsVoice::kSapiAsync == static_cast<unsigned long>(SPF_ASYNC),
+              "kSapiAsync must be SPF_ASYNC");
+static_assert(SpotterTtsVoice::kSapiIsXml == static_cast<unsigned long>(SPF_IS_XML),
+              "kSapiIsXml must be SPF_IS_XML");
+static_assert(SpotterTtsVoice::kSapiIsNotXml == static_cast<unsigned long>(SPF_IS_NOT_XML),
+              "kSapiIsNotXml must be SPF_IS_NOT_XML");
+
 namespace {
 
 // SAPI class/interface GUIDs defined locally so neither toolchain needs
@@ -714,10 +723,8 @@ void SpotterManager::workerThread() {
                 if (applied) appliedVoiceName = voiceName;
             }
 
-            // Escaped, not wrapped: SPF_IS_XML is passed either way, so pack
-            // phrases are markup regardless of which voice is speaking.
-            const std::wstring wide =
-                utf8ToWide(SpotterTtsVoice::speakable(utf8));
+            // Plain text, exactly as the pack wrote it (kSpeakFlags says why).
+            const std::wstring wide = utf8ToWide(utf8);
             if (wide.empty()) return;
 
             // Apply current settings per utterance (not at creation): an INI
@@ -733,7 +740,7 @@ void SpotterManager::workerThread() {
             ULONG stream = 0;
             bool engineFaulted = false;
             const HRESULT hr = sapiGuardedSpeak(pVoice, wide.c_str(),
-                                                SPF_ASYNC | SPF_IS_XML, &stream,
+                                                SpotterTtsVoice::kSpeakFlags, &stream,
                                                 &engineFaulted);
             if (engineFaulted) {
                 // The engine faulted mid-sentence rather than on selection.

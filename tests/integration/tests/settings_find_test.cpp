@@ -148,6 +148,23 @@ TEST_CASE("settings find: a HUD's name finds the HUD first, then its own rows") 
     CHECK(timingVisible);
 }
 
+// A player types the app, not the HUD: "spotify" finds the Now Playing widget
+// through its tooltip, as well as the General switch that feeds it.
+TEST_CASE("settings find: a player's word for a HUD finds it through its tooltip") {
+    PluginHost host(dllPath());
+    start(host, "Z:\\tmp\\mxbmrp3-tests\\settings_find_spotify\\");
+
+    std::vector<std::string> lines;
+    REQUIRE(host.settingsFind("spotify", &lines) > 0);
+    bool widget = false, general = false;
+    for (const Hit& h : parse(lines)) {
+        if (h.tab == "Widgets" && h.id == "widgets.now_playing") widget = true;
+        if (h.tab == "General" && h.id == "general.now_playing") general = true;
+    }
+    CHECK_MESSAGE(widget, "\"spotify\" does not find Widgets > Now Playing");
+    CHECK_MESSAGE(general, "\"spotify\" does not find General > Now playing");
+}
+
 TEST_CASE("settings find: every page of a broad query fits the panel") {
     PluginHost host(dllPath());
     start(host, "Z:\\tmp\\mxbmrp3-tests\\settings_find_fit\\");

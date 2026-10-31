@@ -80,6 +80,18 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
     // Freeze duration: how long to hold official times / gaps after crossing a split
     ctx.addFreezeControl("Freeze", &hud->m_displayDurationMs, true, hud, true, "timing.freeze", true);
 
+    // Target: the rows read against the next split's target (S1, S1+S2, lap) or against
+    // the full lap the whole way round. Two-state cycle over a bool, mapped to 0/1.
+    {
+        SettingsHud::CycleControl targetCycle;
+        targetCycle.get = [hud]() { return hud->m_fullLapTarget ? 1 : 0; };
+        targetCycle.set = [hud](int v) { hud->m_fullLapTarget = (v != 0); };
+        targetCycle.count = 2;
+        targetCycle.dirtyHud = hud;
+        ctx.addCycleControl("Target", hud->m_fullLapTarget ? "Full lap" : "Splits", targetCycle,
+            hud, true, false, "timing.target");
+    }
+
     // Big time row toggle
     ctx.addToggleControl("Time", hud->isTimeEnabled(),
         SettingsHud::ClickRegion::TIMING_TIME_TOGGLE, hud, nullptr, 0, true,
