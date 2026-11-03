@@ -301,8 +301,9 @@ void appendSession(std::string& out, const SnapshotCtx& ctx) {
         // in-game StandingsHud / TimeWidget. The overlay renders this string
         // directly, so the label needs no client-side logic.
         int sessionTime = ctx.pd.getSessionTime();
-        char timeBuf[16];
-        PluginUtils::formatSessionClock(ctx.pd.getLeaderLapsToGo(), sessionTime, timeBuf, sizeof(timeBuf));
+        char timeBuf[PluginUtils::SESSION_CLOCK_CHARS];
+        PluginUtils::formatSessionClock(ctx.pd.getLeaderLapsToGo(), sessionTime, ctx.session.lapsAfterClock(),
+                                        timeBuf, sizeof(timeBuf));
         out += "\"time\":";
         appendJsonString(out, timeBuf);
 

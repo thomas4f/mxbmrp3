@@ -4,6 +4,7 @@
 // Supports per-profile settings (Practice, Race, Spectate)
 // ============================================================================
 #include "settings_manager.h"
+#include "plugin_names.h"
 #include "settings_manager_internal.h"
 #include "settings_keys.h"
 #include "settings_serde.h"
@@ -775,6 +776,7 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
     // Read before the load, which is what decides it: no file is a fresh install.
     const bool freshInstall = !reload && !std::ifstream(getSettingsFilePath(savePath)).is_open();
     loadSettingsImpl(hudManager, savePath);
+    I18n::ensureLoaded();   // no language key: follow Windows (core/i18n.h)
     applyInstallPrefs();
     if (!reload) {
         // The startup messages (welcome, "Updated to") are decided once per
@@ -942,7 +944,7 @@ std::string SettingsManager::getBenchmarksDir() const {
     if (m_savePath.empty()) return std::string();
     std::string dir = m_savePath;
     if (dir.back() != '/' && dir.back() != '\\') dir += '\\';
-    dir += "mxbmrp3";
+    dir += MXB_USER_DIR_NAME;
     // Idempotent, and both levels are needed: AtomicFileWriter does not create parents.
     CreateDirectoryA(dir.c_str(), nullptr);
     dir += "\\benchmarks";

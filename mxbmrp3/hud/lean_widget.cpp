@@ -3,6 +3,7 @@
 // Lean widget - displays bike lean/roll angle with half-donut arc gauge
 // ============================================================================
 #include "lean_widget.h"
+#include "../core/i18n.h"
 #include "severity_ramp.h"
 
 #include <cstdio>
@@ -140,14 +141,14 @@ void LeanWidget::rebuildRenderData() {
     PanelWant want;
     want.contentW = contentWidth;
     want.sectionH = { dim.lineHeightNormal * rowCount };
-    want.captionW = planTitleWidth(dim, "Lean");
+    want.captionW = planTitleWidth(dim, TR("Lean"));
     PanelPlan& p = planPanel(dim, want);
     const float backgroundWidth = p.width();
     const float backgroundHeight = p.height();
 
     // Background, title band and body card at the plan's coordinates
     addPlanBackground(p, startX, startY);
-    addPlanTitle(p, "Lean",
+    addPlanTitle(p, TR("Lean"),
         this->getColor(ColorSlot::PRIMARY));
 
     // Set bounds for drag detection

@@ -51,19 +51,19 @@ BaseHud* SettingsHud::renderTabRecords(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("records");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeading("Appearance");
+    ctx.addSectionHeading(TR("Appearance"));
     ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
-    ctx.addSectionHeading("Layout");
+    ctx.addSectionHeading(TR("Layout"));
 
     // Provider control
-    const char* providerName = "Unknown";
+    const char* providerName = TR("Unknown");
     switch (hud->m_provider) {
-        case RecordsHud::DataProvider::CBR: providerName = "CBR"; break;
-        case RecordsHud::DataProvider::MXB_RANKED: providerName = "MXB Ranked"; break;
+        case RecordsHud::DataProvider::CBR: providerName = TR("CBR"); break;
+        case RecordsHud::DataProvider::MXB_RANKED: providerName = TR("MXB Ranked"); break;
         default: break;
     }
-    ctx.addCycleControl("Provider", providerName,
+    ctx.addCycleControl(TR("Provider"), providerName,
         SettingsHud::CycleControl::enumMember(hud, &RecordsHud::m_provider,
             static_cast<int>(RecordsHud::DataProvider::COUNT), hud),
         hud, true, false, "records.provider", /*tooltipOnArrows=*/false);
@@ -72,30 +72,30 @@ BaseHud* SettingsHud::renderTabRecords(SettingsLayoutContext& ctx) {
     // NO hold acceleration (verbatim from the old RECORDS_COUNT handlers).
     char recordsValue[8];
     snprintf(recordsValue, sizeof(recordsValue), "%d", hud->m_recordsToShow);
-    ctx.addSteppedControl("Records to show", recordsValue,
+    ctx.addSteppedControl(TR("Records to show"), recordsValue,
         SettingsHud::SteppedControl::fixedInt(&hud->m_recordsToShow, 1, 3, 30, hud),
         hud, true, false, "records.count");
 
     // Auto-fetch toggle
-    ctx.addToggleControl("Auto-fetch", hud->m_bAutoFetch,
+    ctx.addToggleControl(TR("Auto-fetch"), hud->m_bAutoFetch,
         SettingsHud::ClickRegion::RECORDS_AUTO_FETCH_TOGGLE, hud, nullptr, 0, true,
         "records.autofetch");
     // === CONTENT SECTION ===
     // Core columns (Position, Rider, Bike, Lap time) are always shown
-    ctx.addSectionHeading("Content");
+    ctx.addSectionHeading(TR("Content"));
 
     // Column-header row
-    ctx.addToggleControl("Column headers", hud->m_bShowHeaders,
+    ctx.addToggleControl(TR("Column headers"), hud->m_bShowHeaders,
         SettingsHud::ClickRegion::RECORDS_HEADERS_TOGGLE, hud, nullptr, 0, true,
         "records.headers");
 
     // Sector columns (toggles all 3 sectors together)
     bool sectorsEnabled = (hud->m_enabledColumns & RecordsHud::COL_SECTORS) == RecordsHud::COL_SECTORS;
-    ctx.addToggleControl("Sector times", sectorsEnabled,
+    ctx.addToggleControl(TR("Sector times"), sectorsEnabled,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, RecordsHud::COL_SECTORS,
         true, "records.col_sectors");
 
-    ctx.addToggleControl("Date recorded", (hud->m_enabledColumns & RecordsHud::COL_DATE) != 0,
+    ctx.addToggleControl(TR("Date recorded"), (hud->m_enabledColumns & RecordsHud::COL_DATE) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, RecordsHud::COL_DATE, true,
         "records.col_date");
 

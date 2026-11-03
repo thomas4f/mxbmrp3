@@ -142,10 +142,10 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
                 if (standing.pit != entryPit) {
                     const RaceEntryData* raceEntry = getRaceEntry(entry.raceNum);
                     const char* riderLabel = raceEntry ? raceEntry->formattedRaceNum : "???";
-                    char eventMsg[64];
+                    EventText eventMsg;
                     if (standing.pit == 0 && entryPit == 1) {
                         // Pit entry (0→1)
-                        snprintf(eventMsg, sizeof(eventMsg), "%s entered pits", riderLabel);
+                        eventMsg.format(N_("%s entered pits"), riderLabel);
                         addEventLogEntry(EventLogType::PitEntry, eventMsg, nullptr, -1, entry.raceNum);
                         // The lap in progress is a pit lap (see markLapViaPits). For the
                         // display rider only while a lap is actually being timed: at a
@@ -156,7 +156,7 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
                         }
                     } else {
                         // Pit exit (1→0) - start per-rider hazard grace period
-                        snprintf(eventMsg, sizeof(eventMsg), "%s left pits", riderLabel);
+                        eventMsg.format(N_("%s left pits"), riderLabel);
                         addEventLogEntry(EventLogType::PitExit, eventMsg, nullptr, -1, entry.raceNum);
                         startPitExitGrace(entry.raceNum);
                         // Reset the display rider's live lap timer to the placeholder (like a
@@ -210,8 +210,8 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
         if (m_lastLeaderRaceNum >= 0 && newLeader != m_lastLeaderRaceNum) {
             const RaceEntryData* entry = getRaceEntry(newLeader);
             if (entry) {
-                char eventMsg[64];
-                snprintf(eventMsg, sizeof(eventMsg), "#%d takes the lead", newLeader);
+                EventText eventMsg;
+                eventMsg.format(N_("#%d takes the lead"), newLeader);
                 addEventLogEntry(EventLogType::LeaderChange, eventMsg, nullptr, -1, newLeader);
             }
         }
@@ -263,8 +263,8 @@ void PluginData::batchUpdateStandings(Unified::RaceClassificationEntry* entries,
                 const RaceEntryData* entry = getRaceEntry(raceNum);
                 const char* riderLabel = entry ? entry->formattedRaceNum : "???";
                 int position = getDisplayPositionForRaceNum(raceNum);
-                char eventMsg[64];
-                snprintf(eventMsg, sizeof(eventMsg), "%s finished", riderLabel);
+                EventText eventMsg;
+                eventMsg.format(N_("%s finished"), riderLabel);
                 char posDetail[8];
                 const char* detail = nullptr;
                 if (position > 0) {

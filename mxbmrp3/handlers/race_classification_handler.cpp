@@ -148,7 +148,7 @@ void Handlers::handleRaceClassification(
             snprintf(overtimeDetail, sizeof(overtimeDetail), "%dL",
                      sessionData.sessionNumLaps);
             pluginData.addEventLogEntry(
-                EventLogType::OvertimeStarted, "Overtime", overtimeDetail, -1, -1,
+                EventLogType::OvertimeStarted, N_("Overtime"), overtimeDetail, -1, -1,
                 EventNumbers::bonus(sessionData.sessionNumLaps));
         }
     }
@@ -170,8 +170,8 @@ void Handlers::handleRaceClassification(
 
         // Event log: session time expired
         const char* sessionStr = PluginUtils::getSessionString(sessionData.eventType, sessionData.session);
-        char eventMsg[64];
-        snprintf(eventMsg, sizeof(eventMsg), "%s time expired", sessionStr ? sessionStr : "Session");
+        EventText eventMsg;
+        eventMsg.format(N_("%s time expired"), sessionStr ? sessionStr : "Session");
         pluginData.addEventLogEntry(EventLogType::SessionTimeExpired, eventMsg);
     }
 

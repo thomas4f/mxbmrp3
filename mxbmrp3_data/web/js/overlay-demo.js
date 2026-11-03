@@ -443,18 +443,19 @@ function startDemo() {
         // Time + 2 bonus laps. Until the clock expires, count it down; after
         // that, mirror the plugin's overtime label off the leader's laps so the
         // demo previews the "N TO GO" -> "FINAL LAP" -> "CHECKERED" sequence.
-        // The clock holds at 00:00 while the leader finishes the lap in progress
-        // at expiry (toGo > DEMO_BONUS); the countdown only starts once they
-        // cross S/F into the bonus laps — same as the plugin.
+        // The countdown carries the laps after it ("11:42 + 2 laps") and holds
+        // at "00:00 + 2 laps" while the leader finishes the lap in progress at
+        // expiry (toGo > DEMO_BONUS); the countdown only starts once they cross
+        // S/F into the bonus laps — same as the plugin's formatSessionClock.
         var DEMO_BONUS = 2;
         var remaining = Math.max(0, SESSION_LEN - T);
-        var clock = formatMmSs(remaining);
+        var clock = formatMmSs(remaining) + " + " + DEMO_BONUS + " laps";
         if (remaining <= 0) {
             if (sim.finishLap < 0) sim.finishLap = leader.laps + DEMO_BONUS;
             var toGo = sim.finishLap - leader.laps + 1;   // 1 = final lap
             if (leader.laps > sim.finishLap) clock = "CHECKERED";
             else if (toGo <= DEMO_BONUS) clock = (toGo <= 1) ? "FINAL LAP" : (toGo + " TO GO");
-            // else toGo > DEMO_BONUS: in-progress lap — leave clock at "00:00"
+            // else toGo > DEMO_BONUS: in-progress lap — leave clock at "00:00 + 2 laps"
         }
         render({
             session: {

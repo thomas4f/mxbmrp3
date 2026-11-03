@@ -4,6 +4,7 @@
 // ============================================================================
 
 #include "standings_hud.h"
+#include "../core/i18n.h"
 #include "../core/layout_config.h"
 #include "plate_geometry.h"
 #include "../diagnostics/logger.h"
@@ -291,13 +292,13 @@ const char* StandingsHud::getColumnHeaderLabel(uint8_t columnIndex) {
         case COL_IDX_POS:      return "P";
         case COL_IDX_POSGAIN:  return "+/-";
         case COL_IDX_RACENUM:  return "#";
-        case COL_IDX_NAME:     return "Name";
-        case COL_IDX_CATEGORY: return "Class";
-        case COL_IDX_BIKE:     return "Bike";
-        case COL_IDX_BEST_LAP: return "Best";
-        case COL_IDX_LAST_LAP: return "Last";
-        case COL_IDX_GAP:      return "Gap";
-        case COL_IDX_PENALTY:  return "Pen";
+        case COL_IDX_NAME:     return TR("Name");
+        case COL_IDX_CATEGORY: return TR("Class");
+        case COL_IDX_BIKE:     return TR("Bike");
+        case COL_IDX_BEST_LAP: return TR("Best");
+        case COL_IDX_LAST_LAP: return TR("Last");
+        case COL_IDX_GAP:      return TR("Gap");
+        case COL_IDX_PENALTY:  return TR("Pen");
         default:               return "";
     }
 }
@@ -737,7 +738,7 @@ StandingsHud::HudDimensions StandingsHud::calculateHudDimensions(const ScaledDim
     PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(getBackgroundWidthChars(), dim.fontSize);
     want.sectionH = { titleHeight + headerHeight + totalRowsHeight };
-    want.captionW = planTitleWidth(dim, "Standings", TitleTier::Large);
+    want.captionW = planTitleWidth(dim, TR("Standings"), TitleTier::Large);
     want.tier = TitleTier::Large;
     PanelPlan& plan = planPanel(dim, want);
     // Placed here (not only at addPlanBackground) so the fast path reads

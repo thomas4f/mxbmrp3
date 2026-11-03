@@ -203,6 +203,12 @@
   SetOutPath "${InstallPath}\mxbmrp3_data\gauges"
   File /r "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\gauges\*.*"
 
+  ; Language packs (one folder per language: language.ini + strings.po) and the
+  ; translation template beside them. /r for the same reason as every other pack
+  ; type -- each language is its own subdirectory.
+  SetOutPath "${InstallPath}\mxbmrp3_data\languages"
+  File /r "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\languages\*.*"
+
   ; Web overlay files (root files + each asset subfolder)
   SetOutPath "${InstallPath}\mxbmrp3_data\web"
   File "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\*.*"

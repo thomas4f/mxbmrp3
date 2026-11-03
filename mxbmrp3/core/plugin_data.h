@@ -763,7 +763,7 @@ public:
     // rather than render them (the spotter speaks the amounts). Defaulted —
     // most events have none, and the three that do are the three whose detail
     // column the spotter would otherwise have to parse back. See EventNumbers.
-    void addEventLogEntry(EventLogType type, const char* message, const char* detail = nullptr,
+    void addEventLogEntry(EventLogType type, const EventText& message, const char* detail = nullptr,
                           int iconColorSlot = -1, int raceNum = -1,
                           const EventNumbers& nums = {});
     const std::deque<EventLogEntry>& getEventLog() const { return m_eventLog; }

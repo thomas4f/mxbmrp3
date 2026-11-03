@@ -3,6 +3,7 @@
 // Clock widget - displays local time with optional UTC secondary display
 // ============================================================================
 #include "clock_widget.h"
+#include "../core/i18n.h"
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
 #include <cstdio>
@@ -108,30 +109,30 @@ void ClockWidget::rebuildRenderData() {
         } else {
             int hour12 = tm.tm_hour % 12;
             if (hour12 == 0) hour12 = 12;
-            const char* ampm = (tm.tm_hour >= 12) ? "PM" : "AM";
+            const char* ampm = (tm.tm_hour >= 12) ? TR("PM") : TR("AM");
             snprintf(buf, bufSize, "%d:%02d %s", hour12, tm.tm_min, ampm);
         }
     };
 
     // Determine which time is primary (large) and which is secondary (small)
-    const char* titleLabel = "Clock";
+    const char* titleLabel = TR("Clock");
     if (m_bShowUtc && m_bUtcOnTop) {
         // UTC is primary (large), local is secondary (small)
         formatTimeLarge(primaryBuf, sizeof(primaryBuf), utcTm);
-        titleLabel = "UTC";
+        titleLabel = TR("UTC");
         // Secondary: "7:38 PM Local"
         char timePart[16];
         formatTimeSmall(timePart, sizeof(timePart), localTm);
-        snprintf(secondaryBuf, sizeof(secondaryBuf), "%s Local", timePart);
+        snprintf(secondaryBuf, sizeof(secondaryBuf), TR("%s Local"), timePart);
     } else {
         // Local is primary (large)
         formatTimeLarge(primaryBuf, sizeof(primaryBuf), localTm);
         if (m_bShowUtc) {
-            titleLabel = "Local";
+            titleLabel = TR("Local");
             // Secondary: "06:38 UTC"
             char timePart[16];
             formatTimeSmall(timePart, sizeof(timePart), utcTm);
-            snprintf(secondaryBuf, sizeof(secondaryBuf), "%s UTC", timePart);
+            snprintf(secondaryBuf, sizeof(secondaryBuf), TR("%s UTC"), timePart);
         }
     }
 

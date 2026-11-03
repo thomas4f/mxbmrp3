@@ -3,6 +3,7 @@
 // Manages tracked riders - riders the user wants to highlight in HUDs
 // ============================================================================
 #include "tracked_riders_manager.h"
+#include "plugin_names.h"
 #include "atomic_file_writer.h"
 #include "stats_manager.h"
 #include "plugin_data.h"
@@ -19,7 +20,7 @@
 #include <windows.h>
 
 // Subdirectory and file name (matches StatsManager pattern)
-static constexpr const char* TRACKED_SUBDIRECTORY = "mxbmrp3";
+static constexpr const char* TRACKED_SUBDIRECTORY = MXB_USER_DIR_NAME;
 static constexpr const char* TRACKED_FILENAME = "mxbmrp3_tracked_riders.json";
 
 TrackedRidersManager& TrackedRidersManager::getInstance() {

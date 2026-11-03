@@ -76,11 +76,11 @@ void NowPlayingWidget::rebuildRenderData() {
     PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(WIDTH_CHARS, dim.fontSize);
     want.sectionH = { dim.lineHeightNormal * static_cast<float>(NowPlayingCard::ROWS) };
-    want.captionW = planTitleWidth(dim, "Now Playing");
+    want.captionW = planTitleWidth(dim, TR("Now Playing"));
     PanelPlan& p = planPanel(dim, want);
 
     addPlanBackground(p, 0.0f, 0.0f);
-    addPlanTitle(p, "Now Playing", getColor(ColorSlot::PRIMARY));
+    addPlanTitle(p, TR("Now Playing"), getColor(ColorSlot::PRIMARY));
 
     NowPlayingCard::Style style;
     style.primary = getColor(ColorSlot::PRIMARY);

@@ -184,8 +184,8 @@ void AchievementWidget::rebuildRenderData() {
     // stays -1).
     static const AchievementManager::Toast kSampleToast = [] {
         AchievementManager::Toast t;
-        std::snprintf(t.title, sizeof(t.title), "%s", "Preview");
-        std::snprintf(t.detail, sizeof(t.detail), "%s", "Achievement toasts appear here");
+        std::snprintf(t.title, sizeof(t.title), "%s", TR("Preview"));
+        std::snprintf(t.detail, sizeof(t.detail), "%s", TR("Achievement toasts appear here"));
         std::snprintf(t.icon, sizeof(t.icon), "%s", "trophy");
         t.tier = Achievements::TIER_COUNT;
         return t;
@@ -195,7 +195,7 @@ void AchievementWidget::rebuildRenderData() {
     const char* title = system ? m_system.title : toast.title;
     const char* detail = system ? m_system.detail : toast.detail;
     const char* icon = system ? m_system.icon : toast.icon;
-    const char* caption = system ? "Message" : "Achievement";
+    const char* caption = system ? TR("Message") : TR("Achievement");
 
     const auto dim = getScaledDimensions();
     const unsigned long primary = getColor(ColorSlot::PRIMARY);

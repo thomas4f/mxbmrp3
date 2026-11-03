@@ -18,6 +18,7 @@
 #pragma once
 
 #include "achievements.h"
+#include "i18n.h"
 
 #include <cmath>
 #include <cstddef>
@@ -153,8 +154,12 @@ inline void formatDescription(const Entry& e, int tier, char* buffer, size_t buf
         appendText(buffer, bufferSize, e.credit);
         appendText(buffer, bufferSize, ")");
     };
-    if (e.descOne && (threshold == 1.0 || !e.descMany)) {
-        snprintf(buffer, bufferSize, "%s", e.descOne);
+    // In the language shown (English when none, so the doc generator is
+    // unchanged); a pack's template keeps the one %s, checked at load.
+    const char* descOne = I18n::trCached(e.descOne);
+    const char* descMany = I18n::trCached(e.descMany);
+    if (descOne && (threshold == 1.0 || !descMany)) {
+        snprintf(buffer, bufferSize, "%s", descOne);
         credit();
         return;
     }
@@ -162,16 +167,16 @@ inline void formatDescription(const Entry& e, int tier, char* buffer, size_t buf
     formatValue(e.unit, threshold, value, sizeof(value));
     // The template's one %s, substituted by hand: a non-literal format string
     // is a warning on every compiler, and the bounded copy cannot overrun.
-    const char* marker = std::strstr(e.descMany, "%s");
+    const char* marker = std::strstr(descMany, "%s");
     buffer[0] = '\0';
     if (!marker) {
-        appendText(buffer, bufferSize, e.descMany);
+        appendText(buffer, bufferSize, descMany);
         credit();
         return;
     }
-    const size_t prefixLen = static_cast<size_t>(marker - e.descMany);
+    const size_t prefixLen = static_cast<size_t>(marker - descMany);
     size_t out = 0;
-    for (size_t i = 0; i < prefixLen && out + 1 < bufferSize; ++i) buffer[out++] = e.descMany[i];
+    for (size_t i = 0; i < prefixLen && out + 1 < bufferSize; ++i) buffer[out++] = descMany[i];
     buffer[out] = '\0';
     appendText(buffer, bufferSize, value);
     appendText(buffer, bufferSize, marker + 2);

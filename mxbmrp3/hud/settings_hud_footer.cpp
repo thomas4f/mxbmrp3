@@ -55,14 +55,14 @@ void SettingsHud::buildFooterButtons(const ScaledDimensions& dim, const PanelPla
             ClickRegion::SAVE_BUTTON, nullptr, 0, false, 0
         ));
         addStateButton(saveButtonX, buttonRowY, saveButtonWidth, buttonBoxH,
-            "Save", buttonRowY + bt.insetT, dim.fontSize,
+            TR("Save"), buttonRowY + bt.insetT, dim.fontSize,
             ColorConfig::getInstance().getPositive(),
             (m_hoveredRegionIndex == static_cast<int>(saveRegionIndex))
                 ? ButtonState::Hovered : ButtonState::Idle);
     } else {
         // Nothing to save: grayed out, not clickable (no click region -> no hover/click).
         addStateButton(saveButtonX, buttonRowY, saveButtonWidth, buttonBoxH,
-            "Saved", buttonRowY + bt.insetT, dim.fontSize,
+            TR("Saved"), buttonRowY + bt.insetT, dim.fontSize,
             ColorConfig::getInstance().getPositive(), ButtonState::Disabled);
     }
 
@@ -74,7 +74,7 @@ void SettingsHud::buildFooterButtons(const ScaledDimensions& dim, const PanelPla
         ClickRegion::CLOSE_BUTTON, nullptr, 0, false, 0
     ));
     addStateButton(closeButtonX, buttonRowY, closeButtonWidth, buttonBoxH,
-        "Close", buttonRowY + bt.insetT, dim.fontSize,
+        TR("Close"), buttonRowY + bt.insetT, dim.fontSize,
         ColorConfig::getInstance().getAccent(),
         (m_hoveredRegionIndex == static_cast<int>(closeRegionIndex))
             ? ButtonState::Hovered : ButtonState::Idle);
@@ -100,12 +100,12 @@ void SettingsHud::addResetTabButton(const ScaledDimensions& dim, const PanelPlan
 
     float resetTabButtonY = buttonRowY;
     char resetTabButtonText[32];
-    snprintf(resetTabButtonText, sizeof(resetTabButtonText), "Reset %s", getTabName(m_activeTab));
+    snprintf(resetTabButtonText, sizeof(resetTabButtonText), TR("Reset %s"), getTabLabel(m_activeTab));
     // ARMED, like General's Reset pair: the first click asks, the second resets.
     // Sized to the wider of the two labels so the button does not jump.
     const int idleChars = static_cast<int>(strlen(resetTabButtonText));
-    if (m_resetTabConfirmed) snprintf(resetTabButtonText, sizeof(resetTabButtonText), "Confirm?");
-    int resetTabButtonChars = std::max(idleChars, static_cast<int>(strlen("Confirm?")));
+    if (m_resetTabConfirmed) snprintf(resetTabButtonText, sizeof(resetTabButtonText), "%s", TR("Confirm?"));
+    int resetTabButtonChars = std::max(idleChars, static_cast<int>(strlen(TR("Confirm?"))));
     // The [button] insets pad the label.
     float resetTabButtonWidth = PluginUtils::calculateMonospaceTextWidth(resetTabButtonChars, dim.fontSize)
         + bt.insetL + bt.insetR;
@@ -152,7 +152,7 @@ void SettingsHud::addAboutButton(const ScaledDimensions& dim, const PanelPlan& p
     // The content column's right edge -- the same line a row ends on, so the
     // button sits flush with the settings above it.
     const float rightEdgeX = plan.X(mainCol.cardLeft + mainCol.cardW);
-    const char* aboutLabel = "About";
+    const char* aboutLabel = TR("About");
     const float aboutWidth =
         PluginUtils::calculateMonospaceTextWidth(
             static_cast<int>(strlen(aboutLabel)), dim.fontSize) + bt.insetL + bt.insetR;

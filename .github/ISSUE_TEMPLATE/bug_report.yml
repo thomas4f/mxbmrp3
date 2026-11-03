@@ -41,6 +41,8 @@ body:
       label: Log file / crash files
       description: >-
         Attach `Documents\PiBoSo\[Game]\mxbmrp3\mxbmrp3_log.txt`. For a crash,
-        also attach BOTH files of the matching pair (same timestamp/pid) from
-        `Documents\PiBoSo\[Game]\mxbmrp3\crashes\` — the `.dmp` and the `.log`.
-        Drag & drop files into this field.
+        also attach the crash `.log` from
+        `Documents\PiBoSo\[Game]\mxbmrp3\crashes\` and say you have the
+        matching `.dmp` (same timestamp/pid). Don't attach the `.dmp` here: it
+        can contain your Windows user name, computer name and recent chat
+        lines, so it is asked for privately. Drag & drop files into this field.

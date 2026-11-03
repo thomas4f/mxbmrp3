@@ -299,12 +299,12 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
                 // tab has one copy.
                 const TabDescriptor* desc = findTabDescriptor(m_activeTab);
                 SystemMessages::Toast t;
-                snprintf(t.title, sizeof(t.title), "%s reset", getTabName(m_activeTab));
+                snprintf(t.title, sizeof(t.title), TR("%s reset"), getTabLabel(m_activeTab));
                 if (desc && desc->resetHud) {
-                    snprintf(t.detail, sizeof(t.detail), "Defaults restored in %s",
-                             ProfileManager::getProfileName(ProfileManager::getInstance().getActiveProfile()));
+                    snprintf(t.detail, sizeof(t.detail), TR("Defaults restored in %s"),
+                             I18n::tr(ProfileManager::getProfileName(ProfileManager::getInstance().getActiveProfile())));
                 } else {
-                    snprintf(t.detail, sizeof(t.detail), "Defaults restored");
+                    snprintf(t.detail, sizeof(t.detail), "%s", TR("Defaults restored"));
                 }
                 snprintf(t.icon, sizeof(t.icon), "arrow-rotate-left");
                 t.key = SystemMessages::KEY_TAB_RESET;
@@ -541,6 +541,16 @@ int SettingsHud::testUnnamedListCount() const {
         if (c.count >= 3 && !c.nameOf) ++n;
     }
     return n;
+}
+
+void SettingsHud::testListNames(std::string& out) const {
+    for (const auto& c : m_cycleControls) {
+        if (!c.nameOf) continue;
+        for (int i = 0; i < c.count; ++i) {
+            out += c.nameOf(i);
+            out += '\n';
+        }
+    }
 }
 
 void SettingsHud::testRegionSignature(char* out, int cap) const {

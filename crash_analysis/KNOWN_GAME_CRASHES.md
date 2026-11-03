@@ -22,7 +22,8 @@ still comes from the game.)
    build, so it appears in exactly one section.
 
 **Can't find it?** The plugin also saves a crash dump to
-`Documents\PiBoSo\MX Bikes\mxbmrp3\crashes\`. Send that over and it can be identified
+`Documents\PiBoSo\MX Bikes\mxbmrp3\crashes\`. Send that over privately (it can contain
+your Windows user name, computer name and recent chat lines) and it can be identified
 straight from the dump. It's matched by the crash's machine code, which stays the same even
 when the offset moves between builds, then added here.
 

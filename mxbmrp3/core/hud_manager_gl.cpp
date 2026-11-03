@@ -15,6 +15,7 @@
 // ============================================================================
 
 #include "hud_manager.h"
+#include "plugin_names.h"
 
 #include <algorithm>
 
@@ -84,7 +85,7 @@ hudsw::Frame HudManager::buildGlFrame(const SPluginQuad_t* quads, int quadCount,
     f.fontNames = &m_fontBases;
     f.spriteNames = &m_spriteBases;
     f.firstIcon = AssetManager::getInstance().getFirstIconSpriteIndex();
-    f.assetRoot = "plugins/mxbmrp3_data";
+    f.assetRoot = "plugins/" MXB_DATA_DIR_NAME;
     return f;
 }
 

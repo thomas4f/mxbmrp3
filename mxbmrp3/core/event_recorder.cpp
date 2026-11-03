@@ -3,6 +3,7 @@
 // In-plugin callback-tape recorder. See event_recorder.h.
 // ============================================================================
 #include "event_recorder.h"
+#include "plugin_names.h"
 
 #if GAME_HAS_RECORDER
 
@@ -55,10 +56,10 @@ void EventRecorder::beginSessionRecording(const char* savePath) {
     // Tapes live under <savePath>/mxbmrp3/tapes (alongside the plugin config).
     // Create both levels since mxbmrp3/ may not exist yet.
     char pluginDir[512];
-    snprintf(pluginDir, sizeof(pluginDir), "%s\\mxbmrp3", base);
+    snprintf(pluginDir, sizeof(pluginDir), "%s\\" MXB_USER_DIR_NAME, base);
     CreateDirectoryA(pluginDir, NULL);
     char tapesDir[512];
-    snprintf(tapesDir, sizeof(tapesDir), "%s\\mxbmrp3\\tapes", base);
+    snprintf(tapesDir, sizeof(tapesDir), "%s\\" MXB_USER_DIR_NAME "\\tapes", base);
     CreateDirectoryA(tapesDir, NULL);
 
     time_t now = time(nullptr);

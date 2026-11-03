@@ -867,8 +867,15 @@ bool AssetManager::readTgaDimensions(const std::string& path, int& width, int& h
     width = header[12] | (header[13] << 8);
     height = header[14] | (header[15] << 8);
 
-    // Reject unreasonable dimensions that would produce extreme aspect ratios
-    if (width <= 0 || height <= 0 || width > 16384 || height > 16384) return false;
+    if (width <= 0 || height <= 0) return false;
+    // Art over the decoders' cap counts as ABSENT, which is what keeps it out of
+    // the game too: a pack missing a required stem is skipped, an optional file
+    // is left unregistered (see hudassets::kMaxTexDim for why the cap exists).
+    if (width > hudassets::kMaxTexDim || height > hudassets::kMaxTexDim) {
+        DEBUG_WARN_F("AssetManager: %s is %dx%d - art over %d px is not loaded",
+                     path.c_str(), width, height, hudassets::kMaxTexDim);
+        return false;
+    }
 
     return true;
 }

@@ -3,6 +3,7 @@
 // On-screen stats widget — shows session stats for current bike/track combo
 // ============================================================================
 #include "stats_hud.h"
+#include "../core/i18n.h"
 #include "default_slots.h"
 #include "speed_widget.h"
 #include "../core/plugin_data.h"
@@ -85,9 +86,9 @@ int StatsHud::getTickIntervalMs() const {
 
 const char* StatsHud::getVisibilityModeName(VisibilityMode mode) {
     switch (mode) {
-        case VisibilityMode::ALWAYS:      return "Always";
-        case VisibilityMode::SESSION_END: return "On finish";
-        default:                          return "Unknown";
+        case VisibilityMode::ALWAYS:      return TR("Always");
+        case VisibilityMode::SESSION_END: return TR("On finish");
+        default:                          return TR("Unknown");
     }
 }
 
@@ -114,7 +115,7 @@ bool StatsHud::computeLayout(Layout& out) const {
     PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(widthChars, out.dim.fontSize);
     want.sectionH = { out.dim.lineHeightNormal * rowCount };
-    want.captionW = planTitleWidth(out.dim, "Stats", TitleTier::Large);
+    want.captionW = planTitleWidth(out.dim, TR("Stats"), TitleTier::Large);
     want.tier = TitleTier::Large;
     out.plan = planPanel(out.dim, want);
     out.backgroundWidth = out.plan.width();
@@ -211,12 +212,12 @@ void StatsHud::rebuildRenderData() {
     // Build column header names
     const char* headerNames[3];
     int headerIdx = 0;
-    if (m_showLap)     headerNames[headerIdx++] = "Last";
-    if (m_showSession) headerNames[headerIdx++] = "Session";
-    if (m_showAllTime) headerNames[headerIdx++] = "All-time";
+    if (m_showLap)     headerNames[headerIdx++] = TR("Last");
+    if (m_showSession) headerNames[headerIdx++] = TR("Session");
+    if (m_showAllTime) headerNames[headerIdx++] = TR("All-time");
 
     // Title — the plan's caption row, above currentY.
-    addPlanTitle(lay.plan, "Stats", primaryColor);
+    addPlanTitle(lay.plan, TR("Stats"), primaryColor);
 
     // Column headers — their own row below the title (like StandingsHud)
     for (int i = 0; i < lay.cols; i++) {
@@ -508,16 +509,16 @@ void StatsHud::rebuildRenderData() {
     }
 
     // ---- Emit rows with descriptive labels ----
-    addRow("Best lap",   {Placeholders::GENERIC, mutedColor},            {sBestBuf,    sBestColor},    {aBestBuf,    aBestColor});
-    addRow("Laps",       {Placeholders::GENERIC, mutedColor},            {sLapsBuf,    sLapsColor},    {aLapsBuf,    aLapsColor});
-    addRow("Ride time",  {lTimeBuf,  hasLast ? valueColor : mutedColor}, {sTimeBuf,    sTimeColor},    {aTimeBuf,    aTimeColor});
-    addRow("Distance",   {lDistBuf,  hasLast ? valueColor : mutedColor}, {sDistBuf,    sDistColor},    {aDistBuf,    aDistColor});
-    addRow("Crashes",    {lCrashBuf, hasLast ? valueColor : mutedColor}, {sCrashBuf,   sCrashColor},   {aCrashBuf,   aCrashColor});
-    addRow("Shifts",     {lShiftBuf, hasLast ? valueColor : mutedColor}, {sShiftBuf,   sShiftColor},   {aShiftBuf,   aShiftColor});
-    addRow("Penalties",  {lPenCntBuf,  lPenCntColor},                    {sPenCntBuf,  sPenCntColor},  {aPenCntBuf,  aPenCntColor});
-    addRow("Pen. time",  {lPenTimeBuf, lPenTimeColor},                   {sPenTimeBuf, sPenTimeColor}, {aPenTimeBuf, aPenTimeColor});
-    addRow("Top speed",  {lSpeedBuf,   lSpeedColor},                     {sSpeedBuf,   sSpeedColor},   {aSpeedBuf,   aSpeedColor});
-    addRow("Avg speed",  {lAvgBuf,     lAvgColor},                       {sAvgBuf,     sAvgColor},     {aAvgBuf,     aAvgColor});
+    addRow(TR("Best lap"),   {Placeholders::GENERIC, mutedColor},            {sBestBuf,    sBestColor},    {aBestBuf,    aBestColor});
+    addRow(TR("Laps"),       {Placeholders::GENERIC, mutedColor},            {sLapsBuf,    sLapsColor},    {aLapsBuf,    aLapsColor});
+    addRow(TR("Ride time"),  {lTimeBuf,  hasLast ? valueColor : mutedColor}, {sTimeBuf,    sTimeColor},    {aTimeBuf,    aTimeColor});
+    addRow(TR("Distance"),   {lDistBuf,  hasLast ? valueColor : mutedColor}, {sDistBuf,    sDistColor},    {aDistBuf,    aDistColor});
+    addRow(TR("Crashes"),    {lCrashBuf, hasLast ? valueColor : mutedColor}, {sCrashBuf,   sCrashColor},   {aCrashBuf,   aCrashColor});
+    addRow(TR("Shifts"),     {lShiftBuf, hasLast ? valueColor : mutedColor}, {sShiftBuf,   sShiftColor},   {aShiftBuf,   aShiftColor});
+    addRow(TR("Penalties"),  {lPenCntBuf,  lPenCntColor},                    {sPenCntBuf,  sPenCntColor},  {aPenCntBuf,  aPenCntColor});
+    addRow(TR("Pen. time"),  {lPenTimeBuf, lPenTimeColor},                   {sPenTimeBuf, sPenTimeColor}, {aPenTimeBuf, aPenTimeColor});
+    addRow(TR("Top speed"),  {lSpeedBuf,   lSpeedColor},                     {sSpeedBuf,   sSpeedColor},   {aSpeedBuf,   aSpeedColor});
+    addRow(TR("Avg speed"),  {lAvgBuf,     lAvgColor},                       {sAvgBuf,     sAvgColor},     {aAvgBuf,     aAvgColor});
 }
 
 void StatsHud::resetToDefaults() {

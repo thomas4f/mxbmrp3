@@ -3,6 +3,7 @@
 // User-configurable font categories for HUD elements
 // ============================================================================
 #include <vector>
+#include "i18n_mark.h"
 #include "font_config.h"
 #include "../diagnostics/call_counters.h"
 #include "asset_manager.h"
@@ -287,13 +288,13 @@ int fontCategoryFromName(const char* name) {
 
 const char* FontConfig::getCategoryName(FontCategory category) {
     switch (category) {
-        case FontCategory::TITLE:       return "Title";
-        case FontCategory::NORMAL:      return "Normal";
-        case FontCategory::STRONG:      return "Strong";
-        case FontCategory::DIGITS:      return "Digits";
-        case FontCategory::MARKER:      return "Marker";
-        case FontCategory::SMALL:       return "Small";
-        default:                        return "Unknown";
+        case FontCategory::TITLE:       return N_("Title");
+        case FontCategory::NORMAL:      return N_("Normal");
+        case FontCategory::STRONG:      return N_("Strong");
+        case FontCategory::DIGITS:      return N_("Digits");
+        case FontCategory::MARKER:      return N_("Marker");
+        case FontCategory::SMALL:       return N_("Small");
+        default:                        return N_("Unknown");
     }
 }
 

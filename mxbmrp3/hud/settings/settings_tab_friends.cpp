@@ -47,59 +47,58 @@ BaseHud* SettingsHud::renderTabFriends(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("friends");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeading("Appearance");
+    ctx.addSectionHeading(TR("Appearance"));
     ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
-    ctx.addSectionHeading("Layout");
+    ctx.addSectionHeading(TR("Layout"));
 
     char rowCountValue[8];
     snprintf(rowCountValue, sizeof(rowCountValue), "%d", hud->m_maxDisplayRows);
-    ctx.addSteppedControl("Rows to show", rowCountValue,
+    ctx.addSteppedControl(TR("Rows to show"), rowCountValue,
         SettingsHud::SteppedControl::clampInt(&hud->m_maxDisplayRows, 1,
             FriendsHud::MIN_DISPLAY_ROWS, FriendsHud::MAX_DISPLAY_ROWS, hud),
         hud, true, false, "friends.rows");
 
     {
-        using SM = FriendsHud::ShowMode;   // the HUD's own names, in state order
-        static const char* const kShowModes[] = { FriendsHud::getShowModeName(SM::ALWAYS),
-            FriendsHud::getShowModeName(SM::WITH_FRIENDS), FriendsHud::getShowModeName(SM::ON_JOIN) };
-        static_assert(sizeof(kShowModes) / sizeof(kShowModes[0]) == static_cast<size_t>(SM::COUNT),
-                      "one name per show mode");
+        // English, in state order, translated where shown (as on every tab).
+        static const char* const kShowModes[] = { N_("Always"), N_("Friends"), N_("On join") };
+        static_assert(sizeof(kShowModes) / sizeof(kShowModes[0]) ==
+                      static_cast<size_t>(FriendsHud::ShowMode::COUNT), "one name per show mode");
         SettingsHud::CycleControl showCycle = SettingsHud::CycleControl::enumMember(
             hud, &FriendsHud::m_showMode,
             static_cast<int>(FriendsHud::ShowMode::COUNT), hud, kShowModes);
         // Reset transient ON_JOIN state on mode change (exactly what the old
         // dedicated handler did).
         showCycle.postStep = [hud]() { hud->m_activityShowing = false; };
-        ctx.addCycleControl("Show mode", FriendsHud::getShowModeName(hud->m_showMode),
+        ctx.addCycleControl(TR("Show mode"), cycleName(kShowModes, static_cast<int>(hud->m_showMode)),
             showCycle, hud, true, false, "friends.showmode");
     }
 
-    ctx.addToggleControl("Show myself", hud->m_showSelf,
+    ctx.addToggleControl(TR("Show myself"), hud->m_showSelf,
         SettingsHud::ClickRegion::FRIENDS_SELF_TOGGLE, hud, nullptr, 0, true,
         "friends.self");
 
     // === CONTENT SECTION ===
-    ctx.addSectionHeading("Content");
+    ctx.addSectionHeading(TR("Content"));
 
-    ctx.addToggleControl("Column headers", hud->m_bShowHeaders,
+    ctx.addToggleControl(TR("Column headers"), hud->m_bShowHeaders,
         SettingsHud::ClickRegion::FRIENDS_HEADERS_TOGGLE, hud, nullptr, 0, true,
         "friends.headers");
 
     bool serverOn = (hud->m_enabledColumns & FriendsHud::COL_SERVER) != 0;
-    ctx.addToggleControl("Server", serverOn, SettingsHud::ClickRegion::CHECKBOX, hud,
+    ctx.addToggleControl(TR("Server"), serverOn, SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledColumns, FriendsHud::COL_SERVER, true, "friends.col_server");
 
     bool trackOn = (hud->m_enabledColumns & FriendsHud::COL_TRACK) != 0;
-    ctx.addToggleControl("Track", trackOn, SettingsHud::ClickRegion::CHECKBOX, hud,
+    ctx.addToggleControl(TR("Track"), trackOn, SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledColumns, FriendsHud::COL_TRACK, true, "friends.col_track");
 
     bool infoOn = (hud->m_enabledColumns & FriendsHud::COL_INFO) != 0;
-    ctx.addToggleControl("Info", infoOn, SettingsHud::ClickRegion::CHECKBOX, hud,
+    ctx.addToggleControl(TR("Info"), infoOn, SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledColumns, FriendsHud::COL_INFO, true, "friends.col_info");
 
     bool timerOn = (hud->m_enabledColumns & FriendsHud::COL_TIMER) != 0;
-    ctx.addToggleControl("Timer", timerOn, SettingsHud::ClickRegion::CHECKBOX, hud,
+    ctx.addToggleControl(TR("Timer"), timerOn, SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledColumns, FriendsHud::COL_TIMER, true, "friends.col_timer");
 
     return hud;

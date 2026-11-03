@@ -33,7 +33,7 @@ public:
     const char* getIconName() const override { return "hud-session"; }
     void resetToDefaults();
 
-    // The Format row's text ("Race 1 (10:00 + 2L), In Progress"); false when it
+    // The Format row's text ("Race 1 (10:00 + 2 laps), In Progress"); false when it
     // is nothing but the state placeholder. Shared with the Dash's Session page.
     static bool formatLine(char* out, size_t size);
     // The Weather row's text ("Sunny, 24 C"); only meaningful with conditions >= 0.

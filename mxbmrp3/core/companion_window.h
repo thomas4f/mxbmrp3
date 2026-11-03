@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <mutex>
 #include "thread_safety.h"
+#include "plugin_names.h"
 #include <string>
 #include <thread>
 #include <vector>
@@ -185,7 +186,7 @@ private:
     // hardcoded path (AssetManager::DISCOVERY_DIR, HttpServer's web root). The
     // annotation stays because the window thread reads it under the lock, so a
     // setter added later is checked rather than trusted.
-    std::string m_assetRoot MXB_GUARDED_BY(m_mutex) = "plugins/mxbmrp3_data";
+    std::string m_assetRoot MXB_GUARDED_BY(m_mutex) = "plugins/" MXB_DATA_DIR_NAME;
     bool m_haveFrame MXB_GUARDED_BY(m_mutex) = false;
     // Set by the game thread on Reload Config, consumed once by the window thread.
     std::atomic<bool> m_artReload{false};

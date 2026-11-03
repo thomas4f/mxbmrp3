@@ -1,5 +1,5 @@
 {
-  "installs": 19868,
+  "installs": 27479,
   "months": {
     "2026-06": {
       "events": 6999,
@@ -14,18 +14,22 @@
       "rows": 300847
     },
     "2026-09": {
-      "events": 619220,
-      "rows": 616648
+      "events": 619234,
+      "rows": 616662
     },
     "2026-10": {
-      "events": 7508,
-      "rows": 7500
+      "events": 664937,
+      "rows": 663581
+    },
+    "2026-11": {
+      "events": 5265,
+      "rows": 5261
     }
   },
   "note": "Digest of processed Aptabase exports; see tools/analytics_rollup.py. Delete this directory to rebuild from raw exports.",
   "schema": 1,
   "window": {
     "first": "2026-06",
-    "last": "2026-10"
+    "last": "2026-11"
   }
 }

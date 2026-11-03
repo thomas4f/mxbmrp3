@@ -55,20 +55,20 @@ void Handlers::handleRaceCommunication(Unified::RaceCommunicationData* psRaceCom
         // Event log: rider state change (log before updateStandings to match handler convention)
         const RaceEntryData* entry = pluginData.getRaceEntry(psRaceCommunication->raceNum);
         const char* riderLabel = entry ? entry->formattedRaceNum : "???";
-        char eventMsg[64];
+        EventText eventMsg;
         switch (psRaceCommunication->state) {
         case Unified::EntryState::DNS:
-            snprintf(eventMsg, sizeof(eventMsg), "%s did not start", riderLabel);
+            eventMsg.format(N_("%s did not start"), riderLabel);
             pluginData.addEventLogEntry(EventLogType::RiderDNS, eventMsg, nullptr, -1,
                                         psRaceCommunication->raceNum);
             break;
         case Unified::EntryState::Retired:
-            snprintf(eventMsg, sizeof(eventMsg), "%s retired", riderLabel);
+            eventMsg.format(N_("%s retired"), riderLabel);
             pluginData.addEventLogEntry(EventLogType::RiderRetired, eventMsg, nullptr, -1,
                                         psRaceCommunication->raceNum);
             break;
         case Unified::EntryState::DSQ: {
-            snprintf(eventMsg, sizeof(eventMsg), "%s disqualified", riderLabel);
+            eventMsg.format(N_("%s disqualified"), riderLabel);
             pluginData.addEventLogEntry(EventLogType::RiderDSQ, eventMsg, nullptr, -1,
                                         psRaceCommunication->raceNum);
             break;
@@ -120,8 +120,8 @@ void Handlers::handleRaceCommunication(Unified::RaceCommunicationData* psRaceCom
         // display string is not load-bearing for audio.
         const RaceEntryData* entry = pluginData.getRaceEntry(psRaceCommunication->raceNum);
         const char* riderLabel = entry ? entry->formattedRaceNum : "???";
-        char eventMsg[64];
-        snprintf(eventMsg, sizeof(eventMsg), "%s penalty (%s)", riderLabel, offenceStr);
+        EventText eventMsg;
+        eventMsg.format(N_("%s penalty (%s)"), riderLabel, offenceStr);
         char penaltyDetail[16];
         const char* detail = nullptr;
         if (penaltyMs > 0) {
@@ -142,8 +142,8 @@ void Handlers::handleRaceCommunication(Unified::RaceCommunicationData* psRaceCom
     else if (psRaceCommunication->commType == Unified::CommunicationType::PenaltyClear) {
         const RaceEntryData* entry = pluginData.getRaceEntry(psRaceCommunication->raceNum);
         const char* riderLabel = entry ? entry->formattedRaceNum : "???";
-        char eventMsg[64];
-        snprintf(eventMsg, sizeof(eventMsg), "%s penalty cleared", riderLabel);
+        EventText eventMsg;
+        eventMsg.format(N_("%s penalty cleared"), riderLabel);
         pluginData.addEventLogEntry(EventLogType::PenaltyClear, eventMsg, nullptr, -1,
                                     psRaceCommunication->raceNum);
     }
@@ -151,8 +151,8 @@ void Handlers::handleRaceCommunication(Unified::RaceCommunicationData* psRaceCom
     else if (psRaceCommunication->commType == Unified::CommunicationType::PenaltyChange) {
         const RaceEntryData* entry = pluginData.getRaceEntry(psRaceCommunication->raceNum);
         const char* riderLabel = entry ? entry->formattedRaceNum : "???";
-        char eventMsg[64];
-        snprintf(eventMsg, sizeof(eventMsg), "%s penalty changed", riderLabel);
+        EventText eventMsg;
+        eventMsg.format(N_("%s penalty changed"), riderLabel);
         pluginData.addEventLogEntry(EventLogType::PenaltyChange, eventMsg, nullptr, -1,
                                     psRaceCommunication->raceNum);
     }

@@ -74,13 +74,16 @@ namespace Settings {
             constexpr const char* FREEZE_DURATION = "freezeDuration";
         }
 
-        // The two by-name asset keys that live in GLOBAL sections rather than a
+        // The by-name asset keys that live in GLOBAL sections rather than a
         // per-HUD one. Named here so isFolderNameValue() below can reference every
         // one of them through a symbol -- see it for why a literal is not good
         // enough.
         namespace Global {
             constexpr const char* PANEL_THEME = "panelTheme";
             constexpr const char* SPOTTER_PACK = "pack";
+            // [Display]: the language pack's folder under mxbmrp3_data/languages/
+            // ("" = English, "system" = follow Windows). See core/i18n.h.
+            constexpr const char* LANGUAGE = "language";
         }
 
         // GamepadWidget-specific keys
@@ -660,6 +663,7 @@ namespace Settings {
         static const char* const kKeys[] = {
             Keys::Global::PANEL_THEME,
             Keys::Global::SPOTTER_PACK,
+            Keys::Global::LANGUAGE,
             Keys::Gamepad::PACK,
             Keys::Pitboard::PACK,
             IniOnly::GAUGES_PACK,

@@ -3,6 +3,7 @@
 // FMX (Freestyle Motocross) trick display HUD implementation
 // ============================================================================
 #include "fmx_hud.h"
+#include "../core/i18n.h"
 #include "default_slots.h"
 
 #include <cstdio>
@@ -117,7 +118,7 @@ void FmxHud::rebuildRenderData() {
     PanelWant want;
     want.contentW = contentWidth;
     want.sectionH = sectionHeights(dim);
-    want.captionW = planTitleWidth(dim, "FMX", TitleTier::Large);
+    want.captionW = planTitleWidth(dim, TR("FMX"), TitleTier::Large);
     want.tier = TitleTier::Large;
     PanelPlan& plan = planPanel(dim, want);
     float backgroundWidth = plan.width();
@@ -134,7 +135,7 @@ void FmxHud::rebuildRenderData() {
     unsigned long mutedColor = this->getColor(ColorSlot::MUTED);
 
     // === Title === (the plan's caption row, above currentY)
-    addPlanTitle(plan, "FMX", textColor);
+    addPlanTitle(plan, TR("FMX"), textColor);
 
     // THE ENDED CHAIN HOLDS THROUGH A CRASH. FmxManager's ChainEndAnimation
     // lingers a finished chain for chainPeriod and then clears it; the rotation
@@ -203,7 +204,7 @@ float FmxHud::buildTrickStack(const BuildCtx& ctx, float currentY) {
     const auto& chainTricks = ctx.fmx.getChainTricks();
     const auto& endAnim = ctx.fmx.getChainEndAnimation();
 
-    addSectionHeading("Trick Stack", contentStartX, currentY, dim);
+    addSectionHeading(TR("Trick Stack"), contentStartX, currentY, dim);
     currentY += sectionHeadingRowHeight(dim);
 
     const auto& endAnimStack = endAnim;
@@ -366,7 +367,7 @@ void FmxHud::buildComboSection(const BuildCtx& ctx, float currentY) {
     const Fmx::TrickInstance& trick = ctx.fmx.getActiveTrick();
     const auto& chainTricks = ctx.fmx.getChainTricks();
 
-    addSectionHeading("Combo & Score", contentStartX, currentY, dim);
+    addSectionHeading(TR("Combo & Score"), contentStartX, currentY, dim);
     currentY += sectionHeadingRowHeight(dim);
     // Match LeanWidget arc dimensions
     float comboArcHeight = dim.lineHeightNormal * 2.0f;
@@ -534,7 +535,7 @@ void FmxHud::addComboScoreLines(const BuildCtx& ctx, float arcCenterX, float arc
             trickScoreColor = this->getColor(ColorSlot::WARNING);
         }
 
-        addString("Score", labelX, scoreLine1Y, Justify::LEFT,
+        addString(TR("Score"), labelX, scoreLine1Y, Justify::LEFT,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
         PluginUtils::formatScore(displayTrickScore, trickScoreText, sizeof(trickScoreText));
         addString(trickScoreText, valueX, scoreLine1Y, Justify::LEFT,
@@ -554,7 +555,7 @@ void FmxHud::addComboScoreLines(const BuildCtx& ctx, float arcCenterX, float arc
             chainScoreColor = this->getColor(ColorSlot::NEUTRAL);
         }
 
-        addString("Chain", labelX, scoreLine2Y, Justify::LEFT,
+        addString(TR("Chain"), labelX, scoreLine2Y, Justify::LEFT,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
         PluginUtils::formatScore(displayChainScore, chainScoreText, sizeof(chainScoreText));
         addString(chainScoreText, valueX, scoreLine2Y, Justify::LEFT,
@@ -565,7 +566,7 @@ void FmxHud::addComboScoreLines(const BuildCtx& ctx, float arcCenterX, float arc
     {
         char sessionScoreText[32];
         PluginUtils::formatScore(score.sessionScore, sessionScoreText, sizeof(sessionScoreText));
-        addString("Total", labelX, scoreLine3Y, Justify::LEFT,
+        addString(TR("Total"), labelX, scoreLine3Y, Justify::LEFT,
             this->getFont(FontCategory::TITLE), this->getColor(ColorSlot::TERTIARY), dim.fontSize);
         addString(sessionScoreText, valueX, scoreLine3Y, Justify::LEFT,
             this->getFont(FontCategory::DIGITS), textColor, dim.fontSize);
@@ -582,7 +583,7 @@ void FmxHud::buildRotationArcs(const BuildCtx& ctx, float currentY) {
     const bool isCrashed = ctx.isCrashed;
     const Fmx::RotationTracker& rotation = ctx.fmx.getRotationTracker();
 
-    addSectionHeading("Rotation Arcs", contentStartX, currentY, dim);
+    addSectionHeading(TR("Rotation Arcs"), contentStartX, currentY, dim);
     currentY += sectionHeadingRowHeight(dim);
     updateArcSnapshot(ctx.fmx, isCrashed);
 
@@ -632,9 +633,9 @@ void FmxHud::buildRotationArcs(const BuildCtx& ctx, float currentY) {
     // addLabel: Small font size, row-centered (the label convention used
     // by the table headers in StandingsHud/FriendsHud/etc.)
     float labelY = currentY;
-    addLabel("Pitch", arc1X, labelY, Justify::CENTER, pitchFill, dim);
-    addLabel("Yaw", arc2X, labelY, Justify::CENTER, yawFill, dim);
-    addLabel("Roll", arc3X, labelY, Justify::CENTER, rollFill, dim);
+    addLabel(TR("Pitch"), arc1X, labelY, Justify::CENTER, pitchFill, dim);
+    addLabel(TR("Yaw"), arc2X, labelY, Justify::CENTER, yawFill, dim);
+    addLabel(TR("Roll"), arc3X, labelY, Justify::CENTER, rollFill, dim);
 
     // Arc center text — 2 rows: start angle (muted), peak rotation (primary)
     // Both rows use fontSize (normal), so use lineHeightNormal for row advance.
@@ -731,7 +732,7 @@ void FmxHud::buildDebugValues(const BuildCtx& ctx, float currentY) {
     const unsigned long mutedColor = ctx.mutedColor;
     const Fmx::RotationTracker& rotation = ctx.fmx.getRotationTracker();
 
-    addSectionHeading("Debug", contentStartX, currentY, dim);
+    addSectionHeading(TR("Debug"), contentStartX, currentY, dim);
     currentY += sectionHeadingRowHeight(dim);
     char valueBuffer[64];
 

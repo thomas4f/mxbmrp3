@@ -3,6 +3,7 @@
 // Lap Log - displays recent lap times with sector splits and personal best
 // ============================================================================
 #include "lap_log_hud.h"
+#include "../core/i18n.h"
 #include "default_slots.h"
 #include "../core/layout_config.h"
 #include "../diagnostics/logger.h"
@@ -176,8 +177,8 @@ void LapLogHud::rebuildRenderData() {
     want.contentW = PluginUtils::calculateMonospaceTextWidth(getBackgroundWidthChars(), dim.fontSize);
     want.sectionH = { headerHeight + dim.lineHeightNormal * numDataRows };
     // The gap row's reference lap, named on the title row while that row is on.
-    const char* refNote = m_showGapRow ? PbGapTracker::refName(gapReference()) : nullptr;
-    want.captionW = planTitleWidth(dim, "Lap Log", TitleTier::Large) + planTitleNoteWidth(dim, refNote);
+    const char* refNote = m_showGapRow ? HudDefaults::refLabel(gapReference()) : nullptr;
+    want.captionW = planTitleWidth(dim, TR("Lap Log"), TitleTier::Large) + planTitleNoteWidth(dim, refNote);
     want.tier = TitleTier::Large;
     PanelPlan& plan = planPanel(dim, want);
     setBounds(START_X, START_Y, START_X + plan.width(), START_Y + plan.height());
@@ -193,7 +194,7 @@ void LapLogHud::rebuildRenderData() {
     const BestTimes best = resolveBestTimes(data, bestLapEntry);
 
     // Render title at TOP (if shown) — the plan's caption row, above currentY.
-    addPlanTitle(plan, "Lap Log",
+    addPlanTitle(plan, TR("Lap Log"),
                  this->getColor(ColorSlot::PRIMARY));
 
     // Optional column-header row (Strong font), numeric columns follow their right-aligned data
@@ -312,14 +313,14 @@ LapLogHud::BestTimes LapLogHud::resolveBestTimes(const PluginData& data, const L
 // Optional column-header row (Strong font), numeric columns follow their right-aligned data
 void LapLogHud::addHeaderRow(const LapColumnX& cx, float currentY, const ScaledDimensions& dim) {
     unsigned long headerColor = this->getColor(ColorSlot::TERTIARY);
-    addLabel("Lap", cx.lapRightX, currentY, Justify::RIGHT, headerColor, dim);
+    addLabel(TR("Lap"), cx.lapRightX, currentY, Justify::RIGHT, headerColor, dim);
     addLabel(cx.showSectors ? "S1" : "", cx.s1RightX, currentY, Justify::RIGHT, headerColor, dim);
     addLabel(cx.showSectors ? "S2" : "", cx.s2RightX, currentY, Justify::RIGHT, headerColor, dim);
     addLabel(cx.showSectors ? "S3" : "", cx.s3RightX, currentY, Justify::RIGHT, headerColor, dim);
 #if GAME_SECTOR_COUNT >= 4
     addLabel(cx.showSectors ? "S4" : "", cx.s4RightX, currentY, Justify::RIGHT, headerColor, dim);
 #endif
-    addLabel("Time", cx.timeRightX, currentY, Justify::RIGHT, headerColor, dim);
+    addLabel(TR("Time"), cx.timeRightX, currentY, Justify::RIGHT, headerColor, dim);
 }
 
 void LapLogHud::addCurrentLapRow(const LapColumnX& cx, const PluginData& data, const CurrentLapData* currentLap,

@@ -408,9 +408,10 @@ void DirectorManager::evaluate() {
             m_shotStartMs = now;
             m_manualOverrideUntilMs = now + kManualGraceMs;
             m_riderLock = false;  // caster manually chose a rider -> release the lock
-            char lab[16], msg[64];
+            char lab[16];
+            EventText msg;
             riderLabel(spectated, lab, sizeof(lab));
-            snprintf(msg, sizeof(msg), "Manual pick %s", lab);
+            msg.format(N_("Manual pick %s"), lab);
             logDirectorEvent(msg);
         }
     }

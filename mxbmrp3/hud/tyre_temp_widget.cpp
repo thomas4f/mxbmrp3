@@ -4,6 +4,7 @@
 // GP Bikes only - shows left/middle/right tread temperatures as colored blocks
 // ============================================================================
 #include "tyre_temp_widget.h"
+#include "../core/i18n.h"
 
 #if GAME_HAS_TYRE_TEMP
 
@@ -110,14 +111,14 @@ void TyreTempWidget::rebuildRenderData() {
     PanelWant want;
     want.contentW = contentWidth;
     want.sectionH = { contentHeight };
-    want.captionW = planTitleWidth(dim, "Tyre Temp");
+    want.captionW = planTitleWidth(dim, TR("Tyre Temp"));
     PanelPlan& p = planPanel(dim, want);
 
     const float backgroundWidth = p.width();
     const float backgroundHeight = p.height();
 
     addPlanBackground(p, startX, startY);
-    addPlanTitle(p, "Tyre Temp",
+    addPlanTitle(p, TR("Tyre Temp"),
         this->getColor(ColorSlot::PRIMARY));
 
     // Set bounds for drag detection

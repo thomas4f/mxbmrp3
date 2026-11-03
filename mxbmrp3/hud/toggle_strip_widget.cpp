@@ -3,6 +3,7 @@
 // Toggles widget - see toggle_strip_widget.h
 // ============================================================================
 #include "toggle_strip_widget.h"
+#include "../core/i18n.h"
 #include "../core/layout_config.h"
 #include "../core/hud_manager.h"
 #include "../core/input_manager.h"
@@ -177,8 +178,8 @@ void ToggleStripWidget::dockToPointer() {
 
 const char* ToggleStripWidget::rowName(int row) const {
     switch (m_rows[row].kind) {
-        case Click::Settings: return "Settings";
-        case Click::Collapse: return m_collapsed ? "Expand" : "Collapse";
+        case Click::Settings: return TR("Settings");
+        case Click::Collapse: return m_collapsed ? TR("Expand") : TR("Collapse");
         case Click::Tab: {
             const SettingsHud::TabToggle& item = m_items[m_rows[row].item];
             const char* state = item.tabId == SettingsHud::TAB_DIRECTOR

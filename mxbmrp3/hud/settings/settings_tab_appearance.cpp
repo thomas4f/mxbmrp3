@@ -23,6 +23,8 @@
 #include "../../core/ui_config.h"
 #include "../../core/companion_window.h"
 #include "../../core/system_messages.h"
+#include "../../core/i18n.h"
+#include "../../core/settings_manager.h"
 
 using namespace PluginConstants;
 
@@ -123,7 +125,7 @@ static SettingsHud::CycleControl fontCycle(FontCategory category) {
         else FontConfig::getInstance().setFont(category, (*fonts)[static_cast<size_t>(i) - 1]->filename);
     };
     c.nameOf = [fonts](int i) {
-        return i <= 0 ? std::string("Default") : (*fonts)[static_cast<size_t>(i) - 1]->displayName;
+        return i <= 0 ? std::string(TR("Default")) : (*fonts)[static_cast<size_t>(i) - 1]->displayName;
     };
     // Each name in its own face, so the list previews what picking it does.
     // fontIndex is the asset's position in getFonts() plus one (AssetManager).
@@ -153,8 +155,8 @@ static SettingsHud::CycleControl colorCycle(ColorSlot slot) {
         else ColorConfig::getInstance().setColor(slot, ColorPalette::ALL_COLORS[static_cast<size_t>(i) - 1]);
     };
     c.nameOf = [](int i) {
-        return i <= 0 ? std::string("Default")
-                      : std::string(ColorPalette::getColorName(ColorPalette::ALL_COLORS[static_cast<size_t>(i) - 1]));
+        return i <= 0 ? std::string(TR("Default"))
+                      : std::string(I18n::tr(ColorPalette::getColorName(ColorPalette::ALL_COLORS[static_cast<size_t>(i) - 1])));
     };
     c.swatchOf = [slot](int i) {
         return i <= 0 ? ColorConfig::getThemeOrDefaultColor(slot) : ColorPalette::ALL_COLORS[static_cast<size_t>(i) - 1];
@@ -172,7 +174,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
 
     // === DISPLAY SECTION ===
     // Shown first so the theme and the units/format sit at the top of the tab.
-    ctx.addSectionHeading("Display");
+    ctx.addSectionHeading(TR("Display"));
     constexpr int DISPLAY_LABEL_CHARS = 14;   // "Compact times" and a space
 
     // Panel theme: None + every theme discovered under mxbmrp3_data\themes\.
@@ -183,7 +185,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
         const ThemeAsset* theme = themeName.empty()
             ? nullptr : AssetManager::getInstance().getThemeByName(themeName);
         // An unknown saved name reads as "None", matching what actually renders.
-        const std::string valueLabel = theme ? theme->displayName : std::string("None");
+        const std::string valueLabel = theme ? theme->displayName : std::string(TR("None"));
         // [None, <each discovered theme>], stored by NAME, so a position here is
         // only ever transient -- adding or removing a theme folder can never
         // repoint a saved setting.
@@ -202,7 +204,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
             UiConfig::getInstance().setThemeName(i <= 0 ? std::string() : list[static_cast<size_t>(i) - 1].name);
         };
         themes.nameOf = [](int i) {
-            return i <= 0 ? std::string("None")
+            return i <= 0 ? std::string(TR("None"))
                           : AssetManager::getInstance().getThemes()[static_cast<size_t>(i) - 1].displayName;
         };
         // Every HUD's background geometry changes (1 quad <-> 9), so a full
@@ -217,10 +219,54 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
         themes.repeat = false;   // a step re-lays out every HUD
         // Full width for a theme's name, its arrows in the column of the cells below.
         ctx.setRowLabelChars(DISPLAY_LABEL_CHARS);
-        ctx.addCycleControl("Panel theme", valueLabel.c_str(), themes,
+        ctx.addCycleControl(TR("Panel theme"), valueLabel.c_str(), themes,
                             /*targetHud=*/nullptr, /*enabled=*/true, /*isOff=*/false,
                             "appearance.theme");
         ctx.setRowLabelChars(0);
+    }
+
+    // Language: System (follow Windows, the default), English, then every pack
+    // under mxbmrp3_data\languages\, stored by FOLDER name like a theme
+    // (core/i18n.h). Hidden while no pack is installed, as the theme row is. The
+    // pseudo-locale (a developer test language) is listed only in developer mode.
+    {
+        auto langs = std::make_shared<std::vector<I18n::LanguageInfo>>();
+        const bool dev = SettingsManager::getInstance().isDeveloperMode();
+        for (const I18n::LanguageInfo& l : I18n::languages()) {
+            if (!l.pseudo || dev) langs->push_back(l);
+        }
+        if (!langs->empty()) {
+            SettingsHud::CycleControl lang;
+            lang.count = static_cast<int>(langs->size()) + 2;
+            lang.get = [langs]() {
+                const std::string& cur = I18n::languageFolder();
+                if (cur == I18n::kSystemLanguage) return 0;
+                for (size_t i = 0; i < langs->size(); ++i) {
+                    if ((*langs)[i].folder == cur) return static_cast<int>(i) + 2;
+                }
+                return 1;
+            };
+            lang.set = [langs](int i) {
+                I18n::setLanguage(i <= 0 ? std::string(I18n::kSystemLanguage)
+                                  : i == 1 ? std::string()
+                                  : (*langs)[static_cast<size_t>(i) - 2].folder);
+            };
+            // A language is named in itself ("Svenska"), and English always as
+            // "English": a player who picked a language they cannot read must
+            // still be able to find their way back.
+            lang.nameOf = [langs](int i) {
+                return i <= 0 ? std::string(TR("System"))
+                     : i == 1 ? std::string(TR("English"))
+                     : (*langs)[static_cast<size_t>(i) - 2].displayName;
+            };
+            lang.repeat = false;   // a step loads a pack and rebuilds every HUD
+            ctx.setRowLabelChars(DISPLAY_LABEL_CHARS);
+            const bool sys = I18n::languageFolder() == I18n::kSystemLanguage;
+            ctx.addCycleControl(TR("Language"), sys ? TR("System") : I18n::languageDisplayName(), lang,
+                                /*targetHud=*/nullptr, /*enabled=*/true, /*isOff=*/false,
+                                "appearance.language");
+            ctx.setRowLabelChars(0);
+        }
     }
 
     // The rest of Display side by side: short labels and short values. The
@@ -230,7 +276,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     // Speed unit toggle
     {
         SpeedWidget* speedWidget = ctx.parent->getSpeedWidget();
-        ctx.addCycleControl("Speed unit", (speedWidget && speedWidget->getSpeedUnit() == SpeedWidget::SpeedUnit::KMH) ? "km/h" : "mph",
+        ctx.addCycleControl(TR("Speed unit"), (speedWidget && speedWidget->getSpeedUnit() == SpeedWidget::SpeedUnit::KMH) ? "km/h" : "mph",
                             SettingsHud::ClickRegion::SPEED_UNIT_TOGGLE,
                             SettingsHud::ClickRegion::SPEED_UNIT_TOGGLE,
                             speedWidget, /*enabled=*/true, /*isOff=*/false,
@@ -240,7 +286,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     // Fuel unit toggle
     {
         FuelWidget* fuelWidget = ctx.parent->getFuelWidget();
-        ctx.addCycleControl("Fuel unit", (fuelWidget && fuelWidget->getFuelUnit() == FuelWidget::FuelUnit::GALLONS) ? "gal" : "L",
+        ctx.addCycleControl(TR("Fuel unit"), (fuelWidget && fuelWidget->getFuelUnit() == FuelWidget::FuelUnit::GALLONS) ? "gal" : "L",
                             SettingsHud::ClickRegion::FUEL_UNIT_TOGGLE,
                             SettingsHud::ClickRegion::FUEL_UNIT_TOGGLE,
                             fuelWidget, /*enabled=*/true, /*isOff=*/false,
@@ -249,7 +295,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
 
     // Temperature unit toggle
     {
-        ctx.addCycleControl("Temp unit", (UiConfig::getInstance().getTemperatureUnit() == TemperatureUnit::FAHRENHEIT) ? "F" : "C",
+        ctx.addCycleControl(TR("Temp unit"), (UiConfig::getInstance().getTemperatureUnit() == TemperatureUnit::FAHRENHEIT) ? "F" : "C",
                             SettingsHud::ClickRegion::TEMP_UNIT_TOGGLE,
                             SettingsHud::ClickRegion::TEMP_UNIT_TOGGLE,
                             nullptr, /*enabled=*/true, /*isOff=*/false,
@@ -259,7 +305,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     // Clock format toggle
     {
         ClockWidget* clockWidget = ctx.parent->getClockWidget();
-        ctx.addCycleControl("Clock format", (clockWidget && clockWidget->getFormat24h()) ? "24h" : "12h",
+        ctx.addCycleControl(TR("Clock format"), (clockWidget && clockWidget->getFormat24h()) ? "24h" : "12h",
                             SettingsHud::ClickRegion::CLOCK_FORMAT_TOGGLE,
                             SettingsHud::ClickRegion::CLOCK_FORMAT_TOGGLE,
                             clockWidget, /*enabled=*/true, /*isOff=*/false,
@@ -267,18 +313,18 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     }
 
     // Compact time format toggle
-    ctx.addToggleControl("Compact times", PluginData::getInstance().isShortTimeFormat(),
+    ctx.addToggleControl(TR("Compact times"), PluginData::getInstance().isShortTimeFormat(),
         SettingsHud::ClickRegion::SHORT_TIME_FORMAT_TOGGLE, nullptr, nullptr, 0, true,
         "appearance.compact_times");
 
     // Drop shadow toggle
-    ctx.addToggleControl("Drop shadow", UiConfig::getInstance().getDropShadow(),
+    ctx.addToggleControl(TR("Drop shadow"), UiConfig::getInstance().getDropShadow(),
         SettingsHud::ClickRegion::DROP_SHADOW_TOGGLE, nullptr, nullptr, 0, true,
         "appearance.drop_shadow");
 
     // UI icons toggle (HUD title icons, settings tab/section icons, carets and pager
     // chevrons, the Toggles strip; off = text stand-ins)
-    ctx.addToggleControl("UI icons", UiConfig::getInstance().getTitleIcons(),
+    ctx.addToggleControl(TR("UI icons"), UiConfig::getInstance().getTitleIcons(),
         SettingsHud::ClickRegion::TITLE_ICONS_TOGGLE, nullptr, nullptr, 0, true,
         "appearance.hud_icons");
 
@@ -289,8 +335,8 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
         motion.get = []() { return static_cast<int>(UiConfig::getInstance().getMotion()); };
         motion.set = [](int v) { UiConfig::getInstance().setMotion(static_cast<Motion::Level>(v)); };
         motion.count = Motion::LEVEL_COUNT;
-        motion.nameOf = [](int v) { return std::string(Motion::levelName(static_cast<Motion::Level>(v))); };
-        ctx.addCycleControl("Motion", Motion::levelName(level), motion, nullptr, true,
+        motion.nameOf = [](int v) { return std::string(I18n::tr(Motion::levelName(static_cast<Motion::Level>(v)))); };
+        ctx.addCycleControl(TR("Motion"), I18n::tr(Motion::levelName(level)), motion, nullptr, true,
                             level == Motion::Level::OFF, "appearance.motion");
     }
 
@@ -298,13 +344,13 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     // INI-only ([Display] glowIntensity / glowWidth).
     {
         const bool on = UiConfig::getInstance().getGlow();
-        static const char* const kOnOff[] = { "Off", "On" };
+        static const char* const kOnOff[] = { N_("Off"), N_("On") };
         SettingsHud::CycleControl glow;
         glow.count = 2;
         glow.get = []() { return UiConfig::getInstance().getGlow() ? 1 : 0; };
         glow.set = [](int v) { UiConfig::getInstance().setGlow(v != 0); };
-        glow.nameOf = [](int v) { return std::string(kOnOff[v]); };
-        ctx.addCycleControl("Glow", on ? "On" : "Off", glow, nullptr, true, !on, "appearance.glow");
+        glow.nameOf = [](int v) { return std::string(I18n::tr(kOnOff[v])); };
+        ctx.addCycleControl(TR("Glow"), on ? TR("On") : TR("Off"), glow, nullptr, true, !on, "appearance.glow");
     }
 
     // Messages: the system toasts (core/system_messages.h) -- what a hotkey hid,
@@ -312,13 +358,13 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     // toasts' own switch, which says nothing about these.
     {
         const bool on = SystemMessages::getInstance().isEnabled();
-        static const char* const kOnOff[] = { "Off", "On" };
+        static const char* const kOnOff[] = { N_("Off"), N_("On") };
         SettingsHud::CycleControl messages;
         messages.count = 2;
         messages.get = []() { return SystemMessages::getInstance().isEnabled() ? 1 : 0; };
         messages.set = [](int v) { SystemMessages::getInstance().setEnabled(v != 0); };
-        messages.nameOf = [](int v) { return std::string(kOnOff[v]); };
-        ctx.addCycleControl("Messages", on ? "On" : "Off", messages, nullptr, true, !on,
+        messages.nameOf = [](int v) { return std::string(I18n::tr(kOnOff[v])); };
+        ctx.addCycleControl(TR("Messages"), on ? TR("On") : TR("Off"), messages, nullptr, true, !on,
                             "appearance.messages");
     }
 
@@ -342,7 +388,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
             HudManager::getInstance().setUiScale(s_dragPending);
             s_dragPending = -1.0f;
         };
-        ctx.addSteppedControl("UI scale", scaleValue, uiScale, nullptr, true, false, "appearance.ui_scale");
+        ctx.addSteppedControl(TR("UI scale"), scaleValue, uiScale, nullptr, true, false, "appearance.ui_scale");
     }
 
     ctx.endColumns();
@@ -351,11 +397,11 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     // Behavior section; still persisted under [Display].)
 
     // === FONTS SECTION ===
-    ctx.addSectionHeading("Fonts");
+    ctx.addSectionHeading(TR("Fonts"));
 
     // Helper lambda to add a font category row with cycle buttons
     auto addFontRow = [&](FontCategory category, const char* tooltipId) {
-        const char* categoryName = FontConfig::getCategoryName(category);
+        const char* categoryName = I18n::tr(FontConfig::getCategoryName(category));
         const char* fontDisplayName = fontConfig.getFontDisplayName(category);
 
         // "Default" when the face IS the default, else its name.
@@ -379,7 +425,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
         // -- would answer a question ("which font IS the default") that the row is
         // not asking, put a second column of text on six rows that no other control
         // has, and need its own truncation maths to stay inside the panel.
-        ctx.addCycleControl(categoryName, isDefaultFont ? "Default" : fontDisplayName,
+        ctx.addCycleControl(categoryName, isDefaultFont ? TR("Default") : fontDisplayName,
                             fontCycle(category), nullptr, true, false, tooltipId);
     };
 
@@ -397,7 +443,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     ctx.endColumns();
 
     // === COLORS SECTION ===
-    ctx.addSectionHeading("Colors");
+    ctx.addSectionHeading(TR("Colors"));
 
     // TWO COLUMNS of five: the base tones on the left (text greys and the panel
     // background), the signal colours on the right. Each slot is a short label, a
@@ -435,8 +481,8 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
         // value equality rather than the override flag. No trailing "(Light Gray)"
         // either: "Default" is a value of the cycler, not a state annotated beside it.
         const bool isDefaultColor = (color == ColorConfig::getThemeOrDefaultColor(slot));
-        ctx.addCycleControl(ColorConfig::getSlotName(slot),
-                            isDefaultColor ? "Default" : ColorPalette::getColorName(color),
+        ctx.addCycleControl(I18n::tr(ColorConfig::getSlotName(slot)),
+                            isDefaultColor ? TR("Default") : I18n::tr(ColorPalette::getColorName(color)),
                             colorCycle(slot), nullptr, true, false, tooltipId);
     };
 
@@ -458,20 +504,20 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     // colours exist for: a Window Capture is the only capture that can single the
     // window out (Game Capture hooks the game's own swapchain in the same
     // process), and a Chroma Key filter of the matching preset leaves the HUD.
-    ctx.addSectionHeading("Companion window");
+    ctx.addSectionHeading(TR("Companion window"));
     ctx.beginColumns(2, 2, DISPLAY_LABEL_CHARS);
     // HUD display target: In-game / Companion (standalone window) / Both. A
     // < value > cycler with friendly labels; opens/closes the companion window on
     // change.
     {
         DisplayTarget target = UiConfig::getInstance().getDisplayTarget();
-        const char* valueLabel = (target == DisplayTarget::COMPANION) ? "Companion"
-                               : (target == DisplayTarget::BOTH)      ? "Both"
-                                                                      : "In-game";
-        static const char* const kTargets[] = { "In-game", "Companion", "Both" };
+        const char* valueLabel = (target == DisplayTarget::COMPANION) ? TR("Companion")
+                               : (target == DisplayTarget::BOTH)      ? TR("Both")
+                                                                      : TR("In-game");
+        static const char* const kTargets[] = { N_("In-game"), N_("Companion"), N_("Both") };
         SettingsHud::CycleControl targetCycle;
         targetCycle.count = 3;
-        targetCycle.nameOf = [](int i) { return std::string(kTargets[i]); };
+        targetCycle.nameOf = [](int i) { return std::string(I18n::tr(kTargets[i])); };
         targetCycle.get = []() { return static_cast<int>(UiConfig::getInstance().getDisplayTarget()); };
         // In-game suppression is applied live in HudManager::draw from the target;
         // the companion window opens or closes to match.
@@ -482,7 +528,7 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
         };
         targetCycle.postStep = []() { HudManager::getInstance().markAllHudsDirty(); };
         targetCycle.repeat = false;   // a step opens or closes the companion window
-        ctx.addCycleControl("HUD display", valueLabel, targetCycle,
+        ctx.addCycleControl(TR("HUD display"), valueLabel, targetCycle,
                             /*targetHud=*/nullptr, /*enabled=*/true, /*isOff=*/false,
                             "appearance.display_target");
     }
@@ -491,25 +537,25 @@ BaseHud* SettingsHud::renderTabAppearance(SettingsLayoutContext& ctx) {
     // (the filter then shows just the HUD over the game). Greyed while the HUD
     // draws in-game only.
     {
-        static const char* const kBackgrounds[] = { "Dark", "Green", "Blue", "Magenta" };
+        static const char* const kBackgrounds[] = { N_("Dark"), N_("Green"), N_("Blue"), N_("Magenta") };
         static_assert(sizeof(kBackgrounds) / sizeof(kBackgrounds[0]) ==
                       static_cast<size_t>(CompanionBackground::COUNT),
                       "one label per CompanionBackground");
         const CompanionBackground bg = CompanionWindow::getInstance().getBackground();
         SettingsHud::CycleControl bgCycle;
         bgCycle.count = static_cast<int>(CompanionBackground::COUNT);
-        bgCycle.nameOf = [](int i) { return std::string(kBackgrounds[i]); };
+        bgCycle.nameOf = [](int i) { return std::string(I18n::tr(kBackgrounds[i])); };
         bgCycle.get = []() { return static_cast<int>(CompanionWindow::getInstance().getBackground()); };
         bgCycle.set = [](int i) {
             CompanionWindow::getInstance().setBackground(static_cast<CompanionBackground>(i));
         };
-        ctx.addCycleControl("Companion bg", kBackgrounds[static_cast<int>(bg)], bgCycle,
+        ctx.addCycleControl(TR("Companion bg"), I18n::tr(kBackgrounds[static_cast<int>(bg)]), bgCycle,
                             /*targetHud=*/nullptr,
                             UiConfig::getInstance().getDisplayTarget() != DisplayTarget::IN_GAME,
                             /*isOff=*/false, "appearance.companion_background");
     }
     ctx.endColumns();
-    ctx.addNote("OBS: Window Capture of MXBMRP3 + Chroma Key of the bg colour");
+    ctx.addNote(TR("OBS: Window Capture of MXBMRP3 + Chroma Key of the bg colour"));
 
     // No active HUD for appearance settings
     return nullptr;

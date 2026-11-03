@@ -83,6 +83,12 @@ int main(int argc, char** argv) {
     // preview can be lined up against the real renderer at a fixed scene rather than
     // against whatever the last capture happened to hold; see that tool's README.
     bool previewMode = false;
+    // "timedrace N": the preview grid in a 15:00 + N laps race, 12:34 left, with the
+    // Time widget and the Timing panel's Time/Format rows on -- every place the
+    // session clock reads "12:34 + N laps". "dashtime" swaps the Timing panel and
+    // notices for the Dash on its Time page (they share the centre stack's box).
+    int timedRaceLaps = 0;
+    bool dashTimeMode = false;
     // "maplost": the MAP in zoom mode with the player far off the track, which is the
     // one state the off-view pointer exists for and the one a normal capture can never
     // reach -- zoom follows the player, so on any ordinary scene the track is always
@@ -146,6 +152,10 @@ int main(int argc, char** argv) {
         if (std::string(argv[a]) == "update") host.updateSetAvailable("9.9.9");
         if (std::string(argv[a]) == "records") recordsMode = true;
         if (std::string(argv[a]) == "preview") { previewMode = true; recordsMode = true; }
+        if (std::string(argv[a]) == "timedrace" && a + 1 < argc) {
+            previewMode = true; recordsMode = true; timedRaceLaps = std::atoi(argv[a + 1]);
+        }
+        if (std::string(argv[a]) == "dashtime") dashTimeMode = true;
         if (std::string(argv[a]) == "maplost") mapLostMode = true;
         if (std::string(argv[a]) == "update")  updateMode = true;
         if (std::string(argv[a]) == "fmx")     fmxMode = true;
@@ -394,7 +404,8 @@ int main(int argc, char** argv) {
             // comes out the neutral grey, which is the single most colourful thing in
             // the row and the one a theme is judged against.
             host.raceEvent("Southwick", /*type=*/2);   // Race
-            host.session(/*session=*/6, /*numLaps=*/10, /*lengthMs=*/0);
+            if (timedRaceLaps > 0) host.session(/*session=*/6, timedRaceLaps, /*lengthMs=*/900000);
+            else                   host.session(/*session=*/6, /*numLaps=*/10, /*lengthMs=*/0);
             struct Rider { int num; const char* name; const char* bike; int best, gap; };
             const Rider grid[] = {
                 { 10, "Wilhelmina",  "Kawasaki KX450 2023",   108900,     0 },
@@ -417,9 +428,33 @@ int main(int argc, char** argv) {
             std::vector<ClassRow> rows;
             for (const Rider& r : grid)
                 rows.push_back({ .num = r.num, .best = r.best, .laps = 2, .gap = r.gap });
-            host.classify(6, 0, rows);
-            host.raceLap(6, 4, 0, 109500, /*best=*/1, /*split0=*/36200, /*split1=*/73000);
-            host.raceLap(6, 4, 1, 108231, /*best=*/2, /*split0=*/35900, /*split1=*/72400);
+            host.classify(6, timedRaceLaps > 0 ? 754000 : 0, rows);   // 12:34 left
+            if (timedRaceLaps > 0) {
+                host.setHudVisible("records_hud", false);
+                host.setHudVisible("time_widget", true);
+                host.setHudVisible("session_widget", true);
+                if (dashTimeMode) {
+                    host.setHudVisible("timing_hud", false);
+                    host.noticesSetVisible(false);
+                    host.setHudVisible("dash_hud", true);
+                    // From the Laps page to the Time page, which is off by default: pair
+                    // with EXTRA_INI=$'[DashHud]\nnotice_takeover=0\npage=laps\npage_time=1'.
+                    // The first step only clears the first-step hint over the page.
+                    for (int i = 0; i < 2; ++i) {
+                        host.injectHotkey("dash_next");
+                        host.drawWithState(0);
+                        host.drawWithState(0);
+                    }
+                } else {
+                    host.setHudVisible("timing_hud", true);
+                    host.timingReadouts(1u << 2 | 1u << 3);   // READOUT_TIME | READOUT_SESSION
+                }
+            }
+            // Not under "dashtime": the PB they set holds the Dash on its notice.
+            if (!dashTimeMode) {
+                host.raceLap(6, 4, 0, 109500, /*best=*/1, /*split0=*/36200, /*split1=*/73000);
+                host.raceLap(6, 4, 1, 108231, /*best=*/2, /*split0=*/35900, /*split1=*/72400);
+            }
         } else {
             host.session(1, 0, 0);
             host.runInit(1);
@@ -618,7 +653,7 @@ int main(int argc, char** argv) {
     // menu, the pointer) renders on the companion window we screenshot — it never
     // takes focus, so it's never the foreground-derived active surface under Wine.
     host.forceActiveSurface(1);
-    const int drawState = dashMode ? 0 : 1;   // ON_TRACK for the Dash's Fuel rows
+    const int drawState = (dashMode || dashTimeMode) ? 0 : 1;   // ON_TRACK for the Dash's Fuel rows
     host.drawWithState(drawState);
 
     // "toggles N": the mouse stand-in over the Toggles strip's row N, so the capture

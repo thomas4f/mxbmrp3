@@ -125,10 +125,10 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
             // text there reads as the log repeating itself, and "Final lap"
             // stops describing the second one.
             if (psRaceLap->raceNum == data.getDisplayRaceNum()) {
-                data.addEventLogEntry(EventLogType::FinalLap, "Your final lap",
+                data.addEventLogEntry(EventLogType::FinalLap, N_("Your final lap"),
                                       nullptr, -1, psRaceLap->raceNum);
             } else if (data.getPositionForRaceNum(psRaceLap->raceNum) == 1) {
-                data.addEventLogEntry(EventLogType::FinalLap, "Final lap");
+                data.addEventLogEntry(EventLogType::FinalLap, N_("Final lap"));
             }
         }
 
@@ -364,7 +364,7 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
             char lapTimeStr[16];
             PluginUtils::formatLapTime(lapTime, lapTimeStr, sizeof(lapTimeStr));
             data.addEventLogEntry(isAllTimePB ? EventLogType::AllTimePB : EventLogType::SessionPB,
-                                  isAllTimePB ? "All-time PB" : "Session PB", lapTimeStr,
+                                  isAllTimePB ? N_("All-time PB") : N_("Session PB"), lapTimeStr,
                                   -1, raceNum, EventNumbers::lapTime(lapTime));
         }
 
@@ -374,8 +374,8 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
             const char* riderLabel = entry ? entry->formattedRaceNum : "???";
             char lapTimeStr[16];
             PluginUtils::formatLapTime(lapTime, lapTimeStr, sizeof(lapTimeStr));
-            char eventMsg[64];
-            snprintf(eventMsg, sizeof(eventMsg), "%s fastest lap", riderLabel);
+            EventText eventMsg;
+            eventMsg.format(N_("%s fastest lap"), riderLabel);
             data.addEventLogEntry(EventLogType::FastestLap, eventMsg, lapTimeStr, -1, raceNum,
                                   EventNumbers::lapTime(lapTime));
         }

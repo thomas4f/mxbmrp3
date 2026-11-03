@@ -77,7 +77,7 @@ public:
     // whether it saves.
     struct TabToggle {
         int tabId;
-        const char* name;   // getTabName(): static storage
+        const char* name;   // getTabLabel(): as shown, static storage
         const char* icon;   // tabIconName(): static storage, may be nullptr
         bool on;
         bool global;        // in the Global section (else Profile)
@@ -162,7 +162,7 @@ public:
     // "New" marker (WhatsNew::firstTabWithNews), else where it was.
     void showWhatsNew();
     // A tab's sidebar name, for a system toast about it ("Standings hidden").
-    const char* tabTitle(int tabId) const { return getTabName(tabId); }
+    const char* tabTitle(int tabId) const { return getTabLabel(tabId); }
 
     // Persisted active-tab restore. The last-focused tab is saved to the INI
     // ([Profiles] activeTab) and restored on load, so reopening the settings menu lands on
@@ -553,7 +553,7 @@ public:
         template <typename OwnerT, typename EnumT>
         static CycleControl enumMember(OwnerT* owner, EnumT OwnerT::* member,
                                        int count, BaseHud* dirtyHud, const char* const* names = nullptr) {
-            CycleControl c; if (names) c.nameOf = [names](int i) { return std::string(names[i]); };
+            CycleControl c; if (names) c.nameOf = [names](int i) { return std::string(I18n::tr(names[i])); };
             c.get = [owner, member]() { return static_cast<int>(owner->*member); };
             c.set = [owner, member](int v) { owner->*member = static_cast<EnumT>(v); };
             c.count = count;
@@ -814,6 +814,7 @@ public:
     // Lists on the active tab with 3+ states but no names, which therefore still
     // draw as bare arrows instead of a dropdown. Zero on every tab is the rule.
     int testUnnamedListCount() const;
+    void testListNames(std::string& out) const;   // every named list's names, one per line
     // Whether holding a profile arrow auto-repeats. It must not: see the comment
     // on isRepeatableRegionType. Asked by name rather than by passing a
     // ClickRegion::Type across the DLL boundary, where the enum's values are not
@@ -1081,7 +1082,8 @@ private:
     void handleTitleToggleClick(const ClickRegion& region);
     void handleTabClick(const ClickRegion& region);
     void handleCloseButtonClick();
-    const char* getTabName(int tabIndex) const;  // Get display name for a tab
+    const char* getTabName(int tabIndex) const;  // a tab's registry name, English: matched and stored
+    const char* getTabLabel(int tabIndex) const { return I18n::tr(getTabName(tabIndex)); }  // as shown
     // Whether a tab is selectable on this build: a real tab id (0..TAB_COUNT-1) whose
     // game-gated backing HUD is registered. Single source of truth for the tab-list skips
     // and the persisted-tab restore validation, so they can't drift.

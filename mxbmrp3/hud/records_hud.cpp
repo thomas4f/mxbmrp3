@@ -136,7 +136,7 @@ void RecordsHud::joinFetchThread() {
 
 void RecordsHud::buildCategoryList() {
     m_categoryList.clear();
-    m_categoryList.push_back("All");
+    m_categoryList.push_back("All");   // index 0: no filter; shown translated
     m_categoryList.push_back("MX-E OEM");
     m_categoryList.push_back("MX1 OEM");
     m_categoryList.push_back("MX2 OEM");
@@ -157,9 +157,9 @@ int RecordsHud::findCategoryIndex(const char* category) const {
 
 const char* RecordsHud::getCurrentCategoryDisplay() const {
     if (m_categoryIndex >= 0 && m_categoryIndex < static_cast<int>(m_categoryList.size())) {
-        return m_categoryList[m_categoryIndex].c_str();
+        return m_categoryIndex == 0 ? TR("All") : m_categoryList[m_categoryIndex].c_str();
     }
-    return "All";
+    return TR("All");
 }
 
 // ============================================================================
@@ -533,7 +533,7 @@ void RecordsHud::rebuildRenderData() {
     want.contentW = PluginUtils::calculateMonospaceTextWidth(bgWidthChars, dim.fontSize);
     want.sectionH = { sectionHeadingRowHeight(dim) + dim.lineHeightNormal,
                       static_cast<float>(tableRows) * dim.lineHeightNormal };
-    want.captionW = planTitleWidth(dim, "Records", TitleTier::Large);
+    want.captionW = planTitleWidth(dim, TR("Records"), TitleTier::Large);
     want.tier = TitleTier::Large;
     want.buttons = 1;
     // "Compare" (7 chars) plus one char of air each side, as before; the
@@ -552,7 +552,7 @@ void RecordsHud::rebuildRenderData() {
     m_columns = ColumnPositions(contentStartX, m_fScale, m_enabledColumns);
 
     // === Title Row === (the plan's caption row, above currentY)
-    addPlanTitle(plan, "Records",
+    addPlanTitle(plan, TR("Records"),
                  this->getColor(ColorSlot::PRIMARY));
 
     // === Filter section: heading row + the provider/category selectors ===
@@ -597,7 +597,7 @@ void RecordsHud::rebuildRenderData() {
         // the provider name). A single left-justified string spaces correctly in any
         // font (the whole line is muted; the provider is not color-highlighted).
         char footer[128];
-        snprintf(footer, sizeof(footer), "Submit by playing on %s servers",
+        snprintf(footer, sizeof(footer), TR("Submit by playing on %s servers"),
                  RecordsFetcher::getProviderDisplayName(recordsProvider));
         addString(footer, contentStartX, currentY,
                   Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSizeSmall);
@@ -614,7 +614,7 @@ void RecordsHud::addCategoryList(float panelWidth, float panelHeight) {
     entries.count = static_cast<int>(m_categoryList.size());
     entries.current = m_categoryIndex;
     entries.hovered = m_hoveredCategory;
-    entries.nameOf = [this](int i) { return m_categoryList[static_cast<size_t>(i)]; };
+    entries.nameOf = [this](int i) { return i == 0 ? std::string(TR("All")) : m_categoryList[static_cast<size_t>(i)]; };
     std::vector<DropdownList::Rect> rects;
     DropdownList::build(*this, m_categoryAnchor,
         {START_X, START_Y, START_X + panelWidth, START_Y + panelHeight}, entries, dropdownStyle(), rects);
@@ -640,7 +640,7 @@ DropdownList::Style RecordsHud::dropdownStyle() const {
 
 // The provider/category selectors under the Filter heading.
 void RecordsHud::addFilterRow(float contentStartX, float currentY, const ScaledDimensions& dim) {
-    addSectionHeading("Filter", contentStartX, currentY, dim);
+    addSectionHeading(TR("Filter"), contentStartX, currentY, dim);
     currentY += sectionHeadingRowHeight(dim);
     float rowX = contentStartX;
     float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
@@ -700,13 +700,13 @@ void RecordsHud::addCompareButton(const PanelPlan& plan, const ScaledDimensions&
     FetchState state = m_fetchState.load();
     bool isButtonDisabled = !trackAvailable || (isOnCooldown && state != FetchState::FETCHING);
 
-    const char* compareLabel = "Compare";
+    const char* compareLabel = TR("Compare");
     if (state == FetchState::FETCHING) {
         compareLabel = "...";
     } else if (state == FetchState::SUCCESS) {
-        compareLabel = "OK";
+        compareLabel = TR("OK");
     } else if (state == FetchState::FETCH_ERROR) {
-        compareLabel = "Error";
+        compareLabel = TR("Error");
     }
 
     unsigned long compareColor;
@@ -756,9 +756,9 @@ float RecordsHud::addColumnHeaders(float currentY, const ScaledDimensions& dim) 
     if (isColumnEnabled(COL_POS))
         addLabel("P", m_columns.pos, currentY, Justify::LEFT, headerColor, dim);
     if (isColumnEnabled(COL_RIDER))
-        addLabel("Name", m_columns.rider, currentY, Justify::LEFT, headerColor, dim);
+        addLabel(TR("Name"), m_columns.rider, currentY, Justify::LEFT, headerColor, dim);
     if (isColumnEnabled(COL_BIKE))
-        addLabel("Bike", m_columns.bike, currentY, Justify::LEFT, headerColor, dim);
+        addLabel(TR("Bike"), m_columns.bike, currentY, Justify::LEFT, headerColor, dim);
     if (isColumnEnabled(COL_SECTORS)) {
         addLabel("S1", m_columns.sector1, currentY, Justify::LEFT, headerColor, dim);
         addLabel("S2", m_columns.sector2, currentY, Justify::LEFT, headerColor, dim);
@@ -768,9 +768,9 @@ float RecordsHud::addColumnHeaders(float currentY, const ScaledDimensions& dim) 
 #endif
     }
     if (isColumnEnabled(COL_LAPTIME))
-        addLabel("Time", m_columns.laptime, currentY, Justify::LEFT, headerColor, dim);
+        addLabel(TR("Time"), m_columns.laptime, currentY, Justify::LEFT, headerColor, dim);
     if (isColumnEnabled(COL_DATE))
-        addLabel("Date", m_columns.date, currentY, Justify::LEFT, headerColor, dim);
+        addLabel(TR("Date"), m_columns.date, currentY, Justify::LEFT, headerColor, dim);
     currentY += dim.lineHeightNormal;
     return currentY;
 }
@@ -805,7 +805,7 @@ void RecordsHud::buildRecordRows(RowCursor& cur, const std::vector<RecordEntry>&
     bool hasFetched = (currentState == FetchState::SUCCESS || !allRecords.empty());
 
     // Format player's PB date from timestamp (used in all branches)
-    const char* playerName = session.riderName[0] != '\0' ? session.riderName : "You";
+    const char* playerName = session.riderName[0] != '\0' ? session.riderName : TR("You");
     bool hasPlayerPB = (playerPB && playerPB->isValid());
     char playerDateStr[16] = "";
     if (hasPlayerPB && playerPB->timestamp > 0) {
@@ -827,13 +827,13 @@ void RecordsHud::buildRecordRows(RowCursor& cur, const std::vector<RecordEntry>&
         char errorMessage[64];
         if (currentState == FetchState::FETCH_ERROR) {
             if (!lastError.empty()) {
-                snprintf(errorMessage, sizeof(errorMessage), "Compare failed: %s", lastError.c_str());
+                snprintf(errorMessage, sizeof(errorMessage), TR("Compare failed: %s"), lastError.c_str());
             } else {
-                strncpy_s(errorMessage, sizeof(errorMessage), "Compare failed - try again", sizeof(errorMessage) - 1);
+                strncpy_s(errorMessage, sizeof(errorMessage), TR("Compare failed - try again"), sizeof(errorMessage) - 1);
             }
             statusMessage = errorMessage;
         } else if (!hasPlayerPB) {
-            statusMessage = "Click Compare to load records";
+            statusMessage = TR("Click Compare to load records");
         }
         if (statusMessage) {
             // A failed fetch reads NEGATIVE (as the Compare button does in that state);
@@ -852,7 +852,7 @@ void RecordsHud::buildRecordRows(RowCursor& cur, const std::vector<RecordEntry>&
                             playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
         }
         // Show "no records" message - counts as a row to maintain layout
-        addString("No records found for this track/category", contentStartX, currentY,
+        addString(TR("No records found for this track/category"), contentStartX, currentY,
                   Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSize);
         currentY += dim.lineHeightNormal;
         rowsRendered++;

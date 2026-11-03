@@ -10,6 +10,7 @@
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
 #include "../core/records_fetcher.h"
+#include "../core/i18n.h"
 #include <vector>
 #include <string>
 #include <atomic>

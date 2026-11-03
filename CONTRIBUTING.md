@@ -7,10 +7,12 @@ are all welcome.
 
 Open an issue on [GitHub](https://github.com/thomas4f/mxbmrp3/issues) (the
 templates walk you through what to include) or leave a comment on
-[MXB-Mods](https://mxb-mods.com/mxbmrp3/). For crashes, attach the matching
-`.dmp` + `.log` pair from `Documents\PiBoSo\[Game]\mxbmrp3\crashes\` - and
-check [Known MX Bikes Crashes](crash_analysis/KNOWN_GAME_CRASHES.md) first;
-your crash may be a known game-engine bug with no plugin fix possible.
+[MXB-Mods](https://mxb-mods.com/mxbmrp3/). For crashes, attach the `.log`
+from `Documents\PiBoSo\[Game]\mxbmrp3\crashes\` and send its matching `.dmp`
+privately when asked: a dump can contain your Windows user name, computer
+name and recent chat lines. Check
+[Known MX Bikes Crashes](crash_analysis/KNOWN_GAME_CRASHES.md) first; your
+crash may be a known game-engine bug with no plugin fix possible.
 
 **Security issues**: please do NOT open a public issue - see
 [SECURITY.md](SECURITY.md) for private reporting.

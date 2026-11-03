@@ -76,7 +76,7 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
 
     // Helper: format texture variant - "Off" or just the variant number (matches other tabs)
     auto fmtVariant = [](int variant) {
-        if (variant <= 0) return std::string("Off");
+        if (variant <= 0) return std::string(TR("Off"));
         char buf[16];
         snprintf(buf, sizeof(buf), "%d", variant);
         return std::string(buf);
@@ -85,19 +85,19 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
     // ========================================================================
     // HELMET SECTION
     // ========================================================================
-    ctx.addSectionHeading("Helmet");
+    ctx.addSectionHeading(TR("Helmet"));
 
-    ctx.addToggleControl("Visible", hud->m_helmetEnabled,
+    ctx.addToggleControl(TR("Visible"), hud->m_helmetEnabled,
         SettingsHud::ClickRegion::HELMET_HELMET_TOGGLE, hud,
         nullptr, 0, true, "helmet.helmet_enabled");
 
     // Textures: Off, then each variant found -- a dropdown, as every list is.
-    ctx.addCycleControl("Upper texture", fmtVariant(hud->m_helmetUpperVariant).c_str(),
+    ctx.addCycleControl(TR("Upper texture"), fmtVariant(hud->m_helmetUpperVariant).c_str(),
         textureVariantCycle(AssetManager::getInstance().getAvailableVariants(HelmetOverlayHud::TEX_HELMET_UPPER),
             [hud]() { return hud->m_helmetUpperVariant; },
             [hud](int v) { hud->setHelmetUpperVariant(v); }, hud),
         hud, true, hud->m_helmetUpperVariant == 0, "helmet.upper_tex");
-    ctx.addCycleControl("Lower texture", fmtVariant(hud->m_helmetLowerVariant).c_str(),
+    ctx.addCycleControl(TR("Lower texture"), fmtVariant(hud->m_helmetLowerVariant).c_str(),
         textureVariantCycle(AssetManager::getInstance().getAvailableVariants(HelmetOverlayHud::TEX_HELMET_LOWER),
             [hud]() { return hud->m_helmetLowerVariant; },
             [hud](int v) { hud->setHelmetLowerVariant(v); }, hud),
@@ -107,16 +107,16 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
     {
         char buf[16];
         snprintf(buf, sizeof(buf), "%d%%", static_cast<int>(std::round(100.0f * (1.0f + hud->m_helmetZoom))));
-        ctx.addSteppedControl("Zoom", buf,
+        ctx.addSteppedControl(TR("Zoom"), buf,
             SettingsHud::SteppedControl::stepFloat(&hud->m_helmetZoom, 0.01f,
                 -HelmetOverlayHud::MAX_OVERLAY_ZOOM, HelmetOverlayHud::MAX_OVERLAY_ZOOM, hud),
             hud, true, false, "helmet.zoom");
     }
-    ctx.addSteppedControl("Upper offset", fmtOffset(hud->m_helmetUpperOffsetY).c_str(),
+    ctx.addSteppedControl(TR("Upper offset"), fmtOffset(hud->m_helmetUpperOffsetY).c_str(),
         SettingsHud::SteppedControl::stepFloat(&hud->m_helmetUpperOffsetY, 0.01f,
             -HelmetOverlayHud::MAX_HELMET_OFFSET_Y, HelmetOverlayHud::MAX_HELMET_OFFSET_Y, hud),
         hud, true, false, "helmet.upper_offset");
-    ctx.addSteppedControl("Lower offset", fmtOffset(hud->m_helmetLowerOffsetY).c_str(),
+    ctx.addSteppedControl(TR("Lower offset"), fmtOffset(hud->m_helmetLowerOffsetY).c_str(),
         SettingsHud::SteppedControl::stepFloat(&hud->m_helmetLowerOffsetY, 0.01f,
             -HelmetOverlayHud::MAX_HELMET_OFFSET_Y, HelmetOverlayHud::MAX_HELMET_OFFSET_Y, hud),
         hud, true, false, "helmet.lower_offset");
@@ -124,7 +124,7 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
     // ========================================================================
     // EFFECTS SECTION
     // ========================================================================
-    ctx.addSectionHeading("Effects");
+    ctx.addSectionHeading(TR("Effects"));
 
     // Tilt and vibration move the helmet art alone: moot while it is not
     // drawn (Helmet > Visible, or the tab switched off), so greyed out as the
@@ -135,37 +135,37 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
     auto fmtSigned = [](float value) {
         char buf[16];
         const int pct = static_cast<int>(std::round(value * 100.0f));
-        if (pct == 0) snprintf(buf, sizeof(buf), "Off");
+        if (pct == 0) snprintf(buf, sizeof(buf), "%s", TR("Off"));
         else snprintf(buf, sizeof(buf), "%+d%%", pct);
         return std::string(buf);
     };
-    ctx.addSteppedControl("Tilt strength", fmtSigned(hud->m_helmetTiltStrength).c_str(),
+    ctx.addSteppedControl(TR("Tilt strength"), fmtSigned(hud->m_helmetTiltStrength).c_str(),
         SettingsHud::SteppedControl::stepFloat(&hud->m_helmetTiltStrength, 0.01f, -1.0f, 1.0f, hud),
         hud, helmetOn, std::round(hud->m_helmetTiltStrength * 100.0f) == 0.0f, "helmet.tilt");
-    ctx.addSteppedControl("Vibration strength", fmtSigned(hud->m_helmetVibrationStrength).c_str(),
+    ctx.addSteppedControl(TR("Vibration strength"), fmtSigned(hud->m_helmetVibrationStrength).c_str(),
         SettingsHud::SteppedControl::stepFloat(&hud->m_helmetVibrationStrength, 0.01f, -1.0f, 1.0f, hud),
         hud, helmetOn, std::round(hud->m_helmetVibrationStrength * 100.0f) == 0.0f, "helmet.vibration");
-    ctx.addSteppedControl("Vibration sensitivity", fmtPct(hud->m_helmetVibrationSensitivity).c_str(),
+    ctx.addSteppedControl(TR("Vibration sensitivity"), fmtPct(hud->m_helmetVibrationSensitivity).c_str(),
         SettingsHud::SteppedControl::stepFloat(&hud->m_helmetVibrationSensitivity, 0.01f, 0.0f, 1.0f, hud),
         hud, helmetOn, hud->m_helmetVibrationSensitivity <= 0.0f, "helmet.vib_sensitivity");
 
     // ========================================================================
     // IMPACT SECTION
     // ========================================================================
-    ctx.addSectionHeading("Impact");
+    ctx.addSectionHeading(TR("Impact"));
 
     // Impact vignette: its own HUD (core/impact_vignette.h), shown while this
     // tab is on, with or without the helmet art, as the visor.
     {
         const int pct = static_cast<int>(std::lround(UiConfig::getInstance().getImpactVignette() * 100.0f));
         char value[8];
-        if (pct == 0) snprintf(value, sizeof(value), "Off");
+        if (pct == 0) snprintf(value, sizeof(value), "%s", TR("Off"));
         else snprintf(value, sizeof(value), "%d%%", pct);
         SettingsHud::SteppedControl vignette = SettingsHud::SteppedControl::accessor(
                 [] { return UiConfig::getInstance().getImpactVignette(); },
                 [](float v) { UiConfig::getInstance().setImpactVignette(v); },
                 ImpactVignette::STRENGTH_STEP, 0.0f, ImpactVignette::STRENGTH_MAX, nullptr);
-        ctx.addSteppedControl("Impact vignette", value, vignette, nullptr, true, pct == 0,
+        ctx.addSteppedControl(TR("Impact vignette"), value, vignette, nullptr, true, pct == 0,
                               "helmet.impact_vignette");
 
         // Moot while the vignette is Off: greyed out, like the visor tint.
@@ -177,17 +177,17 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
                 [] { return UiConfig::getInstance().getImpactVignetteFade(); },
                 [](float v) { UiConfig::getInstance().setImpactVignetteFade(v); },
                 ImpactVignette::FADE_STEP_S, ImpactVignette::FADE_MIN_S, ImpactVignette::FADE_MAX_S, nullptr);
-        ctx.addSteppedControl("Vignette fade", fade, fadeControl, nullptr, pct != 0, false,
+        ctx.addSteppedControl(TR("Vignette fade"), fade, fadeControl, nullptr, pct != 0, false,
                               "helmet.impact_vignette_fade");
     }
 
     // ========================================================================
     // VISOR SECTION
     // ========================================================================
-    ctx.addSectionHeading("Visor");
+    ctx.addSectionHeading(TR("Visor"));
 
     {
-        static const char* const kModes[] = { "Off", "Goggles", "Visor" };
+        static const char* const kModes[] = { N_("Off"), N_("Goggles"), N_("Visor") };
         static_assert(sizeof(kModes) / sizeof(kModes[0]) == HelmetOverlayHud::VISOR_MODE_COUNT,
                       "one name per visor mode");
         SettingsHud::CycleControl mode = SettingsHud::CycleControl::enumMember(
@@ -196,17 +196,17 @@ BaseHud* SettingsHud::renderTabHelmet(SettingsLayoutContext& ctx) {
         mode.postStep = [hud]() {
             if (hud->m_visorMode != HelmetOverlayHud::VISOR_OFF && !hud->isVisible()) hud->setVisible(true);
         };
-        ctx.addCycleControl("Mode", cycleName(kModes, hud->m_visorMode), mode,
+        ctx.addCycleControl(TR("Mode"), cycleName(kModes, hud->m_visorMode), mode,
             hud, true, false, "helmet.visor_mode");
     }
 
     // Tint does nothing without a visor: greyed out like any row whose setting
     // is moot, not drawn as an "Off" value.
     const bool visorOff = (hud->m_visorMode == HelmetOverlayHud::VISOR_OFF);
-    ctx.addSteppedControl("Tint opacity", fmtPct(hud->m_visorTintOpacity).c_str(),
+    ctx.addSteppedControl(TR("Tint opacity"), fmtPct(hud->m_visorTintOpacity).c_str(),
         SettingsHud::SteppedControl::stepFloat(&hud->m_visorTintOpacity, 0.01f, 0.0f, 1.0f, hud),
         hud, !visorOff, false, "helmet.visor_tint_opacity");
-    ctx.addCycleControl("Tint color", ColorPalette::getColorName(hud->m_visorTintColor),
+    ctx.addCycleControl(TR("Tint color"), I18n::tr(ColorPalette::getColorName(hud->m_visorTintColor)),
         paletteCycle([hud]() { return hud->m_visorTintColor; },
                      [hud](unsigned long c) { hud->m_visorTintColor = c; }, hud),
         hud, !visorOff, false, "helmet.visor_tint_color");

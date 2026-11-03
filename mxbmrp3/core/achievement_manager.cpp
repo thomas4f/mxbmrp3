@@ -87,8 +87,8 @@ void AchievementManager::onStatsLoaded() {
         return;
     }
     Toast t;
-    snprintf(t.title, sizeof(t.title), "%d achievements unlocked", granted.rows);   // rows >= 2 here
-    snprintf(t.detail, sizeof(t.detail), "See Settings > Achievements");
+    snprintf(t.title, sizeof(t.title), TR("%d achievements unlocked"), granted.rows);   // rows >= 2 here
+    snprintf(t.detail, sizeof(t.detail), "%s", TR("See Settings > Achievements"));
     snprintf(t.icon, sizeof(t.icon), "award");
     enqueue(t);
 }
@@ -288,10 +288,10 @@ void AchievementManager::queueTierToast(const Entry& entry, int tier) {
     Toast t;
     // A one-shot has no metal: the title alone, in the plain colour.
     if (isOneShot(entry)) {
-        snprintf(t.title, sizeof(t.title), "%s", entry.title);
+        snprintf(t.title, sizeof(t.title), "%s", I18n::trCached(entry.title));
         t.tier = 0;
     } else {
-        snprintf(t.title, sizeof(t.title), "%s - %s", entry.title, tierName(tier));
+        snprintf(t.title, sizeof(t.title), "%s - %s", I18n::trCached(entry.title), I18n::trCached(tierName(tier)));
         t.tier = tier;
     }
     formatDescription(entry, tier, t.detail, sizeof(t.detail));
@@ -302,7 +302,8 @@ void AchievementManager::queueTierToast(const Entry& entry, int tier) {
 
 void AchievementManager::queueHalfwayToast(const Entry& entry, int targetTier, double value) {
     Toast t;
-    snprintf(t.title, sizeof(t.title), "%s - halfway to %s", entry.title, tierName(targetTier));
+    snprintf(t.title, sizeof(t.title), TR("%s - halfway to %s"), I18n::trCached(entry.title),
+             I18n::trCached(tierName(targetTier)));
     formatProgress(entry, value, t.detail, sizeof(t.detail));
     snprintf(t.icon, sizeof(t.icon), "%s", entry.icon ? entry.icon : "");
     t.tier = targetTier;

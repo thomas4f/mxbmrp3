@@ -140,6 +140,14 @@ jobs:
       - name: Vendored manifest matches vendored sources
         run: python3 tools/check_vendored_manifest.py
 
+      # The translation template (mxbmrp3_data/languages/template.pot) must be
+      # current with every TR() in the source, and every shipped language pack
+      # must pass msgfmt --check. See core/i18n.h.
+      - name: Translation template is current
+        run: |
+          ./tools/install_deps.sh gettext
+          ./tools/i18n/pot.sh
+
 
       # Line coverage for the pure-logic layer only — the production code
       # actually linked into the unit binary. Scoped by design: the DLL-boundary
@@ -481,6 +489,10 @@ jobs:
         run: ./tests/integration/check_hud_raw_cache.sh
       - name: HUD raw-data caching lint (self-test)
         run: ./tests/integration/check_hud_raw_cache.sh --self-test
+      - name: Folder-name literal lint
+        run: ./tests/integration/check_name_literals.sh
+      - name: Folder-name literal lint (self-test)
+        run: ./tests/integration/check_name_literals.sh --self-test
 
       # onDataChanged-consumer lint: DataChangeType::Standings fires many times
       # per second on a full grid, so every consumer definition must state its

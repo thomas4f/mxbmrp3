@@ -3,6 +3,7 @@
 // Friends HUD - renders the SteamFriendsManager roster as a table.
 // ============================================================================
 #include "friends_hud.h"
+#include "../core/i18n.h"
 #include "default_slots.h"
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
@@ -76,15 +77,6 @@ void FriendsHud::update() {
     processDirtyFlags();
 }
 
-const char* FriendsHud::getShowModeName(ShowMode mode) {
-    switch (mode) {
-        case ShowMode::ALWAYS:       return "Always";
-        case ShowMode::WITH_FRIENDS: return "Friends";
-        case ShowMode::ON_JOIN:      return "On join";
-        default:                     return "Unknown";
-    }
-}
-
 int FriendsHud::getBackgroundWidthChars() const {
     int w = COL_BADGE_W + COL_NAME_W;  // Name + badge always shown
     if (isColumnEnabled(COL_SERVER)) w += COL_SERVER_W;
@@ -154,22 +146,22 @@ void FriendsHud::rebuildRenderData() {
     // until it is fixed -- so it reads NEGATIVE with a hint naming the fix, like
     // "Controller N Not Connected" and "Stream chat off". A real empty roster is not a
     // fault: MUTED, no hint.
-    const char* kTitle = "Friends";
+    const char* kTitle = TR("Friends");
     const char* noticeMsg = nullptr;
     const char* noticeHint = nullptr;
     ColorSlot noticeSlot = ColorSlot::MUTED;
     if (empty) {
         const SteamFriendsManager& mgr = SteamFriendsManager::getInstance();
         if (!mgr.isEnabled()) {
-            noticeMsg  = "Steam integration off";
-            noticeHint = "Check MXBMRP3 Settings > General";
+            noticeMsg  = TR("Steam integration off");
+            noticeHint = TR("Check MXBMRP3 Settings > General");
             noticeSlot = ColorSlot::NEGATIVE;
         } else if (mgr.getStatus() != SteamFriendsManager::Status::CONNECTED) {
-            noticeMsg  = "Steam not available";
-            noticeHint = "Launch the game via Steam";
+            noticeMsg  = TR("Steam not available");
+            noticeHint = TR("Launch the game via Steam");
             noticeSlot = ColorSlot::NEGATIVE;
         } else {
-            noticeMsg  = "No friends in-game";
+            noticeMsg  = TR("No friends in-game");
         }
     }
 
@@ -262,11 +254,11 @@ void FriendsHud::rebuildRenderData() {
     if (m_bShowHeaders) {
         // addLabel: Small font size, row-centered - the column-header
         // convention used by StandingsHud/LapLogHud/etc.
-        addLabel("Name", xName, currentY, Justify::LEFT, colHeader, dim);
-        if (xServer >= 0) addLabel("Server", xServer, currentY, Justify::LEFT, colHeader, dim);
-        if (xTrack  >= 0) addLabel("Track",  xTrack,  currentY, Justify::LEFT, colHeader, dim);
-        if (xInfo   >= 0) addLabel("Info",   xInfo,   currentY, Justify::LEFT, colHeader, dim);
-        if (xTimer  >= 0) addLabel("Timer",  xTimer,  currentY, Justify::LEFT, colHeader, dim);
+        addLabel(TR("Name"), xName, currentY, Justify::LEFT, colHeader, dim);
+        if (xServer >= 0) addLabel(TR("Server"), xServer, currentY, Justify::LEFT, colHeader, dim);
+        if (xTrack  >= 0) addLabel(TR("Track"),  xTrack,  currentY, Justify::LEFT, colHeader, dim);
+        if (xInfo   >= 0) addLabel(TR("Info"),   xInfo,   currentY, Justify::LEFT, colHeader, dim);
+        if (xTimer  >= 0) addLabel(TR("Timer"),  xTimer,  currentY, Justify::LEFT, colHeader, dim);
         currentY += dim.lineHeightNormal;
     }
 

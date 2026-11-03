@@ -7,10 +7,11 @@
 // definition without ODR conflicts.
 // ============================================================================
 #pragma once
+#include "plugin_names.h"
 
 namespace SettingsInternal {
 
-inline constexpr const char* SETTINGS_SUBDIRECTORY = "mxbmrp3";
+inline constexpr const char* SETTINGS_SUBDIRECTORY = MXB_USER_DIR_NAME;
 inline constexpr const char* SETTINGS_FILENAME = "mxbmrp3_settings.ini";
 
 // Settings format version - bump this when making incompatible changes

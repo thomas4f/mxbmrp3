@@ -135,6 +135,7 @@ on violations - run them before pushing anything they cover:
 ./tests/integration/check_clang_tidy.sh       # clang-tidy: use-after-move + clang -Wthread-safety (minutes)
 ./tests/integration/check_title_tier.sh       # a full HUD's caption asks for the Large tier
 ./tests/integration/check_hud_raw_cache.sh    # raw Unified:: members cached in a HUD
+./tests/integration/check_name_literals.sh    # the mxbmrp3 / mxbmrp3_data folder names spelled outside plugin_names.h
 ./tests/integration/check_change_consumers.sh # onDataChanged consumers state their change-gate
 ./tests/integration/check_test_hook_placement.sh # MXBMRP3_Test_* code only in test_hooks.cpp
 ./tests/integration/check_thread_join.sh      # std::thread members name their Shutdown-path join

@@ -334,7 +334,7 @@ SettingsHud::CycleControl textureVariantCycle(std::vector<int> variants, std::fu
                                               std::function<void(int)> set, BaseHud* dirtyHud) {
     variants.insert(variants.begin(), 0);   // Off first
     return valueListCycle(std::move(variants), std::move(get), std::move(set),
-        [](int v) { return v <= 0 ? std::string("Off") : std::to_string(v); }, dirtyHud);
+        [](int v) { return v <= 0 ? std::string(TR("Off")) : std::to_string(v); }, dirtyHud);
 }
 
 SettingsHud::CycleControl paletteCycle(std::function<unsigned long()> get,
@@ -344,7 +344,7 @@ SettingsHud::CycleControl paletteCycle(std::function<unsigned long()> get,
     c.get = [get]() { return std::max(0, ColorPalette::getColorIndex(get())); };
     c.set = [set](int i) { set(ColorPalette::ALL_COLORS[static_cast<size_t>(i)]); };
     c.nameOf = [](int i) {
-        return std::string(ColorPalette::getColorName(ColorPalette::ALL_COLORS[static_cast<size_t>(i)]));
+        return std::string(I18n::tr(ColorPalette::getColorName(ColorPalette::ALL_COLORS[static_cast<size_t>(i)])));
     };
     c.swatchOf = [](int i) { return ColorPalette::ALL_COLORS[static_cast<size_t>(i)]; };
     c.dirtyHud = dirtyHud;
@@ -411,8 +411,8 @@ SettingsHud::CycleControl SettingsHud::themeOverrideCycle(BaseHud* hud) {
         else hud->setThemeOverride(themes[static_cast<size_t>(i) - 2].name);
     };
     c.nameOf = [](int i) {
-        if (i <= 0) return std::string("Default");
-        if (i == 1) return std::string("None");
+        if (i <= 0) return std::string(TR("Default"));
+        if (i == 1) return std::string(TR("None"));
         return AssetManager::getInstance().getThemes()[static_cast<size_t>(i) - 2].displayName;
     };
     c.postStep = []() { HudManager::getInstance().requestPositionValidation(); };

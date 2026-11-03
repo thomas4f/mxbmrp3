@@ -4,6 +4,7 @@
 // diagram, styled to match the FMX HUD combo-arc meter.
 // ============================================================================
 #include "gforce_widget.h"
+#include "../core/i18n.h"
 #include "severity_ramp.h"
 
 #include <cstdio>
@@ -150,7 +151,7 @@ void GForceWidget::rebuildRenderData() {
     PanelWant want;
     want.contentW = contentWidth;
     want.sectionH = { gaugeAreaHeight };
-    want.captionW = planTitleWidth(dim, "G-Force");
+    want.captionW = planTitleWidth(dim, TR("G-Force"));
     PanelPlan& p = planPanel(dim, want);
     const float backgroundWidth = p.width();
     const float backgroundHeight = p.height();
@@ -163,7 +164,7 @@ void GForceWidget::rebuildRenderData() {
     float innerRadius = ringMidRadius - arcThickness * 0.5f;
 
     addPlanBackground(p, startX, startY);
-    addPlanTitle(p, "G-Force",
+    addPlanTitle(p, TR("G-Force"),
         this->getColor(ColorSlot::PRIMARY));
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 

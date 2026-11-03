@@ -22,7 +22,11 @@
 //   - a pitboard skin that brings its own art gets THAT art's seeded size;
 //   - a base that is missing, or is itself a skin, rejects the pack whole --
 //     no half-registered pack, and the by-name degradation covers rendering;
-//   - a standalone pack still requires the full set (the old rule, untouched).
+//   - a standalone pack still requires the full set (the old rule, untouched);
+//   - art over hudassets::kMaxTexDim counts as absent: a standalone pack is
+//     skipped and a skin's own oversized file is never registered, so the game
+//     never loads it (a tiny RLE .tga can declare 4096+ px; see
+//     test_render_asset_decode_mips.cpp for the decoder half).
 // ============================================================================
 #include "doctest.h"
 #include "integration_main.h"
@@ -206,6 +210,33 @@ TEST_CASE("a base that is missing or is itself a skin rejects the pack whole") {
     // (staged before startup would be cleaner, but the point holds: it was
     // never staged with a full set, and it declared no base)
     CHECK(host.gamepadStemSource("partial", kBackground) == -1);
+
+    host.shutdown();
+}
+
+TEST_CASE("art over the size cap: the pack is skipped, a skin's own file is never registered") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    StagedTree tree("oversize");
+    stageBasePad(host, tree.pads(), "basepad", 900.0f);
+
+    // A complete standalone pack whose background declares 4097 px: the header
+    // is all discovery reads, which is exactly how a few-KB RLE file would ask.
+    stageBasePad(host, tree.pads(), "bigpad", 900.0f);
+    writeTga(tree.pads() + "\\bigpad\\background.tga", 4097, 8);
+
+    // A skin whose ONE own file is oversized resolves that stem from its base
+    // instead -- the oversized file is not registered, so the game never loads it.
+    const std::string skin = tree.pads() + "\\bigskin";
+    makeDirs(skin);
+    writeTga(skin + "\\background.tga", 8, 4097);
+    writeText(skin + "\\bigskin.ini", "[pack]\nbase = basepad\n");
+
+    host.startup((tree.cwd + "\\save\\").c_str());
+
+    CHECK(host.gamepadStemSource("basepad", kBackground) == 0);
+    CHECK(host.gamepadStemSource("bigpad", kBackground) == -1);    // skipped whole
+    CHECK(host.gamepadStemSource("bigskin", kBackground) == 1);    // from the base
 
     host.shutdown();
 }

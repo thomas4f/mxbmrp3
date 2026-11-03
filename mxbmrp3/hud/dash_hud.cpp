@@ -50,28 +50,28 @@ constexpr float NAME_HOLD_MS = 600.0f;
 struct PageInfo {
     const char* key; const char* enabledKey; const char* icon; const char* name; const char* mark; const char* title;
 };
-// The longest title, which the panel is planned for, so stepping never
-// changes its width.
-constexpr const char* WIDEST_TITLE = "Dash: Delta Trace";
 constexpr PageInfo kPages[static_cast<int>(DashHud::Page::COUNT)] = {
-    { "standings", "page_standings", "hud-standings", "Standings", "ST", "Dash: Standings" },
-    { "timing",  "page_timing",  "hud-timing",    "Timing", "TI", "Dash: Timing" },
-    { "laps",    "page_laps",    "hud-laplog",    "Laps", "LA", "Dash: Laps" },
-    { "time",    "page_time",    "hud-clock",     "Time", "CL", "Dash: Time" },
-    { "fuel",    "page_fuel",    "hud-fuel",      "Fuel", "FU", "Dash: Fuel" },
-    { "gapbar",  "page_gapbar",  "hud-gapbar",    "Gap Bar", "GB", "Dash: Gap Bar" },
-    { "flatmap", "page_flatmap", "hud-flatmap",   "Flat Map", "FM", "Dash: Flat Map" },
-    { "ideal",   "page_ideal",   "hud-ideallap",  "Ideal", "ID", "Dash: Ideal" },
-    { "rpm",     "page_rpm",     "hud-gauge",     "RPM", "RP", "Dash: RPM" },
-    { "deltatrace", "page_deltatrace", "hud-deltatrace", "Delta Trace", "DT", "Dash: Delta Trace" },
-    { "gapchart", "page_gapchart", "hud-sessioncharts", "Gap Chart", "GC", "Dash: Gap Chart" },
-    { "session", "page_session", "hud-session", "Session", "SE", "Dash: Session" },
-    { "telemetry", "page_telemetry", "hud-telemetry", "Telemetry", "TE", "Dash: Telemetry" },
-    { "eventlog", "page_eventlog", "hud-eventlog", "Event Log", "EL", "Dash: Event Log" },
-    { "nowplaying", "page_nowplaying", "hud-nowplaying", "Now Playing", "NP", "Dash: Now Playing" },
+    { "standings", "page_standings", "hud-standings", N_("Standings"), "ST", N_("Dash: Standings") },
+    { "timing",  "page_timing",  "hud-timing",    N_("Timing"), "TI", N_("Dash: Timing") },
+    { "laps",    "page_laps",    "hud-laplog",    N_("Laps"), "LA", N_("Dash: Laps") },
+    { "time",    "page_time",    "hud-clock",     N_("Time"), "CL", N_("Dash: Time") },
+    { "fuel",    "page_fuel",    "hud-fuel",      N_("Fuel"), "FU", N_("Dash: Fuel") },
+    { "gapbar",  "page_gapbar",  "hud-gapbar",    N_("Gap Bar"), "GB", N_("Dash: Gap Bar") },
+    { "flatmap", "page_flatmap", "hud-flatmap",   N_("Flat Map"), "FM", N_("Dash: Flat Map") },
+    { "ideal",   "page_ideal",   "hud-ideallap",  N_("Ideal"), "ID", N_("Dash: Ideal") },
+    { "rpm",     "page_rpm",     "hud-gauge",     N_("RPM"), "RP", N_("Dash: RPM") },
+    { "deltatrace", "page_deltatrace", "hud-deltatrace", N_("Delta Trace"), "DT", N_("Dash: Delta Trace") },
+    { "gapchart", "page_gapchart", "hud-sessioncharts", N_("Gap Chart"), "GC", N_("Dash: Gap Chart") },
+    { "session", "page_session", "hud-session", N_("Session"), "SE", N_("Dash: Session") },
+    { "telemetry", "page_telemetry", "hud-telemetry", N_("Telemetry"), "TE", N_("Dash: Telemetry") },
+    { "eventlog", "page_eventlog", "hud-eventlog", N_("Event Log"), "EL", N_("Dash: Event Log") },
+    { "nowplaying", "page_nowplaying", "hud-nowplaying", N_("Now Playing"), "NP", N_("Dash: Now Playing") },
     // Not in the cycle: only up while a notice holds the card.
-    { "notices", nullptr,        "hud-notices",   "Notices", "NO", "Dash: Notices" },
+    { "notices", nullptr,        "hud-notices",   N_("Notices"), "NO", N_("Dash: Notices") },
 };
+// A page's name or title as shown, cached per language. The panel is planned for
+// the widest title in the language shown, so stepping never changes its width.
+const char* pageText(int i, bool title) { static I18n::Slot s[2][static_cast<int>(DashHud::Page::COUNT)] = {}; return I18n::trEntry(s[title ? 1 : 0][i], title ? kPages[i].title : kPages[i].name); }
 // Every page icon is an identity icon (assets/icons/README.md): a flat hud-*
 // one, never the outlined status/marker set.
 constexpr bool identityIcons() {
@@ -487,11 +487,11 @@ void DashHud::rebuildRenderData() {
             want.sectionH = { pageH, dim.lineHeightNormal };
         }
     }
-    // A HUD's caption, at the large tier, as the Timing HUD's, with room for
-    // the longest reference note so stepping pages never changes the width.
-    want.captionW = planTitleWidth(dim, WIDEST_TITLE, TitleTier::Large)
-                  + planTitleNoteWidth(dim, PbGapTracker::refName(PbGapTracker::Ref::ALLTIME_PB));
-    want.tier = TitleTier::Large;
+    // Large-tier caption, as wide as the widest page title + reference note shown: stepping never resizes.
+    float titleW = 0.0f, noteW = 0.0f;
+    for (int i = 0; i < static_cast<int>(Page::COUNT); ++i) { titleW = std::max(titleW, planTitleWidth(dim, pageText(i, true), TitleTier::Large)); }
+    for (int r = 0; r < PbGapTracker::REF_COUNT; ++r) { noteW = std::max(noteW, planTitleNoteWidth(dim, HudDefaults::refLabel(static_cast<PbGapTracker::Ref>(r)))); }
+    want.captionW = titleW + noteW; want.tier = TitleTier::Large;
     PanelPlan& p = planPanel(dim, want);
     if (stripSide) {
         // THE TWO CARDS ONE HEIGHT: the panel's rounding remainder goes to one
@@ -522,7 +522,7 @@ void DashHud::rebuildRenderData() {
     const float top = 0.0f;
     addPlanBackground(p, 0.0f, top);
     // The page up named after the HUD's own name ("Dash: Timing").
-    addPlanTitle(p, kPages[static_cast<int>(m_page) % static_cast<int>(Page::COUNT)].title,
+    addPlanTitle(p, pageText(static_cast<int>(m_page) % static_cast<int>(Page::COUNT), true),
                  getColor(ColorSlot::PRIMARY));
     // The page's rows run between its content edges; centred values sit on its
     // card (PanelPlan::sectionBoxCenterX).
@@ -669,9 +669,9 @@ void DashHud::rebuildRenderData() {
                 // / "CHECKERED" in a timed race's extra laps), as the Timing HUD's
                 // Time readout and the Standings title, so all three agree.
                 m_shownSession = readSessionClock();
-                char text[16];
-                PluginUtils::formatSessionClock(m_shownSession.lapsToGo,
-                                                PluginData::getInstance().getSessionTime(), text, sizeof(text));
+                char text[PluginUtils::SESSION_CLOCK_CHARS];
+                PluginUtils::formatSessionClock(m_shownSession.lapsToGo, PluginData::getInstance().getSessionTime(),
+                                                m_shownSession.lapsAfterClock, text, sizeof(text), true);
                 addString(text, pageCenterX, largeY, Justify::CENTER, digits, primary, dim.fontSizeLarge);
                 break;
             }
@@ -689,9 +689,9 @@ void DashHud::rebuildRenderData() {
                 const unsigned long labelColor = getColor(ColorSlot::TERTIARY);
                 const int idealMs = m_shownIdeal.idealMs;
                 const struct { const char* label; int ms; bool isIdeal; } rows[] = {
-                    { "Last", m_shownIdeal.lastMs, false },
-                    { "Best", m_shownIdeal.bestMs, false },
-                    { "Ideal", idealMs, true },
+                    { TR("Last"), m_shownIdeal.lastMs, false },
+                    { TR("Best"), m_shownIdeal.bestMs, false },
+                    { TR("Ideal"), idealMs, true },
                 };
                 for (int r = 0; r < 3; ++r) {
                     const float y = contentY + dim.lineHeightNormal * static_cast<float>(r);
@@ -761,7 +761,7 @@ void DashHud::rebuildRenderData() {
                 const float valueRight = rowR;
                 const unsigned long* ink = m_shownStyle.fuelInk;   // the widget's
                 const unsigned long valueColor = ink[0], fuelMuted = ink[1], labelColor = ink[2];
-                static constexpr const char* kLabels[FUEL_ROWS] = { "Fuel", "Used", "Per lap", "Laps left" };
+                const char* const kLabels[FUEL_ROWS] = { TR("Fuel"), TR("Used"), TR("Per lap"), TR("Laps left") };
                 static constexpr uint32_t kBits[FUEL_ROWS] = {
                     FuelWidget::ROW_FUEL, FuelWidget::ROW_USED, FuelWidget::ROW_AVG, FuelWidget::ROW_EST };
                 const char* unit = m_shownFuel.unit == static_cast<int>(FuelWidget::FuelUnit::GALLONS) ? "g" : "L";
@@ -873,7 +873,7 @@ void DashHud::rebuildRenderData() {
         if (hint) {
             addStepHint(pageCenterX, rowW, contentY, dim, alpha);
         } else if (nameAlpha > 0.0f) {
-            addString(kPages[static_cast<int>(page) % static_cast<int>(Page::COUNT)].name, pageCenterX, largeY,
+            addString(pageText(static_cast<int>(page) % static_cast<int>(Page::COUNT), false), pageCenterX, largeY,
                       Justify::CENTER, getFont(FontCategory::TITLE), Motion::scaleAlpha(primary, alpha * nameAlpha),
                       dim.fontSizeLarge);
         }

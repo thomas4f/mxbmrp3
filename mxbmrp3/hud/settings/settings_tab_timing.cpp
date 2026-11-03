@@ -57,13 +57,13 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("timing");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeading("Appearance");
+    ctx.addSectionHeading(TR("Appearance"));
     ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
-    ctx.addSectionHeading("Layout");
+    ctx.addSectionHeading(TR("Layout"));
 
     // Show mode: Splits (only after crossing splits) or Always
-    const char* showValue = (hud->m_displayMode == ColumnMode::ALWAYS) ? "Always" : "At splits";
+    const char* showValue = (hud->m_displayMode == ColumnMode::ALWAYS) ? TR("Always") : TR("At splits");
     // Two-state cycle over {SPLITS, ALWAYS}: ColumnMode also has OFF, which
     // this control never selects, so the get/set lambdas map the pair onto a
     // 0/1 index instead of cycling the raw enum range.
@@ -73,12 +73,12 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
         showCycle.set = [hud](int v) { hud->m_displayMode = v ? ColumnMode::ALWAYS : ColumnMode::SPLITS; };
         showCycle.count = 2;
         showCycle.dirtyHud = hud;
-        ctx.addCycleControl("Show mode", showValue, showCycle,
+        ctx.addCycleControl(TR("Show mode"), showValue, showCycle,
             hud, true, false, "timing.show");
     }
 
     // Freeze duration: how long to hold official times / gaps after crossing a split
-    ctx.addFreezeControl("Freeze", &hud->m_displayDurationMs, true, hud, true, "timing.freeze", true);
+    ctx.addFreezeControl(TR("Freeze"), &hud->m_displayDurationMs, true, hud, true, "timing.freeze", true);
 
     // Target: the rows read against the next split's target (S1, S1+S2, lap) or against
     // the full lap the whole way round. Two-state cycle over a bool, mapped to 0/1.
@@ -88,35 +88,35 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
         targetCycle.set = [hud](int v) { hud->m_fullLapTarget = (v != 0); };
         targetCycle.count = 2;
         targetCycle.dirtyHud = hud;
-        ctx.addCycleControl("Target", hud->m_fullLapTarget ? "Full lap" : "Splits", targetCycle,
+        ctx.addCycleControl(TR("Target"), hud->m_fullLapTarget ? TR("Full lap") : TR("Splits"), targetCycle,
             hud, true, false, "timing.target");
     }
 
     // Big time row toggle
-    ctx.addToggleControl("Time", hud->isTimeEnabled(),
+    ctx.addToggleControl(TR("Time"), hud->isTimeEnabled(),
         SettingsHud::ClickRegion::TIMING_TIME_TOGGLE, hud, nullptr, 0, true,
         "timing.time");
 
     // Gap: the Gap Bar's gap without the bar, large under the time, against a reference of its own
     // choosing (Off, then the same list the Gap Bar's Gap reference offers).
-    ctx.addReferenceControl("Gap", &hud->m_liveGapDefault, &hud->m_liveGapRef, hud,
+    ctx.addReferenceControl(TR("Gap"), &hud->m_liveGapDefault, &hud->m_liveGapRef, hud,
         "timing.gap", &hud->m_liveGapOn);
 
     // === COMPARISONS SECTION ===
     // Each enabled comparison is one row (name + value). No primary/secondary distinction.
-    ctx.addSectionHeading("Comparisons");
+    ctx.addSectionHeading(TR("Comparisons"));
     ctx.beginColumns(2, 6);
-    ctx.addToggleControl("Session PB", hud->isComparisonEnabled(GAP_TO_PB),
+    ctx.addToggleControl(TR("Session PB"), hud->isComparisonEnabled(GAP_TO_PB),
         SettingsHud::ClickRegion::TIMING_GAP_PB_TOGGLE, hud, nullptr, 0, true, "timing.gap_pb");
-    ctx.addToggleControl("All-time PB", hud->isComparisonEnabled(GAP_TO_ALLTIME),
+    ctx.addToggleControl(TR("All-time PB"), hud->isComparisonEnabled(GAP_TO_ALLTIME),
         SettingsHud::ClickRegion::TIMING_GAP_ALLTIME_TOGGLE, hud, nullptr, 0, true, "timing.gap_alltime");
-    ctx.addToggleControl("Ideal", hud->isComparisonEnabled(GAP_TO_IDEAL),
+    ctx.addToggleControl(TR("Ideal"), hud->isComparisonEnabled(GAP_TO_IDEAL),
         SettingsHud::ClickRegion::TIMING_GAP_IDEAL_TOGGLE, hud, nullptr, 0, true, "timing.gap_ideal");
-    ctx.addToggleControl("Server best", hud->isComparisonEnabled(GAP_TO_OVERALL),
+    ctx.addToggleControl(TR("Server best"), hud->isComparisonEnabled(GAP_TO_OVERALL),
         SettingsHud::ClickRegion::TIMING_GAP_OVERALL_TOGGLE, hud, nullptr, 0, true, "timing.gap_overall");
-    ctx.addToggleControl("Last lap", hud->isComparisonEnabled(GAP_TO_LASTLAP),
+    ctx.addToggleControl(TR("Last lap"), hud->isComparisonEnabled(GAP_TO_LASTLAP),
         SettingsHud::ClickRegion::TIMING_GAP_LASTLAP_TOGGLE, hud, nullptr, 0, true, "timing.gap_lastlap");
-    ctx.addToggleControl("Record", hud->isComparisonEnabled(GAP_TO_RECORD),
+    ctx.addToggleControl(TR("Record"), hud->isComparisonEnabled(GAP_TO_RECORD),
         SettingsHud::ClickRegion::TIMING_GAP_RECORD_TOGGLE, hud, nullptr, 0, true, "timing.gap_record");
     ctx.endColumns();
 
@@ -128,7 +128,7 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
     // The generic CHECKBOX region with a bitfield + mask, exactly as the standings
     // columns do it: a toggle per readout would otherwise want a ClickRegion enum
     // value and a handler case each, one per readout, for identical behaviours.
-    ctx.addSectionHeading("Readouts");
+    ctx.addSectionHeading(TR("Readouts"));
     ctx.beginColumns(2, READOUT_COUNT);
     for (int i = 0; i < READOUT_COUNT; i++) {
         const ReadoutInfo& info = READOUT_INFO[i];
@@ -136,7 +136,7 @@ BaseHud* SettingsHud::renderTabTiming(SettingsLayoutContext& ctx) {
         // readouts), so they carry one description -- and one what's-new marker
         // covers the whole block rather than needing a row each. Hovering any of
         // them dismisses the block, which is right: they arrived together.
-        ctx.addToggleControl(info.uiName, (hud->m_enabledReadouts & info.flag) != 0,
+        ctx.addToggleControl(I18n::tr(info.uiName), (hud->m_enabledReadouts & info.flag) != 0,
             SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledReadouts, info.flag,
             true, "timing.readouts");
     }

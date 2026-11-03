@@ -9,6 +9,7 @@
 // ============================================================================
 #pragma once
 
+#include "../../core/i18n.h"
 #include <functional>
 
 class BaseHud;
@@ -75,5 +76,5 @@ struct DropdownState {
 // CycleControl::names, so the field and the list cannot spell a state apart.
 template <int N>
 inline const char* cycleName(const char* const (&names)[N], int i) {
-    return (i >= 0 && i < N) ? names[i] : "";
+    return (i >= 0 && i < N) ? I18n::tr(names[i]) : "";
 }

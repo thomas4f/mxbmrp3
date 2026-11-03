@@ -13,6 +13,7 @@
 #include "settings_manager.h"
 #include "layout_config.h"
 #include "settings_keys.h"
+#include "i18n.h"
 #include "../hud/settings/whats_new.h"
 #include "settings_serde_hud.h"
 #include "atomic_file_writer.h"
@@ -691,6 +692,8 @@ void SettingsManager::writeDisplaySettings(std::ostream& out, const HudManager& 
     // added, removed or reordered; an index would silently repoint.
     out << Settings::Keys::Global::PANEL_THEME << "="
         << UiConfig::getInstance().getThemeName() << "\n";
+    // Language pack by folder NAME (empty = English, "system" = follow Windows), for the same reason.
+    out << Settings::Keys::Global::LANGUAGE << "=" << I18n::languageFolder() << "\n";
     out << "screenClamping=" << (UiConfig::getInstance().getScreenClamping() ? 1 : 0) << "\n";
     out << "menuOnlyCursor=" << (UiConfig::getInstance().getMenuOnlyCursor() ? 1 : 0) << "\n";
     out << "togglesCollapsed=" << (hudManager.getToggleStripWidget().isCollapsed() ? 1 : 0) << "\n";
@@ -746,6 +749,11 @@ void SettingsManager::applyDisplayLine(const std::string& key, const std::string
             // settings load before assets are guaranteed discovered, and an
             // unknown name already degrades to "no theme" at render time.
             UiConfig::getInstance().setThemeName(value);
+        } else if (key == Settings::Keys::Global::LANGUAGE) {
+            // Loads now: assets (and the user's Documents copy of the packs) are
+            // synced before the first settings load. An unknown name shows
+            // English and stays stored, as a theme's does.
+            I18n::setLanguage(value);
         } else if (key == "screenClamping") {
             UiConfig::getInstance().setScreenClamping(std::stoi(value) != 0);
         } else if (key == "menuOnlyCursor") {

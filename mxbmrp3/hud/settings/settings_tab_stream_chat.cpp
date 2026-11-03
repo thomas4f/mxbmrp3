@@ -152,7 +152,7 @@ BaseHud* SettingsHud::renderTabStreamChat(SettingsLayoutContext& ctx) {
             cursorColumn = static_cast<int>(cursor - from) + (prefix ? 1 : 0);
             color = colors.getAccent();
         } else if (channel.empty()) {
-            snprintf(inner, sizeof(inner), "Click to set");
+            snprintf(inner, sizeof(inner), "%s", TR("Click to set"));
             color = hovered ? colors.getAccent() : colors.getMuted();
         } else {
             // A stored handle can be longer than the field (YouTube's run to 31):
@@ -172,14 +172,14 @@ BaseHud* SettingsHud::renderTabStreamChat(SettingsLayoutContext& ctx) {
     };
 
     // === APPEARANCE ===
-    ctx.addSectionHeading("Appearance");
+    ctx.addSectionHeading(TR("Appearance"));
     ctx.addStandardHudControls(hud);
 
     // === CHANNELS === Both platforms in one section, each a channel field and
     // its Status toggle, under ONE note: the tab is the tallest on the menu,
     // and a second heading and note pushed the themed panel past the bottom of
     // the screen (settings_render_test / theme_geometry_test).
-    ctx.addSectionHeading("Channels");
+    ctx.addSectionHeading(TR("Channels"));
     const bool editingTwitch = textCapture && ctx.parent->m_textField == TextField::TWITCH_CHANNEL;
     const bool editingYouTube = textCapture && ctx.parent->m_textField == TextField::YOUTUBE_CHANNEL;
     const std::string& twitchChannel = twitch.getChannel();
@@ -187,7 +187,7 @@ BaseHud* SettingsHud::renderTabStreamChat(SettingsLayoutContext& ctx) {
     const TwitchChatManager::Status twitchStatus = twitch.getStatus();
     const YouTubeChatManager::Status youtubeStatus = youtube.getStatus();
     {
-        addChannelField("Twitch", editingTwitch, twitchChannel, SettingsHud::ClickRegion::TWITCH_CHANNEL_EDIT,
+        addChannelField(TR("Twitch"), editingTwitch, twitchChannel, SettingsHud::ClickRegion::TWITCH_CHANNEL_EDIT,
             "twitch.channel", /*handlePrefix=*/false);
 
         // Status: the Discord row's shape and colour language -- a < value >
@@ -195,24 +195,24 @@ BaseHud* SettingsHud::renderTabStreamChat(SettingsLayoutContext& ctx) {
         // on it, green connected, warning when something is wrong). Clicking it
         // switches the CONNECTION, which is independent of the HUD's visibility:
         // a hidden chat keeps its conversation, and Show mode only hides.
-        const char* statusText = "Off";
+        const char* statusText = TR("Off");
         unsigned long statusColor = colors.getMuted();
         if (!twitch.isEnabled()) {
-            statusText = "Off";
+            statusText = TR("Off");
         } else if (twitchChannel.empty()) {
-            statusText = "No channel";           // on, but nothing to connect to
+            statusText = TR("No channel");           // on, but nothing to connect to
             statusColor = colors.getWarning();
         } else {
             switch (twitchStatus) {
-            case TwitchChatManager::Status::OFF:        statusText = "Off"; break;
-            case TwitchChatManager::Status::CONNECTING: statusText = "Connecting"; statusColor = colors.getPrimary(); break;
-            case TwitchChatManager::Status::JOINING:    statusText = "Joining"; statusColor = colors.getPrimary(); break;
-            case TwitchChatManager::Status::CONNECTED:  statusText = "Connected"; statusColor = colors.getPositive(); break;
-            case TwitchChatManager::Status::NOT_FOUND:  statusText = "Not found?"; statusColor = colors.getWarning(); break;
-            case TwitchChatManager::Status::RETRYING:   statusText = "Retrying"; statusColor = colors.getWarning(); break;
+            case TwitchChatManager::Status::OFF:        statusText = TR("Off"); break;
+            case TwitchChatManager::Status::CONNECTING: statusText = TR("Connecting"); statusColor = colors.getPrimary(); break;
+            case TwitchChatManager::Status::JOINING:    statusText = TR("Joining"); statusColor = colors.getPrimary(); break;
+            case TwitchChatManager::Status::CONNECTED:  statusText = TR("Connected"); statusColor = colors.getPositive(); break;
+            case TwitchChatManager::Status::NOT_FOUND:  statusText = TR("Not found?"); statusColor = colors.getWarning(); break;
+            case TwitchChatManager::Status::RETRYING:   statusText = TR("Retrying"); statusColor = colors.getWarning(); break;
             }
         }
-        ctx.addCycleControl("Status", statusText,
+        ctx.addCycleControl(TR("Status"), statusText,
             SettingsHud::ClickRegion::TWITCH_ENABLED_TOGGLE, SettingsHud::ClickRegion::TWITCH_ENABLED_TOGGLE,
             nullptr, /*enabled=*/true, /*isOff=*/false, "twitch.status", statusColor);
     }
@@ -220,28 +220,28 @@ BaseHud* SettingsHud::renderTabStreamChat(SettingsLayoutContext& ctx) {
         // The Twitch rows' shape; the states YouTube adds are "not live", which
         // is normal between streams, and "Can't read" -- the chat panel's
         // "YouTube Chat Unavailable" -- a format this build cannot read.
-        addChannelField("YouTube", editingYouTube, youtubeChannel, SettingsHud::ClickRegion::YOUTUBE_CHANNEL_EDIT,
+        addChannelField(TR("YouTube"), editingYouTube, youtubeChannel, SettingsHud::ClickRegion::YOUTUBE_CHANNEL_EDIT,
             "youtube.channel", /*handlePrefix=*/true);
 
-        const char* statusText = "Off";
+        const char* statusText = TR("Off");
         unsigned long statusColor = colors.getMuted();
         if (!youtube.isEnabled()) {
-            statusText = "Off";
+            statusText = TR("Off");
         } else if (youtubeChannel.empty()) {
-            statusText = "No channel";
+            statusText = TR("No channel");
             statusColor = colors.getWarning();
         } else {
             switch (youtubeStatus) {
-            case YouTubeChatManager::Status::OFF:         statusText = "Off"; break;
-            case YouTubeChatManager::Status::CONNECTING:  statusText = "Connecting"; statusColor = colors.getPrimary(); break;
-            case YouTubeChatManager::Status::CONNECTED:   statusText = "Connected"; statusColor = colors.getPositive(); break;
-            case YouTubeChatManager::Status::NOT_LIVE:    statusText = "Not live"; statusColor = colors.getPrimary(); break;
-            case YouTubeChatManager::Status::NOT_FOUND:   statusText = "Not found?"; statusColor = colors.getWarning(); break;
-            case YouTubeChatManager::Status::RETRYING:    statusText = "Retrying"; statusColor = colors.getWarning(); break;
-            case YouTubeChatManager::Status::UNAVAILABLE: statusText = "Can't read"; statusColor = colors.getWarning(); break;
+            case YouTubeChatManager::Status::OFF:         statusText = TR("Off"); break;
+            case YouTubeChatManager::Status::CONNECTING:  statusText = TR("Connecting"); statusColor = colors.getPrimary(); break;
+            case YouTubeChatManager::Status::CONNECTED:   statusText = TR("Connected"); statusColor = colors.getPositive(); break;
+            case YouTubeChatManager::Status::NOT_LIVE:    statusText = TR("Not live"); statusColor = colors.getPrimary(); break;
+            case YouTubeChatManager::Status::NOT_FOUND:   statusText = TR("Not found?"); statusColor = colors.getWarning(); break;
+            case YouTubeChatManager::Status::RETRYING:    statusText = TR("Retrying"); statusColor = colors.getWarning(); break;
+            case YouTubeChatManager::Status::UNAVAILABLE: statusText = TR("Can't read"); statusColor = colors.getWarning(); break;
             }
         }
-        ctx.addCycleControl("Status", statusText,
+        ctx.addCycleControl(TR("Status"), statusText,
             SettingsHud::ClickRegion::YOUTUBE_ENABLED_TOGGLE, SettingsHud::ClickRegion::YOUTUBE_ENABLED_TOGGLE,
             nullptr, /*enabled=*/true, /*isOff=*/false, "youtube.status", statusColor);
     }
@@ -251,43 +251,43 @@ BaseHud* SettingsHud::renderTabStreamChat(SettingsLayoutContext& ctx) {
         // the unofficial-support note.
         const bool twitchOn = twitch.isEnabled();
         const bool youtubeOn = youtube.isEnabled();
-        const char* note = "Note: YouTube chat is unofficial.";
+        const char* note = TR("Note: YouTube chat is unofficial.");
         if (editingTwitch) {
-            note = "Type or Ctrl+V a name or URL. Enter saves, ESC cancels.";
+            note = TR("Type or Ctrl+V a name or URL. Enter saves, ESC cancels.");
         } else if (editingYouTube) {
-            note = "Type or Ctrl+V a @handle or URL. Enter saves, ESC cancels.";
+            note = TR("Type or Ctrl+V a @handle or URL. Enter saves, ESC cancels.");
         } else if (twitchOn && twitchChannel.empty()) {
-            note = "Enter your Twitch channel name above to connect.";
+            note = TR("Enter your Twitch channel name above to connect.");
         } else if (twitchOn && twitchStatus == TwitchChatManager::Status::NOT_FOUND) {
-            note = "Twitch didn't confirm this channel - check the spelling.";
+            note = TR("Twitch didn't confirm this channel - check the spelling.");
         } else if (twitchOn && twitchStatus == TwitchChatManager::Status::RETRYING) {
-            note = "Twitch connection lost - retrying automatically.";
+            note = TR("Twitch connection lost - retrying automatically.");
         } else if (youtubeOn && youtubeChannel.empty()) {
-            note = "Enter your YouTube @handle above to connect.";
+            note = TR("Enter your YouTube @handle above to connect.");
         } else if (youtubeOn && youtubeStatus == YouTubeChatManager::Status::UNAVAILABLE) {
-            note = "YouTube chat can't be read. Support is unofficial.";
+            note = TR("YouTube chat can't be read. Support is unofficial.");
         } else if (youtubeOn && youtubeStatus == YouTubeChatManager::Status::NOT_FOUND) {
-            note = "YouTube has no such channel - check the spelling.";
+            note = TR("YouTube has no such channel - check the spelling.");
         } else if (youtubeOn && youtubeStatus == YouTubeChatManager::Status::RETRYING) {
-            note = "YouTube connection lost - retrying automatically.";
+            note = TR("YouTube connection lost - retrying automatically.");
         } else if (youtubeOn && youtubeStatus == YouTubeChatManager::Status::NOT_LIVE) {
-            note = "YouTube: not live right now - checking every minute.";
+            note = TR("YouTube: not live right now - checking every minute.");
         }
         ctx.addNote(note);
     }
 
     // === LAYOUT === (the Event Log's controls, same wording)
-    ctx.addSectionHeading("Layout");
+    ctx.addSectionHeading(TR("Layout"));
     ctx.beginColumns(2, 6);   // side by side (beginColumns)
-    static const char* const kModes[] = { "Off", "Always", "Auto-hide" };
+    static const char* const kModes[] = { N_("Off"), N_("Always"), N_("Auto-hide") };
     const bool modeOff = (hud->m_displayMode == StreamChatHud::DisplayMode::OFF);
-    ctx.addCycleControl("Show mode", cycleName(kModes, static_cast<int>(hud->m_displayMode)),
+    ctx.addCycleControl(TR("Show mode"), cycleName(kModes, static_cast<int>(hud->m_displayMode)),
         SettingsHud::CycleControl::enumMember(hud, &StreamChatHud::m_displayMode, 3, hud, kModes),
         hud, true, modeOff, "stream_chat.display_mode", /*tooltipOnArrows=*/false);
 
     char buf[16];
     snprintf(buf, sizeof(buf), "%ds", hud->m_autoHideDurationMs / 1000);
-    ctx.addSteppedControl("Duration", buf,
+    ctx.addSteppedControl(TR("Duration"), buf,
         SettingsHud::SteppedControl::wrapInt(&hud->m_autoHideDurationMs,
             StreamChatHud::AUTO_HIDE_STEP_MS, StreamChatHud::MIN_AUTO_HIDE_MS,
             StreamChatHud::MAX_AUTO_HIDE_MS, hud),
@@ -296,13 +296,13 @@ BaseHud* SettingsHud::renderTabStreamChat(SettingsLayoutContext& ctx) {
 
     // Display order: Newest / Oldest, the Event Log's row
     const char* orderStr = (hud->m_displayOrder == StreamChatHud::DisplayOrder::NEWEST_FIRST)
-        ? "Newest" : "Oldest";
-    ctx.addCycleControl("Display order", orderStr,
+        ? TR("Newest") : TR("Oldest");
+    ctx.addCycleControl(TR("Display order"), orderStr,
         SettingsHud::CycleControl::enumMember(hud, &StreamChatHud::m_displayOrder, 2, hud),
         hud, true, false, "stream_chat.order", /*tooltipOnArrows=*/false);
 
     snprintf(buf, sizeof(buf), "%d", hud->m_maxRows);
-    ctx.addSteppedControl("Lines to show", buf,
+    ctx.addSteppedControl(TR("Lines to show"), buf,
         SettingsHud::SteppedControl::clampInt(&hud->m_maxRows, 1,
             StreamChatHud::MIN_ROWS, StreamChatHud::MAX_ROWS, hud),
         hud, true, false, "stream_chat.max_lines", /*tooltipOnArrows=*/false);
@@ -310,33 +310,33 @@ BaseHud* SettingsHud::renderTabStreamChat(SettingsLayoutContext& ctx) {
     // Characters, not Gap Bar's percent: the wrap counts characters, so the
     // number shown is exactly how long a line of chat can be.
     snprintf(buf, sizeof(buf), "%d", hud->m_widthChars);
-    ctx.addSteppedControl("Width", buf,
+    ctx.addSteppedControl(TR("Width"), buf,
         SettingsHud::SteppedControl::clampInt(&hud->m_widthChars, 1,
             StreamChatHud::MIN_WIDTH_CHARS, StreamChatHud::MAX_WIDTH_CHARS, hud),
         hud, true, false, "stream_chat.width", /*tooltipOnArrows=*/false);
 
-    ctx.addCycleControl("Timestamp", hud->m_showTimestamps ? "Clock" : "Off",
+    ctx.addCycleControl(TR("Timestamp"), hud->m_showTimestamps ? TR("Clock") : TR("Off"),
         boolCycle(&hud->m_showTimestamps, hud), hud, true, !hud->m_showTimestamps,
         "stream_chat.timestamp", /*tooltipOnArrows=*/false);
 
     ctx.endColumns();
 
     // === MESSAGES ===
-    ctx.addSectionHeading("Messages");
+    ctx.addSectionHeading(TR("Messages"));
     ctx.beginColumns(2, 8);
     auto addBool = [&](const char* label, bool* value, const char* tooltipId) {
-        ctx.addCycleControl(label, *value ? "On" : "Off", boolCycle(value, hud),
+        ctx.addCycleControl(label, *value ? TR("On") : TR("Off"), boolCycle(value, hud),
             hud, true, !*value, tooltipId, /*tooltipOnArrows=*/false);
     };
     {
-        static const char* const kIcons[] = { "Off", "On", "Auto" };
-        ctx.addCycleControl("Platform icons", cycleName(kIcons, static_cast<int>(hud->m_platformIcons)),
+        static const char* const kIcons[] = { N_("Off"), N_("On"), N_("Auto") };
+        ctx.addCycleControl(TR("Platform icons"), cycleName(kIcons, static_cast<int>(hud->m_platformIcons)),
             SettingsHud::CycleControl::enumMember(hud, &StreamChatHud::m_platformIcons, 3, hud, kIcons),
             hud, true, hud->m_platformIcons == StreamChatHud::PlatformIcons::OFF,
             "stream_chat.platform_icons", /*tooltipOnArrows=*/false);
     }
-    addBool("Name colors", &hud->m_nameColors, "stream_chat.name_colors");
-    addBool("Message colors", &hud->m_textColors, "stream_chat.text_colors");
+    addBool(TR("Name colors"), &hud->m_nameColors, "stream_chat.name_colors");
+    addBool(TR("Message colors"), &hud->m_textColors, "stream_chat.text_colors");
     {
         // One switch for every role icon; the INI keeps the per-role bits.
         SettingsHud::CycleControl roles;
@@ -345,13 +345,13 @@ BaseHud* SettingsHud::renderTabStreamChat(SettingsLayoutContext& ctx) {
         roles.count = 2;
         roles.dirtyHud = hud;
         const bool on = hud->m_roleMask != 0;
-        ctx.addCycleControl("Role icons", on ? "On" : "Off", roles, hud, true, !on,
+        ctx.addCycleControl(TR("Role icons"), on ? TR("On") : TR("Off"), roles, hud, true, !on,
             "stream_chat.roles", /*tooltipOnArrows=*/false);
     }
-    addBool("Emote names", &hud->m_showEmotes, "stream_chat.emotes");
-    addBool("Hide commands", &hud->m_hideCommands, "stream_chat.hide_commands");
-    addBool("Hide bots", &hud->m_hideBots, "stream_chat.hide_bots");
-    addBool("Hide links", &hud->m_hideLinks, "stream_chat.hide_links");
+    addBool(TR("Emote names"), &hud->m_showEmotes, "stream_chat.emotes");
+    addBool(TR("Hide commands"), &hud->m_hideCommands, "stream_chat.hide_commands");
+    addBool(TR("Hide bots"), &hud->m_hideBots, "stream_chat.hide_bots");
+    addBool(TR("Hide links"), &hud->m_hideLinks, "stream_chat.hide_links");
     ctx.endColumns();
 
     return hud;

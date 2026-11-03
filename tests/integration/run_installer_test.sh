@@ -181,7 +181,8 @@ mkdir -p "${STAGE}/mxbmrp3_data/fonts" "${STAGE}/mxbmrp3_data/textures" \
          "${STAGE}/mxbmrp3_data/pitboards/testboard" \
          "${STAGE}/mxbmrp3_data/spotters/testvoice" \
          "${STAGE}/mxbmrp3_data/gauges/testgauges" \
-         "${STAGE}/mxbmrp3_data/gauges/gauge"
+         "${STAGE}/mxbmrp3_data/gauges/gauge" \
+         "${STAGE}/mxbmrp3_data/languages/testlang"
 # The two licence notices the installer lays into mxbmrp3_data\. Release staging
 # puts them at the staging ROOT (both zip builders copy them there), which is where
 # the .nsi File-s them from.
@@ -242,6 +243,11 @@ echo o > "${STAGE}/mxbmrp3_data/gauges/testgauges/testgauges.ini"
 echo t > "${STAGE}/mxbmrp3_data/gauges/gauge/tacho.tga"
 echo s > "${STAGE}/mxbmrp3_data/gauges/gauge/speedo.tga"
 echo n > "${STAGE}/mxbmrp3_data/gauges/gauge/gauge.ini"
+# Language packs: a sixth recursive File line (languages/<code>/language.ini +
+# strings.po, with template.pot beside the packs), a sixth staged subdirectory.
+echo n > "${STAGE}/mxbmrp3_data/languages/testlang/language.ini"
+echo p > "${STAGE}/mxbmrp3_data/languages/testlang/strings.po"
+echo t > "${STAGE}/mxbmrp3_data/languages/template.pot"
 
 echo "== Compiling installer (makensis) =="
 makensis -V1 -DPLUGIN_VERSION=9.9.9.0 -DPLUGIN_SOURCE_PATH="${STAGE}" \
@@ -446,6 +452,8 @@ assert_file "${MXB}/mxbmrp3_data/gamepads/testpad/background.tga" "gamepad pack 
 assert_file "${MXB}/mxbmrp3_data/pitboards/testboard/background.tga" "pitboard pack subfolder installed"
 assert_file "${MXB}/mxbmrp3_data/spotters/testvoice/clear.wav" "spotter voice pack subfolder installed"
 assert_file "${MXB}/mxbmrp3_data/gauges/testgauges/tacho.tga" "gauges pack subfolder installed"
+assert_file "${MXB}/mxbmrp3_data/languages/testlang/strings.po" "language pack subfolder installed"
+assert_file "${MXB}/mxbmrp3_data/languages/template.pot" "translation template installed"
 assert_file "${MXB}/mxbmrp3_data/gauges/testgauges/gauge.ini" "canonical pack ini installed"
 # Setup writes and never deletes: BOTH ini spellings survive, and the plugin is
 # what decides which to read (and whether the other is worth a word). The pack

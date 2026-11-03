@@ -3,7 +3,9 @@
 // Downloads and installs plugin updates
 // ============================================================================
 #include "update_downloader.h"
+#include "plugin_names.h"
 #include "atomic_file_writer.h"
+#include "i18n_mark.h"
 #include "plugin_constants.h"
 #include "plugin_manager.h"
 #include "update_checker.h"
@@ -233,13 +235,13 @@ void UpdateDownloader::setStepStatus(Step step, StepStatus status) {
 std::vector<UpdateDownloader::StepInfo> UpdateDownloader::getSteps() const {
     MutexLock lock(m_mutex);
 
-    // Step labels
+    // Step labels: English, shown through I18n::tr by the Updates tab
     static const char* labels[] = {
-        "Download",
-        "Verify",
-        "Backup",
-        "Extract",
-        "Install"
+        N_("Download"),
+        N_("Verify"),
+        N_("Backup"),
+        N_("Extract"),
+        N_("Install")
     };
 
     std::vector<StepInfo> steps;
@@ -296,8 +298,8 @@ bool UpdateDownloader::checkAndClearUpdateInstalled() {
         if (!savePath || strlen(savePath) == 0) return false;
         // The name the sentinel had while it opened a donation prompt: a build
         // from before the rename may have left one. Removed, never honoured.
-        DeleteFileA((std::string(savePath) + "\\mxbmrp3\\donation_nudge_pending").c_str());
-        std::string nudgePath = std::string(savePath) + "\\mxbmrp3\\update_installed_pending";
+        DeleteFileA((std::string(savePath) + "\\" MXB_USER_DIR_NAME "\\donation_nudge_pending").c_str());
+        std::string nudgePath = std::string(savePath) + "\\" MXB_USER_DIR_NAME "\\update_installed_pending";
 
         // Read the version the installer wrote, then delete the sentinel regardless.
         std::string installedVersion;
@@ -450,7 +452,7 @@ void UpdateDownloader::workerThread() {
                 // treat it exactly like a mismatch.
                 {
                     MutexLock lock(m_mutex);
-                    m_errorMessage = "SHA256 verification failed (could not compute hash)";
+                    m_errorMessage = N_("SHA256 verification failed (could not compute hash)");
                     m_state = State::FAILED;
                 }
                 DEBUG_WARN("UpdateDownloader: SHA256 calculation failed - refusing to install unverified download");
@@ -459,7 +461,7 @@ void UpdateDownloader::workerThread() {
             } else if (actualHash != expectedHash) {
                 {
                     MutexLock lock(m_mutex);
-                    m_errorMessage = "SHA256 checksum mismatch";
+                    m_errorMessage = N_("SHA256 checksum mismatch");
                     m_state = State::FAILED;
                 }
                 DEBUG_WARN_F("UpdateDownloader: SHA256 mismatch! Expected: %s, Got: %s",
@@ -512,7 +514,7 @@ void UpdateDownloader::workerThread() {
             const char* savePath = PluginManager::getInstance().getSavePath();
             std::string version = UpdateChecker::getInstance().getLatestVersion();
             if (savePath && strlen(savePath) > 0 && !version.empty()) {
-                std::string nudgePath = std::string(savePath) + "\\mxbmrp3\\update_installed_pending";
+                std::string nudgePath = std::string(savePath) + "\\" MXB_USER_DIR_NAME "\\update_installed_pending";
                 // Route through the shared atomic writer, like every other persisted file.
                 AtomicFileWriter::submit(nudgePath, version);
             }
@@ -557,7 +559,7 @@ void UpdateDownloader::workerThread() {
         {
             MutexLock lock(m_mutex);
             try {
-                m_errorMessage = "Unknown error";
+                m_errorMessage = N_("Unknown error");
             } catch (...) {
                 m_errorMessage.clear();  // noexcept
             }

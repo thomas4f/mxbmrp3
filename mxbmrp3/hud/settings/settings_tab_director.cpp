@@ -38,9 +38,9 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     // (it gates battles, incidents, overtakes AND lappers, so it lives here).
     // Side by side (beginColumns) here and in every section below: short labels
     // and short values, so two columns take half the rows. ---
-    ctx.addSectionHeading("Director");
+    ctx.addSectionHeading(TR("Director"));
     ctx.beginColumns(2, 6);
-    ctx.addToggleControl("Enabled", on,
+    ctx.addToggleControl(TR("Enabled"), on,
         SettingsHud::ClickRegion::DIRECTOR_ENABLE_TOGGLE, nullptr,
         nullptr, 0, true, "director.enabled");
 
@@ -70,7 +70,7 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     snprintf(buf, sizeof(buf), "%ds", director.getMinShotSec());
     {
         auto gs = plain(&DirectorManager::getMinShotSec, &DirectorManager::setMinShotSec);
-        ctx.addSteppedControl("Min shot", buf, Stepped::accessor(gs.first, gs.second, 1.0f,
+        ctx.addSteppedControl(TR("Min shot"), buf, Stepped::accessor(gs.first, gs.second, 1.0f,
             DirectorManager::MIN_SHOT_LO, DirectorManager::MIN_SHOT_HI, nullptr),
             nullptr, on, false, "director.min_shot");
     }
@@ -81,11 +81,11 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     // and the Stories below still fire, so neither greys out - but the Onboard variety
     // section does, since a shot the caster chose stays on the plain TV camera.
     const int maxShot = director.getMaxShotSec();
-    if (maxShot <= 0) snprintf(buf, sizeof(buf), "Off");
+    if (maxShot <= 0) snprintf(buf, sizeof(buf), "%s", TR("Off"));
     else snprintf(buf, sizeof(buf), "%ds", maxShot);
     {
         auto gs = offBelow(DirectorManager::MAX_SHOT_LO, &DirectorManager::getMaxShotSec, &DirectorManager::setMaxShotSec);
-        ctx.addSteppedControl("Max shot", buf, Stepped::accessor(gs.first, gs.second, 1.0f,
+        ctx.addSteppedControl(TR("Max shot"), buf, Stepped::accessor(gs.first, gs.second, 1.0f,
             DirectorManager::MAX_SHOT_LO - 1, DirectorManager::MAX_SHOT_HI, nullptr),
             nullptr, on, maxShot <= 0, "director.max_shot");
     }
@@ -95,17 +95,17 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     snprintf(buf, sizeof(buf), "%ds", director.getHoldSec());
     {
         auto gs = plain(&DirectorManager::getHoldSec, &DirectorManager::setHoldSec);
-        ctx.addSteppedControl("Story hold", buf, Stepped::accessor(gs.first, gs.second, 1.0f,
+        ctx.addSteppedControl(TR("Story hold"), buf, Stepped::accessor(gs.first, gs.second, 1.0f,
             DirectorManager::HOLD_LO, DirectorManager::HOLD_HI, nullptr),
             nullptr, on, false, "director.hold");
     }
 
     const int bmp = director.getBattleMaxPos();
-    if (bmp <= 0) snprintf(buf, sizeof(buf), "Off");
+    if (bmp <= 0) snprintf(buf, sizeof(buf), "%s", TR("Off"));
     else snprintf(buf, sizeof(buf), "P%d", bmp);
     {
         auto gs = plain(&DirectorManager::getBattleMaxPos, &DirectorManager::setBattleMaxPos);
-        ctx.addSteppedControl("Field cutoff", buf, Stepped::accessor(gs.first, gs.second, 1.0f,
+        ctx.addSteppedControl(TR("Field cutoff"), buf, Stepped::accessor(gs.first, gs.second, 1.0f,
             0.0f, DirectorManager::BATTLE_MAXPOS_HI, nullptr),
             nullptr, on, bmp <= 0, "director.battle_max_pos");
     }
@@ -115,7 +115,7 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     snprintf(buf, sizeof(buf), "%.1fs", director.getBattleGapMs() / 1000.0);
     {
         auto gs = plain(&DirectorManager::getBattleGapMs, &DirectorManager::setBattleGapMs);
-        ctx.addSteppedControl("Battle gap", buf, Stepped::accessor(gs.first, gs.second,
+        ctx.addSteppedControl(TR("Battle gap"), buf, Stepped::accessor(gs.first, gs.second,
             DirectorManager::BATTLE_GAP_STEP, DirectorManager::BATTLE_GAP_LO, DirectorManager::BATTLE_GAP_HI, nullptr),
             nullptr, on, false, "director.battle_gap");
     }
@@ -134,28 +134,28 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     //   Scored candidates (weight multiplier on posWeight): Catch overtakes (x3.0) >
     //     Follow battles (x2.0) > Follow drops (x1.6) > Follow lappers (x1.2).
     // A new story slots in by its score. ---
-    ctx.addSectionHeading("Stories");
+    ctx.addSectionHeading(TR("Stories"));
     ctx.beginColumns(2, 7);
 
-    ctx.addToggleControl("Incidents", director.getFollowIncidents(),
+    ctx.addToggleControl(TR("Incidents"), director.getFollowIncidents(),
         SettingsHud::ClickRegion::DIRECTOR_FOLLOW_INCIDENTS, nullptr,
         nullptr, 0, on, "director.follow_incidents");
-    ctx.addToggleControl("Fastest lap", director.getFollowFastestLap(),
+    ctx.addToggleControl(TR("Fastest lap"), director.getFollowFastestLap(),
         SettingsHud::ClickRegion::DIRECTOR_FOLLOW_FASTEST, nullptr,
         nullptr, 0, on, "director.follow_fastest");
-    ctx.addToggleControl("Fastest sectors", director.getFollowPace(),
+    ctx.addToggleControl(TR("Fastest sectors"), director.getFollowPace(),
         SettingsHud::ClickRegion::DIRECTOR_FOLLOW_PACE, nullptr,
         nullptr, 0, on, "director.follow_pace");
-    ctx.addToggleControl("Finish lock", director.getFinishLock(),
+    ctx.addToggleControl(TR("Finish lock"), director.getFinishLock(),
         SettingsHud::ClickRegion::DIRECTOR_FINISH_LOCK, nullptr,
         nullptr, 0, on, "director.finish_lock");
-    ctx.addToggleControl("Overtakes", director.getCatchOvertakes(),
+    ctx.addToggleControl(TR("Overtakes"), director.getCatchOvertakes(),
         SettingsHud::ClickRegion::DIRECTOR_CATCH_OVERTAKES, nullptr,
         nullptr, 0, on, "director.catch_overtakes");
-    ctx.addToggleControl("Battles", director.getFollowBattles(),
+    ctx.addToggleControl(TR("Battles"), director.getFollowBattles(),
         SettingsHud::ClickRegion::DIRECTOR_FOLLOW_BATTLES, nullptr,
         nullptr, 0, on, "director.follow_battles");
-    ctx.addToggleControl("Drops", director.getFollowDrops(),
+    ctx.addToggleControl(TR("Drops"), director.getFollowDrops(),
         SettingsHud::ClickRegion::DIRECTOR_FOLLOW_DROPS, nullptr,
         nullptr, 0, on, "director.follow_drops");
     ctx.endColumns();
@@ -179,16 +179,16 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
     // tooltip instead ("Needs Max shot on") - the same place every other explanation in
     // this tab lives.
     const bool rotationOn = director.forcedRotation();
-    ctx.addSectionHeading("Onboard Variety");
+    ctx.addSectionHeading(TR("Onboard Variety"));
     ctx.beginColumns(2, 3);
 
     const int ve = director.getVarietyEvery();
     const bool varietyOn = (ve > 0);
-    if (!varietyOn) snprintf(buf, sizeof(buf), "Off");
+    if (!varietyOn) snprintf(buf, sizeof(buf), "%s", TR("Off"));
     else snprintf(buf, sizeof(buf), "%d", ve);
     {
         auto gs = offBelow(DirectorManager::VARIETY_LO, &DirectorManager::getVarietyEvery, &DirectorManager::setVarietyEvery);
-        ctx.addSteppedControl("Onboard every", buf, Stepped::accessor(gs.first, gs.second, 1.0f,
+        ctx.addSteppedControl(TR("Onboard every"), buf, Stepped::accessor(gs.first, gs.second, 1.0f,
             DirectorManager::VARIETY_LO - 1, DirectorManager::VARIETY_HI, nullptr),
             nullptr, on && rotationOn, !varietyOn, "director.variety_every");
     }
@@ -213,19 +213,19 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
             (d.*setA)((order & 1) != 0);
             (d.*setB)((order & 2) != 0);
         };
-        c.nameOf = [names](int i) { return std::string(names[i]); };
+        c.nameOf = [names](int i) { return std::string(I18n::tr(names[i])); };
         return c;
     };
-    static const char* const kFender[] = { "Off", "Front", "Rear", "Both" };
-    ctx.addCycleControl("Fender", kFender[(cf ? 1 : 0) + (cr ? 2 : 0)],
+    static const char* const kFender[] = { N_("Off"), N_("Front"), N_("Rear"), N_("Both") };
+    ctx.addCycleControl(TR("Fender"), I18n::tr(kFender[(cf ? 1 : 0) + (cr ? 2 : 0)]),
         camPair(kFender, &DirectorManager::getCamFront, &DirectorManager::getCamRear,
                 &DirectorManager::setCamFront, &DirectorManager::setCamRear),
         nullptr, camsOn, (!cf && !cr), "director.cam_fender");
     // The two helmet views share one cycle: Off > Helmet 1 > Helmet 2 > Both.
     const bool h1 = director.getCamHelmet();
     const bool h2 = director.getCamHelmet2();
-    static const char* const kHelmet[] = { "Off", "Helmet 1", "Helmet 2", "Both" };
-    ctx.addCycleControl("Helmet", kHelmet[(h1 ? 1 : 0) + (h2 ? 2 : 0)],
+    static const char* const kHelmet[] = { N_("Off"), N_("Helmet 1"), N_("Helmet 2"), N_("Both") };
+    ctx.addCycleControl(TR("Helmet"), I18n::tr(kHelmet[(h1 ? 1 : 0) + (h2 ? 2 : 0)]),
         camPair(kHelmet, &DirectorManager::getCamHelmet, &DirectorManager::getCamHelmet2,
                 &DirectorManager::setCamHelmet, &DirectorManager::setCamHelmet2),
         nullptr, camsOn, (!h1 && !h2), "director.cam_helmet");
@@ -234,19 +234,19 @@ BaseHud* SettingsHud::renderTabDirector(SettingsLayoutContext& ctx) {
 
     // --- Manual control: how the caster takes over and hands back (takeover first).
     // Last, below the cameras - it's the least-touched section. ---
-    ctx.addSectionHeading("Manual Control");
+    ctx.addSectionHeading(TR("Manual Control"));
     ctx.beginColumns(2, 2);
 
-    ctx.addToggleControl("Pad takeover", director.getGamepadTakeover(),
+    ctx.addToggleControl(TR("Pad takeover"), director.getGamepadTakeover(),
         SettingsHud::ClickRegion::DIRECTOR_GAMEPAD_TAKEOVER, nullptr,
         nullptr, 0, on, "director.gamepad_takeover");
 
     const int resume = director.getManualResumeSec();
-    if (resume <= 0) snprintf(buf, sizeof(buf), "Off");
+    if (resume <= 0) snprintf(buf, sizeof(buf), "%s", TR("Off"));
     else snprintf(buf, sizeof(buf), "%ds", resume);
     {
         auto gs = plain(&DirectorManager::getManualResumeSec, &DirectorManager::setManualResumeSec);
-        ctx.addSteppedControl("Resume after", buf, Stepped::accessor(gs.first, gs.second,
+        ctx.addSteppedControl(TR("Resume after"), buf, Stepped::accessor(gs.first, gs.second,
             DirectorManager::RESUME_STEP, 0.0f, DirectorManager::RESUME_HI, nullptr),
             nullptr, on, resume <= 0, "director.resume_after");
     }

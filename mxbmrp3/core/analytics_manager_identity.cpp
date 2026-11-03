@@ -7,6 +7,7 @@
 // the class and its API are unchanged.
 // ============================================================================
 #include "analytics_manager.h"
+#include "plugin_names.h"
 #include "analytics_manager_internal.h"
 #include "analytics_identity.h"
 #include "atomic_file_writer.h"
@@ -23,7 +24,7 @@ using namespace AnalyticsInternal;
 
 namespace {
 
-constexpr const char* ANALYTICS_SUBDIRECTORY = "mxbmrp3";
+constexpr const char* ANALYTICS_SUBDIRECTORY = MXB_USER_DIR_NAME;
 constexpr const char* ANALYTICS_FILENAME = "mxbmrp3_analytics.json";
 
 }  // namespace

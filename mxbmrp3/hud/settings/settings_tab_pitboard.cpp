@@ -20,7 +20,7 @@ BaseHud* SettingsHud::renderTabPitboard(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("pitboard");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeading("Appearance");
+    ctx.addSectionHeading(TR("Appearance"));
     // The BOARD PACK (artwork plus the geometry that places rows on it) is the
     // Texture row addStandardHudControls draws for a pack HUD -- see
     // SettingsLayoutContext::addPackControl. It used to be a SECOND control here
@@ -29,54 +29,54 @@ BaseHud* SettingsHud::renderTabPitboard(SettingsLayoutContext& ctx) {
     ctx.addStandardHudControls(hud);
 
     // === LAYOUT SECTION ===
-    ctx.addSectionHeading("Layout");
+    ctx.addSectionHeading(TR("Layout"));
 
     // Display mode control (Always/Pit/Splits)
-    static const char* const kShowModes[] = { "Always", "At pit", "At splits" };
+    static const char* const kShowModes[] = { N_("Always"), N_("At pit"), N_("At splits") };
     static_assert(sizeof(kShowModes) / sizeof(kShowModes[0]) == PitboardHud::MODE_COUNT,
                   "one name per display mode");
-    ctx.addCycleControl("Show mode", cycleName(kShowModes, hud->m_displayMode),
+    ctx.addCycleControl(TR("Show mode"), cycleName(kShowModes, hud->m_displayMode),
         SettingsHud::CycleControl::enumMember(hud, &PitboardHud::m_displayMode,
             PitboardHud::MODE_COUNT, hud, kShowModes),
         hud, true, false, "pitboard.show_mode");
 
     // Freeze: how long At Splits shows the board (the shared freeze range, no Off)
-    ctx.addFreezeControl("Freeze", &hud->m_freezeDurationMs, false, hud,
+    ctx.addFreezeControl(TR("Freeze"), &hud->m_freezeDurationMs, false, hud,
         hud->m_displayMode == PitboardHud::MODE_SPLITS, "pitboard.freeze");
 
     // === CONTENT SECTION ===
-    ctx.addSectionHeading("Content");
+    ctx.addSectionHeading(TR("Content"));
 
-    ctx.addToggleControl("Rider name", (hud->m_enabledRows & PitboardHud::ROW_RIDER_ID) != 0,
+    ctx.addToggleControl(TR("Rider name"), (hud->m_enabledRows & PitboardHud::ROW_RIDER_ID) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, PitboardHud::ROW_RIDER_ID, true,
         "pitboard.rider");
-    ctx.addToggleControl("Session info", (hud->m_enabledRows & PitboardHud::ROW_SESSION) != 0,
+    ctx.addToggleControl(TR("Session info"), (hud->m_enabledRows & PitboardHud::ROW_SESSION) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, PitboardHud::ROW_SESSION, true,
         "pitboard.session");
-    ctx.addToggleControl("Position", (hud->m_enabledRows & PitboardHud::ROW_POSITION) != 0,
+    ctx.addToggleControl(TR("Position"), (hud->m_enabledRows & PitboardHud::ROW_POSITION) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, PitboardHud::ROW_POSITION, true,
         "pitboard.position");
-    ctx.addToggleControl("Time elapsed", (hud->m_enabledRows & PitboardHud::ROW_TIME) != 0,
+    ctx.addToggleControl(TR("Time elapsed"), (hud->m_enabledRows & PitboardHud::ROW_TIME) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, PitboardHud::ROW_TIME, true,
         "pitboard.time");
-    ctx.addToggleControl("Lap number", (hud->m_enabledRows & PitboardHud::ROW_LAP) != 0,
+    ctx.addToggleControl(TR("Lap number"), (hud->m_enabledRows & PitboardHud::ROW_LAP) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, PitboardHud::ROW_LAP, true,
         "pitboard.lap");
-    ctx.addToggleControl("Last lap time", (hud->m_enabledRows & PitboardHud::ROW_LAST_LAP) != 0,
+    ctx.addToggleControl(TR("Last lap time"), (hud->m_enabledRows & PitboardHud::ROW_LAST_LAP) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, PitboardHud::ROW_LAST_LAP, true,
         "pitboard.last_lap");
-    ctx.addToggleControl("Gap row", (hud->m_enabledRows & PitboardHud::ROW_GAP) != 0,
+    ctx.addToggleControl(TR("Gap row"), (hud->m_enabledRows & PitboardHud::ROW_GAP) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, PitboardHud::ROW_GAP, true,
         "pitboard.gap");
 
     // Gap compare mode (Auto/Leader/Session PB/Ideal/All-time PB/Server best/Record)
     static const char* const kGapModes[] = {
-        "Auto", "Leader", "Session PB", "Ideal", "All-time PB", "Server best", "Record" };
+        N_("Auto"), N_("Leader"), N_("Session PB"), N_("Ideal"), N_("All-time PB"), N_("Server best"), N_("Record") };
     static_assert(sizeof(kGapModes) / sizeof(kGapModes[0]) == PitboardHud::GAP_COUNT,
                   "one name per gap mode");
     const char* gapModeText = cycleName(kGapModes, hud->m_gapCompareMode);
     bool gapEnabled = (hud->m_enabledRows & PitboardHud::ROW_GAP) != 0;
-    ctx.addCycleControl("Gap compare", gapModeText,
+    ctx.addCycleControl(TR("Gap compare"), gapModeText,
         SettingsHud::CycleControl::enumMember(hud, &PitboardHud::m_gapCompareMode,
             PitboardHud::GAP_COUNT, hud, kGapModes),
         hud, gapEnabled, false, "pitboard.gap_compare");

@@ -8,6 +8,7 @@
 #include <Xinput.h>
 #include <cstdint>
 #include <string>
+#include "i18n_mark.h"
 
 // ============================================================================
 // Hotkey Actions - All bindable actions in the plugin
@@ -70,48 +71,48 @@ enum class HotkeyAction : uint8_t {
 // characters (two bindings share a row there; HotkeysNamesFit pins it).
 inline const char* getActionDisplayName(HotkeyAction action) {
     switch (action) {
-        case HotkeyAction::TOGGLE_STANDINGS:    return "Standings";
-        case HotkeyAction::TOGGLE_MAP:          return "Map";
-        case HotkeyAction::TOGGLE_RADAR:        return "Radar";
-        case HotkeyAction::TOGGLE_LAP_LOG:      return "Lap Log";
-        case HotkeyAction::TOGGLE_IDEAL_LAP:    return "Ideal Lap";
-        case HotkeyAction::TOGGLE_TELEMETRY:    return "Telemetry";
-        case HotkeyAction::TOGGLE_INPUT:        return "Input";
-        case HotkeyAction::TOGGLE_RECORDS:      return "Records";
-        case HotkeyAction::TOGGLE_WIDGETS:      return "Widgets";
-        case HotkeyAction::TOGGLE_PITBOARD:     return "Pitboard";
-        case HotkeyAction::TOGGLE_TIMING:       return "Timing";
-        case HotkeyAction::TOGGLE_GAP_BAR:      return "Gap Bar";
-        case HotkeyAction::TOGGLE_PERFORMANCE:  return "Perf";
-        case HotkeyAction::TOGGLE_RUMBLE:       return "Rumble";
-        case HotkeyAction::TOGGLE_ALL_HUDS:     return "All HUDs";
-        case HotkeyAction::TOGGLE_SETTINGS:     return "Settings";
-        case HotkeyAction::RELOAD_CONFIG:          return "Reload";
-        case HotkeyAction::TOGGLE_SESSION_CHARTS:     return "Charts";
-        case HotkeyAction::TOGGLE_FMX:             return "FMX";
-        case HotkeyAction::TOGGLE_STATS:           return "Stats";
-        case HotkeyAction::TOGGLE_SESSION:         return "Session";
-        case HotkeyAction::TOGGLE_NOTICES:         return "Notices";
-        case HotkeyAction::TOGGLE_EVENT_LOG:       return "Event Log";
-        case HotkeyAction::TOGGLE_HELMET:          return "Helmet";
-        case HotkeyAction::TOGGLE_FRIENDS:         return "Friends";
-        case HotkeyAction::OVERLAY_FORCE_LAST_LAP:    return "Last Lap";
-        case HotkeyAction::OVERLAY_FORCE_FASTEST_LAP: return "Fastest";
-        case HotkeyAction::OVERLAY_FORCE_DOWN_ORDER:  return "Rundown";
-        case HotkeyAction::OVERLAY_FORCE_SECTORS:     return "Sectors";
-        case HotkeyAction::OVERLAY_FORCE_CHARTS:      return "Charts";
-        case HotkeyAction::SPOTTER_CUE:               return "Spotter";
-        case HotkeyAction::CRASH_RESET:               return "Crashes 0";
-        case HotkeyAction::SEGMENT_ADD:               return "Segment +";
-        case HotkeyAction::SEGMENT_REMOVE:            return "Segment -";
-        case HotkeyAction::DIRECTOR_TOGGLE:           return "Director";
-        case HotkeyAction::DIRECTOR_LOCK:             return "Cam Lock";
-        case HotkeyAction::TOGGLE_STREAM_CHAT:        return "Chat";
-        case HotkeyAction::TOGGLE_DELTA_TRACE:        return "Delta";
-        case HotkeyAction::TOGGLE_DASH:               return "Dash";
-        case HotkeyAction::DASH_NEXT:                 return "Dash +";
-        case HotkeyAction::DASH_PREV:                 return "Dash -";
-        default: return "Unknown";
+        case HotkeyAction::TOGGLE_STANDINGS:    return N_("Standings");
+        case HotkeyAction::TOGGLE_MAP:          return N_("Map");
+        case HotkeyAction::TOGGLE_RADAR:        return N_("Radar");
+        case HotkeyAction::TOGGLE_LAP_LOG:      return N_("Lap Log");
+        case HotkeyAction::TOGGLE_IDEAL_LAP:    return N_("Ideal Lap");
+        case HotkeyAction::TOGGLE_TELEMETRY:    return N_("Telemetry");
+        case HotkeyAction::TOGGLE_INPUT:        return N_("Input");
+        case HotkeyAction::TOGGLE_RECORDS:      return N_("Records");
+        case HotkeyAction::TOGGLE_WIDGETS:      return N_("Widgets");
+        case HotkeyAction::TOGGLE_PITBOARD:     return N_("Pitboard");
+        case HotkeyAction::TOGGLE_TIMING:       return N_("Timing");
+        case HotkeyAction::TOGGLE_GAP_BAR:      return N_("Gap Bar");
+        case HotkeyAction::TOGGLE_PERFORMANCE:  return N_("Perf");
+        case HotkeyAction::TOGGLE_RUMBLE:       return N_("Rumble");
+        case HotkeyAction::TOGGLE_ALL_HUDS:     return N_("All HUDs");
+        case HotkeyAction::TOGGLE_SETTINGS:     return N_("Settings");
+        case HotkeyAction::RELOAD_CONFIG:          return N_("Reload");
+        case HotkeyAction::TOGGLE_SESSION_CHARTS:     return N_("Charts");
+        case HotkeyAction::TOGGLE_FMX:             return N_("FMX");
+        case HotkeyAction::TOGGLE_STATS:           return N_("Stats");
+        case HotkeyAction::TOGGLE_SESSION:         return N_("Session");
+        case HotkeyAction::TOGGLE_NOTICES:         return N_("Notices");
+        case HotkeyAction::TOGGLE_EVENT_LOG:       return N_("Event Log");
+        case HotkeyAction::TOGGLE_HELMET:          return N_("Helmet");
+        case HotkeyAction::TOGGLE_FRIENDS:         return N_("Friends");
+        case HotkeyAction::OVERLAY_FORCE_LAST_LAP:    return N_("Last Lap");
+        case HotkeyAction::OVERLAY_FORCE_FASTEST_LAP: return N_("Fastest");
+        case HotkeyAction::OVERLAY_FORCE_DOWN_ORDER:  return N_("Rundown");
+        case HotkeyAction::OVERLAY_FORCE_SECTORS:     return N_("Sectors");
+        case HotkeyAction::OVERLAY_FORCE_CHARTS:      return N_("Charts");
+        case HotkeyAction::SPOTTER_CUE:               return N_("Spotter");
+        case HotkeyAction::CRASH_RESET:               return N_("Crashes 0");
+        case HotkeyAction::SEGMENT_ADD:               return N_("Segment +");
+        case HotkeyAction::SEGMENT_REMOVE:            return N_("Segment -");
+        case HotkeyAction::DIRECTOR_TOGGLE:           return N_("Director");
+        case HotkeyAction::DIRECTOR_LOCK:             return N_("Cam Lock");
+        case HotkeyAction::TOGGLE_STREAM_CHAT:        return N_("Chat");
+        case HotkeyAction::TOGGLE_DELTA_TRACE:        return N_("Delta");
+        case HotkeyAction::TOGGLE_DASH:               return N_("Dash");
+        case HotkeyAction::DASH_NEXT:                 return N_("Dash +");
+        case HotkeyAction::DASH_PREV:                 return N_("Dash -");
+        default: return N_("Unknown");
     }
 }
 

@@ -3,6 +3,7 @@
 // RPM widget - shift-light strip; see rpm_widget.h for what it is for.
 // ============================================================================
 #include "rpm_widget.h"
+#include "../core/i18n.h"
 
 #include <algorithm>
 
@@ -194,11 +195,11 @@ void RpmWidget::rebuildRenderData() {
     }
     // A vertical strip keeps its column width: the title may overhang it rather
     // than widen it into a block.
-    want.captionW = m_bVertical ? 0.0f : planTitleWidth(dim, "RPM");
+    want.captionW = m_bVertical ? 0.0f : planTitleWidth(dim, TR("RPM"));
     PanelPlan& p = planPanel(dim, want);
 
     addPlanBackground(p, 0.0f, 0.0f);
-    addPlanTitle(p, "RPM", this->getColor(ColorSlot::PRIMARY));
+    addPlanTitle(p, TR("RPM"), this->getColor(ColorSlot::PRIMARY));
 
     const int segments = std::clamp(m_segments, MIN_SEGMENTS, MAX_SEGMENTS);
     const float stripX = p.contentX();

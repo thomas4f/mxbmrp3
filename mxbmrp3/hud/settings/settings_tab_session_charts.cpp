@@ -10,9 +10,9 @@
 
 static const char* getColorModeName(SessionChartsHud::RiderColorMode mode) {
     switch (mode) {
-        case SessionChartsHud::RiderColorMode::POSITION_PALETTE: return "Palette";
-        case SessionChartsHud::RiderColorMode::BRAND:            return "Brand";
-        default: return "Unknown";
+        case SessionChartsHud::RiderColorMode::POSITION_PALETTE: return TR("Palette");
+        case SessionChartsHud::RiderColorMode::BRAND:            return TR("Brand");
+        default: return TR("Unknown");
     }
 }
 
@@ -29,31 +29,31 @@ BaseHud* SettingsHud::renderTabSessionCharts(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("session_charts");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeading("Appearance");
+    ctx.addSectionHeading(TR("Appearance"));
     ctx.addStandardHudControls(hud);
     // === CHARTS SECTION === (independent checkboxes; any combination stacks vertically)
-    ctx.addSectionHeading("Charts");
+    ctx.addSectionHeading(TR("Charts"));
     ctx.beginColumns(2, 4);   // side by side (beginColumns)
-    ctx.addToggleControl("Lap chart", (hud->m_enabledCharts & SessionChartsHud::CHART_LAP) != 0,
+    ctx.addToggleControl(TR("Lap chart"), (hud->m_enabledCharts & SessionChartsHud::CHART_LAP) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledCharts, SessionChartsHud::CHART_LAP, true,
         "session_charts.chart_lap");
-    ctx.addToggleControl("Race trace", (hud->m_enabledCharts & SessionChartsHud::CHART_TRACE) != 0,
+    ctx.addToggleControl(TR("Race trace"), (hud->m_enabledCharts & SessionChartsHud::CHART_TRACE) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledCharts, SessionChartsHud::CHART_TRACE, true,
         "session_charts.chart_trace");
-    ctx.addToggleControl("Gap", (hud->m_enabledCharts & SessionChartsHud::CHART_GAP) != 0,
+    ctx.addToggleControl(TR("Gap"), (hud->m_enabledCharts & SessionChartsHud::CHART_GAP) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledCharts, SessionChartsHud::CHART_GAP, true,
         "session_charts.chart_gap");
-    ctx.addToggleControl("Pace", (hud->m_enabledCharts & SessionChartsHud::CHART_PACE) != 0,
+    ctx.addToggleControl(TR("Pace"), (hud->m_enabledCharts & SessionChartsHud::CHART_PACE) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledCharts, SessionChartsHud::CHART_PACE, true,
         "session_charts.chart_pace");
     // === LAYOUT SECTION ===
     ctx.endColumns();
 
-    ctx.addSectionHeading("Layout");
+    ctx.addSectionHeading(TR("Layout"));
     ctx.beginColumns(2, 4);
 
     // Rider line colours
-    ctx.addCycleControl("Colors", getColorModeName(hud->m_riderColorMode),
+    ctx.addCycleControl(TR("Colors"), getColorModeName(hud->m_riderColorMode),
         SettingsHud::CycleControl::enumMember(hud, &SessionChartsHud::m_riderColorMode,
             static_cast<int>(SessionChartsHud::RiderColorMode::COLOR_MODE_COUNT), hud),
         hud, true, false, "session_charts.colors", /*tooltipOnArrows=*/false);
@@ -72,14 +72,14 @@ BaseHud* SettingsHud::renderTabSessionCharts(SettingsLayoutContext& ctx) {
     rowsControl.postStep = [hud]() {
         hud->m_topPositionsCount = std::min(hud->m_topPositionsCount, hud->m_displayRowCount);
     };
-    ctx.addSteppedControl("Rows to show", buf, rowsControl,
+    ctx.addSteppedControl(TR("Rows to show"), buf, rowsControl,
         hud, true, false, "session_charts.rows", /*tooltipOnArrows=*/false);
 
     // Top-N pinned leaders (label harmonized with the Standings HUD). The upper
     // bound tracks the rows drawn; it's re-resolved on every rebuild, and the
     // Rows control above re-clamps this value whenever it shrinks.
     snprintf(buf, sizeof(buf), "%d", hud->m_topPositionsCount);
-    ctx.addSteppedControl("Top positions", buf,
+    ctx.addSteppedControl(TR("Top positions"), buf,
         SettingsHud::SteppedControl::fixedInt(&hud->m_topPositionsCount, 1,
             SessionChartsHud::MIN_TOP_COUNT,
             std::min(SessionChartsHud::MAX_TOP_COUNT, hud->m_displayRowCount), hud),
@@ -92,7 +92,7 @@ BaseHud* SettingsHud::renderTabSessionCharts(SettingsLayoutContext& ctx) {
     {
         char rowsBuf[8];
         snprintf(rowsBuf, sizeof(rowsBuf), "%d", hud->m_graphRows);
-        ctx.addSteppedControl("Chart height", rowsBuf,
+        ctx.addSteppedControl(TR("Chart height"), rowsBuf,
             SettingsHud::SteppedControl::clampInt(&hud->m_graphRows, 1,
                 SessionChartsHud::MIN_GRAPH_ROWS, SessionChartsHud::MAX_GRAPH_ROWS, hud),
             hud, true, false, "session_charts.graph_rows");
@@ -101,28 +101,28 @@ BaseHud* SettingsHud::renderTabSessionCharts(SettingsLayoutContext& ctx) {
     // === CONTENT SECTION ===
     ctx.endColumns();
 
-    ctx.addSectionHeading("Content");
+    ctx.addSectionHeading(TR("Content"));
     ctx.beginColumns(2, 7);
 
-    ctx.addToggleControl("Grid lines", (hud->m_enabledElements & SessionChartsHud::ELEM_GRID) != 0,
+    ctx.addToggleControl(TR("Grid lines"), (hud->m_enabledElements & SessionChartsHud::ELEM_GRID) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, SessionChartsHud::ELEM_GRID, true,
         "session_charts.grid");
-    ctx.addToggleControl("Axis labels", (hud->m_enabledElements & SessionChartsHud::ELEM_AXIS_LABELS) != 0,
+    ctx.addToggleControl(TR("Axis labels"), (hud->m_enabledElements & SessionChartsHud::ELEM_AXIS_LABELS) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, SessionChartsHud::ELEM_AXIS_LABELS, true,
         "session_charts.axis_labels");
-    ctx.addToggleControl("Line labels", (hud->m_enabledElements & SessionChartsHud::ELEM_LEGEND) != 0,
+    ctx.addToggleControl(TR("Line labels"), (hud->m_enabledElements & SessionChartsHud::ELEM_LEGEND) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, SessionChartsHud::ELEM_LEGEND, true,
         "session_charts.legend");
-    ctx.addToggleControl("Reference line", (hud->m_enabledElements & SessionChartsHud::ELEM_ZERO_LINE) != 0,
+    ctx.addToggleControl(TR("Reference line"), (hud->m_enabledElements & SessionChartsHud::ELEM_ZERO_LINE) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, SessionChartsHud::ELEM_ZERO_LINE, true,
         "session_charts.zero_line");
-    ctx.addToggleControl("Lap dots", (hud->m_enabledElements & SessionChartsHud::ELEM_DOTS) != 0,
+    ctx.addToggleControl(TR("Lap dots"), (hud->m_enabledElements & SessionChartsHud::ELEM_DOTS) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, SessionChartsHud::ELEM_DOTS, true,
         "session_charts.dots");
-    ctx.addToggleControl("Filter outliers", (hud->m_enabledElements & SessionChartsHud::ELEM_FILTER_OUTLIERS) != 0,
+    ctx.addToggleControl(TR("Filter outliers"), (hud->m_enabledElements & SessionChartsHud::ELEM_FILTER_OUTLIERS) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, SessionChartsHud::ELEM_FILTER_OUTLIERS, true,
         "session_charts.filter_outliers");
-    ctx.addToggleControl("Sector points", (hud->m_enabledElements & SessionChartsHud::ELEM_SECTOR_POINTS) != 0,
+    ctx.addToggleControl(TR("Sector points"), (hud->m_enabledElements & SessionChartsHud::ELEM_SECTOR_POINTS) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, SessionChartsHud::ELEM_SECTOR_POINTS, true,
         "session_charts.sector_points");
     ctx.endColumns();

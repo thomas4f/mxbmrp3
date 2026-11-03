@@ -858,7 +858,7 @@ void PluginData::clear() {
 // ========================================================================
 // Event Log
 // ========================================================================
-void PluginData::addEventLogEntry(EventLogType type, const char* message, const char* detail,
+void PluginData::addEventLogEntry(EventLogType type, const EventText& message, const char* detail,
                                   int iconColorSlot, int raceNum,
                                   const EventNumbers& nums) {
     EventLogEntry entry;
@@ -868,7 +868,8 @@ void PluginData::addEventLogEntry(EventLogType type, const char* message, const 
     entry.systemTime = std::chrono::system_clock::now();
     entry.iconColorSlot = iconColorSlot;
     entry.raceNum = raceNum;
-    strncpy_s(entry.message, sizeof(entry.message), message, _TRUNCATE);
+    strncpy_s(entry.message, sizeof(entry.message), message.english, _TRUNCATE);
+    strncpy_s(entry.shown, sizeof(entry.shown), message.shown, _TRUNCATE);
     if (detail) {
         strncpy_s(entry.detail, sizeof(entry.detail), detail, _TRUNCATE);
     }

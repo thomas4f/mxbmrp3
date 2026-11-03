@@ -6,6 +6,7 @@
 // enable the spotter and trigger one to place it).
 // ============================================================================
 #include "spotter_widget.h"
+#include "../core/i18n.h"
 #include "default_slots.h"
 
 #include "../core/color_config.h"
@@ -99,7 +100,7 @@ void SpotterWidget::rebuildRenderData() {
     want.contentW = PluginUtils::calculateMonospaceTextWidth(
         static_cast<int>(textLen), dim.fontSize);
     want.sectionH = { dim.lineHeightNormal };
-    want.captionW = planTitleWidth(dim, "Spotter");
+    want.captionW = planTitleWidth(dim, TR("Spotter"));
     PanelPlan& p = planPanel(dim, want);
 
     // CENTRE-ANCHORED: offsetX is this card's CENTRE, so a card as wide as its
@@ -108,7 +109,7 @@ void SpotterWidget::rebuildRenderData() {
     // preview card in (previewCardWidth).
     const float panelX = centerAnchoredPanelLeft(p.width());
     addPlanBackground(p, panelX, 0.0f);
-    addPlanTitle(p, "Spotter", textColor);
+    addPlanTitle(p, TR("Spotter"), textColor);
 
     addString(text, p.contentX(),
               inkCenteredY(p.contentY(), dim.lineHeightNormal, dim.fontSize),

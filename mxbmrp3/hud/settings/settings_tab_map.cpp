@@ -64,10 +64,10 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("map");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeading("Appearance");
+    ctx.addSectionHeading(TR("Appearance"));
     ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
-    ctx.addSectionHeading("Layout");
+    ctx.addSectionHeading(TR("Layout"));
     ctx.beginColumns(2, 5);   // side by side (beginColumns): Follow's rows left, the view's right
 
     // Mode: the whole track (Overview), or a window that follows the rider. Range
@@ -78,12 +78,12 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     area.get = [hud]() { return hud->getZoomEnabled() ? 1 : 0; };
     area.set = [hud](int v) { hud->setZoomEnabled(v == 1); };
     area.dirtyHud = hud;
-    ctx.addCycleControl("Mode", hud->getZoomEnabled() ? "Follow" : "Overview", area,
+    ctx.addCycleControl(TR("Mode"), hud->getZoomEnabled() ? TR("Follow") : TR("Overview"), area,
         hud, true, false, "map.mode");
 
     char rangeValue[16];
     snprintf(rangeValue, sizeof(rangeValue), "%.0fm", hud->getZoomDistance());
-    ctx.addSteppedControl("Range", rangeValue, SettingsHud::SteppedControl::accessor(
+    ctx.addSteppedControl(TR("Range"), rangeValue, SettingsHud::SteppedControl::accessor(
             [hud]() { return hud->getZoomDistance(); },
             [hud](float v) { hud->setZoomDistance(v); },
             10.0f, MapHud::MIN_ZOOM_DISTANCE, MapHud::MAX_ZOOM_DISTANCE, hud),
@@ -91,12 +91,12 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
 
     // Adaptive range: Follow's window grows with speed (Range at a standstill,
     // twice it flat out). Greyed at Overview like Range.
-    ctx.addToggleControl("Adaptive range", hud->getAdaptiveRange(),
+    ctx.addToggleControl(TR("Adaptive range"), hud->getAdaptiveRange(),
         SettingsHud::ClickRegion::MAP_RANGE_ADAPTIVE_TOGGLE, hud, nullptr, 0, hud->getZoomEnabled(),
         "map.range_adaptive");
 
     // Rotation toggle
-    ctx.addToggleControl("Rotate map", hud->getRotateToPlayer(),
+    ctx.addToggleControl(TR("Rotate map"), hud->getRotateToPlayer(),
         SettingsHud::ClickRegion::MAP_ROTATION_TOGGLE, hud, nullptr, 0, true,
         "map.rotation");
 
@@ -105,9 +105,9 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     // flat map, so at Overview it is greyed out (the stored tilt is kept for when
     // zoom comes back).
     char tiltValue[16];
-    if (hud->getTilt() == 0) snprintf(tiltValue, sizeof(tiltValue), "Off");
+    if (hud->getTilt() == 0) snprintf(tiltValue, sizeof(tiltValue), "%s", TR("Off"));
     else snprintf(tiltValue, sizeof(tiltValue), "%d\xB0", hud->getTilt());
-    ctx.addSteppedControl("Tilt", tiltValue,
+    ctx.addSteppedControl(TR("Tilt"), tiltValue,
         SettingsHud::SteppedControl::clampInt(&hud->m_tiltDeg, MapHud::TILT_STEP_DEG, 0, MapHud::MAX_TILT_DEG, hud),
         hud, hud->getZoomEnabled(), false, "map.tilt");
 
@@ -116,7 +116,7 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     // shapes it), decorations after (outline rim, markers).
     ctx.endColumns();
 
-    ctx.addSectionHeading("Track");
+    ctx.addSectionHeading(TR("Track"));
     // The switches and sliders side by side; Lap delta, whose values are longer,
     // takes the full row under them with its arrows in their column.
     ctx.beginColumns(2, 5);
@@ -124,7 +124,7 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     // Track line width scale: accelerated 1% step, clamped to [50%, 300%]
     char trackWidthValue[16];
     snprintf(trackWidthValue, sizeof(trackWidthValue), "%.0f%%", hud->getTrackWidthScale() * 100.0f);
-    ctx.addSteppedControl("Track width", trackWidthValue,
+    ctx.addSteppedControl(TR("Track width"), trackWidthValue,
         SettingsHud::SteppedControl::stepFloat(&hud->m_fTrackWidthScale, 0.01f,
             MapHud::MIN_TRACK_WIDTH_SCALE, MapHud::MAX_TRACK_WIDTH_SCALE, hud),
         hud, true, false, "map.track_width");
@@ -133,13 +133,13 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     // Accelerated 1% step — the same feel as Track width / Marker scale.
     char detailValue[16];
     snprintf(detailValue, sizeof(detailValue), "%.0f%%", hud->getDetailScale() * 100.0f);
-    ctx.addSteppedControl("Detail", detailValue,
+    ctx.addSteppedControl(TR("Detail"), detailValue,
         SettingsHud::SteppedControl::stepFloat(&hud->m_fDetailScale, 0.01f,
             MapHud::MIN_DETAIL_SCALE, MapHud::MAX_DETAIL_SCALE, hud),
         hud, true, false, "map.detail");
 
     // Adaptive detail — normalize density in screen space across tracks/zoom
-    ctx.addToggleControl("Adaptive detail", hud->getAdaptiveDetail(),
+    ctx.addToggleControl(TR("Adaptive detail"), hud->getAdaptiveDetail(),
         SettingsHud::ClickRegion::MAP_DETAIL_ADAPTIVE_TOGGLE, hud, nullptr, 0, true,
         "map.detail_adaptive");
 
@@ -148,11 +148,11 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     if (hud->getShowOutline()) {
         snprintf(outlineValue, sizeof(outlineValue), "%.0f%%", hud->getOutlineWidthScale() * 100.0f);
     } else {
-        snprintf(outlineValue, sizeof(outlineValue), "Off");
+        snprintf(outlineValue, sizeof(outlineValue), "%s", TR("Off"));
     }
     // Off sits one 1% step below the minimum width, at the slider's left end.
     constexpr float kOutlineOff = MapHud::MIN_OUTLINE_WIDTH_SCALE - 0.01f;
-    ctx.addSteppedControl("Track outline", outlineValue, SettingsHud::SteppedControl::accessor(
+    ctx.addSteppedControl(TR("Track outline"), outlineValue, SettingsHud::SteppedControl::accessor(
             [hud]() { return hud->getShowOutline() ? hud->getOutlineWidthScale() : kOutlineOff; },
             [hud](float v) {
                 const bool on = v >= MapHud::MIN_OUTLINE_WIDTH_SCALE - 0.001f;
@@ -163,7 +163,7 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
         hud, true, !hud->getShowOutline(), "map.outline");
 
     // Track markers toggle (S/F, sector markers, segment lines)
-    ctx.addToggleControl("Show markers", hud->getShowTrackMarkers(),
+    ctx.addToggleControl(TR("Show markers"), hud->getShowTrackMarkers(),
         SettingsHud::ClickRegion::MAP_MARKERS_TOGGLE, hud, nullptr, 0, true,
         "map.markers");
     ctx.endColumns();
@@ -174,7 +174,7 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     // keep the stored values: Off, Default (named for General's today), then the
     // references.
     using Ref = PbGapTracker::Ref;
-    const char* const kLapDeltas[] = { "Off", HudDefaults::defaultReferenceName(),
+    const char* const kLapDeltas[] = { N_("Off"), HudDefaults::defaultReferenceName(),
         PbGapTracker::refName(Ref::SESSION_PB), PbGapTracker::refName(Ref::ALLTIME_PB),
         PbGapTracker::refName(Ref::LAST_LAP), PbGapTracker::refName(Ref::SERVER_BEST) };
     static_assert(sizeof(kLapDeltas) / sizeof(kLapDeltas[0]) == MapHud::LAP_DELTA_COUNT, "one name per state");
@@ -192,15 +192,15 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
                         : (i == MapHud::LAP_DELTA_COUNT - 1) ? MapHud::LapDelta::SERVER_BEST
                         : static_cast<MapHud::LapDelta>(i == 0 ? 0 : i - 1);
     };
-    lapDelta.nameOf = [kLapDeltas](int i) { return std::string(kLapDeltas[i]); };
+    lapDelta.nameOf = [kLapDeltas](int i) { return std::string(I18n::tr(kLapDeltas[i])); };
     lapDelta.dirtyHud = hud;
     ctx.setRowLabelChars(16);
-    ctx.addCycleControl("Lap delta", kLapDeltas[lapDelta.get()], lapDelta,
+    ctx.addCycleControl(TR("Lap delta"), I18n::tr(kLapDeltas[lapDelta.get()]), lapDelta,
         hud, true, hud->m_lapDelta == MapHud::LapDelta::OFF, "map.lap_delta");
     ctx.setRowLabelChars(0);
 
     // === RIDER MARKERS SECTION ===
-    ctx.addSectionHeading("Rider Markers");
+    ctx.addSectionHeading(TR("Rider Markers"));
     // The icon's name takes a full row; the three short ones sit side by side
     // under it, all with their arrows in one column.
     constexpr int MARKER_LABEL_CHARS = 14;
@@ -209,7 +209,7 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
     int mapShapeIndex = hud->getRiderShape();
     bool shapeIsOff = (mapShapeIndex == 0);
     std::string shapeStr = getShapeDisplayName(mapShapeIndex);
-    ctx.addCycleControl("Marker icon", shapeStr.c_str(),
+    ctx.addCycleControl(TR("Marker icon"), shapeStr.c_str(),
         iconCycle([hud]() { return hud->getRiderShape(); }, [hud](int v) { hud->setRiderShape(v); }, hud),
         hud, true, shapeIsOff, "map.rider_shape");
 
@@ -218,30 +218,30 @@ BaseHud* SettingsHud::renderTabMap(SettingsLayoutContext& ctx) {
 
 
     // Rider color mode
-    static const char* const kColorModes[] = { "Uniform", "Brand", "Position" };
+    static const char* const kColorModes[] = { N_("Uniform"), N_("Brand"), N_("Position") };
     const char* mapColorModeStr = cycleName(kColorModes, static_cast<int>(hud->getRiderColorMode()));
-    ctx.addCycleControl("Marker colors", mapColorModeStr,
+    ctx.addCycleControl(TR("Marker colors"), mapColorModeStr,
         SettingsHud::CycleControl::enumMember(hud, &MapHud::m_riderColorMode, 3, hud, kColorModes),
         hud, true, false, "map.colorize");
 
     // Marker scale control: accelerated 1% step, clamped to [50%, 300%]
     char mapMarkerScaleValue[16];
     snprintf(mapMarkerScaleValue, sizeof(mapMarkerScaleValue), "%.0f%%", hud->getMarkerScale() * 100.0f);
-    ctx.addSteppedControl("Marker scale", mapMarkerScaleValue,
+    ctx.addSteppedControl(TR("Marker scale"), mapMarkerScaleValue,
         SettingsHud::SteppedControl::stepFloat(&hud->m_fMarkerScale, 0.01f,
             MapHud::MIN_MARKER_SCALE, MapHud::MAX_MARKER_SCALE, hud),
         hud, true, false, "map.marker_scale");
 
     // Label mode control
-    static const char* const kLabelModes[] = { "Off", "Position", "Race number", "Both" };
+    static const char* const kLabelModes[] = { N_("Off"), N_("Position"), N_("Race number"), N_("Both") };
     bool labelIsOff = (hud->getLabelMode() == MapHud::LabelMode::NONE);
     const char* modeStr = cycleName(kLabelModes, static_cast<int>(hud->getLabelMode()));
-    ctx.addCycleControl("Marker labels", modeStr,
+    ctx.addCycleControl(TR("Marker labels"), modeStr,
         SettingsHud::CycleControl::enumMember(hud, &MapHud::m_labelMode, 4, hud, kLabelModes),
         hud, true, labelIsOff, "map.labels");
     ctx.endColumns();
 
-    ctx.addNote("Tip: lower Detail or Track outline to gain FPS.");
+    ctx.addNote(TR("Tip: lower Detail or Track outline to gain FPS."));
 
     return hud;
 }

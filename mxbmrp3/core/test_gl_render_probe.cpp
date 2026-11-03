@@ -4,6 +4,7 @@
 // test_gl_render_probe.h for why they are not in test_hooks.cpp.
 // ============================================================================
 #include "test_gl_render_probe.h"
+#include "plugin_names.h"
 
 #if defined(MXBMRP3_TEST_BUILD)
 
@@ -155,7 +156,7 @@ bool renderScenario(int w, int h, int scenario) {
     const std::string need = (scenario == 3)
         ? hudassets::spritePath("", kSprites[0], false)
         : hudassets::fntPath("", kFonts[0]);
-    f.assetRoot = "plugins/mxbmrp3_data";
+    f.assetRoot = "plugins/" MXB_DATA_DIR_NAME;
     if (!hudsw::readFile(f.assetRoot + need).size())
         f.assetRoot = MXB_REPO_DATA_DIR;
     return r->render(f, w, h, 0.0f, 0.0f, static_cast<float>(w), static_cast<float>(h));

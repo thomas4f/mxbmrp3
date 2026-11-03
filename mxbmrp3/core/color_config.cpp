@@ -3,6 +3,7 @@
 // User-configurable color settings for HUD elements
 // ============================================================================
 #include "color_config.h"
+#include "i18n_mark.h"
 #include "asset_manager.h"
 #include "plugin_constants.h"   // BrandColors, for the pack-colour static_asserts below
 #include "ui_config.h"
@@ -197,17 +198,17 @@ int colorSlotFromName(const char* name) {
 
 const char* ColorConfig::getSlotName(ColorSlot slot) {
     switch (slot) {
-        case ColorSlot::PRIMARY:    return "Primary";
-        case ColorSlot::SECONDARY:  return "Secondary";
-        case ColorSlot::TERTIARY:   return "Tertiary";
-        case ColorSlot::MUTED:      return "Muted";
-        case ColorSlot::BACKGROUND: return "Background";
-        case ColorSlot::POSITIVE:   return "Positive";
-        case ColorSlot::WARNING:    return "Warning";
-        case ColorSlot::NEUTRAL:    return "Neutral";
-        case ColorSlot::NEGATIVE:   return "Negative";
-        case ColorSlot::ACCENT:     return "Accent";
-        default:                    return "Unknown";
+        case ColorSlot::PRIMARY:    return N_("Primary");
+        case ColorSlot::SECONDARY:  return N_("Secondary");
+        case ColorSlot::TERTIARY:   return N_("Tertiary");
+        case ColorSlot::MUTED:      return N_("Muted");
+        case ColorSlot::BACKGROUND: return N_("Background");
+        case ColorSlot::POSITIVE:   return N_("Positive");
+        case ColorSlot::WARNING:    return N_("Warning");
+        case ColorSlot::NEUTRAL:    return N_("Neutral");
+        case ColorSlot::NEGATIVE:   return N_("Negative");
+        case ColorSlot::ACCENT:     return N_("Accent");
+        default:                    return N_("Unknown");
     }
 }
 

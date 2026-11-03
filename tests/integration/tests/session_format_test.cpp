@@ -10,12 +10,14 @@
 // clock):
 //
 //   1. The format string differs per race format: pure-time "8:00", pure-laps
-//      "5L", time+laps "8:00 + 5L".
-//   2. A time+laps race's clock, once it expires, stops counting and becomes a
+//      "5L", time+laps "8:00 + 5L". The Session HUD spells the laps out ("5 laps",
+//      "8:00 + 2 laps"), the clock's wording; the web's code stays compact.
+//   2. A time+laps race's clock states the laps after it ("00:05 + 2 laps",
+//      singular "1 lap"), and once it expires stops counting and becomes a
 //      leader-relative label. When the clock first goes negative but the leader
-//      hasn't yet crossed into the bonus laps, the clock HOLDS at "00:00" (the
-//      documented finish-before-timer freeze), then steps N TO GO → FINAL LAP →
-//      CHECKERED as the leader completes the added laps.
+//      hasn't yet crossed into the bonus laps, the clock HOLDS at "00:00 + 2 laps"
+//      (the documented finish-before-timer freeze), then steps N TO GO → FINAL
+//      LAP → CHECKERED as the leader completes the added laps.
 
 // A third, read from the StandingsHud's own session-info row rather than the
 // snapshot (the row is rendered text, not a JSON field):
@@ -75,10 +77,20 @@ static std::string sessionInfoRow(PluginHost& host, const std::string& label) {
     return {};
 }
 
+// Whether a Session HUD row says `text` (the Format row: "(8:00 + 2 laps), ...").
+static bool sessionHudSays(PluginHost& host, const std::string& text) {
+    host.draw();
+    for (const auto& r : host.hudStringRows(PluginHost::HUD_SESSION)) {
+        if (r.text.find(text) != std::string::npos) return true;
+    }
+    return false;
+}
+
 TEST_CASE("session format + overtime clock: laps vs time vs time+laps") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\session_format\\");
+    host.setHudVisible("session_widget", true);   // off by default
 
     host.eventInit("TestTrack", "Alice");
     host.raceEvent("TestTrack");
@@ -108,6 +120,9 @@ TEST_CASE("session format + overtime clock: laps vs time vs time+laps") {
         auto d = host.snapshot();
         CHECK(sessFormat(d) == "5L");
         CHECK(d["session"].value("isRace", false) == true);
+        // On the HUD it is spelled out, like the clock beside it; the web's code
+        // stays compact.
+        CHECK(sessionHudSays(host, "(5 laps)"));
         // A pure-laps race isn't in overtime, so the clock is the plain countup
         // (getLeaderLapsToGo == -1 → MM:SS). Just assert it's not an overtime label.
         CHECK(sessTime(d) != "CHECKERED");
@@ -150,9 +165,18 @@ TEST_CASE("session format + overtime clock: laps vs time vs time+laps") {
     // 8 minutes then 2 added laps. Overtime arms when the clock first ticks
     // negative (lastSessionTime>0 && sessionTime<0). finishLap = leader lap at
     // that moment (3) + 2 = 5, i.e. the leader finishes upon completing lap 5.
+    // One added lap reads singular.
+    host.session(RACE1, /*numLaps=*/1, /*lengthMs=*/480000);
+    host.classify(RACE1, 5000, {
+        { .num = 10, .laps = 3, .gap = 0 },
+        { .num = 22, .laps = 3, .gap = 2000 },
+    });
+    CHECK(sessTime(host.snapshot()) == "00:05 + 1 lap");
+
     host.session(RACE1, /*numLaps=*/2, /*lengthMs=*/480000);
 
-    // Clock still positive: normal MM:SS, format shows both limits.
+    // Clock still positive: MM:SS plus the laps after it, in the snapshot and
+    // the Standings session row alike; format shows both limits.
     host.classify(RACE1, 5000, {
         { .num = 10, .laps = 3, .gap = 0 },
         { .num = 22, .laps = 3, .gap = 2000 },
@@ -160,17 +184,20 @@ TEST_CASE("session format + overtime clock: laps vs time vs time+laps") {
     {
         auto d = host.snapshot();
         CHECK(sessFormat(d) == "8:00 + 2L");
-        CHECK(sessTime(d) == "00:05");
+        CHECK(sessTime(d) == "00:05 + 2 laps");
     }
+    CHECK(sessionHudSays(host, "(8:00 + 2 laps)"));
+    CHECK_FALSE(sessionHudSays(host, "2L"));
+    CHECK(sessionInfoRow(host, "Race 1") == "Race 1: 00:05 + 2 laps");
 
     // Clock goes negative, leader still on lap 3 → overtime arms, finishLap=5.
-    // toGo = 5-3+1 = 3 > sessionNumLaps(2), so the clock HOLDS at 00:00 (the
+    // toGo = 5-3+1 = 3 > sessionNumLaps(2), so the clock HOLDS at 00:00 + 2 laps (the
     // leader hasn't started a counted bonus lap yet — finish-before-timer freeze).
     host.classify(RACE1, -1000, {
         { .num = 10, .laps = 3, .gap = 0 },
         { .num = 22, .laps = 3, .gap = 2000 },
     });
-    CHECK(sessTime(host.snapshot()) == "00:00");
+    CHECK(sessTime(host.snapshot()) == "00:00 + 2 laps");
 
     // Leader crosses S/F onto the first counted bonus lap (lap 4): "2 TO GO".
     host.classify(RACE1, -3000, {

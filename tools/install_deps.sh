@@ -48,6 +48,8 @@ DEP_GROUPS=(
     "wine|wine wine64||wine"
     "nsis|nsis||makensis"
     "cppcheck|cppcheck||cppcheck"
+    # xgettext / msgfmt: the translation template gate (tools/i18n/pot.sh).
+    "gettext|gettext||xgettext msgfmt"
     # kramdown is what GitHub Pages runs the README through (Jekyll), which is
     # NOT what github.com renders with - check_pages_render.sh models the site.
     # The GFM parser is a separate package and both are needed; the gate SKIPs

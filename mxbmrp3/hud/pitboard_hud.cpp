@@ -4,6 +4,7 @@
 // split/lap times, gap comparison
 // ============================================================================
 #include "pitboard_hud.h"
+#include "../core/i18n.h"
 
 #include <cstring>
 #include <cstdio>
@@ -318,7 +319,7 @@ void PitboardHud::rebuildRenderData() {
             // is only here because its tab is open, it answers that instead. Every
             // other row is the player's real data and stays that way; nothing on
             // this board is invented except this word.
-            snprintf(riderIdStr, sizeof(riderIdStr), "%s", "PREVIEW");
+            snprintf(riderIdStr, sizeof(riderIdStr), "%s", TR("PREVIEW"));
         } else if (raceEntry) {
             snprintf(riderIdStr, sizeof(riderIdStr), "%s %s",
                      raceEntry->formattedRaceNum, raceEntry->truncatedName);
@@ -336,7 +337,7 @@ void PitboardHud::rebuildRenderData() {
 
     // Row 2: Session name (e.g., "Practice", "Race 2") - centered
     if (m_enabledRows & ROW_SESSION) {
-        const char* sessionName = PluginUtils::getSessionString(sessionData.eventType, sessionData.session);
+        const char* sessionName = I18n::trCached(PluginUtils::getSessionString(sessionData.eventType, sessionData.session));
         if (sessionName) {
             float sessionPosX = centerX + (backgroundWidth * layout.sessionX);
             float sessionPosY = currentY + (backgroundHeight * layout.sessionY);
@@ -462,7 +463,7 @@ void PitboardHud::rebuildRenderData() {
         } else if (hasGap) {
             // Format the gap string
             if (effectiveMode == GAP_LEADER && gapMs <= 0) {
-                strcpy_s(gapStr, sizeof(gapStr), PluginConstants::DisplayStrings::RaceStatus::LEADER);
+                snprintf(gapStr, sizeof(gapStr), "%s", I18n::trCached(PluginConstants::DisplayStrings::RaceStatus::LEADER));
             } else {
                 PluginUtils::formatGapCompact(gapStr, sizeof(gapStr), gapMs);
             }

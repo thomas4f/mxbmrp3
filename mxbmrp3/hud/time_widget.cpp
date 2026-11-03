@@ -3,6 +3,7 @@
 // Time widget - displays label + time in two rows (countdown or countup)
 // ============================================================================
 #include "time_widget.h"
+#include "../core/i18n.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include "../core/plugin_utils.h"
@@ -105,13 +106,13 @@ void TimeWidget::rebuildRenderData() {
     want.contentW = PluginUtils::calculateMonospaceTextWidth(
         WidgetDimensions::STANDARD_WIDTH, dim.fontSize);
     want.sectionH = { bigValueRowHeight(dim) };  // Value (2 lines)
-    want.captionW = planTitleWidth(dim, "Time");
+    want.captionW = planTitleWidth(dim, TR("Time"));
     PanelPlan& p = planPanel(dim, want);
     const float backgroundWidth = p.width();
     const float backgroundHeight = p.height();
 
     addPlanBackground(p, startX, startY);
-    addPlanTitle(p, "Time", textColor);
+    addPlanTitle(p, TR("Time"), textColor);
 
     const float contentStartX = p.contentX();
     const float currentY = p.contentY();

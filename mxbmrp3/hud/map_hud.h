@@ -10,6 +10,7 @@
 #include "../core/lap_delta_profile.h"
 #include "hud_defaults.h"
 #include "../game/unified_types.h"
+#include "../core/i18n.h"
 #include <algorithm>
 #include <array>
 #include <vector>

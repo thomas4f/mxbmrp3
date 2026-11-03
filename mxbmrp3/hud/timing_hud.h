@@ -70,7 +70,7 @@ enum ReadoutFlags : uint32_t {
     READOUT_POSITION  = 1 << 0,  // "Pos"     - P / total
     READOUT_LAP       = 1 << 1,  // "Lap"     - lap / total
     READOUT_TIME      = 1 << 2,  // "Time"    - session clock, overtime label and all
-    READOUT_SESSION   = 1 << 3,  // "Format"  - how long it runs: "10:00 + 2L"
+    READOUT_SESSION   = 1 << 3,  // "Format"  - how long it runs: "10:00 + 2 laps"
     READOUT_FUEL      = 1 << 4,  // "Fuel"    - estimated laps left in the tank
     READOUT_SERVER    = 1 << 5,  // "Server"  - the same label the Session panel prints
     READOUT_TRACK     = 1 << 6,  // "Track"   - ...and the same track name
@@ -103,22 +103,22 @@ inline constexpr ReadoutInfo READOUT_INFO[] = {
     // "Position" spelled out: the label column already carries "Last lap" at the same
     // eight characters, and a row's label only competes with its OWN value, so this
     // costs the Position row two characters and every other row nothing.
-    { READOUT_POSITION, "Position", "Position",  "readout_position" },
-    { READOUT_LAP,      "Lap",     "Lap",       "readout_lap"      },
-    { READOUT_TIME,     "Time",    "Time left", "readout_time"     },
+    { READOUT_POSITION, N_("Position"), N_("Position"),  "readout_position" },
+    { READOUT_LAP,      N_("Lap"),     N_("Lap"),       "readout_lap"      },
+    { READOUT_TIME,     N_("Time"),    N_("Time left"), "readout_time"     },
     // "Format", not "Session": the Session PB comparison row above already
     // carries "Session" in its label, and two rows under one word in the same panel
     // is the collision a render test caught the moment both were on.
-    { READOUT_SESSION,  "Format",  "Session format", "readout_session" },
-    { READOUT_FUEL,     "Fuel",    "Fuel laps left", "readout_fuel"  },
+    { READOUT_SESSION,  N_("Format"),  N_("Session format"), "readout_session" },
+    { READOUT_FUEL,     N_("Fuel"),    N_("Fuel laps left"), "readout_fuel"  },
     // THE TWO TEXT ROWS, and the only ones whose value has no natural length. The
     // stack is CENTER_STACK_WIDTH_CHARS wide and that width is a contract with the
     // Notices panel above it, so these truncate to fit rather than widening the
     // panel out of line with its neighbour -- see readoutTextBudget() below for
     // the budget and what it costs. Both read the value the Session panel already
     // prints, so the two panels cannot disagree about what server you are on.
-    { READOUT_SERVER,   "Server",  "Server",    "readout_server" },
-    { READOUT_TRACK,    "Track",   "Track",     "readout_track"  },
+    { READOUT_SERVER,   N_("Server"),  N_("Server"),    "readout_server" },
+    { READOUT_TRACK,    N_("Track"),   N_("Track"),     "readout_track"  },
 };
 // A flag's row in READOUT_INFO, so a caller naming one flag gets that row's
 // label rather than a hand-kept parallel list. Returns 0 for an unknown flag,
@@ -128,6 +128,11 @@ inline constexpr int readoutIndexOf(ReadoutFlags flag) {
         if (READOUT_INFO[i].flag == flag) return i;
     }
     return 0;
+}
+// A readout's HUD label as shown, cached per language (I18n::trEntry).
+inline const char* readoutLabel(int index) {
+    static I18n::Slot slots[READOUT_COUNT] = {};
+    return I18n::trEntry(slots[index], READOUT_INFO[index].name);
 }
 
 static_assert(sizeof(READOUT_INFO) / sizeof(READOUT_INFO[0]) == READOUT_COUNT,
@@ -149,13 +154,13 @@ struct GapTypeInfo {
 
 // Ordered list of gap types for cycling and display
 inline constexpr GapTypeInfo GAP_TYPE_INFO[] = {
-    { GAP_TO_PB,      "Session PB"  },
-    { GAP_TO_ALLTIME, "All-time PB" },
-    { GAP_TO_IDEAL,   "Ideal"    },
-    { GAP_TO_OVERALL, "Server best" },
-    { GAP_TO_LASTLAP, "Last lap" },
+    { GAP_TO_PB,      N_("Session PB")  },
+    { GAP_TO_ALLTIME, N_("All-time PB") },
+    { GAP_TO_IDEAL,   N_("Ideal")    },
+    { GAP_TO_OVERALL, N_("Server best") },
+    { GAP_TO_LASTLAP, N_("Last lap") },
 #if GAME_HAS_RECORDS_PROVIDER
-    { GAP_TO_RECORD,  "Record"   }
+    { GAP_TO_RECORD,  N_("Record")   }
 #endif
 };
 
@@ -379,7 +384,7 @@ private:
     };
     struct Row { const char* name; RowValue val; };
     // 24, not the 16 a lap time needs: the session format is the long one here
-    // ("10:00 + 2L"), and a value that silently truncates is worse than a
+    // ("10:00 + 2 laps"), and a value that silently truncates is worse than a
     // row that costs eight bytes more on the stack.
     // 48, not 24: a server or track name is free text, and a buffer shorter than the
     // panel is a SECOND, invisible truncation -- it silently cut the value before the

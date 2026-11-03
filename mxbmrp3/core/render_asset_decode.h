@@ -66,7 +66,17 @@ struct Texture {
     // who deliberately does not.
     std::vector<MipLevel> mips;   // [0] == rgba, [n] == rgba >> n
 };
-constexpr int kMaxTexDim = 8192;
+// The largest side a decoded .tga or .fnt atlas may have. Shared packs are
+// files from strangers, and an RLE .tga of a flat colour is a few KB on disk
+// at any size: at 8192 one texture asked for 256 MB (340 MB with an icon's
+// mips), so a small theme could ask for gigabytes. Shipped art tops out at
+// 2048. AssetManager::readTgaDimensions holds pack art to the same cap at
+// discovery, so the game never loads a bigger file either.
+constexpr int kMaxTexDim = 4096;
+// A glyph's offset and advance, in cell heights, past which a .fnt is lying:
+// the shipped fonts stay under 1.3. Holds a crafted glyph to a sane width
+// instead of a per-pixel loop over billions of columns.
+constexpr int kMaxGlyphCells = 4;
 Texture decodeTga(const std::vector<uint8_t>& bytes);
 
 // Build a complete mip chain for a decoded .tga. NOT called by decodeTga: it is
@@ -136,6 +146,9 @@ struct FntFont {
 // Odd axes sample the clamped last row/column so the edge behaves.
 void buildFntMips(FntFont& f);
 FntFont decodeFnt(const std::vector<uint8_t>& bytes);
+// A glyph offset (allowNegative) or advance held to kMaxGlyphCells cell heights;
+// taken as int64 so the file's three-int advance sum cannot overflow first.
+int clampGlyphMetric(int64_t v, int cellH, bool allowNegative);
 
 // ---- Measuring without the atlas --------------------------------------------
 // The bytes before a .fnt's atlas: the header and the glyph table. A layout

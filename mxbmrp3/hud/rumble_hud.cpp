@@ -3,6 +3,7 @@
 // Displays real-time controller rumble motor outputs and effect values
 // ============================================================================
 #include "rumble_hud.h"
+#include "../core/i18n.h"
 #include "default_slots.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_utils.h"
@@ -218,7 +219,7 @@ void RumbleHud::rebuildRenderData() {
     PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(BACKGROUND_WIDTH_CHARS, dims.fontSize);
     want.sectionH = { contentHeight };
-    want.captionW = planTitleWidth(dims, "Rumble", TitleTier::Large);
+    want.captionW = planTitleWidth(dims, TR("Rumble"), TitleTier::Large);
     want.tier = TitleTier::Large;
     PanelPlan& plan = planPanel(dims, want);
     setBounds(START_X, START_Y, START_X + plan.width(), START_Y + plan.height());
@@ -227,7 +228,7 @@ void RumbleHud::rebuildRenderData() {
     float contentStartX = plan.contentX();
     float currentY = plan.contentY();
 
-    addPlanTitle(plan, "Rumble",
+    addPlanTitle(plan, TR("Rumble"),
                  this->getColor(ColorSlot::PRIMARY));
 
     // Nothing can rumble: the graph would only ever draw flat lines, which reads as
@@ -236,17 +237,17 @@ void RumbleHud::rebuildRenderData() {
     const Notice notice = currentNotice();
     if (notice != Notice::NONE) {
         char headline[48];
-        const char* hint = "Check MXBMRP3 Settings > General";
+        const char* hint = TR("Check MXBMRP3 Settings > General");
         switch (notice) {
             case Notice::RUMBLE_OFF:
-                snprintf(headline, sizeof(headline), "%s", "Rumble off");
-                hint = "Check MXBMRP3 Settings > Rumble";
+                snprintf(headline, sizeof(headline), "%s", TR("Rumble off"));
+                hint = TR("Check MXBMRP3 Settings > Rumble");
                 break;
             case Notice::NO_CONTROLLER:
-                snprintf(headline, sizeof(headline), "%s", "No controller selected");
+                snprintf(headline, sizeof(headline), "%s", TR("No controller selected"));
                 break;
             default:
-                snprintf(headline, sizeof(headline), "Controller %d Not Connected",
+                snprintf(headline, sizeof(headline), TR("Controller %d Not Connected"),
                          xinput.getGlobalRumbleConfig().controllerIndex + 1);
                 break;
         }
@@ -378,7 +379,7 @@ void RumbleHud::rebuildRenderData() {
 
     // Bumps/Suspension effect (show 0% when not on track)
     if (bumpsPrimaryOn || bumpsRearOn) {
-        addLabel("Bmp", legendStartX, legendY, Justify::LEFT, bumpsColor, dims);
+        addLabel(TR("Bmp"), legendStartX, legendY, Justify::LEFT, bumpsColor, dims);
         // Overall intensity = stronger of front/rear (rear is 0 when not split)
         float suspVal = std::max(xinput.getLastSuspensionRumble(), xinput.getLastSuspensionRumbleRear());
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(suspVal * 100) : 0);
@@ -389,7 +390,7 @@ void RumbleHud::rebuildRenderData() {
 
     // Spin effect
     if (config.wheelspinEffect.isEnabled()) {
-        addLabel("Spn", legendStartX, legendY, Justify::LEFT, wheelColor, dims);
+        addLabel(TR("Spn"), legendStartX, legendY, Justify::LEFT, wheelColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastWheelspinRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
@@ -398,7 +399,7 @@ void RumbleHud::rebuildRenderData() {
 
     // Brake lockup effect
     if (lockupPrimaryOn || lockupRearOn) {
-        addLabel("Lck", legendStartX, legendY, Justify::LEFT, lockupColor, dims);
+        addLabel(TR("Lck"), legendStartX, legendY, Justify::LEFT, lockupColor, dims);
         // Overall intensity = stronger of front/rear (rear is 0 when not split)
         float lockVal = std::max(xinput.getLastLockupRumble(), xinput.getLastLockupRumbleRear());
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(lockVal * 100) : 0);
@@ -409,7 +410,7 @@ void RumbleHud::rebuildRenderData() {
 
     // Wheelie effect
     if (config.wheelieEffect.isEnabled()) {
-        addLabel("Whl", legendStartX, legendY, Justify::LEFT, wheelieColor, dims);
+        addLabel(TR("Whl"), legendStartX, legendY, Justify::LEFT, wheelieColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastWheelieRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
@@ -418,7 +419,7 @@ void RumbleHud::rebuildRenderData() {
 
     // RPM effect
     if (config.rpmEffect.isEnabled()) {
-        addLabel("RPM", legendStartX, legendY, Justify::LEFT, rpmColor, dims);
+        addLabel(TR("RPM"), legendStartX, legendY, Justify::LEFT, rpmColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastRpmRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
@@ -427,7 +428,7 @@ void RumbleHud::rebuildRenderData() {
 
     // Slide effect
     if (config.slideEffect.isEnabled()) {
-        addLabel("Sld", legendStartX, legendY, Justify::LEFT, slideColor, dims);
+        addLabel(TR("Sld"), legendStartX, legendY, Justify::LEFT, slideColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastSlideRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
@@ -436,7 +437,7 @@ void RumbleHud::rebuildRenderData() {
 
     // Surface effect
     if (config.surfaceEffect.isEnabled()) {
-        addLabel("Srf", legendStartX, legendY, Justify::LEFT, terrainColor, dims);
+        addLabel(TR("Srf"), legendStartX, legendY, Justify::LEFT, terrainColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastSurfaceRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
@@ -445,7 +446,7 @@ void RumbleHud::rebuildRenderData() {
 
     // Steer torque effect
     if (config.steerEffect.isEnabled()) {
-        addLabel("Str", legendStartX, legendY, Justify::LEFT, steerColor, dims);
+        addLabel(TR("Str"), legendStartX, legendY, Justify::LEFT, steerColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastSteerRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
@@ -454,7 +455,7 @@ void RumbleHud::rebuildRenderData() {
 
     // Rev limiter effect
     if (config.revLimiterEffect.isEnabled()) {
-        addLabel("Rev", legendStartX, legendY, Justify::LEFT, revLimColor, dims);
+        addLabel(TR("Rev"), legendStartX, legendY, Justify::LEFT, revLimColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastRevLimiterRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);
@@ -463,7 +464,7 @@ void RumbleHud::rebuildRenderData() {
 
     // Pit limiter effect
     if (config.pitLimiterEffect.isEnabled()) {
-        addLabel("Pit", legendStartX, legendY, Justify::LEFT, pitLimColor, dims);
+        addLabel(TR("Pit"), legendStartX, legendY, Justify::LEFT, pitLimColor, dims);
         snprintf(buffer, sizeof(buffer), "%4d%%", isOnTrack ? static_cast<int>(xinput.getLastPitLimiterRumble() * 100) : 0);
         addString(buffer, valueX, legendY, Justify::LEFT,
             this->getFont(FontCategory::DIGITS), this->getColor(ColorSlot::SECONDARY), dims.fontSize);

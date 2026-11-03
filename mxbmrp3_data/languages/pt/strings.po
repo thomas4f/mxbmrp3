@@ -1,0 +1,5772 @@
+# Português (Brasil) (Brazilian Portuguese) language pack for MXBMRP3 - BETA.
+# Drafted for 1.35; not yet reviewed line by line by a native speaker.
+# Corrections are welcome: see README.md in the parent folder. The folder is
+# "pt", so Portuguese Windows in Portugal picks it too; a pt-pt pack can sit
+# on top of it with base = pt.
+#
+# Glossary (keep these consistent):
+#   rider = piloto, bike = moto, lap = volta, sector = setor, split = parcial,
+#   gap = dif. / diferença, PB = RP / recorde pessoal, standings = classificação,
+#   pits = boxes, penalty = punição, session = sessão, practice = treino,
+#   qualify = classificação, race = corrida, settings = ajustes / configurações,
+#   hotkeys = atalhos, rumble = vibração, notice = aviso, achievement = conquista,
+#   profile = perfil, crash = queda, web overlay = overlay web,
+#   On/Off = On/Off, Default = Padrão, Auto = Auto.
+#   Kept in English as players say them: HUD, Dash, Companion, holeshot, whip,
+#   scrub, oppo, endo, stoppie, wheelie, backflip, frontflip, turn down, FMX, OBS.
+msgid ""
+msgstr ""
+"Project-Id-Version: mxbmrp3\n"
+"PO-Revision-Date: 2026-11-01 00:00+0000\n"
+"Last-Translator: MXBMRP3\n"
+"Language-Team: Portuguese (Brazil)\n"
+"Language: pt_BR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "  Stop   "
+msgstr "  Parar  "
+
+msgid " (does not count towards progress)"
+msgstr " (não conta para o progresso)"
+
+#, c-format
+msgid "#%d takes the lead"
+msgstr "#%d assume a liderança"
+
+#, c-format
+msgid "%.1f laps"
+msgstr "%.1f voltas"
+
+#, c-format
+msgid "%d TO GO"
+msgstr "FALTAM %d"
+
+#, c-format
+msgid "%d achievements unlocked"
+msgstr "%d conquistas desbloqueadas"
+
+#, c-format
+msgid "%d lap"
+msgstr "%d volta"
+
+#, c-format
+msgid "%d laps"
+msgstr "%d voltas"
+
+#, c-format
+msgid "%s + %d lap"
+msgstr "%s + %d volta"
+
+#, c-format
+msgid "%s + %d laps"
+msgstr "%s + %d voltas"
+
+#, c-format
+msgid "%s - halfway to %s"
+msgstr "%s - na metade rumo a %s"
+
+#, c-format
+msgid "%s Local"
+msgstr "%s local"
+
+#, c-format
+msgid "%s UTC"
+msgstr "%s UTC"
+
+#, c-format
+msgid "%s cancelled"
+msgstr "%s cancelada"
+
+#, c-format
+msgid "%s complete"
+msgstr "%s concluída"
+
+#, c-format
+msgid "%s copied to %s"
+msgstr "%s copiado para %s"
+
+#, c-format
+msgid "%s copied to every profile"
+msgstr "%s copiado para todos os perfis"
+
+#, c-format
+msgid "%s did not start"
+msgstr "%s não largou"
+
+#, c-format
+msgid "%s disqualified"
+msgstr "%s desclassificado"
+
+#, c-format
+msgid "%s ended"
+msgstr "%s encerrada"
+
+#, c-format
+msgid "%s entered pits"
+msgstr "%s entrou nos boxes"
+
+#, c-format
+msgid "%s fastest lap"
+msgstr "%s volta mais rápida"
+
+#, c-format
+msgid "%s finished"
+msgstr "%s terminou"
+
+#, c-format
+msgid "%s hidden"
+msgstr "%s oculto"
+
+#, c-format
+msgid "%s in burnouts and drifts"
+msgstr "%s em burnouts e drifts"
+
+#, c-format
+msgid "%s laps in a row, crash/penalty free"
+msgstr "%s voltas seguidas, sem queda/punição"
+
+#, c-format
+msgid "%s left pits"
+msgstr "%s saiu dos boxes"
+
+#, c-format
+msgid "%s penalty (%s)"
+msgstr "Punição de %s (%s)"
+
+#, c-format
+msgid "%s penalty changed"
+msgstr "Punição de %s alterada"
+
+#, c-format
+msgid "%s penalty cleared"
+msgstr "Punição de %s removida"
+
+#, c-format
+msgid "%s profile"
+msgstr "Perfil %s"
+
+#, c-format
+msgid "%s reset"
+msgstr "%s redefinido"
+
+#, c-format
+msgid "%s retired"
+msgstr "%s abandonou"
+
+#, c-format
+msgid "%s started"
+msgstr "%s iniciada"
+
+#, c-format
+msgid "%s time expired"
+msgstr "%s tempo esgotado"
+
+#, c-format
+msgid "%s: %s"
+msgstr "%s: %s"
+
+#, c-format
+msgid "%s: Pre-Start"
+msgstr "%s: Pré-largada"
+
+msgid "(click to track/untrack)"
+msgstr "(clique para seguir/deixar)"
+
+msgid "- Front"
+msgstr "- Frente"
+
+msgid "- Rear"
+msgstr "- Trás"
+
+msgid "99 Problems"
+msgstr "99 Problemas"
+
+msgctxt "tooltip"
+msgid "A Twitch or YouTube icon on each line. Auto shows it while both are switched on."
+msgstr "Um ícone de Twitch ou YouTube em cada linha. Auto mostra quando ambos estão ligados."
+
+#. max 38 characters
+msgid "A comment or rating, a star or a"
+msgstr "Um comentário ou nota, uma estrela ou"
+
+msgctxt "tooltip"
+msgid "A crash tally for streaming - counts across sessions and restarts until you reset it."
+msgstr "Contador de quedas para lives - soma entre sessões e reinícios até você zerar."
+
+msgctxt "tooltip"
+msgid "A new notice takes the card over, drawn as on Notices, then your page comes back."
+msgstr "Um novo aviso assume o cartão, desenhado como em Avisos, e depois sua página volta."
+
+msgctxt "tooltip"
+msgid "A soft halo behind the lights that call for action: RPM, gear at shift, warnings, Dash RPM and fuel."
+msgstr "Um brilho suave atrás das luzes que pedem ação: RPM, marcha na troca, alertas, RPM do Dash e combustível."
+
+msgid "ALL-TIME PB"
+msgstr "RP HISTÓRICO"
+
+msgid "AM"
+msgstr "AM"
+
+#. max 6 characters
+msgid "About"
+msgstr "Sobre"
+
+msgid "About MXBMRP3"
+msgstr "Sobre o MXBMRP3"
+
+#. max 11 characters
+msgid "Accent"
+msgstr "Destaque"
+
+msgid "Achievement"
+msgstr "Conquista"
+
+msgid "Achievement toasts appear here"
+msgstr "Os avisos de conquista aparecem aqui"
+
+#. max 12 characters
+msgid "Achievements"
+msgstr "Conquistas"
+
+#. max 48 characters
+msgid "Achievements earned, at any tier"
+msgstr "Conquistas obtidas, em qualquer nível"
+
+msgctxt "tooltip"
+msgid "Adapt density to the on-screen map, so every track looks and costs about the same."
+msgstr "Ajusta a densidade ao mapa na tela, para que toda pista pareça e custe quase igual."
+
+#. max 15 characters
+msgid "Adaptive detail"
+msgstr "Detalhe adapt."
+
+#. max 15 characters
+msgid "Adaptive range"
+msgstr "Alcance adapt."
+
+msgctxt "tooltip"
+msgid "Add a comparison row against the best lap by anyone this session."
+msgstr "Adiciona uma linha comparando com a melhor volta de qualquer um na sessão."
+
+msgctxt "tooltip"
+msgid "Add a comparison row against the fastest record from the Records HUD."
+msgstr "Adiciona uma linha comparando com o recorde mais rápido do HUD Recordes."
+
+msgctxt "tooltip"
+msgid "Add a comparison row against your all-time personal best."
+msgstr "Adiciona uma linha comparando com seu recorde pessoal histórico."
+
+msgctxt "tooltip"
+msgid "Add a comparison row against your ideal lap (sum of best sectors)."
+msgstr "Adiciona uma linha comparando com sua volta ideal (soma dos melhores setores)."
+
+msgctxt "tooltip"
+msgid "Add a comparison row against your previous lap."
+msgstr "Adiciona uma linha comparando com sua volta anterior."
+
+msgctxt "tooltip"
+msgid "Add a comparison row against your session personal best."
+msgstr "Adiciona uma linha comparando com seu recorde pessoal da sessão."
+
+msgctxt "tooltip"
+msgid "Add a shadow behind text and HUD icons for improved readability."
+msgstr "Adiciona uma sombra atrás de textos e ícones do HUD para melhor leitura."
+
+msgctxt "tooltip"
+msgid "Add your own presence as a top row (labeled You) to confirm what you're broadcasting."
+msgstr "Adiciona sua própria presença como primeira linha (Você) para conferir o que transmite."
+
+msgid "Adjacent"
+msgstr "Adjacente"
+
+msgctxt "tooltip"
+msgid "After manual control, auto-resume once the controller is idle this long. Off = stay paused."
+msgstr "Após controle manual, retoma sozinho quando o controle fica parado esse tempo. Off = pausa."
+
+msgid "Air Miles"
+msgstr "Milhas Aéreas"
+
+#. max 23 characters
+msgid "Alert distance"
+msgstr "Distância do alerta"
+
+msgid "All"
+msgstr "Todos"
+
+#. max 10 characters
+msgid "All HUDs"
+msgstr "Todos HUDs"
+
+msgid "All HUDs hidden"
+msgstr "Todos os HUDs ocultos"
+
+#. max 15 characters
+msgid "All-time"
+msgstr "Histórico"
+
+#. max 15 characters
+msgid "All-time PB"
+msgstr "RP histórico"
+
+#. max 15 characters
+msgid "Alongside back"
+msgstr "Ao lado atrás"
+
+#. max 15 characters
+msgid "Alongside front"
+msgstr "Ao lado frente"
+
+msgctxt "tooltip"
+msgid "Also show message text in the chatter's name color."
+msgstr "Mostra também o texto da mensagem na cor do nome de quem escreveu."
+
+msgid "Always"
+msgstr "Sempre"
+
+msgctxt "tooltip"
+msgid "Always show the top N leaders, even when rows center on you (0 = off)."
+msgstr "Sempre mostra os N primeiros, mesmo quando as linhas centram em você (0 = off)."
+
+msgid "Amber"
+msgstr "Âmbar"
+
+msgctxt "tooltip"
+msgid "Analog speedometer gauge showing current speed, with odometer and trip meter."
+msgstr "Velocímetro analógico mostrando a velocidade atual, com odômetro e hodômetro parcial."
+
+msgctxt "tooltip"
+msgid "Animate position changes. Off: none; Basic: slide rows; Colored: slide + green/red tint."
+msgstr "Anima mudanças de posição. Off: nada; Básico: desliza; Colorido: desliza + tom verde/vermelho."
+
+#. max 15 characters
+msgid "Animation"
+msgstr "Animação"
+
+msgid "Anniversary"
+msgstr "Aniversário"
+
+msgctxt "tooltip"
+msgid "Anonymous usage survey: one ping at startup, no personal data. On by default."
+msgstr "Pesquisa de uso anônima: um ping ao iniciar, sem dados pessoais. Ligada por padrão."
+
+#. max 12 characters
+msgid "Appearance"
+msgstr "Aparência"
+
+msgid "Aqua"
+msgstr "Aqua"
+
+msgid "Armchair Marshal"
+msgstr "Fiscal de Sofá"
+
+#. max 23 characters
+msgid "Arrow colors"
+msgstr "Cores da seta"
+
+#. max 23 characters
+msgid "Arrow icon"
+msgstr "Ícone da seta"
+
+#. max 23 characters
+msgid "Arrow mode"
+msgstr "Modo da seta"
+
+#. max 23 characters
+msgid "Arrow scale"
+msgstr "Escala da seta"
+
+msgid "At laps"
+msgstr "Nas voltas"
+
+msgctxt "tooltip"
+msgid "At laps and At splits: how long the standings show after each crossing."
+msgstr "Nas voltas e Nos parciais: quanto tempo a classificação aparece após cada passagem."
+
+msgid "At pit"
+msgstr "Nos boxes"
+
+msgid "At splits"
+msgstr "Nos parciais"
+
+msgctxt "tooltip"
+msgid "At splits shows timing only after crossing a split point. Always shows timing constantly."
+msgstr "Nos parciais mostra os tempos só após passar um parcial. Sempre mostra o tempo todo."
+
+msgctxt "tooltip"
+msgid "At splits: how long the board shows after each split and the line."
+msgstr "Nos parciais: quanto tempo o painel aparece após cada parcial e a linha."
+
+msgid "Auto"
+msgstr "Auto"
+
+msgid "Auto-director disabled"
+msgstr "Diretor automático desligado"
+
+msgid "Auto-director enabled"
+msgstr "Diretor automático ligado"
+
+msgctxt "tooltip"
+msgid "Auto-director for spectating: follows the most interesting rider - battles, passes, hot laps."
+msgstr "Diretor automático ao assistir: segue o piloto mais interessante - disputas, ultrapassagens, voltas rápidas."
+
+msgid "Auto-director resumed"
+msgstr "Diretor automático retomado"
+
+#. max 23 characters
+msgid "Auto-fetch"
+msgstr "Buscar sozinho"
+
+msgid "Auto-hide"
+msgstr "Ocultar auto"
+
+#. max 12 characters
+msgid "Auto-save"
+msgstr "Salvar auto"
+
+msgctxt "tooltip"
+msgid "Auto-saves on leaving the track (never while riding); use Save anytime. Disable to edit INI."
+msgstr "Salva ao sair da pista (nunca pilotando); use Salvar quando quiser. Desligue para editar o INI."
+
+#. max 23 characters
+msgid "Auto-switch"
+msgstr "Troca automática"
+
+msgctxt "tooltip"
+msgid "Auto: leader in races, session PB solo. Server best: anyone's fastest. Record: from Records HUD."
+msgstr "Auto: líder em corridas, RP da sessão solo. Melhor servidor: de qualquer um. Recorde: HUD Recordes."
+
+msgctxt "tooltip"
+msgid "Automatic update checking and installation. Downloads and installs new versions from GitHub."
+msgstr "Verificação e instalação automática de atualizações. Baixa e instala novas versões do GitHub."
+
+msgctxt "tooltip"
+msgid "Automatically fetch records when entering an event."
+msgstr "Busca os recordes automaticamente ao entrar num evento."
+
+msgctxt "tooltip"
+msgid "Automatically switch profiles based on session type."
+msgstr "Troca de perfil automaticamente conforme o tipo de sessão."
+
+msgid "Available:"
+msgstr "Disponível:"
+
+msgid "Avg"
+msgstr "Méd"
+
+msgid "Avg speed"
+msgstr "Vel. média"
+
+#. max 15 characters
+msgid "Axis labels"
+msgstr "Rótulos eixos"
+
+msgid "BLUE FLAG"
+msgstr "BANDEIRA AZUL"
+
+#. max 56 characters
+msgid "Back"
+msgstr "Voltar"
+
+msgid "Back Marker"
+msgstr "Retardatário"
+
+msgctxt "tooltip"
+msgid "Back to the More page."
+msgstr "Volta para a página Mais."
+
+#. max 11 characters
+msgid "Background"
+msgstr "Fundo"
+
+msgctxt "tooltip"
+msgid "Background color for HUD panels."
+msgstr "Cor de fundo dos painéis do HUD."
+
+#, c-format
+msgctxt "tooltip"
+msgid "Background transparency. 0% is fully transparent, 100% is fully opaque."
+msgstr "Transparência do fundo: 0% invisível, 100% inteiramente opaco."
+
+msgid "Backseat Driver"
+msgstr "Piloto de Banco de Trás"
+
+msgid "Backup"
+msgstr "Reserva"
+
+msgid "Backup Plan"
+msgstr "Plano B"
+
+msgid "Baker's Dozen"
+msgstr "Dúzia de Padeiro"
+
+#. max 11 characters
+msgid "Bars"
+msgstr "Barras"
+
+msgid "Basic"
+msgstr "Básico"
+
+#, c-format
+msgid "Battle %s"
+msgstr "Disputa %s"
+
+#, c-format
+msgid "Battle %s vs %s"
+msgstr "Disputa %s vs %s"
+
+#. max 15 characters
+msgid "Battle gap"
+msgstr "Dif. disputa"
+
+#. max 15 characters
+msgid "Battles"
+msgstr "Disputas"
+
+#, c-format
+msgid "Beat %s PBs by a second or more"
+msgstr "Bata %s RPs por um segundo ou mais"
+
+msgid "Beat a PB by a second or more"
+msgstr "Bata um RP por um segundo ou mais"
+
+#. max 15 characters
+msgid "Behind distance"
+msgstr "Distância atrás"
+
+msgctxt "tooltip"
+msgid "Behind the Companion HUD. Green, Blue or Magenta: an OBS Chroma Key filter of that colour shows only the HUD."
+msgstr "Atrás do HUD do Companion. Verde, Azul ou Magenta: um filtro Chroma Key do OBS dessa cor mostra só o HUD."
+
+#. max 23 characters
+msgid "Benchmark profiler"
+msgstr "Profiler de desempenho"
+
+msgid "Best"
+msgstr "Melhor"
+
+msgid "Best lap"
+msgstr "Melhor volta"
+
+#. max 15 characters
+msgid "Best lap time"
+msgstr "Melhor volta"
+
+#. max 43 characters
+msgid "Best sectors combined"
+msgstr "Melhores setores somados"
+
+#. max 4 characters
+msgid "Beta"
+msgstr "Beta"
+
+msgid "Big Hit"
+msgstr "Pancada"
+
+msgid "Bike"
+msgstr "Moto"
+
+msgctxt "tooltip"
+msgid "Bike = PB per bike. Class = PB across all bikes in the same class (MX1, MX2, ...)."
+msgstr "Moto = RP por moto. Classe = RP entre todas as motos da mesma classe (MX1, MX2, ...)."
+
+msgctxt "tooltip"
+msgid "Bike heading dial with N/E/S/W labels (classic needle or modern rotating-card style)."
+msgstr "Bússola com rótulos N/L/S/O (agulha clássica ou cartão giratório moderno)."
+
+#. max 15 characters
+msgid "Bike model"
+msgstr "Modelo da moto"
+
+msgid "Bind Dash + / Dash -"
+msgstr "Atribua Dash + / Dash -"
+
+msgid "Bind a hotkey"
+msgstr "Atribua um atalho"
+
+msgid "Black"
+msgstr "Preto"
+
+msgid "Blue"
+msgstr "Azul"
+
+#. max 23 characters
+msgid "Blue flag"
+msgstr "Bandeira azul"
+
+msgid "Bmp"
+msgstr "Sol"
+
+msgid "Both"
+msgstr "Ambos"
+
+msgid "Bottom"
+msgstr "Embaixo"
+
+msgid "Brand"
+msgstr "Marca"
+
+#. max 15 characters
+msgid "Breakout score"
+msgstr "Placar Breakout"
+
+#, c-format
+msgid "Breakout score %s"
+msgstr "Placar Breakout %s"
+
+msgid "Brick Breaker"
+msgstr "Quebra-Tijolos"
+
+msgctxt "tooltip"
+msgid "Briefly flash to a rider who just set the overall fastest lap of the race."
+msgstr "Mostra por um instante o piloto que acabou de fazer a volta mais rápida da corrida."
+
+msgid "Bright Yellow"
+msgstr "Amarelo Vivo"
+
+#. max 60 characters
+msgid "Broadcast"
+msgstr "Transmissão"
+
+msgctxt "tooltip"
+msgid "Broadcast your status and see friends running the plugin. Needs the Steam build; on by default."
+msgstr "Transmite seu status e vê amigos usando o plugin. Requer a versão Steam; ligado por padrão."
+
+msgid "Bronze"
+msgstr "Bronze"
+
+msgid "Bronze Sweep"
+msgstr "Varrida de Bronze"
+
+msgid "Brown"
+msgstr "Marrom"
+
+#. max 11 characters
+msgid "Bumps"
+msgstr "Ondulações"
+
+#, c-format
+msgid "Burn %s of fuel"
+msgstr "Queime %s de combustível"
+
+msgid "By tab or section"
+msgstr "Por aba ou seção"
+
+msgid "CBR"
+msgstr "CBR"
+
+msgid "CHECKERED"
+msgstr "BANDEIRADA"
+
+msgctxt "tooltip"
+msgid "Callout volume, separate from the game's audio."
+msgstr "Volume das chamadas, separado do áudio do jogo."
+
+#. max 60 characters
+msgid "Callouts"
+msgstr "Chamadas"
+
+#. max 10 characters
+msgid "Cam Lock"
+msgstr "Trava câm."
+
+msgid "Can you read this clearly?"
+msgstr "Dá para ler isto bem?"
+
+msgid "Can't read"
+msgstr "Não dá para ler"
+
+msgid "Cancelled"
+msgstr "Cancelada"
+
+msgid "Carbon Footprint"
+msgstr "Pegada de Carbono"
+
+msgid "Case of the Mondays"
+msgstr "Segunda-feira"
+
+msgctxt "tooltip"
+msgid "Caution indicators, low fuel, and proximity alerts."
+msgstr "Indicadores de cautela, pouco combustível e alertas de proximidade."
+
+msgid "Chain"
+msgstr "Série"
+
+msgid "Chain Reaction"
+msgstr "Reação em Cadeia"
+
+msgid "Channel not found"
+msgstr "Canal não encontrado"
+
+msgctxt "tooltip"
+msgid "Channel to read. Click, type or paste a name or twitch.tv link, then press Enter."
+msgstr "Canal a ler. Clique, digite ou cole um nome ou link twitch.tv e tecle Enter."
+
+msgctxt "tooltip"
+msgid "Channel to read. Click, type or paste your @handle or channel link, then press Enter."
+msgstr "Canal a ler. Clique, digite ou cole seu @handle ou link do canal e tecle Enter."
+
+#. max 60 characters
+msgid "Channels"
+msgstr "Canais"
+
+msgid "Charger"
+msgstr "Investida"
+
+#. max 15 characters
+msgid "Chart height"
+msgstr "Altura gráfico"
+
+#. max 10 characters
+msgid "Charts"
+msgstr "Gráficos"
+
+#. max 10 characters
+msgid "Chat"
+msgstr "Chat"
+
+msgid "Check MXBMRP3 Settings > General"
+msgstr "Veja MXBMRP3 Ajustes > Geral"
+
+msgid "Check MXBMRP3 Settings > Rumble"
+msgstr "Veja MXBMRP3 Ajustes > Vibração"
+
+msgid "Check MXBMRP3 Settings > Stream Chat"
+msgstr "Veja MXBMRP3 Ajustes > Chat da Live"
+
+msgid "Check Now"
+msgstr "Verificar"
+
+msgctxt "tooltip"
+msgid "Check for a new version now."
+msgstr "Verifica agora se há nova versão."
+
+#. max 23 characters
+msgid "Check for updates"
+msgstr "Procurar atualizações"
+
+msgctxt "tooltip"
+msgid "Check for updates when the game starts."
+msgstr "Procura atualizações ao iniciar o jogo."
+
+#. max 60 characters
+msgid "Checking for updates..."
+msgstr "Procurando atualizações..."
+
+msgid "Choke"
+msgstr "Afogador"
+
+msgid "Circle"
+msgstr "Círculo"
+
+msgid "Circle Chevron Up"
+msgstr "Círculo com seta"
+
+#. max 15 characters
+msgid "Class"
+msgstr "Classe"
+
+msgid "Class Act"
+msgstr "Aula de Classe"
+
+msgid "Clean Sheet"
+msgstr "Ficha Limpa"
+
+msgid "Clear"
+msgstr "Limpar"
+
+msgctxt "tooltip"
+msgid "Clear the failed download so you can try again."
+msgstr "Limpa o download que falhou para tentar de novo."
+
+msgid "Click Compare to load records"
+msgstr "Clique em Comparar para carregar recordes"
+
+#, c-format
+msgid "Click here to get %s"
+msgstr "Clique aqui para obter %s"
+
+msgid "Click here to see what's new"
+msgstr "Clique aqui para ver as novidades"
+
+msgid "Click the menu button to open settings"
+msgstr "Clique no botão de menu para abrir as configurações"
+
+msgctxt "tooltip"
+msgid "Click to connect or disconnect. YouTube is read unofficially and may stop working."
+msgstr "Clique para conectar ou desconectar. O YouTube é lido extraoficialmente e pode parar."
+
+msgctxt "tooltip"
+msgid "Click to connect or disconnect; hiding the chat keeps it connected. Not found? is a typo."
+msgstr "Clique para conectar ou desconectar; ocultar o chat o mantém conectado. Não achou? É erro de digitação."
+
+msgid "Click to launch"
+msgstr "Clique para iniciar"
+
+#. max 34 characters
+msgid "Click to set"
+msgstr "Clique para definir"
+
+#, c-format
+msgid "Climb %s in jumps"
+msgstr "Suba %s em saltos"
+
+#, c-format
+msgid "Climb %s places from the first split"
+msgstr "Ganhe %s posições desde o primeiro parcial"
+
+#. max 11 characters
+msgid "Clock"
+msgstr "Relógio"
+
+#. max 13 characters
+msgid "Clock format"
+msgstr "Formato hora"
+
+msgctxt "tooltip"
+msgid "Clock time format. 24h uses 00:00-23:59, 12h uses 1:00-12:59 AM/PM."
+msgstr "Formato do relógio. 24h usa 00:00-23:59, 12h usa 1:00-12:59 AM/PM."
+
+#. max 50 characters
+msgid "Close"
+msgstr "Fechar"
+
+msgid "Cloudy"
+msgstr "Nublado"
+
+msgid "Clu"
+msgstr "Emb"
+
+#. max 23 characters
+msgid "Clutch"
+msgstr "Embreagem"
+
+msgid "Collapse"
+msgstr "Recolher"
+
+#, c-format
+msgid "Collect %s penalties"
+msgstr "Receba %s punições"
+
+msgid "Collector"
+msgstr "Colecionador"
+
+msgctxt "tooltip"
+msgid "Color indicating neutral values (no change)."
+msgstr "Cor que indica valores neutros (sem mudança)."
+
+msgctxt "tooltip"
+msgid "Color mode for proximity arrows. Distance fades with proximity, Position uses relative colors."
+msgstr "Modo de cor das setas. Distância esmaece com a proximidade, Posição usa cores relativas."
+
+msgctxt "tooltip"
+msgid "Color of the tint."
+msgstr "Cor do tom."
+
+msgid "Colored"
+msgstr "Colorido"
+
+#. max 15 characters
+msgid "Colors"
+msgstr "Cores"
+
+msgctxt "tooltip"
+msgid "Colours the track green where you gain and red where you lose. Default follows General."
+msgstr "Pinta a pista de verde onde você ganha e vermelho onde perde. Padrão segue Geral."
+
+#. max 15 characters
+msgid "Column headers"
+msgstr "Cabeçalhos"
+
+msgid "Combo & Score"
+msgstr "Combo e Pontos"
+
+#. max 23 characters
+msgid "Combo arc & score"
+msgstr "Arco combo e pontos"
+
+msgid "Come back after a crash to desktop"
+msgstr "Volte após um crash para o desktop"
+
+#. max 13 characters
+msgid "Compact times"
+msgstr "Tempos curtos"
+
+msgid "Companion"
+msgstr "Companion"
+
+#. max 13 characters
+msgid "Companion bg"
+msgstr "Fundo Compan."
+
+#. max 60 characters
+msgid "Companion window"
+msgstr "Janela Companion"
+
+msgid "Compare"
+msgstr "Comparar"
+
+msgid "Compare failed - try again"
+msgstr "Falha ao comparar - tente de novo"
+
+#, c-format
+msgid "Compare failed: %s"
+msgstr "Falha ao comparar: %s"
+
+#. max 60 characters
+msgid "Comparisons"
+msgstr "Comparações"
+
+#. max 11 characters
+msgid "Compass"
+msgstr "Bússola"
+
+msgid "Complete"
+msgstr "Concluído"
+
+#, c-format
+msgid "Complete %s laps"
+msgstr "Complete %s voltas"
+
+#, c-format
+msgid "Complete %s laps at one track"
+msgstr "Complete %s voltas numa pista"
+
+#, c-format
+msgid "Complete %s laps in one session"
+msgstr "Complete %s voltas numa sessão"
+
+msgctxt "tooltip"
+msgid "Configure controller vibration for racing events like bumps, wheelspin, and impacts."
+msgstr "Configura a vibração do controle para eventos como ondulações, patinação e impactos."
+
+msgid "Confirm"
+msgstr "Confirmar"
+
+msgid "Confirm?"
+msgstr "Confirmar?"
+
+msgid "Connect the web overlay"
+msgstr "Conecte o overlay web"
+
+msgid "Connected"
+msgstr "Conectado"
+
+msgid "Connecting"
+msgstr "Conectando"
+
+#, c-format
+msgid "Connecting to #%s..."
+msgstr "Conectando a #%s..."
+
+#, c-format
+msgid "Connecting to %s..."
+msgstr "Conectando a %s..."
+
+msgid "Connection lost - retrying..."
+msgstr "Conexão perdida - tentando de novo..."
+
+msgid "Consolation Prize"
+msgstr "Prêmio de Consolação"
+
+#. max 60 characters
+msgid "Content"
+msgstr "Conteúdo"
+
+msgctxt "tooltip"
+msgid "Continue rumble effects while the rider is crashed."
+msgstr "Mantém os efeitos de vibração enquanto o piloto está caído."
+
+#. max 12 characters
+msgid "Controller"
+msgstr "Controle"
+
+#, c-format
+msgid "Controller %d Not Connected"
+msgstr "Controle %d não conectado"
+
+msgctxt "tooltip"
+msgid "Controller artwork and the button positions that go with it."
+msgstr "Arte do controle e as posições dos botões que a acompanham."
+
+#. max 56 characters
+msgid "Copy"
+msgstr "Copiar"
+
+msgctxt "tooltip"
+msgid "Copy current profile settings to another profile."
+msgstr "Copia as configurações do perfil atual para outro perfil."
+
+#. max 23 characters
+msgid "Copy profile to"
+msgstr "Copiar perfil para"
+
+msgid "Could not check for updates."
+msgstr "Não foi possível procurar atualizações."
+
+#, c-format
+msgid "Could not open port %d. Is it in use?"
+msgstr "Não foi possível abrir a porta %d. Está em uso?"
+
+#, c-format
+msgid "Could not write %s. Is it read-only?"
+msgstr "Não foi possível gravar %s. É somente leitura?"
+
+msgid "Could not write to mxbmrp3\\benchmarks"
+msgstr "Não foi possível gravar em mxbmrp3\\benchmarks"
+
+msgid "Counted achievements at Gold or max"
+msgstr "Conquistas contadas em Ouro ou máx."
+
+msgid "Counted achievements at Silver or max"
+msgstr "Conquistas contadas em Prata ou máx."
+
+msgid "Counted achievements earned"
+msgstr "Conquistas contadas obtidas"
+
+msgid "Counted achievements maxed out"
+msgstr "Conquistas contadas no máximo"
+
+#, c-format
+msgid "Cover %s through the air"
+msgstr "Percorra %s pelo ar"
+
+#, c-format
+msgid "Crash %s times in total"
+msgstr "Caia %s vezes no total"
+
+msgid "Crash 13 times in one session"
+msgstr "Caia 13 vezes numa sessão"
+
+msgid "Crash counter hits 99"
+msgstr "Contador de quedas chega a 99"
+
+#, c-format
+msgid "Crash out of a %s-point chain"
+msgstr "Caia numa série de %s pontos"
+
+msgid "Crash out of a chain of five tricks"
+msgstr "Caia numa série de cinco manobras"
+
+msgid "Crash three times in a row in one place"
+msgstr "Caia três vezes seguidas no mesmo lugar"
+
+#. max 11 characters
+msgid "Crashes"
+msgstr "Quedas"
+
+msgid "Crashes 0"
+msgstr "Quedas 0"
+
+msgid "Crimson"
+msgstr "Carmesim"
+
+msgid "Crowd Surfer"
+msgstr "Mosh Pit"
+
+#. max 10 characters
+msgid "Current:"
+msgstr "Atual:"
+
+msgid "Custom"
+msgstr "Próprio"
+
+msgctxt "tooltip"
+msgid "Customize the visual style of all HUD elements including fonts and colors."
+msgstr "Personaliza o estilo visual de todos os elementos do HUD, incluindo fontes e cores."
+
+msgctxt "tooltip"
+msgid "Cut to a rider setting a session-best sector - a hot lap forming. Practice/quali only."
+msgstr "Corta para um piloto fazendo o melhor setor da sessão - volta rápida se formando. Só treino/classif."
+
+msgctxt "tooltip"
+msgid "Cut to a rider the instant they crash (or go off / stall). Highest priority."
+msgstr "Corta para um piloto no instante em que cai (ou sai da pista / morre). Maior prioridade."
+
+msgctxt "tooltip"
+msgid "Cut to a rider who just completed an on-track pass. Multi-place moves score higher."
+msgstr "Corta para um piloto que acabou de ultrapassar na pista. Ganhar várias posições vale mais."
+
+msgid "Cyan"
+msgstr "Ciano"
+
+msgid "DEFAULT SETUP"
+msgstr "SETUP PADRÃO"
+
+msgctxt "tooltip"
+msgid "Dangers: blue flag, rider down ahead, wrong-way rider."
+msgstr "Perigos: bandeira azul, piloto caído à frente, piloto na contramão."
+
+msgid "Dark"
+msgstr "Escuro"
+
+#. max 10 characters
+msgid "Dash"
+msgstr "Dash"
+
+#. max 10 characters
+msgid "Dash +"
+msgstr "Dash +"
+
+#. max 10 characters
+msgid "Dash -"
+msgstr "Dash -"
+
+msgid "Dash: Delta Trace"
+msgstr "Dash: Traço Delta"
+
+msgid "Dash: Event Log"
+msgstr "Dash: Eventos"
+
+msgid "Dash: Flat Map"
+msgstr "Dash: Mapa Plano"
+
+msgid "Dash: Fuel"
+msgstr "Dash: Comb."
+
+msgid "Dash: Gap Bar"
+msgstr "Dash: Barra Dif."
+
+msgid "Dash: Gap Chart"
+msgstr "Dash: Gráfico Dif."
+
+msgid "Dash: Ideal"
+msgstr "Dash: Ideal"
+
+msgid "Dash: Laps"
+msgstr "Dash: Voltas"
+
+msgid "Dash: Notices"
+msgstr "Dash: Avisos"
+
+msgid "Dash: Now Playing"
+msgstr "Dash: Tocando Agora"
+
+msgid "Dash: RPM"
+msgstr "Dash: RPM"
+
+msgid "Dash: Session"
+msgstr "Dash: Sessão"
+
+msgid "Dash: Standings"
+msgstr "Dash: Classificação"
+
+msgid "Dash: Telemetry"
+msgstr "Dash: Telemetria"
+
+msgid "Dash: Time"
+msgstr "Dash: Tempo"
+
+msgid "Dash: Timing"
+msgstr "Dash: Tempos"
+
+msgctxt "tooltip"
+msgid "Data source for leaderboard records. CBR or MXB Ranked."
+msgstr "Fonte dos recordes do ranking. CBR ou MXB Ranked."
+
+msgid "Date"
+msgstr "Data"
+
+#. max 23 characters
+msgid "Date recorded"
+msgstr "Data do recorde"
+
+msgid "Debug"
+msgstr "Depuração"
+
+#. max 23 characters
+msgid "Debug mode (test)"
+msgstr "Modo depuração (teste)"
+
+#. max 23 characters
+msgid "Debug values"
+msgstr "Valores depuração"
+
+msgid "Default"
+msgstr "Padrão"
+
+msgid "Default (All-time PB)"
+msgstr "Padrão (RP histórico)"
+
+msgid "Default (Last lap)"
+msgstr "Padrão (Última volta)"
+
+msgid "Default (Server best)"
+msgstr "Padrão (Melhor servidor)"
+
+msgid "Default (Session PB)"
+msgstr "Padrão (RP sessão)"
+
+#. max 23 characters
+msgid "Default setup"
+msgstr "Setup padrão"
+
+msgid "Defaults restored"
+msgstr "Padrões restaurados"
+
+#, c-format
+msgid "Defaults restored in %s"
+msgstr "Padrões restaurados em %s"
+
+msgid "Deja Vu"
+msgstr "Déjà Vu"
+
+#. max 10 characters
+msgid "Delta"
+msgstr "Delta"
+
+#. max 15 characters
+msgid "Delta Trace"
+msgstr "Traço Delta"
+
+msgid "Descriptions"
+msgstr "Descrições"
+
+#. max 15 characters
+msgid "Detail"
+msgstr "Detalhe"
+
+msgctxt "tooltip"
+msgid "Detection radius in meters. Riders outside this range are not shown."
+msgstr "Raio de detecção em metros. Pilotos fora desse alcance não aparecem."
+
+#. max 60 characters
+msgid "Developer"
+msgstr "Desenvolvedor"
+
+#. max 60 characters
+msgid "Diagnostics"
+msgstr "Diagnóstico"
+
+msgctxt "tooltip"
+msgid "Dial faces and the ranges that place the needles on them."
+msgstr "Mostradores e as faixas que posicionam os ponteiros neles."
+
+msgid "Digging a Hole"
+msgstr "Cavando um Buraco"
+
+#. max 7 characters
+msgid "Digits"
+msgstr "Dígitos"
+
+#. max 12 characters
+msgid "Direct GL"
+msgstr "Direct GL"
+
+msgid "Direct GL Rendering is ON."
+msgstr "Renderização Direct GL LIGADA."
+
+msgctxt "tooltip"
+msgid "Directional arrows for nearby riders. Edge shows on screen edge, Circle shows around center."
+msgstr "Setas direcionais para pilotos próximos. Borda mostra na borda da tela, Círculo em volta do centro."
+
+#. max 10 characters
+msgid "Director"
+msgstr "Diretor"
+
+msgid "Director's Cut"
+msgstr "Versão do Diretor"
+
+msgid "Discord"
+msgstr "Discord"
+
+#. max 60 characters
+msgid "Display"
+msgstr "Exibição"
+
+msgctxt "tooltip"
+msgid "Display mode. Graphs shows visual meters, Numbers shows text values, Both shows both."
+msgstr "Modo de exibição. Gráficos mostra medidores, Números mostra valores em texto, Ambos mostra os dois."
+
+#. max 15 characters
+msgid "Display order"
+msgstr "Ordem"
+
+msgctxt "tooltip"
+msgid "Display order. Oldest shows oldest laps at top, Newest shows newest at top."
+msgstr "Ordem de exibição. Antigas mostra as voltas antigas no topo, Recentes as recentes no topo."
+
+msgctxt "tooltip"
+msgid "Display your track, session, and lap progress in Discord's Rich Presence."
+msgstr "Mostra sua pista, sessão e progresso da volta no Rich Presence do Discord."
+
+msgctxt "tooltip"
+msgid "Displays your theoretical best lap time calculated from your fastest individual sectors."
+msgstr "Mostra sua melhor volta teórica, calculada com seus setores individuais mais rápidos."
+
+#. max 15 characters
+msgid "Distance"
+msgstr "Distância"
+
+msgctxt "tooltip"
+msgid "Distance at which proximity arrows appear."
+msgstr "Distância em que as setas de proximidade aparecem."
+
+#. max 21 characters
+msgid "Docs & guides"
+msgstr "Docs e guias"
+
+msgid "Down"
+msgstr "Baixo"
+
+msgid "Download"
+msgstr "Baixar"
+
+msgctxt "tooltip"
+msgid "Download and install the new version. Restart the game to apply it."
+msgstr "Baixa e instala a nova versão. Reinicie o jogo para aplicar."
+
+msgctxt "tooltip"
+msgid "Draw a dot at each lap's point along every line."
+msgstr "Desenha um ponto em cada volta ao longo de cada linha."
+
+msgctxt "tooltip"
+msgid "Draw the HUD in the game's OpenGL context, not the engine. Off/on retries a Failed."
+msgstr "Desenha o HUD no contexto OpenGL do jogo, não no motor. Off/on tenta de novo um Falhou."
+
+msgctxt "tooltip"
+msgid "Drop a segment boundary: 2 points time a section, close the loop for a full lap."
+msgstr "Marca um limite de trecho: 2 pontos cronometram um trecho, feche o laço para a volta inteira."
+
+#. max 13 characters
+msgid "Drop shadow"
+msgstr "Sombra"
+
+#. max 15 characters
+msgid "Drops"
+msgstr "Perdendo pos."
+
+msgctxt "tooltip"
+msgid "Drops the leading 0: for times under a minute. The web overlay also uses tenths for gaps."
+msgstr "Remove o 0: inicial em tempos abaixo de um minuto. O overlay web também usa décimos nas difs."
+
+#. max 15 characters
+msgid "Duration"
+msgstr "Duração"
+
+msgid "ECU"
+msgstr "ECU"
+
+#. max 60 characters
+msgid "Each page follows the settings of the HUD it comes from."
+msgstr "Cada página segue as configurações do HUD de onde vem."
+
+msgid "Early Access"
+msgstr "Acesso Antecipado"
+
+msgid "Earned"
+msgstr "Obtida"
+
+msgctxt "tooltip"
+msgid "Earned by trading in a completed achievement ladder. Texture picks the badge."
+msgstr "Obtida ao trocar uma escada de conquistas completa. Textura escolhe o emblema."
+
+msgid "Edge"
+msgstr "Borda"
+
+msgid "Edit the settings file by hand"
+msgstr "Edite o arquivo de configurações à mão"
+
+msgid "Edit the stats file by hand"
+msgstr "Edite o arquivo de estatísticas à mão"
+
+#. max 15 characters
+msgid "Effect profile"
+msgstr "Perfil efeitos"
+
+#. max 15 characters
+msgid "Effects"
+msgstr "Efeitos"
+
+#. max 15 characters
+msgid "Emote names"
+msgstr "Nomes emotes"
+
+msgid "Enable auto-check or click Check Now."
+msgstr "Ative a verificação auto ou clique Verificar."
+
+msgid "Enable developer mode"
+msgstr "Ative o modo desenvolvedor"
+
+msgctxt "tooltip"
+msgid "Enable or disable controller vibration for all events."
+msgstr "Liga ou desliga a vibração do controle para todos os eventos."
+
+msgctxt "tooltip"
+msgid "Enable the auto-director. Acts only while spectating or watching a replay."
+msgstr "Liga o diretor automático. Só atua ao assistir ou ver um replay."
+
+msgctxt "tooltip"
+msgid "Enable the helmet overlay."
+msgstr "Liga a sobreposição do capacete."
+
+#. max 15 characters
+msgid "Enabled"
+msgstr "Ligado"
+
+msgid "Endo"
+msgstr "Endo"
+
+msgid "English"
+msgstr "English"
+
+msgid "Enter your Twitch channel name above to connect."
+msgstr "Digite acima o nome do seu canal Twitch para conectar."
+
+msgid "Enter your YouTube @handle above to connect."
+msgstr "Digite acima seu @handle do YouTube para conectar."
+
+msgid "Error"
+msgstr "Erro"
+
+msgid "Error: "
+msgstr "Erro: "
+
+msgid "Est"
+msgstr "Est"
+
+#. max 10 characters
+msgid "Event Log"
+msgstr "Eventos"
+
+#. max 60 characters
+msgid "Events"
+msgstr "Eventos"
+
+#. max 15 characters
+msgid "Events to show"
+msgstr "Eventos a ver"
+
+msgctxt "tooltip"
+msgid "Every rider along the lap as the Gap Bar's markers, the race leader crowned."
+msgstr "Todos os pilotos ao longo da volta como marcadores da Barra Dif., o líder coroado."
+
+#. max 49 characters
+msgid "Everything"
+msgstr "Tudo"
+
+msgid "Expand"
+msgstr "Expandir"
+
+msgctxt "tooltip"
+msgid "Extra rows below the comparisons: position, lap, time left, session format, fuel, server and track."
+msgstr "Linhas extras abaixo das comparações: posição, volta, tempo restante, formato, combustível, servidor e pista."
+
+msgid "Extract"
+msgstr "Extrair"
+
+msgid "FASTEST LAP"
+msgstr "VOLTA MAIS RÁPIDA"
+
+msgid "FINAL LAP"
+msgstr "ÚLTIMA VOLTA"
+
+msgid "FINISHED"
+msgstr "TERMINOU"
+
+#, c-format
+msgid "FINISHED %d%s"
+msgstr "TERMINOU %d%s"
+
+#. max 10 characters
+msgid "FMX"
+msgstr "FMX"
+
+msgid "FPS"
+msgstr "FPS"
+
+msgid "Factory Fresh"
+msgstr "Saído da Fábrica"
+
+msgid "Failed"
+msgstr "Falhou"
+
+#, c-format
+msgid "Fast sector %s"
+msgstr "Setor rápido %s"
+
+msgctxt "tooltip"
+msgid "Faster times, improvements, and gains."
+msgstr "Tempos mais rápidos, melhoras e ganhos."
+
+#. max 10 characters
+msgid "Fastest"
+msgstr "+ rápido"
+
+#. max 15 characters
+msgid "Fastest lap"
+msgstr "Volta + rápida"
+
+#, c-format
+msgid "Fastest lap %s"
+msgstr "Volta mais rápida %s"
+
+msgid "Fastest lap, and off the podium with it"
+msgstr "Volta mais rápida, e fora do pódio"
+
+#. max 15 characters
+msgid "Fastest laps"
+msgstr "Voltas rápidas"
+
+#. max 15 characters
+msgid "Fastest sectors"
+msgstr "Setores rápidos"
+
+msgid "Favorite Spot"
+msgstr "Lugar Favorito"
+
+msgid "Fbr"
+msgstr "FrD"
+
+#. max 43 characters
+msgid "Feed of race events"
+msgstr "Feed de eventos da corrida"
+
+#. max 15 characters
+msgid "Fender"
+msgstr "Para-lama"
+
+msgctxt "tooltip"
+msgid "Fender onboards to allow: Off, Front (rider ahead), Rear (a chaser), or Both."
+msgstr "Câmeras de para-lama: Off, Frente (piloto à frente), Trás (um perseguidor) ou Ambos."
+
+#. max 15 characters
+msgid "Field cutoff"
+msgstr "Corte do grid"
+
+msgid "Filter"
+msgstr "Filtro"
+
+#. max 15 characters
+msgid "Filter outliers"
+msgstr "Filtrar desvios"
+
+msgid "Final"
+msgstr "Final"
+
+#. max 15 characters
+msgid "Final lap"
+msgstr "Última volta"
+
+#, c-format
+msgid "Final lap %s"
+msgstr "Última volta %s"
+
+#. max 12 characters
+msgid "Find"
+msgstr "Buscar"
+
+msgctxt "tooltip"
+msgid "Find a setting by its name, its tab, or a word from its description. Esc clears it."
+msgstr "Busca uma configuração pelo nome, pela aba ou por uma palavra da descrição. Esc limpa."
+
+#, c-format
+msgid "Finish %s races"
+msgstr "Termine %s corridas"
+
+#, c-format
+msgid "Finish %s races in the rain"
+msgstr "Termine %s corridas na chuva"
+
+#, c-format
+msgid "Finish %s races on a 20+ rider grid"
+msgstr "Termine %s corridas num grid de 20+"
+
+#, c-format
+msgid "Finish %s races where a quarter quit"
+msgstr "Termine %s corridas em que 1/4 desistiu"
+
+#, c-format
+msgid "Finish %s races without crashing"
+msgstr "Termine %s corridas sem cair"
+
+msgid "Finish a race"
+msgstr "Termine uma corrida"
+
+msgid "Finish a race at least a lap down"
+msgstr "Termine uma corrida uma volta atrás ou mais"
+
+msgid "Finish a race in the rain"
+msgstr "Termine uma corrida na chuva"
+
+msgid "Finish a race nobody else started"
+msgstr "Termine uma corrida que ninguém mais largou"
+
+#, c-format
+msgid "Finish a race on 1% of a tank or less"
+msgstr "Termine uma corrida com 1% ou menos do tanque"
+
+msgid "Finish a race on a 20+ rider grid"
+msgstr "Termine uma corrida num grid de 20+"
+
+msgid "Finish a race where a quarter quit"
+msgstr "Termine uma corrida em que 1/4 desistiu"
+
+msgid "Finish a race without crashing"
+msgstr "Termine uma corrida sem cair"
+
+#. max 15 characters
+msgid "Finish lock"
+msgstr "Trava chegada"
+
+msgid "Finish on the podium"
+msgstr "Termine no pódio"
+
+#, c-format
+msgid "Finish on the podium %s times"
+msgstr "Termine no pódio %s vezes"
+
+#. max 15 characters
+msgid "Finished"
+msgstr "Terminou"
+
+#, c-format
+msgid "Finishing %s"
+msgstr "Terminando %s"
+
+msgctxt "tooltip"
+msgid "First-person helmet overlay with lean tilt and vibration."
+msgstr "Sobreposição de capacete em primeira pessoa com inclinação e vibração."
+
+msgid "Five laps in a row, all within a tenth"
+msgstr "Cinco voltas seguidas, todas dentro de um décimo"
+
+#. max 15 characters
+msgid "Flat Map"
+msgstr "Mapa Plano"
+
+msgid "Flipper"
+msgstr "Flipper"
+
+msgid "Follow"
+msgstr "Seguir"
+
+msgctxt "tooltip"
+msgid "Follow a rider tumbling down the order - losing several places fast. Below a real battle."
+msgstr "Segue um piloto despencando na ordem - perdendo várias posições rápido. Abaixo de uma disputa real."
+
+msgctxt "tooltip"
+msgid "Follow shows more track the faster you go: Range when slow, up to twice it (500m at most) at speed."
+msgstr "Seguir mostra mais pista quanto mais rápido: Alcance devagar, até o dobro (500m no máx.) em velocidade."
+
+#, c-format
+msgid "Following %s"
+msgstr "Seguindo %s"
+
+msgctxt "tooltip"
+msgid "Font used for HUD titles."
+msgstr "Fonte dos títulos do HUD."
+
+msgctxt "tooltip"
+msgid "Font used for column headers and row/legend labels across HUDs."
+msgstr "Fonte dos cabeçalhos de coluna e rótulos de linha/legenda nos HUDs."
+
+msgctxt "tooltip"
+msgid "Font used for normal text."
+msgstr "Fonte do texto normal."
+
+msgctxt "tooltip"
+msgid "Font used for numeric values (times, gaps, telemetry)."
+msgstr "Fonte dos valores numéricos (tempos, diferenças, telemetria)."
+
+msgctxt "tooltip"
+msgid "Font used for pitboard handwritten text."
+msgstr "Fonte do texto manuscrito da placa de box."
+
+msgctxt "tooltip"
+msgid "Font used for small text and footnotes."
+msgstr "Fonte do texto pequeno e das notas."
+
+#. max 60 characters
+msgid "Fonts"
+msgstr "Fontes"
+
+msgid "Format"
+msgstr "Formato"
+
+#. max 23 characters
+msgid "Format & state"
+msgstr "Formato e estado"
+
+msgid "Frame Perfect"
+msgstr "Quadro Perfeito"
+
+msgid "Frame Rate"
+msgstr "Taxa de Quadros"
+
+#. max 43 characters
+msgid "Frame rate and plugin time"
+msgstr "Taxa de quadros e tempo do plugin"
+
+#. max 23 characters
+msgid "Frames per second"
+msgstr "Quadros por segundo"
+
+msgctxt "tooltip"
+msgid "Freestyle trick detection with scoring, chain combos, and rotation visualization."
+msgstr "Detecção de manobras de freestyle com pontuação, combos em série e visual da rotação."
+
+#. max 12 characters
+msgid "Freeze"
+msgstr "Congelar"
+
+msgid "Frequent Flyer"
+msgstr "Passageiro Frequente"
+
+msgid "Fresh Coat"
+msgstr "Pintura Nova"
+
+#. max 10 characters
+msgid "Friends"
+msgstr "Amigos"
+
+#, c-format
+msgid "From %s"
+msgstr "De %s"
+
+msgid "Front"
+msgstr "Frente"
+
+#. max 23 characters
+msgid "Front brake"
+msgstr "Freio dianteiro"
+
+#. max 23 characters
+msgid "Front suspension"
+msgstr "Suspensão dianteira"
+
+msgid "Fsu"
+msgstr "SuD"
+
+msgid "Fue"
+msgstr "Cmb"
+
+#. max 11 characters
+msgid "Fuel"
+msgstr "Comb."
+
+#. max 15 characters
+msgid "Fuel laps left"
+msgstr "Voltas c/ comb."
+
+#. max 13 characters
+msgid "Fuel unit"
+msgstr "Unid. comb."
+
+msgid "Full lap"
+msgstr "Volta inteira"
+
+msgid "Full release notes are on GitHub."
+msgstr "As notas completas estão no GitHub."
+
+#. max 11 characters
+msgid "G-Force"
+msgstr "Força G"
+
+msgctxt "tooltip"
+msgid "G-G diagram plotting lateral vs longitudinal G-force with a peak marker."
+msgstr "Diagrama G-G com força G lateral vs longitudinal e um marcador de pico."
+
+msgid "GAME OVER - Click to exit"
+msgstr "FIM DE JOGO - Clique para sair"
+
+#. max 15 characters
+msgid "Gained/lost"
+msgstr "Ganho/perda"
+
+#. max 7 characters
+msgid "Gamepad"
+msgstr "Gamepad"
+
+#. max 15 characters
+msgid "Gap"
+msgstr "Dif."
+
+#. max 10 characters
+msgid "Gap Bar"
+msgstr "Barra Dif."
+
+#. max 15 characters
+msgid "Gap Chart"
+msgstr "Gráfico Dif."
+
+msgid "Gap Jumper"
+msgstr "Saltador de Gaps"
+
+msgctxt "tooltip"
+msgid "Gap chart: seconds behind the leader (best lap in practice/qual)."
+msgstr "Gráfico de diferença: segundos atrás do líder (melhor volta em treino/classif.)."
+
+#. max 15 characters
+msgid "Gap column"
+msgstr "Coluna dif."
+
+#. max 23 characters
+msgid "Gap compare"
+msgstr "Comparar dif."
+
+#. max 23 characters
+msgid "Gap freeze"
+msgstr "Congelar dif."
+
+#. max 13 characters
+msgid "Gap reference"
+msgstr "Ref. dif."
+
+msgctxt "tooltip"
+msgid "Gap reference: Leader shows gaps to P1, Player relative to you, Auto alternates the two."
+msgstr "Referência da dif.: Líder mostra a dif. para o P1, Piloto relativa a você, Auto alterna as duas."
+
+#. max 23 characters
+msgid "Gap row"
+msgstr "Linha dif."
+
+msgid "Gap to Best Lap"
+msgstr "Dif. p/ melhor volta"
+
+msgid "Gap to Leader"
+msgstr "Dif. p/ líder"
+
+msgid "Gaps"
+msgstr "Difs."
+
+#. max 60 characters
+msgid "Gauges"
+msgstr "Mostradores"
+
+msgid "Gea"
+msgstr "Mar"
+
+#. max 11 characters
+msgid "Gear"
+msgstr "Marcha"
+
+#. max 23 characters
+msgid "Gear indicator"
+msgstr "Indicador marcha"
+
+#. max 9 characters
+msgid "General"
+msgstr "Geral"
+
+msgid "Ghost"
+msgstr "Fantasma"
+
+msgctxt "tooltip"
+msgid "Ghost: your best lap marker. Opponents: other riders. Both: all of them. Off: no markers at all."
+msgstr "Fantasma: marcador da sua melhor volta. Rivais: outros pilotos. Ambos: todos. Off: sem marcadores."
+
+msgid "GitHub Releases"
+msgstr "GitHub Releases"
+
+#. max 16 characters
+msgid "Global"
+msgstr "Global"
+
+msgctxt "tooltip"
+msgid "Global settings including unit preferences, profiles, and configuration options."
+msgstr "Configurações globais, incluindo unidades, perfis e opções de configuração."
+
+msgid "Globetrotter"
+msgstr "Globetrotter"
+
+#. max 13 characters
+msgid "Glow"
+msgstr "Brilho"
+
+#, c-format
+msgid "Go %s races in a row penalty-free"
+msgstr "Faça %s corridas seguidas sem punição"
+
+msgid "Go down with three others"
+msgstr "Caia junto com outros três"
+
+msgid "Goggles"
+msgstr "Óculos"
+
+msgid "Gold"
+msgstr "Ouro"
+
+msgid "Gold Sweep"
+msgstr "Varrida de Ouro"
+
+msgid "Good Vibrations"
+msgstr "Boas Vibrações"
+
+msgid "Grand Tour"
+msgstr "Grande Turnê"
+
+#. max 23 characters
+msgid "Graph height"
+msgstr "Altura do gráfico"
+
+msgid "Graphite"
+msgstr "Grafite"
+
+msgid "Graphs"
+msgstr "Gráficos"
+
+msgid "Gray"
+msgstr "Cinza"
+
+msgid "Green"
+msgstr "Verde"
+
+#. max 15 characters
+msgid "Grid lines"
+msgstr "Linhas da grade"
+
+#. max 12 characters
+msgid "Grid snap"
+msgstr "Grade ímã"
+
+msgid "HAZARD AHEAD"
+msgstr "PERIGO À FRENTE"
+
+#. max 13 characters
+msgid "HUD display"
+msgstr "Exibição HUD"
+
+msgctxt "tooltip"
+msgid "HUDs, notices and this menu fade and slide in and out, and the gear and odometer roll. Off draws them as before."
+msgstr "HUDs, avisos e este menu aparecem e somem deslizando, e marcha e odômetro rolam. Off desenha como antes."
+
+msgid "Hang Time"
+msgstr "Tempo no Ar"
+
+#. max 15 characters
+msgid "Hazards"
+msgstr "Perigos"
+
+#, c-format
+msgid "Hear %s spotter calls"
+msgstr "Ouça %s chamadas do spotter"
+
+#. max 11 characters
+msgid "Heavy"
+msgstr "Pesado"
+
+msgctxt "tooltip"
+msgid "Height of EACH chart, in text rows -- how tall the panel is, not how much data it holds."
+msgstr "Altura de CADA gráfico, em linhas de texto -- tamanho do painel, não quantos dados ele tem."
+
+msgctxt "tooltip"
+msgid "Height of each graph, in text rows. Resizes the panel without scaling its text."
+msgstr "Altura de cada gráfico, em linhas de texto. Redimensiona o painel sem escalar o texto."
+
+msgctxt "tooltip"
+msgid "Height of the graph, in text rows. Resizes the panel without scaling its text."
+msgstr "Altura do gráfico, em linhas de texto. Redimensiona o painel sem escalar o texto."
+
+#. max 10 characters
+msgid "Helmet"
+msgstr "Capacete"
+
+msgid "Helmet 1"
+msgstr "Capacete 1"
+
+msgid "Helmet 2"
+msgstr "Capacete 2"
+
+msgctxt "tooltip"
+msgid "Helmet views to allow: Off, Helmet 1 (POV), Helmet 2 (side), or Both. All forward-facing."
+msgstr "Visões de capacete: Off, Capacete 1 (POV), Capacete 2 (lado) ou Ambos. Todas para frente."
+
+#. max 21 characters
+msgid "Help"
+msgstr "Ajuda"
+
+#. max 15 characters
+msgid "Hide DNS riders"
+msgstr "Ocultar DNS"
+
+msgctxt "tooltip"
+msgid "Hide bot commands: messages starting with !."
+msgstr "Oculta comandos de bot: mensagens que começam com !."
+
+#. max 15 characters
+msgid "Hide bots"
+msgstr "Ocultar bots"
+
+#. max 15 characters
+msgid "Hide commands"
+msgstr "Ocultar cmds"
+
+#. max 15 characters
+msgid "Hide links"
+msgstr "Ocultar links"
+
+msgctxt "tooltip"
+msgid "Hide messages from common chat bots such as Nightbot and StreamElements."
+msgstr "Oculta mensagens de bots comuns de chat como Nightbot e StreamElements."
+
+msgctxt "tooltip"
+msgid "Hide messages that contain a link."
+msgstr "Oculta mensagens que contêm um link."
+
+msgctxt "tooltip"
+msgid "Hide riders who did not start (DNS) from standings, position counts, and other displays."
+msgstr "Oculta pilotos que não largaram (DNS) da classificação, contagem de posições e outros painéis."
+
+msgctxt "tooltip"
+msgid "History of your recent lap times with sector breakdowns. Shows lap-by-lap performance."
+msgstr "Histórico das suas voltas recentes com setores. Mostra o desempenho volta a volta."
+
+#, c-format
+msgid "Hit %sFPS"
+msgstr "Faça %sFPS"
+
+msgid "Holeshot, every lap led, fastest lap, win"
+msgstr "Holeshot, liderar todas, volta mais rápida, vitória"
+
+msgid "Holeshot-ish"
+msgstr "Quase Holeshot"
+
+msgid "Homebrew"
+msgstr "Caseiro"
+
+msgid "Hot Lapper"
+msgstr "Volta Voadora"
+
+#. max 12 characters
+msgid "Hotkeys"
+msgstr "Atalhos"
+
+msgctxt "tooltip"
+msgid "How close (seconds) two riders must be to count as a battle. Used by camera and overlay."
+msgstr "Quão perto (segundos) dois pilotos devem estar para contar como disputa. Usado por câmera e overlay."
+
+msgctxt "tooltip"
+msgid "How close a rider behind must be to be called. Shorter means fewer, later warnings."
+msgstr "Quão perto um piloto atrás deve estar para ser chamado. Menor = alertas menos e mais tarde."
+
+msgctxt "tooltip"
+msgid "How far ACROSS the track a rider still counts as near. Wider is ignored, as the Radar ignores it."
+msgstr "Até onde ATRAVÉS da pista um piloto ainda conta como perto. Mais largo é ignorado, como no Radar."
+
+msgctxt "tooltip"
+msgid "How far AHEAD still counts. Keep it short: you can see those riders. 0 = none."
+msgstr "Até onde À FRENTE ainda conta. Mantenha curto: você vê esses pilotos. 0 = nenhum."
+
+msgctxt "tooltip"
+msgid "How far BEHIND you a rider still counts as alongside - your blind spot."
+msgstr "Até onde ATRÁS de você um piloto ainda conta como ao lado - seu ponto cego."
+
+msgctxt "tooltip"
+msgid "How far the helmet moves when hitting bumps. Negative inverts the direction."
+msgstr "Quanto o capacete se move nas ondulações. Negativo inverte a direção."
+
+msgctxt "tooltip"
+msgid "How long Gap Bar, Lap Log and Timing hold an official gap when set to Default."
+msgstr "Quanto tempo Barra Dif., Voltas e Tempos seguram a dif. oficial quando em Padrão."
+
+msgctxt "tooltip"
+msgid "How long each toast stays on screen."
+msgstr "Quanto tempo cada aviso fica na tela."
+
+msgctxt "tooltip"
+msgid "How long the chat stays visible after the last message in auto-hide mode."
+msgstr "Quanto tempo o chat fica visível após a última mensagem no modo ocultar auto."
+
+msgctxt "tooltip"
+msgid "How long the gap holds the official gap after each split and the line. Off keeps it live. Default follows General."
+msgstr "Quanto tempo a dif. segura a oficial após cada parcial e a linha. Off = ao vivo. Padrão segue Geral."
+
+msgctxt "tooltip"
+msgid "How long the gap row holds the official gap after each split and the line. Default follows General."
+msgstr "Quanto tempo a linha dif. segura a oficial após cada parcial e a linha. Padrão segue Geral."
+
+msgctxt "tooltip"
+msgid "How long the impact vignette takes to clear after the hardest hits; lighter hits clear sooner."
+msgstr "Quanto a vinheta de impacto leva para sumir após as pancadas fortes; as leves somem antes."
+
+msgctxt "tooltip"
+msgid "How long the log stays visible after the last event in auto-hide mode."
+msgstr "Quanto tempo o log fica visível após o último evento no modo ocultar auto."
+
+msgctxt "tooltip"
+msgid "How long timed notices stay up. Wrong-way, blue-flag and hazard notices last while active."
+msgstr "Quanto tempo os avisos ficam. Contramão, bandeira azul e perigo duram enquanto ativos."
+
+msgctxt "tooltip"
+msgid "How long to hold a story shot (crash / fastest lap) before cutting back."
+msgstr "Quanto tempo segurar uma cena (queda / volta mais rápida) antes de voltar."
+
+msgctxt "tooltip"
+msgid "How long to hold the split/lap time and its gaps after a split. Off shows no gaps. Default follows General."
+msgstr "Quanto tempo segurar o parcial/volta e suas difs. após um parcial. Off: sem difs. Padrão segue Geral."
+
+msgctxt "tooltip"
+msgid "How much the helmet tilts with lean angle."
+msgstr "Quanto o capacete inclina com o ângulo de inclinação."
+
+msgctxt "tooltip"
+msgid "How often to dip into an onboard camera: every Nth cut. Needs Max shot on; Off = always trackside."
+msgstr "A cada quantos cortes usar uma câmera onboard. Requer Cena máx. ligada; Off = sempre na pista."
+
+msgctxt "tooltip"
+msgid "How responsive vibration is to small bumps."
+msgstr "Quão sensível a vibração é a pequenas ondulações."
+
+msgctxt "tooltip"
+msgid "Icon shape for proximity warning arrows."
+msgstr "Formato do ícone das setas de proximidade."
+
+msgctxt "tooltip"
+msgid "Icon shape for rider markers on the map. Off hides non-tracked riders."
+msgstr "Formato do ícone dos pilotos no mapa. Off oculta pilotos não seguidos."
+
+msgctxt "tooltip"
+msgid "Icon shape for rider markers on the radar."
+msgstr "Formato do ícone dos pilotos no radar."
+
+msgctxt "tooltip"
+msgid "Icon shape used for rider markers on the bar."
+msgstr "Formato do ícone dos pilotos na barra."
+
+#. max 15 characters
+msgid "Ideal"
+msgstr "Ideal"
+
+#. max 10 characters
+msgid "Ideal Lap"
+msgstr "V. Ideal"
+
+#. max 60 characters
+msgid "If MXBMRP3 makes the game a little better for you, or"
+msgstr "Se o MXBMRP3 deixa o jogo um pouco melhor para você, ou"
+
+msgctxt "tooltip"
+msgid "Ignore battles/incidents/overtakes past this position. Off = no limit. Gates the overlay."
+msgstr "Ignora disputas/incidentes/ultrapassagens após esta posição. Off = sem limite. Vale p/ overlay."
+
+#. max 60 characters
+msgid "Impact"
+msgstr "Impacto"
+
+#. max 23 characters
+msgid "Impact vignette"
+msgstr "Vinheta impacto"
+
+msgid "In Progress"
+msgstr "Em Andamento"
+
+msgctxt "tooltip"
+msgid "In races. Off: at the splits; Gaps: live gaps; Both: live gaps and order, also on the Position widget and Dash."
+msgstr "Em corridas. Off: nos parciais; Difs.: difs. ao vivo; Ambos: difs. e ordem, também no widget Posição e Dash."
+
+msgid "In-game"
+msgstr "No jogo"
+
+#, c-format
+msgid "Incident %s"
+msgstr "Incidente %s"
+
+#. max 15 characters
+msgid "Incidents"
+msgstr "Incidentes"
+
+#. max 23 characters
+msgid "Info"
+msgstr "Info"
+
+msgctxt "tooltip"
+msgid "Info board at pit area or timing points. Shows position, lap times, and gap comparisons."
+msgstr "Placa de info na área de box ou pontos de tempo. Mostra posição, voltas e comparações."
+
+msgid "Input"
+msgstr "Entrada"
+
+msgid "Install"
+msgstr "Instalar"
+
+msgid "Install Update"
+msgstr "Instalar Atualização"
+
+msgid "Install a pack of any type"
+msgstr "Instale um pacote de qualquer tipo"
+
+msgid "Install an update in-game"
+msgstr "Instale uma atualização no jogo"
+
+#. max 60 characters
+msgid "Integrations"
+msgstr "Integrações"
+
+msgctxt "tooltip"
+msgid "Interactive elements, hover highlights, and the player/spectated rider's name in standings."
+msgstr "Elementos interativos, destaques ao passar o mouse e o nome do piloto/assistido na classificação."
+
+msgid "Interior Decorator"
+msgstr "Decorador de Interiores"
+
+#. max 48 characters
+msgid "Iron Butt"
+msgstr "Bunda de Ferro"
+
+#. max 60 characters
+msgid "It is free, with no paid tier, no locked features and no"
+msgstr "É gratuito, sem plano pago, sem recursos bloqueados e sem"
+
+#. max 60 characters
+msgid "It started in 2024, after development of MaxHUD, the"
+msgstr "Começou em 2024, quando o desenvolvimento do MaxHUD, o"
+
+#. max 60 characters
+msgid "Its behavior will change based on your feedback."
+msgstr "O comportamento vai mudar conforme seu retorno."
+
+#, c-format
+msgid "Join %s different servers"
+msgstr "Entre em %s servidores diferentes"
+
+msgid "Joining"
+msgstr "Entrando"
+
+msgid "Just Me Then"
+msgstr "Só Eu Então"
+
+msgid "Keep"
+msgstr "Manter"
+
+msgctxt "tooltip"
+msgid "Keep emote names such as Kappa as text. Off drops them; emoji never render."
+msgstr "Mantém nomes de emotes como Kappa em texto. Off os remove; emoji nunca aparecem."
+
+#. max 60 characters
+msgid "Keeping MXBMRP3 open source is deliberate: it can be"
+msgstr "Manter o MXBMRP3 open source é proposital: ele pode ser"
+
+#. max 9 characters
+msgid "Keyboard"
+msgstr "Teclado"
+
+msgctxt "tooltip"
+msgid "Keyboard and controller bindings. Click a field to rebind it (ESC cancels), right-click to clear it."
+msgstr "Atalhos de teclado e controle. Clique num campo para mudar (ESC cancela), clique direito limpa."
+
+msgid "Keymaster"
+msgstr "Mestre das Teclas"
+
+#, c-format
+msgid "L%d  SCORE: %d"
+msgstr "N%d  PONTOS: %d"
+
+msgid "LAPPER AHEAD"
+msgstr "RETARDATÁRIO À FRENTE"
+
+msgid "LEADER"
+msgstr "LÍDER"
+
+msgctxt "tooltip"
+msgid "Label each line with the rider's race number at its end."
+msgstr "Rotula cada linha com o número do piloto no fim."
+
+msgctxt "tooltip"
+msgid "Labels next to riders. Position shows P1/P2, Race number shows numbers, Both shows both."
+msgstr "Rótulos ao lado dos pilotos. Posição mostra P1/P2, Número mostra números, Ambos mostra os dois."
+
+msgctxt "tooltip"
+msgid "Labels shown next to markers. Position, race number, or both."
+msgstr "Rótulos ao lado dos marcadores. Posição, número ou ambos."
+
+#, c-format
+msgid "Land %s backflips"
+msgstr "Acerte %s backflips"
+
+#, c-format
+msgid "Land %s freestyle tricks"
+msgstr "Acerte %s manobras de freestyle"
+
+#, c-format
+msgid "Land %s frontflips"
+msgstr "Acerte %s frontflips"
+
+#, c-format
+msgid "Land %s kinds of freestyle trick"
+msgstr "Acerte %s tipos de manobra de freestyle"
+
+#, c-format
+msgid "Land %s oppos"
+msgstr "Acerte %s oppos"
+
+#, c-format
+msgid "Land %s scrubs"
+msgstr "Acerte %s scrubs"
+
+#, c-format
+msgid "Land %s turn downs"
+msgstr "Acerte %s turn downs"
+
+#, c-format
+msgid "Land %s whips"
+msgstr "Acerte %s whips"
+
+#, c-format
+msgid "Land a %s endo or stoppie"
+msgstr "Acerte um endo ou stoppie de %s"
+
+#, c-format
+msgid "Land a %s jump"
+msgstr "Acerte um salto de %s"
+
+#, c-format
+msgid "Land a %s wheelie"
+msgstr "Acerte um wheelie de %s"
+
+msgid "Land a backflip"
+msgstr "Acerte um backflip"
+
+msgid "Land a frontflip"
+msgstr "Acerte um frontflip"
+
+msgid "Land a turn down"
+msgstr "Acerte um turn down"
+
+msgid "Land an oppo"
+msgstr "Acerte um oppo"
+
+msgid "Language"
+msgstr "Idioma"
+
+msgctxt "tooltip"
+msgid "Language of the menus and HUDs. System follows Windows; untranslated text stays English."
+msgstr "Idioma dos menus e HUDs. Sistema segue o Windows; texto não traduzido fica em inglês."
+
+#. max 11 characters
+msgid "Lap"
+msgstr "Volta"
+
+#, c-format
+msgid "Lap %d/%d"
+msgstr "Volta %d/%d"
+
+msgid "Lap Chart"
+msgstr "Gráfico Voltas"
+
+#. max 48 characters
+msgid "Lap Counter"
+msgstr "Contador Voltas"
+
+#. max 10 characters
+msgid "Lap Log"
+msgstr "Voltas"
+
+msgctxt "tooltip"
+msgid "Lap and sector timing display with comparisons to session best and personal records."
+msgstr "Tempos de volta e setor com comparações à melhor da sessão e recordes pessoais."
+
+#. max 15 characters
+msgid "Lap chart"
+msgstr "Gráfico voltas"
+
+msgctxt "tooltip"
+msgid "Lap chart: running order over the laps, one row per rider. Shows overtakes."
+msgstr "Gráfico de voltas: ordem ao longo das voltas, uma linha por piloto. Mostra ultrapassagens."
+
+#. max 15 characters
+msgid "Lap delta"
+msgstr "Delta da volta"
+
+#. max 15 characters
+msgid "Lap dots"
+msgstr "Pontos volta"
+
+#. max 23 characters
+msgid "Lap number"
+msgstr "Número da volta"
+
+msgctxt "tooltip"
+msgid "Lap records from online providers (CBR, MXB-Ranked) for your current track."
+msgstr "Recordes de volta de provedores online (CBR, MXB-Ranked) para sua pista atual."
+
+msgctxt "tooltip"
+msgid "Lap the gap is measured against. All-time PB is saved; Server best is anyone's fastest. Default follows General."
+msgstr "Volta usada para medir a dif. RP histórico é salvo; Melhor servidor é de qualquer um. Padrão segue Geral."
+
+msgctxt "tooltip"
+msgid "Lap the gap row is measured against. All-time PB is saved; Server best is anyone's fastest. Default follows General."
+msgstr "Volta usada para a linha dif. RP histórico é salvo; Melhor servidor é de qualquer um. Padrão segue Geral."
+
+#. max 23 characters
+msgid "Lap times"
+msgstr "Tempos de volta"
+
+msgid "Lapped the Field"
+msgstr "Deu Volta em Todos"
+
+#. max 23 characters
+msgid "Lapper ahead"
+msgstr "Retardatário à frente"
+
+#, c-format
+msgid "Lapping %s"
+msgstr "Dando volta em %s"
+
+#. max 15 characters
+msgid "Laps"
+msgstr "Voltas"
+
+msgid "Laps left"
+msgstr "Voltas restantes"
+
+#. max 23 characters
+msgid "Laps to show"
+msgstr "Voltas exibidas"
+
+#. max 43 characters
+msgid "Laps, crashes, top speed"
+msgstr "Voltas, quedas, vel. máxima"
+
+msgid "Last"
+msgstr "Última"
+
+msgid "Last Gasp"
+msgstr "Último Suspiro"
+
+#. max 10 characters
+msgid "Last Lap"
+msgstr "Últ. Volta"
+
+#. max 15 characters
+msgid "Last lap"
+msgstr "Última volta"
+
+#. max 15 characters
+msgid "Last lap time"
+msgstr "Tempo últ. vlt"
+
+msgid "Launch the game via Steam"
+msgstr "Inicie o jogo pela Steam"
+
+#. max 60 characters
+msgid "Layout"
+msgstr "Layout"
+
+msgctxt "tooltip"
+msgid "Lays the zoomed map down, seen from behind; higher tilts it further. Best with Rotate map on."
+msgstr "Deita o mapa ampliado, visto de trás; mais alto inclina mais. Melhor com Girar mapa ligado."
+
+msgid "Lck"
+msgstr "Trv"
+
+msgid "Lead at the first split"
+msgstr "Lidere no primeiro parcial"
+
+#, c-format
+msgid "Lead at the first split in %s races"
+msgstr "Lidere no primeiro parcial em %s corridas"
+
+msgid "Lead into the final lap and lose the race"
+msgstr "Lidere na última volta e perca a corrida"
+
+msgid "Leader"
+msgstr "Líder"
+
+#. max 15 characters
+msgid "Leader change"
+msgstr "Troca de líder"
+
+#. max 11 characters
+msgid "Lean"
+msgstr "Inclin."
+
+msgid "Leap Forward"
+msgstr "Salto à Frente"
+
+msgid "Left"
+msgstr "Esquerda"
+
+msgid "Left as it is. Stats are not saved this session"
+msgstr "Deixado como está. Estatísticas não salvas nesta sessão"
+
+msgctxt "tooltip"
+msgid "Let close battles steer the camera. Off holds the leader/solo baseline."
+msgstr "Deixa disputas próximas guiarem a câmera. Off fica no líder/padrão solo."
+
+msgctxt "tooltip"
+msgid "Lifetime milestones as Bronze-to-Platinum progress bars, plus a toast when a tier is earned."
+msgstr "Marcos de carreira como barras de Bronze a Platina, mais um aviso ao obter um nível."
+
+#. max 11 characters
+msgid "Light"
+msgstr "Leve"
+
+msgid "Light Gray"
+msgstr "Cinza Claro"
+
+msgid "Lime"
+msgstr "Lima"
+
+#. max 15 characters
+msgid "Line labels"
+msgstr "Rótulos linhas"
+
+msgctxt "tooltip"
+msgid "Lines of chat to show. Long messages wrap onto several lines."
+msgstr "Linhas de chat exibidas. Mensagens longas quebram em várias linhas."
+
+#. max 15 characters
+msgid "Lines to show"
+msgstr "Linhas exibidas"
+
+#. max 23 characters
+msgid "Live gap row"
+msgstr "Linha dif. ao vivo"
+
+#. max 15 characters
+msgid "Live overlay"
+msgstr "Overlay ao vivo"
+
+msgctxt "tooltip"
+msgid "Live race standings showing position, gaps, and rider information for all competitors."
+msgstr "Classificação ao vivo com posição, diferenças e informações de todos os pilotos."
+
+#. max 15 characters
+msgid "Live updates"
+msgstr "Ao vivo"
+
+msgid "Local"
+msgstr "Local"
+
+msgid "Local Hero"
+msgstr "Herói Local"
+
+msgctxt "tooltip"
+msgid "Lock the director onto the current rider so it won't cut away. Press again to release."
+msgstr "Trava o diretor no piloto atual para não cortar. Pressione de novo para soltar."
+
+#. max 6 characters
+msgid "Locked"
+msgstr "Trava"
+
+#, c-format
+msgid "Locked on %s"
+msgstr "Travado em %s"
+
+#. max 11 characters
+msgid "Lockup"
+msgstr "Travada"
+
+msgctxt "tooltip"
+msgid "Log session lifecycle: started (with format), pre-start, ended, cancelled, complete."
+msgstr "Registra o ciclo da sessão: iniciada (com formato), pré-largada, encerrada, cancelada, concluída."
+
+#. max 23 characters
+msgid "Log telemetry"
+msgstr "Log telemetria"
+
+msgctxt "tooltip"
+msgid "Log trick detection state to the plugin log file at 10fps (developer mode only)."
+msgstr "Registra a detecção de manobras no log do plugin a 10fps (só modo desenvolvedor)."
+
+msgctxt "tooltip"
+msgid "Log when a different rider takes the lead position. Race sessions only."
+msgstr "Registra quando outro piloto assume a liderança. Só corridas."
+
+msgctxt "tooltip"
+msgid "Log when a rider crosses the finish line with their finishing position."
+msgstr "Registra quando um piloto cruza a linha de chegada, com sua posição final."
+
+msgctxt "tooltip"
+msgid "Log when a rider enters or exits the pits. Can be frequent in practice sessions."
+msgstr "Registra quando um piloto entra ou sai dos boxes. Pode ser frequente nos treinos."
+
+msgctxt "tooltip"
+msgid "Log when a rider receives a penalty, or when a penalty is cleared or changed."
+msgstr "Registra quando um piloto recebe uma punição, ou quando ela é removida ou alterada."
+
+msgctxt "tooltip"
+msgid "Log when a rider retires, is disqualified, or does not start."
+msgstr "Registra quando um piloto abandona, é desclassificado ou não larga."
+
+msgctxt "tooltip"
+msgid "Log when a rider sets the overall fastest lap of the session."
+msgstr "Registra quando um piloto faz a volta mais rápida da sessão."
+
+msgctxt "tooltip"
+msgid "Log when a rider starts their final lap. Race sessions only."
+msgstr "Registra quando um piloto inicia a última volta. Só corridas."
+
+msgctxt "tooltip"
+msgid "Log when a timed race enters overtime, or when a non-race session timer expires."
+msgstr "Registra quando uma corrida por tempo entra em prorrogação, ou o tempo de outra sessão esgota."
+
+msgctxt "tooltip"
+msgid "Log your lap when it beats your best lap of this session."
+msgstr "Registra sua volta quando ela bate sua melhor volta desta sessão."
+
+msgctxt "tooltip"
+msgid "Log your lap when it sets a new all-time PB."
+msgstr "Registra sua volta quando ela é um novo RP histórico."
+
+msgid "Long"
+msgstr "Longa"
+
+#. max 48 characters
+msgid "Long Hauler"
+msgstr "Estradeiro"
+
+msgid "Long Walk Home"
+msgstr "Longa Volta a Pé"
+
+msgctxt "tooltip"
+msgid "Longest time on one rider before cutting away. Off = cut only for stories, then back to your rider."
+msgstr "Tempo máximo num piloto antes de cortar. Off = corta só para cenas, depois volta para você."
+
+msgid "Lose a race by under a tenth"
+msgstr "Perca uma corrida por menos de um décimo"
+
+#, c-format
+msgid "Losing places %s"
+msgstr "Perdendo posições %s"
+
+msgctxt "tooltip"
+msgid "Lower helmet texture (chin bar)."
+msgstr "Textura inferior do capacete (queixeira)."
+
+#. max 23 characters
+msgid "Lower offset"
+msgstr "Ajuste inferior"
+
+#. max 23 characters
+msgid "Lower texture"
+msgstr "Textura inferior"
+
+msgid "Loyal"
+msgstr "Fiel"
+
+msgid "MXB Ranked"
+msgstr "MXB Ranked"
+
+#. max 60 characters
+msgid "MXBMRP3 is a community project: one person's spare-time"
+msgstr "O MXBMRP3 é um projeto da comunidade: o tempo livre de"
+
+msgid "Made It Yours"
+msgstr "Do Seu Jeito"
+
+msgid "Magenta"
+msgstr "Magenta"
+
+msgctxt "tooltip"
+msgid "Main text color for values, times, and key data."
+msgstr "Cor principal do texto para valores, tempos e dados-chave."
+
+#. max 60 characters
+msgid "Manual Control"
+msgstr "Controle Manual"
+
+msgid "Manual camera"
+msgstr "Câmera manual"
+
+msgid "Manual control (gamepad)"
+msgstr "Controle manual (gamepad)"
+
+#, c-format
+msgid "Manual pick %s"
+msgstr "Escolha manual %s"
+
+#. max 10 characters
+msgid "Map"
+msgstr "Mapa"
+
+#. max 48 characters
+msgid "Marathon"
+msgstr "Maratona"
+
+#. max 7 characters
+msgid "Marker"
+msgstr "Marcad."
+
+#. max 13 characters
+msgid "Marker colors"
+msgstr "Cores marc."
+
+#. max 13 characters
+msgid "Marker icon"
+msgstr "Ícone marc."
+
+#. max 13 characters
+msgid "Marker labels"
+msgstr "Rótulos marc."
+
+#. max 13 characters
+msgid "Marker scale"
+msgstr "Escala marc."
+
+msgctxt "tooltip"
+msgid "Marks where on the lap you were furthest ahead and furthest behind, with the gap there."
+msgstr "Marca onde na volta você esteve mais à frente e mais atrás, com a dif. ali."
+
+#. max 8 characters
+msgid "Max"
+msgstr "Máx"
+
+#. max 15 characters
+msgid "Max shot"
+msgstr "Cena máx."
+
+msgctxt "tooltip"
+msgid "Maximum number of event rows to display. The log scrolls when this limit is reached."
+msgstr "Número máximo de linhas de evento. O log rola quando atinge esse limite."
+
+msgctxt "tooltip"
+msgid "Maximum number of friend rows to show."
+msgstr "Número máximo de linhas de amigos."
+
+msgctxt "tooltip"
+msgid "Maximum rider rows to show. More rows use more screen space."
+msgstr "Máximo de linhas de pilotos. Mais linhas ocupam mais tela."
+
+#. max 66 characters
+msgid "Measures the engine's per-primitive draw cost."
+msgstr "Mede o custo de desenho por primitiva do motor."
+
+#. max 60 characters
+msgid "Media"
+msgstr "Mídia"
+
+msgid "Message"
+msgstr "Mensagem"
+
+#. max 15 characters
+msgid "Message colors"
+msgstr "Cores mensagens"
+
+#. max 13 characters
+msgid "Messages"
+msgstr "Mensagens"
+
+msgid "Metronome"
+msgstr "Metrônomo"
+
+#. max 11 characters
+msgid "Min"
+msgstr "Mín"
+
+#. max 15 characters
+msgid "Min shot"
+msgstr "Cena mín."
+
+#. max 60 characters
+msgid "Misc"
+msgstr "Diversos"
+
+#. max 15 characters
+msgid "Mode"
+msgstr "Modo"
+
+#. max 9 characters
+msgid "More"
+msgstr "Mais"
+
+#. max 13 characters
+msgid "Motion"
+msgstr "Movimento"
+
+msgid "Mudder"
+msgstr "Lameiro"
+
+msgctxt "tooltip"
+msgid "Music from Windows' media controls, for Now Playing. Spotify: turn on its desktop overlay for media keys."
+msgstr "Música dos controles de mídia do Windows, p/ Tocando Agora. Spotify: ligue o overlay p/ teclas de mídia."
+
+#. max 11 characters
+msgid "Muted"
+msgstr "Mudo"
+
+msgid "N/C"
+msgstr "N/C"
+
+msgid "ND"
+msgstr "º"
+
+msgid "Name"
+msgstr "Nome"
+
+#. max 15 characters
+msgid "Name colors"
+msgstr "Cores dos nomes"
+
+msgid "Names"
+msgstr "Nomes"
+
+msgid "Navy"
+msgstr "Marinho"
+
+#. max 11 characters
+msgid "Negative"
+msgstr "Negativo"
+
+#. max 11 characters
+msgid "Neutral"
+msgstr "Neutro"
+
+#. max 3 characters
+msgid "New"
+msgstr "Nv"
+
+msgid "Newest"
+msgstr "Recentes"
+
+msgctxt "tooltip"
+msgid "Next page."
+msgstr "Próxima página."
+
+msgid "Night Owl"
+msgstr "Coruja Noturna"
+
+msgid "No channel"
+msgstr "Sem canal"
+
+msgid "No channel set"
+msgstr "Nenhum canal definido"
+
+msgid "No charts enabled"
+msgstr "Nenhum gráfico ativado"
+
+msgid "No controller selected"
+msgstr "Nenhum controle selecionado"
+
+msgid "No friends in-game"
+msgstr "Nenhum amigo no jogo"
+
+msgid "No matches"
+msgstr "Nada encontrado"
+
+msgid "No player"
+msgstr "Sem piloto"
+
+msgid "No records found for this track/category"
+msgstr "Nenhum recorde para esta pista/categoria"
+
+msgid "No setting is called that or mentions it. Try a shorter word."
+msgstr "Nenhuma configuração tem esse nome ou o menciona. Tente uma palavra menor."
+
+msgid "No trace until a new PB"
+msgstr "Sem traço até um novo RP"
+
+#. max 7 characters
+msgid "None"
+msgstr "Nenhum"
+
+#. max 7 characters
+msgid "Normal"
+msgstr "Normal"
+
+msgid "Not found?"
+msgstr "Não achou?"
+
+msgid "Not installed correctly"
+msgstr "Não instalado corretamente"
+
+msgid "Not live"
+msgstr "Fora do ar"
+
+msgid "Not live - checking every minute"
+msgstr "Fora do ar - verificando a cada minuto"
+
+#. max 66 characters
+msgid "Note: YouTube chat is unofficial."
+msgstr "Obs.: o chat do YouTube é extraoficial."
+
+#. max 23 characters
+msgid "Notice focus"
+msgstr "Foco avisos"
+
+#. max 10 characters
+msgid "Notices"
+msgstr "Avisos"
+
+msgid "Now"
+msgstr "Agora"
+
+#. max 11 characters
+msgid "Now Playing"
+msgstr "Tocando"
+
+#. max 23 characters
+msgid "Now playing"
+msgstr "Tocando agora"
+
+msgid "Now playing is off"
+msgstr "Tocando agora está desligado"
+
+msgctxt "tooltip"
+msgid "Number of recent laps to show."
+msgstr "Número de voltas recentes exibidas."
+
+msgctxt "tooltip"
+msgid "Number of records to show from the leaderboard."
+msgstr "Número de recordes do ranking exibidos."
+
+msgid "Numbers"
+msgstr "Números"
+
+#. max 66 characters
+msgid "OBS: Window Capture of MXBMRP3 + Chroma Key of the bg colour"
+msgstr "OBS: Captura de Janela do MXBMRP3 + Chroma Key da cor de fundo"
+
+msgid "OK"
+msgstr "OK"
+
+msgid "OVERTIME"
+msgstr "PRORROGAÇÃO"
+
+#. max 3 characters
+msgid "Off"
+msgstr "Off"
+
+msgctxt "tooltip"
+msgid "Off = no tint. Visor = tint behind helmet (full-face). Goggles = tint in front (open-face)."
+msgstr "Off = sem tom. Viseira = tom atrás do capacete (fechado). Óculos = tom à frente (aberto)."
+
+msgctxt "tooltip"
+msgid "Off hides column. Player: your gap; Adjacent: riders ahead/behind; All: everyone."
+msgstr "Off oculta a coluna. Piloto: sua dif.; Adjacente: à frente/atrás; Todos: todo mundo."
+
+msgctxt "tooltip"
+msgid "Off hides the chat. Auto-hide shows it briefly when a message arrives."
+msgstr "Off oculta o chat. Ocultar auto mostra por um instante quando chega mensagem."
+
+msgctxt "tooltip"
+msgid "Off hides the log. On always shows it. Auto-hide shows it briefly when new events arrive."
+msgstr "Off oculta o log. On sempre mostra. Ocultar auto mostra por um instante quando há eventos novos."
+
+msgid "Oldest"
+msgstr "Antigas"
+
+msgctxt "tooltip"
+msgid "Oldest puts the newest message at the bottom, as on Twitch and YouTube. Newest puts it at the top."
+msgstr "Antigas põe a mensagem nova embaixo, como no Twitch e YouTube. Recentes a põe no topo."
+
+msgctxt "tooltip"
+msgid "Oldest shows events chronologically top to bottom. Newest puts latest events at the top."
+msgstr "Antigas mostra os eventos em ordem, de cima para baixo. Recentes põe os últimos no topo."
+
+msgid "On"
+msgstr "On"
+
+msgctxt "tooltip"
+msgid "On = shown while racing; Off = only in the settings menu (helps controllers seen as a mouse)."
+msgstr "On = visível pilotando; Off = só no menu (ajuda controles vistos como mouse)."
+
+msgid "On Air"
+msgstr "No Ar"
+
+msgid "On a Roll"
+msgstr "Embalado"
+
+msgid "On finish"
+msgstr "Na chegada"
+
+msgid "On join"
+msgstr "Ao entrar"
+
+msgctxt "tooltip"
+msgid "On the leader's final lap, lock onto the front so the win is never missed."
+msgstr "Na última volta do líder, trava na frente para nunca perder a vitória."
+
+msgctxt "tooltip"
+msgid "On-screen notices for race events, personal bests, and setup warnings."
+msgstr "Avisos na tela para eventos da corrida, recordes pessoais e alertas de setup."
+
+#. max 60 characters
+msgid "Onboard Variety"
+msgstr "Variedade Onboard"
+
+#. max 15 characters
+msgid "Onboard every"
+msgstr "Onboard a cada"
+
+#, c-format
+msgid "One bike, %s"
+msgstr "Uma moto, %s"
+
+msgctxt "tooltip"
+msgid "One card that cycles through the pages picked below."
+msgstr "Um cartão que alterna entre as páginas escolhidas abaixo."
+
+msgid "One-Wheel Tour"
+msgstr "Turnê de Uma Roda"
+
+msgid "Online"
+msgstr "Online"
+
+msgid "Online lap records"
+msgstr "Recordes de volta online"
+
+#. max 8 characters
+msgid "Opacity"
+msgstr "Opacid."
+
+msgid "Open Practice"
+msgstr "Treino Livre"
+
+msgid "Open every settings tab"
+msgstr "Abra todas as abas de configuração"
+
+msgctxt "tooltip"
+msgid "Open the full release notes on GitHub."
+msgstr "Abre as notas completas da versão no GitHub."
+
+msgid "Oppo"
+msgstr "Oppo"
+
+#. max 15 characters
+msgid "Opponents"
+msgstr "Rivais"
+
+msgid "Orange"
+msgstr "Laranja"
+
+#. max 60 characters
+msgid "Other"
+msgstr "Outros"
+
+#. max 60 characters
+msgid "Overall"
+msgstr "Geral"
+
+msgctxt "tooltip"
+msgid "Overhead view of the track with real-time rider positions. Supports zoom and display modes."
+msgstr "Vista aérea da pista com posições dos pilotos em tempo real. Suporta zoom e modos."
+
+msgid "Override a colour, font or theme"
+msgstr "Altere uma cor, fonte ou tema"
+
+#, c-format
+msgid "Overtake %s"
+msgstr "Ultrapasse %s"
+
+#, c-format
+msgid "Overtake %s on %s"
+msgstr "Ultrapasse %s em %s"
+
+#. max 15 characters
+msgid "Overtakes"
+msgstr "Ultrapassagens"
+
+#. max 23 characters
+msgid "Overtime"
+msgstr "Prorrogação"
+
+msgid "Overview"
+msgstr "Visão geral"
+
+msgctxt "tooltip"
+msgid "Overview shows the entire track. Follow shows the stretch around you, Range meters across."
+msgstr "Visão geral mostra a pista toda. Seguir mostra o trecho ao seu redor, Alcance metros."
+
+msgctxt "tooltip"
+msgid "Overwrite the selected profile with this profile's settings."
+msgstr "Sobrescreve o perfil escolhido com as configurações deste perfil."
+
+#. max 12 characters
+msgid "PB scope"
+msgstr "Escopo RP"
+
+msgid "PM"
+msgstr "PM"
+
+msgid "PREVIEW"
+msgstr "PRÉVIA"
+
+#. max 15 characters
+msgid "Pace"
+msgstr "Ritmo"
+
+msgctxt "tooltip"
+msgid "Pace chart: each rider's lap time per lap. Any session."
+msgstr "Gráfico de ritmo: tempo de volta de cada piloto por volta. Qualquer sessão."
+
+msgctxt "tooltip"
+msgid "Pace chart: hide the opening lap, invalid laps, and slow outliers."
+msgstr "Gráfico de ritmo: oculta a volta inicial, voltas inválidas e outliers lentos."
+
+#. max 15 characters
+msgid "Pad takeover"
+msgstr "Gamepad assume"
+
+msgid "Page"
+msgstr "Página"
+
+#. max 60 characters
+msgid "Page Settings"
+msgstr "Config. de Página"
+
+#. max 23 characters
+msgid "Page names"
+msgstr "Nomes páginas"
+
+#. max 23 characters
+msgid "Page strip"
+msgstr "Faixa páginas"
+
+#. max 60 characters
+msgid "Pages"
+msgstr "Páginas"
+
+msgid "Palette"
+msgstr "Paleta"
+
+msgid "Palindrome"
+msgstr "Palíndromo"
+
+msgctxt "tooltip"
+msgid "Panel frame, title band and card art shared by every element."
+msgstr "Moldura do painel, faixa do título e arte do cartão compartilhados por todo elemento."
+
+msgid "Panel theme"
+msgstr "Tema do painel"
+
+msgctxt "tooltip"
+msgid "Panel theme for this element only. Default follows the global theme."
+msgstr "Tema do painel só deste elemento. Padrão segue o tema global."
+
+msgctxt "tooltip"
+msgid "Panel width in characters. Messages wrap to fit it."
+msgstr "Largura do painel em caracteres. As mensagens quebram para caber."
+
+msgid "Pass on the last lap"
+msgstr "Ultrapasse na última volta"
+
+#, c-format
+msgid "Pass on the last lap in %s races"
+msgstr "Ultrapasse na última volta em %s corridas"
+
+msgid "Peace Out"
+msgstr "Paz e Amor"
+
+#. max 23 characters
+msgid "Peaks"
+msgstr "Picos"
+
+msgid "Pen"
+msgstr "Pun"
+
+#. max 15 characters
+msgid "Pen. time"
+msgstr "Tempo pun."
+
+#. max 15 characters
+msgid "Penalties"
+msgstr "Punições"
+
+#. max 15 characters
+msgid "Penalty"
+msgstr "Punição"
+
+msgid "Per lap"
+msgstr "Por volta"
+
+msgid "Per-Bike"
+msgstr "Por Moto"
+
+msgctxt "tooltip"
+msgid "Per-track statistics including lap counts, crashes, gear shifts, top speed, and riding time."
+msgstr "Estatísticas por pista com voltas, quedas, trocas de marcha, vel. máxima e tempo pilotando."
+
+#. max 10 characters
+msgid "Perf"
+msgstr "Desemp."
+
+msgid "Perfect Race"
+msgstr "Corrida Perfeita"
+
+#. max 12 characters
+msgid "Performance"
+msgstr "Desempenho"
+
+msgid "Performance (threaded)"
+msgstr "Desempenho (thread)"
+
+msgid "Personal Best"
+msgstr "Recorde Pessoal"
+
+#. max 60 characters
+msgid "Personal Bests"
+msgstr "Recordes Pessoais"
+
+msgid "Phoenix"
+msgstr "Fênix"
+
+msgid "Photo Finish"
+msgstr "Photo Finish"
+
+msgctxt "tooltip"
+msgid "Pick the artwork this element draws from. Elements whose artwork is mandatory have no Off option."
+msgstr "Escolhe a arte que este elemento usa. Elementos com arte obrigatória não têm a opção Off."
+
+msgid "Pile-Up"
+msgstr "Engavetamento"
+
+msgid "Pink"
+msgstr "Rosa"
+
+msgid "Pit"
+msgstr "Box"
+
+#. max 15 characters
+msgid "Pit activity"
+msgstr "Atividade box"
+
+msgctxt "tooltip"
+msgid "Pit board artwork and the row positions that go with it."
+msgstr "Arte da placa de box e as posições de linha que a acompanham."
+
+msgid "Pit limiter"
+msgstr "Limitador box"
+
+#. max 10 characters
+msgid "Pitboard"
+msgstr "Placa Box"
+
+msgid "Pitch"
+msgstr "Arfagem"
+
+msgctxt "tooltip"
+msgid "Placeholders, grid lines, and unavailable data."
+msgstr "Espaços reservados, linhas de grade e dados indisponíveis."
+
+#. max 15 characters
+msgid "Platform icons"
+msgstr "Ícones plataf."
+
+msgid "Platinum"
+msgstr "Platina"
+
+msgid "Platinum Sweep"
+msgstr "Varrida de Platina"
+
+msgctxt "tooltip"
+msgid "Playback speed for every callout. 1.00x is as recorded."
+msgstr "Velocidade de reprodução das chamadas. 1.00x é como gravado."
+
+msgid "Player"
+msgstr "Piloto"
+
+msgctxt "tooltip"
+msgid "Plot a point per sector instead of per lap on the lap, trace and gap charts. Races only."
+msgstr "Um ponto por setor em vez de por volta nos gráficos de volta, traço e dif. Só corridas."
+
+msgid "Plugin Time"
+msgstr "Tempo do Plugin"
+
+#. max 23 characters
+msgid "Plugin time"
+msgstr "Tempo do plugin"
+
+msgctxt "tooltip"
+msgid "Plugin timing per callback and HUD. Saves a report on leaving the track, on quitting and when switched off."
+msgstr "Tempo do plugin por callback e HUD. Salva um relatório ao sair da pista, ao fechar e ao desligar."
+
+msgid "Podium Regular"
+msgstr "Freguês do Pódio"
+
+#. max 15 characters
+msgid "Podiums (1/2/3)"
+msgstr "Pódios (1/2/3)"
+
+#. max 11 characters
+msgid "Pointer"
+msgstr "Ponteiro"
+
+msgctxt "tooltip"
+msgid "Popup cards when a hotkey hides a HUD, a profile switches, a report is saved, or a file or the web overlay fails."
+msgstr "Cartões quando um atalho oculta um HUD, troca de perfil, relatório salvo, ou falha de arquivo ou overlay web."
+
+msgctxt "tooltip"
+msgid "Port for the web server. Change if the default is in use by another application."
+msgstr "Porta do servidor web. Mude se a padrão estiver em uso por outro programa."
+
+#. max 11 characters
+msgid "Position"
+msgstr "Posição"
+
+#. max 43 characters
+msgid "Position and gap charts"
+msgstr "Gráficos de posição e dif."
+
+#. max 11 characters
+msgid "Positive"
+msgstr "Positivo"
+
+#. max 8 characters
+msgid "Practice"
+msgstr "Treino"
+
+msgid "Pre-Qualify"
+msgstr "Pré-Classif."
+
+msgid "Pre-Start"
+msgstr "Pré-largada"
+
+msgid "PreFinal"
+msgstr "Pré-Final"
+
+#. max 60 characters
+msgid "Preferences"
+msgstr "Preferências"
+
+msgid "Prerelease"
+msgstr "Pré-lançamento"
+
+msgid "Press"
+msgstr "Pressione"
+
+#, c-format
+msgid "Press %s to open settings"
+msgstr "Pressione %s para abrir as configurações"
+
+#, c-format
+msgid "Press %s to show it again"
+msgstr "Pressione %s para mostrar de novo"
+
+#, c-format
+msgid "Press %s to show them again"
+msgstr "Pressione %s para mostrá-los de novo"
+
+#. TRANSLATORS: %s is the held keys with a trailing " + ", e.g. "Ctrl + ".
+#, c-format
+msgid "Press %sthe key under Esc to open settings"
+msgstr "Pressione %sa tecla abaixo do Esc para abrir as configurações"
+
+msgid "Press key"
+msgstr "Aperte tecla"
+
+#. max 11 characters
+msgid "Prestige"
+msgstr "Prestígio"
+
+msgid "Preview"
+msgstr "Prévia"
+
+msgctxt "tooltip"
+msgid "Previous page."
+msgstr "Página anterior."
+
+#. max 11 characters
+msgid "Primary"
+msgstr "Primária"
+
+#. max 16 characters
+msgid "Profile"
+msgstr "Perfil"
+
+msgid "Profile Hopper"
+msgstr "Pula-Perfil"
+
+msgid "Profile copied"
+msgstr "Perfil copiado"
+
+#. max 66 characters
+msgid "Profile resets this profile only; Everything resets all."
+msgstr "Perfil zera só este perfil; Tudo zera todos."
+
+msgid "Profiler report not saved"
+msgstr "Relatório do profiler não salvo"
+
+msgid "Profiler report saved"
+msgstr "Relatório do profiler salvo"
+
+#. max 60 characters
+msgid "Profiles"
+msgstr "Perfis"
+
+#. max 60 characters
+msgid "Progress"
+msgstr "Progresso"
+
+#, c-format
+msgid "Progress (Prestige %d)"
+msgstr "Progresso (Prestígio %d)"
+
+msgctxt "tooltip"
+msgid "Progression charts: running order, race trace, gap to leader, and pace."
+msgstr "Gráficos de progressão: ordem, traço da corrida, dif. para o líder e ritmo."
+
+#. max 23 characters
+msgid "Provider"
+msgstr "Provedor"
+
+#. max 15 characters
+msgid "Proximity"
+msgstr "Proximidade"
+
+#. max 60 characters
+msgid "Proximity Arrows"
+msgstr "Setas de Proximidade"
+
+msgid "Purple"
+msgstr "Roxo"
+
+msgctxt "tooltip"
+msgid "Push a stick to grab Free-Roam and pause the director. Auto-resumes when the stick goes idle."
+msgstr "Mexa um analógico para pegar o Free-Roam e pausar o diretor. Retoma quando o analógico fica parado."
+
+msgid "Qualify"
+msgstr "Classificação"
+
+msgid "Qualify Heat"
+msgstr "Bateria Classif."
+
+msgid "Qualify Practice"
+msgstr "Treino Classif."
+
+msgid "Quarter-Finals"
+msgstr "Quartas de Final"
+
+msgid "RD"
+msgstr "º"
+
+#. max 15 characters
+msgid "RET/DSQ/DNS"
+msgstr "ABA/DSQ/DNS"
+
+msgid "RIDER ONCOMING"
+msgstr "PILOTO NA CONTRAMÃO"
+
+#. max 11 characters
+msgid "RPM"
+msgstr ""
+
+msgid "Race"
+msgstr "Corrida"
+
+msgid "Race 1"
+msgstr "Corrida 1"
+
+msgid "Race 2"
+msgstr "Corrida 2"
+
+#. max 60 characters
+msgid "Race Events"
+msgstr "Eventos da Corrida"
+
+msgid "Race Over"
+msgstr "Fim da Corrida"
+
+msgid "Race Trace"
+msgstr "Traço da Corrida"
+
+#. max 11 characters
+msgid "Race number"
+msgstr "Número"
+
+msgid "Race sessions only"
+msgstr "Só sessões de corrida"
+
+#. max 15 characters
+msgid "Race trace"
+msgstr "Traço corrida"
+
+msgctxt "tooltip"
+msgid "Race trace: cumulative time vs a fixed reference pace. Race only."
+msgstr "Traço da corrida: tempo acumulado vs um ritmo de referência fixo. Só corrida."
+
+#, c-format
+msgid "Race winner %s"
+msgstr "Vencedor da corrida %s"
+
+msgid "Racer"
+msgstr "Corredor"
+
+#. max 15 characters
+msgid "Races"
+msgstr "Corridas"
+
+#. max 10 characters
+msgid "Radar"
+msgstr "Radar"
+
+#. max 23 characters
+msgid "Radar range"
+msgstr "Alcance radar"
+
+msgid "Rage Quit"
+msgstr "Rage Quit"
+
+msgid "Rainy"
+msgstr "Chuvoso"
+
+#. max 15 characters
+msgid "Range"
+msgstr "Alcance"
+
+msgid "Rbr"
+msgstr "FrT"
+
+#, c-format
+msgid "Reach %s above takeoff and land it"
+msgstr "Suba %s acima da decolagem e aterrisse"
+
+#. max 11 characters
+msgid "Readouts"
+msgstr "Leituras"
+
+msgctxt "tooltip"
+msgid "Real-time input data including throttle, brake, clutch, RPM, suspension travel, and gear."
+msgstr "Dados de entrada em tempo real: acelerador, freio, embreagem, RPM, suspensão e marcha."
+
+msgid "Rear"
+msgstr "Trás"
+
+#. max 23 characters
+msgid "Rear brake"
+msgstr "Freio traseiro"
+
+#. max 23 characters
+msgid "Rear suspension"
+msgstr "Suspensão traseira"
+
+msgid "Rebind in Settings > Hotkeys"
+msgstr "Mude em Ajustes > Atalhos"
+
+#. max 15 characters
+msgid "Record"
+msgstr "Recorde"
+
+#. max 60 characters
+msgid "Recorded voice packs can replace Windows speech."
+msgstr "Pacotes de voz gravados podem substituir a fala do Windows."
+
+#. max 10 characters
+msgid "Records"
+msgstr "Recordes"
+
+#. max 23 characters
+msgid "Records to show"
+msgstr "Recordes exibidos"
+
+msgid "Red"
+msgstr "Vermelho"
+
+#. max 15 characters
+msgid "Reference line"
+msgstr "Linha de ref."
+
+msgid "Regular"
+msgstr "Regular"
+
+msgid "Reinstall it with mxbmrp3_data"
+msgstr "Reinstale com mxbmrp3_data"
+
+msgid "Release Notes"
+msgstr "Notas da Versão"
+
+#. max 10 characters
+msgid "Reload"
+msgstr "Recarregar"
+
+msgctxt "tooltip"
+msgid "Reload configuration from disk."
+msgstr "Recarrega a configuração do disco."
+
+msgid "Reload the config"
+msgstr "Recarregue a configuração"
+
+#, c-format
+msgid "Reload the config %s times"
+msgstr "Recarregue a configuração %s vezes"
+
+msgctxt "tooltip"
+msgid "Remove the last segment boundary. With none left, the Timing HUD shows normal split/lap timing."
+msgstr "Remove o último limite de trecho. Sem nenhum, o HUD Tempos mostra parciais/voltas normais."
+
+#. max 60 characters
+msgid "Reset"
+msgstr "Redefinir"
+
+#, c-format
+msgid "Reset %s"
+msgstr "Redefinir %s"
+
+msgctxt "tooltip"
+msgid "Reset all profiles and settings to defaults."
+msgstr "Redefine todos os perfis e configurações para o padrão."
+
+msgctxt "tooltip"
+msgid "Reset current profile to default settings."
+msgstr "Redefine o perfil atual para as configurações padrão."
+
+msgid "Reset every setting to defaults"
+msgstr "Redefina todas as configurações"
+
+msgctxt "tooltip"
+msgid "Reset the Crashes widget's tally to zero."
+msgstr "Zera a contagem do widget Quedas."
+
+msgid "Resets ALL profiles and globals. Click again to confirm."
+msgstr "Redefine TODOS os perfis e globais. Clique de novo para confirmar."
+
+msgid "Resets this profile's settings. Click again to confirm."
+msgstr "Redefine as configurações deste perfil. Clique de novo para confirmar."
+
+#, c-format
+msgid "Restart %s to apply."
+msgstr "Reinicie %s para aplicar."
+
+#. max 15 characters
+msgid "Resume after"
+msgstr "Retomar após"
+
+msgid "Retire from a race before the finish"
+msgstr "Abandone uma corrida antes do fim"
+
+msgid "Retry"
+msgstr "Repetir"
+
+msgid "Retrying"
+msgstr "Tentando"
+
+msgid "Rev"
+msgstr ""
+
+#. max 11 characters
+msgid "Rev limiter"
+msgstr "Limitador"
+
+#, c-format
+msgid "Ride %s different bikes"
+msgstr "Pilote %s motos diferentes"
+
+#, c-format
+msgid "Ride %s different tracks"
+msgstr "Pilote em %s pistas diferentes"
+
+#, c-format
+msgid "Ride %s in a rider's wake"
+msgstr "Pilote %s no vácuo de um piloto"
+
+#, c-format
+msgid "Ride %s in one day"
+msgstr "Pilote %s num dia"
+
+#, c-format
+msgid "Ride %s in total"
+msgstr "Pilote %s no total"
+
+#, c-format
+msgid "Ride %s on the back wheel"
+msgstr "Pilote %s na roda traseira"
+
+#, c-format
+msgid "Ride %s without crashing"
+msgstr "Pilote %s sem cair"
+
+msgid "Ride between two and five in the morning"
+msgstr "Pilote entre duas e cinco da manhã"
+
+#, c-format
+msgid "Ride bikes from %s classes"
+msgstr "Pilote motos de %s classes"
+
+msgid "Ride on the anniversary of your first run"
+msgstr "Pilote no aniversário da sua primeira saída"
+
+msgid "Ride through three riders down"
+msgstr "Passe por três pilotos caídos"
+
+#. max 15 characters
+msgid "Ride time"
+msgstr "Tempo pilotando"
+
+#. max 60 characters
+msgid "Rider Markers"
+msgstr "Marcadores de Pilotos"
+
+msgctxt "tooltip"
+msgid "Rider line colours: a hue per position, or bike brand colour."
+msgstr "Cores das linhas: um tom por posição, ou a cor da marca da moto."
+
+msgid "Rider lock off"
+msgstr "Trava no piloto off"
+
+msgid "Rider lock on"
+msgstr "Trava no piloto on"
+
+msgctxt "tooltip"
+msgid "Rider marker colors. Uniform uses same color, Brand uses bike colors, Position by relative pos."
+msgstr "Cores dos marcadores. Uniforme usa a mesma cor, Marca as cores da moto, Posição a posição relativa."
+
+#. max 15 characters
+msgid "Rider name"
+msgstr "Nome do piloto"
+
+msgctxt "tooltip"
+msgid "Rider name display. Off hides the column, Short shows 3-letter abbreviation, Long shows full name."
+msgstr "Nome do piloto. Off oculta a coluna, Curto mostra abreviação de 3 letras, Longo o nome completo."
+
+#. max 12 characters
+msgid "Riders"
+msgstr "Pilotos"
+
+#. max 43 characters
+msgid "Riders around you"
+msgstr "Pilotos ao seu redor"
+
+msgctxt "tooltip"
+msgid "Riders around you right now: behind, alongside, boxed in, backmarkers."
+msgstr "Pilotos ao seu redor agora: atrás, ao lado, cercado, retardatários."
+
+msgid "Right"
+msgstr "Direita"
+
+#. max 15 characters
+msgid "Role icons"
+msgstr "Ícones função"
+
+msgctxt "tooltip"
+msgid "Role icons in each platform's badge colors: owner, moderators, VIPs, members and more."
+msgstr "Ícones de função nas cores de cada plataforma: dono, moderadores, VIPs, membros e mais."
+
+msgid "Roll"
+msgstr "Rolagem"
+
+msgid "Roost"
+msgstr "Roost"
+
+#. max 15 characters
+msgid "Rotate map"
+msgstr "Girar mapa"
+
+msgid "Rotation Arcs"
+msgstr "Arcos de Rotação"
+
+#. max 23 characters
+msgid "Rotation arcs"
+msgstr "Arcos de rotação"
+
+msgid "Round"
+msgstr "Rodada"
+
+#. max 15 characters
+msgid "Rows to show"
+msgstr "Linhas exibidas"
+
+msgid "Royal"
+msgstr "Royal"
+
+msgid "Rsu"
+msgstr "SuT"
+
+msgid "Rubber Side Down"
+msgstr "Pneu no Chão"
+
+msgid "Rule Bender"
+msgstr "Dobrador de Regras"
+
+#. max 10 characters
+msgid "Rumble"
+msgstr "Vibração"
+
+msgid "Rumble off"
+msgstr "Vibração off"
+
+msgid "Run a build you made yourself"
+msgstr "Rode uma versão que você mesmo compilou"
+
+msgid "Run out of fuel out on track"
+msgstr "Fique sem combustível na pista"
+
+#. max 56 characters
+msgid "Run sweep"
+msgstr "Varredura"
+
+#. max 10 characters
+msgid "Rundown"
+msgstr "Resumo"
+
+msgid "Running on Fumes"
+msgstr "No Vapor"
+
+#, c-format
+msgid "SEG %d ADDED"
+msgstr "TRECHO %d ADICIONADO"
+
+#, c-format
+msgid "SEG %d REMOVED"
+msgstr "TRECHO %d REMOVIDO"
+
+msgid "SEG ADDED"
+msgstr "TRECHO ADICIONADO"
+
+msgid "SEG REMOVED"
+msgstr "TRECHO REMOVIDO"
+
+msgid "SEGMENT"
+msgstr "TRECHO"
+
+msgid "SESSION PB"
+msgstr "RP DA SESSÃO"
+
+msgid "SHA256 checksum mismatch"
+msgstr "Checksum SHA256 não confere"
+
+msgid "SHA256 verification failed (could not compute hash)"
+msgstr "Falha na verificação SHA256 (não foi possível calcular o hash)"
+
+msgid "ST"
+msgstr "º"
+
+msgid "Sandbagger"
+msgstr "Sandbagger"
+
+msgid "Save"
+msgstr "Salvar"
+
+#. max 34 characters
+msgid "Saved"
+msgstr "Salvo"
+
+#. max 7 characters
+msgid "Scale"
+msgstr "Escala"
+
+msgctxt "tooltip"
+msgid "Scale the helmet. Zoom in to see less frame."
+msgstr "Escala do capacete. Amplie para ver menos moldura."
+
+msgid "Score"
+msgstr "Pontos"
+
+#, c-format
+msgid "Score %s FMX points"
+msgstr "Marque %s pontos de FMX"
+
+#, c-format
+msgid "Score %s points in one chain"
+msgstr "Marque %s pontos numa série"
+
+#. max 12 characters
+msgid "Screen clamp"
+msgstr "Prender tela"
+
+msgctxt "tooltip"
+msgid "Scrolling feed of race events: session changes, fastest laps, penalties, and finishes."
+msgstr "Feed rolante de eventos: mudanças de sessão, voltas mais rápidas, punições e chegadas."
+
+msgid "Scrubber"
+msgstr "Scrubber"
+
+#. max 48 characters
+msgid "Seat Time"
+msgstr "Tempo de Sela"
+
+msgid "Second Chance"
+msgstr "Segunda Chance"
+
+msgid "Second Screen"
+msgstr "Segunda Tela"
+
+#. max 11 characters
+msgid "Secondary"
+msgstr "Secundária"
+
+msgid "Sector"
+msgstr "Setor"
+
+#. max 15 characters
+msgid "Sector points"
+msgstr "Pontos setor"
+
+#. max 23 characters
+msgid "Sector times"
+msgstr "Tempos de setor"
+
+#. max 10 characters
+msgid "Sectors"
+msgstr "Setores"
+
+msgid "See Settings > Achievements"
+msgstr "Veja Ajustes > Conquistas"
+
+#. max 10 characters
+msgid "Segment +"
+msgstr "Trecho +"
+
+#. max 10 characters
+msgid "Segment -"
+msgstr "Trecho -"
+
+msgid "Select"
+msgstr "Escolher"
+
+msgctxt "tooltip"
+msgid "Select which controller to use for gamepad widget and rumble effects."
+msgstr "Escolha o controle usado pelo widget de gamepad e pelos efeitos de vibração."
+
+msgid "Semi-Finals"
+msgstr "Semifinais"
+
+msgid "Sent It"
+msgstr "Mandou Ver"
+
+#, c-format
+msgid "Serve %s of penalty time"
+msgstr "Cumpra %s de tempo de punição"
+
+#. max 15 characters
+msgid "Server"
+msgstr "Servidor"
+
+msgid "Server Players"
+msgstr "Jogadores no Servidor"
+
+#. max 15 characters
+msgid "Server best"
+msgstr "Melhor servidor"
+
+#. max 23 characters
+msgid "Server name"
+msgstr "Nome do servidor"
+
+#. max 10 characters
+msgid "Session"
+msgstr "Sessão"
+
+#. max 15 characters
+msgid "Session PB"
+msgstr "RP da sessão"
+
+#. max 15 characters
+msgid "Session format"
+msgstr "Formato sessão"
+
+#. max 15 characters
+msgid "Session info"
+msgstr "Info sessão"
+
+msgctxt "tooltip"
+msgid "Session information including track, server details, player count, and password display."
+msgstr "Informações da sessão: pista, detalhes do servidor, número de jogadores e senha."
+
+msgctxt "tooltip"
+msgid "Session shows the session timer value. Clock shows your local time."
+msgstr "Sessão mostra o cronômetro da sessão. Relógio mostra sua hora local."
+
+msgctxt "tooltip"
+msgid "Session, format and state (e.g. Race 2, In Progress), or In Menus / Unknown between sessions."
+msgstr "Sessão, formato e estado (ex.: Corrida 2, Em Andamento), ou Nos Menus / Desconhecido entre sessões."
+
+#, c-format
+msgid "Set %s personal bests"
+msgstr "Faça %s recordes pessoais"
+
+msgid "Set a PB on the last lap of a race"
+msgstr "Faça um RP na última volta de uma corrida"
+
+msgid "Set a lap time the same backwards"
+msgstr "Faça um tempo de volta igual de trás para frente"
+
+msgid "Set a personal best"
+msgstr "Faça um recorde pessoal"
+
+#, c-format
+msgid "Set the fastest lap in %s races"
+msgstr "Faça a volta mais rápida em %s corridas"
+
+msgid "Set the fastest lap in a race"
+msgstr "Faça a volta mais rápida numa corrida"
+
+msgid "Set two identical lap times in a session"
+msgstr "Faça dois tempos de volta idênticos numa sessão"
+
+#. max 10 characters
+msgid "Settings"
+msgstr "Ajustes"
+
+msgid "Settings > General"
+msgstr "Ajustes > Geral"
+
+msgctxt "tooltip"
+msgid "Settings and every switch in one strip; drag it to an edge to turn it. Rest on one that is off to preview it."
+msgstr "Configurações e todos os botões numa faixa; arraste a uma borda para girar. Pare num desligado para prévia."
+
+msgid "Settings not saved"
+msgstr "Configurações não salvas"
+
+msgid "Settings reloaded"
+msgstr "Configurações recarregadas"
+
+msgctxt "tooltip"
+msgid "Settings whose name, tab or description holds every word you typed. Click one to open it."
+msgstr "Configurações cujo nome, aba ou descrição contém cada palavra digitada. Clique numa para abrir."
+
+#. max 21 characters
+msgid "Setup, every setting"
+msgstr "Setup, cada ajuste"
+
+#, c-format
+msgid "Shift %s times"
+msgstr "Troque de marcha %s vezes"
+
+#. max 48 characters
+msgid "Shift Happens"
+msgstr "Troca de Marcha"
+
+msgctxt "tooltip"
+msgid "Shift lights: green, amber, then red from the shift point. The red ones flash on the limiter."
+msgstr "Luzes de troca: verde, âmbar e vermelho a partir do ponto de troca. As vermelhas piscam no limitador."
+
+msgctxt "tooltip"
+msgid "Shift the lower part up or down."
+msgstr "Move a parte inferior para cima ou para baixo."
+
+msgctxt "tooltip"
+msgid "Shift the upper part up or down."
+msgstr "Move a parte superior para cima ou para baixo."
+
+#. max 15 characters
+msgid "Shifts"
+msgstr "Trocas"
+
+msgid "Short"
+msgstr "Curto"
+
+msgctxt "tooltip"
+msgid "Shortest time on a shot before cutting away - the main pace dial. Raise it to slow cuts down."
+msgstr "Menor tempo numa cena antes de cortar - o ritmo principal. Aumente para cortes mais lentos."
+
+msgctxt "tooltip"
+msgid "Show S/F, sector markers and segment lines. Off leaves just the track and riders."
+msgstr "Mostra L/C, marcadores de setor e linhas de trecho. Off deixa só a pista e os pilotos."
+
+msgctxt "tooltip"
+msgid "Show a header row labeling each column above the lap rows."
+msgstr "Mostra uma linha de cabeçalho nomeando cada coluna acima das voltas."
+
+msgctxt "tooltip"
+msgid "Show a header row labeling each column above the records."
+msgstr "Mostra uma linha de cabeçalho nomeando cada coluna acima dos recordes."
+
+msgctxt "tooltip"
+msgid "Show a header row labeling each enabled column above the rider rows."
+msgstr "Mostra uma linha de cabeçalho nomeando cada coluna ativa acima dos pilotos."
+
+msgctxt "tooltip"
+msgid "Show a header row labeling each enabled column."
+msgstr "Mostra uma linha de cabeçalho nomeando cada coluna ativa."
+
+msgctxt "tooltip"
+msgid "Show a session-info row below the title (session, time remaining, leader's lap, or overtime label)."
+msgstr "Mostra uma linha de info da sessão abaixo do título (sessão, tempo restante, volta do líder, prorrogação)."
+
+msgctxt "tooltip"
+msgid "Show all-time column with lifetime stats for this track and bike."
+msgstr "Mostra a coluna histórica com estatísticas de sempre desta pista e moto."
+
+msgctxt "tooltip"
+msgid "Show axis labels: values on the left, lap numbers on the bottom."
+msgstr "Mostra rótulos dos eixos: valores à esquerda, números das voltas embaixo."
+
+msgctxt "tooltip"
+msgid "Show best lap time column."
+msgstr "Mostra a coluna de melhor volta."
+
+msgctxt "tooltip"
+msgid "Show bike model column."
+msgstr "Mostra a coluna do modelo da moto."
+
+msgctxt "tooltip"
+msgid "Show clutch input percentage."
+msgstr "Mostra a porcentagem da embreagem."
+
+msgctxt "tooltip"
+msgid "Show combo arc with chain multiplier and score breakdown."
+msgstr "Mostra o arco de combo com multiplicador da série e detalhes dos pontos."
+
+msgctxt "tooltip"
+msgid "Show current gear number."
+msgstr "Mostra a marcha atual."
+
+msgctxt "tooltip"
+msgid "Show current session column with accumulated session stats."
+msgstr "Mostra a coluna da sessão atual com estatísticas acumuladas."
+
+msgctxt "tooltip"
+msgid "Show current track name."
+msgstr "Mostra o nome da pista atual."
+
+msgctxt "tooltip"
+msgid "Show current weather conditions."
+msgstr "Mostra as condições do tempo atuais."
+
+msgctxt "tooltip"
+msgid "Show date when the record was set."
+msgstr "Mostra a data em que o recorde foi feito."
+
+msgctxt "tooltip"
+msgid "Show duration, distance, jump height and peak rotation below the active trick name."
+msgstr "Mostra duração, distância, altura do salto e rotação de pico abaixo da manobra ativa."
+
+msgctxt "tooltip"
+msgid "Show each callout as on-screen text for a few seconds. Drag the widget to place it."
+msgstr "Mostra cada chamada como texto na tela por alguns segundos. Arraste o widget para posicionar."
+
+msgctxt "tooltip"
+msgid "Show each rider's class (MX1, MX2 OEM...)."
+msgstr "Mostra a classe de cada piloto (MX1, MX2 OEM...)."
+
+msgctxt "tooltip"
+msgid "Show elapsed session time row."
+msgstr "Mostra a linha de tempo decorrido da sessão."
+
+msgctxt "tooltip"
+msgid "Show engine RPM."
+msgstr "Mostra o RPM do motor."
+
+msgctxt "tooltip"
+msgid "Show finishing position when crossing the line (e.g. FINISHED 1ST). Updates with penalties."
+msgstr "Mostra a posição final ao cruzar a linha (ex.: TERMINOU 1º). Atualiza com punições."
+
+msgctxt "tooltip"
+msgid "Show frames per second (FPS)."
+msgstr "Mostra os quadros por segundo (FPS)."
+
+msgctxt "tooltip"
+msgid "Show front brake input percentage."
+msgstr "Mostra a porcentagem do freio dianteiro."
+
+msgctxt "tooltip"
+msgid "Show front suspension travel."
+msgstr "Mostra o curso da suspensão dianteira."
+
+#. max 23 characters
+msgid "Show gap"
+msgstr "Mostrar dif."
+
+#. max 23 characters
+msgid "Show gap bar"
+msgstr "Mostrar barra dif."
+
+msgctxt "tooltip"
+msgid "Show gap comparison row. Displays time difference based on gap compare mode."
+msgstr "Mostra a linha de comparação. Exibe a diferença de tempo conforme o modo de comparação."
+
+msgctxt "tooltip"
+msgid "Show gap time text in the center of the bar."
+msgstr "Mostra o texto da dif. no centro da barra."
+
+msgctxt "tooltip"
+msgid "Show grid lines behind the chart, with a line at each lap."
+msgstr "Mostra linhas de grade atrás do gráfico, com uma linha em cada volta."
+
+#. max 15 characters
+msgid "Show icons"
+msgstr "Mostrar ícones"
+
+msgctxt "tooltip"
+msgid "Show icons next to each row. Off displays text only."
+msgstr "Mostra ícones ao lado de cada linha. Off mostra só texto."
+
+msgctxt "tooltip"
+msgid "Show icons on HUD titles, settings tabs and controls, and the Toggles strip. Off uses text like [x]."
+msgstr "Mostra ícones nos títulos do HUD, abas, controles e na faixa de botões. Off usa texto como [x]."
+
+msgctxt "tooltip"
+msgid "Show lap number row."
+msgstr "Mostra a linha do número da volta."
+
+msgctxt "tooltip"
+msgid "Show last completed lap column with per-lap stats."
+msgstr "Mostra a coluna da última volta completa com estatísticas."
+
+msgctxt "tooltip"
+msgid "Show last lap time column (each rider's most recent lap, cuts included)."
+msgstr "Mostra a coluna da última volta (a mais recente de cada piloto, cortes incluídos)."
+
+msgctxt "tooltip"
+msgid "Show last lap time row."
+msgstr "Mostra a linha do tempo da última volta."
+
+msgctxt "tooltip"
+msgid "Show live gap to personal best below the current lap time."
+msgstr "Mostra a dif. ao vivo para o recorde pessoal abaixo do tempo da volta atual."
+
+#. max 15 characters
+msgid "Show markers"
+msgstr "Mostrar marcas"
+
+#. max 15 characters
+msgid "Show mode"
+msgstr "Modo exibição"
+
+#. max 23 characters
+msgid "Show myself"
+msgstr "Mostrar você"
+
+msgctxt "tooltip"
+msgid "Show notice when a faster rider is approaching to pass. Race sessions only."
+msgstr "Avisa quando um piloto mais rápido chega para ultrapassar. Só corridas."
+
+msgctxt "tooltip"
+msgid "Show notice when setting a session personal best lap."
+msgstr "Avisa ao fazer um recorde pessoal de volta na sessão."
+
+msgctxt "tooltip"
+msgid "Show notice when setting an all-time personal best lap."
+msgstr "Avisa ao fazer um recorde pessoal histórico de volta."
+
+msgctxt "tooltip"
+msgid "Show notice when setting the fastest lap in an online race."
+msgstr "Avisa ao fazer a volta mais rápida numa corrida online."
+
+msgctxt "tooltip"
+msgid "Show notice when starting the final lap of a race."
+msgstr "Avisa ao iniciar a última volta de uma corrida."
+
+msgctxt "tooltip"
+msgid "Show notice when the session timer expires in a time+laps race and extra laps begin."
+msgstr "Avisa quando o tempo da sessão esgota numa corrida tempo+voltas e começam as voltas extras."
+
+msgctxt "tooltip"
+msgid "Show notice when you are closing on a rider ahead who is a lap or more down. Race sessions only."
+msgstr "Avisa quando você se aproxima de um piloto à frente com uma volta ou mais de atraso. Só corridas."
+
+msgctxt "tooltip"
+msgid "Show or hide the Stream Chat HUD. It stays connected while hidden."
+msgstr "Mostra ou oculta o HUD Chat da Live. Ele continua conectado quando oculto."
+
+msgctxt "tooltip"
+msgid "Show or hide this element during gameplay."
+msgstr "Mostra ou oculta este elemento durante o jogo."
+
+msgctxt "tooltip"
+msgid "Show penalty indicator when riders have active penalties."
+msgstr "Mostra indicador de punição quando pilotos têm punições ativas."
+
+msgctxt "tooltip"
+msgid "Show pitch, yaw, and roll rotation arcs with start and peak markers."
+msgstr "Mostra arcos de rotação de arfagem, guinada e rolagem com marcas de início e pico."
+
+msgctxt "tooltip"
+msgid "Show position number column."
+msgstr "Mostra a coluna de posição."
+
+msgctxt "tooltip"
+msgid "Show positions gained or lost since the race start (caret up/down with a count). Race sessions only."
+msgstr "Mostra posições ganhas ou perdidas desde a largada (seta para cima/baixo com o número). Só corridas."
+
+msgctxt "tooltip"
+msgid "Show race number column."
+msgstr "Mostra a coluna do número do piloto."
+
+msgctxt "tooltip"
+msgid "Show race position row."
+msgstr "Mostra a linha da posição na corrida."
+
+msgctxt "tooltip"
+msgid "Show raw rotation values for pitch, yaw, and roll (developer mode only)."
+msgstr "Mostra valores brutos de rotação para arfagem, guinada e rolagem (só modo desenvolvedor)."
+
+msgctxt "tooltip"
+msgid "Show rear brake input percentage."
+msgstr "Mostra a porcentagem do freio traseiro."
+
+msgctxt "tooltip"
+msgid "Show rear suspension travel."
+msgstr "Mostra o curso da suspensão traseira."
+
+msgctxt "tooltip"
+msgid "Show rider name row."
+msgstr "Mostra a linha do nome do piloto."
+
+msgctxt "tooltip"
+msgid "Show sector split times (S1, S2, S3)."
+msgstr "Mostra os tempos parciais de setor (S1, S2, S3)."
+
+msgctxt "tooltip"
+msgid "Show sector time columns (S1, S2, S3). Only available with MXB Ranked provider."
+msgstr "Mostra colunas de tempo de setor (S1, S2, S3). Só com o provedor MXB Ranked."
+
+msgctxt "tooltip"
+msgid "Show session format (time/laps) and current state."
+msgstr "Mostra o formato da sessão (tempo/voltas) e o estado atual."
+
+msgctxt "tooltip"
+msgid "Show session information row."
+msgstr "Mostra a linha de informações da sessão."
+
+msgctxt "tooltip"
+msgid "Show small icons next to each event indicating the event type."
+msgstr "Mostra ícones pequenos ao lado de cada evento indicando o tipo."
+
+msgctxt "tooltip"
+msgid "Show status icons: hazard warnings, blue flags, checkered flags, and tracked rider markers."
+msgstr "Mostra ícones de status: perigos, bandeiras azuis, quadriculadas e marcadores de pilotos seguidos."
+
+msgctxt "tooltip"
+msgid "Show the Dash's next page."
+msgstr "Mostra a próxima página do Dash."
+
+msgctxt "tooltip"
+msgid "Show the Dash's previous page."
+msgstr "Mostra a página anterior do Dash."
+
+msgid "Show the HUD on a second screen"
+msgstr "Mostre o HUD numa segunda tela"
+
+msgctxt "tooltip"
+msgid "Show the auto-director's shot decisions and state changes in the log. Frequent, so off by default."
+msgstr "Mostra no log as decisões de cena e mudanças de estado do diretor. Frequente, por isso off por padrão."
+
+msgctxt "tooltip"
+msgid "Show the big time row at the top (current/frozen split or lap time)."
+msgstr "Mostra a linha grande do tempo no topo (parcial ou volta atual/congelada)."
+
+msgctxt "tooltip"
+msgid "Show the dashed reference line (the trace's reference pace)."
+msgstr "Mostra a linha de referência tracejada (o ritmo de referência do traço)."
+
+msgctxt "tooltip"
+msgid "Show the green/red gap visualization bars."
+msgstr "Mostra as barras verde/vermelha de diferença."
+
+msgctxt "tooltip"
+msgid "Show the live gap to a reference lap under the time, as the Gap Bar shows it. Default follows General."
+msgstr "Mostra a dif. ao vivo para uma volta de referência abaixo do tempo, como a Barra Dif. Padrão segue Geral."
+
+msgctxt "tooltip"
+msgid "Show the local time each message was sent."
+msgstr "Mostra a hora local em que cada mensagem foi enviada."
+
+msgctxt "tooltip"
+msgid "Show the new track's title and artist when Now playing changes track."
+msgstr "Mostra o título e artista da nova faixa quando Tocando agora muda de música."
+
+msgctxt "tooltip"
+msgid "Show the server name (online) / 'Testing' (offline) as the headline row."
+msgstr "Mostra o nome do servidor (online) / 'Testando' (offline) como linha principal."
+
+msgctxt "tooltip"
+msgid "Show throttle input percentage."
+msgstr "Mostra a porcentagem do acelerador."
+
+#, c-format
+msgid "Show up %s days in a row"
+msgstr "Apareça %s dias seguidos"
+
+#, c-format
+msgid "Show up on %s different days"
+msgstr "Apareça em %s dias diferentes"
+
+msgctxt "tooltip"
+msgid "Show warning when a rider going the wrong way is on the track ahead."
+msgstr "Alerta quando há um piloto na contramão na pista à frente."
+
+msgctxt "tooltip"
+msgid "Show warning when a stationary rider is on the track ahead."
+msgstr "Alerta quando há um piloto parado na pista à frente."
+
+msgctxt "tooltip"
+msgid "Show warning when entering the track with the default bike setup."
+msgstr "Alerta ao entrar na pista com o setup padrão da moto."
+
+msgctxt "tooltip"
+msgid "Show warning when riding in the wrong direction."
+msgstr "Alerta ao pilotar na direção errada."
+
+msgctxt "tooltip"
+msgid "Show your fastest individual sector times (S1, S2, S3)."
+msgstr "Mostra seus setores individuais mais rápidos (S1, S2, S3)."
+
+msgctxt "tooltip"
+msgid "Show your last lap, best lap, and calculated ideal lap times."
+msgstr "Mostra sua última volta, melhor volta e volta ideal calculada."
+
+msgid "Show-off"
+msgstr "Exibido"
+
+msgctxt "tooltip"
+msgid "Shows ECU aids: map, traction, engine braking, anti-wheeling. Chips brighten on intervention."
+msgstr "Mostra auxílios da ECU: mapa, tração, freio motor, anti-wheelie. Acendem quando intervêm."
+
+msgctxt "tooltip"
+msgid "Shows a page's name for a moment as you step to it, then its content."
+msgstr "Mostra o nome de uma página por um instante ao chegar nela, depois o conteúdo."
+
+msgctxt "tooltip"
+msgid "Shows current gear with shift indicator that turns red at shift point."
+msgstr "Mostra a marcha atual com indicador de troca que fica vermelho no ponto de troca."
+
+msgctxt "tooltip"
+msgid "Shows current ground speed in mph or km/h."
+msgstr "Mostra a velocidade atual em mph ou km/h."
+
+msgctxt "tooltip"
+msgid "Shows current lap number and total laps in the session."
+msgstr "Mostra o número da volta atual e o total de voltas da sessão."
+
+msgctxt "tooltip"
+msgid "Shows current local time. Supports 12h/24h format and optional UTC display."
+msgstr "Mostra a hora local atual. Suporta formato 12h/24h e UTC opcional."
+
+msgctxt "tooltip"
+msgid "Shows elapsed session time or time remaining."
+msgstr "Mostra o tempo decorrido ou restante da sessão."
+
+msgctxt "tooltip"
+msgid "Shows front and rear tyre temperatures."
+msgstr "Mostra a temperatura dos pneus dianteiro e traseiro."
+
+msgctxt "tooltip"
+msgid "Shows nearby riders relative to your position. Useful for close racing awareness."
+msgstr "Mostra pilotos próximos em relação a você. Útil em disputas acirradas."
+
+msgctxt "tooltip"
+msgid "Shows remaining fuel level and estimated laps."
+msgstr "Mostra o combustível restante e as voltas estimadas."
+
+msgctxt "tooltip"
+msgid "Shows rider lean angle in degrees with arc gauge."
+msgstr "Mostra o ângulo de inclinação do piloto em graus com um medidor em arco."
+
+msgctxt "tooltip"
+msgid "Shows your current race position (P1, P2, etc.)."
+msgstr "Mostra sua posição atual na corrida (P1, P2, etc.)."
+
+msgid "Sighting Lap"
+msgstr "Volta de Reconhecimento"
+
+msgid "Silver"
+msgstr "Prata"
+
+msgid "Silver Sweep"
+msgstr "Varrida de Prata"
+
+msgctxt "tooltip"
+msgid "Simple HUD elements showing speed, position, lap count, session time, and other info."
+msgstr "Elementos simples de HUD com velocidade, posição, voltas, tempo de sessão e mais."
+
+msgctxt "tooltip"
+msgid "Size multiplier for rider markers."
+msgstr "Multiplicador de tamanho dos marcadores de pilotos."
+
+msgctxt "tooltip"
+msgid "Size multiplier: make this HUD bigger or smaller. Affects all its text and graphics."
+msgstr "Multiplicador de tamanho: deixa este HUD maior ou menor. Afeta todo texto e gráfico dele."
+
+msgctxt "tooltip"
+msgid "Size of every HUD and this menu. Each HUD's own Scale is relative to it."
+msgstr "Tamanho de todos os HUDs e deste menu. A Escala de cada HUD é relativa a ele."
+
+msgctxt "tooltip"
+msgid "Size of proximity warning arrows."
+msgstr "Tamanho das setas de proximidade."
+
+msgctxt "tooltip"
+msgid "Size of rider markers on the radar."
+msgstr "Tamanho dos marcadores de pilotos no radar."
+
+msgctxt "tooltip"
+msgid "Size of rider markers relative to the map."
+msgstr "Tamanho dos marcadores de pilotos em relação ao mapa."
+
+msgid "Skill Issue"
+msgstr "Falta de Habilidade"
+
+msgid "Sld"
+msgstr "Der"
+
+#. max 11 characters
+msgid "Slide"
+msgstr "Derrapagem"
+
+msgctxt "tooltip"
+msgid "Slower times, losses, and critical alerts."
+msgstr "Tempos mais lentos, perdas e alertas críticos."
+
+#. max 7 characters
+msgid "Small"
+msgstr "Pequeno"
+
+msgid "So Close"
+msgstr "Por Pouco"
+
+msgid "Somersault"
+msgstr "Cambalhota"
+
+msgctxt "tooltip"
+msgid "Speak callouts aloud (Windows text-to-speech). Subtitles work without it."
+msgstr "Fala as chamadas em voz alta (texto para fala do Windows). Legendas funcionam sem isso."
+
+msgctxt "tooltip"
+msgid "Speak your pack's hotkey_triggered line. Nothing is built in - write it first."
+msgstr "Fala a linha hotkey_triggered do seu pacote. Nada vem pronto - escreva-a antes."
+
+msgid "Spectate"
+msgstr "Assistir"
+
+#, c-format
+msgid "Spectate or replay for %s"
+msgstr "Assista ou veja replay por %s"
+
+#. max 11 characters
+msgid "Speed"
+msgstr "Velocid."
+
+#. max 13 characters
+msgid "Speed unit"
+msgstr "Unid. veloc."
+
+#. max 11 characters
+msgid "Speedo"
+msgstr ""
+
+#, c-format
+msgid "Spend %s in the air"
+msgstr "Passe %s no ar"
+
+#, c-format
+msgid "Spend %s on track"
+msgstr "Passe %s na pista"
+
+#, c-format
+msgid "Spin the rear wheel in place for %s"
+msgstr "Gire a roda traseira parado por %s"
+
+msgid "Split Decision"
+msgstr "Decisão Dividida"
+
+#. max 23 characters
+msgid "Splits"
+msgstr "Parciais"
+
+msgctxt "tooltip"
+msgid "Splits shows each row's time at the next split. Full lap shows its whole-lap time all the way round."
+msgstr "Parciais mostra o tempo de cada linha no próximo parcial. Volta inteira mostra o da volta toda."
+
+msgid "Spn"
+msgstr "Pat"
+
+#. max 23 characters
+msgid "Spoken audio"
+msgstr "Áudio falado"
+
+msgctxt "tooltip"
+msgid "Spoken race callouts - fastest laps, leader changes, penalties - with optional subtitles."
+msgstr "Chamadas faladas - voltas mais rápidas, troca de líder, punições - com legendas opcionais."
+
+msgctxt "tooltip"
+msgid "Spotify or any player in Windows' media controls, with its controls and volume. Needs Now playing in General."
+msgstr "Spotify ou outro player nos controles de mídia do Windows, com controles e volume. Requer Tocando agora em Geral."
+
+msgid "Spotless"
+msgstr "Impecável"
+
+#. max 9 characters
+msgid "Spotter"
+msgstr "Spotter"
+
+msgid "Srf"
+msgstr "Sup"
+
+msgid "Stable"
+msgstr "Estável"
+
+msgctxt "tooltip"
+msgid "Stable only shows final releases. Prerelease includes test builds."
+msgstr "Estável mostra só versões finais. Pré-lançamento inclui versões de teste."
+
+#. max 15 characters
+msgid "Stack forces"
+msgstr "Somar forças"
+
+msgid "Stalker"
+msgstr "Perseguidor"
+
+#. max 9 characters
+msgid "Standings"
+msgstr "Classif."
+
+msgid "Start Sequence"
+msgstr "Sequência de Largada"
+
+msgctxt "tooltip"
+msgid "Start or stop the draw-cost sweep. Writes a report when it ends."
+msgstr "Inicia ou para a varredura de custo de desenho. Grava um relatório ao terminar."
+
+msgid "Started fresh. A copy is kept in the mxbmrp3 folder"
+msgstr "Recomeçou do zero. Uma cópia fica na pasta mxbmrp3"
+
+#. max 23 characters
+msgid "Stationary rider"
+msgstr "Piloto parado"
+
+#. max 10 characters
+msgid "Stats"
+msgstr "Estat."
+
+msgid "Stats file unreadable"
+msgstr "Arquivo de estatísticas ilegível"
+
+msgid "Stats not saved"
+msgstr "Estatísticas não salvas"
+
+#. max 23 characters
+msgid "Status"
+msgstr "Status"
+
+#. max 15 characters
+msgid "Status icon"
+msgstr "Ícone status"
+
+#, c-format
+msgid "Stay airborne %s and land it"
+msgstr "Fique no ar %s e aterrisse"
+
+msgid "Steady Hands"
+msgstr "Mãos Firmes"
+
+#. max 23 characters
+msgid "Steam"
+msgstr "Steam"
+
+msgctxt "tooltip"
+msgid "Steam friends in the same game: where they are, badged when on your server and track."
+msgstr "Amigos da Steam no mesmo jogo: onde estão, marcados quando no seu servidor e pista."
+
+msgid "Steam integration off"
+msgstr "Integração Steam desligada"
+
+msgid "Steam not available"
+msgstr "Steam indisponível"
+
+#. max 11 characters
+msgid "Steering"
+msgstr "Direção"
+
+#. max 60 characters
+msgid "Stories"
+msgstr "Cenas"
+
+#. max 15 characters
+msgid "Story hold"
+msgstr "Segurar cena"
+
+msgid "Str"
+msgstr "Dir"
+
+msgid "Straight Rhythm"
+msgstr "Ritmo em Reta"
+
+#. max 12 characters
+msgid "Stream Chat"
+msgstr "Chat da Live"
+
+msgid "Stream chat off"
+msgstr "Chat da live off"
+
+msgctxt "tooltip"
+msgid "Strength of the tint."
+msgstr "Intensidade do tom."
+
+#. max 7 characters
+msgid "Strong"
+msgstr "Forte"
+
+#. max 23 characters
+msgid "Style"
+msgstr "Estilo"
+
+msgid "Style Points"
+msgstr "Pontos de Estilo"
+
+msgid "Style the web overlay with custom.css"
+msgstr "Estilize o overlay web com custom.css"
+
+msgid "Stylist"
+msgstr "Estilista"
+
+#, c-format
+msgid "Submit by playing on %s servers"
+msgstr "Envie jogando em %s servidores"
+
+#. max 15 characters
+msgid "Subtitles"
+msgstr "Legendas"
+
+msgid "Subtle"
+msgstr "Sutil"
+
+msgctxt "tooltip"
+msgid "Subtle labels, axis markers, and category names."
+msgstr "Rótulos sutis, marcas dos eixos e nomes de categorias."
+
+msgctxt "tooltip"
+msgid "Supporting text for live data, telemetry values, and descriptions."
+msgstr "Texto de apoio para dados ao vivo, telemetria e descrições."
+
+#. max 11 characters
+msgid "Surface"
+msgstr "Superfície"
+
+msgid "Survivor"
+msgstr "Sobrevivente"
+
+msgid "Sweeping - about a minute, frame rate drops."
+msgstr "Varrendo - cerca de um minuto, o FPS cai."
+
+#, c-format
+msgid "Switch profiles %s times"
+msgstr "Troque de perfil %s vezes"
+
+msgid "Switch to the pre-release channel"
+msgstr "Mude para o canal de pré-lançamento"
+
+msgid "Switched for practice"
+msgstr "Trocado para o treino"
+
+msgid "Switched for qualifying"
+msgstr "Trocado para a classificação"
+
+msgid "Switched for spectating"
+msgstr "Trocado para assistir"
+
+msgid "Switched for the race"
+msgstr "Trocado para a corrida"
+
+msgid "System"
+msgstr "Sistema"
+
+msgid "System default"
+msgstr "Padrão do sistema"
+
+msgctxt "tooltip"
+msgid "System performance metrics including frame rate and plugin execution time."
+msgstr "Métricas de desempenho incluindo taxa de quadros e tempo de execução do plugin."
+
+msgid "TH"
+msgstr "º"
+
+#. max 23 characters
+msgid "TTS voice"
+msgstr "Voz TTS"
+
+msgid "Tab"
+msgstr "Aba"
+
+msgid "Tabs"
+msgstr "Abas"
+
+#. max 11 characters
+msgid "Tacho"
+msgstr "Tacômetro"
+
+msgctxt "tooltip"
+msgid "Tachometer gauge showing engine RPM."
+msgstr "Tacômetro mostrando o RPM do motor."
+
+#, c-format
+msgid "Take a %sG hit"
+msgstr "Leve uma pancada de %sG"
+
+#. max 23 characters
+msgid "Target"
+msgstr "Alvo"
+
+#. max 10 characters
+msgid "Telemetry"
+msgstr "Telemetria"
+
+#. max 13 characters
+msgid "Temp unit"
+msgstr "Unid. temp."
+
+#. max 11 characters
+msgid "Tertiary"
+msgstr "Terciária"
+
+msgid "Test Pilot"
+msgstr "Piloto de Testes"
+
+msgctxt "tooltip"
+msgid "Test update installation without overwriting the real plugin."
+msgstr "Testa a instalação da atualização sem sobrescrever o plugin real."
+
+msgid "Testing"
+msgstr "Testando"
+
+#. max 8 characters
+msgid "Texture"
+msgstr "Textura"
+
+#. max 38 characters
+msgid "Thanks"
+msgstr "Obrigado"
+
+msgctxt "tooltip"
+msgid "The Delta Trace HUD's chart: your gap to its reference lap across the lap."
+msgstr "O gráfico do HUD Traço Delta: sua dif. para a volta de referência ao longo da volta."
+
+msgctxt "tooltip"
+msgid "The Event Log's three newest events, with its icons and event filter."
+msgstr "Os três eventos mais novos do log de Eventos, com seus ícones e filtro."
+
+msgctxt "tooltip"
+msgid "The Fuel widget's rows: your fuel, use per lap and laps left, beside a bar showing how full your tank is."
+msgstr "As linhas do widget Combustível: combustível, gasto por volta e voltas restantes, ao lado de uma barra do tanque."
+
+msgctxt "tooltip"
+msgid "The Gap Bar's fill for your live gap to your reference lap, with your last and best lap."
+msgstr "O preenchimento da Barra Dif. para sua dif. ao vivo à volta de referência, com última e melhor volta."
+
+#. max 60 characters
+msgid "The HUD itself can stay off: its page still works."
+msgstr "O HUD em si pode ficar off: a página dele ainda funciona."
+
+msgctxt "tooltip"
+msgid "The Now Playing widget's track, controls and volume. Needs Now playing in General."
+msgstr "A faixa, controles e volume do widget Tocando Agora. Requer Tocando agora em Geral."
+
+msgctxt "tooltip"
+msgid "The RPM widget's shift lights, with the revs under them."
+msgstr "As luzes de troca do widget RPM, com as rotações embaixo."
+
+msgctxt "tooltip"
+msgid "The Session Charts HUD's Gap chart: you and the riders just ahead and behind."
+msgstr "O gráfico Dif. do HUD Gráficos da Sessão: você e os pilotos logo à frente e atrás."
+
+msgctxt "tooltip"
+msgid "The Session HUD's rows: server, track and format."
+msgstr "As linhas do HUD Sessão: servidor, pista e formato."
+
+msgctxt "tooltip"
+msgid "The Telemetry HUD's inputs as traces across the card."
+msgstr "As entradas do HUD Telemetria como traços pelo cartão."
+
+msgctxt "tooltip"
+msgid "The field's race news: others' laps, penalties, pit stops, retirements."
+msgstr "As notícias da corrida: voltas dos outros, punições, paradas nos boxes, abandonos."
+
+msgctxt "tooltip"
+msgid "The friend's current track."
+msgstr "A pista atual do amigo."
+
+msgctxt "tooltip"
+msgid "The friend's server name (blank when offline)."
+msgstr "O nome do servidor do amigo (vazio quando offline)."
+
+msgctxt "tooltip"
+msgid "The friend's session clock: MM:SS, or N TO GO / FINAL LAP / CHECKERED. Coarse snapshot, not live."
+msgstr "O relógio da sessão do amigo: MM:SS, ou FALTAM N / ÚLTIMA VOLTA / BANDEIRADA. Aproximado, não ao vivo."
+
+msgid "The key under Esc opens settings"
+msgstr "A tecla abaixo do Esc abre as configurações"
+
+msgctxt "tooltip"
+msgid "The lap Gap Bar, Lap Log, Delta Trace, Timing and the map's Lap delta compare against when set to Default."
+msgstr "A volta com que Barra Dif., Voltas, Traço Delta, Tempos e o Delta da volta do mapa comparam em Padrão."
+
+msgctxt "tooltip"
+msgid "The less-used HUDs and tools. Click a name to open its settings."
+msgstr "Os HUDs e ferramentas menos usados. Clique num nome para abrir as configurações."
+
+msgctxt "tooltip"
+msgid "The rider's color on standings, map, and radar."
+msgstr "A cor do piloto na classificação, mapa e radar."
+
+msgctxt "tooltip"
+msgid "The rider's icon on the map and radar."
+msgstr "O ícone do piloto no mapa e radar."
+
+msgctxt "tooltip"
+msgid "The screen edges darken when you take a hard hit, further the harder it is, then clear."
+msgstr "As bordas da tela escurecem numa pancada forte, mais quanto mais forte, e depois clareiam."
+
+msgctxt "tooltip"
+msgid "The session and your own status: flags, your penalty, your pit lane."
+msgstr "A sessão e seu próprio status: bandeiras, sua punição, seu pit lane."
+
+msgctxt "tooltip"
+msgid "The session clock: counts down in a timed session, up otherwise, then the laps to go."
+msgstr "O relógio da sessão: conta para baixo em sessão por tempo, para cima nas outras, e depois as voltas."
+
+msgctxt "tooltip"
+msgid "The toast card shown when a tier is earned. Off still tracks."
+msgstr "O cartão de aviso exibido quando um nível é obtido. Off ainda conta."
+
+msgid "Theme"
+msgstr "Tema"
+
+msgctxt "tooltip"
+msgid "Thickness of the track outline line."
+msgstr "Espessura da linha de contorno da pista."
+
+#. max 60 characters
+msgid "This is a demonstration, not a finished spotter."
+msgstr "Isto é uma demonstração, não um spotter acabado."
+
+msgid "Thr"
+msgstr "Ace"
+
+#. max 23 characters
+msgid "Throttle"
+msgstr "Acelerador"
+
+#. max 43 characters
+msgid "Throttle, brake, suspension"
+msgstr "Acelerador, freio, suspensão"
+
+msgctxt "tooltip"
+msgid "Ticks at the bar's edges where the track's splits are."
+msgstr "Marcas nas bordas da barra onde ficam os parciais da pista."
+
+#. max 15 characters
+msgid "Tilt"
+msgstr "Inclinação"
+
+#. max 23 characters
+msgid "Tilt strength"
+msgstr "Força inclinação"
+
+#. max 11 characters
+msgid "Time"
+msgstr "Tempo"
+
+msgid "Time Served"
+msgstr "Pena Cumprida"
+
+msgid "Time a segment"
+msgstr "Cronometre um trecho"
+
+#. max 23 characters
+msgid "Time elapsed"
+msgstr "Tempo decorrido"
+
+#. max 15 characters
+msgid "Time expired"
+msgstr "Tempo esgotado"
+
+#. max 15 characters
+msgid "Time left"
+msgstr "Tempo restante"
+
+msgctxt "tooltip"
+msgid "Time range displayed on the gap bar in seconds. Auto fits the largest gap of the lap so far."
+msgstr "Faixa de tempo da barra dif. em segundos. Auto ajusta à maior dif. da volta até agora."
+
+msgctxt "tooltip"
+msgid "Time the plugin itself spends per frame, in ms. Not system CPU."
+msgstr "Tempo que o próprio plugin gasta por quadro, em ms. Não é a CPU do sistema."
+
+#. max 23 characters
+msgid "Timer"
+msgstr "Cronômetro"
+
+#. max 15 characters
+msgid "Timestamp"
+msgstr "Hora"
+
+#. max 9 characters
+msgid "Timing"
+msgstr "Tempos"
+
+msgid "Tinkerer"
+msgstr "Mexedor"
+
+#. max 23 characters
+msgid "Tint color"
+msgstr "Cor do tom"
+
+#. max 23 characters
+msgid "Tint opacity"
+msgstr "Opacidade do tom"
+
+#. max 66 characters
+msgid "Tip: lower Detail or Track outline to gain FPS."
+msgstr "Dica: baixe Detalhe ou Contorno da pista para ganhar FPS."
+
+#. max 66 characters
+msgid "Tip: select your controller in the General tab."
+msgstr "Dica: escolha seu controle na aba Geral."
+
+#. max 7 characters
+msgid "Title"
+msgstr "Título"
+
+#. max 60 characters
+msgid "To change what a page shows, use that HUD's own tab."
+msgstr "Para mudar o que uma página mostra, use a aba do HUD dela."
+
+msgid "To the Moon"
+msgstr "Até a Lua"
+
+#. max 60 characters
+msgid "Toasts"
+msgstr "Avisos pop-up"
+
+msgctxt "tooltip"
+msgid "Toggle all HUDs on/off."
+msgstr "Liga/desliga todos os HUDs."
+
+msgctxt "tooltip"
+msgid "Toggle all widgets on/off."
+msgstr "Liga/desliga todos os widgets."
+
+msgctxt "tooltip"
+msgid "Toggle the Charts HUD on/off."
+msgstr "Liga/desliga o HUD Gráficos."
+
+msgctxt "tooltip"
+msgid "Toggle the Dash on/off."
+msgstr "Liga/desliga o Dash."
+
+msgctxt "tooltip"
+msgid "Toggle the FMX HUD on/off."
+msgstr "Liga/desliga o HUD FMX."
+
+msgctxt "tooltip"
+msgid "Toggle the auto-director on/off."
+msgstr "Liga/desliga o diretor automático."
+
+msgctxt "tooltip"
+msgid "Toggle the delta trace HUD on/off."
+msgstr "Liga/desliga o HUD Traço Delta."
+
+msgctxt "tooltip"
+msgid "Toggle the event log HUD on/off."
+msgstr "Liga/desliga o HUD Eventos."
+
+msgctxt "tooltip"
+msgid "Toggle the friends HUD on/off."
+msgstr "Liga/desliga o HUD Amigos."
+
+msgctxt "tooltip"
+msgid "Toggle the gap bar HUD on/off."
+msgstr "Liga/desliga o HUD Barra Dif."
+
+msgctxt "tooltip"
+msgid "Toggle the helmet overlay on/off."
+msgstr "Liga/desliga a sobreposição do capacete."
+
+msgctxt "tooltip"
+msgid "Toggle the ideal lap HUD on/off."
+msgstr "Liga/desliga o HUD Volta Ideal."
+
+msgctxt "tooltip"
+msgid "Toggle the input display HUD on/off."
+msgstr "Liga/desliga o HUD de entradas."
+
+msgctxt "tooltip"
+msgid "Toggle the lap log HUD on/off."
+msgstr "Liga/desliga o HUD Voltas."
+
+msgctxt "tooltip"
+msgid "Toggle the notices HUD on/off."
+msgstr "Liga/desliga o HUD Avisos."
+
+msgctxt "tooltip"
+msgid "Toggle the performance HUD on/off."
+msgstr "Liga/desliga o HUD Desempenho."
+
+msgctxt "tooltip"
+msgid "Toggle the pitboard HUD on/off."
+msgstr "Liga/desliga o HUD Placa Box."
+
+msgctxt "tooltip"
+msgid "Toggle the radar HUD on/off."
+msgstr "Liga/desliga o HUD Radar."
+
+msgctxt "tooltip"
+msgid "Toggle the records HUD on/off."
+msgstr "Liga/desliga o HUD Recordes."
+
+msgctxt "tooltip"
+msgid "Toggle the rumble HUD on/off."
+msgstr "Liga/desliga o HUD Vibração."
+
+msgctxt "tooltip"
+msgid "Toggle the session HUD on/off."
+msgstr "Liga/desliga o HUD Sessão."
+
+msgctxt "tooltip"
+msgid "Toggle the settings menu on/off."
+msgstr "Liga/desliga o menu de configurações."
+
+msgctxt "tooltip"
+msgid "Toggle the standings HUD on/off."
+msgstr "Liga/desliga o HUD Classificação."
+
+msgctxt "tooltip"
+msgid "Toggle the stats HUD on/off."
+msgstr "Liga/desliga o HUD Estatísticas."
+
+msgctxt "tooltip"
+msgid "Toggle the telemetry HUD on/off."
+msgstr "Liga/desliga o HUD Telemetria."
+
+msgctxt "tooltip"
+msgid "Toggle the timing HUD on/off."
+msgstr "Liga/desliga o HUD Tempos."
+
+msgctxt "tooltip"
+msgid "Toggle the title bar at the top of this HUD."
+msgstr "Liga/desliga a barra de título no topo deste HUD."
+
+msgctxt "tooltip"
+msgid "Toggle the track map HUD on/off."
+msgstr "Liga/desliga o HUD Mapa."
+
+#. max 10 characters
+msgid "Toggles"
+msgstr "Botões"
+
+msgid "Top"
+msgstr "Topo"
+
+#. max 15 characters
+msgid "Top positions"
+msgstr "Primeiros"
+
+msgid "Top speed"
+msgstr "Vel. máxima"
+
+msgid "Total"
+msgstr "Total"
+
+msgctxt "tooltip"
+msgid "Total rider lines shown: the top-N plus a window centered on you."
+msgstr "Total de linhas de pilotos: os N primeiros mais uma janela centrada em você."
+
+#. max 15 characters
+msgid "Track"
+msgstr "Pista"
+
+#, c-format
+msgid "Track %s riders"
+msgstr "Siga %s pilotos"
+
+#. max 23 characters
+msgid "Track change"
+msgstr "Troca de pista"
+
+msgctxt "tooltip"
+msgid "Track detail 20-200%. Higher = smoother ribbon, more quads = more CPU/GPU cost."
+msgstr "Detalhe da pista 20-200%. Maior = faixa mais suave, mais quads = mais custo de CPU/GPU."
+
+#. max 23 characters
+msgid "Track name"
+msgstr "Nome da pista"
+
+#. max 15 characters
+msgid "Track outline"
+msgstr "Contorno pista"
+
+msgctxt "tooltip"
+msgid "Track outline width; Off hides it. Outline doubles the map's quads - Off is fastest."
+msgstr "Largura do contorno da pista; Off oculta. O contorno dobra os quads do mapa - Off é mais rápido."
+
+msgctxt "tooltip"
+msgid "Track specific riders with custom colors and icons. Highlighted on standings, map, and radar."
+msgstr "Segue pilotos específicos com cores e ícones próprios. Destacados na classificação, mapa e radar."
+
+#. max 15 characters
+msgid "Track width"
+msgstr "Largura pista"
+
+#. max 43 characters
+msgid "Track, server and players"
+msgstr "Pista, servidor e jogadores"
+
+#. max 60 characters
+msgid "Tracked Riders"
+msgstr "Pilotos Seguidos"
+
+msgctxt "tooltip"
+msgid "Trades every achievement and its counters for a badge. Lap records kept. Click twice; no way back."
+msgstr "Troca todas as conquistas e contadores por um emblema. Recordes mantidos. Clique duas vezes; sem volta."
+
+msgid "Trick Collector"
+msgstr "Colecionador de Manobras"
+
+msgid "Trick Stack"
+msgstr "Pilha de Manobras"
+
+#. max 43 characters
+msgid "Trick scoring and combos"
+msgstr "Pontuação e combos de manobras"
+
+#. max 23 characters
+msgid "Trick stack"
+msgstr "Pilha de manobras"
+
+#. max 23 characters
+msgid "Trick stats"
+msgstr "Estatísticas manobras"
+
+msgctxt "tooltip"
+msgid "Tricks shown in the stack. Off hides it, 1 shows the active trick, 2+ shows history."
+msgstr "Manobras na pilha. Off oculta, 1 mostra a manobra ativa, 2+ mostra o histórico."
+
+msgid "Try each HUD and widget"
+msgstr "Experimente cada HUD e widget"
+
+msgctxt "tooltip"
+msgid "Tune front/rear wheels separately. They start from the combined value, then stay independent."
+msgstr "Ajusta rodas dianteira/traseira separadamente. Começam do valor combinado e ficam independentes."
+
+msgid "Turn Down"
+msgstr "Turn Down"
+
+msgid "Turn achievement toasts off"
+msgstr "Desligue os avisos de conquista"
+
+msgid "Turn off"
+msgstr "Desligar"
+
+msgid "Turn on an experimental setting"
+msgstr "Ligue uma configuração experimental"
+
+msgid "Turn rumble on"
+msgstr "Ligue a vibração"
+
+#. max 25 characters
+msgid "Twitch"
+msgstr "Twitch"
+
+msgid "Twitch connection lost - retrying automatically."
+msgstr "Conexão com a Twitch perdida - tentando de novo sozinho."
+
+msgid "Twitch didn't confirm this channel - check the spelling."
+msgstr "A Twitch não confirmou este canal - verifique a grafia."
+
+msgctxt "tooltip"
+msgid "Twitch names in the chatter's color, YouTube names by role. Off uses your primary color."
+msgstr "Nomes da Twitch na cor de quem escreve, do YouTube por função. Off usa sua cor primária."
+
+#. max 66 characters
+msgid "Type a setting's name, its tab, or a word from its description."
+msgstr "Digite o nome de um ajuste, sua aba ou uma palavra da descrição."
+
+msgid "Type or Ctrl+V a @handle or URL. Enter saves, ESC cancels."
+msgstr "Digite ou Ctrl+V um @handle ou URL. Enter salva, ESC cancela."
+
+msgid "Type or Ctrl+V a name or URL. Enter saves, ESC cancels."
+msgstr "Digite ou Ctrl+V um nome ou URL. Enter salva, ESC cancela."
+
+msgid "Tyre Kicker"
+msgstr "Chutador de Pneus"
+
+msgid "Tyre Shredder"
+msgstr "Destruidor de Pneus"
+
+msgid "Tyre Temp"
+msgstr "Temp. Pneus"
+
+#. max 13 characters
+msgid "UI icons"
+msgstr "Ícones UI"
+
+#. max 13 characters
+msgid "UI scale"
+msgstr "Escala UI"
+
+msgid "UPDATE AVAILABLE"
+msgstr "ATUALIZAÇÃO DISPONÍVEL"
+
+#, c-format
+msgid "UPDATED TO %s"
+msgstr "ATUALIZADO PARA %s"
+
+msgid "UTC"
+msgstr "UTC"
+
+msgid "Unavailable"
+msgstr "Indisponível"
+
+msgid "Under the Hood"
+msgstr "Debaixo do Capô"
+
+msgid "Ungrateful"
+msgstr "Ingrato"
+
+msgid "Uniform"
+msgstr "Uniforme"
+
+msgctxt "tooltip"
+msgid "Unit for fuel display. Liters or Gallons."
+msgstr "Unidade do combustível. Litros ou Galões."
+
+msgctxt "tooltip"
+msgid "Unit for speed display. mph or km/h."
+msgstr "Unidade da velocidade. mph ou km/h."
+
+msgctxt "tooltip"
+msgid "Unit for temperature display. Celsius or Fahrenheit."
+msgstr "Unidade da temperatura. Celsius ou Fahrenheit."
+
+msgid "Unknown"
+msgstr "Desconhecido"
+
+msgid "Unknown error"
+msgstr "Erro desconhecido"
+
+#. max 47 characters
+msgid "Unlocked"
+msgstr "Desbloqueada"
+
+msgid "Up"
+msgstr "Cima"
+
+msgid "Update"
+msgstr "Atualizar"
+
+#. max 23 characters
+msgid "Update channel"
+msgstr "Canal de atualização"
+
+msgid "Update check pending..."
+msgstr "Verificação pendente..."
+
+msgid "Update installed!"
+msgstr "Atualização instalada!"
+
+#. max 9 characters
+msgid "Updates"
+msgstr "Versões"
+
+msgctxt "tooltip"
+msgid "Upper helmet texture (visor rim and top)."
+msgstr "Textura superior do capacete (borda e topo da viseira)."
+
+#. max 23 characters
+msgid "Upper offset"
+msgstr "Ajuste superior"
+
+#. max 23 characters
+msgid "Upper texture"
+msgstr "Textura superior"
+
+msgid "Usage survey"
+msgstr "Pesquisa de uso"
+
+msgid "Use"
+msgstr "Uso"
+
+msgctxt "tooltip"
+msgid "Use shared settings (Global) or separate settings per bike."
+msgstr "Usa configurações compartilhadas (Global) ou separadas por moto."
+
+msgid "Used"
+msgstr "Usado"
+
+msgid "Verify"
+msgstr "Verificar"
+
+msgctxt "tooltip"
+msgid "Vertical bars showing throttle, brake, clutch, RPM, suspension, and fuel levels."
+msgstr "Barras verticais com acelerador, freio, embreagem, RPM, suspensão e combustível."
+
+msgctxt "tooltip"
+msgid "Vibration during wheelies. Min/Max set the pitch angle range in degrees."
+msgstr "Vibração em wheelies. Mín/Máx definem a faixa do ângulo de arfagem em graus."
+
+msgctxt "tooltip"
+msgid "Vibration from rear wheel spin. Min/Max set the wheel slip ratio range."
+msgstr "Vibração da patinação da roda traseira. Mín/Máx definem a faixa de deslizamento da roda."
+
+msgctxt "tooltip"
+msgid "Vibration from rough terrain. Min/Max set the vehicle speed range when off-track."
+msgstr "Vibração de terreno irregular. Mín/Máx definem a faixa de velocidade fora da pista."
+
+msgctxt "tooltip"
+msgid "Vibration from steering forces. Min/Max set the steering torque range in Newton-meters."
+msgstr "Vibração das forças na direção. Mín/Máx definem a faixa de torque em Newton-metros."
+
+msgctxt "tooltip"
+msgid "Vibration from suspension travel over bumps. Min/Max set the suspension velocity range in m/s."
+msgstr "Vibração do curso da suspensão nas ondulações. Mín/Máx definem a faixa de velocidade em m/s."
+
+msgctxt "tooltip"
+msgid "Vibration near the rev limiter. Min/Max set the range in percent of limiter RPM. Muted off-throttle."
+msgstr "Vibração perto do limitador. Mín/Máx definem a faixa em porcentagem do RPM do limitador. Mudo sem gás."
+
+#. max 23 characters
+msgid "Vibration sensitivity"
+msgstr "Sensibilidade vibração"
+
+#. max 23 characters
+msgid "Vibration strength"
+msgstr "Força da vibração"
+
+msgctxt "tooltip"
+msgid "Vibration synchronized with engine RPM. Min/Max set the RPM range."
+msgstr "Vibração sincronizada com o RPM do motor. Mín/Máx definem a faixa de RPM."
+
+msgctxt "tooltip"
+msgid "Vibration when brakes lock up. Min/Max set the wheel slip ratio range."
+msgstr "Vibração quando os freios travam. Mín/Máx definem a faixa de deslizamento da roda."
+
+msgctxt "tooltip"
+msgid "Vibration when the bike slides sideways. Min/Max set the slide angle range in degrees."
+msgstr "Vibração quando a moto desliza de lado. Mín/Máx definem a faixa do ângulo em graus."
+
+msgctxt "tooltip"
+msgid "Vibration while the pit-lane speed limiter is active. Light/Heavy set the intensity."
+msgstr "Vibração enquanto o limitador do pit lane está ativo. Leve/Pesado definem a intensidade."
+
+#. max 23 characters
+msgid "Vignette fade"
+msgstr "Esmaecer vinheta"
+
+#. max 8 characters
+msgid "Visible"
+msgstr "Visível"
+
+#. max 60 characters
+msgid "Visor"
+msgstr "Viseira"
+
+msgctxt "tooltip"
+msgid "Visual progress bar showing your gap to the rider ahead and behind."
+msgstr "Barra de progresso visual com sua dif. para o piloto à frente e atrás."
+
+msgctxt "tooltip"
+msgid "Visual representation of controller button inputs."
+msgstr "Representação visual dos botões do controle."
+
+#. max 60 characters
+msgid "Voice"
+msgstr "Voz"
+
+#. max 23 characters
+msgid "Voice pack"
+msgstr "Pacote de voz"
+
+#. max 23 characters
+msgid "Volume"
+msgstr "Volume"
+
+msgid "WELCOME"
+msgstr "BEM-VINDO"
+
+msgid "WRONG WAY"
+msgstr "CONTRAMÃO"
+
+msgid "Waiting"
+msgstr "Aguardando"
+
+msgid "Warmup"
+msgstr "Aquecimento"
+
+#. max 11 characters
+msgid "Warning"
+msgstr "Alerta"
+
+#. max 60 characters
+msgid "Warnings & Hazards"
+msgstr "Alertas e Perigos"
+
+#, c-format
+msgid "Watch %s director cuts"
+msgstr "Assista %s cortes do diretor"
+
+msgid "Weakest Link"
+msgstr "Elo Mais Fraco"
+
+#. max 23 characters
+msgid "Weather & temp"
+msgstr "Tempo e temp."
+
+msgctxt "tooltip"
+msgid "Web overlay for OBS. Add as Browser Source at the displayed port."
+msgstr "Overlay web para OBS. Adicione como Fonte de Navegador na porta exibida."
+
+msgid "Web overlay not started"
+msgstr "Overlay web não iniciado"
+
+msgctxt "tooltip"
+msgid "Web overlay: force the best-sectors carousel in now, one sector per page (momentary)."
+msgstr "Overlay web: força agora o carrossel de melhores setores, um setor por página (momentâneo)."
+
+msgctxt "tooltip"
+msgid "Web overlay: force the down-the-order (backmarkers) rundown in now (momentary)."
+msgstr "Overlay web: força agora o resumo do pelotão (retardatários) (momentâneo)."
+
+msgctxt "tooltip"
+msgid "Web overlay: force the fastest-last-lap board in now (momentary)."
+msgstr "Overlay web: força agora o quadro da última volta mais rápida (momentâneo)."
+
+msgctxt "tooltip"
+msgid "Web overlay: force the session-best lap board in now (momentary)."
+msgstr "Overlay web: força agora o quadro da melhor volta da sessão (momentâneo)."
+
+msgctxt "tooltip"
+msgid "Web overlay: force the session-charts carousel in now, one chart per page (momentary)."
+msgstr "Overlay web: força agora o carrossel de gráficos da sessão, um gráfico por página (momentâneo)."
+
+#. max 23 characters
+msgid "Web server"
+msgstr "Servidor web"
+
+#. max 23 characters
+msgid "Web server port"
+msgstr "Porta servidor web"
+
+msgid "Well Travelled"
+msgstr "Viajado"
+
+msgctxt "tooltip"
+msgid "What this plugin is, where it came from, and who is behind it."
+msgstr "O que é este plugin, de onde veio e quem está por trás dele."
+
+#. max 11 characters
+msgid "Wheelie"
+msgstr "Wheelie"
+
+msgid "Wheelie King"
+msgstr "Rei do Wheelie"
+
+#. max 11 characters
+msgid "Wheelspin"
+msgstr "Patinação"
+
+msgctxt "tooltip"
+msgid "When On, the map rotates so your heading is always up. When Off, the map stays fixed to track."
+msgstr "Ligado, o mapa gira para sua direção ficar sempre para cima. Desligado, o mapa fica fixo na pista."
+
+#. max 15 characters
+msgid "When crashed"
+msgstr "Quando caído"
+
+msgctxt "tooltip"
+msgid "When enabled, HUDs are clamped to stay within screen bounds when dragging."
+msgstr "Ligado, os HUDs ficam presos dentro da tela ao arrastar."
+
+msgctxt "tooltip"
+msgid "When enabled, HUDs snap to a grid when dragging."
+msgstr "Ligado, os HUDs se alinham a uma grade ao arrastar."
+
+msgctxt "tooltip"
+msgid "When enabled, multiple rumble effects combine. When off, only the strongest effect plays."
+msgstr "Ligado, vários efeitos de vibração se somam. Desligado, só o mais forte toca."
+
+msgctxt "tooltip"
+msgid "When to show. Always displays on track, On finish appears after crossing the finish line."
+msgstr "Quando mostrar. Sempre exibe na pista, Na chegada aparece após cruzar a linha de chegada."
+
+msgctxt "tooltip"
+msgid "When to show. Always: constantly; At laps: after the line; At splits: after each split and the line."
+msgstr "Quando mostrar. Sempre: o tempo todo; Nas voltas: após a linha; Nos parciais: após cada parcial e a linha."
+
+msgctxt "tooltip"
+msgid "When to show. Always: constantly; At pit: near pit area; At splits: after timing points."
+msgstr "Quando mostrar. Sempre: o tempo todo; Nos boxes: perto dos boxes; Nos parciais: após pontos de tempo."
+
+msgctxt "tooltip"
+msgid "When to show. Off hides radar, On shows always, Auto-hide shows only when riders are nearby."
+msgstr "Quando mostrar. Off oculta o radar, On sempre mostra, Ocultar auto só com pilotos por perto."
+
+msgctxt "tooltip"
+msgid "When to show: Always; Friends (one is in-game); or On join (briefly). Visible = master on/off."
+msgstr "Quando mostrar: Sempre; Amigos (um está no jogo); ou Ao entrar (rápido). Visível = liga/desliga geral."
+
+msgctxt "tooltip"
+msgid "Where the HUD draws: In-game, a Companion window you can drag to a second monitor, or Both."
+msgstr "Onde o HUD desenha: No jogo, numa janela Companion que pode ir a um segundo monitor, ou Ambos."
+
+msgctxt "tooltip"
+msgid "Where the page icons sit around the card, or Off to hide them."
+msgstr "Onde os ícones de página ficam no cartão, ou Off para ocultá-los."
+
+msgctxt "tooltip"
+msgid "Which Windows voice speaks the text-to-speech cues."
+msgstr "Qual voz do Windows fala as chamadas de texto para fala."
+
+msgctxt "tooltip"
+msgid "Which pack's wording and clips to use. 'default' is the shipped one."
+msgstr "Quais textos e clipes do pacote usar. 'default' é o que vem com o plugin."
+
+msgid "Whip It"
+msgstr "Chicoteia"
+
+msgid "White"
+msgstr "Branco"
+
+msgid "Whl"
+msgstr "Rod"
+
+#. max 9 characters
+msgid "Widgets"
+msgstr "Widgets"
+
+msgid "Widgets hidden"
+msgstr "Widgets ocultos"
+
+#. max 15 characters
+msgid "Width"
+msgstr "Largura"
+
+msgctxt "tooltip"
+msgid "Width multiplier for the gap bar."
+msgstr "Multiplicador de largura da barra dif."
+
+#, c-format
+msgid "Win %s races"
+msgstr "Vença %s corridas"
+
+#, c-format
+msgid "Win %s races leading every lap"
+msgstr "Vença %s corridas liderando todas as voltas"
+
+msgid "Win a race"
+msgstr "Vença uma corrida"
+
+msgid "Win a race by under a tenth"
+msgstr "Vença uma corrida por menos de um décimo"
+
+msgid "Win a race leading every lap"
+msgstr "Vença uma corrida liderando todas as voltas"
+
+msgid "Win with every rider at least a lap down"
+msgstr "Vença com todos os pilotos uma volta ou mais atrás"
+
+msgid "Winner"
+msgstr "Vencedor"
+
+msgid "Wire to Wire"
+msgstr "De Ponta a Ponta"
+
+#. max 23 characters
+msgid "Wrong way"
+msgstr "Contramão"
+
+#. max 23 characters
+msgid "Wrong way rider"
+msgstr "Piloto contramão"
+
+msgid "Yaw"
+msgstr "Guinada"
+
+msgid "Yellow"
+msgstr "Amarelo"
+
+msgid "You"
+msgstr "Você"
+
+msgid "You have the latest version."
+msgstr "Você tem a versão mais recente."
+
+#. max 25 characters
+msgid "YouTube"
+msgstr "YouTube"
+
+msgid "YouTube chat can't be read. Support is unofficial."
+msgstr "O chat do YouTube não pode ser lido. O suporte é extraoficial."
+
+msgid "YouTube chat unavailable"
+msgstr "Chat do YouTube indisponível"
+
+msgid "YouTube connection lost - retrying automatically."
+msgstr "Conexão com o YouTube perdida - tentando de novo sozinho."
+
+msgid "YouTube has no such channel - check the spelling."
+msgstr "O YouTube não tem esse canal - verifique a grafia."
+
+msgid "YouTube's chat can't be read"
+msgstr "O chat do YouTube não pode ser lido"
+
+msgid "YouTube: not live right now - checking every minute."
+msgstr "YouTube: fora do ar agora - verificando a cada minuto."
+
+msgctxt "tooltip"
+msgid "Your Twitch and YouTube chat in game, merged in one window. Read-only, no login."
+msgstr "Seu chat da Twitch e do YouTube no jogo, juntos numa janela. Só leitura, sem login."
+
+msgid "Your final lap"
+msgstr "Sua última volta"
+
+msgctxt "tooltip"
+msgid "Your gap to a reference lap across the whole lap: green where you gained, red where you lost."
+msgstr "Sua dif. para uma volta de referência na volta toda: verde onde ganhou, vermelho onde perdeu."
+
+msgctxt "tooltip"
+msgid "Your last and best lap with their gap to your ideal lap, and the ideal itself."
+msgstr "Sua última e melhor volta com a dif. para a volta ideal, e a própria ideal."
+
+msgctxt "tooltip"
+msgid "Your last three laps with their gap to your best, in the Lap Log's order."
+msgstr "Suas três últimas voltas com a dif. para a melhor, na ordem do HUD Voltas."
+
+msgctxt "tooltip"
+msgid "Your numbers: lap and sector times, position, gaps, time left."
+msgstr "Seus números: tempos de volta e setor, posição, difs., tempo restante."
+
+msgctxt "tooltip"
+msgid "Your row and the riders around it, drawn as on Standings."
+msgstr "Sua linha e os pilotos ao redor, desenhados como na Classificação."
+
+msgctxt "tooltip"
+msgid "Your running lap time, with your gap to your reference lap under it."
+msgstr "Seu tempo de volta corrente, com a dif. para a volta de referência embaixo."
+
+#. max 23 characters
+msgid "Zoom"
+msgstr "Zoom"
+
+msgctxt "tooltip"
+msgid "Zoom: how many meters of track Follow shows around you."
+msgstr "Zoom: quantos metros de pista o Seguir mostra ao seu redor."
+
+#. max 60 characters
+msgid "ads, and every release is built from the public source."
+msgstr "anúncios, e cada versão é compilada do código público."
+
+#. max 21 characters
+msgid "and the web overlay."
+msgstr "e o overlay web."
+
+#. max 38 characters
+msgid "coffee helps. All optional."
+msgstr "um café ajudam. Tudo opcional."
+
+#. max 60 characters
+msgid "community's long-standing HUD, came to an end. The first"
+msgstr "HUD de longa data da comunidade, chegou ao fim. A primeira"
+
+#. max 60 characters
+msgid "doing. That grew through several versions into MXBMRP3, a"
+msgstr "fazendo. Ele cresceu por várias versões até virar o MXBMRP3,"
+
+#. max 60 characters
+msgid "features, test new ideas and find new ways to use it."
+msgstr "recursos, testam ideias novas e descobrem novos usos."
+
+#. max 60 characters
+msgid "full plugin built on the game's plugin API."
+msgstr "um plugin completo feito sobre a API de plugins do jogo."
+
+msgid "in Settings > Hotkeys"
+msgstr "em Ajustes > Atalhos"
+
+#. max 60 characters
+msgid "inspires something new, it has done what I hoped it would."
+msgstr "inspira algo novo, ele fez o que eu esperava que fizesse."
+
+#. max 60 characters
+msgid "small experiment I built before I really knew what I was"
+msgstr "pequeno experimento que fiz antes de saber bem o que estava"
+
+#. max 60 characters
+msgid "studied, changed and built on, and does not depend on me."
+msgstr "estudado, alterado e ampliado, e não depende de mim."
+
+msgid "to turn the pages"
+msgstr "para virar as páginas"
+
+#. max 60 characters
+msgid "version, MXBMRP - MX Bikes Memory Reader Project, was a"
+msgstr "versão, MXBMRP - MX Bikes Memory Reader Project, foi um"
+
+#. max 60 characters
+msgid "who use it - the riders who report problems, suggest"
+msgstr "que o usam - os pilotos que relatam problemas, sugerem"
+
+#. max 60 characters
+msgid "work, and much of what it has become comes from the people"
+msgstr "uma pessoa, e muito do que ele se tornou vem das pessoas"

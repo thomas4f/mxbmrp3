@@ -156,7 +156,7 @@ public:
 
     // In the bar instead of the gap when All-time has a PB but no trace
     // (isAllTimeTraceMissing); the Dash's Gap bar page shows it too.
-    static constexpr const char* NO_TRACE_NOTE = "No trace until a new PB";
+    static constexpr const char* NO_TRACE_NOTE = N_("No trace until a new PB");   // drawn via TR()
 
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;

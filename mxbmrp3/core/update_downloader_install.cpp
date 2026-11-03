@@ -9,6 +9,7 @@
 // extraction pattern as the plugin_data / http_server splits.
 // ============================================================================
 #include "update_downloader.h"
+#include "plugin_names.h"
 #include "atomic_file_writer.h"
 #include "plugin_constants.h"
 #include "plugin_manager.h"
@@ -194,8 +195,8 @@ bool UpdateDownloader::backupExistingFiles(const std::string& pluginDir, const s
     }
 
     // Move the data directory
-    std::string dataSrc = pluginDir + "mxbmrp3_data";  // No trailing backslash for MoveFile
-    std::string dataDst = backupDir + "mxbmrp3_data";
+    std::string dataSrc = pluginDir + MXB_DATA_DIR_NAME;  // No trailing backslash for MoveFile
+    std::string dataDst = backupDir + MXB_DATA_DIR_NAME;
     attrs = GetFileAttributesA(dataSrc.c_str());
     if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
         if (!moveFileWithRetry(dataSrc, dataDst)) {
@@ -226,7 +227,7 @@ bool UpdateDownloader::restoreFromBackup(const std::string& pluginDir, const std
     }
 
     // Also remove any new mxbmrp3_data directory that might have been created
-    std::string dataDir = pluginDir + "mxbmrp3_data";
+    std::string dataDir = pluginDir + MXB_DATA_DIR_NAME;
     deleteDirectoryRecursive(dataDir + "\\");
 
     // Move the .dlo file back from backup. This is the critical one — if it
@@ -249,8 +250,8 @@ bool UpdateDownloader::restoreFromBackup(const std::string& pluginDir, const std
     }
 
     // Move the data directory back from backup
-    std::string dataSrc = backupDir + "mxbmrp3_data";
-    std::string dataDst = pluginDir + "mxbmrp3_data";
+    std::string dataSrc = backupDir + MXB_DATA_DIR_NAME;
+    std::string dataDst = pluginDir + MXB_DATA_DIR_NAME;
     attrs = GetFileAttributesA(dataSrc.c_str());
     if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
         if (moveFileWithRetry(dataSrc, dataDst)) {
@@ -343,7 +344,7 @@ std::string UpdateDownloader::mapToInstallPath(const std::string& zipFilename) c
     }
 
     // All other files go under mxbmrp3_data/
-    return "mxbmrp3_data\\" + zipFilename;
+    return MXB_DATA_DIR_NAME "\\" + zipFilename;
 }
 
 bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::string& outError) {
@@ -401,7 +402,7 @@ bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::
         size_t firstSlash = filename.find('/');
         if (firstSlash != std::string::npos && firstSlash < filename.size() - 1) {
             std::string topDir = filename.substr(0, firstSlash);
-            if (topDir.find("mxbmrp3") != std::string::npos) {
+            if (topDir.find("mxbmrp3") != std::string::npos) {  // name-literal: release zip's top folder
                 filename = filename.substr(firstSlash + 1);
             }
         }
@@ -518,7 +519,7 @@ bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::
         size_t firstSlash = filename.find('/');
         if (firstSlash != std::string::npos && firstSlash < filename.size() - 1) {
             std::string topDir = filename.substr(0, firstSlash);
-            if (topDir.find("mxbmrp3") != std::string::npos) {
+            if (topDir.find("mxbmrp3") != std::string::npos) {  // name-literal: release zip's top folder
                 filename = filename.substr(firstSlash + 1);
             }
         }

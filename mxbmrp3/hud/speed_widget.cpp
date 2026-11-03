@@ -3,6 +3,7 @@
 // Speed widget - displays speedometer (ground speed)
 // ============================================================================
 #include "speed_widget.h"
+#include "../core/i18n.h"
 
 #include <cstdio>
 #include <cmath>
@@ -80,7 +81,7 @@ void SpeedWidget::rebuildRenderData() {
     float sectionH = dim.lineHeightLarge;  // Speed value always shown
     if (m_enabledRows & ROW_UNITS) sectionH += dim.lineHeightNormal;
     want.sectionH = { sectionH };
-    want.captionW = planTitleWidth(dim, "Speed");
+    want.captionW = planTitleWidth(dim, TR("Speed"));
     PanelPlan& p = planPanel(dim, want);
 
     const float backgroundWidth = p.width();
@@ -90,7 +91,7 @@ void SpeedWidget::rebuildRenderData() {
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
 
     addPlanBackground(p, startX, startY);
-    addPlanTitle(p, "Speed", textColor);
+    addPlanTitle(p, TR("Speed"), textColor);
     float currentY = p.contentY();
 
     // Build speed value string

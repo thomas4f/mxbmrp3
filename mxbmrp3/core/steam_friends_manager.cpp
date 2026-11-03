@@ -566,11 +566,14 @@ void SteamFriendsManager::updateLocalPresence() {
 
             // Session clock snapshot for the Friends HUD "Timing" column - the
             // exact value the web overlay's `time` field shows (MM:SS, or the
-            // N TO GO / FINAL LAP / CHECKERED overtime label). Coarse, not live:
-            // the 10s bucket below keeps it out of the per-second write path.
+            // N TO GO / FINAL LAP / CHECKERED overtime label), less a time+laps
+            // race's "+ 2 laps": the column holds 10 characters and would cut it.
+            // Coarse, not live: the 10s bucket below keeps it out of the
+            // per-second write path.
             lapsToGo = pd.getLeaderLapsToGo();
-            char clockBuf[16];
-            PluginUtils::formatSessionClock(lapsToGo, pd.getSessionTime(), clockBuf, sizeof(clockBuf));
+            char clockBuf[PluginUtils::SESSION_CLOCK_CHARS];
+            PluginUtils::formatSessionClock(lapsToGo, pd.getSessionTime(), /*lapsAfterClock=*/0,
+                                            clockBuf, sizeof(clockBuf));
             progress = clockBuf;
             timeBucket = pd.getSessionTime() / 10000;
 

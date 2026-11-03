@@ -15,6 +15,7 @@
 #include "hotkey_config.h"
 #include "hotkey_manager.h"
 #include "hud_manager.h"
+#include "plugin_utils.h"
 #include "system_messages.h"
 #include "update_checker.h"
 #include "../hud/achievement_widget.h"
@@ -60,6 +61,20 @@ __declspec(dllexport) void MXBMRP3_Test_MessageLast(char* out, int cap) {
     const SystemMessages::Toast& t = SystemMessages::getInstance().lastPosted();
     std::snprintf(out, static_cast<size_t>(cap), "%s|%s|%s|%d|%d", t.title, t.detail, t.icon,
                   t.tab, t.severity == SystemMessages::Severity::Warning ? 1 : 0);
+}
+// PluginUtils::formatSessionClock as the web JSON (shown 0) or a HUD (shown 1)
+// asks for it, so the HUD side of the overtime labels is checked under a pack.
+__declspec(dllexport) void MXBMRP3_Test_FormatSessionClock(int lapsToGo, int ms, int lapsAfterClock, int shown,
+                                                           char* out, int cap) {
+    if (!out || cap <= 0) return;
+    PluginUtils::formatSessionClock(lapsToGo, ms, lapsAfterClock, out, static_cast<size_t>(cap), shown != 0);
+}
+// PluginUtils::formatSessionFormatWords as the Event Log (shown 0) or a HUD's
+// Session line and Timing Format row (shown 1) ask for it.
+__declspec(dllexport) void MXBMRP3_Test_FormatSessionFormatWords(int lengthMs, int numLaps, int shown,
+                                                                 char* out, int cap) {
+    if (!out || cap <= 0) return;
+    PluginUtils::formatSessionFormatWords(lengthMs, numLaps, out, static_cast<size_t>(cap), shown != 0);
 }
 // 1 while the card shows a system toast (after a draw()); its title into `out`.
 __declspec(dllexport) int MXBMRP3_Test_MessageShowing(char* out, int cap) {

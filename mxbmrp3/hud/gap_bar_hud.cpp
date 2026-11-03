@@ -4,6 +4,7 @@
 // Shows a horizontal bar with current position, best lap marker, and live gap
 // ============================================================================
 #include "gap_bar_hud.h"
+#include "../core/i18n.h"
 
 #include <cstdio>
 #include <cmath>
@@ -216,8 +217,8 @@ void GapBarHud::rebuildRenderData() {
     // it -- left unsaid, this panel wears the widget caption size next to
     // siblings that do not.
     // The reference lap, named on the title row.
-    const char* refNote = PbGapTracker::refName(getReference());
-    want.captionW = planTitleWidth(dim, "Gap Bar", TitleTier::Large) + planTitleNoteWidth(dim, refNote);
+    const char* refNote = HudDefaults::refLabel(getReference());
+    want.captionW = planTitleWidth(dim, TR("Gap Bar"), TitleTier::Large) + planTitleNoteWidth(dim, refNote);
     want.tier = TitleTier::Large;
     // The bar IS this panel: unthemed, its coloured fill takes the cell of panel
     // padding rather than sitting inside it. Same outer rect either way; with a
@@ -250,7 +251,7 @@ void GapBarHud::rebuildRenderData() {
     const float boxLeft = centerAnchoredPanelLeft(boxWidth);
     startX = boxLeft + insetL;
     addPlanBackground(plan, boxLeft, boxTop);
-    addPlanTitle(plan, "Gap Bar",
+    addPlanTitle(plan, TR("Gap Bar"),
                  this->getColor(ColorSlot::PRIMARY));
     // THE CARD'S DRAWN BOX, not the content band inside it: the bar IS the card here,
     // so its fill, its markers and its gap text all belong to the box the player sees.
@@ -406,7 +407,7 @@ void GapBarHud::rebuildRenderData() {
     // the placeholder it replaces, and small, so it fits the narrowest bar.
     if (!hasGap && getReference() == Reference::ALLTIME_PB &&
         PluginData::getInstance().isAllTimeTraceMissing()) {
-        addString(NO_TRACE_NOTE, gapTextX, inkCenteredY(startY, barHeight, dim.fontSizeSmall), Justify::CENTER,
+        addString(TR(GapBarHud::NO_TRACE_NOTE), gapTextX, inkCenteredY(startY, barHeight, dim.fontSizeSmall), Justify::CENTER,
                   this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::MUTED), dim.fontSizeSmall);
         addPlanTitleNote(plan, dim, refNote);
         setBounds(boxLeft, boxTop, boxLeft + boxWidth, boxTop + boxHeight);

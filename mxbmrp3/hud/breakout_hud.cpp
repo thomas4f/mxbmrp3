@@ -4,6 +4,7 @@
 // collision, and rendering. See breakout_hud.h.
 // ============================================================================
 #include "breakout_hud.h"
+#include "../core/i18n.h"
 #include "../core/layout_config.h"
 
 #include <cmath>
@@ -401,7 +402,7 @@ void BreakoutHud::renderGame() {
 
     // Level and score display
     char scoreText[32];
-    snprintf(scoreText, sizeof(scoreText), "L%d  SCORE: %d", m_level, m_score);
+    snprintf(scoreText, sizeof(scoreText), TR("L%d  SCORE: %d"), m_level, m_score);
 
     SPluginString_t scoreString;
     strncpy_s(scoreString.m_szString, sizeof(scoreString.m_szString), scoreText, _TRUNCATE);
@@ -419,9 +420,9 @@ void BreakoutHud::renderGame() {
     // Instructions or game state message
     const char* message = nullptr;
     if (m_gameOver) {
-        message = "GAME OVER - Click to exit";
+        message = TR("GAME OVER - Click to exit");
     } else if (!m_ballLaunched) {
-        message = "Click to launch";
+        message = TR("Click to launch");
     }
 
     if (message) {

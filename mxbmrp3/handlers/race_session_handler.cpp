@@ -15,11 +15,11 @@
 
 // Log "Session started" event with optional format detail (e.g., "3:00 + 2 laps")
 static void logSessionStarted(PluginData& data, const char* sessionStr, int sessionLength, int sessionNumLaps) {
-    char eventMsg[64];
-    snprintf(eventMsg, sizeof(eventMsg), "%s started", sessionStr);
+    EventText eventMsg;
+    eventMsg.format(N_("%s started"), sessionStr);
 
-    // The Session and Timing panels' helper, with the laps spelled out: this is a
-    // sentence ("Race 1 started: 10 laps"), not a cell.
+    // The Session and Timing panels' helper: "Race 1 started: 10 laps". English
+    // here (shown false), as the Event Log stores it.
     char detail[32];
     PluginUtils::formatSessionFormatWords(sessionLength, sessionNumLaps, detail, sizeof(detail));
     if (detail[0] != '\0') {
@@ -102,8 +102,8 @@ void Handlers::handleRaceSession(Unified::RaceSessionData* psRaceSession) {
             // Session starts directly in progress (practice/qualifying)
             logSessionStarted(data, sessionStr, psRaceSession->sessionLength, psRaceSession->sessionNumLaps);
         } else if (state & PluginConstants::SessionState::PRE_START) {
-            char eventMsg[64];
-            snprintf(eventMsg, sizeof(eventMsg), "%s: Pre-Start", sessionStr);
+            EventText eventMsg;
+            eventMsg.format(N_("%s: Pre-Start"), sessionStr);
             data.addEventLogEntry(EventLogType::SessionPreStart, eventMsg);
         }
     }
@@ -234,20 +234,20 @@ void Handlers::handleRaceSessionState(Unified::RaceSessionStateData* psRaceSessi
                     logSessionStarted(data, sessionStr, sessionData.sessionLength, sessionData.sessionNumLaps);
                 } else {
                     // Log other state transitions with natural phrasing
-                    char eventMsg[64];
+                    EventText eventMsg;
                     int state = psRaceSessionState->sessionState;
                     bool isComplete = (state & PluginConstants::SessionState::RACE_OVER) ||
                                       (state & PluginConstants::SessionState::FINISHED);
                     bool isPreStart = (state & PluginConstants::SessionState::PRE_START) ||
                                       (state & PluginConstants::SessionState::SIGHTING_LAP);
                     if (state & PluginConstants::SessionState::RACE_OVER) {
-                        snprintf(eventMsg, sizeof(eventMsg), "%s ended", sessionStr);
+                        eventMsg.format(N_("%s ended"), sessionStr);
                     } else if (state & PluginConstants::SessionState::FINISHED) {
-                        snprintf(eventMsg, sizeof(eventMsg), "%s complete", sessionStr);
+                        eventMsg.format(N_("%s complete"), sessionStr);
                     } else if (state & PluginConstants::SessionState::CANCELLED) {
-                        snprintf(eventMsg, sizeof(eventMsg), "%s cancelled", sessionStr);
+                        eventMsg.format(N_("%s cancelled"), sessionStr);
                     } else {
-                        snprintf(eventMsg, sizeof(eventMsg), "%s: %s", sessionStr, stateStr);
+                        eventMsg.format(N_("%s: %s"), sessionStr, stateStr);
                     }
                     // logType, not eventType: the enclosing scope already has an
                     // `int eventType` (the SESSION's event type from PluginData).

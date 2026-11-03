@@ -3,6 +3,7 @@
 // Which race notice is up right now - see notice_tracker.h.
 // ============================================================================
 #include "notice_tracker.h"
+#include "../core/i18n.h"
 
 #include <cstdio>
 #include <cstring>
@@ -17,12 +18,12 @@
 namespace {
 // Ordinal suffix for position display (1ST, 2ND, 3RD, 4TH, ...)
 const char* ordinalSuffix(int n) {
-    if (n % 100 >= 11 && n % 100 <= 13) return "TH";
+    if (n % 100 >= 11 && n % 100 <= 13) return TR("TH");
     switch (n % 10) {
-        case 1: return "ST";
-        case 2: return "ND";
-        case 3: return "RD";
-        default: return "TH";
+        case 1: return TR("ST");
+        case 2: return TR("ND");
+        case 3: return TR("RD");
+        default: return TR("TH");
     }
 }
 }  // namespace
@@ -301,40 +302,40 @@ void NoticeTracker::resolveCurrent(uint32_t enabledNotices) {
     PbNoticeLap lap;   // a PB's lap, for the detail line
     const PluginData& pluginData = PluginData::getInstance();
     if (status.wrongWay) {
-        kind = Kind::WrongWay;  text = "WRONG WAY";
+        kind = Kind::WrongWay;  text = TR("WRONG WAY");
     } else if (status.hazard) {
         // Same slot either way; only the wording separates a rider coming at you
         // from one stopped on the track, which call for opposite reactions.
         kind = m_bHazardIsWrongWay ? Kind::RiderOncoming : Kind::HazardAhead;
-        text = m_bHazardIsWrongWay ? "RIDER ONCOMING" : "HAZARD AHEAD";
+        text = m_bHazardIsWrongWay ? TR("RIDER ONCOMING") : TR("HAZARD AHEAD");
     } else if (status.blueFlag) {
-        kind = Kind::BlueFlag;  text = "BLUE FLAG";
+        kind = Kind::BlueFlag;  text = TR("BLUE FLAG");
     } else if (status.lapping) {
-        kind = Kind::LapperAhead;  text = "LAPPER AHEAD";
+        kind = Kind::LapperAhead;  text = TR("LAPPER AHEAD");
     } else if (status.overtime) {
-        kind = Kind::Overtime;  text = "OVERTIME";
+        kind = Kind::Overtime;  text = TR("OVERTIME");
     } else if (m_bShowAllTimePB && (enabledNotices & NoticesHud::NOTICE_ALLTIME_PB)) {
-        kind = Kind::AllTimePB;  text = "ALL-TIME PB";  lap = pluginData.getAllTimePBLap();
+        kind = Kind::AllTimePB;  text = TR("ALL-TIME PB");  lap = pluginData.getAllTimePBLap();
     } else if (m_bShowFastestLap && (enabledNotices & NoticesHud::NOTICE_FASTEST_LAP)) {
-        kind = Kind::FastestLap;  text = "FASTEST LAP";  lap = pluginData.getFastestLapLap();
+        kind = Kind::FastestLap;  text = TR("FASTEST LAP");  lap = pluginData.getFastestLapLap();
     } else if (m_bShowSessionPB && (enabledNotices & NoticesHud::NOTICE_SESSION_PB)) {
-        kind = Kind::SessionPB;  text = "SESSION PB";  lap = pluginData.getSessionPBLap();
+        kind = Kind::SessionPB;  text = TR("SESSION PB");  lap = pluginData.getSessionPBLap();
     } else if (m_bShowSegment) {  // always on -- self-gated by the segment hotkey action
         // Named by the point's 1-based position ("SEG 3 ADDED"), so notices count up
         // as points are placed and down as they are removed.
         const bool added = (m_segmentNoticeKind == PluginData::SegmentNoticeKind::Added);
         kind = added ? Kind::SegmentAdded : Kind::SegmentRemoved;
-        if (m_segmentNoticeKind == PluginData::SegmentNoticeKind::None) text = "SEGMENT";
+        if (m_segmentNoticeKind == PluginData::SegmentNoticeKind::None) text = TR("SEGMENT");
         else if (m_segmentNoticeNumber >= 1) number = m_segmentNoticeNumber;
-        else text = added ? "SEG ADDED" : "SEG REMOVED";
+        else text = added ? TR("SEG ADDED") : TR("SEG REMOVED");
     } else if (m_bShowFinished && (enabledNotices & NoticesHud::NOTICE_FINISHED)) {
         kind = Kind::Finished;
         if (m_finishedPosition > 0) number = m_finishedPosition;
-        else text = "FINISHED";
+        else text = TR("FINISHED");
     } else if (m_bShowLastLap && (enabledNotices & NoticesHud::NOTICE_LAST_LAP)) {
-        kind = Kind::LastLap;  text = PluginConstants::DisplayStrings::SessionClock::FINAL_LAP;
+        kind = Kind::LastLap;  text = I18n::trCached(PluginConstants::DisplayStrings::SessionClock::FINAL_LAP);
     } else if (m_bShowDefaultSetup && (enabledNotices & NoticesHud::NOTICE_DEFAULT_SETUP)) {
-        kind = Kind::DefaultSetup;  text = "DEFAULT SETUP";
+        kind = Kind::DefaultSetup;  text = TR("DEFAULT SETUP");
     }
     uint32_t track = 0;   // the Now playing track's serial; its text is the title
     if (kind == Kind::None && m_bShowTrack && (enabledNotices & NoticesHud::NOTICE_TRACK_CHANGED)) {
@@ -374,10 +375,10 @@ void NoticeTracker::resolveCurrent(uint32_t enabledNotices) {
     } else if (number == 0) {
         snprintf(m_current.text, sizeof(m_current.text), "%s", text);
     } else if (kind == Kind::Finished) {
-        snprintf(m_current.text, sizeof(m_current.text), "FINISHED %d%s", number, ordinalSuffix(number));
+        snprintf(m_current.text, sizeof(m_current.text), TR("FINISHED %d%s"), number, ordinalSuffix(number));
     } else {
         snprintf(m_current.text, sizeof(m_current.text),
-                 kind == Kind::SegmentAdded ? "SEG %d ADDED" : "SEG %d REMOVED", number);
+                 kind == Kind::SegmentAdded ? TR("SEG %d ADDED") : TR("SEG %d REMOVED"), number);
     }
     ++m_revision;
 }

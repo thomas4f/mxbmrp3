@@ -18,6 +18,33 @@ file; their wording is preserved too.
 
 ## [Unreleased]
 
+## [1.34.3] - 2026-11-03
+
+Menus, tooltips and HUDs can now be in French, German, Portuguese,
+Spanish or Swedish (all Beta), and a timed race's clock shows the laps
+after it.
+
+### Added
+- **Languages**: menus, tooltips, HUDs and messages can now be shown in
+  another language (Settings > Appearance > Language). The first packs are
+  **French**, **German**, **Portuguese (Brazil)**, **Spanish** and
+  **Swedish**, all Beta; the French is a community translation (thanks
+  cross6200). The default, System, follows Windows' display language, so
+  players whose Windows is in one of those languages get their pack on
+  upgrade; pick English there to switch back. Anything a pack does not
+  translate stays English. New packs are welcome: see languages\README.md.
+
+### Changed
+- In a time + laps race the session clock now shows the laps that follow
+  it, "12:34 + 2 laps", on the Standings, Timing and Dash HUDs and in the
+  web overlay. The race format on the Session and Timing HUDs and the
+  Dash's Session page reads the same way, "15:00 + 2 laps" and "10 laps"
+  instead of "15:00 + 2L" and "10L".
+
+### Fixed
+- Settings > Widgets: "Now Playing" no longer runs into its On/Off
+  toggle; the name column is two characters wider.
+
 ## [1.34.2] - 2026-10-31
 
 Timing can now compare to the full lap the whole way round, and the

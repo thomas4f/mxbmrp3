@@ -3,6 +3,7 @@
 // Session HUD - displays session info (server, track, format, weather)
 // ============================================================================
 #include "session_hud.h"
+#include "../core/i18n.h"
 
 #include <cstdio>
 #include <cstring>
@@ -19,6 +20,11 @@ using namespace PluginConstants;
 namespace {
     // Max visible characters before the cut (PluginUtils::fitText, no ellipsis)
     constexpr int MAX_DISPLAY_CHARS = 25;
+    // The Format row ("Session (Format), State") is cut to the panel instead: the
+    // panel's cells less the row's icon (0.8 font-height / aspect, ~1.6 cells) and
+    // its gap. English fits whole (worst real line 38); a pack's sighting-lap line
+    // can run to 55 ("Carrera 2 (15:00 + 10 vueltas), Vuelta de Reconocimiento").
+    constexpr int FORMAT_MAX_CHARS = WidgetDimensions::SESSION_WIDTH - 3;
 }
 
 SessionHud::SessionHud()
@@ -145,7 +151,7 @@ void SessionHud::rebuildLayout() {
     PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::SESSION_WIDTH, dim.fontSize);
     want.sectionH = { calculateContentHeight(dim) };
-    want.captionW = planTitleWidth(dim, "Session", TitleTier::Large);
+    want.captionW = planTitleWidth(dim, TR("Session"), TitleTier::Large);
     want.tier = TitleTier::Large;
     PanelPlan& plan = planPanel(dim, want);
     plan.x0 = startX; plan.y0 = startY;
@@ -258,7 +264,7 @@ void SessionHud::rebuildRenderData() {
     PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::SESSION_WIDTH, dim.fontSize);
     want.sectionH = { calculateContentHeight(dim) };
-    want.captionW = planTitleWidth(dim, "Session", TitleTier::Large);
+    want.captionW = planTitleWidth(dim, TR("Session"), TitleTier::Large);
     want.tier = TitleTier::Large;
     PanelPlan& plan = planPanel(dim, want);
     float backgroundWidth = plan.width();
@@ -321,7 +327,7 @@ void SessionHud::rebuildRenderData() {
     // string index 0 stable for the layout fast path below -- and, crucially, emits
     // the BODY CARD either way. Gating the call would make switching the title off
     // also silently remove the card.
-    addPlanTitle(plan, "Session",
+    addPlanTitle(plan, TR("Session"),
                  this->getColor(ColorSlot::PRIMARY));
 
     // Every quad pushed from here on is a row icon; the ones before it are the
@@ -335,7 +341,7 @@ void SessionHud::rebuildRenderData() {
         // Shared label: name / "Testing" (solo) / "Online" / "Unknown" - see
         // PluginUtils::serverLabel. Rider count lets it read GP Bikes / KRP (no
         // serverType in their API) as "Online" once a real opponent is present.
-        const char* serverText = PluginUtils::serverLabel(sessionData.serverType, sessionData.serverName,
+        const char* serverText = PluginUtils::shownServerLabel(sessionData.serverType, sessionData.serverName,
             static_cast<int>(pluginData.getRaceEntries().size()));
         // A SECTION HEADING, at the same size as every other panel's -- see
         // BaseHud::addSectionHeading. At an h1's size the server name reads as the
@@ -369,6 +375,7 @@ void SessionHud::rebuildRenderData() {
         addIconQuad(contentStartX, currentY, iconFormat);
         char combinedBuffer[128];
         const bool formatIsPlaceholder = !formatLine(combinedBuffer, sizeof(combinedBuffer));
+        PluginUtils::fitTextInPlace(combinedBuffer, strlen(combinedBuffer), FORMAT_MAX_CHARS);
         // Placeholder MUTED when the line is nothing but the placeholder state.
         addString(combinedBuffer, contentStartX + textOffset, currentY, Justify::LEFT,
             this->getFont(FontCategory::NORMAL),
@@ -392,20 +399,22 @@ void SessionHud::rebuildRenderData() {
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 }
 
-// Session + Format + State on one line: "Session (Format), State" - matches the
-// Steam status / Friends Info / Discord detail line. The session name is added
-// only when online; offline it's already the server-row headline ("Testing").
+// Session + Format + State on one line: "Session (Format), State" - the Steam
+// status / Friends Info / Discord detail line's shape, with the laps spelled out
+// as the session clock does ("8:00 + 2 laps", not their "8:00 + 2L"). The session
+// name is added only when online; offline it's already the server-row headline.
 bool SessionHud::formatLine(char* out, size_t size) {
     const SessionData& sessionData = PluginData::getInstance().getSessionData();
-    const char* stateString = PluginUtils::getSessionStateString(sessionData.sessionState);
+    const char* stateString = I18n::trCached(PluginUtils::getSessionStateString(sessionData.sessionState));
     const char* sessionStateString = stateString ? stateString : Placeholders::GENERIC;
 
     const char* sessionStr = (sessionData.isOnline() && sessionData.session >= 0)
-        ? PluginUtils::getSessionString(sessionData.eventType, sessionData.session) : nullptr;
+        ? I18n::trCached(PluginUtils::getSessionString(sessionData.eventType, sessionData.session)) : nullptr;
 
-    // Shared helper: "8:00 + 2L" / "8:00" / "2L" / "".
+    // Shared helper: "8:00 + 2 laps" / "8:00" / "2 laps" / "".
     char formatBuffer[64];
-    PluginUtils::formatSessionFormat(sessionData.sessionLength, sessionData.sessionNumLaps, formatBuffer, sizeof(formatBuffer));
+    PluginUtils::formatSessionFormatWords(sessionData.sessionLength, sessionData.sessionNumLaps,
+                                          formatBuffer, sizeof(formatBuffer), /*shown=*/true);
 
     // Head = "Session (Format)" (any piece optional).
     char head[96];
@@ -425,7 +434,7 @@ bool SessionHud::formatLine(char* out, size_t size) {
 // Conditions + temperatures, in the selected unit, rounded.
 void SessionHud::weatherLine(char* out, size_t size) {
     const SessionData& sessionData = PluginData::getInstance().getSessionData();
-    const char* conditionsStr = PluginUtils::getConditionsString(sessionData.conditions);
+    const char* conditionsStr = I18n::trCached(PluginUtils::getConditionsString(sessionData.conditions));
     // Note: -1.0f is the sentinel for "no data" in plugin_data.h
     const UiConfig& ui = UiConfig::getInstance();
     const char unitChar = (ui.getTemperatureUnit() == TemperatureUnit::FAHRENHEIT) ? 'F' : 'C';

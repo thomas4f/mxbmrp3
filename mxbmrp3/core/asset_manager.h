@@ -7,6 +7,7 @@
 #pragma once
 
 #include "ui_config.h"      // mxbThemeGeneration()
+#include "plugin_names.h"
 #include "color_config.h"   // ColorSlot
 #include "font_config.h"    // FontCategory
 
@@ -977,9 +978,9 @@ public:
     // ========================================================================
 
     // Discovery path (for FindFirstFileA - relative to game executable)
-    static constexpr const char* DISCOVERY_DIR = "plugins\\mxbmrp3_data";
+    static constexpr const char* DISCOVERY_DIR = "plugins\\" MXB_DATA_DIR_NAME;
     // Resource path (for game engine - it adds "plugins\" prefix automatically)
-    static constexpr const char* RESOURCE_DIR = "mxbmrp3_data";
+    static constexpr const char* RESOURCE_DIR = MXB_DATA_DIR_NAME;
     static constexpr const char* FONTS_SUBDIR = "fonts";
     static constexpr const char* TEXTURES_SUBDIR = "textures";
     static constexpr const char* ICONS_SUBDIR = "icons";
@@ -988,16 +989,17 @@ public:
     static constexpr const char* PITBOARDS_SUBDIR = "pitboards";
     static constexpr const char* SPOTTERS_SUBDIR = "spotters";
     static constexpr const char* GAUGES_SUBDIR = "gauges";
+    static constexpr const char* LANGUAGES_SUBDIR = "languages";
     static constexpr const char* WEB_SUBDIR = "web";
     // User override directory (under savePath, e.g., Documents\PiBoSo\MX Bikes\mxbmrp3\)
-    static constexpr const char* USER_OVERRIDE_DIR = "mxbmrp3";
+    static constexpr const char* USER_OVERRIDE_DIR = MXB_USER_DIR_NAME;
 
     // The nested PACK types, in one table.
     //
     // A pack is a folder the user can author and hand to someone else:
     // <root>\<name>\ holding that type's payload plus a <type>.ini describing it
     // (theme.ini, gamepad.ini, ... -- see core/pack_ini_path.h).
-    // All four share that shape, and all four need the same two things done for
+    // Every type shares that shape, and each needs the same two things done for
     // them -- copied out of the user's Documents folder at startup, and copied
     // again on RELOAD_CONFIG so an author's edit-reload loop works.
     //
@@ -1028,6 +1030,7 @@ public:
         { PITBOARDS_SUBDIR, PackIni::kPitboard, "*.tga" },
         { SPOTTERS_SUBDIR,  PackIni::kSpotter,  "*.wav" },
         { GAUGES_SUBDIR,    PackIni::kGauges,   "*.tga" },
+        { LANGUAGES_SUBDIR, PackIni::kLanguage, "*.po" },
     };
 
 private:
@@ -1152,7 +1155,8 @@ private:
     // e.g., "RobotoMono-Regular" -> "Roboto Mono"
     std::string generateDisplayName(const std::string& filename) const;
 
-    // Read TGA header to get pixel dimensions (returns false if file can't be read)
+    // Read TGA header to get pixel dimensions (false if the file can't be read, or
+    // either side is over hudassets::kMaxTexDim: oversized pack art counts as absent)
     static bool readTgaDimensions(const std::string& path, int& width, int& height);
 
     // Parse a theme's optional ini (see packIniPath) (inset, tintable) into `theme`. Never

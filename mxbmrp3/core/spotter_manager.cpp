@@ -6,6 +6,7 @@
 // spotter_manager_*.cpp TUs beside it.
 // ============================================================================
 #include "spotter_manager.h"
+#include "plugin_names.h"
 
 #include "asset_manager.h"   // userAssetDir(), for the shadow warning below
 #include "pack_ini_path.h"
@@ -21,7 +22,7 @@ namespace {
 
 // Packs live next to the other user asset packs; file I/O is relative to the
 // game working directory like the web root and the temp-hook wav path.
-constexpr const char* kPackRoot = "plugins\\mxbmrp3_data\\spotters\\";
+constexpr const char* kPackRoot = "plugins\\" MXB_DATA_DIR_NAME "\\spotters\\";
 // The shipped pack, which is the ONLY place the spotter's wording lives —
 // every other pack is an overlay on it. See reloadCuePack.
 constexpr const char* kBasePackName = "default";

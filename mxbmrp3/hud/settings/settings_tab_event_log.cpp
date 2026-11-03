@@ -37,24 +37,24 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("event_log");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeading("Appearance");
+    ctx.addSectionHeading(TR("Appearance"));
     ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
-    ctx.addSectionHeading("Layout");
+    ctx.addSectionHeading(TR("Layout"));
     ctx.beginColumns(2, 6);   // side by side (beginColumns)
 
-    ctx.addToggleControl("Show icons", hud->m_showIcons,
+    ctx.addToggleControl(TR("Show icons"), hud->m_showIcons,
         SettingsHud::ClickRegion::EVENT_LOG_ICONS_TOGGLE, hud,
         nullptr, 0, true, "event_log.icons");
 
     // Display mode: Off / Always / Auto-hide (matches RadarHud's "Show mode" wording)
-    static const char* const kModes[] = { "Off", "Always", "Auto-hide" };
+    static const char* const kModes[] = { N_("Off"), N_("Always"), N_("Auto-hide") };
     const char* modeStr = cycleName(kModes, static_cast<int>(hud->m_displayMode));
     const bool isOff = (hud->m_displayMode == EventLogHud::DisplayMode::OFF);
     // tooltipOnArrows=false on all three cycles below: these arrows have no
     // per-type tooltip fallback (no TAB_EVENT_LOG section in
     // getTooltipIdForRegion), so keep the tooltip on the row region only.
-    ctx.addCycleControl("Show mode", modeStr,
+    ctx.addCycleControl(TR("Show mode"), modeStr,
         SettingsHud::CycleControl::enumMember(hud, &EventLogHud::m_displayMode, 3, hud, kModes),
         hud, true, isOff, "event_log.display_mode", /*tooltipOnArrows=*/false);
 
@@ -65,7 +65,7 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     // tooltipOnArrows=false: these arrows have no per-type tooltip fallback (no
     // TAB_EVENT_LOG section in getTooltipIdForRegion), so keep the tooltip on
     // the row region only.
-    ctx.addSteppedControl("Duration", durationValue,
+    ctx.addSteppedControl(TR("Duration"), durationValue,
         SettingsHud::SteppedControl::wrapInt(&hud->m_autoHideDurationMs,
             EventLogHud::AUTO_HIDE_STEP_MS, EventLogHud::MIN_AUTO_HIDE_MS,
             EventLogHud::MAX_AUTO_HIDE_MS, hud),
@@ -73,24 +73,24 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
 
     // Display order: Newest / Oldest
     const char* orderStr = (hud->m_displayOrder == EventLogHud::DisplayOrder::NEWEST_FIRST)
-        ? "Newest" : "Oldest";
-    ctx.addCycleControl("Display order", orderStr,
+        ? TR("Newest") : TR("Oldest");
+    ctx.addCycleControl(TR("Display order"), orderStr,
         SettingsHud::CycleControl::enumMember(hud, &EventLogHud::m_displayOrder, 2, hud),
         hud, true, false, "event_log.order", /*tooltipOnArrows=*/false);
 
     // Events to show
     char rowCountValue[8];
     snprintf(rowCountValue, sizeof(rowCountValue), "%d", hud->m_maxDisplayEvents);
-    ctx.addSteppedControl("Events to show", rowCountValue,
+    ctx.addSteppedControl(TR("Events to show"), rowCountValue,
         SettingsHud::SteppedControl::clampInt(&hud->m_maxDisplayEvents, 1,
             EventLogHud::MIN_DISPLAY_EVENTS, EventLogHud::MAX_DISPLAY_EVENTS, hud),
         hud, true, false, "event_log.max_events", /*tooltipOnArrows=*/false);
 
     // Timestamp mode: Off / Session / Clock
-    static const char* const kStamps[] = { "Off", "Session", "Clock" };
+    static const char* const kStamps[] = { N_("Off"), N_("Session"), N_("Clock") };
     const char* timestampStr = cycleName(kStamps, static_cast<int>(hud->m_timestampMode));
     const bool tsOff = (hud->m_timestampMode == EventLogHud::TimestampMode::OFF);
-    ctx.addCycleControl("Timestamp", timestampStr,
+    ctx.addCycleControl(TR("Timestamp"), timestampStr,
         SettingsHud::CycleControl::enumMember(hud, &EventLogHud::m_timestampMode, 3, hud, kStamps),
         hud, true, tsOff, "event_log.timestamp", /*tooltipOnArrows=*/false);
     // === EVENTS SECTION ===
@@ -99,33 +99,33 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     // multi-bit support (set all / clear all).
     ctx.endColumns();
 
-    ctx.addSectionHeading("Events");
+    ctx.addSectionHeading(TR("Events"));
     ctx.beginColumns(2, 12);
 
     // Session: started + state changes
     constexpr uint32_t SESSION_GROUP = EVENT_SESSION_STARTED | EVENT_SESSION_STATE;
     bool sessionOn = (hud->m_enabledEvents & SESSION_GROUP) != 0;
-    ctx.addToggleControl("Session", sessionOn,
+    ctx.addToggleControl(TR("Session"), sessionOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledEvents, SESSION_GROUP, true,
         "event_log.session");
 
     // Fastest lap
     bool fastestLapOn = (hud->m_enabledEvents & EVENT_FASTEST_LAP) != 0;
-    ctx.addToggleControl("Fastest lap", fastestLapOn,
+    ctx.addToggleControl(TR("Fastest lap"), fastestLapOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledEvents, EVENT_FASTEST_LAP, true,
         "event_log.fastest_lap");
 
     // Your own personal bests (local player only)
     bool sessionPbOn = (hud->m_enabledEvents & EVENT_SESSION_PB) != 0;
-    ctx.addToggleControl("Session PB", sessionPbOn,
+    ctx.addToggleControl(TR("Session PB"), sessionPbOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledEvents, EVENT_SESSION_PB, true,
         "event_log.session_pb");
 
     bool allTimePbOn = (hud->m_enabledEvents & EVENT_ALLTIME_PB) != 0;
-    ctx.addToggleControl("All-time PB", allTimePbOn,
+    ctx.addToggleControl(TR("All-time PB"), allTimePbOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledEvents, EVENT_ALLTIME_PB, true,
         "event_log.alltime_pb");
@@ -133,7 +133,7 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     // Penalties: penalty + penalty cleared
     constexpr uint32_t PENALTY_GROUP = EVENT_PENALTY | EVENT_PENALTY_CLEAR;
     bool penaltyOn = (hud->m_enabledEvents & PENALTY_GROUP) != 0;
-    ctx.addToggleControl("Penalties", penaltyOn,
+    ctx.addToggleControl(TR("Penalties"), penaltyOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledEvents, PENALTY_GROUP, true,
         "event_log.penalties");
@@ -141,35 +141,35 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     // Rider out: retired + DSQ + DNS
     constexpr uint32_t RIDER_OUT_GROUP = EVENT_RIDER_RETIRED | EVENT_RIDER_DSQ | EVENT_RIDER_DNS;
     bool riderOutOn = (hud->m_enabledEvents & RIDER_OUT_GROUP) != 0;
-    ctx.addToggleControl("RET/DSQ/DNS", riderOutOn,
+    ctx.addToggleControl(TR("RET/DSQ/DNS"), riderOutOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledEvents, RIDER_OUT_GROUP, true,
         "event_log.rider_out");
 
     // Overtime
     bool overtimeOn = (hud->m_enabledEvents & EVENT_OVERTIME) != 0;
-    ctx.addToggleControl("Time expired", overtimeOn,
+    ctx.addToggleControl(TR("Time expired"), overtimeOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledEvents, EVENT_OVERTIME, true,
         "event_log.overtime");
 
     // Final lap
     bool finalLapOn = (hud->m_enabledEvents & EVENT_FINAL_LAP) != 0;
-    ctx.addToggleControl("Final lap", finalLapOn,
+    ctx.addToggleControl(TR("Final lap"), finalLapOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledEvents, EVENT_FINAL_LAP, true,
         "event_log.final_lap");
 
     // Finished
     bool finishedOn = (hud->m_enabledEvents & EVENT_RIDER_FINISHED) != 0;
-    ctx.addToggleControl("Finished", finishedOn,
+    ctx.addToggleControl(TR("Finished"), finishedOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledEvents, EVENT_RIDER_FINISHED, true,
         "event_log.finished");
 
     // Leader change (race only)
     bool leaderChangeOn = (hud->m_enabledEvents & EVENT_LEADER_CHANGE) != 0;
-    ctx.addToggleControl("Leader change", leaderChangeOn,
+    ctx.addToggleControl(TR("Leader change"), leaderChangeOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledEvents, EVENT_LEADER_CHANGE, true,
         "event_log.leader_change");
@@ -177,7 +177,7 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     // Pit activity: entry + exit
     constexpr uint32_t PIT_GROUP = EVENT_PIT_ENTRY | EVENT_PIT_EXIT;
     bool pitOn = (hud->m_enabledEvents & PIT_GROUP) != 0;
-    ctx.addToggleControl("Pit activity", pitOn,
+    ctx.addToggleControl(TR("Pit activity"), pitOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledEvents, PIT_GROUP, true,
         "event_log.pit");
@@ -185,7 +185,7 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     // Director cuts: the auto-director's shot decisions (broadcast transparency). Opt-in —
     // frequent, so off unless a broadcaster wants to see the director's logic in the feed.
     bool directorOn = (hud->m_enabledEvents & EVENT_DIRECTOR) != 0;
-    ctx.addToggleControl("Director", directorOn,
+    ctx.addToggleControl(TR("Director"), directorOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledEvents, EVENT_DIRECTOR, true,
         "event_log.director");

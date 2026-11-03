@@ -616,7 +616,7 @@ void MapHud::rebuildRenderData() {
     want.tier = TitleTier::Large;
     want.contentW = squareWidth;
     want.sectionH = { squareHeight };
-    want.captionW = planTitleWidth(dim, "Map", TitleTier::Large);
+    want.captionW = planTitleWidth(dim, TR("Map"), TitleTier::Large);
     PanelPlan& plan = planPanel(dim, want);
     width = plan.width();
     height = plan.height();
@@ -728,7 +728,7 @@ void MapHud::rebuildRenderData() {
     // plan's coordinates, so the Map's title lands exactly where every other
     // panel's does.
     addPlanBackground(plan, x, y);
-    addPlanTitle(plan, "Map",
+    addPlanTitle(plan, TR("Map"),
                  this->getColor(ColorSlot::PRIMARY));
 
     // Calculate clip bounds for track rendering (absolute screen coords)

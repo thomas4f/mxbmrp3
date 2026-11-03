@@ -3,6 +3,7 @@
 // Displays ideal lap (best individual sectors) with comparison to current
 // ============================================================================
 #include "ideal_lap_hud.h"
+#include "../core/i18n.h"
 #include "default_slots.h"
 #include "../core/layout_config.h"
 
@@ -95,7 +96,7 @@ void IdealLapHud::rebuildLayout() {
     PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(BACKGROUND_WIDTH_CHARS, dim.fontSize);
     want.sectionH = { rowCount * dim.lineHeightNormal };
-    want.captionW = planTitleWidth(dim, "Ideal Lap", TitleTier::Large);
+    want.captionW = planTitleWidth(dim, TR("Ideal Lap"), TitleTier::Large);
     want.tier = TitleTier::Large;
     PanelPlan& plan = planPanel(dim, want);
     plan.x0 = START_X; plan.y0 = START_Y;
@@ -163,12 +164,12 @@ void IdealLapHud::rebuildRenderData() {
     PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(BACKGROUND_WIDTH_CHARS, dim.fontSize);
     want.sectionH = { enabledRows * dim.lineHeightNormal };
-    want.captionW = planTitleWidth(dim, "Ideal Lap", TitleTier::Large);
+    want.captionW = planTitleWidth(dim, TR("Ideal Lap"), TitleTier::Large);
     want.tier = TitleTier::Large;
     PanelPlan& plan = planPanel(dim, want);
     setBounds(START_X, START_Y, START_X + plan.width(), START_Y + plan.height());
     addPlanBackground(plan, START_X, START_Y);
-    addPlanTitle(plan, "Ideal Lap",
+    addPlanTitle(plan, TR("Ideal Lap"),
                  this->getColor(ColorSlot::PRIMARY));
 
     float contentStartX = plan.contentX();
@@ -329,17 +330,17 @@ void IdealLapHud::rebuildRenderData() {
 
     // Last: Show last lap time, gap = last lap vs ideal lap
     int lastLap = (idealLapData && idealLapData->lastLapTime > 0) ? idealLapData->lastLapTime : -1;
-    addLapRow(showLaps, "Last", lastLap, idealLapTime, prevIdealLapTime);
+    addLapRow(showLaps, TR("Last"), lastLap, idealLapTime, prevIdealLapTime);
 
     // Best: Show best lap time, gap = best lap vs ideal lap
     int bestLap = personalBest ? personalBest->lapTime : -1;
-    addLapRow(showLaps, "Best", bestLap, idealLapTime, prevIdealLapTime);
+    addLapRow(showLaps, TR("Best"), bestLap, idealLapTime, prevIdealLapTime);
 
     // Ideal: Show ideal lap time (no gap - it IS the ideal)
     // Use a special version that doesn't show gap
     if (showLaps) {
         char timeStr[16];
-        addLabel("Ideal", m_columns.label, currentY, Justify::LEFT, this->getColor(ColorSlot::TERTIARY), dim);
+        addLabel(TR("Ideal"), m_columns.label, currentY, Justify::LEFT, this->getColor(ColorSlot::TERTIARY), dim);
 
         if (idealLapTime > 0) {
             PluginUtils::formatLapTime(idealLapTime, timeStr, sizeof(timeStr));

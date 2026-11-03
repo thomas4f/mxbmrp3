@@ -54,7 +54,6 @@ public:
         ON_JOIN = 2,       // briefly, when a friend comes in-game, then hide
         COUNT = 3
     };
-    static const char* getShowModeName(ShowMode mode);
 
     friend class SettingsHud;
     friend class SettingsManager;

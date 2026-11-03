@@ -21,6 +21,7 @@
 #include "plugin_manager.h"
 #include "settings_manager.h"
 #include "spotter_manager.h"  // RELOAD_CONFIG re-reads the active cue pack
+#include "i18n.h"             // ... and the active language pack
 #include "achievement_manager.h"  // RELOAD_CONFIG counts toward Tinkerer
 #include "director_manager.h"
 #include "profile_manager.h"
@@ -436,8 +437,8 @@ void HudManager::processKeyboardInput() {
             settingsMgr.loadSettings(*this, savePath.c_str());
             // Nothing on screen says a reload happened unless a value changed.
             SystemMessages::Toast t;
-            snprintf(t.title, sizeof(t.title), "Settings reloaded");
-            snprintf(t.detail, sizeof(t.detail), "From %s", SettingsInternal::SETTINGS_FILENAME);
+            snprintf(t.title, sizeof(t.title), "%s", TR("Settings reloaded"));
+            snprintf(t.detail, sizeof(t.detail), TR("From %s"), SettingsInternal::SETTINGS_FILENAME);
             snprintf(t.icon, sizeof(t.icon), "arrow-rotate-right");
             t.key = SystemMessages::KEY_SETTINGS_RELOADED;
             SystemMessages::getInstance().post(t);
@@ -478,6 +479,11 @@ void HudManager::processKeyboardInput() {
         // it plays a cue — so the restart-for-new-art rule above simply does
         // not apply to a voice.
         SpotterManager::getInstance().reloadCuePack();
+
+        // The language pack, the same way: re-listed and re-read from the copy the
+        // pass above made, so a translator's edit-reload-look loop works even when
+        // the language NAME did not change.
+        I18n::reload();
 
         // A CHANGED .tga is a different matter, on one surface. The companion's
         // software renderer opens each file itself, so it can be told to re-read
@@ -531,12 +537,14 @@ bool HudManager::isSettingsVisible() const {
 
 // "Press F3 to show it again": the binding that just fired, keyboard first.
 // Empty when the action has no binding (a test hook can fire one).
-static void formatHotkeyHint(HotkeyAction action, const char* what, char* out, size_t cap) {
+// `format` is the whole translated sentence, its one %s the key: "Press %s to
+// show it again" (a sentence split around the key would not translate).
+static void formatHotkeyHint(HotkeyAction action, const char* format, char* out, size_t cap) {
     const HotkeyBinding& b = HotkeyManager::getInstance().getBinding(action);
     char key[32] = {};
     if (b.hasKeyboard()) formatKeyBinding(b.keyboard, key, sizeof(key));
     else if (b.hasController()) snprintf(key, sizeof(key), "%s", getControllerButtonName(b.controller));
-    if (key[0]) snprintf(out, cap, "Press %s to %s", key, what);
+    if (key[0]) snprintf(out, cap, format, key);
     else out[0] = '\0';
 }
 
@@ -553,8 +561,8 @@ void HudManager::announceHudToggle(HotkeyAction action, const BaseHud& hud, int 
     }
     SystemMessages::Toast t;
     const char* name = m_pSettingsHud ? m_pSettingsHud->tabTitle(tab) : "HUD";
-    snprintf(t.title, sizeof(t.title), "%s hidden", name);
-    formatHotkeyHint(action, "show it again", t.detail, sizeof(t.detail));
+    snprintf(t.title, sizeof(t.title), TR("%s hidden"), name);
+    formatHotkeyHint(action, TR("Press %s to show it again"), t.detail, sizeof(t.detail));
     snprintf(t.icon, sizeof(t.icon), "eye-slash");   // every "hidden" card wears the same glyph
     t.key = key;
     t.tab = tab;
@@ -574,8 +582,8 @@ void HudManager::announceMasterToggle(HotkeyAction action, bool nowShown) {
     }
     const bool all = action == HotkeyAction::TOGGLE_ALL_HUDS;
     SystemMessages::Toast t;
-    snprintf(t.title, sizeof(t.title), "%s", all ? "All HUDs hidden" : "Widgets hidden");
-    formatHotkeyHint(action, "show them again", t.detail, sizeof(t.detail));
+    snprintf(t.title, sizeof(t.title), "%s", all ? TR("All HUDs hidden") : TR("Widgets hidden"));
+    formatHotkeyHint(action, TR("Press %s to show them again"), t.detail, sizeof(t.detail));
     snprintf(t.icon, sizeof(t.icon), "eye-slash");
     t.key = key;
     t.tab = all ? -1 : SettingsHud::TAB_WIDGETS;
@@ -602,7 +610,7 @@ void HudManager::announceAllHiddenAtStart() {
         if (h->isVisibleAnySurface()) return;
     }
     SystemMessages::Toast t;
-    snprintf(t.title, sizeof(t.title), "All HUDs hidden");
+    snprintf(t.title, sizeof(t.title), "%s", TR("All HUDs hidden"));
     HotkeyManager::getInstance().formatOpenSettingsHint(t.detail, sizeof(t.detail));
     snprintf(t.icon, sizeof(t.icon), "eye-slash");
     t.key = SystemMessages::KEY_ALL_HIDDEN_AT_START;
@@ -621,10 +629,10 @@ void HudManager::announceStartupProblems() {
     const StatsManager& stats = StatsManager::getInstance();
     if (stats.lastLoadUnreadable()) {
         SystemMessages::Toast t;
-        snprintf(t.title, sizeof(t.title), "Stats file unreadable");
+        snprintf(t.title, sizeof(t.title), "%s", TR("Stats file unreadable"));
         snprintf(t.detail, sizeof(t.detail), "%s",
-                 stats.writesBlocked() ? "Left as it is. Stats are not saved this session"
-                                       : "Started fresh. A copy is kept in the mxbmrp3 folder");
+                 stats.writesBlocked() ? TR("Left as it is. Stats are not saved this session")
+                                       : TR("Started fresh. A copy is kept in the mxbmrp3 folder"));
         snprintf(t.icon, sizeof(t.icon), "triangle-exclamation");
         t.key = SystemMessages::KEY_STATS_UNREADABLE;
         t.severity = SystemMessages::Severity::Warning;
@@ -635,8 +643,8 @@ void HudManager::announceStartupProblems() {
     const HttpServer& server = HttpServer::getInstance();
     if (server.isEnabled() && !server.isRunning()) {
         SystemMessages::Toast t;
-        snprintf(t.title, sizeof(t.title), "Web overlay not started");
-        snprintf(t.detail, sizeof(t.detail), "Could not open port %d. Is it in use?", server.getPort());
+        snprintf(t.title, sizeof(t.title), "%s", TR("Web overlay not started"));
+        snprintf(t.detail, sizeof(t.detail), TR("Could not open port %d. Is it in use?"), server.getPort());
         snprintf(t.icon, sizeof(t.icon), "triangle-exclamation");
         t.key = SystemMessages::KEY_WEB_OVERLAY_FAILED;
         t.tab = SettingsHud::TAB_GENERAL;

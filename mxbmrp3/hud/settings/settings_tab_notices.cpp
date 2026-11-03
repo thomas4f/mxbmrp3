@@ -19,99 +19,99 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("notices");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeading("Appearance");
+    ctx.addSectionHeading(TR("Appearance"));
     ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
-    ctx.addSectionHeading("Layout");
+    ctx.addSectionHeading(TR("Layout"));
 
     // Duration cycle control: 1s -> 2s -> ... -> 30s (wraps)
     char durationValue[16];
     snprintf(durationValue, sizeof(durationValue), "%ds", hud->m_noticeDurationMs / 1000);
-    ctx.addSteppedControl("Duration", durationValue,
+    ctx.addSteppedControl(TR("Duration"), durationValue,
         SettingsHud::SteppedControl::wrapInt(&hud->m_noticeDurationMs,
             NoticesHud::DURATION_STEP_MS, NoticesHud::MIN_NOTICE_DURATION_MS,
             NoticesHud::MAX_NOTICE_DURATION_MS, hud),
         hud, true, false, "notices.duration");
     // === CONTENT SECTION ===
-    ctx.addSectionHeading("Warnings & Hazards");
+    ctx.addSectionHeading(TR("Warnings & Hazards"));
 
     bool wrongWayOn = (hud->m_enabledNotices & NoticesHud::NOTICE_WRONG_WAY) != 0;
-    ctx.addToggleControl("Wrong way", wrongWayOn,
+    ctx.addToggleControl(TR("Wrong way"), wrongWayOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_WRONG_WAY, true,
         "notices.wrong_way");
 
     bool blueFlagOn = (hud->m_enabledNotices & NoticesHud::NOTICE_BLUE_FLAG) != 0;
-    ctx.addToggleControl("Blue flag", blueFlagOn,
+    ctx.addToggleControl(TR("Blue flag"), blueFlagOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_BLUE_FLAG, true,
         "notices.blue_flag");
 
     bool lapperAheadOn = (hud->m_enabledNotices & NoticesHud::NOTICE_LAPPING) != 0;
-    ctx.addToggleControl("Lapper ahead", lapperAheadOn,
+    ctx.addToggleControl(TR("Lapper ahead"), lapperAheadOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_LAPPING, true,
         "notices.lapping");
 
     bool defaultSetupOn = (hud->m_enabledNotices & NoticesHud::NOTICE_DEFAULT_SETUP) != 0;
-    ctx.addToggleControl("Default setup", defaultSetupOn,
+    ctx.addToggleControl(TR("Default setup"), defaultSetupOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_DEFAULT_SETUP, true,
         "notices.default_setup");
 
     bool hazardStationaryOn = (hud->m_enabledNotices & NoticesHud::NOTICE_HAZARD_STATIONARY) != 0;
-    ctx.addToggleControl("Stationary rider", hazardStationaryOn,
+    ctx.addToggleControl(TR("Stationary rider"), hazardStationaryOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_HAZARD_STATIONARY, true,
         "notices.hazard_stationary");
 
     bool hazardWrongWayOn = (hud->m_enabledNotices & NoticesHud::NOTICE_HAZARD_WRONG_WAY) != 0;
-    ctx.addToggleControl("Wrong way rider", hazardWrongWayOn,
+    ctx.addToggleControl(TR("Wrong way rider"), hazardWrongWayOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_HAZARD_WRONG_WAY, true,
         "notices.hazard_wrong_way");
-    ctx.addSectionHeading("Race Events");
+    ctx.addSectionHeading(TR("Race Events"));
 
     bool overtimeOn = (hud->m_enabledNotices & NoticesHud::NOTICE_OVERTIME) != 0;
-    ctx.addToggleControl("Overtime", overtimeOn,
+    ctx.addToggleControl(TR("Overtime"), overtimeOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_OVERTIME, true,
         "notices.overtime");
 
     bool lastLapOn = (hud->m_enabledNotices & NoticesHud::NOTICE_LAST_LAP) != 0;
-    ctx.addToggleControl("Final lap", lastLapOn,
+    ctx.addToggleControl(TR("Final lap"), lastLapOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_LAST_LAP, true,
         "notices.last_lap");
 
     bool finishedOn = (hud->m_enabledNotices & NoticesHud::NOTICE_FINISHED) != 0;
-    ctx.addToggleControl("Finished", finishedOn,
+    ctx.addToggleControl(TR("Finished"), finishedOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_FINISHED, true,
         "notices.finished");
-    ctx.addSectionHeading("Personal Bests");
+    ctx.addSectionHeading(TR("Personal Bests"));
 
     bool allTimePBOn = (hud->m_enabledNotices & NoticesHud::NOTICE_ALLTIME_PB) != 0;
-    ctx.addToggleControl("All-time PB", allTimePBOn,
+    ctx.addToggleControl(TR("All-time PB"), allTimePBOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_ALLTIME_PB, true,
         "notices.alltime_pb");
 
     bool fastestLapOn = (hud->m_enabledNotices & NoticesHud::NOTICE_FASTEST_LAP) != 0;
-    ctx.addToggleControl("Fastest lap", fastestLapOn,
+    ctx.addToggleControl(TR("Fastest lap"), fastestLapOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_FASTEST_LAP, true,
         "notices.fastest_lap");
 
     bool sessionPBOn = (hud->m_enabledNotices & NoticesHud::NOTICE_SESSION_PB) != 0;
-    ctx.addToggleControl("Session PB", sessionPBOn,
+    ctx.addToggleControl(TR("Session PB"), sessionPBOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_SESSION_PB, true,
         "notices.session_pb");
-    ctx.addSectionHeading("Media");
+    ctx.addSectionHeading(TR("Media"));
 
     bool trackChangedOn = (hud->m_enabledNotices & NoticesHud::NOTICE_TRACK_CHANGED) != 0;
-    ctx.addToggleControl("Track change", trackChangedOn,
+    ctx.addToggleControl(TR("Track change"), trackChangedOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_TRACK_CHANGED, true,
         "notices.track_changed");

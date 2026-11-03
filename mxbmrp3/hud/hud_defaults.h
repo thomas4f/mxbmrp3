@@ -13,6 +13,7 @@
 #include "freeze_duration.h"
 #include "../core/pb_gap_tracker.h"
 #include "../core/ui_config.h"
+#include "../core/i18n.h"
 
 namespace HudDefaults {
     // The reference a HUD measures against: its own, or General's when it follows.
@@ -25,9 +26,17 @@ namespace HudDefaults {
     // the player need not open General to learn it. Literals, no formatting.
     inline const char* defaultReferenceName() {
         static constexpr const char* kNames[PbGapTracker::REF_COUNT] = {
-            "Default (Session PB)", "Default (All-time PB)", "Default (Last lap)", "Default (Server best)" };
+            N_("Default (Session PB)"), N_("Default (All-time PB)"), N_("Default (Last lap)"), N_("Default (Server best)") };
         const int i = UiConfig::getInstance().getDefaultReference();
         return kNames[i >= 0 && i < PbGapTracker::REF_COUNT ? i : 0];
+    }
+    // A reference lap's name as shown (PbGapTracker::refName translated), cached
+    // per language: HUD titles name it on every rebuild.
+    inline const char* refLabel(PbGapTracker::Ref ref) {
+        static I18n::Slot slots[PbGapTracker::REF_COUNT] = {};
+        const int i = static_cast<int>(ref);
+        return (i >= 0 && i < PbGapTracker::REF_COUNT) ? I18n::trEntry(slots[i], PbGapTracker::refName(ref))
+                                                      : PbGapTracker::refName(ref);
     }
     static_assert(UiConfig::REFERENCE_COUNT == PbGapTracker::REF_COUNT, "General's reference range");
     // A hold in ms: its own, or General's for FreezeDuration::FOLLOW_DEFAULT.

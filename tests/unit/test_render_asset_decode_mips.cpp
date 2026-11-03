@@ -7,12 +7,21 @@
 // load-bearing beyond image quality: GL 1.1 has no GL_TEXTURE_MAX_LEVEL, so a
 // chain that stops before 1x1 makes the texture INCOMPLETE and it samples as
 // white. That is why "terminates at 1x1" is asserted rather than assumed.
+//
+// And what the decoders REFUSE from a shared pack, at the end: every size and
+// glyph field is file-declared. At kMaxTexDim 8192 one RLE .tga of a flat
+// colour (a few KB) asked for 256 MB, and a .fnt glyph rect outside the atlas
+// or an advance of billions sent the software renderer's per-pixel loop over
+// billions of columns. The discovery half of the cap is pack_skin_test.cpp's
+// "art over the size cap" case.
 // ============================================================================
 // The doctest implementation + main() live in test_plugin_utils.cpp.
 #include "doctest.h"
 
 #include "core/render_asset_decode.h"
 
+#include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -193,4 +202,98 @@ TEST_CASE("buildTexMips: it is opt-in - decodeTga alone builds no chain") {
     hudassets::buildTexMips(t);
     CHECK(t.mips.size() > 1);
     CHECK(t.mips.back().w == 1);
+}
+
+// ---- What a shared pack cannot make the decoders do ----------------------
+
+namespace limits {
+
+// An uncompressed 24-bit .tga of w x h black pixels.
+std::vector<uint8_t> tga(int w, int h) {
+    std::vector<uint8_t> d(18 + size_t(w) * h * 3, 0);
+    d[2] = 2;
+    d[12] = uint8_t(w & 0xff); d[13] = uint8_t(w >> 8);
+    d[14] = uint8_t(h & 0xff); d[15] = uint8_t(h >> 8);
+    d[16] = 24;
+    return d;
+}
+
+void put32(std::vector<uint8_t>& d, size_t o, int32_t v) { std::memcpy(&d[o], &v, 4); }
+
+constexpr int kCellH = 8;
+constexpr int kAtlas = 4;
+constexpr size_t kTable = 268;
+constexpr size_t kHdr = 10508;
+
+// A .fnt with a 4x4 atlas (one stored DEFLATE block) and every glyph invalid
+// until glyph() states one.
+std::vector<uint8_t> fnt() {
+    const int px = kAtlas * kAtlas;
+    std::vector<uint8_t> d(kHdr + 24 + 5 + px, 0);
+    std::memcpy(d.data(), "FNT\0", 4);
+    put32(d, 264, kCellH);
+    put32(d, kHdr + 4, kAtlas);
+    put32(d, kHdr + 8, kAtlas);
+    put32(d, kHdr + 12, 5 + px);
+    put32(d, kHdr + 16, 2);
+    uint8_t* z = &d[kHdr + 24];                     // final stored block, LEN/NLEN
+    z[0] = 0x01; z[1] = uint8_t(px); z[2] = 0; z[3] = uint8_t(~px); z[4] = 0xFF;
+    return d;
+}
+
+void glyph(std::vector<uint8_t>& d, unsigned char cp, int32_t xoff, int32_t width, int32_t rb,
+           int32_t x0, int32_t x1, int32_t y0, int32_t y1) {
+    const size_t o = kTable + size_t(cp) * 40;
+    put32(d, o, 1);
+    put32(d, o + 4, xoff); put32(d, o + 8, width); put32(d, o + 12, rb);
+    put32(d, o + 16, x0); put32(d, o + 20, x1); put32(d, o + 24, y0); put32(d, o + 28, y1);
+}
+
+}  // namespace limits
+using namespace limits;
+
+TEST_CASE("decodeTga: a side over kMaxTexDim is refused, the cap itself decodes") {
+    CHECK(hudassets::kMaxTexDim == 4096);
+    CHECK(hudassets::decodeTga(tga(hudassets::kMaxTexDim, 1)).ok);
+    CHECK_FALSE(hudassets::decodeTga(tga(hudassets::kMaxTexDim + 1, 1)).ok);
+    CHECK_FALSE(hudassets::decodeTga(tga(1, hudassets::kMaxTexDim + 1)).ok);
+}
+
+TEST_CASE("decodeFnt: a glyph rect outside the atlas is no glyph") {
+    std::vector<uint8_t> d = fnt();
+    glyph(d, 'A', 0, 4, 0, 0, 4, 0, 4);             // exactly the atlas
+    glyph(d, 'B', 0, 4, 0, 0, 5000, 0, 4);          // runs off the right
+    glyph(d, 'C', 0, 4, 0, -1, 3, 0, 4);            // starts left of it
+    glyph(d, 'D', 0, 4, 0, 0, 4, 2, 9);             // runs off the bottom
+    glyph(d, 'E', 0, 4, 0, 3, 3, 0, 4);             // empty
+    const hudassets::FntFont f = hudassets::decodeFnt(d);
+    REQUIRE(f.ok);
+    CHECK(f.glyphs['A'].valid);
+    CHECK_FALSE(f.glyphs['B'].valid);
+    CHECK_FALSE(f.glyphs['C'].valid);
+    CHECK_FALSE(f.glyphs['D'].valid);
+    CHECK_FALSE(f.glyphs['E'].valid);
+}
+
+TEST_CASE("decodeFnt / decodeFntAdvances: offset and advance are held to a few cells") {
+    std::vector<uint8_t> d = fnt();
+    const int32_t huge = 2000000000;
+    glyph(d, 'W', huge, huge, huge, 0, 4, 0, 4);     // the sum overflows 32 bits
+    glyph(d, 'N', -huge, 0, 0, 0, 4, 0, 4);
+    glyph(d, 'a', 2, 5, 1, 0, 4, 0, 4);              // ordinary: untouched
+    const hudassets::FntFont f = hudassets::decodeFnt(d);
+    REQUIRE(f.ok);
+    const int cap = kCellH * hudassets::kMaxGlyphCells;
+    CHECK(f.glyphs['W'].xoff == cap);
+    CHECK(f.glyphs['W'].adv == cap);
+    CHECK(f.glyphs['N'].xoff == -cap);
+    CHECK(f.glyphs['N'].adv == 0);
+    CHECK(f.glyphs['a'].xoff == 2);
+    CHECK(f.glyphs['a'].adv == 8);
+
+    float adv[256];
+    REQUIRE(hudassets::decodeFntAdvances(d.data(), d.size(), adv));
+    CHECK(adv['W'] == doctest::Approx(float(hudassets::kMaxGlyphCells)));
+    CHECK(adv['N'] == 0.0f);
+    CHECK(adv['a'] == doctest::Approx(8.0f / kCellH));
 }

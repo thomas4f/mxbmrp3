@@ -122,7 +122,7 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
     // =====================================================
     // SECTION 1: Server Players Grid
     // =====================================================
-    ctx.addSectionHeading("Server Players", "(click to track/untrack)");
+    ctx.addSectionHeading(TR("Server Players"), TR("(click to track/untrack)"));
 
     // Get all race entries and build display list
     const auto& raceEntries = pluginData.getRaceEntries();
@@ -190,7 +190,7 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
     // =====================================================
     // SECTION 2: Tracked Riders Grid
     // =====================================================
-    ctx.addSectionHeading("Tracked Riders");
+    ctx.addSectionHeading(TR("Tracked Riders"));
 
     // Get tracked riders
     const auto& allTracked = trackedMgr.getAllTrackedRiders();

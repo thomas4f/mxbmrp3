@@ -772,7 +772,7 @@ def check_tooltip_ids_resolve(failures):
     table = os.path.join(REPO, "mxbmrp3/core/tooltip_manager.h")
     if not os.path.exists(table):
         return
-    defined = set(re.findall(r'\{"([a-z0-9_.]+)",\s*"', open(table, encoding="utf-8").read()))
+    defined = set(re.findall(r'\{"([a-z0-9_.]+)",\s*(?:NC_\("tooltip",\s*)?"', open(table, encoding="utf-8").read()))
     if not defined:
         failures.append("check_tooltip_ids_resolve: parsed no tooltips from "
                         "tooltip_manager.h. Table reshaped? This check is now blind.")
@@ -1007,7 +1007,7 @@ def read_tab_registry(failures, check_name):
             "blind; update its anchors.")
         return None
 
-    rows = re.findall(r'\{\s*(TAB_[A-Z_]+),\s*(?:"([^"]*)"|nullptr)', render[start:end])
+    rows = re.findall(r'\{\s*(TAB_[A-Z_]+),\s*(?:(?:N_\()?"([^"]*)"\)?|nullptr)', render[start:end])
     glob, prof, in_profile = [], [], False
     for tab, name in rows:
         if tab == "TAB_SECTION_PROFILE":
@@ -1151,7 +1151,7 @@ def check_readme_menu_tables(failures):
 
     widgets_src = open(os.path.join(
         REPO, "mxbmrp3/hud/settings/settings_tab_widgets.cpp"), encoding="utf-8").read()
-    widgets = re.findall(r'addWidgetRow\("([^"]+)"', widgets_src)
+    widgets = re.findall(r'addWidgetRow\((?:TR\()?"([^"]+)"', widgets_src)
     if not widgets:
         failures.append(
             "check_readme_menu_tables: found no addWidgetRow calls in "

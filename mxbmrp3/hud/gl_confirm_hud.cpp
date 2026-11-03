@@ -4,6 +4,7 @@
 // its primitives are handed to the ENGINE rather than drawn through GL.
 // ============================================================================
 #include "gl_confirm_hud.h"
+#include "../core/i18n.h"
 
 #include "../core/hud_manager.h"
 #include "../core/input_manager.h"
@@ -153,8 +154,8 @@ void GlConfirmHud::rebuildRenderData() {
     const auto dim = getScaledDimensions();
 
     // Two message rows, the countdown bar, then the button row.
-    const char* kQ1 = "Direct GL Rendering is ON.";
-    const char* kQ2 = "Can you read this clearly?";
+    const char* kQ1 = TR("Direct GL Rendering is ON.");
+    const char* kQ2 = TR("Can you read this clearly?");
     const float barH = dim.lineHeightNormal * 0.45f;
     // FULL CHIP HEIGHT - the theme's [button] insets around a text row, which is
     // what Compare, Save and every other chip in the plugin is. It was the bare
@@ -175,7 +176,7 @@ void GlConfirmHud::rebuildRenderData() {
 
     // TitleTier::Large, like every full HUD's caption - measured and drawn at the
     // same size, which is what check_title_tier is guarding.
-    want.captionW = planTitleWidth(dim, "Confirm", TitleTier::Large);
+    want.captionW = planTitleWidth(dim, TR("Confirm"), TitleTier::Large);
     want.tier = TitleTier::Large;
     PanelPlan& p = planPanel(dim, want);
 
@@ -196,7 +197,7 @@ void GlConfirmHud::rebuildRenderData() {
     m_fOffsetY = 0.0f;
 
     addPlanBackground(p, originX, originY);
-    addPlanTitle(p, "Confirm",
+    addPlanTitle(p, TR("Confirm"),
                  this->getColor(ColorSlot::PRIMARY));
 
     const float centerX = p.sectionBoxCenterX();
@@ -249,11 +250,11 @@ void GlConfirmHud::rebuildRenderData() {
 
     // Label at insetT, the way every other chip places it, rather than
     // ink-centred: that solve belongs to CrashWidget's insetless squeeze.
-    addStateButton(m_keepLeft, m_keepTop, m_keepW, m_keepH, "Keep",
+    addStateButton(m_keepLeft, m_keepTop, m_keepW, m_keepH, TR("Keep"),
                    m_keepTop + bt.insetT, dim.fontSize,
                    this->getColor(ColorSlot::ACCENT),
                    m_keepHovered ? ButtonState::Hovered : ButtonState::Idle);
-    addStateButton(m_revertLeft, m_revertTop, m_revertW, m_revertH, "Turn off",
+    addStateButton(m_revertLeft, m_revertTop, m_revertW, m_revertH, TR("Turn off"),
                    m_revertTop + bt.insetT, dim.fontSize,
                    this->getColor(ColorSlot::NEGATIVE),
                    m_revertHovered ? ButtonState::Hovered : ButtonState::Idle);

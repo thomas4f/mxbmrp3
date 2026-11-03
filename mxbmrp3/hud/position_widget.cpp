@@ -3,6 +3,7 @@
 // Position widget - displays rider position in minimal format (e.g., "1/24")
 // ============================================================================
 #include "position_widget.h"
+#include "../core/i18n.h"
 #include "standings_hud.h"
 #include "../core/hud_manager.h"
 #include "../diagnostics/logger.h"
@@ -134,7 +135,7 @@ void PositionWidget::rebuildRenderData() {
     want.contentW = PluginUtils::calculateMonospaceTextWidth(
         WidgetDimensions::STANDARD_WIDTH, dim.fontSize);
     want.sectionH = { bigValueRowHeight(dim) };  // Value (2 lines)
-    want.captionW = planTitleWidth(dim, "Position");
+    want.captionW = planTitleWidth(dim, TR("Position"));
     PanelPlan& p = planPanel(dim, want);
     const float backgroundWidth = p.width();
     const float backgroundHeight = p.height();
@@ -144,7 +145,7 @@ void PositionWidget::rebuildRenderData() {
     // Use full opacity for text
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
 
-    addPlanTitle(p, "Position", textColor);
+    addPlanTitle(p, TR("Position"), textColor);
 
     const float contentStartX = p.contentX();
     float currentY = p.contentY();

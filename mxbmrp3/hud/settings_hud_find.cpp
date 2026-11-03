@@ -100,11 +100,11 @@ void SettingsHud::buildFindIndex(const ScaledDimensions& dim) {
     for (int i = 0; i < count; ++i) {
         const int tabId = tabs[i]->tabId;
         const size_t tabEntry = m_find.index.size();
-        m_find.addTab(tabId, getTabName(tabId), tabs[i]->tooltipId,
+        m_find.addTab(tabId, getTabLabel(tabId), tabs[i]->tooltipId,
                       TooltipManager::getInstance().getTabTooltip(tabs[i]->tooltipId));
         if (tabId == TAB_ACHIEVEMENTS) continue;   // the tab, but not its catalogue
         m_find.section[0] = '\0';   // a tab's first rows may sit under no heading
-        m_find.tabName = getTabName(tabId);   // what the results' Tab column shows
+        m_find.tabName = getTabLabel(tabId);   // what the results' Tab column shows
         m_find.widgetRows = tabId == TAB_WIDGETS;
         measureTab(tabId, dim, 0.0f, labelToControl, labelToRight, 0.0f, contentAsk, contentAsk);
         m_find.tabVisible(tabEntry);
@@ -165,7 +165,7 @@ void SettingsHud::buildFindField(const ScaledDimensions& dim, const PanelPlan& p
         snprintf(inner, sizeof(inner), "%.*s", FIELD_TEXT_CHARS, m_find.query.c_str());
         color = hovered ? cc.getAccent() : cc.getMuted();
     } else {
-        snprintf(inner, sizeof(inner), "Find");
+        snprintf(inner, sizeof(inner), "%s", TR("Find"));
         color = hovered ? cc.getAccent() : cc.getMuted();
     }
     SettingsLayoutContext ctx(this, dim, x, x, x, x, cw * static_cast<float>(FIELD_CHARS), right, y);
@@ -201,15 +201,15 @@ BaseHud* SettingsHud::renderTabFind(SettingsLayoutContext& ctx) {
     if (self.m_measuringTallest) return nullptr;
 
     if (f.query.find_first_not_of(' ') == std::string::npos) {
-        ctx.addSectionHeading("Find");
-        ctx.addNote("Type a setting's name, its tab, or a word from its description.");
+        ctx.addSectionHeading(TR("Find"));
+        ctx.addNote(TR("Type a setting's name, its tab, or a word from its description."));
         return nullptr;
     }
     f.refresh();
     const int total = static_cast<int>(f.hits.size());
     if (total == 0) {
-        ctx.addSectionHeading("No matches");
-        ctx.addNote("No setting is called that or mentions it. Try a shorter word.");
+        ctx.addSectionHeading(TR("No matches"));
+        ctx.addNote(TR("No setting is called that or mentions it. Try a shorter word."));
         return nullptr;
     }
     const int pageCount = (total + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE;
@@ -223,8 +223,8 @@ BaseHud* SettingsHud::renderTabFind(SettingsLayoutContext& ctx) {
         // Each group's heading where the group starts (or where a page does).
         struct Group { const char* title; int count; };
         const Group groups[] = {
-            { "Tabs", f.counts.tabs }, { "Widgets", f.counts.widgets }, { "Names", f.counts.names },
-            { "By tab or section", f.counts.places }, { "Descriptions", f.counts.descriptions },
+            { TR("Tabs"), f.counts.tabs }, { TR("Widgets"), f.counts.widgets }, { TR("Names"), f.counts.names },
+            { TR("By tab or section"), f.counts.places }, { TR("Descriptions"), f.counts.descriptions },
         };
         for (int g = 0, start = 0; g < 5; start += groups[g].count, ++g) {
             if (groups[g].count == 0 || i < start || i >= start + groups[g].count) continue;
@@ -277,9 +277,9 @@ BaseHud* SettingsHud::renderTabFind(SettingsLayoutContext& ctx) {
         // Where it lives ("Gap Bar > Layout") at the row's end, and the value where a
         // row shows it, muted and without arrows (read-only), cut short of the former.
         char where[48];
-        if (e.isTab) snprintf(where, sizeof(where), "Tab");   // the label names which
-        else if (e.section[0]) snprintf(where, sizeof(where), "%s > %s", self.getTabName(e.tab), e.section);
-        else snprintf(where, sizeof(where), "%s", self.getTabName(e.tab));
+        if (e.isTab) snprintf(where, sizeof(where), "%s", TR("Tab"));   // the label names which
+        else if (e.section[0]) snprintf(where, sizeof(where), "%s > %s", self.getTabLabel(e.tab), e.section);
+        else snprintf(where, sizeof(where), "%s", self.getTabLabel(e.tab));
         self.addString(where, x + ctx.rowSpanWidth(), y, Justify::RIGHT,
                        Fonts::getNormal(), cc.getMuted(), ctx.fontSize);
         const int rowChars = static_cast<int>(ctx.rowSpanWidth() / cw);

@@ -30,8 +30,10 @@ for f in "${ROOT}"/mxbmrp3/hud/*_hud.cpp "${ROOT}"/mxbmrp3/hud/*_hud_render.cpp;
         echo "      its caption draws at the widget size (PanelWant::tier defaults to Normal)."
         fail=1
     fi
-    if grep -q "planTitleWidth([^)]*)" "$f" && \
-       ! grep -q "planTitleWidth([^)]*TitleTier::Large" "$f"; then
+    # One level of nested parens: a caption is usually TR("..."), whose ")" a
+    # flat [^)]* would stop at, hiding the tier argument after it.
+    if grep -qE 'planTitleWidth\(([^()]|\([^()]*\))*\)' "$f" && \
+       ! grep -qE 'planTitleWidth\(([^()]|\([^()]*\))*TitleTier::Large' "$f"; then
         echo "FAIL: ${name} measures its caption without TitleTier::Large --"
         echo "      the width is measured at one size and drawn at another."
         fail=1

@@ -11,6 +11,7 @@
 //   - W: Water temperature (gradient: blue/green/red based on optimal range)
 // ============================================================================
 #include "bars_widget.h"
+#include "../core/i18n.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
 #include "../diagnostics/logger.h"
@@ -153,7 +154,7 @@ void BarsWidget::rebuildRenderData() {
     PanelWant want;
     want.contentW = barsWidth;
     want.sectionH = { sectionHeight };
-    want.captionW = planTitleWidth(dims, "Bars");
+    want.captionW = planTitleWidth(dims, TR("Bars"));
     PanelPlan& p = planPanel(dims, want);
     const float backgroundWidth = p.width();
     const float backgroundHeight = p.height();
@@ -162,7 +163,7 @@ void BarsWidget::rebuildRenderData() {
 
     // Background, title band and body card at the plan's coordinates
     addPlanBackground(p, START_X, START_Y);
-    addPlanTitle(p, "Bars",
+    addPlanTitle(p, TR("Bars"),
         this->getColor(ColorSlot::PRIMARY));
 
     // CENTRED ON THE CARD, like the Lean and G-force gauges beside it

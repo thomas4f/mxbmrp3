@@ -5,6 +5,7 @@
 #pragma once
 
 #include <array>
+#include "i18n_mark.h"
 #include <cstdint>
 #include "plugin_utils.h"
 
@@ -93,35 +94,35 @@ namespace ColorPalette {
     // move the project makes elsewhere (blue_flag_detect.h, proximity_tuning.h).
     inline const char* getColorName(unsigned long color) {
         switch (color) {
-            case WHITE:      return "White";
-            case LIGHT_GRAY: return "Light Gray";
-            case GRAY:       return "Gray";
-            case GRAPHITE:   return "Graphite";
-            case BLACK:      return "Black";
-            case RED:        return "Red";
-            case GREEN:      return "Green";
-            case BLUE:       return "Blue";
-            case BRIGHT_YELLOW: return "Bright Yellow";
-            case AMBER:         return "Amber";
-            case AQUA:          return "Aqua";
-            case PURPLE:     return "Purple";
-            case PINK:       return "Pink";
-            case BROWN:      return "Brown";
+            case WHITE:      return N_("White");
+            case LIGHT_GRAY: return N_("Light Gray");
+            case GRAY:       return N_("Gray");
+            case GRAPHITE:   return N_("Graphite");
+            case BLACK:      return N_("Black");
+            case RED:        return N_("Red");
+            case GREEN:      return N_("Green");
+            case BLUE:       return N_("Blue");
+            case BRIGHT_YELLOW: return N_("Bright Yellow");
+            case AMBER:         return N_("Amber");
+            case AQUA:          return N_("Aqua");
+            case PURPLE:     return N_("Purple");
+            case PINK:       return N_("Pink");
+            case BROWN:      return N_("Brown");
             // The pack colours. These labels are the CONTRACT: they are what the
             // Pitboard/Gamepad Texture column shows for the matching skin, which
             // is the whole point of the eight entries. palette_test.cpp censuses
             // them against the shipped packs, so renaming a pack without renaming
             // the colour (or the reverse) fails there rather than quietly leaving
             // a player unable to find the match.
-            case CRIMSON:    return "Crimson";
-            case ORANGE:     return "Orange";
-            case YELLOW:     return "Yellow";
-            case LIME:       return "Lime";
-            case CYAN:       return "Cyan";
-            case NAVY:       return "Navy";
-            case ROYAL:      return "Royal";
-            case SILVER:     return "Silver";
-            default:         return "Custom";
+            case CRIMSON:    return N_("Crimson");
+            case ORANGE:     return N_("Orange");
+            case YELLOW:     return N_("Yellow");
+            case LIME:       return N_("Lime");
+            case CYAN:       return N_("Cyan");
+            case NAVY:       return N_("Navy");
+            case ROYAL:      return N_("Royal");
+            case SILVER:     return N_("Silver");
+            default:         return N_("Custom");
         }
     }
 

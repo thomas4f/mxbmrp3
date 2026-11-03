@@ -7,6 +7,7 @@
 // std::string, new, and other allocating C++ machinery.
 // ============================================================================
 #include "crash_handler.h"
+#include "plugin_names.h"
 #include "../diagnostics/logger.h"
 #include "plugin_constants.h"   // PLUGIN_VERSION (constant-initialized extern into .rdata, crash-safe)
 #include "crash_stack_format.h" // pure backtrace string formatting (no Win32)
@@ -127,7 +128,7 @@ LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
     // <root>\mxbmrp3 at startup, but if that init failed we still want a
     // best-effort attempt, so create both levels.
     char path[MAX_PATH];
-    int written = snprintf(path, sizeof(path), "%s\\mxbmrp3", root);
+    int written = snprintf(path, sizeof(path), "%s\\" MXB_USER_DIR_NAME, root);
     if (written < 0 || written >= static_cast<int>(sizeof(path))) {
         // Path overflow — fall through to chain without writing a dump.
         if (s_previousFilter) return s_previousFilter(info);
@@ -135,7 +136,7 @@ LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
     }
     CreateDirectoryA(path, nullptr);  // ERROR_ALREADY_EXISTS is fine
 
-    written = snprintf(path, sizeof(path), "%s\\mxbmrp3\\crashes", root);
+    written = snprintf(path, sizeof(path), "%s\\" MXB_USER_DIR_NAME "\\crashes", root);
     if (written < 0 || written >= static_cast<int>(sizeof(path))) {
         if (s_previousFilter) return s_previousFilter(info);
         return EXCEPTION_CONTINUE_SEARCH;
@@ -143,7 +144,7 @@ LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
     CreateDirectoryA(path, nullptr);
 
     written = snprintf(path, sizeof(path),
-        "%s\\mxbmrp3\\crashes\\mxbmrp3_crash_%04d%02d%02d_%02d%02d%02d_%lu.dmp",
+        "%s\\" MXB_USER_DIR_NAME "\\crashes\\mxbmrp3_crash_%04d%02d%02d_%02d%02d%02d_%lu.dmp",
         root,
         t.wYear, t.wMonth, t.wDay,
         t.wHour, t.wMinute, t.wSecond,
@@ -213,9 +214,9 @@ LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
     Logger::getInstance().flushForCrash();
     char logSrc[MAX_PATH];
     char logDst[MAX_PATH];
-    int wSrc = snprintf(logSrc, sizeof(logSrc), "%s\\mxbmrp3\\mxbmrp3_log.txt", root);
+    int wSrc = snprintf(logSrc, sizeof(logSrc), "%s\\" MXB_USER_DIR_NAME "\\mxbmrp3_log.txt", root);
     int wDst = snprintf(logDst, sizeof(logDst),
-        "%s\\mxbmrp3\\crashes\\mxbmrp3_crash_%04d%02d%02d_%02d%02d%02d_%lu.log",
+        "%s\\" MXB_USER_DIR_NAME "\\crashes\\mxbmrp3_crash_%04d%02d%02d_%02d%02d%02d_%lu.log",
         root, t.wYear, t.wMonth, t.wDay,
         t.wHour, t.wMinute, t.wSecond,
         GetCurrentProcessId());
@@ -337,7 +338,7 @@ LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
         }
 
         char marker[MAX_PATH];
-        int wM = snprintf(marker, sizeof(marker), "%s\\mxbmrp3\\pending_crash.json", root);
+        int wM = snprintf(marker, sizeof(marker), "%s\\" MXB_USER_DIR_NAME "\\pending_crash.json", root);
         if (wM > 0 && wM < static_cast<int>(sizeof(marker))) {
             // Also pin the plugin version and game build AT CRASH TIME - the report is
             // sent on the next launch, which may be a different (upgraded) version.
@@ -465,7 +466,7 @@ void install(const char* savePath) {
 
     s_previousFilter = SetUnhandledExceptionFilter(&crashFilter);
     s_installed = true;
-    DEBUG_INFO_F("CrashHandler installed, dumps -> %s\\mxbmrp3\\crashes\\", s_dumpDir);
+    DEBUG_INFO_F("CrashHandler installed, dumps -> %s\\" MXB_USER_DIR_NAME "\\crashes\\", s_dumpDir);
 }
 
 void uninstall() {

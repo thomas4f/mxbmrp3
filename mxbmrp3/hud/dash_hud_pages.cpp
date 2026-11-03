@@ -6,6 +6,7 @@
 // See dash_hud.h.
 // ============================================================================
 #include "dash_hud.h"
+#include "../core/i18n.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -210,7 +211,7 @@ void DashHud::drawStandings(float rowLeft, float right, float contentY, const Sc
                 snprintf(gapText, sizeof(gapText), "%s", PluginUtils::getRiderStateAbbreviation(n.state));
                 break;
             case StandingsGap::Kind::Label:   // the leader's row against the leader (the self row shows its best lap)
-                snprintf(gapText, sizeof(gapText), "%s", "Leader");
+                snprintf(gapText, sizeof(gapText), "%s", TR("Leader"));
                 break;
             case StandingsGap::Kind::Empty:
                 gapText[0] = '\0';
@@ -429,14 +430,14 @@ void DashHud::drawEvents(float left, float right, float contentY, const ScaledDi
         }
         char text[72];
         if (e.detail[0] == '\0') {
-            const int len = snprintf(text, sizeof(text), "%s", e.message);
+            const int len = snprintf(text, sizeof(text), "%s", e.shown);
             PluginUtils::fitTextInPlace(text, static_cast<size_t>(std::max(0, len)), chars);
             addString(text, messageX, y, Justify::LEFT, normal, secondary, dim.fontSize);
             continue;
         }
         // "Message:" then the detail, the message cut so the detail always fits.
         const int detailLen = static_cast<int>(strlen(e.detail));
-        const int len = snprintf(text, sizeof(text), "%s:", e.message);
+        const int len = snprintf(text, sizeof(text), "%s:", e.shown);
         const size_t cut = PluginUtils::fitTextInPlace(text, static_cast<size_t>(std::max(0, len)),
                                                        std::max(1, chars - detailLen - 1));
         addString(text, messageX, y, Justify::LEFT, normal, secondary, dim.fontSize);
@@ -488,7 +489,7 @@ void DashHud::drawSessionInfo(float left, float right, float contentY, const Sca
     };
     if (server) {
         snprintf(text, sizeof(text), "%s",
-                 PluginUtils::serverLabel(v.serverType, session.serverName, v.multiRider ? 2 : 1));
+                 PluginUtils::shownServerLabel(v.serverType, session.serverName, v.multiRider ? 2 : 1));
         PluginUtils::fitTextInPlace(text, strlen(text), headingChars);
         addSectionHeading(text, left, y, dim);
         y += sectionHeadingRowHeight(dim);
@@ -638,10 +639,10 @@ void DashHud::addStepHint(float centerX, float width, float y, const ScaledDimen
     }
     char line[96];
     if (bound) snprintf(line, sizeof(line), "%s / %s", names[0], names[1]);
-    else snprintf(line, sizeof(line), "Bind Dash + / Dash -");
-    const char* what = "to turn the pages";
+    else snprintf(line, sizeof(line), "%s", TR("Bind Dash + / Dash -"));
+    const char* what = TR("to turn the pages");
     char where[32];
-    snprintf(where, sizeof(where), "%s", bound ? "Rebind in Settings > Hotkeys" : "in Settings > Hotkeys");
+    snprintf(where, sizeof(where), "%s", bound ? TR("Rebind in Settings > Hotkeys") : TR("in Settings > Hotkeys"));
     // A long binding (modifiers on both) is cut to the card, never wrapped; so is
     // the small line, should a theme's padding leave the card narrower.
     const int fits = static_cast<int>(width / PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize));
@@ -665,8 +666,8 @@ void DashHud::addMessage(Startup message, float centerX, float width, float y, c
     if (message == Startup::BrokenInstall) {
         // Three rows, as the first-step hint: the plugin has no way on but a
         // reinstall. In block letters while there are no fonts to draw text with.
-        const char* rows[3] = { "Not installed correctly", SystemMessages::getInstance().installProblem(),
-                                "Reinstall it with mxbmrp3_data" };
+        const char* rows[3] = { TR("Not installed correctly"), SystemMessages::getInstance().installProblem(),
+                                TR("Reinstall it with mxbmrp3_data") };
         const float sizes[3] = { dim.fontSize, dim.fontSizeSmall, dim.fontSizeSmall };
         for (int i = 0; i < 3; ++i) {
             const float rowTop = y + dim.lineHeightNormal * static_cast<float>(i);
@@ -685,20 +686,20 @@ void DashHud::addMessage(Startup message, float centerX, float width, float y, c
     char line[64];
     switch (message) {
         case Startup::Update:
-            snprintf(name, sizeof(name), "UPDATE AVAILABLE");
-            snprintf(line, sizeof(line), "Click here to get %s",
+            snprintf(name, sizeof(name), "%s", TR("UPDATE AVAILABLE"));
+            snprintf(line, sizeof(line), TR("Click here to get %s"),
                      UpdateChecker::getInstance().getLatestVersion().c_str());
             break;
         case Startup::Updated:
             // One fixed line: the news itself is the "New" markers in the menu.
-            snprintf(name, sizeof(name), "UPDATED TO %s", SystemMessages::getInstance().updatedLine());
-            snprintf(line, sizeof(line), "Click here to see what's new");
+            snprintf(name, sizeof(name), TR("UPDATED TO %s"), SystemMessages::getInstance().updatedLine());
+            snprintf(line, sizeof(line), "%s", TR("Click here to see what's new"));
             break;
         case Startup::Welcome:
         case Startup::BrokenInstall:   // above
         case Startup::None:
         default:
-            snprintf(name, sizeof(name), "WELCOME");
+            snprintf(name, sizeof(name), "%s", TR("WELCOME"));
             // The key that opens the menu, as bound; the menu button when none is.
             HotkeyManager::getInstance().formatOpenSettingsHint(line, sizeof(line));
             break;
@@ -785,7 +786,7 @@ void DashHud::drawGapBar(float rowL, float rowR, float contentY, float pageCente
     }
     if (m_shownBar.noTrace) {
         // The Gap Bar's note, as that bar prints it: muted, small.
-        addString(GapBarHud::NO_TRACE_NOTE, pageCenterX, inkCenteredY(contentY, bandH, dim.fontSizeSmall),
+        addString(TR(GapBarHud::NO_TRACE_NOTE), pageCenterX, inkCenteredY(contentY, bandH, dim.fontSizeSmall),
                   Justify::CENTER, getFont(FontCategory::NORMAL), muted, dim.fontSizeSmall);
     } else {
         // The fill is live and the text may be frozen, so their signs can
@@ -799,8 +800,8 @@ void DashHud::drawGapBar(float rowL, float rowR, float contentY, float pageCente
     const float lapsY = contentY + bandH;
     const float charW = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
     const unsigned long labelColor = getColor(ColorSlot::TERTIARY);
-    addLabel("Last", rowL, lapsY, Justify::LEFT, labelColor, dim);
-    addLabel("Best", rowR - charW * static_cast<float>(LAPS_TIME_CHARS), lapsY, Justify::RIGHT,
+    addLabel(TR("Last"), rowL, lapsY, Justify::LEFT, labelColor, dim);
+    addLabel(TR("Best"), rowR - charW * static_cast<float>(LAPS_TIME_CHARS), lapsY, Justify::RIGHT,
              labelColor, dim);
     const struct { int ms; float x; int justify; LapText& cache; } laps[] = {
         { m_shownBar.lastMs, rowL + charW * static_cast<float>(IDEAL_LABEL_CHARS), Justify::LEFT, m_lastText },

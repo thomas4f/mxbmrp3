@@ -3,6 +3,7 @@
 // Manages per-event-type settings profiles (Practice, Race, Spectate)
 // ============================================================================
 #include "profile_manager.h"
+#include "i18n_mark.h"
 #include "../diagnostics/logger.h"
 
 ProfileManager& ProfileManager::getInstance() {
@@ -44,11 +45,11 @@ void ProfileManager::setAutoSwitchEnabled(bool enabled) {
 
 const char* ProfileManager::getProfileName(ProfileType profile) {
     switch (profile) {
-        case ProfileType::PRACTICE: return "Practice";
-        case ProfileType::QUALIFY:  return "Qualify";
-        case ProfileType::RACE:     return "Race";
-        case ProfileType::SPECTATE: return "Spectate";
-        default:                    return "Unknown";
+        case ProfileType::PRACTICE: return N_("Practice");
+        case ProfileType::QUALIFY:  return N_("Qualify");
+        case ProfileType::RACE:     return N_("Race");
+        case ProfileType::SPECTATE: return N_("Spectate");
+        default:                    return N_("Unknown");
     }
 }
 

@@ -3,7 +3,7 @@
 // Where a pack's .ini lives -- one rule for every pack type.
 //
 // THE RULE: <root>\<name>\<type>.ini -- theme.ini, gamepad.ini, pitboard.ini,
-// spotter.ini, gauge.ini. A FIXED name per type, never the pack's own name.
+// spotter.ini, gauge.ini, language.ini. A FIXED name per type, never the pack's own name.
 //
 // WHY A FIXED NAME. The obvious way to author a pack is to copy a shipped one
 // and rename the folder. An ini named after the pack would then carry the OLD
@@ -59,6 +59,7 @@ constexpr const char* kGamepad  = "gamepad";
 constexpr const char* kPitboard = "pitboard";
 constexpr const char* kSpotter  = "spotter";
 constexpr const char* kGauges   = "gauge";
+constexpr const char* kLanguage = "language";
 
 // The section EVERY pack type opens with -- `[pack]`, carrying `name` and `base`.
 //

@@ -4,7 +4,11 @@
 // ============================================================================
 #pragma once
 
+#include "i18n.h"
+
+#include <cstdarg>
 #include <cstdint>
+#include <cstdio>
 #include <chrono>
 
 // Types of events that can be logged.
@@ -115,7 +119,8 @@ struct EventLogEntry {
     int sessionTimeMs;                  // Session time when event occurred (milliseconds)
     std::chrono::steady_clock::time_point steadyTime;  // Monotonic time for auto-hide timing
     std::chrono::system_clock::time_point systemTime;  // Wall clock time for display formatting
-    char message[64];                   // Event text (e.g., "#42 set fastest lap")
+    char message[64];                   // Event text (e.g., "#42 set fastest lap"), English: the web overlay's
+    char shown[64];                     // the same in the language shown: what the HUDs draw
     char detail[20];                    // Optional detail in PRIMARY color (e.g., "1:48.231", "03:00 + 2L")
 
     // Optional icon-color override: a ColorSlot value (stored as int) that replaces the
@@ -138,7 +143,35 @@ struct EventLogEntry {
     EventLogEntry()
         : type(EventLogType::SessionStarted), sessionTimeMs(0) {
         message[0] = '\0';
+        shown[0] = '\0';
         detail[0] = '\0';
+    }
+};
+
+// An event's text twice: English for the web overlay (which presents in its own
+// language) and the language shown, for the HUDs. A plain string converts, its
+// translation looked up whole (mark the literal N_()); format() takes an N_()
+// marked template and fills both from it. Events are rare: off every hot path.
+struct EventText {
+    char english[64] = {};
+    char shown[64] = {};
+    EventText() = default;
+    EventText(const char* text) {   // NOLINT(google-explicit-constructor): call sites pass literals
+        snprintf(english, sizeof(english), "%s", text ? text : "");
+        snprintf(shown, sizeof(shown), "%s", text ? I18n::tr(text) : "");
+    }
+#if defined(__GNUC__)
+    __attribute__((format(printf, 2, 3)))
+#endif
+    void format(const char* englishFormat, ...) {
+        va_list args;
+        va_start(args, englishFormat);
+        va_list again;
+        va_copy(again, args);
+        vsnprintf(english, sizeof(english), englishFormat, args);
+        vsnprintf(shown, sizeof(shown), I18n::tr(englishFormat), again);
+        va_end(again);
+        va_end(args);
     }
 };
 

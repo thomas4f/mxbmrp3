@@ -3,6 +3,7 @@
 // The Now Playing rows - see now_playing_card.h.
 // ============================================================================
 #include "now_playing_card.h"
+#include "../core/i18n.h"
 
 #include <algorithm>
 #include <cmath>
@@ -86,12 +87,12 @@ void NowPlayingCard::layout(float rowL, float rowR, float contentY, float lh, fl
         // player, or not polled yet.
         const float centerX = (rowL + rowR) / 2.0f;
         const bool off = MediaManager::isSupported() && !media.isEnabled();
-        const char* line = off ? "Now playing is off"
+        const char* line = off ? TR("Now playing is off")
                          : !media.isEnabled() || np.state == MediaManager::State::UNAVAILABLE
                              ? Placeholders::NOT_AVAILABLE
-                         : np.state == MediaManager::State::NO_PLAYER ? "No player" : Placeholders::GENERIC;
+                         : np.state == MediaManager::State::NO_PLAYER ? TR("No player") : Placeholders::GENERIC;
         addText(line, centerX, contentY + lh * (off ? 0.5f : 1.0f), true, s.muted);
-        if (off) addText("Settings > General", centerX, contentY + lh * 1.5f, true, s.tertiary);
+        if (off) addText(TR("Settings > General"), centerX, contentY + lh * 1.5f, true, s.tertiary);
         return;
     }
 

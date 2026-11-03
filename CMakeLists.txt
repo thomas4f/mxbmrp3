@@ -143,6 +143,7 @@ mxb_gate(visibility-gates fast 120 "-" "./tests/integration/check_visibility_gat
 mxb_gate(mt-flags fast 120 "-" "./tests/integration/check_mt_flags.sh")
 mxb_gate(thread-safety fast 120 "-" "./tests/integration/check_thread_safety.sh")
 mxb_gate(hud-raw-cache fast 120 "-" "./tests/integration/check_hud_raw_cache.sh")
+mxb_gate(name-literals fast 120 "-" "./tests/integration/check_name_literals.sh")
 mxb_gate(change-consumers fast 120 "-" "./tests/integration/check_change_consumers.sh")
 mxb_gate(test-hook-placement fast 120 "-" "./tests/integration/check_test_hook_placement.sh")
 mxb_gate(thread-join fast 120 "-" "./tests/integration/check_thread_join.sh")
@@ -159,6 +160,7 @@ mxb_gate(test-headers    fast 120 "-" "./tests/integration/check_test_headers.sh
 # The lint's own must-catch/must-exempt cases. Separate gate so a matcher
 # regression names the broken case instead of just going quiet on the tree.
 mxb_gate(hud-raw-cache-selftest fast 120 "-" "./tests/integration/check_hud_raw_cache.sh --self-test")
+mxb_gate(name-literals-selftest fast 120 "-" "./tests/integration/check_name_literals.sh --self-test")
 mxb_gate(change-consumers-selftest fast 120 "-" "./tests/integration/check_change_consumers.sh --self-test")
 mxb_gate(test-hook-placement-selftest fast 120 "-" "./tests/integration/check_test_hook_placement.sh --self-test")
 mxb_gate(thread-join-selftest fast 120 "-" "./tests/integration/check_thread_join.sh --self-test")
@@ -173,6 +175,9 @@ mxb_gate(docs fast 120 "python3" "python3 tools/check_docs.py")
 mxb_gate(pages-render fast 120 "ruby" "./tests/integration/check_pages_render.sh")
 mxb_gate(python-lint fast 120 "ruff" "ruff check .")
 mxb_gate(vendored-manifest fast 120 "python3" "python3 tools/check_vendored_manifest.py")
+# The translation template is current with every TR() in the source, and every
+# shipped language pack passes msgfmt --check (core/i18n.h, tools/i18n/pot.sh).
+mxb_gate(i18n-template fast 120 "xgettext msgfmt" "./tools/i18n/pot.sh")
 # Guarded with the subdirectory that defines them: $<TARGET_FILE:unit_tests> is
 # a generate-time error when the target does not exist, so an MSVC configure
 # would fail outright rather than just skipping these.

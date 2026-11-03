@@ -4,6 +4,7 @@
 // Shows centered notices above the timing HUD area
 // ============================================================================
 #include "notices_hud.h"
+#include "../core/i18n.h"
 #include "notice_tracker.h"
 #include "rider_flag_icons.h"
 
@@ -178,7 +179,7 @@ void NoticesHud::rebuildRenderData() {
     PanelWant want;
     wantCenterStackWidth(want, dim);   // stack width as the minimum, nothing competing
     want.sectionH = { bigValueRowHeight(dim) };
-    want.captionW = planTitleWidth(dim, "Notices", TitleTier::Large);
+    want.captionW = planTitleWidth(dim, TR("Notices"), TitleTier::Large);
     want.tier = TitleTier::Large;
     // The message slab IS this panel: unthemed, it takes the cell of panel padding
     // rather than floating inside it. Same outer rect either way; with a theme on,
@@ -198,7 +199,7 @@ void NoticesHud::rebuildRenderData() {
     // while the three had different defaults, and wrong the moment they share one.
     const float panelY = snapEdgeY(0.0f);
     addPlanBackground(plan, panelX, panelY);
-    addPlanTitle(plan, "Notices",
+    addPlanTitle(plan, TR("Notices"),
                  this->getColor(ColorSlot::PRIMARY));
 
     // The SLAB (the card's drawn box; = the row unthemed), via the shared
@@ -224,7 +225,7 @@ void NoticesHud::rebuildRenderData() {
     slabColors(notice.kind, m_fBackgroundOpacity, fill, ink);
     if (glows(notice.kind)) addGlow(slabX, slabY, slabW, slabH, slabH * GLOW_SPREAD, fill, glowOpacity(notice.kind));
     addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(fill, m_fBackgroundOpacity));
-    addString(notice.kind == Kind::None ? "PREVIEW" : NoticeTracker::caption(notice, slabW, dim.fontSizeLarge, this->getFont(FontCategory::TITLE)),
+    addString(notice.kind == Kind::None ? TR("PREVIEW") : NoticeTracker::caption(notice, slabW, dim.fontSizeLarge, this->getFont(FontCategory::TITLE)),
               noticeCenterX, noticeY, Justify::CENTER,
               this->getFont(FontCategory::TITLE), ink, dim.fontSizeLarge);
 

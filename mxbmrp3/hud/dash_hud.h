@@ -61,6 +61,7 @@
 #include "rider_flag_icons.h"
 #include "../core/system_messages.h"
 #include "../game/unified_types.h"
+#include "../core/i18n.h"
 
 class DashHud : public BaseHud {
 public:
@@ -280,7 +281,10 @@ private:
     struct SessionClock {
         int seconds = INT_MIN;
         int lapsToGo = -1;
-        bool operator!=(const SessionClock& o) const { return seconds != o.seconds || lapsToGo != o.lapsToGo; }
+        int lapsAfterClock = 0;   // a time+laps race's added laps ("12:34 + 2 laps")
+        bool operator!=(const SessionClock& o) const {
+            return seconds != o.seconds || lapsToGo != o.lapsToGo || lapsAfterClock != o.lapsAfterClock;
+        }
     };
     static SessionClock readSessionClock();
 

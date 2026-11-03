@@ -288,9 +288,10 @@ game API is an integration test instead. The authoritative TU list is
 - `test_cursor_idle.cpp` - `core/cursor_idle.h`
 - `test_text_edit.cpp` - `core/text_edit.h`
 - `test_settings_find.cpp` - `hud/settings/settings_find.h`
+- `test_i18n.cpp` - `core/i18n.h`: .po, TR(), pseudo-locale, shipped packs
 - `test_hotkey_names.cpp` / `test_slider_control.cpp` - hotkey names fit; slider mapping
 - `test_system_messages.cpp` - `core/system_messages.h`: the toast queue and which startup message is owed
-- `test_achievements.cpp` - `core/achievements.h` + `core/exploration_signals.h`: the catalogue's own invariants (listed in its header), the removal rule (every metric and every signal feeds exactly one row, every disabled id is a real row), tier stepping, one-shot tags, the step-relative progress bar, the km/h/s/count formatting, and `docs/achievements.md`, which it GENERATES from the table and diffs against the committed copy
+- `test_achievements.cpp` - `core/achievements.h` + `core/exploration_signals.h`: the catalogue's invariants and removal rule (both listed in its header), tiers, tags, progress, formatting, and `docs/achievements.md`, which it GENERATES from the table and diffs against the committed copy
 - `test_analytics_remote_config.cpp` - the remote sampling cost lever (`parseFullSample`/`shouldSendFull`): fails open to full, deterministic 0.0/1.0 endpoints
 - `test_analytics_endpoint.cpp` - App-Key → Aptabase ingest-region routing (unknown/self-hosted → "" = no send)
 - `test_analytics_redact.cpp` - the install id is stripped from a logged request body.
@@ -502,7 +503,7 @@ without a row here, so a new test can't land invisibly:
 | `drop_shadow_test.cpp` | the **settings panel emits no shadow strings**, as behaviour, not a stored preference. |
 | `director_test.cpp` | auto-director **battle detection** splits two close groups at the gap break; director advisory inert by default |
 | `director_lock_test.cpp` | auto-director **rider lock (hold)** release rules: the lock survives ordinary standings churn but is released when a new session (session-generation bump) resets the field |
-| `director_broadcast_test.cpp` | auto-director **broadcast measurement**: replays a real tape with an injected sim-clock (from tape timestamps) so the wall-clock shot pacing plays out, then parses the director's own cut log to report cut count/rate, shot-length spread, shot-type + camera mix, and per-rider screen time - asserting it lands in a plausible broadcast band and rotates across the field (not glued to the leader). |
+| `director_broadcast_test.cpp` | auto-director **broadcast measurement**: replays a real tape with an injected sim-clock so shot pacing plays out, then parses the director's cut log (cut rate, shot-length spread, shot-type + camera mix, per-rider screen time) - asserting a plausible broadcast band that rotates across the field. |
 | `director_home_test.cpp` | **"Max shot = Off"**, the forced-rotation switch: with it off the director never cuts on a timer - it holds the broadcaster's own rider through a quiet race, still lets a story take the camera, and returns *home* when the story ends. |
 | `director_events_test.cpp` | director **transparency events**: shot decisions and state changes reach the event log as Director-typed entries, state transitions carry the director button's state colors (cuts keep the per-type default), and they're emitted **unconditionally** - the in-game toggle and the overlay filter at *display* time (raw-data contract). |
 | `event_log_pb_test.cpp` | player **PB log rows**: one per lap; none on a first, rival or invalid lap |
@@ -519,6 +520,8 @@ without a row here, so a new test can't land invisibly:
 | `messages_test.cpp` | **System messages**: hotkey toasts, the hide-all card, startup messages on the Dash, Reset's Confirm |
 | `tooltip_coverage_test.cpp` | every settings row on every tab has a **tooltip with text** |
 | `settings_find_test.cpp` | settings **Find**: the index, every page fits, a result opens its row |
+| `i18n_test.cpp` | a language pack from Documents translates the drawn rows |
+| `i18n_limits_test.cpp` | each settings label's **room**, measured; Pseudo fits every tab |
 | `ui_icons_off_test.cpp` | **UI icons off** draws text |
 | `settings_heavy_steps_test.cpp` | **heavy settings steps run once**: no held repeat; Spotter lists read per open |
 | `hidden_input_test.cpp` | A HUD the frame is not drawing **takes no input**: the hide-all hotkey and the Widgets toggle hide at draw time, so a hidden HUD could still be right-dragged and its click targets fired. |

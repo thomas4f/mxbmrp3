@@ -6,6 +6,7 @@
 #include "plugin_constants.h"
 #include "plugin_data.h"
 #include "layout_config.h"
+#include "i18n.h"
 #include "../game/game_config.h"
 #include <climits>
 #include <cstdio>
@@ -14,36 +15,46 @@
 #include <unordered_map>
 
 // One body for both forms, so they can only differ in how the laps read.
-static void formatSessionFormatImpl(int sessionLengthMs, int numLaps, bool words,
+static void formatSessionFormatImpl(int sessionLengthMs, int numLaps, bool words, bool shown,
                                     char* buffer, size_t bufferSize) {
     if (bufferSize < 1) return;
     const bool hasTime = sessionLengthMs > 0;
     const bool hasLaps = numLaps > 0;
-    char laps[16] = "";
-    if (hasLaps) {
-        if (words) snprintf(laps, sizeof(laps), "%d %s", numLaps, numLaps == 1 ? "lap" : "laps");
-        else       snprintf(laps, sizeof(laps), "%dL", numLaps);
+    // "8:00" (no leading zero on minutes), matching the established Discord/
+    // Steam style - not formatTimeMinutesSeconds, which zero-pads to "08:00".
+    char time[16] = "";
+    if (hasTime) snprintf(time, sizeof(time), "%d:%02d", sessionLengthMs / 60000, (sessionLengthMs / 1000) % 60);
+    if (!hasLaps) {
+        snprintf(buffer, bufferSize, "%s", time);
+        return;
     }
+    if (!words) {
+        if (hasTime) snprintf(buffer, bufferSize, "%s + %dL", time, numLaps);
+        else         snprintf(buffer, bufferSize, "%dL", numLaps);
+        return;
+    }
+    // Whole phrases, so a language can reorder them. The time+laps ones are the
+    // session clock's ("12:34 + 2 laps"), so on a HUD the format and the clock
+    // read alike and share one translation.
+    const bool one = numLaps == 1;
     if (hasTime) {
-        // "8:00" (no leading zero on minutes), matching the established Discord/
-        // Steam style - not formatTimeMinutesSeconds, which zero-pads to "08:00".
-        const int mins = sessionLengthMs / 60000;
-        const int secs = (sessionLengthMs / 1000) % 60;
-        if (hasLaps) snprintf(buffer, bufferSize, "%d:%02d + %s", mins, secs, laps);
-        else         snprintf(buffer, bufferSize, "%d:%02d", mins, secs);
-    } else if (hasLaps) {
-        snprintf(buffer, bufferSize, "%s", laps);
+        const char* fmt = one ? (shown ? TR("%s + %d lap") : "%s + %d lap")
+                              : (shown ? TR("%s + %d laps") : "%s + %d laps");
+        snprintf(buffer, bufferSize, fmt, time, numLaps);
     } else {
-        buffer[0] = '\0';
+        const char* fmt = one ? (shown ? TR("%d lap") : "%d lap")
+                              : (shown ? TR("%d laps") : "%d laps");
+        snprintf(buffer, bufferSize, fmt, numLaps);
     }
 }
 
 void PluginUtils::formatSessionFormat(int sessionLengthMs, int numLaps, char* buffer, size_t bufferSize) {
-    formatSessionFormatImpl(sessionLengthMs, numLaps, false, buffer, bufferSize);
+    formatSessionFormatImpl(sessionLengthMs, numLaps, false, false, buffer, bufferSize);
 }
 
-void PluginUtils::formatSessionFormatWords(int sessionLengthMs, int numLaps, char* buffer, size_t bufferSize) {
-    formatSessionFormatImpl(sessionLengthMs, numLaps, true, buffer, bufferSize);
+void PluginUtils::formatSessionFormatWords(int sessionLengthMs, int numLaps, char* buffer, size_t bufferSize,
+                                           bool shown) {
+    formatSessionFormatImpl(sessionLengthMs, numLaps, true, shown, buffer, bufferSize);
 }
 
 void PluginUtils::formatTimeMinutesSeconds(int milliseconds, char* buffer, size_t bufferSize) {
@@ -67,22 +78,35 @@ void PluginUtils::formatTimeMinutesSeconds(int milliseconds, char* buffer, size_
     snprintf(buffer, bufferSize, "%02d:%02d", minutes, seconds);
 }
 
-void PluginUtils::formatSessionClock(int lapsToGo, int sessionTimeMs, char* buffer, size_t bufferSize) {
+void PluginUtils::formatSessionClock(int lapsToGo, int sessionTimeMs, int lapsAfterClock,
+                                     char* buffer, size_t bufferSize, bool shown) {
     if (bufferSize < 1) return;
-    // Not in overtime → the normal MM:SS countdown.
+    // Not in overtime → the normal MM:SS countdown, and in a time+laps race the
+    // laps that follow it. That includes the lap the leader finishes after the
+    // clock runs out, which reads "00:00 + 2 laps" until the bonus laps begin.
     if (lapsToGo < 0) {
-        formatTimeMinutesSeconds(sessionTimeMs, buffer, bufferSize);
+        char clock[16];
+        formatTimeMinutesSeconds(sessionTimeMs, clock, sizeof(clock));
+        if (lapsAfterClock > 0) {
+            // Whole phrases, not a word slotted in, so a language can reorder
+            // them; the web JSON and Steam status keep English like the labels below.
+            const char* fmt = lapsAfterClock == 1 ? (shown ? TR("%s + %d lap") : "%s + %d lap")
+                                                  : (shown ? TR("%s + %d laps") : "%s + %d laps");
+            snprintf(buffer, bufferSize, fmt, clock, lapsAfterClock);
+        } else {
+            strcpy_s(buffer, bufferSize, clock);
+        }
         return;
     }
     // Overtime: leader-relative final-laps label (shared by the in-game session
     // clock and the web overlay so they always read identically).
     namespace Str = PluginConstants::DisplayStrings::SessionClock;
     if (lapsToGo == 0) {
-        strcpy_s(buffer, bufferSize, Str::CHECKERED);
+        snprintf(buffer, bufferSize, "%s", shown ? I18n::trCached(Str::CHECKERED) : Str::CHECKERED);
     } else if (lapsToGo == 1) {
-        strcpy_s(buffer, bufferSize, Str::FINAL_LAP);
+        snprintf(buffer, bufferSize, "%s", shown ? I18n::trCached(Str::FINAL_LAP) : Str::FINAL_LAP);
     } else {
-        snprintf(buffer, bufferSize, "%d TO GO", lapsToGo);
+        snprintf(buffer, bufferSize, shown ? TR("%d TO GO") : "%d TO GO", lapsToGo);
     }
 }
 
@@ -253,6 +277,11 @@ const char* PluginUtils::serverLabel(int serverType, const char* serverName, int
     // server name that's the most we can say ("Online"); a lone session stays
     // "Unknown" until they join a race.
     return (riderCount > 1) ? SL::ONLINE : SL::UNKNOWN;
+}
+
+const char* PluginUtils::shownServerLabel(int serverType, const char* serverName, int riderCount) {
+    const char* label = serverLabel(serverType, serverName, riderCount);
+    return label == serverName ? label : I18n::trCached(label);
 }
 
 const char* PluginUtils::getSessionString(int eventType, int session) {

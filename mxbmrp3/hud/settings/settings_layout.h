@@ -11,6 +11,7 @@
 #include "../../core/plugin_utils.h"
 #include "../../core/plugin_constants.h"
 #include "../../core/pb_gap_tracker.h"
+#include "../../core/i18n.h"
 #include <string>
 
 // Forward declarations

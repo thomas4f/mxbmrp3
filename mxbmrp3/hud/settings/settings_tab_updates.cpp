@@ -109,12 +109,12 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
     constexpr int VERSION_COLUMN = 11;
     constexpr int STEP_COLUMN = 10;
 
-    ctx.addSectionHeading("Settings");
+    ctx.addSectionHeading(TR("Settings"));
 
     // Debug mode toggle (for testing updates) - developer mode only
     if (SettingsManager::getInstance().isDeveloperMode()) {
         bool isDebugMode = UpdateChecker::getInstance().isDebugMode();
-        ctx.addToggleControl("Debug mode (test)", isDebugMode,
+        ctx.addToggleControl(TR("Debug mode (test)"), isDebugMode,
                             SettingsHud::ClickRegion::UPDATE_DEBUG_MODE, nullptr,
                             nullptr, 0, true, "updates.debug_mode");
     }
@@ -122,7 +122,7 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
     // Update channel selector (Stable / Prerelease)
     {
         bool isPrerelease = UpdateChecker::getInstance().isPrereleaseChannel();
-        const char* channelText = isPrerelease ? "Prerelease" : "Stable";
+        const char* channelText = isPrerelease ? TR("Prerelease") : TR("Stable");
         // Stable / Prerelease; a switch re-checks on the new channel.
         SettingsHud* settings = ctx.parent;
         SettingsHud::CycleControl channel;
@@ -140,13 +140,13 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
             }
         };
         channel.repeat = false;   // a step starts an update check
-        ctx.addCycleControl("Update channel", channelText, channel,
+        ctx.addCycleControl(TR("Update channel"), channelText, channel,
                             nullptr, true, false, "updates.channel");
     }
 
     // Check for Updates toggle using < > cycle control
     bool updatesEnabled = UpdateChecker::getInstance().isEnabled();
-    ctx.addToggleControl("Check for updates", updatesEnabled,
+    ctx.addToggleControl(TR("Check for updates"), updatesEnabled,
                         SettingsHud::ClickRegion::UPDATE_CHECK_TOGGLE, nullptr,
                         nullptr, 0, true, "updates.check_enabled");
 
@@ -158,7 +158,7 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
         bool isChecking = checkerForButton.isChecking();
         bool isOnCooldown = checkerForButton.isOnCooldown() && !isChecking;
         bool isDisabled = isChecking || isOnCooldown;  // Disabled while checking or on cooldown
-        const char* buttonText = isChecking ? "   ...   " : "Check Now";   // both 9 chars (button is 11 wide -> 1ch padding)
+        const char* buttonText = isChecking ? "   ...   " : TR("Check Now");   // both 9 chars (button is 11 wide -> 1ch padding)
         // POSITIVE: this is the confirming action of the tab -- fetch and install.
         // Paired with the red on Reset in the General tab.
         ctx.addActionButton(buttonText, 11, SettingsHud::ClickRegion::UPDATE_CHECK_NOW,
@@ -166,13 +166,13 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
                             "updates.check_now");
     }
 
-    ctx.addSectionHeading("Status");
+    ctx.addSectionHeading(TR("Status"));
 
     // Current version. VERSION_COLUMN is "Available: " -- the longer of the two
     // labels -- so the pair of version rows aligns.
     char currentVersionStr[32];
     snprintf(currentVersionStr, sizeof(currentVersionStr), "v%s", PLUGIN_VERSION);
-    ctx.addLabelValueRow("Current:", colorConfig.getSecondary(),
+    ctx.addLabelValueRow(TR("Current:"), colorConfig.getSecondary(),
                          currentVersionStr, colorConfig.getSecondary(), VERSION_COLUMN);
 
     // Show status based on UpdateChecker and UpdateDownloader states
@@ -206,7 +206,7 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
         unsigned long versionColor = debugMode ? colorConfig.getWarning()
             : isPrerelease ? colorConfig.getAccent()
             : colorConfig.getPositive();
-        ctx.addLabelValueRow("Available:", colorConfig.getSecondary(),
+        ctx.addLabelValueRow(TR("Available:"), colorConfig.getSecondary(),
                              versionPart, versionColor, VERSION_COLUMN);
 
         // Show test directory warning in debug mode
@@ -217,7 +217,7 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
 
     if (isDownloading) {
         // Show step-by-step progress
-        ctx.addSectionHeading("Progress");
+        ctx.addSectionHeading(TR("Progress"));
         auto steps = downloader.getSteps();
         int stepIndex = 0;
         for (const auto& step : steps) {
@@ -228,7 +228,7 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
 
             switch (step.status) {
                 case UpdateDownloader::StepStatus::COMPLETE:
-                    indicator = "OK";
+                    indicator = TR("OK");
                     indicatorColor = colorConfig.getPositive();
                     break;
                 case UpdateDownloader::StepStatus::IN_PROGRESS:
@@ -254,16 +254,16 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
             unsigned long labelColor = (step.status == UpdateDownloader::StepStatus::IN_PROGRESS)
                 ? colorConfig.getAccent()
                 : colorConfig.getSecondary();
-            ctx.addLabelValueRow(step.label, labelColor, indicator, indicatorColor, STEP_COLUMN);
+            ctx.addLabelValueRow(I18n::tr(step.label), labelColor, indicator, indicatorColor, STEP_COLUMN);
             stepIndex++;
         }
 
     } else if (isReady) {
         // Show completed steps
-        ctx.addSectionHeading("Progress");
+        ctx.addSectionHeading(TR("Progress"));
         auto steps = downloader.getSteps();
         for (const auto& step : steps) {
-            const char* indicator = "OK";
+            const char* indicator = TR("OK");
             unsigned long indicatorColor = colorConfig.getPositive();
 
             if (step.status == UpdateDownloader::StepStatus::SKIPPED) {
@@ -271,25 +271,27 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
                 indicatorColor = colorConfig.getMuted();
             }
 
-            ctx.addLabelValueRow(step.label, colorConfig.getSecondary(),
+            ctx.addLabelValueRow(I18n::tr(step.label), colorConfig.getSecondary(),
                                  indicator, indicatorColor, STEP_COLUMN);
         }
 
         ctx.addSpacing();
 
         // Update installed message
-        ctx.addTextRow("Update installed!", colorConfig.getPositive());
-        ctx.addTextRow("Restart " GAME_NAME " to apply.", colorConfig.getSecondary());
+        ctx.addTextRow(TR("Update installed!"), colorConfig.getPositive());
+        char restartText[96];
+        snprintf(restartText, sizeof(restartText), TR("Restart %s to apply."), GAME_NAME);
+        ctx.addTextRow(restartText, colorConfig.getSecondary());
 
     } else if (downloaderState == UpdateDownloader::State::FAILED) {
         // Download failed
         ctx.addSpacing();
-        std::string errorText = "Error: " + downloader.getErrorMessage();
+        std::string errorText = TR("Error: ") + std::string(I18n::tr(downloader.getErrorMessage().c_str()));
         ctx.addTextRow(errorText.c_str(), colorConfig.getNegative());
         ctx.addSpacing();
 
         // Retry button - centered
-        ctx.addActionButton("Retry", 7, SettingsHud::ClickRegion::UPDATE_SKIP_VERSION,
+        ctx.addActionButton(TR("Retry"), 7, SettingsHud::ClickRegion::UPDATE_SKIP_VERSION,
                             SettingsLayoutContext::ButtonRole::Accent, true, "updates.retry");
 
     } else if (isUpdateAvailable) {
@@ -299,7 +301,7 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
         // Release notes (if available)
         std::string releaseNotes = checker.getReleaseNotes();
         if (!releaseNotes.empty()) {
-            ctx.addSectionHeading("Release Notes");
+            ctx.addSectionHeading(TR("Release Notes"));
 
             // Simple line-by-line display (first few lines)
             std::istringstream stream(releaseNotes);
@@ -330,8 +332,8 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
             // its own row -- inline after the sentence, its x would be a monospace
             // width that a proportional font draws narrower or wider.
             ctx.addSpacing();
-            ctx.addTextRow("Full release notes are on GitHub.", colorConfig.getSecondary());
-            ctx.addLinkCell(ctx.labelX, "GitHub Releases",
+            ctx.addTextRow(TR("Full release notes are on GitHub."), colorConfig.getSecondary());
+            ctx.addLinkCell(ctx.labelX, TR("GitHub Releases"),
                             SettingsHud::ClickRegion::OPEN_LINK_RELEASES, 1.0f, true,
                             "updates.release_notes");
             ctx.nextLine();
@@ -340,24 +342,24 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
         }
 
         // Install button - centered
-        ctx.addActionButton("Install Update", 16, SettingsHud::ClickRegion::UPDATE_INSTALL,
+        ctx.addActionButton(TR("Install Update"), 16, SettingsHud::ClickRegion::UPDATE_INSTALL,
                             SettingsLayoutContext::ButtonRole::Accent, true, "updates.install");
 
     } else if (checkerStatus == UpdateChecker::Status::CHECKING) {
-        ctx.addTextRow("Checking for updates...", colorConfig.getSecondary());
+        ctx.addTextRow(TR("Checking for updates..."), colorConfig.getSecondary());
 
     } else if (checkerStatus == UpdateChecker::Status::UP_TO_DATE) {
-        ctx.addTextRow("You have the latest version.", colorConfig.getSecondary());
+        ctx.addTextRow(TR("You have the latest version."), colorConfig.getSecondary());
 
     } else if (checkerStatus == UpdateChecker::Status::CHECK_FAILED) {
-        ctx.addTextRow("Could not check for updates.", colorConfig.getMuted());
+        ctx.addTextRow(TR("Could not check for updates."), colorConfig.getMuted());
 
     } else {
         // IDLE - not checked yet. No leading spacing: the status line sits
         // directly under "Current:" to match the CHECKING / UP_TO_DATE /
         // CHECK_FAILED states (they render with no gap too).
-        ctx.addTextRow(checker.isEnabled() ? "Update check pending..."
-                                           : "Enable auto-check or click Check Now.",
+        ctx.addTextRow(checker.isEnabled() ? TR("Update check pending...")
+                                           : TR("Enable auto-check or click Check Now."),
                        colorConfig.getMuted());
     }
 

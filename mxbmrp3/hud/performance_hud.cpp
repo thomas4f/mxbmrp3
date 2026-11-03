@@ -3,6 +3,7 @@
 // Displays performance metrics including FPS and render timing diagnostics
 // ============================================================================
 #include "performance_hud.h"
+#include "../core/i18n.h"
 #include "default_slots.h"
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
@@ -230,7 +231,7 @@ void PerformanceHud::rebuildRenderData() {
     // engine's rule, replacing the beginContentSection/sectionGapY dance.
     float subHeadH = dims.lineHeightNormal;
     const char* title = PluginThread::getInstance().enabled()
-        ? "Performance (threaded)" : "Performance";
+        ? TR("Performance (threaded)") : TR("Performance");
     PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(widthChars, dims.fontSize);
     if (hasFps) want.sectionH.push_back(subHeadH + fpsSectionH);
@@ -279,7 +280,7 @@ void PerformanceHud::rebuildRenderData() {
     // FPS Section: its OWN card, opened at the heading so the card contains the
     // heading it belongs to, then graph on left + legend on right.
     if (hasFps) {
-        addSectionHeading("Frame Rate", contentStartX, currentY, dims);
+        addSectionHeading(TR("Frame Rate"), contentStartX, currentY, dims);
         currentY += subHeadH;
     }
     float legendY = currentY;  // Track legend Y position separately
@@ -339,28 +340,28 @@ void PerformanceHud::rebuildRenderData() {
             float valueX = legendStartX + PluginUtils::calculateMonospaceTextWidth(4, dims.fontSize);  // After "XXX "
 
             // FPS current value
-            addLabel("FPS", legendStartX, legendY, Justify::LEFT, colLabel, dims);
+            addLabel(TR("FPS"), legendStartX, legendY, Justify::LEFT, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%4d", (int)metrics.currentFps);
             addString(buffer, valueX, legendY, Justify::LEFT,
                 fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Max
-            addLabel("Max", legendStartX, legendY, Justify::LEFT, colLabel, dims);
+            addLabel(TR("Max"), legendStartX, legendY, Justify::LEFT, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%4d", (int)m_fpsMax);
             addString(buffer, valueX, legendY, Justify::LEFT,
                 fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Avg
-            addLabel("Avg", legendStartX, legendY, Justify::LEFT, colLabel, dims);
+            addLabel(TR("Avg"), legendStartX, legendY, Justify::LEFT, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%4d", (int)m_fpsAvg);
             addString(buffer, valueX, legendY, Justify::LEFT,
                 fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Min
-            addLabel("Min", legendStartX, legendY, Justify::LEFT, colLabel, dims);
+            addLabel(TR("Min"), legendStartX, legendY, Justify::LEFT, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%4d", (int)m_fpsMin);
             addString(buffer, valueX, legendY, Justify::LEFT,
                 fontValue, colValue, dims.fontSize);
@@ -377,7 +378,7 @@ void PerformanceHud::rebuildRenderData() {
     // plan's second section (or the first when FPS is off); the seam is the plan's.
     if (hasCpu) {
         currentY = plan.contentY(hasFps ? 1 : 0);
-        addSectionHeading("Plugin Time", contentStartX, currentY, dims);
+        addSectionHeading(TR("Plugin Time"), contentStartX, currentY, dims);
         currentY += subHeadH;
         legendY = currentY;
     } else {
@@ -444,28 +445,28 @@ void PerformanceHud::rebuildRenderData() {
             // heading above already says WHAT is measured, so the four rows can
             // all be statistics (Now/Max/Avg/Min) instead of one metric name
             // followed by three statistics.
-            addLabel("Now", legendStartX, legendY, Justify::LEFT, colLabel, dims);
+            addLabel(TR("Now"), legendStartX, legendY, Justify::LEFT, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%5.2f", metrics.pluginTimeMs);
             addString(buffer, valueX, legendY, Justify::LEFT,
                 fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Max
-            addLabel("Max", legendStartX, legendY, Justify::LEFT, colLabel, dims);
+            addLabel(TR("Max"), legendStartX, legendY, Justify::LEFT, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%5.2f", m_pluginTimeMsMax);
             addString(buffer, valueX, legendY, Justify::LEFT,
                 fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Avg
-            addLabel("Avg", legendStartX, legendY, Justify::LEFT, colLabel, dims);
+            addLabel(TR("Avg"), legendStartX, legendY, Justify::LEFT, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%5.2f", m_pluginTimeMsAvg);
             addString(buffer, valueX, legendY, Justify::LEFT,
                 fontValue, colValue, dims.fontSize);
             legendY += dims.lineHeightNormal;
 
             // Min
-            addLabel("Min", legendStartX, legendY, Justify::LEFT, colLabel, dims);
+            addLabel(TR("Min"), legendStartX, legendY, Justify::LEFT, colLabel, dims);
             snprintf(buffer, sizeof(buffer), "%5.2f", m_pluginTimeMsMin);
             addString(buffer, valueX, legendY, Justify::LEFT,
                 fontValue, colValue, dims.fontSize);

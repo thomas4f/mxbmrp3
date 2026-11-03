@@ -157,6 +157,12 @@ struct SessionData {
         sessionTimeExpired = false;
     }
 
+    // The laps run after a time+laps race's clock expires; 0 for any other format.
+    // The session clock states them next to the countdown ("12:34 + 2 laps").
+    int lapsAfterClock() const {
+        return (sessionLength > 0 && sessionNumLaps > 0) ? sessionNumLaps : 0;
+    }
+
     // Race finish detection helpers
     // numLaps = completed laps (0 = on first lap, 5 = completed 5 laps)
     // numLapsAtLeaderFinish = rider's numLaps when leader finished (-1 if leader hasn't finished)

@@ -8,6 +8,7 @@
 // are unchanged. The loader and its migrations stay in settings_manager.cpp.
 // ============================================================================
 #include "settings_manager.h"
+#include "i18n.h"
 #include "settings_manager_internal.h"
 #include "settings_keys.h"
 #include "settings_serde.h"
@@ -197,8 +198,8 @@ void SettingsManager::announceSaveResult(bool ok) {
     if (m_saveFailureAnnounced) return;
     m_saveFailureAnnounced = true;
     SystemMessages::Toast t;
-    snprintf(t.title, sizeof(t.title), "Settings not saved");
-    snprintf(t.detail, sizeof(t.detail), "Could not write %s. Is it read-only?",
+    snprintf(t.title, sizeof(t.title), "%s", TR("Settings not saved"));
+    snprintf(t.detail, sizeof(t.detail), TR("Could not write %s. Is it read-only?"),
              SettingsInternal::SETTINGS_FILENAME);
     snprintf(t.icon, sizeof(t.icon), "triangle-exclamation");
     t.key = SystemMessages::KEY_SAVE_FAILED;

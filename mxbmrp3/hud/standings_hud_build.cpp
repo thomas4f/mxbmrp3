@@ -7,6 +7,7 @@
 //  emission is standings_hud_render.cpp, row animation standings_hud_animation.cpp.)
 // ============================================================================
 #include "standings_hud.h"
+#include "../core/i18n.h"
 #include "standings_context_window.h"
 #include "standings_gap_plan.h"
 #include "../diagnostics/logger.h"
@@ -98,7 +99,7 @@ void StandingsHud::rebuildRenderData() {
     // Title: static "Standings" caption in the standard title style, toggled by
     // the shared title control. addPlanTitle keeps string index 0 stable
     // (emits an empty string when the title is hidden).
-    addPlanTitle(hudDim.plan, "Standings",
+    addPlanTitle(hudDim.plan, TR("Standings"),
                  this->getColor(ColorSlot::PRIMARY));
 
     // Session-info row: context-aware "<session>: <clock / leader lap / overtime>"
@@ -500,8 +501,8 @@ void StandingsHud::formatEntryGap(DisplayEntry& entry, const StandingsGap::Plan&
             PluginUtils::getRiderStateAbbreviation(entry.state));
         break;
     case StandingsGap::Kind::Label:
-        strcpy_s(entry.formattedGap, sizeof(entry.formattedGap),
-            effectiveGapRef == GapReferenceMode::LEADER ? "Leader" : "Player");
+        snprintf(entry.formattedGap, sizeof(entry.formattedGap), "%s",
+            effectiveGapRef == GapReferenceMode::LEADER ? TR("Leader") : TR("Player"));
         break;
     case StandingsGap::Kind::LapTime: {
         // Right-aligned like the numeric gaps.
@@ -603,14 +604,14 @@ void StandingsHud::applyNameMode() {
 void StandingsHud::formatSessionInfo(char* buf, size_t bufSize, const std::vector<int>& classificationOrder,
                                      const PluginData& pluginData) const {
     const SessionData& sessionData = pluginData.getSessionData();
-    const char* sessionLabel = PluginUtils::getSessionString(sessionData.eventType, sessionData.session);
+    const char* sessionLabel = I18n::trCached(PluginUtils::getSessionString(sessionData.eventType, sessionData.session));
     if (!sessionLabel) sessionLabel = Placeholders::GENERIC;
 
-    char value[24] = "";
+    char value[PluginUtils::SESSION_CLOCK_CHARS] = "";
     if (sessionData.sessionLength > 0) {
         // Timed (or timed+lap) session: live countdown, or the overtime label.
         PluginUtils::formatSessionClock(pluginData.getLeaderLapsToGo(),
-            pluginData.getSessionTime(), value, sizeof(value));
+            pluginData.getSessionTime(), sessionData.lapsAfterClock(), value, sizeof(value), /*shown=*/true);
     } else if (sessionData.sessionNumLaps > 0) {
         // Pure lap race: "CHECKERED" once the leader crosses the line on the final
         // lap; the session clock (a count-up elapsed timer for lap races) before the
@@ -625,17 +626,17 @@ void StandingsHud::formatSessionInfo(char* buf, size_t bufSize, const std::vecto
         if (leaderFinished) {
             // Checked first so the post-race state (also "not in progress") keeps the
             // checkered label instead of falling back to the pre-race timer below.
-            strcpy_s(value, sizeof(value), PluginConstants::DisplayStrings::SessionClock::CHECKERED);
+            snprintf(value, sizeof(value), "%s", I18n::trCached(PluginConstants::DisplayStrings::SessionClock::CHECKERED));
         } else if (!raceInProgress) {
             // Pre-race (not yet green): show the session clock like timed races do,
             // instead of a static "Lap 1/N" before anyone has turned a lap.
             PluginUtils::formatSessionClock(pluginData.getLeaderLapsToGo(),
-                pluginData.getSessionTime(), value, sizeof(value));
+                pluginData.getSessionTime(), sessionData.lapsAfterClock(), value, sizeof(value), /*shown=*/true);
         } else {
             int leaderLap = leaderStanding ? leaderStanding->numLaps + 1 : 1;  // numLaps = completed → 1-based current
             if (leaderLap < 1) leaderLap = 1;
             if (leaderLap > sessionData.sessionNumLaps) leaderLap = sessionData.sessionNumLaps;
-            snprintf(value, sizeof(value), "Lap %d/%d", leaderLap, sessionData.sessionNumLaps);
+            snprintf(value, sizeof(value), TR("Lap %d/%d"), leaderLap, sessionData.sessionNumLaps);
         }
     } else if (!pluginData.isWaitingSession()) {
         // UNLIMITED session (Testing / Open Practice, and any practice run with

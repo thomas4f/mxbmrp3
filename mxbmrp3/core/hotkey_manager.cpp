@@ -7,6 +7,7 @@
 #include "xinput_reader.h"
 #include "ui_config.h"
 #include "hold_repeat.h"
+#include "i18n.h"
 #include "../diagnostics/logger.h"
 #include <windows.h>
 #include <cstdio>
@@ -159,19 +160,22 @@ void HotkeyManager::formatOpenSettingsHint(char* out, size_t cap) const {
     const HotkeyBinding& b = getBinding(HotkeyAction::TOGGLE_SETTINGS);
     const bool backtick = b.hasKeyboard() && b.keyboard.keyCode == VK_OEM_3;
     if (backtick && b.keyboard.modifiers == ModifierFlags::NONE) {
-        snprintf(out, cap, "The key under Esc opens settings");
+        snprintf(out, cap, "%s", TR("The key under Esc opens settings"));
     } else if (backtick) {
         const ModifierFlags mods = b.keyboard.modifiers;
-        snprintf(out, cap, "Press %s%s%sthe key under Esc to open settings",
+        char held[32] = {};
+        snprintf(held, sizeof(held), "%s%s%s",
                  hasModifier(mods, ModifierFlags::CTRL) ? "Ctrl + " : "",
                  hasModifier(mods, ModifierFlags::SHIFT) ? "Shift + " : "",
                  hasModifier(mods, ModifierFlags::ALT) ? "Alt + " : "");
+        // TRANSLATORS: %s is the held keys with a trailing " + ", e.g. "Ctrl + ".
+        snprintf(out, cap, TR("Press %sthe key under Esc to open settings"), held);
     } else if (b.hasKeyboard()) {
         char key[32] = {};
         formatKeyBinding(b.keyboard, key, sizeof(key));
-        snprintf(out, cap, "Press %s to open settings", key);
+        snprintf(out, cap, TR("Press %s to open settings"), key);
     } else {
-        snprintf(out, cap, "Click the menu button to open settings");
+        snprintf(out, cap, "%s", TR("Click the menu button to open settings"));
     }
 }
 

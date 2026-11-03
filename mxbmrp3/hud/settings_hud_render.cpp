@@ -113,13 +113,13 @@ using namespace PluginConstants;
 const SettingsHud::TabDescriptor SettingsHud::s_tabRegistry[] = {
     // tabId            name          tooltipId        hud (backing HUD getter)                                              gameGated  render                                 click                                     resetHud            resetExtra                              sectionIcon
     { TAB_SECTION_GLOBAL,   nullptr,  nullptr,         nullptr,                                                              false, nullptr,                                nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr },
-    { TAB_GENERAL,      "General",    "general",       nullptr,                                                              false, &SettingsHud::renderTabGeneral,         &SettingsHud::handleClickTabGeneral,      nullptr,            &SettingsHud::resetTabGeneral,          "hud-general" , nullptr },
-    { TAB_APPEARANCE,   "Appearance", "appearance",    nullptr,                                                              false, &SettingsHud::renderTabAppearance,      &SettingsHud::handleClickTabAppearance,   nullptr,            &SettingsHud::resetTabAppearance,       "hud-appearance" , nullptr },
-    { TAB_HOTKEYS,      "Hotkeys",    "hotkeys",       nullptr,                                                              false, &SettingsHud::renderTabHotkeys,         &SettingsHud::handleClickTabHotkeys,      nullptr,            &SettingsHud::resetTabHotkeys,          "hud-hotkeys" , nullptr },
-    { TAB_RIDERS,       "Riders",     "riders",        nullptr,                                                              false, &SettingsHud::renderTabRiders,          &SettingsHud::handleClickTabRiders,       nullptr,            &SettingsHud::resetTabRiders,           "hud-riders" , nullptr },
-    { TAB_RUMBLE,       "Rumble",     "rumble",        nullptr,                                                              false, &SettingsHud::renderTabRumble,          &SettingsHud::handleClickTabRumble,       nullptr,            &SettingsHud::resetTabRumble,           nullptr, nullptr },
-    { TAB_HELMET,       "Helmet",     "helmet",        nullptr,                                                              false, &SettingsHud::renderTabHelmet,          &SettingsHud::handleClickTabHelmet,       nullptr,            &SettingsHud::resetTabHelmet,           nullptr, nullptr },
-    { TAB_DIRECTOR,     "Director",   "director",      nullptr,                                                              false, &SettingsHud::renderTabDirector,        nullptr,                                  nullptr,            &SettingsHud::resetTabDirector,         nullptr, nullptr },
+    { TAB_GENERAL,      N_("General"), "general",       nullptr,                                                              false, &SettingsHud::renderTabGeneral,         &SettingsHud::handleClickTabGeneral,      nullptr,            &SettingsHud::resetTabGeneral,          "hud-general" , nullptr },
+    { TAB_APPEARANCE,   N_("Appearance"), "appearance",    nullptr,                                                              false, &SettingsHud::renderTabAppearance,      &SettingsHud::handleClickTabAppearance,   nullptr,            &SettingsHud::resetTabAppearance,       "hud-appearance" , nullptr },
+    { TAB_HOTKEYS,      N_("Hotkeys"), "hotkeys",       nullptr,                                                              false, &SettingsHud::renderTabHotkeys,         &SettingsHud::handleClickTabHotkeys,      nullptr,            &SettingsHud::resetTabHotkeys,          "hud-hotkeys" , nullptr },
+    { TAB_RIDERS,       N_("Riders"), "riders",        nullptr,                                                              false, &SettingsHud::renderTabRiders,          &SettingsHud::handleClickTabRiders,       nullptr,            &SettingsHud::resetTabRiders,           "hud-riders" , nullptr },
+    { TAB_RUMBLE,       N_("Rumble"), "rumble",        nullptr,                                                              false, &SettingsHud::renderTabRumble,          &SettingsHud::handleClickTabRumble,       nullptr,            &SettingsHud::resetTabRumble,           nullptr, nullptr },
+    { TAB_HELMET,       N_("Helmet"), "helmet",        nullptr,                                                              false, &SettingsHud::renderTabHelmet,          &SettingsHud::handleClickTabHelmet,       nullptr,            &SettingsHud::resetTabHelmet,           nullptr, nullptr },
+    { TAB_DIRECTOR,     N_("Director"), "director",      nullptr,                                                              false, &SettingsHud::renderTabDirector,        nullptr,                                  nullptr,            &SettingsHud::resetTabDirector,         nullptr, nullptr },
     // A GLOBAL tab with a backing HUD: the sidebar checkbox is the chat HUD's own
     // HUD_TOGGLE (visibility only -- each platform's connection has its own
     // switch on the tab), and its settings persist in [Twitch]/[YouTube], not the
@@ -128,57 +128,57 @@ const SettingsHud::TabDescriptor SettingsHud::s_tabRegistry[] = {
     // cells, so a "New" tag (2.25 cells) would overflow them (see the badge
     // comment in the tab-list loop); its rows still band, and so does its sidebar
     // row instead of the tag (WhatsNew::tabCanTag / tabHighlightsRow).
-    { TAB_STREAM_CHAT,       "Stream Chat", "stream_chat",   [](const SettingsHud&) -> BaseHud* { return &HudManager::getInstance().getStreamChatHud(); },
+    { TAB_STREAM_CHAT,       N_("Stream Chat"), "stream_chat",   [](const SettingsHud&) -> BaseHud* { return &HudManager::getInstance().getStreamChatHud(); },
                                                                                                                                       false, &SettingsHud::renderTabStreamChat,          &SettingsHud::handleClickTabStreamChat,       nullptr,            &SettingsHud::resetTabStreamChat,           nullptr, nullptr },
     // The trailing pair: not hidden, and the subtitle widget is what this tab
     // positions (see TabDescriptor::previewHud).
-    { TAB_SPOTTER,      "Spotter",    "spotter",       nullptr,                                                              false, &SettingsHud::renderTabSpotter,         &SettingsHud::handleClickTabSpotter,      nullptr,            &SettingsHud::resetTabSpotter,          nullptr, "Beta", false,
+    { TAB_SPOTTER,      N_("Spotter"), "spotter",       nullptr,                                                              false, &SettingsHud::renderTabSpotter,         &SettingsHud::handleClickTabSpotter,      nullptr,            &SettingsHud::resetTabSpotter,          nullptr, N_("Beta"), false,
       [](const SettingsHud&) -> BaseHud* { return &HudManager::getInstance().getSpotterWidget(); } },
     // NO badge, ever: "Achievements" is 12 of the sidebar's 13 label cells, so a
     // Small "New" (2.25 cells) would collide with it -- see settingsSidebarWidth.
     // Its news bands the row instead (WhatsNew::tabHighlightsRow).
-    { TAB_ACHIEVEMENTS, "Achievements", "achievements", nullptr,                                                            true,  &SettingsHud::renderTabAchievements,    &SettingsHud::handleClickTabAchievements, nullptr,            &SettingsHud::resetTabAchievements,     nullptr, nullptr, false,
+    { TAB_ACHIEVEMENTS, N_("Achievements"), "achievements", nullptr,                                                            true,  &SettingsHud::renderTabAchievements,    &SettingsHud::handleClickTabAchievements, nullptr,            &SettingsHud::resetTabAchievements,     nullptr, nullptr, false,
       // The card exists on every game (it carries the system toasts), so the
       // gate is the feature flag, not the widget being registered.
       [](const SettingsHud&) -> BaseHud* { return GAME_HAS_ACHIEVEMENTS ? HudManager::getInstance().getAchievementWidget() : nullptr; } },
-    { TAB_UPDATES,      "Updates",    "updates",       nullptr,                                                              false, &SettingsHud::renderTabUpdates,         &SettingsHud::handleClickTabUpdates,      nullptr,            &SettingsHud::resetTabUpdates,          nullptr, nullptr },
+    { TAB_UPDATES,      N_("Updates"), "updates",       nullptr,                                                              false, &SettingsHud::renderTabUpdates,         &SettingsHud::handleClickTabUpdates,      nullptr,            &SettingsHud::resetTabUpdates,          nullptr, nullptr },
     // HIDDEN (the trailing true): reached from the footer's About button, never
     // drawn in the sidebar. Its POSITION still matters even so -- it is in the GLOBAL
     // section because tools/check_docs.py splits this registry at the TAB_SECTION_*
     // markers to decide which README table a tab belongs in, and About is a global
     // page, not a HUD. Placed last for the same reason it would be if it were
     // listed.
-    { TAB_ABOUT,        "About",      "about",         nullptr,                                                              false, &SettingsHud::renderTabAbout,           nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr, true },
+    { TAB_ABOUT,        N_("About"),  "about",         nullptr,                                                              false, &SettingsHud::renderTabAbout,           nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr, true },
     // HIDDEN too: a section's More row opens it (m_moreGroupRow says which section).
-    { TAB_MORE,         "More",       "more",          nullptr,                                                              false, &SettingsHud::renderTabMore,            nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr, true },
-    { TAB_FIND,         "Find",       "find",          nullptr,                                                              false, &SettingsHud::renderTabFind,            &SettingsHud::handleClickTabFind,         nullptr,            nullptr,                                nullptr, nullptr, true },
+    { TAB_MORE,         N_("More"),   "more",          nullptr,                                                              false, &SettingsHud::renderTabMore,            nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr, true },
+    { TAB_FIND,         N_("Find"),   "find",          nullptr,                                                              false, &SettingsHud::renderTabFind,            &SettingsHud::handleClickTabFind,         nullptr,            nullptr,                                nullptr, nullptr, true },
     { TAB_SECTION_PROFILE,  nullptr,  nullptr,         nullptr,                                                              false, nullptr,                                nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr },
-    { TAB_WIDGETS,      "Widgets",    "widgets",       nullptr,                                                              false, &SettingsHud::renderTabWidgets,         nullptr,                                  nullptr,            &SettingsHud::resetTabWidgets,          nullptr, nullptr },
-    { TAB_DASH,         "Dash",       "dash",          [](const SettingsHud&) -> BaseHud* { return &HudManager::getInstance().getDashHud(); },
+    { TAB_WIDGETS,      N_("Widgets"), "widgets",       nullptr,                                                              false, &SettingsHud::renderTabWidgets,         nullptr,                                  nullptr,            &SettingsHud::resetTabWidgets,          nullptr, nullptr },
+    { TAB_DASH,         N_("Dash"),   "dash",          [](const SettingsHud&) -> BaseHud* { return &HudManager::getInstance().getDashHud(); },
                                                                                                                                       false, &SettingsHud::renderTabDash,            nullptr,                                  "DashHud",          nullptr,                                nullptr, nullptr },
-    { TAB_MAP,          "Map",        "map",           [](const SettingsHud& s) -> BaseHud* { return s.m_mapHud; },          false, &SettingsHud::renderTabMap,             &SettingsHud::handleClickTabMap,          "MapHud",           nullptr,                                nullptr, nullptr },
-    { TAB_NOTICES,      "Notices",    "notices",       [](const SettingsHud& s) -> BaseHud* { return s.m_notices; },         false, &SettingsHud::renderTabNotices,         nullptr,                                  "NoticesHud",       nullptr,                                nullptr, nullptr },
-    { TAB_STANDINGS,    "Standings",  "standings",     [](const SettingsHud& s) -> BaseHud* { return s.m_standings; },       false, &SettingsHud::renderTabStandings,       &SettingsHud::handleClickTabStandings,    "StandingsHud",     &SettingsHud::resetTabStandingsExtra,   nullptr, nullptr },
-    { TAB_FRIENDS,      "Friends",    "friends",       [](const SettingsHud& s) -> BaseHud* { return s.m_friends; },         true,  &SettingsHud::renderTabFriends,         &SettingsHud::handleClickTabFriends,      "FriendsHud",       nullptr,                                nullptr, nullptr },
-    { TAB_TIMING,       "Timing",     "timing",        [](const SettingsHud& s) -> BaseHud* { return s.m_timing; },          false, &SettingsHud::renderTabTiming,          &SettingsHud::handleClickTabTiming,       "TimingHud",        nullptr,                                nullptr, nullptr },
-    { TAB_LAP_LOG,      "Lap Log",    "lap_log",       [](const SettingsHud& s) -> BaseHud* { return s.m_lapLog; },          false, &SettingsHud::renderTabLapLog,          &SettingsHud::handleClickTabLapLog,       "LapLogHud",        nullptr,                                nullptr, nullptr },
-    { TAB_GAP_BAR,      "Gap Bar",    "gap_bar",       [](const SettingsHud& s) -> BaseHud* { return s.m_gapBar; },          false, &SettingsHud::renderTabGapBar,          &SettingsHud::handleClickTabGapBar,       "GapBarHud",        nullptr,                                nullptr, nullptr },
-    { TAB_RECORDS,      "Records",    "records",       [](const SettingsHud& s) -> BaseHud* { return s.m_records; },         true,  &SettingsHud::renderTabRecords,         &SettingsHud::handleClickTabRecords,      "RecordsHud",       &SettingsHud::resetTabRecordsExtra,     nullptr, nullptr },
-    { TAB_PITBOARD,     "Pitboard",   "pitboard",      [](const SettingsHud& s) -> BaseHud* { return s.m_pitboard; },        false, &SettingsHud::renderTabPitboard,        nullptr,                                  "PitboardHud",      nullptr,                                nullptr, nullptr },
-    { TAB_GROUP,        "More",       nullptr,         nullptr,                                                              false, nullptr,                                nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr },
-    { TAB_RADAR,        "Radar",      "radar",         [](const SettingsHud& s) -> BaseHud* { return s.m_radarHud; },        false, &SettingsHud::renderTabRadar,           nullptr,                                  "RadarHud",         nullptr,                                nullptr, nullptr },
-    { TAB_IDEAL_LAP,    "Ideal Lap",  "ideal_lap",     [](const SettingsHud& s) -> BaseHud* { return s.m_idealLap; },        false, &SettingsHud::renderTabIdealLap,        nullptr,                                  "IdealLapHud",      nullptr,                                nullptr, nullptr },
-    { TAB_SESSION,      "Session",    "session",       [](const SettingsHud& s) -> BaseHud* { return s.m_session; },         false, &SettingsHud::renderTabSession,         &SettingsHud::handleClickTabSession,      "SessionHud",       nullptr,                                nullptr, nullptr },
-    { TAB_PERFORMANCE,  "Performance","performance",   [](const SettingsHud& s) -> BaseHud* { return s.m_performance; },     false, &SettingsHud::renderTabPerformance,     &SettingsHud::handleClickTabPerformance,  "PerformanceHud",   nullptr,                                nullptr, nullptr },
-    { TAB_STATS,        "Stats",      "stats",         [](const SettingsHud& s) -> BaseHud* { return s.m_statsHud; },        false, &SettingsHud::renderTabStats,           &SettingsHud::handleClickTabStats,        "StatsHud",         nullptr,                                nullptr, nullptr },
-    { TAB_TELEMETRY,    "Telemetry",  "telemetry",     [](const SettingsHud& s) -> BaseHud* { return s.m_telemetry; },       false, &SettingsHud::renderTabTelemetry,       nullptr,                                  "TelemetryHud",     nullptr,                                nullptr, nullptr },
+    { TAB_MAP,          N_("Map"),    "map",           [](const SettingsHud& s) -> BaseHud* { return s.m_mapHud; },          false, &SettingsHud::renderTabMap,             &SettingsHud::handleClickTabMap,          "MapHud",           nullptr,                                nullptr, nullptr },
+    { TAB_NOTICES,      N_("Notices"), "notices",       [](const SettingsHud& s) -> BaseHud* { return s.m_notices; },         false, &SettingsHud::renderTabNotices,         nullptr,                                  "NoticesHud",       nullptr,                                nullptr, nullptr },
+    { TAB_STANDINGS,    N_("Standings"), "standings",     [](const SettingsHud& s) -> BaseHud* { return s.m_standings; },       false, &SettingsHud::renderTabStandings,       &SettingsHud::handleClickTabStandings,    "StandingsHud",     &SettingsHud::resetTabStandingsExtra,   nullptr, nullptr },
+    { TAB_FRIENDS,      N_("Friends"), "friends",       [](const SettingsHud& s) -> BaseHud* { return s.m_friends; },         true,  &SettingsHud::renderTabFriends,         &SettingsHud::handleClickTabFriends,      "FriendsHud",       nullptr,                                nullptr, nullptr },
+    { TAB_TIMING,       N_("Timing"), "timing",        [](const SettingsHud& s) -> BaseHud* { return s.m_timing; },          false, &SettingsHud::renderTabTiming,          &SettingsHud::handleClickTabTiming,       "TimingHud",        nullptr,                                nullptr, nullptr },
+    { TAB_LAP_LOG,      N_("Lap Log"), "lap_log",       [](const SettingsHud& s) -> BaseHud* { return s.m_lapLog; },          false, &SettingsHud::renderTabLapLog,          &SettingsHud::handleClickTabLapLog,       "LapLogHud",        nullptr,                                nullptr, nullptr },
+    { TAB_GAP_BAR,      N_("Gap Bar"), "gap_bar",       [](const SettingsHud& s) -> BaseHud* { return s.m_gapBar; },          false, &SettingsHud::renderTabGapBar,          &SettingsHud::handleClickTabGapBar,       "GapBarHud",        nullptr,                                nullptr, nullptr },
+    { TAB_RECORDS,      N_("Records"), "records",       [](const SettingsHud& s) -> BaseHud* { return s.m_records; },         true,  &SettingsHud::renderTabRecords,         &SettingsHud::handleClickTabRecords,      "RecordsHud",       &SettingsHud::resetTabRecordsExtra,     nullptr, nullptr },
+    { TAB_PITBOARD,     N_("Pitboard"), "pitboard",      [](const SettingsHud& s) -> BaseHud* { return s.m_pitboard; },        false, &SettingsHud::renderTabPitboard,        nullptr,                                  "PitboardHud",      nullptr,                                nullptr, nullptr },
+    { TAB_GROUP,        N_("More"),   nullptr,         nullptr,                                                              false, nullptr,                                nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr },
+    { TAB_RADAR,        N_("Radar"),  "radar",         [](const SettingsHud& s) -> BaseHud* { return s.m_radarHud; },        false, &SettingsHud::renderTabRadar,           nullptr,                                  "RadarHud",         nullptr,                                nullptr, nullptr },
+    { TAB_IDEAL_LAP,    N_("Ideal Lap"), "ideal_lap",     [](const SettingsHud& s) -> BaseHud* { return s.m_idealLap; },        false, &SettingsHud::renderTabIdealLap,        nullptr,                                  "IdealLapHud",      nullptr,                                nullptr, nullptr },
+    { TAB_SESSION,      N_("Session"), "session",       [](const SettingsHud& s) -> BaseHud* { return s.m_session; },         false, &SettingsHud::renderTabSession,         &SettingsHud::handleClickTabSession,      "SessionHud",       nullptr,                                nullptr, nullptr },
+    { TAB_PERFORMANCE,  N_("Performance"), "performance",   [](const SettingsHud& s) -> BaseHud* { return s.m_performance; },     false, &SettingsHud::renderTabPerformance,     &SettingsHud::handleClickTabPerformance,  "PerformanceHud",   nullptr,                                nullptr, nullptr },
+    { TAB_STATS,        N_("Stats"),  "stats",         [](const SettingsHud& s) -> BaseHud* { return s.m_statsHud; },        false, &SettingsHud::renderTabStats,           &SettingsHud::handleClickTabStats,        "StatsHud",         nullptr,                                nullptr, nullptr },
+    { TAB_TELEMETRY,    N_("Telemetry"), "telemetry",     [](const SettingsHud& s) -> BaseHud* { return s.m_telemetry; },       false, &SettingsHud::renderTabTelemetry,       nullptr,                                  "TelemetryHud",     nullptr,                                nullptr, nullptr },
     // NO badge: "Delta Trace" is 11 of the sidebar's 13 label cells, like Stream
     // Chat (WhatsNew::tabCanTag); marked, it moves above More and its row bands.
-    { TAB_DELTA_TRACE,  "Delta Trace","delta_trace",   [](const SettingsHud&) -> BaseHud* { return &HudManager::getInstance().getDeltaTraceHud(); },
+    { TAB_DELTA_TRACE,  N_("Delta Trace"), "delta_trace",   [](const SettingsHud&) -> BaseHud* { return &HudManager::getInstance().getDeltaTraceHud(); },
                                                                                                                                       false, &SettingsHud::renderTabDeltaTrace,      nullptr,                                  "DeltaTraceHud",    nullptr,                                nullptr, nullptr },
-    { TAB_FMX,          "FMX",        "fmx",           [](const SettingsHud& s) -> BaseHud* { return s.m_fmxHud; },          true,  &SettingsHud::renderTabFmx,             &SettingsHud::handleClickTabFmx,          "FmxHud",           nullptr,                                nullptr, nullptr },
-    { TAB_EVENT_LOG,    "Event Log",  "event_log",     [](const SettingsHud& s) -> BaseHud* { return s.m_eventLog; },        false, &SettingsHud::renderTabEventLog,        &SettingsHud::handleClickTabEventLog,     "EventLogHud",      nullptr,                                nullptr, nullptr },
-    { TAB_SESSION_CHARTS, "Charts",   "session_charts",[](const SettingsHud& s) -> BaseHud* { return s.m_sessionCharts; },   false, &SettingsHud::renderTabSessionCharts,   nullptr,                                  "SessionChartsHud", nullptr,                                nullptr, nullptr },
+    { TAB_FMX,          N_("FMX"),    "fmx",           [](const SettingsHud& s) -> BaseHud* { return s.m_fmxHud; },          true,  &SettingsHud::renderTabFmx,             &SettingsHud::handleClickTabFmx,          "FmxHud",           nullptr,                                nullptr, nullptr },
+    { TAB_EVENT_LOG,    N_("Event Log"), "event_log",     [](const SettingsHud& s) -> BaseHud* { return s.m_eventLog; },        false, &SettingsHud::renderTabEventLog,        &SettingsHud::handleClickTabEventLog,     "EventLogHud",      nullptr,                                nullptr, nullptr },
+    { TAB_SESSION_CHARTS, N_("Charts"), "session_charts",[](const SettingsHud& s) -> BaseHud* { return s.m_sessionCharts; },   false, &SettingsHud::renderTabSessionCharts,   nullptr,                                  "SessionChartsHud", nullptr,                                nullptr, nullptr },
 };
 
 // The Toggles widget's list (toggle_strip_widget.h): the sidebar's toggles but
@@ -200,7 +200,7 @@ int SettingsHud::tabToggles(TabToggle* out, int max) const {
         if (n >= max) break;
         // What switching it on shows (the strip's hover preview): the HUD, or what a feature switch configures.
         BaseHud* shows = row.tabId == TAB_HELMET ? m_helmetOverlay : hud ? hud : row.previewHud ? row.previewHud(*this) : nullptr;
-        out[n++] = TabToggle{ row.tabId, getTabName(row.tabId), tabIconName(row.tabId, hud), on, global, shows };
+        out[n++] = TabToggle{ row.tabId, getTabLabel(row.tabId), tabIconName(row.tabId, hud), on, global, shows };
     }
     return n;
 }
@@ -235,7 +235,7 @@ void SettingsHud::addBackButton(SettingsLayoutContext& ctx) {
     if (groupRowOf(m_activeTab) < 0) return;
     ctx.beginUntitledSection();
     const size_t first = m_clickRegions.size();
-    ctx.addActionButton("Back", 6, ClickRegion::TAB,
+    ctx.addActionButton(TR("Back"), 6, ClickRegion::TAB,
                         SettingsLayoutContext::ButtonRole::Accent, true, "more.back");
     if (first < m_clickRegions.size()) {
         ClickRegion& back = m_clickRegions[first];
@@ -316,7 +316,7 @@ void SettingsHud::buildMoreRow(const ScaledDimensions& dim, const PanelPlan& pla
     region.tooltipId = "more";
     m_clickRegions.push_back(region);
 
-    addString(s_tabRegistry[groupRow].name, labelX, tabStartY, Justify::LEFT,
+    addString(I18n::tr(s_tabRegistry[groupRow].name), labelX, tabStartY, Justify::LEFT,
               Fonts::getNormal(), color, dim.fontSize);
 
     // Right edge, Small and MUTED, in the slot and centring of a tab row's badge:
@@ -416,21 +416,21 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
             // sidebar is the panel's binding height under theme_geometry_test's
             // fits-the-screen contract.
             tabStartY = plan.colContentY(col, group++);
-            addString("Global", tabStartX, tabStartY, Justify::LEFT,
+            addString(TR("Global"), tabStartX, tabStartY, Justify::LEFT,
                 Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
             tabStartY += dim.lineHeightNormal;
             continue;
         }
         if (i == TAB_SECTION_PROFILE) {
             tabStartY = plan.colContentY(col, group++);
-            addString("Profile", tabStartX, tabStartY, Justify::LEFT,
+            addString(TR("Profile"), tabStartX, tabStartY, Justify::LEFT,
                 Fonts::getStrong(), ColorConfig::getInstance().getPrimary(), dim.fontSize);
             tabStartY += dim.lineHeightNormal;
 
             // Profile cycle control: < Practice >
             float charWidth = PluginUtils::calculateMonospaceTextWidth(1, dim.fontSize);
             ProfileType activeProfile = ProfileManager::getInstance().getActiveProfile();
-            const char* profileName = ProfileManager::getProfileName(activeProfile);
+            const char* profileName = I18n::tr(ProfileManager::getProfileName(activeProfile));
 
             float currentX = tabStartX;
 
@@ -574,7 +574,7 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
         m_clickRegions.push_back(tabRegion);
 
         // Label stays at its original position (the highlight leads it, above).
-        const char* label = getTabName(i);
+        const char* label = getTabLabel(i);
         addString(label, currentTabX, tabStartY, Justify::LEFT, Fonts::getNormal(), tabColor, dim.fontSize);
 
         // A STATUS TAG ON THE ROW'S RIGHT EDGE -- "Beta", or "New" for a tab carrying an
@@ -587,14 +587,14 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
         //   "New"     -- an undismissed what's-new marker (settings/whats_new.h).
         // One slot, so a tab that qualifies for two shows the more important: the
         // Spotter is both new and beta, and "Spotter Beta New" says less than either.
-        const char* badge = tabRow.badge;
+        const char* badge = tabRow.badge ? I18n::tr(tabRow.badge) : nullptr;
         bool badgeIsNews = false;
         if (!badge && i == TAB_UPDATES &&
             UpdateChecker::getInstance().shouldShowUpdateTag()) {
-            badge = "Update";
+            badge = TR("Update");
             badgeIsNews = true;
         }
-        if (!badge && WhatsNew::tabHasLive(i)) { badge = "New"; badgeIsNews = true; }
+        if (!badge && WhatsNew::tabHasLive(i)) { badge = TR("New"); badgeIsNews = true; }
 
         // The tag draws in the SMALL size, so it reads as a note about the tab rather
         // than part of its name.

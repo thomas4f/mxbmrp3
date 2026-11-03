@@ -6,6 +6,8 @@
 // helper live here because only this half uses them.
 // ============================================================================
 #include "stats_manager.h"
+#include "plugin_names.h"
+#include "i18n.h"
 #include "achievement_manager.h"
 #include "plugin_constants.h"
 #include "atomic_file_writer.h"
@@ -30,7 +32,7 @@ static double finiteOrZero(double v) {
     return std::isfinite(v) ? v : 0.0;
 }
 
-static constexpr const char* STATS_SUBDIRECTORY = "mxbmrp3";
+static constexpr const char* STATS_SUBDIRECTORY = MXB_USER_DIR_NAME;
 static constexpr const char* STATS_FILENAME = "mxbmrp3_stats.json";
 
 // Old file names for migration
@@ -374,8 +376,8 @@ void StatsManager::announceSaveResult(bool ok) {
     if (m_saveFailureAnnounced) return;
     m_saveFailureAnnounced = true;
     SystemMessages::Toast t;
-    snprintf(t.title, sizeof(t.title), "Stats not saved");
-    snprintf(t.detail, sizeof(t.detail), "Could not write %s. Is it read-only?", STATS_FILENAME);
+    snprintf(t.title, sizeof(t.title), "%s", TR("Stats not saved"));
+    snprintf(t.detail, sizeof(t.detail), TR("Could not write %s. Is it read-only?"), STATS_FILENAME);
     snprintf(t.icon, sizeof(t.icon), "triangle-exclamation");
     t.key = SystemMessages::KEY_STATS_SAVE_FAILED;
     t.severity = SystemMessages::Severity::Warning;

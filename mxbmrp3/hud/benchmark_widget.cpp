@@ -3,6 +3,7 @@
 // The Benchmark profiler: per-callback and per-HUD timing, frame sampling, the live panel
 // ============================================================================
 #include "benchmark_widget.h"
+#include "../core/i18n.h"
 
 #include <cstdio>
 #include <cstring>
@@ -225,14 +226,14 @@ void BenchmarkWidget::pollReportResult() {
     t.key = SystemMessages::KEY_PROFILER_REPORT;
     t.tab = SettingsHud::TAB_PERFORMANCE;
     if (ok) {
-        snprintf(t.title, sizeof(t.title), "Profiler report saved");
+        snprintf(t.title, sizeof(t.title), "%s", TR("Profiler report saved"));
         const std::string dir = m_reportPath.substr(0, m_reportPath.find_last_of("\\/"));
         SystemMessages::formatFolder(dir.c_str(), t.detail, sizeof(t.detail));
         snprintf(t.icon, sizeof(t.icon), "floppy-disk");
         t.durationMs = SystemMessages::WARNING_DURATION_MS;   // a folder to read, not a glance
     } else {
-        snprintf(t.title, sizeof(t.title), "Profiler report not saved");
-        snprintf(t.detail, sizeof(t.detail), "Could not write to mxbmrp3\\benchmarks");
+        snprintf(t.title, sizeof(t.title), "%s", TR("Profiler report not saved"));
+        snprintf(t.detail, sizeof(t.detail), "%s", TR("Could not write to mxbmrp3\\benchmarks"));
         snprintf(t.icon, sizeof(t.icon), "triangle-exclamation");
         t.severity = SystemMessages::Severity::Warning;
         t.durationMs = SystemMessages::WARNING_DURATION_MS;

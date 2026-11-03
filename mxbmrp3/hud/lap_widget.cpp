@@ -4,6 +4,7 @@
 // Shows "Lx/y" for lap-only sessions, "Lx" for time-based or time+laps sessions
 // ============================================================================
 #include "lap_widget.h"
+#include "../core/i18n.h"
 
 #include <cstdio>
 
@@ -124,7 +125,7 @@ void LapWidget::rebuildRenderData() {
     want.contentW = PluginUtils::calculateMonospaceTextWidth(
         WidgetDimensions::STANDARD_WIDTH, dim.fontSize);
     want.sectionH = { bigValueRowHeight(dim) };  // Value (2 lines)
-    want.captionW = planTitleWidth(dim, "Lap");
+    want.captionW = planTitleWidth(dim, TR("Lap"));
     PanelPlan& p = planPanel(dim, want);
     const float backgroundWidth = p.width();
     const float backgroundHeight = p.height();
@@ -134,7 +135,7 @@ void LapWidget::rebuildRenderData() {
     // Use full opacity for text
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
 
-    addPlanTitle(p, "Lap", textColor);
+    addPlanTitle(p, TR("Lap"), textColor);
 
     const float contentStartX = p.contentX();
     float currentY = p.contentY();

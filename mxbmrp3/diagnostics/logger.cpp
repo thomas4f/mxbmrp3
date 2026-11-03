@@ -3,6 +3,7 @@
 // Unified logging system - file logging in all builds, console in debug builds
 // ============================================================================
 #include "logger.h"
+#include "../core/plugin_names.h"
 #include <chrono>
 #include <cstring>
 #include <ctime>
@@ -12,7 +13,7 @@
 #include "../core/plugin_constants.h"
 
 namespace {
-    constexpr const char* LOG_SUBDIRECTORY = "mxbmrp3";
+    constexpr const char* LOG_SUBDIRECTORY = MXB_USER_DIR_NAME;
     constexpr const char* LOG_FILENAME = "mxbmrp3_log.txt";
     // Reserved once for both buffers: a second of a busy session's logging, so
     // the steady state never grows them.

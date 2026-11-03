@@ -3,6 +3,7 @@
 // Manages per-bike rumble profiles stored in JSON
 // ============================================================================
 #include "rumble_profile_manager.h"
+#include "plugin_names.h"
 #include "atomic_file_writer.h"
 #include "plugin_utils.h"
 #include "../diagnostics/logger.h"
@@ -14,7 +15,7 @@
 #include <windows.h>
 
 // Subdirectory and file name (matches SettingsManager pattern)
-static constexpr const char* RUMBLE_SUBDIRECTORY = "mxbmrp3";
+static constexpr const char* RUMBLE_SUBDIRECTORY = MXB_USER_DIR_NAME;
 static constexpr const char* RUMBLE_FILENAME = "mxbmrp3_rumble_profiles.json";
 
 RumbleProfileManager& RumbleProfileManager::getInstance() {

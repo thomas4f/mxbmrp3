@@ -127,7 +127,7 @@ The settings menu provides global settings that apply to all profiles, followed 
 | Icon | Tab | Description |
 |:----:|-----|-------------|
 | <img src="assets/icons/hud-general.svg" width="20" height="20" alt=""> | **General** | Preferences with reference and freeze defaults, presence integrations, usage survey, web overlay, profiles |
-| <img src="assets/icons/hud-appearance.svg" width="20" height="20" alt=""> | **Appearance** | Panel theme, units, motion, glow, messages, UI scale, fonts, colors, and which display the HUD draws on |
+| <img src="assets/icons/hud-appearance.svg" width="20" height="20" alt=""> | **Appearance** | Panel theme, language, units, motion, glow, messages, UI scale, fonts, colors, and which display the HUD draws on |
 | <img src="assets/icons/hud-hotkeys.svg" width="20" height="20" alt=""> | **Hotkeys** | Keyboard and controller bindings |
 | <img src="assets/icons/hud-riders.svg" width="20" height="20" alt=""> | **Riders** | Track specific riders with custom colors and icons |
 | <img src="assets/icons/hud-rumble.svg" width="20" height="20" alt=""> | **Rumble** | Controller vibration feedback effects |
@@ -216,6 +216,9 @@ Each of these has its own switch in the settings menu.
 
 ### Web Overlay
 Turn on **Web server** (Settings > General) and the plugin serves a live browser overlay: a standings tower, event log, rider focus card, and periodic broadcast panels (fastest-lap boards, a "down the order" rundown, and on-track battles). Point an OBS **Browser Source** at `http://localhost:8080` (the address is in the row below the setting, a clickable link while it is serving), or just open it in a browser. Colors and fonts follow your in-game settings, and a gear icon on the overlay sets tower size, filters and the rest per browser. Full guide: [Web overlay](docs/web-overlay.md).
+
+### Languages
+**Settings > Appearance > Language**: menus, tooltips, HUDs and messages in another language. The default, **System**, follows Windows' display language; anything a pack does not translate stays English. Shipped: French, German, Portuguese (Brazil), Spanish and Swedish (all Beta). New packs are welcome - how to make one: [languages/README.md](mxbmrp3_data/languages/README.md).
 
 ### Achievements (MX Bikes only)
 **Settings > Achievements**: a hundred-odd milestones, Bronze to Platinum, for riding, racing, freestyle, jumping and for trying out the plugin itself. A toast marks each tier earned, and a halfway card the long steps to Gold and Platinum (Toasts > **Visible** turns the cards off; tracking continues either way). They read your existing stats, so an install starts with whatever its numbers already earn. A few are hidden until you stumble on them, and the ones about things going wrong have their own page, outside the completion figures.
@@ -310,7 +313,7 @@ Most settings are in the in-game menu; the power-user ones are INI-only, and car
 
 Put your files in `Documents\PiBoSo\[Game]\mxbmrp3\`, never in the install folder (`[Game]\plugins\mxbmrp3_data\`): bundled files there are overwritten on update, while anything in Documents survives it. The web overlay's `custom.css` goes there too - you create that one yourself.
 
-Fonts, textures and icons are loose files in their own subfolders. Themes, gamepad packs, pit boards, gauges and spotter voices are **packs** - a folder holding that pack's art or audio plus a `<type>.ini` describing it (`theme.ini`, `gamepad.ini`, `pitboard.ini`, `gauge.ini`, `spotter.ini` - a fixed name, so copying a pack and renaming the folder is the whole job). Every pack's ini opens with the same `[pack]` section, and `base = <pack>` layers yours over a shipped one so a reskin is one or two files. Both kinds sync to the plugin on startup, and your choice is stored by **folder** name, so adding or removing other packs never reassigns it.
+Fonts, textures and icons are loose files in their own subfolders. Themes, gamepad packs, pit boards, gauges, spotter voices and languages are **packs** - a folder holding that pack's art or audio plus a `<type>.ini` describing it (`theme.ini`, `gamepad.ini`, `pitboard.ini`, `gauge.ini`, `spotter.ini`, `language.ini` - a fixed name, so copying a pack and renaming the folder is the whole job). Every pack's ini opens with the same `[pack]` section, and `base = <pack>` layers yours over a shipped one so a reskin is one or two files. Both kinds sync to the plugin on startup, and your choice is stored by **folder** name, so adding or removing other packs never reassigns it.
 
 - [Modding guide](docs/modding.md) - the folder layout, panel themes, textures, gamepad, pit board and gauges packs, fonts, icons, and the web overlay's HTML/CSS/JS.
 - [Spotter voice](docs/spotter.md) - what it calls, how to set it up, and how to reword it or record your own voice.
@@ -423,10 +426,12 @@ Bug reports, feature requests, and questions are all welcome. Open an issue on [
 
 A short description of what you were doing when the issue happened (track, session type, bike, and any reproduction steps) helps a lot.
 
-**For crashes**, attach the matching pair - same timestamp and pid - written to `Documents\PiBoSo\[Game]\mxbmrp3\crashes\` whenever the plugin catches an unhandled fault:
+**For crashes**, the plugin writes a matching pair - same timestamp and pid - to `Documents\PiBoSo\[Game]\mxbmrp3\crashes\` whenever it catches an unhandled fault:
 
 - `mxbmrp3_crash_<timestamp>_<pid>.dmp` - the minidump (state at the moment of crash)
 - `mxbmrp3_crash_<timestamp>_<pid>.log` - a snapshot of the plugin log captured at crash time
+
+The `.dmp` is a copy of part of the game's memory, so it can contain your Windows user name, computer name and recent chat lines. Don't post it publicly: attach the `.log` to the issue, say you have a dump, and send the `.dmp` privately when asked.
 
 The plugin catches any crash in the game, so these are usually faults in the game itself rather than plugin bugs. Check [Known MX Bikes Crashes](crash_analysis/KNOWN_GAME_CRASHES.md) first - it lists the game-engine crashes the handler has caught, with Event Viewer fault offsets you can match against yours. A crash listed there is a known game bug with no plugin fix possible.
 

@@ -3,6 +3,7 @@
 // Manages all HUD display elements and coordinates their rendering and updates
 // ============================================================================
 #include "hud_manager.h"
+#include "i18n.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include "asset_path.h"
@@ -913,15 +914,15 @@ void HudManager::updateRiderPositions(int numVehicles, Unified::TrackPositionDat
 // why, so it names the profile and the reason. A switch made in the menu needs
 // no card: the player is looking at the profile name as it changes.
 void HudManager::announceProfileSwitch(ProfileType profile) {
-    const char* why = "Switched for practice";
+    const char* why = TR("Switched for practice");
     switch (profile) {
-        case ProfileType::QUALIFY:  why = "Switched for qualifying"; break;
-        case ProfileType::RACE:     why = "Switched for the race"; break;
-        case ProfileType::SPECTATE: why = "Switched for spectating"; break;
+        case ProfileType::QUALIFY:  why = TR("Switched for qualifying"); break;
+        case ProfileType::RACE:     why = TR("Switched for the race"); break;
+        case ProfileType::SPECTATE: why = TR("Switched for spectating"); break;
         default: break;
     }
     SystemMessages::Toast t;
-    snprintf(t.title, sizeof(t.title), "%s profile", ProfileManager::getProfileName(profile));
+    snprintf(t.title, sizeof(t.title), TR("%s profile"), I18n::tr(ProfileManager::getProfileName(profile)));
     snprintf(t.detail, sizeof(t.detail), "%s", why);
     snprintf(t.icon, sizeof(t.icon), "circle-user");
     t.key = SystemMessages::KEY_PROFILE_SWITCH;

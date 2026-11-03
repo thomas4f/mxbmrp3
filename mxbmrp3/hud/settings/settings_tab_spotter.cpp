@@ -159,18 +159,18 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     // The heading carries NO hint: a hint lands at SECTION_HINT_COLUMN (16), a column
     // chosen for hints that annotate a wide table ("(click to track/untrack)"), so
     // beside a 4-letter word it reads as a caption floating in the middle of nowhere.
-    ctx.addSectionHeading("Beta");
-    ctx.addTextRow("This is a demonstration, not a finished spotter.",
+    ctx.addSectionHeading(TR("Beta"));
+    ctx.addTextRow(TR("This is a demonstration, not a finished spotter."),
                    ColorConfig::getInstance().getWarning());
-    ctx.addTextRow("Its behavior will change based on your feedback.",
+    ctx.addTextRow(TR("Its behavior will change based on your feedback."),
                    ColorConfig::getInstance().getWarning());
-    ctx.addTextRow("Recorded voice packs can replace Windows speech.",
+    ctx.addTextRow(TR("Recorded voice packs can replace Windows speech."),
                    ColorConfig::getInstance().getWarning());
 
     // --- Subtitles: the on-screen text widget (also the testing surface). ---
-    ctx.addSectionHeading("Subtitles");
+    ctx.addSectionHeading(TR("Subtitles"));
     ctx.beginColumns(2, 3);   // side by side (beginColumns)
-    ctx.addToggleControl("Subtitles", spotter.isSubtitlesEnabled(),
+    ctx.addToggleControl(TR("Subtitles"), spotter.isSubtitlesEnabled(),
         SettingsHud::ClickRegion::SPOTTER_SUBTITLES_TOGGLE, nullptr,
         nullptr, 0, true, "spotter.subtitles");
     ctx.addOpacityControl(&widget, spotter.isSubtitlesEnabled());
@@ -179,8 +179,8 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     ctx.endColumns();
 
     // --- Voice: the audio side. ---
-    ctx.addSectionHeading("Voice");
-    ctx.addToggleControl("Spoken audio", on,
+    ctx.addSectionHeading(TR("Voice"));
+    ctx.addToggleControl(TR("Spoken audio"), on,
         SettingsHud::ClickRegion::SPOTTER_ENABLED_TOGGLE, nullptr,
         nullptr, 0, true, "spotter.enabled");
 
@@ -189,7 +189,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
         auto sc = SettingsHud::SteppedControl::clampInt(
             spotter.volumePtr(), 5, 0, 100, nullptr);
         sc.postStep = []() { SpotterManager::getInstance().publishAudioSettings(); };
-        ctx.addSteppedControl("Volume", buf, sc, nullptr, on, false,
+        ctx.addSteppedControl(TR("Volume"), buf, sc, nullptr, on, false,
                               "spotter.volume");
     }
 
@@ -203,7 +203,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
             spotter.speedPtr(), 0.05f, SpotterStretch::kMinSpeed,
             SpotterStretch::kMaxSpeed, nullptr);
         sc.postStep = []() { SpotterManager::getInstance().publishAudioSettings(); };
-        ctx.addSteppedControl("Speed", buf, sc, nullptr, on, false,
+        ctx.addSteppedControl(TR("Speed"), buf, sc, nullptr, on, false,
                               "spotter.speed");
     }
 
@@ -239,7 +239,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     pack.nameOf = [packs](int i) { return (*packs)[static_cast<size_t>(i)]; };
     pack.postStep = []() { SpotterManager::getInstance().previewVoice(); };
     pack.repeat = false;   // a step loads the pack and plays a preview
-    ctx.addCycleControl("Voice pack", spotter.getPackDisplayName().c_str(), pack,
+    ctx.addCycleControl(TR("Voice pack"), spotter.getPackDisplayName().c_str(), pack,
         nullptr, true, packName == "default", "spotter.pack");
 
     // TTS voice: which Windows voice speaks the text-to-speech cues. Enabled
@@ -250,7 +250,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     const std::string& ttsVoice = spotter.getTtsVoice();
     // Shortened for the row, not for the setting — see displayName().
     const std::string ttsShown = ttsVoice.empty()
-        ? std::string("System default")
+        ? std::string(TR("System default"))
         : SpotterTtsVoice::displayName(ttsVoice);
     // [System default] + the installed voices -- SpotterTtsVoice::cycle's ring,
     // whose step the arrows keep.
@@ -272,11 +272,11 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
         s.setTtsVoice(SpotterTtsVoice::cycle(*voices, s.getTtsVoice(), forward));
     };
     voice.nameOf = [voices](int i) {
-        return i <= 0 ? std::string("System default") : SpotterTtsVoice::displayName((*voices)[static_cast<size_t>(i) - 1]);
+        return i <= 0 ? std::string(TR("System default")) : SpotterTtsVoice::displayName((*voices)[static_cast<size_t>(i) - 1]);
     };
     voice.postStep = []() { SpotterManager::getInstance().previewVoice(/*ttsOnly=*/true); };
     voice.repeat = false;  // a step plays a preview
-    ctx.addCycleControl("TTS voice", ttsShown.c_str(), voice,
+    ctx.addCycleControl(TR("TTS voice"), ttsShown.c_str(), voice,
         nullptr, on, ttsVoice.empty(), "spotter.tts_voice");
 
     // --- Callouts: which cue categories are announced (audio AND subtitle —
@@ -288,19 +288,19 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     // reorder the other. The mapping itself is checked:
     // test_spotter_pack_census.cpp asserts every cue sits under the heading
     // for the category that actually mutes it. ---
-    ctx.addSectionHeading("Callouts");
+    ctx.addSectionHeading(TR("Callouts"));
     const uint32_t mask = spotter.getCategoryMask();
     struct { const char* label; SpotterPhrase::Category cat; const char* tip; } kRows[] = {
-        { "General",   SpotterPhrase::Category::General,   "spotter.cat_general" },
-        { "Timing",    SpotterPhrase::Category::Timing,    "spotter.cat_timing" },
-        { "Opponents", SpotterPhrase::Category::Opponents, "spotter.cat_opponents" },
-        { "Proximity", SpotterPhrase::Category::Proximity, "spotter.cat_proximity" },
-        { "Hazards",   SpotterPhrase::Category::Hazard,    "spotter.cat_hazard" },
+        { N_("General"),   SpotterPhrase::Category::General,   "spotter.cat_general" },
+        { N_("Timing"),    SpotterPhrase::Category::Timing,    "spotter.cat_timing" },
+        { N_("Opponents"), SpotterPhrase::Category::Opponents, "spotter.cat_opponents" },
+        { N_("Proximity"), SpotterPhrase::Category::Proximity, "spotter.cat_proximity" },
+        { N_("Hazards"),   SpotterPhrase::Category::Hazard,    "spotter.cat_hazard" },
     };
     ctx.beginColumns(2, 5);
     for (const auto& row : kRows) {
         const uint32_t bit = 1u << static_cast<unsigned>(row.cat);
-        ctx.addToggleControl(row.label, (mask & bit) != 0,
+        ctx.addToggleControl(I18n::tr(row.label), (mask & bit) != 0,
             SettingsHud::ClickRegion::CHECKBOX, &widget,
             spotter.categoryMaskPtr(), bit, true, row.tip);
     }
@@ -327,7 +327,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     // and the repeat cooldowns stay INI-only: those exist to stop chatter,
     // and a rider who wants a quieter spotter is served by moving a trigger,
     // not a release.
-    ctx.addSectionHeading("Proximity");
+    ctx.addSectionHeading(TR("Proximity"));
     const bool proxLive = on || spotter.isSubtitlesEnabled();
     ctx.beginColumns(2, 4);
 
@@ -342,7 +342,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
             SpotterManager& s = SpotterManager::getInstance();
             s.setBehindOnMeters(s.hazardConfig().behindOnMeters);
         };
-        ctx.addSteppedControl("Behind distance", buf, sc, nullptr,
+        ctx.addSteppedControl(TR("Behind distance"), buf, sc, nullptr,
                               proxLive, false, "spotter.behind_on_m");
     }
 
@@ -359,7 +359,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
             SpotterManager& s = SpotterManager::getInstance();
             s.setAlongsideOnMeters(s.hazardConfig().alongsideOnMeters);
         };
-        ctx.addSteppedControl("Alongside back", buf, sc, nullptr,
+        ctx.addSteppedControl(TR("Alongside back"), buf, sc, nullptr,
                               proxLive, false, "spotter.alongside_on_m");
     }
 
@@ -368,7 +368,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     {
         auto sc = SettingsHud::SteppedControl::fixedFloat(
             spotter.alongsideAheadMetersPtr(), 1.0f, 0.0f, 20.0f, nullptr);
-        ctx.addSteppedControl("Alongside front", buf, sc, nullptr,
+        ctx.addSteppedControl(TR("Alongside front"), buf, sc, nullptr,
                               proxLive, false, "spotter.alongside_ahead_m");
     }
 
@@ -383,7 +383,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     {
         auto sc = SettingsHud::SteppedControl::fixedFloat(
             spotter.lateralMetersPtr(), 1.0f, 3.0f, 60.0f, nullptr);
-        ctx.addSteppedControl("Width", buf, sc, nullptr, proxLive, false,
+        ctx.addSteppedControl(TR("Width"), buf, sc, nullptr, proxLive, false,
                               "spotter.lateral_m");
     }
     ctx.endColumns();

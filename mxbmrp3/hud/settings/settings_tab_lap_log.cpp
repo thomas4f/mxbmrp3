@@ -45,52 +45,52 @@ BaseHud* SettingsHud::renderTabLapLog(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("lap_log");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeading("Appearance");
+    ctx.addSectionHeading(TR("Appearance"));
     ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
-    ctx.addSectionHeading("Layout");
+    ctx.addSectionHeading(TR("Layout"));
 
     // Row count
     char rowCountValue[8];
     snprintf(rowCountValue, sizeof(rowCountValue), "%d", hud->m_maxDisplayLaps);
-    ctx.addSteppedControl("Laps to show", rowCountValue,
+    ctx.addSteppedControl(TR("Laps to show"), rowCountValue,
         SettingsHud::SteppedControl::clampInt(&hud->m_maxDisplayLaps, 1,
             LapLogHud::MIN_DISPLAY_LAPS, LapLogHud::MAX_DISPLAY_LAPS, hud),
         hud, true, false, "lap_log.rows");
 
     // Display order
     const char* orderValue = (hud->m_displayOrder == LapLogHud::DisplayOrder::OLDEST_FIRST)
-        ? "Oldest" : "Newest";
-    ctx.addCycleControl("Display order", orderValue,
+        ? TR("Oldest") : TR("Newest");
+    ctx.addCycleControl(TR("Display order"), orderValue,
         SettingsHud::CycleControl::enumMember(hud, &LapLogHud::m_displayOrder, 2, hud),
         hud, true, false, "lap_log.order");
 
     // How long the gap row holds the official gap after a split or the line
-    ctx.addFreezeControl("Gap freeze", &hud->m_freezeDurationMs, true, hud, true, "lap_log.freeze", true);
+    ctx.addFreezeControl(TR("Gap freeze"), &hud->m_freezeDurationMs, true, hud, true, "lap_log.freeze", true);
 
     // === CONTENT SECTION ===
-    ctx.addSectionHeading("Content");
+    ctx.addSectionHeading(TR("Content"));
 
     // Column headers toggle
-    ctx.addToggleControl("Column headers", hud->m_bShowHeaders,
+    ctx.addToggleControl(TR("Column headers"), hud->m_bShowHeaders,
         SettingsHud::ClickRegion::LAP_LOG_HEADERS_TOGGLE, hud, nullptr, 0, true,
         "lap_log.headers");
 
     // Sector times toggle
     bool sectorsOn = (hud->m_enabledColumns & LapLogHud::COL_SECTORS) != 0;
-    ctx.addToggleControl("Sector times", sectorsOn,
+    ctx.addToggleControl(TR("Sector times"), sectorsOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledColumns, LapLogHud::COL_SECTORS, true,
         "lap_log.col_sectors");
 
     // Gap row toggle
-    ctx.addToggleControl("Live gap row", hud->m_showGapRow,
+    ctx.addToggleControl(TR("Live gap row"), hud->m_showGapRow,
         SettingsHud::ClickRegion::LAP_LOG_GAP_ROW_TOGGLE, hud, nullptr, 0, true,
         "lap_log.gap_row");
 
     // Which lap the gap row measures against (its own setting, not the Gap Bar's):
     // after the row it qualifies, as on the Gap Bar tab
-    ctx.addReferenceControl("Gap reference", &hud->m_gapReferenceDefault, &hud->m_gapReference, hud,
+    ctx.addReferenceControl(TR("Gap reference"), &hud->m_gapReferenceDefault, &hud->m_gapReference, hud,
         "lap_log.reference");
 
     return hud;

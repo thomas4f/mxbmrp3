@@ -34,12 +34,13 @@
 // ============================================================================
 #pragma once
 
+#include "plugin_names.h"
 #include <string>
 
 namespace InstallPrefs {
 
 // Where Setup leaves the file, relative to the game folder (the plugin's cwd).
-constexpr const char* kPath = "plugins\\mxbmrp3_data\\install_prefs.ini";
+constexpr const char* kPath = "plugins\\" MXB_DATA_DIR_NAME "\\install_prefs.ini";
 
 struct Prefs {
     bool optOut = false;     // analyticsOptOut=1 was present

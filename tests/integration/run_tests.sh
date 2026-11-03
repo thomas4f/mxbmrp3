@@ -114,6 +114,13 @@ if compgen -G "${ROOT}/tests/fixtures/"'*.json' >/dev/null 2>&1; then
     mkdir -p "${SAVE_ROOT}/fixtures"
     cp "${ROOT}/tests/fixtures/"*.json "${SAVE_ROOT}/fixtures/"
 fi
+# The translation template and the shipped packs, for i18n_limits_test.
+mkdir -p "${SAVE_ROOT}/fixtures"
+cp "${ROOT}/mxbmrp3_data/languages/template.pot" "${SAVE_ROOT}/fixtures/"
+for pack in de es fr pt sv; do
+    mkdir -p "${SAVE_ROOT}/fixtures/${pack}"
+    cp "${ROOT}/mxbmrp3_data/languages/${pack}/"* "${SAVE_ROOT}/fixtures/${pack}/"
+done
 
 # Build every selected test binary BEFORE running any, JOBS at a time.
 #

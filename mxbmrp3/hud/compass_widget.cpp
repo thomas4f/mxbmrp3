@@ -6,6 +6,7 @@
 // at the top under a fixed index and a numeric readout in the center.
 // ============================================================================
 #include "compass_widget.h"
+#include "../core/i18n.h"
 
 #include <cstdio>
 #include <cmath>
@@ -164,7 +165,7 @@ void CompassWidget::rebuildRenderData() {
     PanelWant want;
     want.contentW = contentWidth;
     want.sectionH = { gaugeAreaHeight };
-    want.captionW = planTitleWidth(dim, "Compass");
+    want.captionW = planTitleWidth(dim, TR("Compass"));
     PanelPlan& p = planPanel(dim, want);
     const float backgroundWidth = p.width();
     const float backgroundHeight = p.height();
@@ -178,7 +179,7 @@ void CompassWidget::rebuildRenderData() {
     const float dialRadius = gaugeAreaHeight * 0.5f;
 
     addPlanBackground(p, startX, startY);
-    addPlanTitle(p, "Compass",
+    addPlanTitle(p, TR("Compass"),
         this->getColor(ColorSlot::PRIMARY));
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 

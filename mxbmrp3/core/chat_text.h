@@ -55,6 +55,12 @@ inline uint32_t ensureReadable(uint32_t rgb, unsigned minLuma = 70) {
 // ---------------------------------------------------------------------------
 // Decode UTF-8 into code points. Invalid sequences become U+FFFD (which the
 // CP1252 step then drops), so a malformed byte never swallows the next character.
+//
+// STRICT, because the decoded text is trusted downstream: an OVERLONG form
+// (C0 A5 for '%'), a surrogate or anything past U+10FFFF is invalid UTF-8 and
+// is refused like any other bad sequence. Decoded leniently, C0 A5 slipped a
+// '%' past the language pack's printf check, which reads the UTF-8 -- pinned
+// by test_i18n.cpp's "overlong" case.
 inline std::vector<uint32_t> decodeUtf8(const std::string& s) {
     std::vector<uint32_t> cps;
     cps.reserve(s.size());
@@ -75,6 +81,9 @@ inline std::vector<uint32_t> decodeUtf8(const std::string& s) {
             if ((cc & 0xC0) != 0x80) { ok = false; break; }
             cp = (cp << 6) | (cc & 0x3F);
         }
+        // The smallest code point each length may carry; below it is overlong.
+        static constexpr uint32_t kMin[5] = { 0, 0, 0x80, 0x800, 0x10000 };
+        if (ok && (cp < kMin[len] || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF))) ok = false;
         if (!ok) { cps.push_back(0xFFFD); ++i; continue; }
         cps.push_back(cp);
         i += len;

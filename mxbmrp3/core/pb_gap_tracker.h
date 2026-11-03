@@ -76,6 +76,7 @@
 #include <climits>
 #include <cmath>
 #include <cstdint>
+#include "i18n_mark.h"
 
 class PbGapTracker {
 public:
@@ -111,8 +112,8 @@ public:
     // A reference's name, the one spelling Settings lists it by and the HUDs
     // caption their gaps with.
     static constexpr const char* refName(Ref ref) {
-        return ref == Ref::ALLTIME_PB ? "All-time PB" : ref == Ref::LAST_LAP ? "Last lap"
-             : ref == Ref::SERVER_BEST ? "Server best" : "Session PB";
+        return ref == Ref::ALLTIME_PB ? N_("All-time PB") : ref == Ref::LAST_LAP ? N_("Last lap")
+             : ref == Ref::SERVER_BEST ? N_("Server best") : N_("Session PB");
     }
 
     // Everything: session change, spectate target change. The all-time

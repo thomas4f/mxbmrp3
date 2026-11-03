@@ -6,6 +6,7 @@
 // Example: S1: 30.00s, S2: 60.00s (accumulated), Lap: 90.00s
 // ============================================================================
 #include "timing_hud.h"
+#include "../core/i18n.h"
 #include "records_hud.h"
 
 #include "../game/game_config.h"
@@ -420,8 +421,8 @@ void TimingHud::rebuildRenderData() {
     if (rowCount > 0) want.sectionH.push_back(rowCount * dim.lineHeightNormal);
     if (readoutCount > 0) want.sectionH.push_back(readoutCount * dim.lineHeightNormal);
     // The Gap section's reference lap, named on the title row while it is on.
-    const char* refNote = showGap ? PbGapTracker::refName(getLiveGapReference()) : nullptr;
-    want.captionW = planTitleWidth(dim, "Timing", TitleTier::Large) + planTitleNoteWidth(dim, refNote);
+    const char* refNote = showGap ? HudDefaults::refLabel(getLiveGapReference()) : nullptr;
+    want.captionW = planTitleWidth(dim, TR("Timing"), TitleTier::Large) + planTitleNoteWidth(dim, refNote);
     want.tier = TitleTier::Large;
     PanelPlan& p = planPanel(dim, want);
 
@@ -434,7 +435,7 @@ void TimingHud::rebuildRenderData() {
     const float bgLeftX = centerAnchoredPanelLeft(backgroundWidth);
 
     addPlanBackground(p, bgLeftX, START_Y);
-    addPlanTitle(p, "Timing",
+    addPlanTitle(p, TR("Timing"),
                  this->getColor(ColorSlot::PRIMARY));
 
     // Text columns: the rows' own content box, both edges read from the plan. The
@@ -623,12 +624,13 @@ int TimingHud::buildComparisonRows(Row* rows, const SegmentView& sv, bool showGa
         } else {
             strcpy_s(segRow.value, sizeof(segRow.value), Placeholders::GENERIC);
         }
-        rows[rowCount++] = { "Best", segRow };
+        rows[rowCount++] = { TR("Best"), segRow };
     } else {
         for (int i = 0; i < GAP_TYPE_COUNT; i++) {
             GapTypeFlags flag = GAP_TYPE_INFO[i].flag;
             if (!(m_enabledComparisons & flag)) continue;
-            rows[rowCount++] = { GAP_TYPE_INFO[i].name, buildComparison(flag) };
+            static I18n::Slot gapNameSlots[GAP_TYPE_COUNT] = {};
+            rows[rowCount++] = { I18n::trEntry(gapNameSlots[i], GAP_TYPE_INFO[i].name), buildComparison(flag) };
         }
     }
     return rowCount;
@@ -650,7 +652,7 @@ int TimingHud::buildReadouts(Readout* readouts) const {
         auto add = [&](ReadoutFlags flag, const char* fmt, auto... args) {
             if (!(m_enabledReadouts & flag)) return;
             Readout& r = readouts[readoutCount++];
-            r.name = READOUT_INFO[readoutIndexOf(flag)].name;
+            r.name = readoutLabel(readoutIndexOf(flag));
             snprintf(r.value, sizeof(r.value), fmt, args...);
         };
 
@@ -671,18 +673,18 @@ int TimingHud::buildReadouts(Readout* readouts) const {
 
         if (m_enabledReadouts & READOUT_TIME) {
             Readout& r = readouts[readoutCount++];
-            r.name = READOUT_INFO[readoutIndexOf(READOUT_TIME)].name;
+            r.name = readoutLabel(readoutIndexOf(READOUT_TIME));
             PluginUtils::formatSessionClock(pd.getLeaderLapsToGo(), pd.getSessionTime(),
-                                            r.value, sizeof(r.value));
+                                            sd.lapsAfterClock(), r.value, sizeof(r.value), /*shown=*/true);
         }
 
         if (m_enabledReadouts & READOUT_SESSION) {
             Readout& r = readouts[readoutCount++];
-            r.name = READOUT_INFO[readoutIndexOf(READOUT_SESSION)].name;
-            // The same helper SessionHud prints, so "10:00 + 2L" reads
+            r.name = readoutLabel(readoutIndexOf(READOUT_SESSION));
+            // The same helper SessionHud prints, so "10:00 + 2 laps" reads
             // identically in both places and a format change lands in one.
-            PluginUtils::formatSessionFormat(sd.sessionLength, sd.sessionNumLaps,
-                                             r.value, sizeof(r.value));
+            PluginUtils::formatSessionFormatWords(sd.sessionLength, sd.sessionNumLaps,
+                                                  r.value, sizeof(r.value), /*shown=*/true);
             // An unlimited session (practice with no clock and no lap target) has
             // no format to state, and the helper answers with an empty string. A
             // row with nothing after its label reads as broken, so it takes the
@@ -692,13 +694,13 @@ int TimingHud::buildReadouts(Readout* readouts) const {
 
         if (m_enabledReadouts & READOUT_FUEL) {
             Readout& r = readouts[readoutCount++];
-            r.name = READOUT_INFO[readoutIndexOf(READOUT_FUEL)].name;
+            r.name = readoutLabel(readoutIndexOf(READOUT_FUEL));
             const float laps = HudManager::getInstance().getFuelWidget().getLapsRemaining();
             // THE UNIT IS IN THE VALUE, not the label. A bare "3.2" beside "Fuel"
             // reads as litres as easily as laps, and the label column is the one
             // that cannot grow -- it is sized by "Last Lap" above. The value column
-            // already carries "10:00 + 2L", so "3.2 laps" costs nothing.
-            if (laps >= 0.0f) snprintf(r.value, sizeof(r.value), "%.1f laps", laps);
+            // already carries "10:00 + 2 laps", so "3.2 laps" costs nothing.
+            if (laps >= 0.0f) snprintf(r.value, sizeof(r.value), TR("%.1f laps"), laps);
             else strcpy_s(r.value, sizeof(r.value), Placeholders::GENERIC);
         }
 
@@ -709,7 +711,7 @@ int TimingHud::buildReadouts(Readout* readouts) const {
         auto addText = [&](ReadoutFlags flag, const char* text) {
             if (!(m_enabledReadouts & flag)) return;
             Readout& r = readouts[readoutCount++];
-            r.name = READOUT_INFO[readoutIndexOf(flag)].name;
+            r.name = readoutLabel(readoutIndexOf(flag));
             r.isText = true;
             const char* src = (text && text[0] != '\0') ? text : Placeholders::GENERIC;
             // Stored WHOLE. What fits is a property of the drawn row -- its label, the
@@ -718,8 +720,8 @@ int TimingHud::buildReadouts(Readout* readouts) const {
             strncpy_s(r.value, sizeof(r.value), src, _TRUNCATE);
         };
         addText(READOUT_SERVER,
-                PluginUtils::serverLabel(sd.serverType, sd.serverName,
-                                         static_cast<int>(pd.getRaceEntries().size())));
+                PluginUtils::shownServerLabel(sd.serverType, sd.serverName,
+                                              static_cast<int>(pd.getRaceEntries().size())));
         addText(READOUT_TRACK, sd.trackName);
     }
     return readoutCount;

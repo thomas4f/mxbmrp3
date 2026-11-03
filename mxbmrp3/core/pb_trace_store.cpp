@@ -5,6 +5,7 @@
 // than a JSON array, which keeps the file a few lines per key.
 // ============================================================================
 #include "pb_trace_store.h"
+#include "plugin_names.h"
 
 #include "../diagnostics/logger.h"
 #include "../vendor/nlohmann/json.hpp"
@@ -17,7 +18,7 @@
 #include <fstream>
 
 namespace {
-constexpr const char* TRACES_SUBDIRECTORY = "mxbmrp3";   // the stats file's folder
+constexpr const char* TRACES_SUBDIRECTORY = MXB_USER_DIR_NAME;   // the stats file's folder
 constexpr const char* TRACES_FILENAME = "mxbmrp3_pb_traces.json";
 constexpr int FILE_VERSION = 1;
 }

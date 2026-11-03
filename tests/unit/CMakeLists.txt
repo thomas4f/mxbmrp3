@@ -42,6 +42,7 @@ set(MXB_UNIT_SOURCES
     test_slider_control.cpp
     test_text_edit.cpp
     test_settings_find.cpp
+    test_i18n.cpp
     test_achievements.cpp
     test_system_messages.cpp
     test_analytics_remote_config.cpp
@@ -208,6 +209,8 @@ function(mxb_configure_unit_target TGT)
         # test_analytics_spotter.cpp: the analytics label reports our own
         # packs by name, so its list has to track this directory.
         SPOTTERS_DIR="${MXB_ROOT}/mxbmrp3_data/spotters"
+        # The SHIPPED language packs and template.pot, read by test_i18n.cpp.
+        LANGUAGES_DIR="${MXB_ROOT}/mxbmrp3_data/languages"
         # test_spotter_pack_census.cpp scans the spotter_manager*.cpp TUs' TEXT
         # for the cue keys they emit: those TUs are Windows-only and cannot be
         # linked here,

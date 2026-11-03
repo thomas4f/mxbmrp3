@@ -27,6 +27,8 @@
 // ============================================================================
 #pragma once
 
+#include "i18n_mark.h"
+
 #include <algorithm>
 #include <cstdint>
 
@@ -45,7 +47,8 @@ constexpr Level DEFAULT_LEVEL = Level::SUBTLE;
 #endif
 
 constexpr const char* levelName(Level level) {
-    return level == Level::OFF ? "Off" : level == Level::NORMAL ? "Normal" : "Subtle";
+    // English, marked for the template; Settings shows it through I18n::tr.
+    return level == Level::OFF ? N_("Off") : level == Level::NORMAL ? N_("Normal") : N_("Subtle");
 }
 
 struct Profile {

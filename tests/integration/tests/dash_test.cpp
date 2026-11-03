@@ -374,7 +374,9 @@ TEST_CASE("dash: Dash + and Dash - cycle the card, and Standings shows the rider
     CHECK(host.dashPage() == 2);   // Laps
     step("dash_next");
     CHECK(host.dashPage() == 3);   // Time
-    CHECK(shows(host, "dash_hud", "02:00"));   // the session clock, from classify
+    // The session clock, from classify; session() defaults to 8:00, so this is a
+    // time + laps race and the clock states the laps after it.
+    CHECK(shows(host, "dash_hud", "02:00 + 10 laps"));
     step("dash_next");
     CHECK(host.dashPage() == 4);   // Fuel
     step("dash_next");

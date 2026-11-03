@@ -18,14 +18,14 @@ BaseHud* SettingsHud::renderTabPerformance(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("performance");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeading("Appearance");
+    ctx.addSectionHeading(TR("Appearance"));
     ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
-    ctx.addSectionHeading("Layout");
+    ctx.addSectionHeading(TR("Layout"));
 
     // Display mode dropdown
-    static const char* const kStyles[] = { "Graphs", "Numbers", "Both" };
-    ctx.addCycleControl("Style", cycleName(kStyles, hud->m_displayMode),
+    static const char* const kStyles[] = { N_("Graphs"), N_("Numbers"), N_("Both") };
+    ctx.addCycleControl(TR("Style"), cycleName(kStyles, hud->m_displayMode),
         SettingsHud::CycleControl::enumMember(hud, &PerformanceHud::m_displayMode, 3, hud, kStyles),
         hud, true, false, "performance.display");
 
@@ -36,18 +36,18 @@ BaseHud* SettingsHud::renderTabPerformance(SettingsLayoutContext& ctx) {
     {
         char rowsBuf[8];
         snprintf(rowsBuf, sizeof(rowsBuf), "%d", hud->m_graphRows);
-        ctx.addSteppedControl("Graph height", rowsBuf,
+        ctx.addSteppedControl(TR("Graph height"), rowsBuf,
             SettingsHud::SteppedControl::clampInt(&hud->m_graphRows, 1,
                 PerformanceHud::MIN_GRAPH_ROWS, PerformanceHud::MAX_GRAPH_ROWS, hud),
             hud, true, false, "performance.graph_rows");
     }
     // === CONTENT SECTION ===
-    ctx.addSectionHeading("Content");
+    ctx.addSectionHeading(TR("Content"));
 
-    ctx.addToggleControl("Frames per second", (hud->m_enabledElements & PerformanceHud::ELEM_FPS) != 0,
+    ctx.addToggleControl(TR("Frames per second"), (hud->m_enabledElements & PerformanceHud::ELEM_FPS) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, PerformanceHud::ELEM_FPS, true,
         "performance.fps");
-    ctx.addToggleControl("Plugin time", (hud->m_enabledElements & PerformanceHud::ELEM_CPU) != 0,
+    ctx.addToggleControl(TR("Plugin time"), (hud->m_enabledElements & PerformanceHud::ELEM_CPU) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledElements, PerformanceHud::ELEM_CPU, true,
         "performance.cpu");
 
@@ -57,17 +57,17 @@ BaseHud* SettingsHud::renderTabPerformance(SettingsLayoutContext& ctx) {
     // marks the install as a developer in the usage survey.
     BenchmarkWidget* benchmark = HudManager::getInstance().getBenchmarkWidget();
     if (benchmark) {
-        ctx.addSectionHeading("Diagnostics");
+        ctx.addSectionHeading(TR("Diagnostics"));
         // Active surface: the row emits HUD_TOGGLE, which edits the focused
         // surface, so the state shown must come from the same one.
-        ctx.addToggleControl("Benchmark profiler", benchmark->isVisibleOnActiveSurface(),
+        ctx.addToggleControl(TR("Benchmark profiler"), benchmark->isVisibleOnActiveSurface(),
             SettingsHud::ClickRegion::HUD_TOGGLE, benchmark, nullptr, 0, true,
             "performance.benchmark");
     }
 
     // === DEVELOPER SECTION (only visible in developer mode) ===
     if (benchmark && SettingsManager::getInstance().isDeveloperMode()) {
-        ctx.addSectionHeading("Developer");
+        ctx.addSectionHeading(TR("Developer"));
 
         // The render-probe sweep, a companion to the profiler: that one measures
         // OUR cpu per callback and per panel, this one measures what the engine
@@ -79,13 +79,13 @@ BaseHud* SettingsHud::renderTabPerformance(SettingsLayoutContext& ctx) {
         RenderProbeSweep& sweep = RenderProbeSweep::getInstance();
         const bool running = sweep.isRunning();
         // Both labels 9 characters, so the button does not resize mid-sweep.
-        ctx.addActionButton(running ? "  Stop   " : "Run sweep", 11,
+        ctx.addActionButton(running ? TR("  Stop   ") : TR("Run sweep"), 11,
                             SettingsHud::ClickRegion::PROBE_SWEEP,
                             running ? SettingsLayoutContext::ButtonRole::Negative
                                     : SettingsLayoutContext::ButtonRole::Positive,
                             true, "performance.probe_sweep");
-        ctx.addInlineNote(running ? "Sweeping - about a minute, frame rate drops."
-                                  : "Measures the engine's per-primitive draw cost.");
+        ctx.addInlineNote(running ? TR("Sweeping - about a minute, frame rate drops.")
+                                  : TR("Measures the engine's per-primitive draw cost."));
     }
 
     return hud;

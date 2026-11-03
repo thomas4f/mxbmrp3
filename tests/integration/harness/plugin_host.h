@@ -17,6 +17,7 @@
 #include <windows.h>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -241,6 +242,9 @@ public:
         m_settingsRegionCenter = sym<int(*)(const char*,float*,float*)>("MXBMRP3_Test_SettingsRegionCenter");
         m_settingsUntipped = sym<int(*)(char*,int)>("MXBMRP3_Test_SettingsUntippedRows");
         m_settingsFind = sym<int(*)(const char*,char*,int)>("MXBMRP3_Test_SettingsFind");
+        m_setLanguage = sym<void(*)(const char*)>("MXBMRP3_Test_SetLanguage");
+        m_settingsListNames = sym<int(*)(char*,int)>("MXBMRP3_Test_SettingsListNames");
+        m_settingsTextRoom = sym<int(*)(char*,int)>("MXBMRP3_Test_SettingsTextRoom");
         m_settingsFindLanding = sym<int(*)(char*,int)>("MXBMRP3_Test_SettingsFindLanding");
         m_settingsControlSpan = sym<int(*)(const char*,int,float*,float*,float*)>("MXBMRP3_Test_SettingsControlSpan");
         m_achievementsPage = sym<int(*)(char*,int)>("MXBMRP3_Test_AchievementsPage");
@@ -433,6 +437,8 @@ public:
         m_msgPosted         = sym<unsigned int(*)()>("MXBMRP3_Test_MessagesPosted");
         m_msgLast           = sym<void(*)(char*,int)>("MXBMRP3_Test_MessageLast");
         m_msgShowing        = sym<int(*)(char*,int)>("MXBMRP3_Test_MessageShowing");
+        m_fmtClock          = sym<void(*)(int,int,int,int,char*,int)>("MXBMRP3_Test_FormatSessionClock");
+        m_fmtFormatWords    = sym<void(*)(int,int,int,char*,int)>("MXBMRP3_Test_FormatSessionFormatWords");
         m_msgStartup        = sym<void(*)(int,const char*,const char*)>("MXBMRP3_Test_MessagesStartup");
         m_startupMsg        = sym<int(*)(int*)>("MXBMRP3_Test_StartupMessage");
         m_hudHeldBack       = sym<int(*)(const char*)>("MXBMRP3_Test_HudHeldBack");
@@ -1676,6 +1682,46 @@ public:
         }
         return n;
     }
+    // Switch the language as the Appearance tab's Language row does ("" = English).
+    // MXBMRP3_Test_SetLanguage.
+    bool setLanguage(const char* folder) {
+        if (!m_setLanguage) return false;
+        m_setLanguage(folder);
+        return true;
+    }
+    // Every name every dropdown on the active settings tab offers, as drawn now.
+    // -1 = hook absent. MXBMRP3_Test_SettingsListNames.
+    int settingsListNames(std::vector<std::string>* names) {
+        if (!m_settingsListNames) return -1;
+        static char buf[65536];
+        const int n = m_settingsListNames(buf, static_cast<int>(sizeof(buf)));
+        names->clear();
+        std::string all(buf);
+        for (size_t p = 0, e; (e = all.find('\n', p)) != std::string::npos; p = e + 1)
+            names->push_back(all.substr(p, e - p));
+        return n;
+    }
+    // Each LEFT-aligned text on the settings panel as drawn now that has another
+    // after it on its row: how many characters fit before that one starts, and
+    // whether it already runs into it. MXBMRP3_Test_SettingsTextRoom.
+    struct TextRoom { int room; bool overlap; std::string text, next, where; };   // next "|" = its column's edge; where = start x,y
+    std::vector<TextRoom> settingsTextRoom() {
+        std::vector<TextRoom> out;
+        if (!m_settingsTextRoom) return out;
+        static char buf[131072];
+        m_settingsTextRoom(buf, static_cast<int>(sizeof(buf)));
+        std::string all(buf);
+        for (size_t p = 0, e; (e = all.find('\n', p)) != std::string::npos; p = e + 1) {
+            const std::string l = all.substr(p, e - p);
+            const size_t a = l.find('\t'), b = l.find('\t', a + 1);
+            if (b == std::string::npos) continue;
+            const size_t c = l.find('\t', b + 1), d = l.find('\t', c + 1);
+            if (d == std::string::npos) continue;
+            out.push_back({ std::atoi(l.substr(0, a).c_str()), l[a + 1] == '1', l.substr(b + 1, c - b - 1),
+                            l.substr(c + 1, d - c - 1), l.substr(d + 1) });
+        }
+        return out;
+    }
     // The row a Find result opened while it stays lit (until the pointer moves), or "".
     std::string settingsFindLanding() {
         char buf[64] = {0};
@@ -2387,6 +2433,19 @@ public:
     std::string messageShowing() {
         char buf[64] = {0};
         if (m_msgShowing) m_msgShowing(buf, static_cast<int>(sizeof(buf)));
+        return buf;
+    }
+    // formatSessionClock as the web JSON (shown false) or a HUD (shown true) reads it.
+    // lapsAfterClock: a time+laps race's laps after the clock (0 otherwise).
+    std::string formatSessionClock(int lapsToGo, int ms, bool shown, int lapsAfterClock = 0) {
+        char buf[64] = {0};
+        if (m_fmtClock) m_fmtClock(lapsToGo, ms, lapsAfterClock, shown ? 1 : 0, buf, static_cast<int>(sizeof(buf)));
+        return buf;
+    }
+    // formatSessionFormatWords as the Event Log (shown false) or a HUD (shown true) reads it.
+    std::string formatSessionFormatWords(int lengthMs, int numLaps, bool shown) {
+        char buf[64] = {0};
+        if (m_fmtFormatWords) m_fmtFormatWords(lengthMs, numLaps, shown ? 1 : 0, buf, static_cast<int>(sizeof(buf)));
         return buf;
     }
     void messagesStartup(bool fresh, const char* line, const char* storedLine = nullptr) {
@@ -3727,6 +3786,7 @@ private:
     void (*m_updateTagReset)() = nullptr;
     int  (*m_aboutRect)(int*,int*,int*,int*) = nullptr;
     int         (*m_settingsTabName)(int,char*,int) = nullptr;
+    int         (*m_settingsTextRoom)(char*,int) = nullptr;
     int         (*m_settingsAnyTabName)(int,char*,int) = nullptr;
     int         (*m_settingsOverflow)() = nullptr;
     int         (*m_standingsRowBand)(int*,int*) = nullptr;
@@ -3756,6 +3816,8 @@ private:
     int         (*m_settingsRegionCenter)(const char*,float*,float*) = nullptr;
     int         (*m_settingsUntipped)(char*,int) = nullptr;
     int         (*m_settingsFind)(const char*,char*,int) = nullptr;
+    void        (*m_setLanguage)(const char*) = nullptr;
+    int         (*m_settingsListNames)(char*,int) = nullptr;
     int         (*m_settingsFindLanding)(char*,int) = nullptr;
     int         (*m_settingsControlSpan)(const char*,int,float*,float*,float*) = nullptr;
     int         (*m_achievementsPage)(char*,int) = nullptr;
@@ -3921,6 +3983,8 @@ private:
     unsigned int (*m_msgPosted)() = nullptr;
     void        (*m_msgLast)(char*, int) = nullptr;
     int         (*m_msgShowing)(char*, int) = nullptr;
+    void        (*m_fmtClock)(int, int, int, int, char*, int) = nullptr;
+    void        (*m_fmtFormatWords)(int, int, int, char*, int) = nullptr;
     void        (*m_msgStartup)(int, const char*, const char*) = nullptr;
     int         (*m_startupMsg)(int*) = nullptr;
     int         (*m_hudHeldBack)(const char*) = nullptr;

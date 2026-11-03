@@ -5,6 +5,7 @@
 // dash_hud.h.
 // ============================================================================
 #include "dash_hud.h"
+#include "../core/i18n.h"
 
 #include <algorithm>
 #include <chrono>
@@ -133,9 +134,9 @@ PbGapTracker::Ref DashHud::barReference() {
 
 const char* DashHud::pageReferenceNote(Page page) {
     switch (page) {
-        case Page::TIMING:      return TimingHud::segmentModeActive() ? "Best" : PbGapTracker::refName(timingReference());
-        case Page::GAP_BAR:     return PbGapTracker::refName(barReference());
-        case Page::DELTA_TRACE: return PbGapTracker::refName(HudManager::getInstance().getDeltaTraceHud().getReference());
+        case Page::TIMING:      return TimingHud::segmentModeActive() ? TR("Best") : HudDefaults::refLabel(timingReference());
+        case Page::GAP_BAR:     return HudDefaults::refLabel(barReference());
+        case Page::DELTA_TRACE: return HudDefaults::refLabel(HudManager::getInstance().getDeltaTraceHud().getReference());
         default:                return nullptr;
     }
 }
@@ -220,6 +221,7 @@ DashHud::SessionClock DashHud::readSessionClock() {
     const PluginData& pd = PluginData::getInstance();
     SessionClock clock;
     clock.lapsToGo = pd.getLeaderLapsToGo();
+    clock.lapsAfterClock = pd.getSessionData().lapsAfterClock();
     // In overtime the label ("2 TO GO") shows no seconds, so they don't count.
     clock.seconds = clock.lapsToGo >= 0 ? 0 : pd.getSessionTime() / PluginConstants::TimeConversion::MS_PER_SECOND;
     return clock;

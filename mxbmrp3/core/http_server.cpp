@@ -30,6 +30,7 @@
 #include "http_server_internal.h"
 #include "plugin_data.h"
 #include "plugin_constants.h"
+#include "plugin_names.h"
 #include "plugin_utils.h"
 #include "color_config.h"
 #include "font_config.h"
@@ -56,7 +57,7 @@ HttpServer::HttpServer()
     , m_port(DEFAULT_PORT)
     , m_throttleMs(DEFAULT_THROTTLE_MS)
     , m_bindAddress(DEFAULT_BIND_ADDRESS)
-    , m_webRoot("plugins\\mxbmrp3_data\\web")
+    , m_webRoot("plugins\\" MXB_DATA_DIR_NAME "\\web")
     , m_sseSequence(0) {
 }
 

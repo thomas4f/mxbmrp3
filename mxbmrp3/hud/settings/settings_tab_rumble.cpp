@@ -109,7 +109,7 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("rumble");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeading("Appearance");
+    ctx.addSectionHeading(TR("Appearance"));
     ctx.addStandardHudControls(hud);
 
     // Global config for master settings (enabled, blend, crashed, profile mode)
@@ -121,30 +121,30 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
     float rowWidth = ctx.rowSpanWidth();
 
     // === RUMBLE SECTION ===
-    ctx.addSectionHeading("Rumble");
+    ctx.addSectionHeading(TR("Rumble"));
     ctx.beginColumns(2, 4);   // side by side (beginColumns)
 
     // Master rumble enable (always from global config)
-    ctx.addToggleControl("Enabled", globalConfig.enabled,
+    ctx.addToggleControl(TR("Enabled"), globalConfig.enabled,
         SettingsHud::ClickRegion::RUMBLE_TOGGLE, hud, nullptr, 0, true, "rumble.enabled");
 
     // Stack mode (always from global config)
-    ctx.addToggleControl("Stack forces", globalConfig.additiveBlend,
+    ctx.addToggleControl(TR("Stack forces"), globalConfig.additiveBlend,
         SettingsHud::ClickRegion::RUMBLE_BLEND_TOGGLE, hud, nullptr, 0, true, "rumble.stack");
 
     // Rumble when crashed (always from global config)
-    ctx.addToggleControl("When crashed", globalConfig.rumbleWhenCrashed,
+    ctx.addToggleControl(TR("When crashed"), globalConfig.rumbleWhenCrashed,
         SettingsHud::ClickRegion::RUMBLE_CRASH_TOGGLE, hud, nullptr, 0, true, "rumble.crashed");
 
     // Effect profile (per-bike vs global) - uses global config to determine mode
     // Pass true for isOn since both options are valid active states (not on/off)
-    ctx.addToggleControl("Effect profile", true,
+    ctx.addToggleControl(TR("Effect profile"), true,
         SettingsHud::ClickRegion::RUMBLE_EFFECT_PROFILE_TOGGLE, hud, nullptr, 0, true, "rumble.effect_profile",
-        globalConfig.usePerBikeEffects ? "Per-Bike" : "Global");
+        globalConfig.usePerBikeEffects ? TR("Per-Bike") : TR("Global"));
     ctx.endColumns();
 
     // === EFFECTS SECTION ===
-    const float headingY = ctx.addSectionHeading("Effects");
+    const float headingY = ctx.addSectionHeading(TR("Effects"));
 
     // Table columns: [gutter] Effect | Light | Heavy | Min | Max, across the full
     // content width. The column labels ride on the "Effects" heading row, as on the
@@ -168,13 +168,13 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
     const float minX = heavyX + charW * (cellChars + CELL_GAP_CHARS);
     const float maxX = minX + charW * (cellChars + CELL_GAP_CHARS);
 
-    ctx.parent->addString("Light", lightX + charW * 2.0f, headingY, PluginConstants::Justify::LEFT,
+    ctx.parent->addString(TR("Light"), lightX + charW * 2.0f, headingY, PluginConstants::Justify::LEFT,
         PluginConstants::Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
-    ctx.parent->addString("Heavy", heavyX + charW * 2.0f, headingY, PluginConstants::Justify::LEFT,
+    ctx.parent->addString(TR("Heavy"), heavyX + charW * 2.0f, headingY, PluginConstants::Justify::LEFT,
         PluginConstants::Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
-    ctx.parent->addString("Min", minX + charW * 2.0f, headingY, PluginConstants::Justify::LEFT,
+    ctx.parent->addString(TR("Min"), minX + charW * 2.0f, headingY, PluginConstants::Justify::LEFT,
         PluginConstants::Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
-    ctx.parent->addString("Max", maxX + charW * 2.0f, headingY, PluginConstants::Justify::LEFT,
+    ctx.parent->addString(TR("Max"), maxX + charW * 2.0f, headingY, PluginConstants::Justify::LEFT,
         PluginConstants::Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
 
     // The stepped descriptors below bind raw pointers into the ACTIVE rumble
@@ -242,7 +242,7 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
             char valueStr[8];
             const int percent = static_cast<int>(std::round(strength * 100.0f));
             if (percent <= 0) {
-                snprintf(valueStr, sizeof(valueStr), "Off");
+                snprintf(valueStr, sizeof(valueStr), "%s", TR("Off"));
             } else {
                 snprintf(valueStr, sizeof(valueStr), "%d%%", percent);
             }
@@ -320,54 +320,54 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
     // row, or with the "Bumps" header above the Front/Rear rows when expanded.
     const float bumpsY = drawSplitMarker(bumpsSplit);
     if (bumpsSplit) {
-        drawEffectHeader("Bumps", "rumble.bumps");
+        drawEffectHeader(TR("Bumps"), "rumble.bumps");
         addSplitRegion(bumpsY, SettingsHud::ClickRegion::RUMBLE_SUSP_SPLIT_TOGGLE);
-        addRumbleRow("- Front", rumbleConfig.suspensionEffectFront,
+        addRumbleRow(TR("- Front"), rumbleConfig.suspensionEffectFront,
             1.0f, 50.0f, true, 1.0f, "rumble.bumps",
             &rumbleConfig.suspensionSplitInitialized);
-        addRumbleRow("- Rear", rumbleConfig.suspensionEffectRear,
+        addRumbleRow(TR("- Rear"), rumbleConfig.suspensionEffectRear,
             1.0f, 50.0f, true, 1.0f, "rumble.bumps",
             &rumbleConfig.suspensionSplitInitialized);
     } else {
-        addRumbleRow("Bumps", rumbleConfig.suspensionEffect,
+        addRumbleRow(TR("Bumps"), rumbleConfig.suspensionEffect,
             1.0f, 50.0f, true, 1.0f, "rumble.bumps");
         addSplitRegion(bumpsY, SettingsHud::ClickRegion::RUMBLE_SUSP_SPLIT_TOGGLE);
     }
-    addRumbleRow("Slide", rumbleConfig.slideEffect,
+    addRumbleRow(TR("Slide"), rumbleConfig.slideEffect,
         1.0f, 90.0f, true, 1.0f, "rumble.slide");
-    addRumbleRow("Wheelspin", rumbleConfig.wheelspinEffect,
+    addRumbleRow(TR("Wheelspin"), rumbleConfig.wheelspinEffect,
         1.0f, 50.0f, true, 1.0f, "rumble.spin");
     // Lockup (front/rear splittable)
     const float lockupY = drawSplitMarker(lockupSplit);
     if (lockupSplit) {
-        drawEffectHeader("Lockup", "rumble.lockup");
+        drawEffectHeader(TR("Lockup"), "rumble.lockup");
         addSplitRegion(lockupY, SettingsHud::ClickRegion::RUMBLE_LOCKUP_SPLIT_TOGGLE);
-        addRumbleRow("- Front", rumbleConfig.brakeLockupEffectFront,
+        addRumbleRow(TR("- Front"), rumbleConfig.brakeLockupEffectFront,
             0.05f, 1.0f, false, 1.0f, "rumble.lockup",
             &rumbleConfig.brakeLockupSplitInitialized);
-        addRumbleRow("- Rear", rumbleConfig.brakeLockupEffectRear,
+        addRumbleRow(TR("- Rear"), rumbleConfig.brakeLockupEffectRear,
             0.05f, 1.0f, false, 1.0f, "rumble.lockup",
             &rumbleConfig.brakeLockupSplitInitialized);
     } else {
-        addRumbleRow("Lockup", rumbleConfig.brakeLockupEffect,
+        addRumbleRow(TR("Lockup"), rumbleConfig.brakeLockupEffect,
             0.05f, 1.0f, false, 1.0f, "rumble.lockup");
         addSplitRegion(lockupY, SettingsHud::ClickRegion::RUMBLE_LOCKUP_SPLIT_TOGGLE);
     }
-    addRumbleRow("Wheelie", rumbleConfig.wheelieEffect,
+    addRumbleRow(TR("Wheelie"), rumbleConfig.wheelieEffect,
         1.0f, 90.0f, true, 1.0f, "rumble.wheelie");
-    addRumbleRow("Steering", rumbleConfig.steerEffect,
+    addRumbleRow(TR("Steering"), rumbleConfig.steerEffect,
         1.0f, 200.0f, true, 1.0f, "rumble.steer");
-    addRumbleRow("RPM", rumbleConfig.rpmEffect,
+    addRumbleRow(TR("RPM"), rumbleConfig.rpmEffect,
         100.0f, 20000.0f, true, 1.0f, "rumble.rpm");
 
     // Rev Limiter: Min/Max are a percentage of the bike's real limiter RPM (auto
     // per-bike); 1% steps, allow buffer past 100
-    addRumbleRow("Rev limiter", rumbleConfig.revLimiterEffect,
+    addRumbleRow(TR("Rev limiter"), rumbleConfig.revLimiterEffect,
         1.0f, 110.0f, true, 1.0f, "rumble.revlimiter");
 
 #if GAME_HAS_PIT_LIMITER
     // Pit Limiter: binary effect; Light/Heavy set intensity (only games that report it)
-    addRumbleRow("Pit limiter", rumbleConfig.pitLimiterEffect,
+    addRumbleRow(TR("Pit limiter"), rumbleConfig.pitLimiterEffect,
         0.05f, 1.0f, false, 1.0f, "rumble.pitlimiter");
 #endif
 
@@ -377,11 +377,11 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
         SpeedWidget* speedWidget = ctx.parent->getSpeedWidget();
         bool isKmh = speedWidget && speedWidget->getSpeedUnit() == SpeedWidget::SpeedUnit::KMH;
         float surfaceFactor = isKmh ? 3.6f : 2.23694f;  // m/s to km/h or mph
-        addRumbleRow("Surface", rumbleConfig.surfaceEffect,
+        addRumbleRow(TR("Surface"), rumbleConfig.surfaceEffect,
             1.39f, 200.0f, true, surfaceFactor, "rumble.surface");
     }
 
-    ctx.addNote("Tip: select your controller in the General tab.");
+    ctx.addNote(TR("Tip: select your controller in the General tab."));
 
     return hud;
 }

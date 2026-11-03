@@ -31,22 +31,22 @@ namespace {
 // What each More tab is, in a few words. Keyed by tooltip id; the full sentence is the tab's tooltip.
 struct MoreBlurb { const char* tooltipId; const char* text; };
 constexpr MoreBlurb kBlurbs[] = {
-    { "radar",          "Riders around you" },
-    { "ideal_lap",      "Best sectors combined" },
-    { "session",        "Track, server and players" },
-    { "performance",    "Frame rate and plugin time" },
-    { "stats",          "Laps, crashes, top speed" },
-    { "telemetry",      "Throttle, brake, suspension" },
-    { "records",        "Online lap records" },
-    { "fmx",            "Trick scoring and combos" },
-    { "event_log",      "Feed of race events" },
-    { "session_charts", "Position and gap charts" },
+    { "radar",          N_("Riders around you") },
+    { "ideal_lap",      N_("Best sectors combined") },
+    { "session",        N_("Track, server and players") },
+    { "performance",    N_("Frame rate and plugin time") },
+    { "stats",          N_("Laps, crashes, top speed") },
+    { "telemetry",      N_("Throttle, brake, suspension") },
+    { "records",        N_("Online lap records") },
+    { "fmx",            N_("Trick scoring and combos") },
+    { "event_log",      N_("Feed of race events") },
+    { "session_charts", N_("Position and gap charts") },
 };
 
 const char* blurbFor(const char* tooltipId) {
     if (!tooltipId) return "";
     for (const MoreBlurb& b : kBlurbs) {
-        if (std::strcmp(b.tooltipId, tooltipId) == 0) return b.text;
+        if (std::strcmp(b.tooltipId, tooltipId) == 0) return I18n::tr(b.text);
     }
     return "";
 }
@@ -66,7 +66,7 @@ BaseHud* SettingsHud::renderTabMore(SettingsLayoutContext& ctx) {
     int tabs[TAB_COUNT];
     const int count = std::min(self.moreGroupTabs(tabs, TAB_COUNT, nullptr), static_cast<int>(TAB_COUNT));
 
-    ctx.addSectionHeading("More");
+    ctx.addSectionHeading(TR("More"));
     for (int t = 0; t < count; ++t) {
         const TabDescriptor& row = *findTabDescriptor(tabs[t]);
         BaseHud* hud = row.hud ? row.hud(self) : nullptr;
@@ -97,7 +97,7 @@ BaseHud* SettingsHud::renderTabMore(SettingsLayoutContext& ctx) {
                          ClickRegion::TAB);
         open.tabIndex = row.tabId;
         self.m_clickRegions.push_back(open);
-        self.addString(row.name, x + iconW, y, Justify::LEFT,
+        self.addString(I18n::tr(row.name), x + iconW, y, Justify::LEFT,
                        Fonts::getNormal(), cc.getAccent(), ctx.fontSize);
         self.addString(blurbFor(row.tooltipId), x + cw * static_cast<float>(BLURB_COL), y,
                        Justify::LEFT, Fonts::getNormal(), cc.getMuted(), ctx.fontSize);

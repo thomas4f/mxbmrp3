@@ -3,6 +3,7 @@
 // Gear widget - displays current gear with shift/limiter indicators
 // ============================================================================
 #include "gear_widget.h"
+#include "../core/i18n.h"
 
 #include "gear_geometry.h"
 #include "digit_roll.h"
@@ -91,7 +92,7 @@ void GearWidget::rebuildRenderData() {
     PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(WidgetDimensions::GEAR_WIDTH, dim.fontSize);
     want.sectionH = { gearRowHeight };
-    want.captionW = planTitleWidth(dim, "Gear");
+    want.captionW = planTitleWidth(dim, TR("Gear"));
     PanelPlan& p = planPanel(dim, want);
 
     const float backgroundWidth = p.width();
@@ -100,7 +101,7 @@ void GearWidget::rebuildRenderData() {
     unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
 
     addPlanBackground(p, startX, startY);
-    addPlanTitle(p, "Gear", textColor);
+    addPlanTitle(p, TR("Gear"), textColor);
     float currentY = p.contentY();
     // THE ROW THE PLAN LAID OUT, not the one asked for: the last section's box absorbs
     // the panel's ceil remainder (panel_box.h), so at some uiLineHeight values it is

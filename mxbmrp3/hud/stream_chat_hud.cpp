@@ -4,6 +4,7 @@
 // ============================================================================
 
 #include "stream_chat_hud.h"
+#include "../core/i18n.h"
 #include "default_slots.h"
 #include "../core/twitch_chat_manager.h"
 #include "../core/twitch_irc.h"
@@ -25,11 +26,11 @@ unsigned long rgbToAbgr(uint32_t rgb) {
                                   static_cast<uint8_t>((rgb >> 8) & 0xFF),
                                   static_cast<uint8_t>(rgb & 0xFF));
 }
-constexpr const char* TITLE = "Stream Chat";
-constexpr const char* SETTINGS_HINT = "Check MXBMRP3 Settings > Stream Chat";
+const char* title() { return TR("Stream Chat"); }
+const char* settingsHint() { return TR("Check MXBMRP3 Settings > Stream Chat"); }
 constexpr int TWITCH = static_cast<int>(Chat::Platform::Twitch);
 constexpr int YOUTUBE = static_cast<int>(Chat::Platform::YouTube);
-const char* platformName(int p) { return p == YOUTUBE ? "YouTube" : "Twitch"; }
+const char* platformName(int p) { return p == YOUTUBE ? TR("YouTube") : TR("Twitch"); }
 }  // namespace
 
 StreamChatHud::StreamChatHud() {
@@ -465,19 +466,19 @@ void StreamChatHud::rebuildRenderData() {
             switch (n) {
             case Notice::CONNECTING:
                 if (p == TWITCH) {
-                    snprintf(connecting, sizeof(connecting), "Connecting to #%s...",
+                    snprintf(connecting, sizeof(connecting), TR("Connecting to #%s..."),
                              TwitchChatManager::getInstance().getChannel().c_str());
                 } else {
-                    snprintf(connecting, sizeof(connecting), "Connecting to %s...",
+                    snprintf(connecting, sizeof(connecting), TR("Connecting to %s..."),
                              YouTubeChatManager::getInstance().getChannel().c_str());
                 }
                 msg = connecting;
                 break;
-            case Notice::RETRYING:    msg = "Connection lost - retrying..."; break;
-            case Notice::NOT_LIVE:    msg = "Not live - checking every minute"; break;
-            case Notice::NO_CHANNEL:  msg = "No channel set"; break;
-            case Notice::NOT_FOUND:   msg = "Channel not found"; break;
-            case Notice::UNAVAILABLE: msg = "Unavailable"; break;
+            case Notice::RETRYING:    msg = TR("Connection lost - retrying..."); break;
+            case Notice::NOT_LIVE:    msg = TR("Not live - checking every minute"); break;
+            case Notice::NO_CHANNEL:  msg = TR("No channel set"); break;
+            case Notice::NOT_FOUND:   msg = TR("Channel not found"); break;
+            case Notice::UNAVAILABLE: msg = TR("Unavailable"); break;
             default: break;
             }
             if (!msg) continue;
@@ -531,11 +532,11 @@ void StreamChatHud::rebuildRenderData() {
     PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(m_widthChars, dim.fontSize);
     want.sectionH = { m_maxRows * dim.lineHeightNormal };
-    want.captionW = planTitleWidth(dim, TITLE, TitleTier::Large);
+    want.captionW = planTitleWidth(dim, title(), TitleTier::Large);
     want.tier = TitleTier::Large;
     PanelPlan& plan = planPanel(dim, want);
     addPlanBackground(plan, START_X, START_Y);
-    addPlanTitle(plan, TITLE, getColor(ColorSlot::PRIMARY));
+    addPlanTitle(plan, title(), getColor(ColorSlot::PRIMARY));
 
     const float contentX = plan.contentX();
     const float iconColWidth = PluginUtils::calculateMonospaceTextWidth(ICON_COL_WIDTH, dim.fontSize);
@@ -562,15 +563,15 @@ void StreamChatHud::rebuildRenderData() {
         int headlineCount = 0;
         bool onlyUnavailable = true;
         if (!anyPlatformOn()) {
-            headlines[headlineCount++] = "Stream chat off";
+            headlines[headlineCount++] = TR("Stream chat off");
             onlyUnavailable = false;
         } else {
             for (int p = 0; p < Chat::PLATFORM_COUNT; ++p) {
                 const Notice n = platformNotice(p);
                 if (n == Notice::OFF) continue;
-                const char* h = (n == Notice::NO_CHANNEL) ? "No channel set"
-                              : (n == Notice::NOT_FOUND) ? "Channel not found"
-                              : "YouTube chat unavailable";
+                const char* h = (n == Notice::NO_CHANNEL) ? TR("No channel set")
+                              : (n == Notice::NOT_FOUND) ? TR("Channel not found")
+                              : TR("YouTube chat unavailable");
                 if (n != Notice::UNAVAILABLE) onlyUnavailable = false;
                 if (platformsOn > 1 && n != Notice::UNAVAILABLE) {
                     snprintf(named[headlineCount], sizeof(named[headlineCount]), "%s: %s", platformName(p), h);
@@ -584,7 +585,7 @@ void StreamChatHud::rebuildRenderData() {
         // Nothing in Settings fixes a format this build cannot read, so the hint
         // says what it is rather than sending the player there. No promise of a
         // fix: YouTube's chat is unofficial.
-        const char* hint = onlyUnavailable ? "YouTube's chat can't be read" : SETTINGS_HINT;
+        const char* hint = onlyUnavailable ? TR("YouTube's chat can't be read") : settingsHint();
 
         const float lineH = dim.lineHeightNormal;
         const float centerX = contentX + PluginUtils::calculateMonospaceTextWidth(m_widthChars, dim.fontSize) * 0.5f;

@@ -3,6 +3,7 @@
 // Crash counter widget - see crash_widget.h for who it is for.
 // ============================================================================
 #include "crash_widget.h"
+#include "../core/i18n.h"
 
 #include <cstdio>
 
@@ -95,7 +96,7 @@ void CrashWidget::rebuildRenderData() {
     float sectionH = dim.lineHeightLarge;
     if (withButton) sectionH += buttonHeight;
     want.sectionH = { sectionH };
-    want.captionW = planTitleWidth(dim, "Crashes");
+    want.captionW = planTitleWidth(dim, TR("Crashes"));
     PanelPlan& p = planPanel(dim, want);
 
     const float backgroundWidth = p.width();
@@ -103,7 +104,7 @@ void CrashWidget::rebuildRenderData() {
     const unsigned long textColor = this->getColor(ColorSlot::PRIMARY);
 
     addPlanBackground(p, 0.0f, 0.0f);
-    addPlanTitle(p, "Crashes", textColor);
+    addPlanTitle(p, TR("Crashes"), textColor);
     const float currentY = p.contentY();
     // The CARD's centre, not the panel's (PanelPlan::sectionBoxCenterX): the two
     // agree only while the [content] terms are left/right symmetric.
@@ -151,7 +152,7 @@ void CrashWidget::rebuildRenderData() {
         // Ink-centred in the chip rather than offset by insetT, since the chip no
         // longer carries one -- the same solve the big count above uses.
         addStateButton(m_resetLeft, rowY, buttonWidth, buttonHeight,
-                       "Reset", inkCenteredY(rowY, buttonHeight, dim.fontSize), dim.fontSize,
+                       TR("Reset"), inkCenteredY(rowY, buttonHeight, dim.fontSize), dim.fontSize,
                        // ACCENT, not NEGATIVE: the same slot RecordsHud's Compare chip
                        // uses, and this is the same kind of control. Red would read as
                        // "careful" for an action whose whole point is to be pressed

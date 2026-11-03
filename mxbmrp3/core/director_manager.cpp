@@ -113,8 +113,8 @@ void DirectorManager::setEnabled(bool enabled) {
     m_lastSessionGen = PluginData::getInstance().getSessionData().sessionGeneration;
     DEBUG_INFO_F("Director: %s", enabled ? "enabled" : "disabled");
     // Tint state-transition entries by state: auto-on == POSITIVE (running), off == MUTED.
-    if (enabled) logDirectorEvent("Auto-director enabled",  static_cast<int>(ColorSlot::POSITIVE));
-    else         logDirectorEvent("Auto-director disabled", static_cast<int>(ColorSlot::MUTED));
+    if (enabled) logDirectorEvent(N_("Auto-director enabled"),  static_cast<int>(ColorSlot::POSITIVE));
+    else         logDirectorEvent(N_("Auto-director disabled"), static_cast<int>(ColorSlot::MUTED));
 }
 
 void DirectorManager::setMinShotSec(int sec) {
@@ -172,14 +172,15 @@ void DirectorManager::toggleLock() {
     // Rider lock == Paused == WARNING (matches the standings lock icon); releasing it
     // resumes auto == POSITIVE.
     if (m_riderLock && m_currentSubject >= 0) {
-        char lab[16], msg[64];
+        char lab[16];
+        EventText msg;
         riderLabel(m_currentSubject, lab, sizeof(lab));
-        snprintf(msg, sizeof(msg), "Locked on %s", lab);
+        msg.format(N_("Locked on %s"), lab);
         logDirectorEvent(msg, static_cast<int>(ColorSlot::WARNING));
     } else if (m_riderLock) {
-        logDirectorEvent("Rider lock on",  static_cast<int>(ColorSlot::WARNING));
+        logDirectorEvent(N_("Rider lock on"),  static_cast<int>(ColorSlot::WARNING));
     } else {
-        logDirectorEvent("Rider lock off", static_cast<int>(ColorSlot::POSITIVE));
+        logDirectorEvent(N_("Rider lock off"), static_cast<int>(ColorSlot::POSITIVE));
     }
 }
 
@@ -367,7 +368,7 @@ void DirectorManager::riderLabel(int raceNum, char* buf, size_t n) const {
     else                                     snprintf(buf, n, "#%d", raceNum);
 }
 
-void DirectorManager::logDirectorEvent(const char* message, int iconColorSlot) {
+void DirectorManager::logDirectorEvent(const EventText& message, int iconColorSlot) {
     PluginData::getInstance().addEventLogEntry(EventLogType::Director, message, nullptr, iconColorSlot);
     // A state change breaks the cut run, so let the next cut log fresh (even if it lands
     // on the same subject/shot as the cut before the state change).
@@ -380,18 +381,18 @@ void DirectorManager::emitCutEvent(int subject, int partner) {
     char partnerLab[16] = "";
     if (partner >= 0) riderLabel(partner, partnerLab, sizeof(partnerLab));
 
-    char msg[64];
+    EventText msg;
     switch (m_currentShotType) {
         case SHOT_BATTLE:
-            if (partner >= 0) snprintf(msg, sizeof(msg), "Battle %s vs %s", subjLab, partnerLab);
-            else              snprintf(msg, sizeof(msg), "Battle %s", subjLab);
+            if (partner >= 0) msg.format(N_("Battle %s vs %s"), subjLab, partnerLab);
+            else              msg.format(N_("Battle %s"), subjLab);
             break;
         case SHOT_OVERTAKE:
-            if (partner >= 0) snprintf(msg, sizeof(msg), "Overtake %s on %s", subjLab, partnerLab);
-            else              snprintf(msg, sizeof(msg), "Overtake %s", subjLab);
+            if (partner >= 0) msg.format(N_("Overtake %s on %s"), subjLab, partnerLab);
+            else              msg.format(N_("Overtake %s"), subjLab);
             break;
-        case SHOT_INCIDENT:  snprintf(msg, sizeof(msg), "Incident %s", subjLab); break;
-        case SHOT_FASTEST:   snprintf(msg, sizeof(msg), "Fastest lap %s", subjLab); break;
+        case SHOT_INCIDENT:  msg.format(N_("Incident %s"), subjLab); break;
+        case SHOT_FASTEST:   msg.format(N_("Fastest lap %s"), subjLab); break;
         // SHOT_FINISH covers the whole run-in to the flag, not just the win: once the
         // leader crosses, the lock moves down the order to whoever is still racing to
         // the line, and every one of those cuts is tagged "finish" too. Only the rider
@@ -400,15 +401,15 @@ void DirectorManager::emitCutEvent(int subject, int partner) {
         // Mirrors the overlay caption, which reads FINISHED vs FINISHING
         // (overlay-focus.js).
         case SHOT_FINISH:
-            if (subject == m_finishedWinnerNum) snprintf(msg, sizeof(msg), "Race winner %s", subjLab);
-            else                                snprintf(msg, sizeof(msg), "Finishing %s", subjLab);
+            if (subject == m_finishedWinnerNum) msg.format(N_("Race winner %s"), subjLab);
+            else                                msg.format(N_("Finishing %s"), subjLab);
             break;
-        case SHOT_FINAL_LAP: snprintf(msg, sizeof(msg), "Final lap %s", subjLab); break;
-        case SHOT_PACE:      snprintf(msg, sizeof(msg), "Fast sector %s", subjLab); break;
-        case SHOT_LAPPER:    snprintf(msg, sizeof(msg), "Lapping %s", subjLab); break;
-        case SHOT_DROP:      snprintf(msg, sizeof(msg), "Losing places %s", subjLab); break;
+        case SHOT_FINAL_LAP: msg.format(N_("Final lap %s"), subjLab); break;
+        case SHOT_PACE:      msg.format(N_("Fast sector %s"), subjLab); break;
+        case SHOT_LAPPER:    msg.format(N_("Lapping %s"), subjLab); break;
+        case SHOT_DROP:      msg.format(N_("Losing places %s"), subjLab); break;
         case SHOT_SOLO:
-        default:             snprintf(msg, sizeof(msg), "Following %s", subjLab); break;
+        default:             msg.format(N_("Following %s"), subjLab); break;
     }
 
     // Dedup on a canonical key (shot + unordered rider pair): a same-shot camera refresh —
@@ -497,7 +498,7 @@ void DirectorManager::pollManualControl() {
             m_riderLock = false;  // taking manual control releases the rider lock
             // Edge into a menu-driven manual camera (the gamepad-takeover path logs its own
             // message below, and sets m_manualSinceMs first, so it never reaches here).
-            logDirectorEvent("Manual camera", static_cast<int>(ColorSlot::NEUTRAL));  // == button Manual state
+            logDirectorEvent(N_("Manual camera"), static_cast<int>(ColorSlot::NEUTRAL));  // == button Manual state
         }
         // A free-roam grabbed via gamepad takeover always auto-resumes (default timeout
         // when "resume after" is Off) so the caster isn't trapped without opening the
@@ -518,7 +519,7 @@ void DirectorManager::pollManualControl() {
         m_manualSinceMs = 0;
         m_reclaiming = true;
         m_lastDecisionMs = 0;
-        logDirectorEvent("Auto-director resumed", static_cast<int>(ColorSlot::POSITIVE));  // == button Running state
+        logDirectorEvent(N_("Auto-director resumed"), static_cast<int>(ColorSlot::POSITIVE));  // == button Running state
         evaluate();
         return;
     }
@@ -540,7 +541,7 @@ void DirectorManager::pollManualControl() {
             m_lastInputActivityMs = now;
             m_riderLock = false;  // taking manual control releases the rider lock
             DEBUG_INFO("Director: gamepad takeover -> Free-Roam (paused)");
-            logDirectorEvent("Manual control (gamepad)", static_cast<int>(ColorSlot::NEUTRAL));  // == button Manual state
+            logDirectorEvent(N_("Manual control (gamepad)"), static_cast<int>(ColorSlot::NEUTRAL));  // == button Manual state
         }
     }
 }

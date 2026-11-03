@@ -47,9 +47,9 @@ TEST_CASE("race session state: green snapshots the grid; started/ended events") 
         auto d = host.snapshot();
         REQUIRE(d.is_object());
         CHECK(hasEvent(d, "started"));
-        // The format detail is the Session and Timing panels' format with the laps
-        // spelled out (formatSessionFormatWords): the panels' "10L" suits a cell,
-        // but "Race 1 started: 10L" read as a code in the Event Log.
+        // The format detail is the Session and Timing panels' format, laps spelled
+        // out (formatSessionFormatWords): "Race 1 started: 10L" read as a code.
+        // Stored English, like every Event Log detail.
         std::string detail;
         for (const auto& e : d.value("events", nlohmann::json::array()))
             if (e.value("message", std::string()).find("started") != std::string::npos)

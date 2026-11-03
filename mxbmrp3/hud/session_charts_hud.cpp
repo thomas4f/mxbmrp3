@@ -5,6 +5,7 @@
 // draws one line per rider for the selected chart type.
 // ============================================================================
 #include "session_charts_hud.h"
+#include "../core/i18n.h"
 #include "default_slots.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_utils.h"
@@ -53,10 +54,10 @@ struct Pt { float x = 0.0f; float y = 0.0f; bool ok = false; };
 // race leader vs the session-best lap in practice/qualifying.
 const char* chartNameOf(SessionChartsHud::ChartType t, bool isRace) {
     switch (t) {
-        case SessionChartsHud::ChartType::LAP:   return "Lap Chart";
-        case SessionChartsHud::ChartType::TRACE: return "Race Trace";
-        case SessionChartsHud::ChartType::GAP:   return isRace ? "Gap to Leader" : "Gap to Best Lap";
-        case SessionChartsHud::ChartType::PACE:  return "Pace";
+        case SessionChartsHud::ChartType::LAP:   return TR("Lap Chart");
+        case SessionChartsHud::ChartType::TRACE: return TR("Race Trace");
+        case SessionChartsHud::ChartType::GAP:   return isRace ? TR("Gap to Leader") : TR("Gap to Best Lap");
+        case SessionChartsHud::ChartType::PACE:  return TR("Pace");
         default: return "";
     }
 }
@@ -470,7 +471,7 @@ void SessionChartsHud::rebuildRenderData() {
     } else {
         want.sectionH.push_back(dims.lineHeightNormal);  // "no charts enabled" note
     }
-    want.captionW = planTitleWidth(dims, "Charts", TitleTier::Large);
+    want.captionW = planTitleWidth(dims, TR("Charts"), TitleTier::Large);
     want.tier = TitleTier::Large;
     PanelPlan& plan = planPanel(dims, want);
 
@@ -480,11 +481,11 @@ void SessionChartsHud::rebuildRenderData() {
     float contentStartX = plan.contentX();
     float currentY = plan.contentY(0);
 
-    addPlanTitle(plan, "Charts",
+    addPlanTitle(plan, TR("Charts"),
                  this->getColor(ColorSlot::PRIMARY));
 
     if (charts.empty()) {
-        addString("No charts enabled", contentStartX + graphWidth * 0.5f, currentY,
+        addString(TR("No charts enabled"), contentStartX + graphWidth * 0.5f, currentY,
             Justify::CENTER, this->getFont(FontCategory::NORMAL),
             this->getColor(ColorSlot::MUTED), dims.fontSize);
     }
@@ -538,7 +539,7 @@ void SessionChartsHud::drawChart(ChartType type, float x, float y, float w, floa
 // position/trace/gap need a mass-start cumulative race to mean anything.
 void SessionChartsHud::drawRaceOnlyNote(float x, float y, float w, float h) {
     const auto dims = getScaledDimensions();
-    addString("Race sessions only", x + w * 0.5f, y + h * 0.5f - dims.lineHeightNormal * 0.5f,
+    addString(TR("Race sessions only"), x + w * 0.5f, y + h * 0.5f - dims.lineHeightNormal * 0.5f,
               Justify::CENTER, this->getFont(FontCategory::NORMAL),
               this->getColor(ColorSlot::MUTED), dims.fontSize);
 }

@@ -9,6 +9,7 @@
 // ============================================================================
 #pragma once
 
+#include "plugin_names.h"
 #include <string>
 
 namespace AssetPath {
@@ -41,7 +42,7 @@ inline std::string renderName(const std::string& path) {
     }
 
     // Drop the resource-root prefix; the renderer's root already points at it.
-    const std::string root = "mxbmrp3_data/";
+    const std::string root = MXB_DATA_DIR_NAME "/";
     const size_t rp = p.find(root);
     if (rp != std::string::npos) p = p.substr(rp + root.size());
 

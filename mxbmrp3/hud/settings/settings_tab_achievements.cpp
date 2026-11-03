@@ -156,7 +156,7 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
     // === TOASTS: the card's own rows ===
     // Built from the standard row helpers, at the control column with the standard
     // value width, so the arrows line up with every other tab's Appearance rows.
-    ctx.addSectionHeading("Toasts");
+    ctx.addSectionHeading(TR("Toasts"));
 
     // Every row but Visible greys out with the toasts off: live arrows under an
     // Off switch read as a control that does nothing.
@@ -165,12 +165,12 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
     ctx.beginColumns(2, widget ? 6 : 2);
 
     // Visible: the toast master (common handler, shared with the tab-list checkbox).
-    ctx.addToggleControl("Visible", toastsOn,
+    ctx.addToggleControl(TR("Visible"), toastsOn,
         SettingsHud::ClickRegion::ACHIEVEMENTS_TOASTS_TOGGLE, nullptr, nullptr, 0, true,
         "achievements.toasts");
 
     if (widget) {
-        ctx.addToggleControl("Title", widget->getShowTitle(),
+        ctx.addToggleControl(TR("Title"), widget->getShowTitle(),
             SettingsHud::ClickRegion::TITLE_TOGGLE, widget, nullptr, 0, toastsOn, "common.title");
 
         // Texture or Theme: the rule addStandardHudControls applies -- a HUD with
@@ -179,21 +179,21 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
         const bool hasTextures = !widget->getAvailableTextureVariants().empty();
         if (!hasTextures && AssetManager::getInstance().getThemeCount() > 0) {
             const std::string& ov = widget->getThemeOverride();
-            std::string themeValue = "Default";
+            std::string themeValue = TR("Default");
             if (ov == BaseHud::THEME_NONE) {
-                themeValue = "None";
+                themeValue = TR("None");
             } else if (!ov.empty()) {
                 if (const ThemeAsset* t = AssetManager::getInstance().getThemeByName(ov)) {
                     themeValue = t->displayName;
                 }
             }
-            ctx.addCycleControl("Theme", themeValue.c_str(), SettingsHud::themeOverrideCycle(widget),
+            ctx.addCycleControl(TR("Theme"), themeValue.c_str(), SettingsHud::themeOverrideCycle(widget),
                 widget, toastsOn, false, "common.theme");
         } else {
             char texValue[8];
             const int variant = widget->getTextureVariant();
-            snprintf(texValue, sizeof(texValue), (!hasTextures || variant == 0) ? "Off" : "%d", variant);
-            ctx.addCycleControl("Texture", texValue, SettingsHud::textureCycle(widget),
+            snprintf(texValue, sizeof(texValue), (!hasTextures || variant == 0) ? TR("Off") : "%d", variant);
+            ctx.addCycleControl(TR("Texture"), texValue, SettingsHud::textureCycle(widget),
                 widget, toastsOn && hasTextures, !hasTextures || variant == 0, "common.texture");
         }
 
@@ -203,7 +203,7 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
 
     // Duration: the manager's own value, a data-driven stepped control.
     snprintf(buf, sizeof(buf), "%ds", ach.getToastDurationMs() / 1000);
-    ctx.addSteppedControl("Duration", buf,
+    ctx.addSteppedControl(TR("Duration"), buf,
         SettingsHud::SteppedControl::clampInt(
             ach.toastDurationMsPtr(), AchievementManager::TOAST_DURATION_STEP_MS,
             AchievementManager::MIN_TOAST_DURATION_MS, AchievementManager::MAX_TOAST_DURATION_MS,
@@ -390,10 +390,10 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
     const int prestige = StatsManager::getInstance().getPrestige();
     if (prestige > 0) {
         char heading[32];
-        snprintf(heading, sizeof(heading), "Progress (Prestige %d)", prestige);
+        snprintf(heading, sizeof(heading), TR("Progress (Prestige %d)"), prestige);
         ctx.addSectionHeading(heading);
     } else {
-        ctx.addSectionHeading("Progress");
+        ctx.addSectionHeading(TR("Progress"));
     }
     {
         // "47%" or "47% (+3)". The percentage is the LISTED set alone, so it
@@ -407,9 +407,9 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
         else           snprintf(pctText, sizeof(pctText), "%d%%", pct);
         snprintf(buf, sizeof(buf), "%d / %d", earned, total);
         addEntry(useIcons ? assets.getIconSpriteIndex("award") : 0, badgeSprite[1], colors.getAccent(),
-                 "Unlocked", pctText, colors.getSecondary(), /*tagStrong=*/false,
+                 TR("Unlocked"), pctText, colors.getSecondary(), /*tagStrong=*/false,
                  total > 0 ? std::min(1.0f, static_cast<float>(earned) / static_cast<float>(total)) : 0.0f,
-                 colors.getAccent(), "Achievements earned, at any tier", buf);
+                 colors.getAccent(), TR("Achievements earned, at any tier"), buf);
     }
 
 
@@ -422,7 +422,7 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
     // seen it. Said on the page rather than in a footnote: it answers "why did
     // that not move the bar", which is asked the moment a row lands.
     const char* outside = Achievements::countsTowardCompletion(current.group)
-                              ? "" : " (does not count towards progress)";
+                              ? "" : TR(" (does not count towards progress)");
     if (current.chunks > 1) {
         snprintf(buf, sizeof(buf), "%s %d/%d%s", Achievements::groupName(current.group),
                  current.chunk, current.chunks, outside);
@@ -457,8 +457,8 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
         char leader[64];
         ach.leaderFor(e, leader, sizeof(leader));
         char rowTitle[96];
-        if (leader[0]) snprintf(rowTitle, sizeof(rowTitle), "%s (%s)", e.title, leader);
-        else           snprintf(rowTitle, sizeof(rowTitle), "%s", e.title);
+        if (leader[0]) snprintf(rowTitle, sizeof(rowTitle), "%s (%s)", I18n::trCached(e.title), leader);
+        else           snprintf(rowTitle, sizeof(rowTitle), "%s", I18n::trCached(e.title));
         // The task: the next tier's sentence, or the top tier's once complete.
         char task[64];
         Achievements::formatDescription(e, std::min(r.tier + 1, e.tierCount), task, sizeof(task));
@@ -482,7 +482,7 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
         // keeps the four apart.
         addEntry(useIcons && e.icon ? assets.getIconSpriteIndex(e.icon) : 0, badgeSprite[badgeTier],
                  (sweepMetal > 0 || earnedRow) ? metal : colors.getMuted(),
-                 rowTitle, Achievements::tierLabel(e, r.tier),
+                 rowTitle, I18n::trCached(Achievements::tierLabel(e, r.tier)),
                  earnedRow ? metal : colors.getMuted(), earnedRow,
                  Achievements::progressFraction(e, r.value),
                  r.tier >= e.tierCount ? metal : colors.getAccent(), task, buf);
@@ -532,7 +532,7 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
         // under the pointer: the row shadowed the button, so the tooltip showed
         // but the button never lit up, and the hover box was the whole row
         // instead of the button. One rect now answers all three.
-        ctx.addActionButton(armed ? "Confirm?" : "Prestige", 10,
+        ctx.addActionButton(armed ? TR("Confirm?") : TR("Prestige"), 10,
                             SettingsHud::ClickRegion::ACHIEVEMENTS_PRESTIGE,
                             SettingsLayoutContext::ButtonRole::Negative, true,
                             "achievements.prestige");

@@ -56,10 +56,10 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("stats");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeading("Appearance");
+    ctx.addSectionHeading(TR("Appearance"));
     ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
-    ctx.addSectionHeading("Layout");
+    ctx.addSectionHeading(TR("Layout"));
 
     // Visibility mode. postStep resets the transient auto-show latches on any
     // mode change (exactly what the old dedicated handlers did); arrows had no
@@ -73,24 +73,24 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
             hud->m_finishAutoShown = false;
             hud->m_wasInPits = false;
         };
-        ctx.addCycleControl("Show mode", visModeName, visCycle,
+        ctx.addCycleControl(TR("Show mode"), visModeName, visCycle,
             hud, true, false, "stats.visibility_mode", /*tooltipOnArrows=*/false);
     }
 
     // === CONTENT SECTION ===
-    ctx.addSectionHeading("Content");
+    ctx.addSectionHeading(TR("Content"));
     ctx.beginColumns(2, 3);   // side by side (beginColumns)
 
     // Column toggles
-    ctx.addToggleControl("Last lap", hud->m_showLap,
+    ctx.addToggleControl(TR("Last lap"), hud->m_showLap,
         SettingsHud::ClickRegion::STATS_SHOW_LAP_TOGGLE,
         hud, nullptr, 0, true, "stats.show_lap");
 
-    ctx.addToggleControl("Session", hud->m_showSession,
+    ctx.addToggleControl(TR("Session"), hud->m_showSession,
         SettingsHud::ClickRegion::STATS_SHOW_SESSION_TOGGLE,
         hud, nullptr, 0, true, "stats.show_session");
 
-    ctx.addToggleControl("All-time", hud->m_showAllTime,
+    ctx.addToggleControl(TR("All-time"), hud->m_showAllTime,
         SettingsHud::ClickRegion::STATS_SHOW_ALLTIME_TOGGLE,
         hud, nullptr, 0, true, "stats.show_alltime");
 
@@ -104,7 +104,7 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
     // ============================================================
     // Overall Stats
     // ============================================================
-    ctx.addSectionHeading("Overall");
+    ctx.addSectionHeading(TR("Overall"));
 
     const GlobalStats global = stats.getGlobalStats();
     // Two columns of read-only figures: short labels, short values.
@@ -120,18 +120,18 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
     char valueBuf[32];
 
     snprintf(valueBuf, sizeof(valueBuf), "%d", global.raceCount);
-    addGlobalRow("Races", valueBuf);
+    addGlobalRow(TR("Races"), valueBuf);
 
     snprintf(valueBuf, sizeof(valueBuf), "%d / %d / %d",
         global.firstPositions, global.secondPositions, global.thirdPositions);
-    addGlobalRow("Podiums (1/2/3)", valueBuf);
+    addGlobalRow(TR("Podiums (1/2/3)"), valueBuf);
 
     snprintf(valueBuf, sizeof(valueBuf), "%d", global.fastestLapCount);
-    addGlobalRow("Fastest laps", valueBuf);
+    addGlobalRow(TR("Fastest laps"), valueBuf);
 
     int globalPenalties = stats.getGlobalTotalPenalties();
     snprintf(valueBuf, sizeof(valueBuf), "%d", globalPenalties);
-    addGlobalRow("Penalties", valueBuf);
+    addGlobalRow(TR("Penalties"), valueBuf);
 
     int64_t globalPenTimeMs = stats.getGlobalTotalPenaltyTimeMs();
     if (globalPenTimeMs > 0) {
@@ -139,31 +139,31 @@ BaseHud* SettingsHud::renderTabStats(SettingsLayoutContext& ctx) {
     } else {
         snprintf(valueBuf, sizeof(valueBuf), "%s", PluginConstants::Placeholders::GENERIC);
     }
-    addGlobalRow("Pen. time", valueBuf);
+    addGlobalRow(TR("Pen. time"), valueBuf);
 
     int globalLaps = stats.getGlobalTotalLaps();
     snprintf(valueBuf, sizeof(valueBuf), "%d", globalLaps);
-    addGlobalRow("Laps", valueBuf);
+    addGlobalRow(TR("Laps"), valueBuf);
 
     int64_t globalTimeMs = stats.getGlobalTotalTimeMs();
     PluginUtils::formatDuration(globalTimeMs, valueBuf, sizeof(valueBuf));
-    addGlobalRow("Ride time", valueBuf);
+    addGlobalRow(TR("Ride time"), valueBuf);
 
     double totalDist = stats.getTotalOdometer();
     char distBuf[32];
     PluginUtils::formatDistance(totalDist, distBuf, sizeof(distBuf));
-    addGlobalRow("Distance", distBuf);
+    addGlobalRow(TR("Distance"), distBuf);
 
     int globalCrashes = stats.getGlobalTotalCrashes();
     snprintf(valueBuf, sizeof(valueBuf), "%d", globalCrashes);
-    addGlobalRow("Crashes", valueBuf);
+    addGlobalRow(TR("Crashes"), valueBuf);
 
     int globalShifts = stats.getGlobalTotalGearShifts();
     snprintf(valueBuf, sizeof(valueBuf), "%d", globalShifts);
-    addGlobalRow("Shifts", valueBuf);
+    addGlobalRow(TR("Shifts"), valueBuf);
 
     snprintf(valueBuf, sizeof(valueBuf), "%d", global.breakoutHighScore);
-    addGlobalRow("Breakout score", valueBuf);
+    addGlobalRow(TR("Breakout score"), valueBuf);
     ctx.endColumns();
 
     return hud;

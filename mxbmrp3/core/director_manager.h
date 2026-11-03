@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "director_scoring.h"   // director_detail::Rider (evaluate()'s phase signatures)
+#include "event_log_types.h"   // EventText (logDirectorEvent)
 
 class DirectorManager {
 public:
@@ -337,7 +338,7 @@ private:
     // resume). Clears the cut-dedup so the next cut always logs fresh after a state change.
     // iconColorSlot: optional ColorSlot (as int) tinting this entry's event-log icon to
     // a director state color; -1 = the event log's default director color.
-    void logDirectorEvent(const char* message, int iconColorSlot = -1);
+    void logDirectorEvent(const EventText& message, int iconColorSlot = -1);
     // Format a rider's plate ("#42") into buf — its formattedRaceNum, or "#<num>" fallback.
     void riderLabel(int raceNum, char* buf, size_t n) const;
     // Per-context camera + variety. For a battle variety dip it may redirect the shot to a

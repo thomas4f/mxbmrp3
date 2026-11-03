@@ -14,15 +14,15 @@ BaseHud* SettingsHud::renderTabDeltaTrace(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("delta_trace");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeading("Appearance");
+    ctx.addSectionHeading(TR("Appearance"));
     ctx.addStandardHudControls(hud);
 
     // === LAYOUT SECTION ===
-    ctx.addSectionHeading("Layout");
+    ctx.addSectionHeading(TR("Layout"));
     {
         char rowsBuf[8];
         snprintf(rowsBuf, sizeof(rowsBuf), "%d", hud->m_graphRows);
-        ctx.addSteppedControl("Graph height", rowsBuf,
+        ctx.addSteppedControl(TR("Graph height"), rowsBuf,
             SettingsHud::SteppedControl::clampInt(&hud->m_graphRows, 1,
                 DeltaTraceHud::MIN_GRAPH_ROWS, DeltaTraceHud::MAX_GRAPH_ROWS, hud),
             hud, true, false, "delta_trace.graph_rows");
@@ -30,20 +30,20 @@ BaseHud* SettingsHud::renderTabDeltaTrace(SettingsLayoutContext& ctx) {
 
     // === CONTENT SECTION ===
     // Reference names as the Gap Bar and the Map's Lap delta spell them.
-    ctx.addSectionHeading("Content");
-    ctx.addReferenceControl("Gap reference", &hud->m_referenceDefault, &hud->m_reference, hud,
+    ctx.addSectionHeading(TR("Content"));
+    ctx.addReferenceControl(TR("Gap reference"), &hud->m_referenceDefault, &hud->m_reference, hud,
         "delta_trace.reference");
 
     // Peaks: where the lap was furthest ahead and furthest behind.
     {
-        static const char* const kOnOff[] = { "Off", "On" };
+        static const char* const kOnOff[] = { N_("Off"), N_("On") };
         SettingsHud::CycleControl peaks;
         peaks.count = 2;
         peaks.get = [hud]() { return hud->m_showPeaks ? 1 : 0; };
         peaks.set = [hud](int v) { hud->m_showPeaks = (v != 0); };
-        peaks.nameOf = [](int v) { return std::string(kOnOff[v]); };
+        peaks.nameOf = [](int v) { return std::string(I18n::tr(kOnOff[v])); };
         peaks.dirtyHud = hud;
-        ctx.addCycleControl("Peaks", hud->m_showPeaks ? "On" : "Off", peaks, hud, true, !hud->m_showPeaks,
+        ctx.addCycleControl(TR("Peaks"), hud->m_showPeaks ? TR("On") : TR("Off"), peaks, hud, true, !hud->m_showPeaks,
                             "delta_trace.peaks");
     }
 

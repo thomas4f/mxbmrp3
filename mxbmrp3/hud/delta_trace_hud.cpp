@@ -3,6 +3,7 @@
 // Delta Trace - see delta_trace_hud.h.
 // ============================================================================
 #include "delta_trace_hud.h"
+#include "../core/i18n.h"
 #include "default_slots.h"
 
 #include <algorithm>
@@ -81,13 +82,13 @@ void DeltaTraceHud::rebuildRenderData() {
     want.contentW = PluginUtils::calculateMonospaceTextWidth(GRAPH_WIDTH_CHARS, dims.fontSize);
     want.sectionH = { graphHeight };
     // The reference lap, named on the title row.
-    const char* refNote = PbGapTracker::refName(getReference());
-    want.captionW = planTitleWidth(dims, "Delta Trace", TitleTier::Large) + planTitleNoteWidth(dims, refNote);
+    const char* refNote = HudDefaults::refLabel(getReference());
+    want.captionW = planTitleWidth(dims, TR("Delta Trace"), TitleTier::Large) + planTitleNoteWidth(dims, refNote);
     want.tier = TitleTier::Large;
     PanelPlan& plan = planPanel(dims, want);
     setBounds(START_X, START_Y, START_X + plan.width(), START_Y + plan.height());
     addPlanBackground(plan, START_X, START_Y);
-    addPlanTitle(plan, "Delta Trace", this->getColor(ColorSlot::PRIMARY));
+    addPlanTitle(plan, TR("Delta Trace"), this->getColor(ColorSlot::PRIMARY));
 
     const float contentX = plan.contentX();
     m_plot.draw(*this, getReference(), contentX, plan.contentY(), plan.contentRight() - contentX, graphHeight,

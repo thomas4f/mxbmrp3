@@ -43,19 +43,29 @@ public:
 
     // Session clock text: the MM:SS countdown normally, or a time+lap race's
     // overtime label when lapsToGo >= 0 (see PluginData::getLeaderLapsToGo):
-    // ">1" -> "N TO GO", 1 -> "FINAL LAP", 0 -> "CHECKERED". Used by the
-    // StandingsHud title, the TimeWidget and the web JSON so all three match.
-    static void formatSessionClock(int lapsToGo, int sessionTimeMs, char* buffer, size_t bufferSize);
+    // ">1" -> "N TO GO", 1 -> "FINAL LAP", 0 -> "CHECKERED". lapsAfterClock > 0
+    // (SessionData::lapsAfterClock) appends the laps still to come to the
+    // countdown: "12:34 + 2 laps", "00:00 + 1 lap". Every session clock the
+    // plugin shows goes through here, in-game and on the web, so all match.
+    // SESSION_CLOCK_CHARS sizes the buffer for the longest result.
+    // `shown`: the HUDs' copy, its labels in the language shown (the web JSON
+    // and Steam status keep English).
+    static constexpr size_t SESSION_CLOCK_CHARS = 24;
+    static void formatSessionClock(int lapsToGo, int sessionTimeMs, int lapsAfterClock,
+                                   char* buffer, size_t bufferSize, bool shown = false);
 
     // Session length/format string: "8:00" (time only), "6L" (laps only),
-    // "8:00 + 6L" (both), or "" (neither). Single source shared by Discord, the
-    // Steam status, the SessionHud and (via the broadcast key) the Friends HUD,
-    // so the format never drifts between them.
+    // "8:00 + 6L" (both), or "" (neither). The compact code for what is read
+    // outside the game: Discord, the Steam status (and so the Friends HUD) and
+    // the web overlay's JSON - English, like the clock there.
     static void formatSessionFormat(int sessionLengthMs, int numLaps, char* buffer, size_t bufferSize);
-    // The same, with the laps spelled out ("10 laps", "8:00 + 1 lap") for text read
-    // as a sentence: the Event Log's session start and the overlay's event detail.
-    // "10L" suits a cell; in "Race 1 started: 10L" it reads as a code.
-    static void formatSessionFormatWords(int sessionLengthMs, int numLaps, char* buffer, size_t bufferSize);
+    // The same, with the laps spelled out ("10 laps", "8:00 + 1 lap"): the HUDs'
+    // Session line and Timing Format row, where it sits beside the session clock's
+    // "12:34 + 2 laps", and the Event Log's session start, which is a sentence
+    // ("Race 1 started: 10 laps"). `shown` as for formatSessionClock: the HUDs'
+    // copy, in the language shown (the Event Log stores English).
+    static void formatSessionFormatWords(int sessionLengthMs, int numLaps, char* buffer, size_t bufferSize,
+                                         bool shown = false);
 
     // Format lap time as "M:SS.mmm" (or "MM:SS.mmm" for times >= 10 minutes)
     // Compact mode (global setting): drops leading "0:" for times under 1 minute → "SS.mmm"
@@ -89,6 +99,9 @@ public:
     // "Unknown" otherwise. riderCount defaults to 0 (-> "Unknown") for callers that
     // don't have it. Uses DisplayStrings::ServerLabel.
     static const char* serverLabel(int serverType, const char* serverName, int riderCount = 0);
+    // serverLabel as a HUD draws it: "Testing"/"Online"/"Unknown" translated, a
+    // server's own name never. The web overlay and Steam status keep English.
+    static const char* shownServerLabel(int serverType, const char* serverName, int riderCount = 0);
     static const char* getSessionStateString(int sessionState);
     static const char* getRiderStateAbbreviation(int riderState);
     static const char* getConditionsString(int conditions);

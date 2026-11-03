@@ -3,6 +3,7 @@
 // Fuel calculator widget - displays fuel level, avg consumption, and estimated laps
 // ============================================================================
 #include "fuel_widget.h"
+#include "../core/i18n.h"
 
 #include "../core/fuel_estimate.h"
 
@@ -221,14 +222,14 @@ void FuelWidget::rebuildRenderData() {
     PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(FUEL_WIDGET_WIDTH, dim.fontSize);
     want.sectionH = { dim.lineHeightNormal * rowCount };
-    want.captionW = planTitleWidth(dim, "Fuel");
+    want.captionW = planTitleWidth(dim, TR("Fuel"));
     PanelPlan& p = planPanel(dim, want);
 
     const float backgroundWidth = p.width();
     const float backgroundHeight = p.height();
 
     addPlanBackground(p, startX, startY);
-    addPlanTitle(p, "Fuel",
+    addPlanTitle(p, TR("Fuel"),
         this->getColor(ColorSlot::PRIMARY));
 
     float contentStartX = p.contentX();
@@ -314,7 +315,7 @@ void FuelWidget::rebuildRenderData() {
 
     // Row 1: Fuel level
     if (m_enabledRows & ROW_FUEL) {
-        addLabel("Fue", contentStartX, currentY, Justify::LEFT, labelColor, dim);
+        addLabel(TR("Fue"), contentStartX, currentY, Justify::LEFT, labelColor, dim);
         addString(fuelValueBuffer, rightX, currentY, Justify::RIGHT,
             this->getFont(FontCategory::DIGITS), fuelColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
@@ -322,7 +323,7 @@ void FuelWidget::rebuildRenderData() {
 
     // Row 2: Use (total fuel used this run)
     if (m_enabledRows & ROW_USED) {
-        addLabel("Use", contentStartX, currentY, Justify::LEFT, labelColor, dim);
+        addLabel(TR("Use"), contentStartX, currentY, Justify::LEFT, labelColor, dim);
         addString(usedValueBuffer, rightX, currentY, Justify::RIGHT,
             this->getFont(FontCategory::DIGITS), usedColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
@@ -330,7 +331,7 @@ void FuelWidget::rebuildRenderData() {
 
     // Row 3: Avg (abbreviated from Avg/Lap)
     if (m_enabledRows & ROW_AVG) {
-        addLabel("Avg", contentStartX, currentY, Justify::LEFT, labelColor, dim);
+        addLabel(TR("Avg"), contentStartX, currentY, Justify::LEFT, labelColor, dim);
         addString(avgValueBuffer, rightX, currentY, Justify::RIGHT,
             this->getFont(FontCategory::DIGITS), avgColor, dim.fontSize);
         currentY += dim.lineHeightNormal;
@@ -338,7 +339,7 @@ void FuelWidget::rebuildRenderData() {
 
     // Row 4: Est (abbreviated from Est Laps)
     if (m_enabledRows & ROW_EST) {
-        addLabel("Est", contentStartX, currentY, Justify::LEFT, labelColor, dim);
+        addLabel(TR("Est"), contentStartX, currentY, Justify::LEFT, labelColor, dim);
         addString(lapsValueBuffer, rightX, currentY, Justify::RIGHT,
             this->getFont(FontCategory::DIGITS), estColor, dim.fontSize);
     }

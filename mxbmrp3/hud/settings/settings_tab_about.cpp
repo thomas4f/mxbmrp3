@@ -52,31 +52,31 @@ BaseHud* SettingsHud::renderTabAbout(SettingsLayoutContext& ctx) {
     // on the Updates tab.
     char versionHint[32];
     snprintf(versionHint, sizeof(versionHint), "(v%s)", PluginConstants::PLUGIN_VERSION);
-    ctx.addSectionHeading("About MXBMRP3", versionHint);
+    ctx.addSectionHeading(TR("About MXBMRP3"), versionHint);
     // Word for word the README's About section, so the two never drift: a
     // reader who has seen one recognises the other. Each fact once -- who makes
     // it, where it came from, why it is open source and free. ONE paragraph on
     // the last: this page does not scroll, and the themed panel overflowed the
     // screen when it was two (settings_render_test).
-    ctx.addTextRow("MXBMRP3 is a community project: one person's spare-time", colors.getSecondary());
-    ctx.addTextRow("work, and much of what it has become comes from the people", colors.getSecondary());
-    ctx.addTextRow("who use it - the riders who report problems, suggest", colors.getSecondary());
-    ctx.addTextRow("features, test new ideas and find new ways to use it.", colors.getSecondary());
+    ctx.addTextRow(TR("MXBMRP3 is a community project: one person's spare-time"), colors.getSecondary());
+    ctx.addTextRow(TR("work, and much of what it has become comes from the people"), colors.getSecondary());
+    ctx.addTextRow(TR("who use it - the riders who report problems, suggest"), colors.getSecondary());
+    ctx.addTextRow(TR("features, test new ideas and find new ways to use it."), colors.getSecondary());
     ctx.addSpacing();
-    ctx.addTextRow("It started in 2024, after development of MaxHUD, the", colors.getSecondary());
-    ctx.addTextRow("community's long-standing HUD, came to an end. The first", colors.getSecondary());
-    ctx.addTextRow("version, MXBMRP - MX Bikes Memory Reader Project, was a", colors.getSecondary());
-    ctx.addTextRow("small experiment I built before I really knew what I was", colors.getSecondary());
-    ctx.addTextRow("doing. That grew through several versions into MXBMRP3, a", colors.getSecondary());
-    ctx.addTextRow("full plugin built on the game's plugin API.", colors.getSecondary());
+    ctx.addTextRow(TR("It started in 2024, after development of MaxHUD, the"), colors.getSecondary());
+    ctx.addTextRow(TR("community's long-standing HUD, came to an end. The first"), colors.getSecondary());
+    ctx.addTextRow(TR("version, MXBMRP - MX Bikes Memory Reader Project, was a"), colors.getSecondary());
+    ctx.addTextRow(TR("small experiment I built before I really knew what I was"), colors.getSecondary());
+    ctx.addTextRow(TR("doing. That grew through several versions into MXBMRP3, a"), colors.getSecondary());
+    ctx.addTextRow(TR("full plugin built on the game's plugin API."), colors.getSecondary());
     ctx.addSpacing();
-    ctx.addTextRow("Keeping MXBMRP3 open source is deliberate: it can be", colors.getPrimary());
-    ctx.addTextRow("studied, changed and built on, and does not depend on me.", colors.getPrimary());
-    ctx.addTextRow("It is free, with no paid tier, no locked features and no", colors.getPrimary());
-    ctx.addTextRow("ads, and every release is built from the public source.", colors.getPrimary());
+    ctx.addTextRow(TR("Keeping MXBMRP3 open source is deliberate: it can be"), colors.getPrimary());
+    ctx.addTextRow(TR("studied, changed and built on, and does not depend on me."), colors.getPrimary());
+    ctx.addTextRow(TR("It is free, with no paid tier, no locked features and no"), colors.getPrimary());
+    ctx.addTextRow(TR("ads, and every release is built from the public source."), colors.getPrimary());
     ctx.addSpacing();
-    ctx.addTextRow("If MXBMRP3 makes the game a little better for you, or", colors.getSecondary());
-    ctx.addTextRow("inspires something new, it has done what I hoped it would.", colors.getSecondary());
+    ctx.addTextRow(TR("If MXBMRP3 makes the game a little better for you, or"), colors.getSecondary());
+    ctx.addTextRow(TR("inspires something new, it has done what I hoped it would."), colors.getSecondary());
 
     // The one place a way to say thanks is mentioned, and the only one: this is
     // the page that explains who makes the thing, so a link reads as context
@@ -104,29 +104,29 @@ BaseHud* SettingsHud::renderTabAbout(SettingsLayoutContext& ctx) {
     // there is the width of the text before it, counted in monospace cells, and
     // a proportional font draws that text narrower or wider, so the link landed
     // in a gap or on top of a word.
-    const float headingY = ctx.addSectionHeading("Thanks");
+    const float headingY = ctx.addSectionHeading(TR("Thanks"));
     const float cw = PluginUtils::calculateMonospaceTextWidth(1, ctx.fontSize);
     constexpr int THANKS_CHARS = 36;   // the sentence's longest line
     constexpr int GAP_CHARS = 3;
     const float helpX = ctx.labelX + cw * static_cast<float>(THANKS_CHARS + GAP_CHARS);
-    ctx.parent->addString("Help", helpX, headingY, PluginConstants::Justify::LEFT,
+    ctx.parent->addString(TR("Help"), helpX, headingY, PluginConstants::Justify::LEFT,
         PluginConstants::Fonts::getStrong(), colors.getPrimary(), ctx.fontSize);
     {
         auto text = [&](const char* t, float x) {
             ctx.parent->addString(t, x, ctx.currentY, PluginConstants::Justify::LEFT,
                 PluginConstants::Fonts::getNormal(), colors.getSecondary(), ctx.fontSize);
         };
-        text("A comment or rating, a star or a", ctx.labelX);
-        text("Setup, every setting", helpX);
+        text(TR("A comment or rating, a star or a"), ctx.labelX);
+        text(TR("Setup, every setting"), helpX);
         ctx.nextLine();
-        text("coffee helps. All optional.", ctx.labelX);
-        text("and the web overlay.", helpX);
+        text(TR("coffee helps. All optional."), ctx.labelX);
+        text(TR("and the web overlay."), helpX);
         ctx.nextLine();
         // Columns with room to spare past each name, so no font runs one into the next.
         ctx.addLinkCell(ctx.labelX, "mxb-mods", SettingsHud::ClickRegion::OPEN_LINK_COMMUNITY);
         ctx.addLinkCell(ctx.labelX + cw * 12.0f, "GitHub", SettingsHud::ClickRegion::OPEN_LINK_GITHUB);
         ctx.addLinkCell(ctx.labelX + cw * 22.0f, "Ko-fi", SettingsHud::ClickRegion::OPEN_LINK_KOFI);
-        ctx.addLinkCell(helpX, "Docs & guides", SettingsHud::ClickRegion::OPEN_LINK_DOCS);
+        ctx.addLinkCell(helpX, TR("Docs & guides"), SettingsHud::ClickRegion::OPEN_LINK_DOCS);
         ctx.nextLine();
         // The rule, centred in the gap, from the headings down to the last line.
         const float ruleX = ctx.labelX + cw * (static_cast<float>(THANKS_CHARS) + GAP_CHARS * 0.5f);

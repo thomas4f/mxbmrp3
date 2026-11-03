@@ -37,6 +37,7 @@ TEST_CASE("every pack type's selection key is exempt from comment stripping") {
     const std::vector<PackKey> kPackKeys = {
         { "panel theme",  Settings::Keys::Global::PANEL_THEME },
         { "spotter pack", Settings::Keys::Global::SPOTTER_PACK },
+        { "language",     Settings::Keys::Global::LANGUAGE },
         { "gamepad pad",  Settings::Keys::Gamepad::PACK },
         { "pit board",    Settings::Keys::Pitboard::PACK },
         { "gauges set",   Settings::IniOnly::GAUGES_PACK },
@@ -72,7 +73,7 @@ TEST_CASE("every shipped pack opens with the same [pack] section") {
     // that invents its own section fails on the day its first pack ships.
     namespace fs = std::filesystem;
     int checked = 0;
-    for (const char* root : { THEMES_DIR, GAMEPADS_DIR, PITBOARDS_DIR, GAUGES_DIR, SPOTTERS_DIR }) {
+    for (const char* root : { THEMES_DIR, GAMEPADS_DIR, PITBOARDS_DIR, GAUGES_DIR, SPOTTERS_DIR, LANGUAGES_DIR }) {
         if (!fs::exists(root)) continue;
         for (const fs::directory_entry& pack : fs::directory_iterator(root)) {
             if (!pack.is_directory()) continue;

@@ -65,21 +65,21 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("standings");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeading("Appearance");
+    ctx.addSectionHeading(TR("Appearance"));
     ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
-    ctx.addSectionHeading("Layout");
+    ctx.addSectionHeading(TR("Layout"));
     ctx.beginColumns(2, 8);   // side by side (beginColumns)
 
     // Show mode (Always / At laps / At splits) and its hold, as on the Pitboard tab
-    static const char* const kShowModes[] = { "Always", "At laps", "At splits" };
+    static const char* const kShowModes[] = { N_("Always"), N_("At laps"), N_("At splits") };
     static_assert(sizeof(kShowModes) / sizeof(kShowModes[0]) == StandingsHud::SHOW_COUNT,
                   "one name per show mode");
-    ctx.addCycleControl("Show mode", cycleName(kShowModes, hud->m_showMode),
+    ctx.addCycleControl(TR("Show mode"), cycleName(kShowModes, hud->m_showMode),
         SettingsHud::CycleControl::enumMember(hud, &StandingsHud::m_showMode,
             StandingsHud::SHOW_COUNT, hud, kShowModes),
         hud, true, false, "standings.show_mode");
-    ctx.addFreezeControl("Freeze", &hud->m_freezeDurationMs, false, hud,
+    ctx.addFreezeControl(TR("Freeze"), &hud->m_freezeDurationMs, false, hud,
         hud->m_showMode != StandingsHud::SHOW_ALWAYS, "standings.freeze");
 
     // Row count: a plain +-2 clamped stepper with no hold acceleration (fixedInt),
@@ -94,7 +94,7 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     rowsControl.postStep = [hud]() {
         hud->m_topPositionsCount = std::min(hud->m_topPositionsCount, hud->m_displayRowCount);
     };
-    ctx.addSteppedControl("Rows to show", rowCountValue, rowsControl,
+    ctx.addSteppedControl(TR("Rows to show"), rowCountValue, rowsControl,
         hud, true, false, "standings.rows");
 
     // Top positions always pinned (0..min(10, rows)) — the leaders stay on screen
@@ -102,7 +102,7 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     // The upper bound tracks the rows drawn; it's re-resolved on every rebuild.
     char topPosValue[8];
     snprintf(topPosValue, sizeof(topPosValue), "%d", hud->m_topPositionsCount);
-    ctx.addSteppedControl("Top positions", topPosValue,
+    ctx.addSteppedControl(TR("Top positions"), topPosValue,
         SettingsHud::SteppedControl::fixedInt(&hud->m_topPositionsCount, 1, 0,
             std::min(StandingsHud::MAX_TOP_POSITIONS, hud->m_displayRowCount), hud),
         hud, true, false, "standings.top_positions", /*tooltipOnArrows=*/false);
@@ -116,16 +116,16 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
         // uninitialized fails the cross-build. Initializing is what buys the
         // exhaustive switch — a new reference mode now trips -Wswitch here
         // instead of rendering silently as "Leader".
-        const char* gapRefValue = "Leader";
+        const char* gapRefValue = TR("Leader");
         switch (hud->m_gapReferenceMode) {
-            case StandingsHud::GapReferenceMode::LEADER:      gapRefValue = "Leader"; break;
-            case StandingsHud::GapReferenceMode::PLAYER:      gapRefValue = "Player"; break;
-            case StandingsHud::GapReferenceMode::ALTERNATING: gapRefValue = "Auto";   break;
+            case StandingsHud::GapReferenceMode::LEADER:      gapRefValue = TR("Leader"); break;
+            case StandingsHud::GapReferenceMode::PLAYER:      gapRefValue = TR("Player"); break;
+            case StandingsHud::GapReferenceMode::ALTERNATING: gapRefValue = TR("Auto");   break;
             // Not a real mode — listed so the switch stays EXHAUSTIVE.
             case StandingsHud::GapReferenceMode::COUNT:                               break;
         }
         // Auto starts on Leader with a fresh timer, whichever way it is reached.
-        static const char* const kGapRefs[] = { "Leader", "Player", "Auto" };
+        static const char* const kGapRefs[] = { N_("Leader"), N_("Player"), N_("Auto") };
         static_assert(sizeof(kGapRefs) / sizeof(kGapRefs[0]) ==
                       static_cast<size_t>(StandingsHud::GapReferenceMode::COUNT), "one name per reference");
         SettingsHud::CycleControl gapRefCycle = SettingsHud::CycleControl::enumMember(
@@ -137,17 +137,17 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
                 hud->m_alternatingCurrent = StandingsHud::GapReferenceMode::LEADER;
             }
         };
-        ctx.addCycleControl("Gap reference", gapRefValue, gapRefCycle,
+        ctx.addCycleControl(TR("Gap reference"), gapRefValue, gapRefCycle,
             hud, refRelevant, false, "standings.gap_reference");
     }
 
     // Live updates in races (Off / Gaps / Both): Both is live gaps and live
     // order, which the Position widget and the Dash's Standings page follow.
     {
-        static const char* const kLiveModes[] = { "Off", "Gaps", "Both" };
+        static const char* const kLiveModes[] = { N_("Off"), N_("Gaps"), N_("Both") };
         static_assert(sizeof(kLiveModes) / sizeof(kLiveModes[0]) ==
                       static_cast<size_t>(StandingsHud::LiveMode::COUNT), "one name per live mode");
-        ctx.addCycleControl("Live updates", cycleName(kLiveModes, static_cast<int>(hud->m_liveMode)),
+        ctx.addCycleControl(TR("Live updates"), cycleName(kLiveModes, static_cast<int>(hud->m_liveMode)),
             SettingsHud::CycleControl::enumMember(hud, &StandingsHud::m_liveMode,
                 static_cast<int>(StandingsHud::LiveMode::COUNT), hud, kLiveModes),
             hud, true, hud->m_liveMode == StandingsHud::LiveMode::OFF, "standings.live_updates");
@@ -155,7 +155,7 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
 
     // Animate position changes (Off / Basic / Colored)
     {
-        static const char* const kAnimModes[] = { "Off", "Basic", "Colored" };
+        static const char* const kAnimModes[] = { N_("Off"), N_("Basic"), N_("Colored") };
         const char* animModeValue = cycleName(kAnimModes, static_cast<int>(hud->m_animationMode));
         SettingsHud::CycleControl animCycle = SettingsHud::CycleControl::enumMember(
             hud, &StandingsHud::m_animationMode, 3, hud, kAnimModes);
@@ -166,27 +166,27 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
                 hud->m_activeAnimations.clear();
             }
         };
-        ctx.addCycleControl("Animation", animModeValue, animCycle,
+        ctx.addCycleControl(TR("Animation"), animModeValue, animCycle,
             hud, true, hud->m_animationMode == StandingsHud::AnimationMode::OFF,
             "standings.animate_positions");
     }
 
     // DNS filter toggle (global setting stored in PluginData)
     // nullptr for boolPtr: FILTER_DNS_TOGGLE click handler manages state directly.
-    ctx.addToggleControl("Hide DNS riders",
+    ctx.addToggleControl(TR("Hide DNS riders"),
         PluginData::getInstance().isFilterDnsRiders(),
         SettingsHud::ClickRegion::FILTER_DNS_TOGGLE, hud,
         static_cast<bool*>(nullptr), true,
         "standings.filter_dns", nullptr);
     ctx.endColumns();
     // === CONTENT SECTION ===
-    ctx.addSectionHeading("Content");
+    ctx.addSectionHeading(TR("Content"));
     // Two columns, like Layout: the labels are kept to the cell's 15 characters.
     ctx.beginColumns(2, 13);
 
     // Session-info row (live clock / leader laps / overtime label) below the title.
     // nullptr boolPtr: SESSION_INFO_TOGGLE handler flips hud->m_bShowSessionInfo directly.
-    ctx.addToggleControl("Session info",
+    ctx.addToggleControl(TR("Session info"),
         hud->m_bShowSessionInfo,
         SettingsHud::ClickRegion::SESSION_INFO_TOGGLE, hud,
         static_cast<bool*>(nullptr), true,
@@ -194,17 +194,17 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
 
     // Column-header row labeling each enabled column.
     // nullptr boolPtr: HEADERS_TOGGLE handler flips hud->m_bShowHeaders directly.
-    ctx.addToggleControl("Column headers",
+    ctx.addToggleControl(TR("Column headers"),
         hud->m_bShowHeaders,
         SettingsHud::ClickRegion::HEADERS_TOGGLE, hud,
         static_cast<bool*>(nullptr), true,
         "standings.headers", nullptr);
 
     // Column toggles - using addToggleControl with tooltips
-    ctx.addToggleControl("Status icon", (hud->m_enabledColumns & StandingsHud::COL_TRACKED) != 0,
+    ctx.addToggleControl(TR("Status icon"), (hud->m_enabledColumns & StandingsHud::COL_TRACKED) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_TRACKED, true,
         "standings.col_tracked");
-    ctx.addToggleControl("Position", (hud->m_enabledColumns & StandingsHud::COL_POS) != 0,
+    ctx.addToggleControl(TR("Position"), (hud->m_enabledColumns & StandingsHud::COL_POS) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_POS, true,
         "standings.col_pos");
     // Positions gained/lost mode cycle (Off < > Sector < > Lap < > Race). Labels name the
@@ -213,11 +213,11 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     {
         const char* posGainValue;
         switch (hud->m_posGainMode) {
-            case StandingsHud::PosGainMode::RACE_START: posGainValue = "Race";   break;
-            case StandingsHud::PosGainMode::LAST_SF:    posGainValue = "Lap";    break;
-            case StandingsHud::PosGainMode::LAST_SPLIT: posGainValue = "Sector"; break;
+            case StandingsHud::PosGainMode::RACE_START: posGainValue = TR("Race");   break;
+            case StandingsHud::PosGainMode::LAST_SF:    posGainValue = TR("Lap");    break;
+            case StandingsHud::PosGainMode::LAST_SPLIT: posGainValue = TR("Sector"); break;
             case StandingsHud::PosGainMode::OFF:
-            default:                                    posGainValue = "Off";    break;
+            default:                                    posGainValue = TR("Off");    break;
         }
         // The VISUAL cycle order (Off -> Sector -> Lap -> Race) is the reverse of
         // the enum's numeric order (OFF, RACE_START, LAST_SF, LAST_SPLIT), so the
@@ -232,46 +232,46 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
         };
         posGainCycle.count = 4;
         posGainCycle.nameOf = [](int v) {
-            static const char* const kNames[] = { "Off", "Sector", "Lap", "Race" };
-            return std::string(kNames[v]);
+            static const char* const kNames[] = { N_("Off"), N_("Sector"), N_("Lap"), N_("Race") };
+            return std::string(I18n::tr(kNames[v]));
         };
         posGainCycle.dirtyHud = hud;
-        ctx.addCycleControl("Gained/lost", posGainValue, posGainCycle,
+        ctx.addCycleControl(TR("Gained/lost"), posGainValue, posGainCycle,
             hud, true, hud->m_posGainMode == StandingsHud::PosGainMode::OFF,
             "standings.col_posgain", /*tooltipOnArrows=*/false);
     }
-    ctx.addToggleControl("Race number", (hud->m_enabledColumns & StandingsHud::COL_RACENUM) != 0,
+    ctx.addToggleControl(TR("Race number"), (hud->m_enabledColumns & StandingsHud::COL_RACENUM) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_RACENUM, true,
         "standings.col_racenum");
     // Rider name mode (Off/Short/Long) - uses toggle with display value like gap scope
     {
-        static const char* const kNameModes[] = { "Off", "Short", "Long" };
-        ctx.addCycleControl("Rider name", cycleName(kNameModes, static_cast<int>(hud->m_nameMode)),
+        static const char* const kNameModes[] = { N_("Off"), N_("Short"), N_("Long") };
+        ctx.addCycleControl(TR("Rider name"), cycleName(kNameModes, static_cast<int>(hud->m_nameMode)),
             SettingsHud::CycleControl::enumMember(hud, &StandingsHud::m_nameMode, 3, hud, kNameModes),
             hud, true, hud->m_nameMode == StandingsHud::NameMode::OFF,
             "standings.col_name");
     }
-    ctx.addToggleControl("Class", (hud->m_enabledColumns & StandingsHud::COL_CATEGORY) != 0,
+    ctx.addToggleControl(TR("Class"), (hud->m_enabledColumns & StandingsHud::COL_CATEGORY) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_CATEGORY, true,
         "standings.col_category");
-    ctx.addToggleControl("Bike model", (hud->m_enabledColumns & StandingsHud::COL_BIKE) != 0,
+    ctx.addToggleControl(TR("Bike model"), (hud->m_enabledColumns & StandingsHud::COL_BIKE) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_BIKE, true,
         "standings.col_bike");
-    ctx.addToggleControl("Best lap time", (hud->m_enabledColumns & StandingsHud::COL_BEST_LAP) != 0,
+    ctx.addToggleControl(TR("Best lap time"), (hud->m_enabledColumns & StandingsHud::COL_BEST_LAP) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_BEST_LAP, true,
         "standings.col_bestlap");
-    ctx.addToggleControl("Last lap time", (hud->m_enabledColumns & StandingsHud::COL_LAST_LAP) != 0,
+    ctx.addToggleControl(TR("Last lap time"), (hud->m_enabledColumns & StandingsHud::COL_LAST_LAP) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_LAST_LAP, true,
         "standings.col_lastlap");
 
     // Gap mode cycle (Off < > Player < > Adjacent < > All)
     {
-        static const char* const kGapModes[] = { "Off", "Player", "Adjacent", "All" };
+        static const char* const kGapModes[] = { N_("Off"), N_("Player"), N_("Adjacent"), N_("All") };
         // One name per mode, so a new mode trips here instead of drawing blank.
         static_assert(sizeof(kGapModes) / sizeof(kGapModes[0]) ==
                       static_cast<size_t>(StandingsHud::GapMode::COUNT), "one name per gap mode");
         const bool isOff = (hud->m_gapMode == StandingsHud::GapMode::OFF);
-        ctx.addCycleControl("Gap column", cycleName(kGapModes, static_cast<int>(hud->m_gapMode)),
+        ctx.addCycleControl(TR("Gap column"), cycleName(kGapModes, static_cast<int>(hud->m_gapMode)),
             // Modulus from the enum, not a literal, so a new mode cannot leave a
             // stale count behind with nothing to catch it.
             SettingsHud::CycleControl::enumMember(hud, &StandingsHud::m_gapMode,
@@ -279,7 +279,7 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
             hud, true, isOff, "standings.gap_mode");
     }
 
-    ctx.addToggleControl("Penalty", (hud->m_enabledColumns & StandingsHud::COL_PENALTY) != 0,
+    ctx.addToggleControl(TR("Penalty"), (hud->m_enabledColumns & StandingsHud::COL_PENALTY) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledColumns, StandingsHud::COL_PENALTY, true,
         "standings.col_penalty");
     ctx.endColumns();

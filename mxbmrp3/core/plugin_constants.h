@@ -5,13 +5,13 @@
 #pragma once
 
 #include "plugin_utils.h"
+#include "i18n_mark.h"
 #include "color_config.h"  // ColorPalette is the source of truth for basic colors
 #include "font_config.h"   // For dynamic font category selection
 #include "asset_manager.h" // For dynamic font index lookup by name
 
 namespace PluginConstants {
     // Plugin identification
-    constexpr const char* PLUGIN_NAME = "mxbmrp3";
     constexpr const char* PLUGIN_DISPLAY_NAME = "MXBMRP3";
     // Defined in plugin_version.cpp from resource.h's VER_STRING (VER_MAJOR.MINOR.PATCH
     // + the auto-stamped build number), so the runtime version and the DLL FILEVERSION
@@ -23,7 +23,7 @@ namespace PluginConstants {
 
     // GitHub repository for updates (centralized to support repo moves/renames)
     constexpr const char* GITHUB_REPO_OWNER = "thomas4f";
-    constexpr const char* GITHUB_REPO_NAME = "mxbmrp3";
+    constexpr const char* GITHUB_REPO_NAME = "mxbmrp3";  // name-literal: GitHub repo, external id
 
     // --- Analytics: two secret keys injected at BUILD time + one PUBLIC site code ---
     // APTABASE_KEY and GOATCOUNTER_TOKEN come from environment variables read by
@@ -61,7 +61,7 @@ namespace PluginConstants {
 #ifdef MXBMRP3_GOATCOUNTER_CODE
     constexpr const char* GOATCOUNTER_CODE = MXBMRP3_STRINGIFY(MXBMRP3_GOATCOUNTER_CODE);
 #else
-    constexpr const char* GOATCOUNTER_CODE = "mxbmrp3";
+    constexpr const char* GOATCOUNTER_CODE = "mxbmrp3";  // name-literal: GoatCounter site code, external id
 #endif
 
     // GoatCounter API token ("Count" permission) for the backend /api/v0/count
@@ -404,38 +404,38 @@ namespace PluginConstants {
     namespace DisplayStrings {
         // Event type display strings (corresponds to EventType enum)
         namespace EventType {
-            constexpr const char* TESTING = "Testing";
-            constexpr const char* RACE = "Race";
-            constexpr const char* STRAIGHT_RHYTHM = "Straight Rhythm";
-            constexpr const char* UNKNOWN = "Unknown";
+            constexpr const char* TESTING = N_("Testing");
+            constexpr const char* RACE = N_("Race");
+            constexpr const char* STRAIGHT_RHYTHM = N_("Straight Rhythm");
+            constexpr const char* UNKNOWN = N_("Unknown");
         }
 
         // Session display strings (corresponds to Session enum)
         namespace Session {
-            constexpr const char* WAITING = "Waiting";
-            constexpr const char* PRACTICE = "Practice";
+            constexpr const char* WAITING = N_("Waiting");
+            constexpr const char* PRACTICE = N_("Practice");
             // Testing event's practice session: "Testing" offline, "Open Practice" online
-            constexpr const char* TESTING = "Testing";
-            constexpr const char* OPEN_PRACTICE = "Open Practice";
-            constexpr const char* PRE_QUALIFY = "Pre-Qualify";
-            constexpr const char* QUALIFY_PRACTICE = "Qualify Practice";
-            constexpr const char* QUALIFY = "Qualify";
-            constexpr const char* WARMUP = "Warmup";
-            constexpr const char* RACE_1 = "Race 1";
-            constexpr const char* RACE_2 = "Race 2";
-            constexpr const char* RACE   = "Race";
-            constexpr const char* SR_ROUND = "Round";
-            constexpr const char* SR_QUARTER_FINALS = "Quarter-Finals";
-            constexpr const char* SR_SEMI_FINALS = "Semi-Finals";
-            constexpr const char* SR_FINAL = "Final";
+            constexpr const char* TESTING = N_("Testing");
+            constexpr const char* OPEN_PRACTICE = N_("Open Practice");
+            constexpr const char* PRE_QUALIFY = N_("Pre-Qualify");
+            constexpr const char* QUALIFY_PRACTICE = N_("Qualify Practice");
+            constexpr const char* QUALIFY = N_("Qualify");
+            constexpr const char* WARMUP = N_("Warmup");
+            constexpr const char* RACE_1 = N_("Race 1");
+            constexpr const char* RACE_2 = N_("Race 2");
+            constexpr const char* RACE   = N_("Race");
+            constexpr const char* SR_ROUND = N_("Round");
+            constexpr const char* SR_QUARTER_FINALS = N_("Quarter-Finals");
+            constexpr const char* SR_SEMI_FINALS = N_("Semi-Finals");
+            constexpr const char* SR_FINAL = N_("Final");
             // KRP multi-heat race format. The group letter (A/B/C) for heats
             // lives in RaceSessionData, not in this string — callers that want
             // "Heat A" should format it themselves.
-            constexpr const char* KRP_QUALIFY_HEAT = "Qualify Heat";
-            constexpr const char* KRP_SECOND_CHANCE_HEAT = "Second Chance";
-            constexpr const char* KRP_PRE_FINAL = "PreFinal";
-            constexpr const char* KRP_FINAL = "Final";
-            constexpr const char* UNKNOWN = "Unknown";
+            constexpr const char* KRP_QUALIFY_HEAT = N_("Qualify Heat");
+            constexpr const char* KRP_SECOND_CHANCE_HEAT = N_("Second Chance");
+            constexpr const char* KRP_PRE_FINAL = N_("PreFinal");
+            constexpr const char* KRP_FINAL = N_("Final");
+            constexpr const char* UNKNOWN = N_("Unknown");
         }
 
         // "Where you are" labels shown in place of a server name across the
@@ -447,21 +447,21 @@ namespace PluginConstants {
         // Bikes build, or GP Bikes / KRP which don't report the server) reads
         // "Unknown".
         namespace ServerLabel {
-            constexpr const char* TESTING = "Testing";  // solo / offline
-            constexpr const char* UNKNOWN = "Unknown";  // name unavailable / not reported
-            constexpr const char* ONLINE  = "Online";   // known online but unnamed (GP Bikes / KRP: no serverType in API, inferred from >1 rider)
+            constexpr const char* TESTING = N_("Testing");  // solo / offline
+            constexpr const char* UNKNOWN = N_("Unknown");  // name unavailable / not reported
+            constexpr const char* ONLINE  = N_("Online");   // known online but unnamed (GP Bikes / KRP: no serverType in API, inferred from >1 rider)
         }
 
         // Session state display strings (corresponds to SessionState bitflags)
         namespace SessionState {
-            constexpr const char* CANCELLED = "Cancelled";
-            constexpr const char* RACE_OVER = "Race Over";
-            constexpr const char* PRE_START = "Pre-Start";
-            constexpr const char* SIGHTING_LAP = "Sighting Lap";
-            constexpr const char* START_SEQUENCE = "Start Sequence";
-            constexpr const char* COMPLETE = "Complete";
-            constexpr const char* IN_PROGRESS = "In Progress";
-            constexpr const char* WAITING = "Waiting";
+            constexpr const char* CANCELLED = N_("Cancelled");
+            constexpr const char* RACE_OVER = N_("Race Over");
+            constexpr const char* PRE_START = N_("Pre-Start");
+            constexpr const char* SIGHTING_LAP = N_("Sighting Lap");
+            constexpr const char* START_SEQUENCE = N_("Start Sequence");
+            constexpr const char* COMPLETE = N_("Complete");
+            constexpr const char* IN_PROGRESS = N_("In Progress");
+            constexpr const char* WAITING = N_("Waiting");
         }
 
         // Rider state abbreviations (corresponds to RiderState enum)
@@ -476,22 +476,22 @@ namespace PluginConstants {
         namespace RaceStatus {
             constexpr const char* FINISHED = "FIN";  // Rider finished race
             constexpr const char* LAST_LAP = "LL";  // Rider on last lap
-            constexpr const char* LEADER = "LEADER";  // Rider is leading (Pitboard gap row)
+            constexpr const char* LEADER = N_("LEADER");  // Rider is leading (Pitboard gap row)
         }
 
         // Session-clock overtime labels (PluginUtils::formatSessionClock, and the
         // HUDs that show the same state without going through it)
         namespace SessionClock {
-            constexpr const char* CHECKERED = "CHECKERED";  // Leader has finished
-            constexpr const char* FINAL_LAP = "FINAL LAP";  // Leader on the last lap
+            constexpr const char* CHECKERED = N_("CHECKERED");  // Leader has finished
+            constexpr const char* FINAL_LAP = N_("FINAL LAP");  // Leader on the last lap
         }
 
         // Weather conditions (corresponds to Conditions enum)
         namespace Conditions {
-            constexpr const char* CLEAR = "Clear";
-            constexpr const char* CLOUDY = "Cloudy";
-            constexpr const char* RAINY = "Rainy";
-            constexpr const char* UNKNOWN = "Unknown";
+            constexpr const char* CLEAR = N_("Clear");
+            constexpr const char* CLOUDY = N_("Cloudy");
+            constexpr const char* RAINY = N_("Rainy");
+            constexpr const char* UNKNOWN = N_("Unknown");
         }
 
         // Communication type strings (corresponds to CommunicationType enum)

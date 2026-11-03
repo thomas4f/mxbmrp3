@@ -39,48 +39,48 @@ BaseHud* SettingsHud::renderTabFmx(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("fmx");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeading("Appearance");
+    ctx.addSectionHeading(TR("Appearance"));
     ctx.addStandardHudControls(hud);
     // === CONTENT SECTION ===
-    ctx.addSectionHeading("Content");
+    ctx.addSectionHeading(TR("Content"));
 
     // Trick stack: cycle Off, 1, 2, ..., 10
     int trickRows = hud->m_maxChainDisplayRows;
     char rowsValue[8];
     if (trickRows == 0) {
-        snprintf(rowsValue, sizeof(rowsValue), "Off");
+        snprintf(rowsValue, sizeof(rowsValue), "%s", TR("Off"));
     } else {
         snprintf(rowsValue, sizeof(rowsValue), "%d", trickRows);
     }
     // Accelerated 1-step clamp over [0, 10]; 0 = Off (verbatim from the old
     // FMX_CHAIN_ROWS handler). Arrows never had a per-type tooltip.
-    ctx.addSteppedControl("Trick stack", rowsValue,
+    ctx.addSteppedControl(TR("Trick stack"), rowsValue,
         SettingsHud::SteppedControl::clampInt(&hud->m_maxChainDisplayRows, 1, 0, 10, hud),
         hud, true, trickRows == 0, "fmx.chain_rows", /*tooltipOnArrows=*/false);
 
     // Trick stats only relevant when trick stack is enabled
     bool trickStackEnabled = trickRows > 0;
-    ctx.addToggleControl("Trick stats", (hud->m_enabledRows & FmxHud::ROW_TRICK_STATS) != 0,
+    ctx.addToggleControl(TR("Trick stats"), (hud->m_enabledRows & FmxHud::ROW_TRICK_STATS) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, FmxHud::ROW_TRICK_STATS,
         trickStackEnabled, "fmx.row_trick_stats");
 
-    ctx.addToggleControl("Combo arc & score", (hud->m_enabledRows & FmxHud::ROW_COMBO_ARC) != 0,
+    ctx.addToggleControl(TR("Combo arc & score"), (hud->m_enabledRows & FmxHud::ROW_COMBO_ARC) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, FmxHud::ROW_COMBO_ARC, true,
         "fmx.row_combo_arc");
 
-    ctx.addToggleControl("Rotation arcs", (hud->m_enabledRows & FmxHud::ROW_ARCS) != 0,
+    ctx.addToggleControl(TR("Rotation arcs"), (hud->m_enabledRows & FmxHud::ROW_ARCS) != 0,
         SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, FmxHud::ROW_ARCS, true,
         "fmx.row_arcs");
 
     // === DEVELOPER SECTION (only visible in developer mode) ===
     if (SettingsManager::getInstance().isDeveloperMode()) {
-        ctx.addSectionHeading("Developer");
+        ctx.addSectionHeading(TR("Developer"));
 
-        ctx.addToggleControl("Log telemetry", hud->m_showDebugLogging,
+        ctx.addToggleControl(TR("Log telemetry"), hud->m_showDebugLogging,
             SettingsHud::ClickRegion::FMX_DEBUG_TOGGLE, hud, nullptr, 0, true,
             "fmx.debug_logging");
 
-        ctx.addToggleControl("Debug values", (hud->m_enabledRows & FmxHud::ROW_DEBUG_VALUES) != 0,
+        ctx.addToggleControl(TR("Debug values"), (hud->m_enabledRows & FmxHud::ROW_DEBUG_VALUES) != 0,
             SettingsHud::ClickRegion::CHECKBOX, hud, &hud->m_enabledRows, FmxHud::ROW_DEBUG_VALUES, true,
             "fmx.row_debug_values");
     }

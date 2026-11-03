@@ -3,6 +3,7 @@
 // Displays controller button overlay - shows pressed buttons, sticks, triggers
 // ============================================================================
 #include "gamepad_widget.h"
+#include "../core/i18n.h"
 #include "default_slots.h"
 #include "../core/layout_config.h"
 #include "../core/plugin_utils.h"
@@ -180,12 +181,12 @@ void GamepadWidget::rebuildRenderData() {
         const int ctrlIdx = XInputReader::getInstance().getControllerIndex();
         char titleBuf[64];
         if (ctrlIdx < 0) {
-            snprintf(titleBuf, sizeof(titleBuf), "%s", "No controller selected");
+            snprintf(titleBuf, sizeof(titleBuf), "%s", TR("No controller selected"));
         } else {
-            snprintf(titleBuf, sizeof(titleBuf), "Controller %d Not Connected", ctrlIdx + 1);  // 0-based to 1-based
+            snprintf(titleBuf, sizeof(titleBuf), TR("Controller %d Not Connected"), ctrlIdx + 1);  // 0-based to 1-based
         }
         addBlockedNotice(centerX, centerY, lineH, fontSize, titleBuf, ColorSlot::NEGATIVE,
-                         "Check MXBMRP3 Settings > General");
+                         TR("Check MXBMRP3 Settings > General"));
         return;
     }
 

@@ -47,18 +47,18 @@ BaseHud* SettingsHud::renderTabGapBar(SettingsLayoutContext& ctx) {
     ctx.addTabTooltip("gap_bar");
 
     // === APPEARANCE SECTION ===
-    ctx.addSectionHeading("Appearance");
+    ctx.addSectionHeading(TR("Appearance"));
 
     // Add standard HUD controls (Visible, Title, Texture|Theme, Opacity, Scale)
     ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
-    ctx.addSectionHeading("Layout");
+    ctx.addSectionHeading(TR("Layout"));
 
     // Width control (bar width percentage): accelerated 1% clamp over [50, 400]
     // (setBarWidth was just clamp + dedup + setDataDirty - same behavior).
     char widthValue[16];
     snprintf(widthValue, sizeof(widthValue), "%d%%", hud->m_barWidthPercent);
-    ctx.addSteppedControl("Width", widthValue,
+    ctx.addSteppedControl(TR("Width"), widthValue,
         SettingsHud::SteppedControl::clampInt(&hud->m_barWidthPercent,
             GapBarHud::WIDTH_STEP_PERCENT,
             GapBarHud::MIN_WIDTH_PERCENT, GapBarHud::MAX_WIDTH_PERCENT, hud),
@@ -70,7 +70,7 @@ BaseHud* SettingsHud::renderTabGapBar(SettingsLayoutContext& ctx) {
     // fractional steps ("1.25s", "2.5s").
     char rangeValue[16];
     if (hud->m_gapRangeMs == GapBarHud::RANGE_AUTO) {
-        snprintf(rangeValue, sizeof(rangeValue), "Auto");
+        snprintf(rangeValue, sizeof(rangeValue), "%s", TR("Auto"));
     } else if (hud->m_gapRangeMs % 1000 == 0) {
         snprintf(rangeValue, sizeof(rangeValue), "%ds", hud->m_gapRangeMs / 1000);
     } else if (hud->m_gapRangeMs % 500 == 0) {
@@ -78,31 +78,31 @@ BaseHud* SettingsHud::renderTabGapBar(SettingsLayoutContext& ctx) {
     } else {
         snprintf(rangeValue, sizeof(rangeValue), "%.2fs", hud->m_gapRangeMs / 1000.0f);
     }
-    ctx.addSteppedControl("Range", rangeValue,
+    ctx.addSteppedControl(TR("Range"), rangeValue,
         SettingsHud::SteppedControl::clampInt(&hud->m_gapRangeMs,
             GapBarHud::RANGE_STEP_MS,
             GapBarHud::RANGE_AUTO, GapBarHud::MAX_RANGE_MS, hud),
         hud, true, false, "gap_bar.range");
 
     // Freeze control (freeze duration for official times)
-    ctx.addFreezeControl("Freeze", &hud->m_freezeDurationMs, true, hud, true, "gap_bar.freeze", true);
+    ctx.addFreezeControl(TR("Freeze"), &hud->m_freezeDurationMs, true, hud, true, "gap_bar.freeze", true);
 
     // === CONTENT SECTION ===
-    ctx.addSectionHeading("Content");
+    ctx.addSectionHeading(TR("Content"));
 
     // Show Gap Text toggle
-    ctx.addToggleControl("Show gap", hud->m_showGapText,
+    ctx.addToggleControl(TR("Show gap"), hud->m_showGapText,
         SettingsHud::ClickRegion::GAPBAR_GAP_TEXT_TOGGLE, hud, nullptr, 0, true, "gap_bar.show_gap");
 
     // Show Gap Bar toggle (green/red visualization)
-    ctx.addToggleControl("Show gap bar", hud->m_showGapBar,
+    ctx.addToggleControl(TR("Show gap bar"), hud->m_showGapBar,
         SettingsHud::ClickRegion::GAPBAR_GAP_BAR_TOGGLE, hud, nullptr, 0, true, "gap_bar.show_gap_bar");
 
     // Which lap the gap (and the ghost) is measured against: after the two rows
     // it qualifies, as on the Lap Log tab. All three are laps the tracker sampled;
     // only the all-time one is on disk, so it is the one that is there before the
     // session's first PB.
-    ctx.addReferenceControl("Gap reference", &hud->m_referenceDefault, &hud->m_reference, hud,
+    ctx.addReferenceControl(TR("Gap reference"), &hud->m_referenceDefault, &hud->m_reference, hud,
         "gap_bar.reference");
 
     // Split ticks (On / Off)
@@ -112,26 +112,26 @@ BaseHud* SettingsHud::renderTabGapBar(SettingsLayoutContext& ctx) {
         splits.set = [hud](int v) { hud->m_showSplits = (v != 0); };
         splits.count = 2;
         splits.dirtyHud = hud;
-        ctx.addCycleControl("Splits", hud->m_showSplits ? "On" : "Off", splits,
+        ctx.addCycleControl(TR("Splits"), hud->m_showSplits ? TR("On") : TR("Off"), splits,
             hud, true, !hud->m_showSplits, "gap_bar.splits");
     }
 
     // === RIDER MARKERS SECTION ===
-    ctx.addSectionHeading("Rider Markers");
+    ctx.addSectionHeading(TR("Rider Markers"));
 
     // Marker mode cycle control (Ghost / Opponents / Both / Off)
-    static const char* const kMarkerModes[] = { "Ghost", "Opponents", "Both", "Off" };
+    static const char* const kMarkerModes[] = { N_("Ghost"), N_("Opponents"), N_("Both"), N_("Off") };
     const char* markerModeStr = cycleName(kMarkerModes, static_cast<int>(hud->m_markerMode));
-    ctx.addCycleControl("Mode", markerModeStr,
+    ctx.addCycleControl(TR("Mode"), markerModeStr,
         SettingsHud::CycleControl::enumMember(hud, &GapBarHud::m_markerMode, GapBarHud::MARKER_MODE_COUNT, hud, kMarkerModes),
         hud, true, hud->m_markerMode == GapBarHud::MarkerMode::OFF, "gap_bar.marker_mode");
 
     // Color mode control (Uniform/Brand/Position)
-    static const char* const kColorModes[] = { "Uniform", "Brand", "Position" };
+    static const char* const kColorModes[] = { N_("Uniform"), N_("Brand"), N_("Position") };
     const char* colorModeStr = cycleName(kColorModes, static_cast<int>(hud->m_riderColorMode));
     // tooltipOnArrows=false: these arrows historically had no per-type tooltip
     // fallback, so keep the tooltip on the row region only.
-    ctx.addCycleControl("Marker colors", colorModeStr,
+    ctx.addCycleControl(TR("Marker colors"), colorModeStr,
         SettingsHud::CycleControl::enumMember(hud, &GapBarHud::m_riderColorMode, 3, hud, kColorModes),
         hud, true, false, "gap_bar.marker_colors", /*tooltipOnArrows=*/false);
 
@@ -146,11 +146,11 @@ BaseHud* SettingsHud::renderTabGapBar(SettingsLayoutContext& ctx) {
         if (defaultSpriteIndex > 0) {
             iconStr = assetMgr.getIconDisplayName(defaultSpriteIndex);
         }
-        if (iconStr.empty()) iconStr = "Circle Chevron Up";  // Fallback if icon not found
+        if (iconStr.empty()) iconStr = TR("Circle Chevron Up");  // Fallback if icon not found
     } else {
         iconStr = getShapeDisplayName(iconIndex);
     }
-    ctx.addCycleControl("Marker icon", iconStr.c_str(),
+    ctx.addCycleControl(TR("Marker icon"), iconStr.c_str(),
         iconCycle([hud]() { return hud->m_riderIconIndex; }, [hud](int v) { hud->m_riderIconIndex = v; },
                   hud, /*allowOff=*/true, "circle-chevron-up"),
         hud, true, false, "gap_bar.icon");
@@ -158,16 +158,16 @@ BaseHud* SettingsHud::renderTabGapBar(SettingsLayoutContext& ctx) {
     // Marker scale control (50%-300%)
     char markerScaleValue[16];
     snprintf(markerScaleValue, sizeof(markerScaleValue), "%.0f%%", hud->m_fMarkerScale * 100.0f);
-    ctx.addSteppedControl("Marker scale", markerScaleValue,
+    ctx.addSteppedControl(TR("Marker scale"), markerScaleValue,
         SettingsHud::SteppedControl::stepFloat(&hud->m_fMarkerScale, 0.01f,
             GapBarHud::MIN_MARKER_SCALE, GapBarHud::MAX_MARKER_SCALE, hud),
         hud, true, false, "gap_bar.marker_scale");
 
     // Label mode control (Off/Position/Race number/Both)
-    static const char* const kLabelModes[] = { "Off", "Position", "Race number", "Both" };
+    static const char* const kLabelModes[] = { N_("Off"), N_("Position"), N_("Race number"), N_("Both") };
     bool labelIsOff = (hud->m_labelMode == GapBarHud::LabelMode::NONE);
     const char* labelModeStr = cycleName(kLabelModes, static_cast<int>(hud->m_labelMode));
-    ctx.addCycleControl("Marker labels", labelModeStr,
+    ctx.addCycleControl(TR("Marker labels"), labelModeStr,
         SettingsHud::CycleControl::enumMember(hud, &GapBarHud::m_labelMode, 4, hud, kLabelModes),
         hud, true, labelIsOff, "gap_bar.labels");
 

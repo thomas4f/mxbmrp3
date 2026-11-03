@@ -79,10 +79,10 @@ static void formatCompactKeyBinding(const KeyBinding& binding, char* buffer, siz
 // the column needs no reminder of -- nothing else on a pad is a direction.
 static const char* compactButtonName(ControllerButton button) {
     switch (button) {
-        case ControllerButton::DPAD_UP:    return "Up";
-        case ControllerButton::DPAD_DOWN:  return "Down";
-        case ControllerButton::DPAD_LEFT:  return "Left";
-        case ControllerButton::DPAD_RIGHT: return "Right";
+        case ControllerButton::DPAD_UP:    return TR("Up");
+        case ControllerButton::DPAD_DOWN:  return TR("Down");
+        case ControllerButton::DPAD_LEFT:  return TR("Left");
+        case ControllerButton::DPAD_RIGHT: return TR("Right");
         default: return getControllerButtonName(button);
     }
 }
@@ -183,7 +183,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
         const bool isCellHovered = (cellIndex == ctx.parent->m_hoveredHotkeyRow);
 
         // Action name
-        ctx.parent->addString(getActionDisplayName(action), ctx.labelX, ctx.currentY, Justify::LEFT,
+        ctx.parent->addString(I18n::tr(getActionDisplayName(action)), ctx.labelX, ctx.currentY, Justify::LEFT,
             Fonts::getNormal(), colorConfig.getSecondary(), ctx.fontSize);
 
         // Keyboard binding
@@ -197,7 +197,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
                 hasModifier(currentMods, ModifierFlags::ALT) ? "A+" : "");
             char prompt[16];
             if (mods[0]) snprintf(prompt, sizeof(prompt), "%s...", mods);
-            else snprintf(prompt, sizeof(prompt), "Press key");
+            else snprintf(prompt, sizeof(prompt), "%s", TR("Press key"));
             ctx.addInputField(kbX, kbFieldWidth, prompt, colorConfig.getAccent(), true);
         } else {
             char keyStr[32];
@@ -222,7 +222,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
 
         // Controller binding
         if (isCapturing && captureAction == action && captureType == CaptureType::CONTROLLER) {
-            ctx.addInputField(ctrlX, ctrlFieldWidth, "Press", colorConfig.getAccent(), true);
+            ctx.addInputField(ctrlX, ctrlFieldWidth, TR("Press"), colorConfig.getAccent(), true);
         } else {
             unsigned long btnColor;
             if (isCellHovered && ctx.parent->m_hoveredHotkeyColumn == HotkeyColumn::CONTROLLER) {
@@ -252,12 +252,12 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
     // The field captions ride on the first card's heading row, over both columns'
     // fields, on their text column. "Gamepad" rather than "Controller": the
     // caption has the pad field's eight characters to sit in.
-    const float headingY = ctx.addSectionHeading("Toggles");
+    const float headingY = ctx.addSectionHeading(TR("Toggles"));
     for (int col = 0; col < 2; ++col) {
         const float cellLeft = ctx.cellX(col, 2);
-        ctx.parent->addString("Keyboard", keyboardXAt(cellLeft) + charWidth, headingY, Justify::LEFT,
+        ctx.parent->addString(TR("Keyboard"), keyboardXAt(cellLeft) + charWidth, headingY, Justify::LEFT,
             Fonts::getStrong(), colorConfig.getPrimary(), ctx.fontSize);
-        ctx.parent->addString("Gamepad", controllerXAt(cellLeft) + charWidth, headingY, Justify::LEFT,
+        ctx.parent->addString(TR("Gamepad"), controllerXAt(cellLeft) + charWidth, headingY, Justify::LEFT,
             Fonts::getStrong(), colorConfig.getPrimary(), ctx.fontSize);
     }
 
@@ -315,7 +315,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
 #endif
         HotkeyAction::SPOTTER_CUE,
     };
-    ctx.addSectionHeading("Broadcast");
+    ctx.addSectionHeading(TR("Broadcast"));
     addHotkeySection(kBroadcast, static_cast<int>(sizeof(kBroadcast) / sizeof(kBroadcast[0])));
 
     static const HotkeyAction kOther[] = {
@@ -325,7 +325,7 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
         HotkeyAction::TOGGLE_ALL_HUDS,
         HotkeyAction::RELOAD_CONFIG,
     };
-    ctx.addSectionHeading("Other");
+    ctx.addSectionHeading(TR("Other"));
     addHotkeySection(kOther, static_cast<int>(sizeof(kOther) / sizeof(kOther[0])));
 
     // No active HUD for hotkeys settings

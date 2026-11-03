@@ -23,7 +23,7 @@ mxbmrp3/
     └── logos/   ← Sponsor/logo PNGs for the web overlay slideshow
 ```
 
-A pack's payload is its own `.tga` art, or `.wav` audio for a voice, alongside its `<type>.ini`. The `[pack]` section takes an **optional `name`** for a human title in the picker; leave it out and the folder name is used, title-cased. The shipped packs leave it out wherever that works, and state one only where it does not (`ds4` title-cases to "Ds4", not "DualShock 4"). Section headers are matched case-insensitively. User files override bundled assets of the same name.
+A pack's payload is its own `.tga` art, or `.wav` audio for a voice, alongside its `<type>.ini`. The `[pack]` section takes an **optional `name`** for a human title in the picker; leave it out and the folder name is used, title-cased. The shipped packs leave it out wherever that works, and state one only where it does not (`ds4` title-cases to "Ds4", not "DualShock 4"). Section headers are matched case-insensitively. User files override bundled assets of the same name. Keep art to 4096 px per side: a pack with a larger `.tga` is skipped, and a larger loose texture does not draw in the companion window or with Direct GL.
 
 **`base = <pack>` is one rule for every pack type.** Your ini layers over the named pack: whatever your folder and ini state wins, and everything they leave out - art, geometry, colors, offsets - is answered from the base. So a reskin is a folder holding a `<type>.ini` with a `base` line and the one or two files you actually changed. A base must itself be a pack with no `base` of its own.
 
@@ -98,7 +98,7 @@ The faces are square and drawn as a circle, so there is no aspect to state - onl
 
 If you had drawn your own `tacho_widget_1.tga` before this, the plugin copies it into `gauges\legacy\` for you the first time it runs and selects it, so nothing is lost. That only works for art in your Documents plugin folder - a file dropped straight into the game's own `plugins\` folder cannot be told apart from the one older versions shipped there, so that one is left alone and the log says what to do with it.
 
-**Helmet** - The helmet overlay uses two textures: `helmet_upper_1.tga` (visor rim/top) and `helmet_lower_1.tga` (chin bar). Author at screen resolution with transparent visor openings and ~10% bleed on all sides (extra opaque border beyond the visible area) so tilt and vibration don't expose hard edges.
+**Helmet** - The helmet overlay uses two textures: `helmet_upper_1.tga` (visor rim/top) and `helmet_lower_1.tga` (chin bar). Author at screen resolution (up to 4096 px wide) with transparent visor openings and ~10% bleed on all sides (extra opaque border beyond the visible area) so tilt and vibration don't expose hard edges.
 
 **Twitch chat badges** - The stream chat shows an icon for each chatter's role. For Twitch lines, to use Twitch's own badge images instead, add them yourself - the plugin can't ship Twitch's badge art - as `.tga` files in `textures\`, named `twitch_` plus Twitch's badge name and `_1`: `twitch_broadcaster_1.tga`, `twitch_lead_moderator_1.tga`, `twitch_moderator_1.tga`, `twitch_vip_1.tga`, `twitch_staff_1.tga`, `twitch_partner_1.tga`, `twitch_artist_1.tga`, `twitch_premium_1.tga` (Prime), `twitch_turbo_1.tga`, `twitch_founder_1.tga`, `twitch_subscriber_1.tga`. Each file replaces that role's icon and is drawn as-is, not tinted; roles without a file keep their icon. Square images work best - Twitch serves its badges at 72x72.
 
@@ -122,3 +122,5 @@ The overlay files are plain HTML, CSS, and JS. To customize them, place modified
 - `custom.css` - Optional file you create yourself for style overrides. Copy the bundled `custom-sample.css` to `custom.css` to start - it's a commented reference with ready-made recipes (light theme, compact, no-motion, fonts). Loaded after `style.css`, so its rules take precedence. Use it for small theme tweaks instead of forking the full stylesheet. Tip: append `?demo` to the overlay URL to preview your theme against a synthetic race without launching the game.
 - `index.html` - Overlay structure
 - `overlay-config.js` (in the `js\` subfolder) - The `CONFIG` block at the top defines defaults for all settings. These are overridden by the settings panel (stored in localStorage).
+
+**Sharing overlay files:** a `custom.css` is safe to pass around, but `.js` and `.html` files are programs: an overridden one runs in your browser or OBS source with the same access as the overlay's own scripts. Only install those from someone you trust. A `custom.css` that loads anything from a web address (`url(https://...)`) also tells that site your IP address each time the overlay opens.

@@ -4,6 +4,7 @@
 // ============================================================================
 
 #include "event_log_hud.h"
+#include "../core/i18n.h"
 #include "default_slots.h"
 #include "rider_flag_icons.h"
 #include "../core/plugin_data.h"
@@ -266,7 +267,7 @@ void EventLogHud::rebuildRenderData() {
     PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(bgWidthChars, dim.fontSize);
     want.sectionH = { m_maxDisplayEvents * dim.lineHeightNormal };
-    want.captionW = planTitleWidth(dim, "Event Log", TitleTier::Large);
+    want.captionW = planTitleWidth(dim, TR("Event Log"), TitleTier::Large);
     want.tier = TitleTier::Large;
     PanelPlan& plan = planPanel(dim, want);
     addPlanBackground(plan, startX, startY);
@@ -275,7 +276,7 @@ void EventLogHud::rebuildRenderData() {
 
     // Title — the plan's caption row, above currentY. addPlanTitle emits an
     // empty string when hidden, keeping string index 0 stable.
-    addPlanTitle(plan, "Event Log",
+    addPlanTitle(plan, TR("Event Log"),
                  getColor(ColorSlot::PRIMARY));
 
     // Layout: [icon] [timestamp] message — columns are optional
@@ -412,7 +413,7 @@ void EventLogHud::rebuildRenderData() {
         // Message + detail (detail uses digits font in PRIMARY color)
         if (entry->detail[0] != '\0') {
             char msgWithColon[68];
-            snprintf(msgWithColon, sizeof(msgWithColon), "%s:", entry->message);
+            snprintf(msgWithColon, sizeof(msgWithColon), "%s:", entry->shown);
             addString(msgWithColon, messageX, currentY,
                       PluginConstants::Justify::LEFT, this->getFont(FontCategory::NORMAL),
                       getColor(ColorSlot::SECONDARY), dim.fontSize);
@@ -422,7 +423,7 @@ void EventLogHud::rebuildRenderData() {
                       PluginConstants::Justify::LEFT, this->getFont(FontCategory::DIGITS),
                       getColor(ColorSlot::PRIMARY), dim.fontSize);
         } else {
-            addString(entry->message, messageX, currentY,
+            addString(entry->shown, messageX, currentY,
                       PluginConstants::Justify::LEFT, this->getFont(FontCategory::NORMAL),
                       getColor(ColorSlot::SECONDARY), dim.fontSize);
             // Empty detail string to keep consistent string count (3 per row)
@@ -486,7 +487,7 @@ void EventLogHud::rebuildLayout() {
     PanelWant want;
     want.contentW = PluginUtils::calculateMonospaceTextWidth(getBackgroundWidthChars(), dim.fontSize);
     want.sectionH = { m_cachedNumDataRows * dim.lineHeightNormal };
-    want.captionW = planTitleWidth(dim, "Event Log", TitleTier::Large);
+    want.captionW = planTitleWidth(dim, TR("Event Log"), TitleTier::Large);
     want.tier = TitleTier::Large;
     PanelPlan& plan = planPanel(dim, want);
     plan.x0 = startX; plan.y0 = startY;

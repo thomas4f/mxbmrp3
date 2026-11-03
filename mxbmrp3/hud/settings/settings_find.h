@@ -15,7 +15,7 @@
 // when the Find box opens, never per frame; matching runs only when the query
 // changes.
 //
-// RANKING. Every word of the query must appear (case-insensitive). A row whose
+// RANKING. Every word of the query must appear (case- and accent-insensitive). A row whose
 // LABEL holds them all is a name hit; one that also needs its tab's or section's
 // name ("map scale" -> Map > Scale: most HUD rows are labelled just "Visible",
 // "Scale", "Opacity") is a place hit; one that needs its tooltip for any word is a
@@ -29,6 +29,8 @@
 // ============================================================================
 #pragma once
 
+#include "../../core/i18n.h"
+
 #include <cctype>
 #include <cstdio>
 #include <cstring>
@@ -40,27 +42,56 @@ namespace SettingsFind {
 struct Entry {
     int tab = -1;
     char label[40] = {};
+    // The English the label was translated from (a static literal), or nullptr
+    // when it was drawn untranslated. Matched as well as the label, so a player in
+    // any language can search the English word a forum post used.
+    const char* labelEnglish = nullptr;
     const char* tabName = "";  // the tab's registry name ("Map"): static, outlives the index
     char section[24] = {};     // the section heading the row sits under ("Layout")
     char tooltipId[48] = {};   // the row's own id: lands the jump, shows the hover text
-    const char* tooltip = "";  // the compiled tooltip text (TooltipManager), for matching
+    const char* tooltip = "";  // the tooltip text as shown (TooltipManager), for matching
+    // Its English, when a language pack translated it (both are static/session
+    // lifetime strings, never a buffer): matched too, like labelEnglish.
+    const char* tooltipEnglish = "";
     char value[24] = {};       // what the row showed when indexed; empty = no value drawn
     bool isTab = false;        // the tab itself (label = its name, tooltipId = its tab id)
     bool isWidget = false;     // a widget's row on the Widgets tab
 };
 
-// Case-insensitive: does `s` start with `word` (length n)?
+// One CP1252 character folded for matching: lower case, and an accented letter
+// to its plain one (É, é and e all match), so "ecart" finds "Écart" and a
+// keyboard without the accent still finds the row. Labels are CP1252 bytes --
+// the font's code page, which every translation is converted to at load.
+inline unsigned char foldChar(unsigned char c) {
+    if (c < 0x80) return static_cast<unsigned char>(std::tolower(c));
+    // 0xC0..0xFF: À..ÿ, upper and lower halves 0x20 apart.
+    static const char kLatin1[] =
+        "aaaaaaaceeeeiiii"   // C0-CF  ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏ
+        "dnooooo*ouuuuyts"   // D0-DF  ÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞß
+        "aaaaaaaceeeeiiii"   // E0-EF
+        "dnooooo/ouuuuyty";  // F0-FF
+    if (c >= 0xC0) return static_cast<unsigned char>(kLatin1[c - 0xC0]);
+    switch (c) {
+        case 0x8A: case 0x9A: return 's';   // Š š
+        case 0x8E: case 0x9E: return 'z';   // Ž ž
+        case 0x8C: case 0x9C: return 'o';   // Œ œ (first letter)
+        case 0x9F: return 'y';              // Ÿ
+        default: return c;
+    }
+}
+
+// Case- and accent-insensitive: does `s` start with `word` (length n)?
 inline bool startsWithWord(const char* s, const char* word, size_t n) {
     for (size_t i = 0; i < n; ++i) {
-        if (!s[i] || std::tolower(static_cast<unsigned char>(s[i])) !=
-                     std::tolower(static_cast<unsigned char>(word[i]))) {
+        if (!s[i] || foldChar(static_cast<unsigned char>(s[i])) !=
+                     foldChar(static_cast<unsigned char>(word[i]))) {
             return false;
         }
     }
     return true;
 }
 
-// Case-insensitive: does `hay` contain `needle` (length n)?
+// Case- and accent-insensitive: does `hay` contain `needle` (length n)?
 inline bool containsWord(const char* hay, const char* needle, size_t n) {
     if (n == 0) return true;
     for (const char* h = hay; *h; ++h) {
@@ -83,8 +114,10 @@ inline Hit classify(const Entry& e, const char* query) {
         if (n == 0) continue;
         anyWord = true;
         if (containsWord(e.label, w, n)) continue;
+        if (e.labelEnglish && containsWord(e.labelEnglish, w, n)) continue;
         if (containsWord(e.tabName, w, n) || containsWord(e.section, w, n)) { needsPlace = true; continue; }
-        if (!containsWord(e.tooltip, w, n)) return Hit::None;
+        if (!containsWord(e.tooltip, w, n) &&
+            (e.tooltipEnglish == e.tooltip || !containsWord(e.tooltipEnglish, w, n))) return Hit::None;
         needsTooltip = true;
     }
     if (!anyWord) return Hit::None;
@@ -139,9 +172,12 @@ struct State {
         e.tabName = tabName ? tabName : "";
         e.isWidget = widgetRows;
         std::snprintf(e.label, sizeof(e.label), "%s", label);
+        const char* english = I18n::englishOf(label);
+        e.labelEnglish = english != label ? english : nullptr;
         std::snprintf(e.section, sizeof(e.section), "%s", section);
         std::snprintf(e.tooltipId, sizeof(e.tooltipId), "%s", tooltipId);
         e.tooltip = tooltipText ? tooltipText : "";
+        e.tooltipEnglish = I18n::englishOf(e.tooltip);
         index.push_back(e);
         openRow = static_cast<int>(index.size()) - 1;
     }
@@ -153,15 +189,20 @@ struct State {
         e.isTab = true;
         e.tabName = name ? name : "";
         std::snprintf(e.label, sizeof(e.label), "%s", e.tabName);
+        const char* english = I18n::englishOf(e.tabName);
+        e.labelEnglish = english != e.tabName ? english : nullptr;
         std::snprintf(e.tooltipId, sizeof(e.tooltipId), "%s", tabTooltipId ? tabTooltipId : "");
         e.tooltip = tooltipText ? tooltipText : "";
+        e.tooltipEnglish = I18n::englishOf(e.tooltip);
         index.push_back(e);
     }
     // After a tab's rows: its entry shows what its Visible row shows (a HUD's on/off).
     void tabVisible(size_t tabEntry) {
         for (size_t i = tabEntry + 1; i < index.size(); ++i) {
             if (index[i].tab != index[tabEntry].tab) break;
-            if (std::strcmp(index[i].label, "Visible") == 0) {
+            // By the ENGLISH label: the translated one is a different word per language.
+            const char* english = index[i].labelEnglish ? index[i].labelEnglish : index[i].label;
+            if (std::strcmp(english, "Visible") == 0) {
                 std::snprintf(index[tabEntry].value, sizeof(Entry::value), "%s", index[i].value);
                 return;
             }

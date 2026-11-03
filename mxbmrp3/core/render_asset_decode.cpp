@@ -129,6 +129,12 @@ void buildTexMips(Texture& t) {
     }
 }
 
+int clampGlyphMetric(int64_t v, int cellH, bool allowNegative) {
+    const int64_t hi = int64_t(cellH > 0 ? cellH : 0) * kMaxGlyphCells;
+    const int64_t lo = allowNegative ? -hi : 0;
+    return static_cast<int>(v < lo ? lo : (v > hi ? hi : v));
+}
+
 FntFont decodeFnt(const std::vector<uint8_t>& d) {
     FntFont fo;
     auto i32 = [&](size_t o) -> int {
@@ -141,13 +147,24 @@ FntFont decodeFnt(const std::vector<uint8_t>& d) {
             FntGlyph& g = fo.glyphs[cp];
             g.valid = i32(o) != 0;
             g.xoff = i32(o + 4);
-            int width = i32(o + 8), rb = i32(o + 12);
-            g.adv = g.xoff + width + rb;
+            // g.adv is set below, once the cell height is known to be sane.
             g.x0 = i32(o + 16); g.x1 = i32(o + 20);
             g.y0 = i32(o + 24); g.y1 = i32(o + 28);
         }
         fo.aw = i32(FNT_BITMAP_HDR + 4);
         fo.ah = i32(FNT_BITMAP_HDR + 8);
+        // Every glyph field is file-declared. A rect outside the atlas is not a
+        // glyph (sampling clamps, but the loops scale with its size), and the
+        // offset and advance are summed in 64 bits and held to a few cells.
+        for (int cp = 0; cp < 256; ++cp) {
+            size_t o = FNT_TABLE_OFF + size_t(cp) * FNT_REC_STRIDE;
+            FntGlyph& g = fo.glyphs[cp];
+            const bool inAtlas = g.x0 >= 0 && g.x0 < g.x1 && g.x1 <= fo.aw &&
+                                 g.y0 >= 0 && g.y0 < g.y1 && g.y1 <= fo.ah;
+            if (!inAtlas) g.valid = false;
+            g.xoff = clampGlyphMetric(g.xoff, fo.cellH, true);
+            g.adv = clampGlyphMetric(int64_t(i32(o + 4)) + i32(o + 8) + i32(o + 12), fo.cellH, false);
+        }
         int ctype = i32(FNT_BITMAP_HDR + 16);
         size_t need = size_t(fo.aw) * fo.ah;
         // Cap the file-declared atlas dimensions: fonts live in user-overridable
@@ -178,8 +195,8 @@ bool decodeFntAdvances(const uint8_t* d, size_t size, float out[256]) {
     for (int cp = 0; cp < 256; ++cp) {
         const size_t o = FNT_TABLE_OFF + size_t(cp) * FNT_REC_STRIDE;
         // The advance decodeFnt gives a glyph, so the layout measures what the renderers draw.
-        const int adv = i32(o + 4) + i32(o + 8) + i32(o + 12);
-        out[cp] = static_cast<float>(std::max(adv, 0)) / static_cast<float>(cellH);
+        const int adv = clampGlyphMetric(int64_t(i32(o + 4)) + i32(o + 8) + i32(o + 12), cellH, false);
+        out[cp] = static_cast<float>(adv) / static_cast<float>(cellH);
     }
     return true;
 }

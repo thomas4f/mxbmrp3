@@ -5,6 +5,7 @@
 // but tick(), which is one compare per signal it carries.
 // ============================================================================
 #include "exploration_stats.h"
+#include "plugin_names.h"
 #include "achievement_manager.h"
 #include "asset_manager.h"
 #include "color_config.h"
@@ -294,7 +295,7 @@ bool ExplorationStats::scanUserFiles() {
     // User packs: one listing per pack type.
     std::string user = m_savePath;
     if (user.back() != '\\' && user.back() != '/') user += '\\';
-    user += "mxbmrp3";
+    user += MXB_USER_DIR_NAME;
     int packs = 0;
     for (const AssetManager::PackType& t : AssetManager::PACK_TYPES) {
         packs += countSubfolders(user + "\\" + t.subdir);
@@ -327,7 +328,7 @@ void ExplorationStats::onStartup(const std::string& savePath) {
     moved |= checkClock(/*riding=*/false);
 
     moved |= scanUserFiles();
-    const std::string user = savePath + "\\mxbmrp3";
+    const std::string user = savePath + "\\" MXB_USER_DIR_NAME;
 
     // Phoenix: a dump the crash handler wrote since the last startup. The first
     // count ever (a file from before this block) is the baseline, silently: an

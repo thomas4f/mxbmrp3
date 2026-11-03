@@ -584,12 +584,12 @@ void SettingsLayoutContext::addPager(int page, int pageCount,
     if (pageCount <= 1) return;
     ColorConfig& colors = ColorConfig::getInstance();
     char pageText[16];
-    snprintf(pageText, sizeof(pageText), "Page %d/%d", page + 1, pageCount);
+    snprintf(pageText, sizeof(pageText), "%s %d/%d", TR("Page"), page + 1, pageCount);
     // The label's slot is sized for the LAST page's text ("Page 14/14"), not this
     // page's: centred on its own width, the buttons stepped half a character
     // when the page number gained a digit (9/14 -> 10/14).
     char slotText[16];
-    snprintf(slotText, sizeof(slotText), "Page %d/%d", pageCount, pageCount);
+    snprintf(slotText, sizeof(slotText), "%s %d/%d", TR("Page"), pageCount, pageCount);
     const float cw = charWidth();
     const float textW = cw * static_cast<float>(std::strlen(slotText));
     // Row-height buttons three characters wide, a character of air to the label:
@@ -914,9 +914,9 @@ void SettingsLayoutContext::addFreezeControl(
     const bool isOff = (*durationMs == 0);
     char value[16];
     if (allowDefault && *durationMs < FreezeDuration::MIN_MS) {
-        strcpy_s(value, sizeof(value), "Default");
+        snprintf(value, sizeof(value), "%s", TR("Default"));
     } else if (isOff) {
-        strcpy_s(value, sizeof(value), "Off");
+        snprintf(value, sizeof(value), "%s", TR("Off"));
     } else {
         snprintf(value, sizeof(value), "%ds", *durationMs / 1000);
     }
@@ -931,7 +931,7 @@ void SettingsLayoutContext::addReferenceControl(const char* label, bool* followD
                                                PbGapTracker::Ref* ref, BaseHud* targetHud,
                                                const char* tooltipId, bool* enabled) {
     using Ref = PbGapTracker::Ref;
-    const char* const kNames[] = { "Off", HudDefaults::defaultReferenceName(), PbGapTracker::refName(Ref::SESSION_PB),
+    const char* const kNames[] = { N_("Off"), HudDefaults::defaultReferenceName(), PbGapTracker::refName(Ref::SESSION_PB),
         PbGapTracker::refName(Ref::ALLTIME_PB), PbGapTracker::refName(Ref::LAST_LAP), PbGapTracker::refName(Ref::SERVER_BEST) };
     static_assert(sizeof(kNames) / sizeof(kNames[0]) == PbGapTracker::REF_COUNT + 2,
                   "Off, Default and one name per reference");
@@ -953,10 +953,10 @@ void SettingsLayoutContext::addReferenceControl(const char* label, bool* followD
         *followDefault = (v == 0);
         if (v > 0) *ref = static_cast<PbGapTracker::Ref>(v - 1);
     };
-    c.nameOf = [first, kNames](int i) { return std::string(kNames[first + i]); };
+    c.nameOf = [first, kNames](int i) { return std::string(I18n::tr(kNames[first + i])); };
     c.dirtyHud = targetHud;
     const bool off = enabled && !*enabled;
-    addCycleControl(label, kNames[first + c.get()], c, targetHud, true, off, tooltipId);
+    addCycleControl(label, I18n::tr(kNames[first + c.get()]), c, targetHud, true, off, tooltipId);
 }
 
 // The slider a SteppedControl draws as: the same target, bounds and step, set
@@ -1142,7 +1142,7 @@ void SettingsLayoutContext::addToggleControl(
     const int valueWidth = valueChars();
 
     // Use override value if provided, otherwise show On/Off
-    const char* displayValue = valueOverride ? valueOverride : (isOn ? "On" : "Off");
+    const char* displayValue = valueOverride ? valueOverride : (isOn ? TR("On") : TR("Off"));
     std::string formattedValue = formatValue(displayValue, valueWidth, false);
 
     // Left arrow "<" - always visible, muted when disabled, clickable only when enabled
@@ -1213,7 +1213,7 @@ void SettingsLayoutContext::addToggleControl(
     unsigned long valueColor = (enabled && isOn) ? colors.getPrimary() : colors.getMuted();
     const int valueWidth = valueChars();
 
-    const char* displayValue = valueOverride ? valueOverride : (isOn ? "On" : "Off");
+    const char* displayValue = valueOverride ? valueOverride : (isOn ? TR("On") : TR("Off"));
     std::string formattedValue = formatValue(displayValue, valueWidth, false);
 
     // Left arrow "<" - always visible, muted when disabled, clickable only when enabled
@@ -1255,18 +1255,18 @@ void SettingsLayoutContext::addPerHudThemeControl(BaseHud* hud) {
     const std::string& ov = hud->getThemeOverride();
     std::string label;
     if (ov.empty()) {
-        label = "Default";
+        label = TR("Default");
     } else if (ov == BaseHud::THEME_NONE) {
-        label = "None";
+        label = TR("None");
     } else if (const ThemeAsset* t = AssetManager::getInstance().getThemeByName(ov)) {
         label = t->displayName;
     } else {
         // Names an installed-then-removed theme. activeTheme() falls back to the
         // global one, so say so rather than showing a theme that isn't drawing.
-        label = "Default";
+        label = TR("Default");
     }
 
-    addCycleControl("Theme", label.c_str(), SettingsHud::themeOverrideCycle(hud),
+    addCycleControl(TR("Theme"), label.c_str(), SettingsHud::themeOverrideCycle(hud),
         hud, /*enabled=*/true, /*isOff=*/false, "common.theme");
 }
 
@@ -1291,7 +1291,7 @@ static std::string activeGaugesDisplayName(const BaseHud* hud) {
     } else if (const auto* speedo = dynamic_cast<const SpeedoWidget*>(hud)) {
         pack = speedo->activePack();
     }
-    return pack ? pack->displayName : std::string("None");
+    return pack ? pack->displayName : std::string(TR("None"));
 }
 
 void SettingsLayoutContext::addPackControl(BaseHud* hud) {
@@ -1304,7 +1304,7 @@ void SettingsLayoutContext::addPackControl(BaseHud* hud) {
     // places, which reads as "pad or board" and silently means "pad or NOT pad" --
     // so the third pack type would have been labelled and clicked as a pit board
     // everywhere without one line failing to compile.
-    std::string label = "None";
+    std::string label = TR("None");
     size_t count = 0;
     const char* tip = "pitboard.pack";
     switch (hud->m_packKind) {
@@ -1337,7 +1337,7 @@ void SettingsLayoutContext::addPackControl(BaseHud* hud) {
 
     // Greyed with nothing to pick -- one pack is a legitimate install, and with no
     // Off entry there is genuinely nowhere for the arrows to go.
-    addCycleControl("Texture", label.c_str(), SettingsHud::packCycle(hud),
+    addCycleControl(TR("Texture"), label.c_str(), SettingsHud::packCycle(hud),
         hud, /*enabled=*/count > 1, /*isOff=*/false, tip);
 }
 
@@ -1356,7 +1356,7 @@ void SettingsLayoutContext::addStandardHudControls(BaseHud* hud) {
     // at most seven characters, so a 9-character label column leaves the values
     // room for a theme or pack name in full ("Carbon Light", "DualShock 4").
     beginColumns(2, hud->m_titleSupported ? 5 : 4, 9);
-    addToggleControl("Visible", hud->isVisibleOnActiveSurface(),
+    addToggleControl(TR("Visible"), hud->isVisibleOnActiveSurface(),
         SettingsHud::ClickRegion::HUD_TOGGLE, hud, nullptr, 0, true, "common.visible");
 
     // THE TITLE ROW IS ABSENT, not greyed, on a panel that cannot carry a caption
@@ -1367,7 +1367,7 @@ void SettingsLayoutContext::addStandardHudControls(BaseHud* hud) {
     // TABLE still greys its Title column rather than dropping it, because that column is
     // shared by nineteen rows and cannot be per-row.
     if (hud->m_titleSupported) {
-        addToggleControl("Title", hud->getShowTitle(),
+        addToggleControl(TR("Title"), hud->getShowTitle(),
             SettingsHud::ClickRegion::TITLE_TOGGLE, hud, nullptr, 0, true, "common.title");
     }
 
@@ -1395,11 +1395,11 @@ void SettingsLayoutContext::addStandardHudControls(BaseHud* hud) {
         char textureValue[16];
         const int variant = hud->getTextureVariant();
         if (!hasTextures || variant == 0) {
-            snprintf(textureValue, sizeof(textureValue), "Off");
+            snprintf(textureValue, sizeof(textureValue), "%s", TR("Off"));
         } else {
             snprintf(textureValue, sizeof(textureValue), "%d", variant);
         }
-        addCycleControl("Texture", textureValue, SettingsHud::textureCycle(hud),
+        addCycleControl(TR("Texture"), textureValue, SettingsHud::textureCycle(hud),
             hud, /*enabled=*/hasTextures, /*isOff=*/false, "common.texture");
     }
 
@@ -1425,13 +1425,13 @@ static SettingsHud::SteppedControl scaleStepper(BaseHud* hud) {
 void SettingsLayoutContext::addOpacityControl(BaseHud* hud, bool enabled) {
     char value[16];
     snprintf(value, sizeof(value), "%d%%", static_cast<int>(std::round(hud->getBackgroundOpacity() * 100.0f)));
-    addSteppedControl("Opacity", value, opacityStepper(hud), hud, enabled, false, "common.opacity");
+    addSteppedControl(TR("Opacity"), value, opacityStepper(hud), hud, enabled, false, "common.opacity");
 }
 
 void SettingsLayoutContext::addScaleControl(BaseHud* hud, bool enabled) {
     char value[16];
     snprintf(value, sizeof(value), "%d%%", static_cast<int>(std::round(hud->getOwnScale() * 100.0f)));
-    addSteppedControl("Scale", value, scaleStepper(hud), hud, enabled, false, "common.scale");
+    addSteppedControl(TR("Scale"), value, scaleStepper(hud), hud, enabled, false, "common.scale");
 }
 
 void SettingsLayoutContext::nextLine() {
@@ -1450,21 +1450,22 @@ void SettingsLayoutContext::addSpacing() {
 }
 
 SettingsLayoutContext::WidgetColumns SettingsLayoutContext::widgetColumns() const {
-    // Name, then Visible / Title (3-char values), Texture (the remainder),
-    // Opacity / Scale (4-char percentages): every control is value + 4 wide.
-    constexpr int NAME_CHARS = 10;
+    // Name (11 chars + air: "Now Playing"), Visible / Title (3-char values), Texture
+    // (the remainder, 8: the de/sv/es "Default"), Opacity / Scale (4-char percentages):
+    // every control is value + 4 wide. Texture gives the name one char, its gap the other.
+    constexpr int NAME_CHARS = 12;
     constexpr int GAP_CHARS = 2;
     constexpr int TOGGLE_CHARS = 3 + 4;
     constexpr int PERCENT_CHARS = 4 + 4;
     const int fixedChars = NAME_CHARS + 2 * (TOGGLE_CHARS + GAP_CHARS)
-        + 4 + GAP_CHARS + (PERCENT_CHARS + GAP_CHARS) + PERCENT_CHARS;
+        + 4 + 1 + (PERCENT_CHARS + GAP_CHARS) + PERCENT_CHARS;
     WidgetColumns cols;
     cols.texChars = std::max(3, layout().settingsContentAreaChars() - fixedChars);
     const float cw = charWidth();
     cols.visX = labelX + cw * NAME_CHARS;
     cols.titleX = cols.visX + cw * (TOGGLE_CHARS + GAP_CHARS);
     cols.texX = cols.titleX + cw * (TOGGLE_CHARS + GAP_CHARS);
-    cols.opacityX = cols.texX + cw * (cols.texChars + 4 + GAP_CHARS);
+    cols.opacityX = cols.texX + cw * (cols.texChars + 4 + 1);
     cols.scaleX = cols.opacityX + cw * (PERCENT_CHARS + GAP_CHARS);
     return cols;
 }
@@ -1498,20 +1499,20 @@ void SettingsLayoutContext::addWidgetRow(
     // settings menu, so it can't be the toggle target.
     if (menuOnlyPointerRow) {
         bool pointerOn = !UiConfig::getInstance().getMenuOnlyCursor();
-        addInlineCycle(cols.visX, pointerOn ? "On" : "Off", 3,
+        addInlineCycle(cols.visX, pointerOn ? TR("On") : TR("Off"), 3,
             SettingsHud::ClickRegion::MENU_ONLY_CURSOR_TOGGLE,
             SettingsHud::ClickRegion::MENU_ONLY_CURSOR_TOGGLE, hud, true, !pointerOn);
-        parent->m_find.noteValue(pointerOn ? "On" : "Off");   // the Find index's value column
+        parent->m_find.noteValue(pointerOn ? TR("On") : TR("Off"));   // the Find index's value column
     } else {
         // Show the ACTIVE surface's visibility, like the per-HUD tabs: on the companion
         // window the toggle already edits the companion instance (HUD_TOGGLE routes by
         // active surface), so the displayed On/Off must read it too — otherwise a widget
         // enabled only on the companion still shows the game's state.
         bool visOn = hud->isVisibleOnActiveSurface();
-        addInlineCycle(cols.visX, visOn ? "On" : "Off", 3,
+        addInlineCycle(cols.visX, visOn ? TR("On") : TR("Off"), 3,
             SettingsHud::ClickRegion::HUD_TOGGLE, SettingsHud::ClickRegion::HUD_TOGGLE,
             hud, enableVisibility, !visOn);
-        parent->m_find.noteValue(visOn ? "On" : "Off");
+        parent->m_find.noteValue(visOn ? TR("On") : TR("Off"));
     }
 
     // Title toggle, greyed on a widget that carries no caption. The column is shared by
@@ -1521,7 +1522,7 @@ void SettingsLayoutContext::addWidgetRow(
     // BaseHud::m_titleSupported), so there is no stale value to mask.
     const bool enableTitle = hud->m_titleSupported;
     const bool titleOn = hud->getShowTitle();
-    addInlineCycle(cols.titleX, titleOn ? "On" : "Off", 3,
+    addInlineCycle(cols.titleX, titleOn ? TR("On") : TR("Off"), 3,
         SettingsHud::ClickRegion::TITLE_TOGGLE, SettingsHud::ClickRegion::TITLE_TOGGLE,
         hud, enableTitle, !titleOn);
 
@@ -1546,7 +1547,7 @@ void SettingsLayoutContext::addWidgetRow(
         const bool isGauges = (hud->m_packKind == BaseHud::PackKind::Gauges);
         const size_t packCount =
             isGauges ? assets.getGaugesCount() : assets.getGamepadCount();
-        std::string packValue = "None";
+        std::string packValue = TR("None");
         if (isGauges) {
             packValue = activeGaugesDisplayName(hud);
         } else if (const GamepadAsset* active =
@@ -1562,20 +1563,20 @@ void SettingsLayoutContext::addWidgetRow(
         const std::string& ov = hud->getThemeOverride();
         std::string themeValue;
         if (ov.empty()) {
-            themeValue = "Default";
+            themeValue = TR("Default");
         } else if (ov == BaseHud::THEME_NONE) {
-            themeValue = "None";
+            themeValue = TR("None");
         } else if (const ThemeAsset* t = AssetManager::getInstance().getThemeByName(ov)) {
             themeValue = t->displayName;
         } else {
-            themeValue = "Default";   // unknown name renders as the global theme
+            themeValue = TR("Default");   // unknown name renders as the global theme
         }
         addInlineCycleControl(cols.texX, themeValue.c_str(), cols.texChars,
             SettingsHud::themeOverrideCycle(hud), hud, enableBgTexture, "common.theme");
     } else {
         char texValue[8];
         int texVariant = hud->getTextureVariant();
-        snprintf(texValue, sizeof(texValue), (!hasTextures || texVariant == 0) ? "Off" : "%d", texVariant);
+        snprintf(texValue, sizeof(texValue), (!hasTextures || texVariant == 0) ? TR("Off") : "%d", texVariant);
         addInlineCycleControl(cols.texX, texValue, cols.texChars,
             SettingsHud::textureCycle(hud), hud, enableBgTexture && hasTextures, "common.texture");
     }
@@ -1597,11 +1598,11 @@ void SettingsLayoutContext::addWidgetRow(
 
 // Get icon display name from shape index (0 = Off)
 std::string getShapeDisplayName(int shapeIndex) {
-    if (shapeIndex <= 0) return "Off";
+    if (shapeIndex <= 0) return TR("Off");
     const auto& assetMgr = AssetManager::getInstance();
     // Base index: this asks for the icon's NAME, which a theme override does not change.
     int spriteIndex = assetMgr.getFirstIconSpriteIndex() + shapeIndex - 1;
     std::string name = assetMgr.getIconDisplayName(spriteIndex);
-    if (name.empty()) return "Unknown";
+    if (name.empty()) return TR("Unknown");
     return name;
 }

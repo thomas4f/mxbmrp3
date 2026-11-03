@@ -17,6 +17,7 @@
 #include "../../core/color_config.h"
 #include "../../core/ui_config.h"
 #include "../../core/system_messages.h"
+#include "../../core/i18n.h"
 #include "../../core/media_manager.h"
 #if GAME_HAS_DISCORD
 #include "../../core/discord_manager.h"
@@ -215,22 +216,22 @@ bool SettingsHud::handleClickTabGeneral(const ClickRegion& region) {
                 m_resetAllConfirmed = false;
                 rebuildRenderData();
             } else if (m_copyTargetProfile != -1) {
-                const char* from = ProfileManager::getProfileName(ProfileManager::getInstance().getActiveProfile());
+                const char* from = I18n::tr(ProfileManager::getProfileName(ProfileManager::getInstance().getActiveProfile()));
                 SystemMessages::Toast t;
                 if (m_copyTargetProfile == 4) {
                     SettingsManager::getInstance().applyToAllProfiles(HudManager::getInstance());
-                    snprintf(t.detail, sizeof(t.detail), "%s copied to every profile", from);
+                    snprintf(t.detail, sizeof(t.detail), TR("%s copied to every profile"), from);
                 } else {
                     ProfileType targetProfile = static_cast<ProfileType>(m_copyTargetProfile);
                     SettingsManager::getInstance().copyToProfile(HudManager::getInstance(), targetProfile);
-                    snprintf(t.detail, sizeof(t.detail), "%s copied to %s", from,
-                             ProfileManager::getProfileName(targetProfile));
+                    snprintf(t.detail, sizeof(t.detail), TR("%s copied to %s"), from,
+                             I18n::tr(ProfileManager::getProfileName(targetProfile)));
                 }
                 m_copyTargetProfile = -1;
                 m_copyConfirmed = false;
                 // The menu shows nothing different after a copy: the copy lands
                 // in a profile that is not on screen.
-                snprintf(t.title, sizeof(t.title), "Profile copied");
+                snprintf(t.title, sizeof(t.title), "%s", TR("Profile copied"));
                 snprintf(t.icon, sizeof(t.icon), "clone");
                 t.key = SystemMessages::KEY_PROFILE_COPIED;
                 SystemMessages::getInstance().post(t);
@@ -258,7 +259,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     // === PREFERENCES SECTION ===
     // (Speed/fuel/temp units and clock format are on the Appearance tab; persisted
     // under [Display].)
-    ctx.addSectionHeading("Preferences");
+    ctx.addSectionHeading(TR("Preferences"));
     // The short switches side by side (beginColumns), with room for "All-time PB"
     // clear of the dropdown caret (a value filling its field runs under it); the
     // controller row stays full width below them, since its value is a device name.
@@ -272,7 +273,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         // so PBScope::CATEGORY and the persisted pbScope=CATEGORY value keep the API
         // spelling while every user-facing string says Class.
         const bool isCategory = UiConfig::getInstance().getPBScope() == PBScope::CATEGORY;
-        ctx.addCycleControl("PB scope", isCategory ? "Class" : "Bike",
+        ctx.addCycleControl(TR("PB scope"), isCategory ? TR("Class") : TR("Bike"),
             SettingsHud::ClickRegion::PB_SCOPE_TOGGLE,
             SettingsHud::ClickRegion::PB_SCOPE_TOGGLE,
             nullptr, true, false, "general.pb_scope");
@@ -285,14 +286,14 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         reference.count = PbGapTracker::REF_COUNT;
         reference.get = []() { return UiConfig::getInstance().getDefaultReference(); };
         reference.set = [](int v) { UiConfig::getInstance().setDefaultReference(v); };
-        reference.nameOf = [](int i) { return std::string(PbGapTracker::refName(static_cast<PbGapTracker::Ref>(i))); };
+        reference.nameOf = [](int i) { return std::string(I18n::tr(PbGapTracker::refName(static_cast<PbGapTracker::Ref>(i)))); };
         reference.postStep = []() { HudManager::getInstance().markAllHudsDirty(); };
-        ctx.addCycleControl("Gap reference", PbGapTracker::refName(static_cast<PbGapTracker::Ref>(reference.get())), reference,
+        ctx.addCycleControl(TR("Gap reference"), I18n::tr(PbGapTracker::refName(static_cast<PbGapTracker::Ref>(reference.get()))), reference,
                             nullptr, true, false, "general.reference");
 
         const int freezeMs = UiConfig::getInstance().getDefaultFreezeMs();
         char freezeValue[16];
-        if (freezeMs == 0) snprintf(freezeValue, sizeof(freezeValue), "Off");
+        if (freezeMs == 0) snprintf(freezeValue, sizeof(freezeValue), "%s", TR("Off"));
         else snprintf(freezeValue, sizeof(freezeValue), "%ds", freezeMs / 1000);
         SettingsHud::SteppedControl freeze = SettingsHud::SteppedControl::accessor(
                 [] { return static_cast<float>(UiConfig::getInstance().getDefaultFreezeMs()); },
@@ -300,10 +301,10 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
                 static_cast<float>(FreezeDuration::STEP_MS), static_cast<float>(FreezeDuration::MIN_MS),
                 static_cast<float>(FreezeDuration::MAX_MS), nullptr);
         freeze.postStep = []() { HudManager::getInstance().markAllHudsDirty(); };
-        ctx.addSteppedControl("Freeze", freezeValue, freeze, nullptr, true, freezeMs == 0, "general.freeze");
+        ctx.addSteppedControl(TR("Freeze"), freezeValue, freeze, nullptr, true, freezeMs == 0, "general.freeze");
     }
 
-    ctx.addToggleControl("Auto-save", UiConfig::getInstance().getAutoSave(),
+    ctx.addToggleControl(TR("Auto-save"), UiConfig::getInstance().getAutoSave(),
         SettingsHud::ClickRegion::AUTOSAVE_TOGGLE, nullptr, nullptr, 0, true,
         "general.auto_save");
 
@@ -314,10 +315,10 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     // HUD placement toggles (persisted under [Display])
     // grid-snap-exempt: renders the setting's own checkbox -- it reads the gate to
     // DISPLAY it, which is the one place that legitimately does.
-    ctx.addToggleControl("Grid snap", UiConfig::getInstance().getGridSnapping(),
+    ctx.addToggleControl(TR("Grid snap"), UiConfig::getInstance().getGridSnapping(),
         SettingsHud::ClickRegion::GRID_SNAP_TOGGLE, nullptr, nullptr, 0, true,
         "general.grid_snap");
-    ctx.addToggleControl("Screen clamp", UiConfig::getInstance().getScreenClamping(),
+    ctx.addToggleControl(TR("Screen clamp"), UiConfig::getInstance().getScreenClamping(),
         SettingsHud::ClickRegion::SCREEN_CLAMP_TOGGLE, nullptr, nullptr, 0, true,
         "general.screen_clamp");
 
@@ -346,27 +347,27 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         const char* glStatus;
         uint32_t glColor;
         if (!glOn) {
-            glStatus = "Off";
+            glStatus = TR("Off");
             glColor = colorConfig.getMuted();
         } else if (hm.glLatchedOff()) {
             // NEGATIVE, deliberately: this is the one state the user must not
             // mistake for working. Toggling the row off and on is the retry.
-            glStatus = "Failed";
+            glStatus = TR("Failed");
             glColor = colorConfig.getNegative();
         } else if (hm.glStatusCode() == 2) {
             // Has drawn at least once. Deliberately STICKY rather than
             // "drew last frame": that flickers on any frame with nothing to
             // draw, which would blink the colour and churn the rebuild the
             // status-change check in produceFrame triggers.
-            glStatus = "On";
+            glStatus = TR("On");
             glColor = colorConfig.getPositive();
         } else {
             // Asked for, nothing drawn yet. Muted rather than green - we do not
             // claim it works until it has.
-            glStatus = "On";
+            glStatus = TR("On");
             glColor = colorConfig.getMuted();
         }
-        ctx.addCycleControl("Direct GL", glStatus,
+        ctx.addCycleControl(TR("Direct GL"), glStatus,
             SettingsHud::ClickRegion::DIRECT_GL_TOGGLE,
             SettingsHud::ClickRegion::DIRECT_GL_TOGGLE,
             nullptr, /*enabled=*/true, /*isOff=*/false,
@@ -391,7 +392,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         // buffer cut "Xbox 360 Controller for Windows" well short of the field.
         char displayStr[96];
         if (isDisabled) {
-            snprintf(displayStr, sizeof(displayStr), "%s", "Off");
+            snprintf(displayStr, sizeof(displayStr), "%s", TR("Off"));
         } else {
             int slot = controllerIdx + 1;
             if (!controllerName.empty()) {
@@ -418,14 +419,14 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             XInputReader::getInstance().setControllerIndex(config.controllerIndex);
         };
         controller.nameOf = [](int i) {
-            if (i <= 0) return std::string("Off");
+            if (i <= 0) return std::string(TR("Off"));
             const std::string name = XInputReader::getControllerName(i - 1);
             const bool connected = XInputReader::getInstance().isControllerConnectedCached(i - 1);
-            return std::to_string(i) + ": " + (!name.empty() ? name : (connected ? "OK" : "N/C"));
+            return std::to_string(i) + ": " + (!name.empty() ? name : (connected ? TR("OK") : TR("N/C")));
         };
         // Full width for the device name, its arrows in the switches' column above.
         ctx.setRowLabelChars(PREFERENCE_LABEL_CHARS);
-        ctx.addCycleControl("Controller", displayStr, controller,
+        ctx.addCycleControl(TR("Controller"), displayStr, controller,
             nullptr, true, false, "general.controller", true, valueColor);
         ctx.setRowLabelChars(0);
     }
@@ -434,7 +435,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
 
 #if GAME_HAS_STEAM_FRIENDS || GAME_HAS_DISCORD || GAME_HAS_HTTP_SERVER || GAME_HAS_ANALYTICS
     // === INTEGRATIONS SECTION ===
-    ctx.addSectionHeading("Integrations");
+    ctx.addSectionHeading(TR("Integrations"));
 #endif
 
 #if GAME_HAS_STEAM_FRIENDS
@@ -458,11 +459,11 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
             const bool steamEnabled = SteamFriendsManager::getInstance().isEnabled();
             const bool hooked =
                 SteamFriendsManager::getInstance().getStatus() == SteamFriendsManager::Status::CONNECTED;
-            statusText = steamEnabled ? (hooked ? "Connected" : "On") : "Off";
+            statusText = steamEnabled ? (hooked ? TR("Connected") : TR("On")) : TR("Off");
             if (steamEnabled && hooked) valueColor = colorConfig.getPositive();
         }
 
-        ctx.addCycleControl("Steam", statusText,
+        ctx.addCycleControl(TR("Steam"), statusText,
             SettingsHud::ClickRegion::STEAM_FRIENDS_TOGGLE,
             SettingsHud::ClickRegion::STEAM_FRIENDS_TOGGLE,
             nullptr, steamAvailable, false, "general.steam_friends", valueColor);
@@ -491,26 +492,26 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         const char* statusText;
         uint32_t statusColor;
         if (!discordEnabled) {
-            statusText = "Off";
+            statusText = TR("Off");
             statusColor = colorConfig.getMuted();
         } else {
             switch (discordState) {
                 case DiscordManager::State::CONNECTED:
-                    statusText = "Connected";
+                    statusText = TR("Connected");
                     statusColor = colorConfig.getPositive();
                     break;
                 case DiscordManager::State::CONNECTING:
-                    statusText = "Connecting";
+                    statusText = TR("Connecting");
                     statusColor = colorConfig.getPrimary();
                     break;
                 default:
-                    statusText = "On";
+                    statusText = TR("On");
                     statusColor = colorConfig.getMuted();
                     break;
             }
         }
 
-        ctx.addCycleControl("Discord", statusText,
+        ctx.addCycleControl(TR("Discord"), statusText,
             SettingsHud::ClickRegion::DISCORD_TOGGLE,
             SettingsHud::ClickRegion::DISCORD_TOGGLE,
             nullptr, /*enabled=*/!isConnecting, /*isOff=*/false,
@@ -523,7 +524,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     {
         const bool supported = MediaManager::isSupported();
         const bool on = supported && MediaManager::getInstance().isEnabled();
-        ctx.addCycleControl("Now playing", !supported ? Placeholders::NOT_AVAILABLE : on ? "On" : "Off",
+        ctx.addCycleControl(TR("Now playing"), !supported ? Placeholders::NOT_AVAILABLE : on ? TR("On") : TR("Off"),
             SettingsHud::ClickRegion::NOW_PLAYING_TOGGLE,
             SettingsHud::ClickRegion::NOW_PLAYING_TOGGLE,
             nullptr, supported, /*isOff=*/!on, "general.now_playing");
@@ -540,7 +541,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         // page (and Debian popcon, which both borrow from). The INI key stays
         // `analytics=` -- it is persisted, and renaming it would orphan every
         // existing setting for a cosmetic gain.
-        ctx.addCycleControl("Usage survey", analyticsEnabled ? "On" : "Off",
+        ctx.addCycleControl(TR("Usage survey"), analyticsEnabled ? TR("On") : TR("Off"),
             SettingsHud::ClickRegion::ANALYTICS_TOGGLE,
             SettingsHud::ClickRegion::ANALYTICS_TOGGLE,
             nullptr, true, false, "general.analytics",
@@ -559,17 +560,17 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         std::string statusStr;
         uint32_t statusColor;
         if (!serverEnabled) {
-            statusStr = "Off";
+            statusStr = TR("Off");
             statusColor = colorConfig.getMuted();
         } else if (serverRunning) {
-            statusStr = "On";
+            statusStr = TR("On");
             statusColor = colorConfig.getPositive();
         } else {
-            statusStr = "Error";
+            statusStr = TR("Error");
             statusColor = colorConfig.getWarning();
         }
 
-        ctx.addCycleControl("Web server", statusStr.c_str(),
+        ctx.addCycleControl(TR("Web server"), statusStr.c_str(),
             SettingsHud::ClickRegion::WEB_SERVER_TOGGLE,
             SettingsHud::ClickRegion::WEB_SERVER_TOGGLE,
             nullptr, /*enabled=*/true, /*isOff=*/false,
@@ -579,7 +580,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         {
             char portBuf[8];
             snprintf(portBuf, sizeof(portBuf), "%d", HttpServer::getInstance().getPort());
-            ctx.addCycleControl("Web server port", portBuf,
+            ctx.addCycleControl(TR("Web server port"), portBuf,
                 SettingsHud::ClickRegion::WEB_SERVER_PORT_DOWN,
                 SettingsHud::ClickRegion::WEB_SERVER_PORT_UP,
                 nullptr, true, !serverEnabled, "general.web_port");
@@ -594,18 +595,18 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         {
             const std::string url = "http://localhost:"
                 + std::to_string(HttpServer::getInstance().getPort());
-            ctx.addLinkRow("Live overlay", url.c_str(), 16,
+            ctx.addLinkRow(TR("Live overlay"), url.c_str(), 16,
                            SettingsHud::ClickRegion::OPEN_LINK_OVERLAY, 0.9f, serverRunning);
         }
     }
 #endif
 
     // === PROFILES SECTION ===
-    ctx.addSectionHeading("Profiles");
+    ctx.addSectionHeading(TR("Profiles"));
 
     // Auto-switch toggle - use standard helper for consistency
     bool autoSwitchEnabled = ProfileManager::getInstance().isAutoSwitchEnabled();
-    ctx.addToggleControl("Auto-switch", autoSwitchEnabled,
+    ctx.addToggleControl(TR("Auto-switch"), autoSwitchEnabled,
         SettingsHud::ClickRegion::AUTO_SWITCH_TOGGLE, nullptr, nullptr, 0, true, "general.auto_switch");
 
     // Copy profile target cycle - use standard cycle control for consistency
@@ -614,11 +615,11 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         int copyTarget = ctx.parent->m_copyTargetProfile;
         bool hasTarget = (copyTarget != -1);
         if (copyTarget == -1) {
-            targetName = "Select";
+            targetName = TR("Select");
         } else if (copyTarget == 4) {
-            targetName = "All";
+            targetName = TR("All");
         } else {
-            targetName = ProfileManager::getInstance().getProfileName(static_cast<ProfileType>(copyTarget));
+            targetName = I18n::tr(ProfileManager::getInstance().getProfileName(static_cast<ProfileType>(copyTarget)));
         }
         // Select (no target), All, then every profile but the active one. UI state
         // only: nothing is written until the Copy button.
@@ -644,23 +645,23 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         };
         copy.nameOf = [targets](int i) {
             const int t = (*targets)[static_cast<size_t>(i)];
-            if (t == -1) return std::string("Select");
-            if (t == 4) return std::string("All");
-            return std::string(ProfileManager::getInstance().getProfileName(static_cast<ProfileType>(t)));
+            if (t == -1) return std::string(TR("Select"));
+            if (t == 4) return std::string(TR("All"));
+            return std::string(I18n::tr(ProfileManager::getInstance().getProfileName(static_cast<ProfileType>(t))));
         };
-        ctx.addCycleControl("Copy profile to", targetName, copy,
+        ctx.addCycleControl(TR("Copy profile to"), targetName, copy,
             nullptr, true, !hasTarget, "general.copy_profile");
 
         // [Copy] button - centered like [Close] button
         ctx.addSpacing();
-        ctx.addActionButton(ctx.parent->m_copyConfirmed ? "Confirm?" : "Copy", 8,
+        ctx.addActionButton(ctx.parent->m_copyConfirmed ? TR("Confirm?") : TR("Copy"), 8,
                             SettingsHud::ClickRegion::COPY_BUTTON,
                             SettingsLayoutContext::ButtonRole::Accent, hasTarget,
                             "general.copy_button");
     }
 
     // === RESET SECTION ===
-    ctx.addSectionHeading("Reset");
+    ctx.addSectionHeading(TR("Reset"));
     {
         // TWO BUTTONS, not two radios plus a shared one: a radio row each, a gap,
         // and a Reset button whose meaning depends on which radio is lit spends four
@@ -676,10 +677,10 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         const bool armProfile = ctx.parent->m_resetProfileConfirmed;
         const bool armAll = ctx.parent->m_resetAllConfirmed;
         ctx.addActionButtonPair(
-            armProfile ? "Confirm?" : "Profile",
+            armProfile ? TR("Confirm?") : TR("Profile"),
             SettingsHud::ClickRegion::RESET_PROFILE_CHECKBOX,
             SettingsLayoutContext::ButtonRole::Negative, true,
-            armAll ? "Confirm?" : "Everything",
+            armAll ? TR("Confirm?") : TR("Everything"),
             SettingsHud::ClickRegion::RESET_ALL_CHECKBOX,
             SettingsLayoutContext::ButtonRole::Negative, true,
             /*labelChars=*/12, "general.reset_profile", "general.reset_all");
@@ -687,9 +688,9 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
         // width fits roughly 60 characters at that size — keep all three
         // variants under that or the tail runs off the panel background.
         ctx.addInlineNote(armProfile
-            ? "Resets this profile's settings. Click again to confirm."
-            : armAll ? "Resets ALL profiles and globals. Click again to confirm."
-                     : "Profile resets this profile only; Everything resets all.");
+            ? TR("Resets this profile's settings. Click again to confirm.")
+            : armAll ? TR("Resets ALL profiles and globals. Click again to confirm.")
+                     : TR("Profile resets this profile only; Everything resets all."));
     }
 
     // No active HUD for general settings

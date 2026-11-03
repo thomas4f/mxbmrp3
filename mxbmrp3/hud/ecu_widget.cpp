@@ -5,6 +5,7 @@
 // an underline marks the page the rider is currently adjusting (ecuMode).
 // ============================================================================
 #include "ecu_widget.h"
+#include "../core/i18n.h"
 
 #if GAME_HAS_ECU
 
@@ -111,7 +112,7 @@ void EcuWidget::rebuildRenderData() {
     PanelWant want;
     want.contentW = contentWidth;
     want.sectionH = { contentHeight };
-    want.captionW = planTitleWidth(dim, "ECU");
+    want.captionW = planTitleWidth(dim, TR("ECU"));
     PanelPlan& p = planPanel(dim, want);
 
     const float backgroundWidth = p.width();
@@ -119,7 +120,7 @@ void EcuWidget::rebuildRenderData() {
 
     // Background + drag bounds
     addPlanBackground(p, startX, startY);
-    addPlanTitle(p, "ECU",
+    addPlanTitle(p, TR("ECU"),
         this->getColor(ColorSlot::PRIMARY));
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 

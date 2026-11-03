@@ -38,6 +38,7 @@
 #pragma once
 
 #include "exploration_signals.h"
+#include "i18n_mark.h"
 
 #include <cmath>
 #include <cstddef>
@@ -193,7 +194,7 @@ inline const char* groupName(Group g) {
         case Group::Freestyle: return "Freestyle";
         case Group::Air:       return "Air";
         case Group::Tricks:    return "Tricks";
-        case Group::Plugin:    return "mxbmrp3";
+        case Group::Plugin:    return "mxbmrp3";  // name-literal: group label, player-visible text
         case Group::Tinkering: return "Tinkering";
         case Group::Completion: return "Completion";
         case Group::Misfortune: return "Misfortune";
@@ -312,107 +313,107 @@ inline bool isDisabledId(const char* id) {
 // by luck of which findById the linker kept.
 inline constexpr Entry kCatalogue[] = {
     // ---- Mileage: how much, how long ----------------------------------------
-    { "distance",       "Long Hauler",      Group::Mileage, nullptr,
-      "Ride %s in total",                      "road",
+    { "distance",       N_("Long Hauler"),      Group::Mileage, nullptr,
+      N_("Ride %s in total"),                      "road",
       Metric::DistanceKm,     Unit::Km,      { 100, 1000, 5000, 25000 },        false, false },
-    { "ride_time",      "Seat Time",        Group::Mileage, nullptr,
-      "Spend %s on track",                     "clock",
+    { "ride_time",      N_("Seat Time"),        Group::Mileage, nullptr,
+      N_("Spend %s on track"),                     "clock",
       Metric::RideTimeHours,  Unit::Hours,   { 10, 100, 500, 1000 },             false, false },
-    { "laps",           "Lap Counter",      Group::Mileage, nullptr,
-      "Complete %s laps",                      "repeat",
+    { "laps",           N_("Lap Counter"),      Group::Mileage, nullptr,
+      N_("Complete %s laps"),                      "repeat",
       Metric::Laps,           Unit::Count,   { 100, 500, 2000, 5000 },        false, false },
     // HIDDEN, and one-shot. Fuel burnt only started being counted this
     // release, so every install begins at zero - a listed row climbing towards
     // 2,000 L is a bar that visibly cannot be finished, which is worse than no
     // row. Unlisted it is a surprise when it lands instead.
-    { "fuel_burnt",     "Carbon Footprint", Group::Hidden, nullptr,
-      "Burn %s of fuel",                       "seedling",
+    { "fuel_burnt",     N_("Carbon Footprint"), Group::Hidden, nullptr,
+      N_("Burn %s of fuel"),                       "seedling",
       Metric::Exploration,    Unit::Litres,  { 100, 0, 0, 0 },                  false, false,
       Exploration::Signal::FuelBurnt, 1, true },
-    { "gear_shifts",    "Shift Happens",    Group::Mileage, nullptr,
-      "Shift %s times",                  "gear",
+    { "gear_shifts",    N_("Shift Happens"),    Group::Mileage, nullptr,
+      N_("Shift %s times"),                  "gear",
       Metric::GearShifts,     Unit::Count,   { 1000, 10000, 100000, 1000000 },   false, false },
-    { "session_laps",   "Marathon",         Group::Mileage, nullptr,
-      "Complete %s laps in one session",       "person-running",
+    { "session_laps",   N_("Marathon"),         Group::Mileage, nullptr,
+      N_("Complete %s laps in one session"),       "person-running",
       Metric::MaxSessionLaps, Unit::Count, { 25, 50, 75, 100 },             false, false },
-    { "session_time",   "Iron Butt",        Group::Mileage, nullptr,
-      "Ride %s in one day",                    "motorcycle",
+    { "session_time",   N_("Iron Butt"),        Group::Mileage, nullptr,
+      N_("Ride %s in one day"),                    "motorcycle",
       Metric::Exploration,    Unit::Hours,   { 1, 2, 4, 8 },                     false, false,
       Exploration::Signal::DayRideHours, TIER_COUNT, false, "@soulberg3" },
-    { "track_laps",     "Local Hero",       Group::Mileage, nullptr,
-      "Complete %s laps at one track",         "location-dot",
+    { "track_laps",     N_("Local Hero"),       Group::Mileage, nullptr,
+      N_("Complete %s laps at one track"),         "location-dot",
       Metric::MaxTrackLaps,   Unit::Count,   { 50, 250, 500, 1000 },            false, false },
-    { "bike_km",        "Loyal",            Group::Mileage, nullptr,
-      "One bike, %s",                   "heart",
+    { "bike_km",        N_("Loyal"),            Group::Mileage, nullptr,
+      N_("One bike, %s"),                   "heart",
       Metric::MaxBikeKm,      Unit::Km,      { 100, 500, 2500, 5000 },          false, false,
       Exploration::Signal::None, TIER_COUNT, false, "@BLAND525" },
     // ---- Racing: results ----------------------------------------------------
-    { "races",          "Racer",            Group::Racing, "Finish a race",
-      "Finish %s races",                       "flag-checkered",
+    { "races",          N_("Racer"),            Group::Racing, N_("Finish a race"),
+      N_("Finish %s races"),                       "flag-checkered",
       Metric::Races,          Unit::Count,   { 1, 10, 100, 500 },                false, false },
-    { "wins",           "Winner",           Group::Racing, "Win a race",
-      "Win %s races",                          "trophy",
+    { "wins",           N_("Winner"),           Group::Racing, N_("Win a race"),
+      N_("Win %s races"),                          "trophy",
       Metric::Wins,           Unit::Count,   { 1, 10, 50, 150 },                 false, false },
-    { "podiums",        "Podium Regular",   Group::Racing, "Finish on the podium",
-      "Finish on the podium %s times",         "ranking-star",
+    { "podiums",        N_("Podium Regular"),   Group::Racing, N_("Finish on the podium"),
+      N_("Finish on the podium %s times"),         "ranking-star",
       Metric::Podiums,        Unit::Count,   { 1, 25, 100, 300 },                false, false },
     // A ONE-SHOT. Lapping a whole field needs a grid that will let you - it is
     // not something you can go and do on purpose - so as a career tally it asked
     // for a hundred of them, which is not a target, it is a wish. Done once, it
     // is a story. Listed, on Racing: it is a race result, not a secret.
-    { "lapped_field",   "Lapped the Field", Group::Racing, "Win with every rider at least a lap down",
+    { "lapped_field",   N_("Lapped the Field"), Group::Racing, N_("Win with every rider at least a lap down"),
       nullptr,                                 "crown",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::LappedField, 1, false },
-    { "fastest_laps",   "Hot Lapper",       Group::Racing, "Set the fastest lap in a race",
-      "Set the fastest lap in %s races",       "fire",
+    { "fastest_laps",   N_("Hot Lapper"),       Group::Racing, N_("Set the fastest lap in a race"),
+      N_("Set the fastest lap in %s races"),       "fire",
       Metric::FastestLaps,  Unit::Count,   { 1, 10, 50, 200 },                false, false },
     // Race-side extras the callbacks already carry: the weather at the finish
     // and the size of the grid.
-    { "rain_races",     "Mudder",           Group::Racing, "Finish a race in the rain",
-      "Finish %s races in the rain",           "cloud-showers-heavy",
+    { "rain_races",     N_("Mudder"),           Group::Racing, N_("Finish a race in the rain"),
+      N_("Finish %s races in the rain"),           "cloud-showers-heavy",
       Metric::RainRaces,      Unit::Count,   { 1, 5, 15, 25 },                  false, false },
-    { "big_grids",      "Crowd Surfer",     Group::Racing, "Finish a race on a 20+ rider grid",
-      "Finish %s races on a 20+ rider grid",    "people-group",
+    { "big_grids",      N_("Crowd Surfer"),     Group::Racing, N_("Finish a race on a 20+ rider grid"),
+      N_("Finish %s races on a 20+ rider grid"),    "people-group",
       Metric::BigGridRaces, Unit::Count, { 1, 10, 50, 150 },              false, false },
     // The first SPLIT off the gate, whichever index that is, and both the title
     // and the sentence say so: the game never reports its holeshot marker
     // (handlers/opening_line.h), so this is what the row can honestly measure,
     // and the "-ish" stays until it does. Charger's row counts "from the first
     // split" - the same line, same words.
-    { "holeshots",      "Holeshot-ish",     Group::Racing, "Lead at the first split",
-      "Lead at the first split in %s races",  "right-from-bracket",
+    { "holeshots",      N_("Holeshot-ish"),     Group::Racing, N_("Lead at the first split"),
+      N_("Lead at the first split in %s races"),  "right-from-bracket",
       Metric::Exploration,  Unit::Count,   { 1, 10, 50, 150 },                false, false,
       Exploration::Signal::Holeshots },
-    { "charger",        "Charger",          Group::Racing, nullptr,
+    { "charger",        N_("Charger"),          Group::Racing, nullptr,
       // "up ON the first split" read as a place on track rather than the
       // position held there; "from" says which end the count starts at, and
       // "climb" is the shorter verb that keeps the row inside its budget.
-      "Climb %s places from the first split", "caret-up",
+      N_("Climb %s places from the first split"), "caret-up",
       Metric::Exploration, Unit::Count, { 5, 10, 15, 20 }, false, false,
       Exploration::Signal::PositionsGained },
-    { "last_lap_pass",  "Last Gasp",        Group::Racing, "Pass on the last lap",
-      "Pass on the last lap in %s races",       "circle-arrow-up",
+    { "last_lap_pass",  N_("Last Gasp"),        Group::Racing, N_("Pass on the last lap"),
+      N_("Pass on the last lap in %s races"),       "circle-arrow-up",
       Metric::Exploration,  Unit::Count,   { 1, 10, 50, 150 },                false, false,
       Exploration::Signal::LastLapPasses },
     // "races of attrition" only meant anything to someone who had read the
     // bronze line first, and the bronze line was missing a word. One shape for
     // all four. The 6-starter floor below is still not in the sentence - it
     // does not fit - so a four-rider lobby losing one still looks like a miss.
-    { "survivor",       "Survivor",         Group::Racing, "Finish a race where a quarter quit",
-      "Finish %s races where a quarter quit",  "star-of-life",
+    { "survivor",       N_("Survivor"),         Group::Racing, N_("Finish a race where a quarter quit"),
+      N_("Finish %s races where a quarter quit"),  "star-of-life",
       Metric::Exploration,  Unit::Count,   { 1, 5, 15, 40 },                  false, false,
       Exploration::Signal::Survivals },
-    { "roost",          "Roost",            Group::Racing, nullptr,
-      "Ride %s in a rider's wake",             "wind",
+    { "roost",          N_("Roost"),            Group::Racing, nullptr,
+      N_("Ride %s in a rider's wake"),             "wind",
       Metric::Exploration,  Unit::Seconds, { 300, 1800, 7200, 18000 },        false, false,
       Exploration::Signal::RoostSec },
     // ---- Consistency: the streaks ------------------------------------------
-    { "clean_races",    "Rubber Side Down", Group::Consistency, "Finish a race without crashing",
-      "Finish %s races without crashing",      "shield",
+    { "clean_races",    N_("Rubber Side Down"), Group::Consistency, N_("Finish a race without crashing"),
+      N_("Finish %s races without crashing"),      "shield",
       Metric::CleanRaces,    Unit::Count,   { 1, 5, 15, 25 },                 true, false },
-    { "penalty_free",   "Clean Sheet",      Group::Consistency, nullptr,
-      "Go %s races in a row penalty-free", "clipboard-check",
+    { "penalty_free",   N_("Clean Sheet"),      Group::Consistency, nullptr,
+      N_("Go %s races in a row penalty-free"), "clipboard-check",
       Metric::PenaltyFreeStreak, Unit::Count, { 5, 10, 15, 25 },      false, false },
     // A WHOLE RACE without letting it slip, which is the page's idea carried
     // from a lap to a race. Tiered rather than one-shot: leading one race start
@@ -423,8 +424,8 @@ inline constexpr Entry kCatalogue[] = {
     // phrase - it is Choke, which is its own row, and a race must not earn
     // both. "Leading every lap" rather than "start to finish": positions are
     // read at each lap's end, so a pass taken back before the line still counts.
-    { "wire_to_wire",   "Wire to Wire",     Group::Consistency, "Win a race leading every lap",
-      "Win %s races leading every lap",        "arrow-right",
+    { "wire_to_wire",   N_("Wire to Wire"),     Group::Consistency, N_("Win a race leading every lap"),
+      N_("Win %s races leading every lap"),        "arrow-right",
       Metric::Exploration, Unit::Count, { 1, 5, 10, 25 }, false, false,
       Exploration::Signal::WireToWire },
     // The four things a race can be won with, all in the same race: the
@@ -433,12 +434,12 @@ inline constexpr Entry kCatalogue[] = {
     // Winner); this is the one race they happened together. LISTED and counted,
     // unlike its Hidden neighbours, because every part of it is something a
     // rider can set out to do - which is the line this page draws.
-    { "perfect_race",   "Perfect Race",     Group::Consistency,
-      "Holeshot, every lap led, fastest lap, win",
+    { "perfect_race",   N_("Perfect Race"),     Group::Consistency,
+      N_("Holeshot, every lap led, fastest lap, win"),
       nullptr,                                 "hat-wizard",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::PerfectRace, 1 },
-    { "clean_laps",     "Spotless",         Group::Consistency, nullptr,
+    { "clean_laps",     N_("Spotless"),         Group::Consistency, nullptr,
       // "clean" meant nothing on its own, and the obvious guess - no crashes -
       // is wrong: onLapCompleted takes crashes AND penalties. The slash is what
       // keeps the row inside its budget, since "crash- and penalty-free" is 52
@@ -446,48 +447,48 @@ inline constexpr Entry kCatalogue[] = {
       // total. The ladder ends at FIFTY because the streak breaks on a single
       // spill: a hundred and fifty consecutive clean laps is several flawless
       // hours, which is a bar nobody was going to clear twice by accident.
-      "%s laps in a row, crash/penalty free",   "hand-sparkles",
+      N_("%s laps in a row, crash/penalty free"),   "hand-sparkles",
       Metric::Exploration,  Unit::Count,   { 5, 15, 30, 50 },                 true, false,
       Exploration::Signal::CleanLapStreak },
-    { "crashes",        "Skill Issue",      Group::Misfortune, nullptr,
-      "Crash %s times in total",               "user-injured",
+    { "crashes",        N_("Skill Issue"),      Group::Misfortune, nullptr,
+      N_("Crash %s times in total"),               "user-injured",
       Metric::Crashes,    Unit::Count,   { 1000, 0, 0, 0 },                  true, false,
       Exploration::Signal::None, 1, true },
-    { "penalties",      "Rule Bender",      Group::Misfortune, nullptr,
-      "Collect %s penalties",                  "triangle-exclamation",
+    { "penalties",      N_("Rule Bender"),      Group::Misfortune, nullptr,
+      N_("Collect %s penalties"),                  "triangle-exclamation",
       Metric::Penalties,      Unit::Count,   { 100, 0, 0, 0 },                   false, false,
       Exploration::Signal::None, 1, true, "@Froxy" },
-    { "penalty_time",   "Time Served",      Group::Misfortune, nullptr,
-      "Serve %s of penalty time",              "hourglass",
+    { "penalty_time",   N_("Time Served"),      Group::Misfortune, nullptr,
+      N_("Serve %s of penalty time"),              "hourglass",
       Metric::PenaltyTimeSec, Unit::Seconds, { 600, 0, 0, 0 },                   false, false,
       Exploration::Signal::None, 1, true },
     // ---- Progress: variety and improvement ----------------------------------
-    { "tracks",         "Globetrotter",     Group::Variety, nullptr,
-      "Ride %s different tracks",              "globe",
+    { "tracks",         N_("Globetrotter"),     Group::Variety, nullptr,
+      N_("Ride %s different tracks"),              "globe",
       Metric::Tracks,         Unit::Count,   { 5, 25, 50, 100 },                  false, false },
-    { "bikes",          "Collector",        Group::Variety, nullptr,
-      "Ride %s different bikes",               "gem",
+    { "bikes",          N_("Collector"),        Group::Variety, nullptr,
+      N_("Ride %s different bikes"),               "gem",
       Metric::Bikes,          Unit::Count,   { 3, 10, 25, 50 },                  false, false },
-    { "personal_bests", "Personal Best",    Group::Variety, "Set a personal best",
-      "Set %s personal bests",                 "star",
+    { "personal_bests", N_("Personal Best"),    Group::Variety, N_("Set a personal best"),
+      N_("Set %s personal bests"),                 "star",
       Metric::PersonalBests,  Unit::Count,   { 1, 10, 100, 500 },                false, false },
-    { "pb_leaps",       "Leap Forward",     Group::Variety, "Beat a PB by a second or more",
-      "Beat %s PBs by a second or more", "arrow-trend-up",
+    { "pb_leaps",       N_("Leap Forward"),     Group::Variety, N_("Beat a PB by a second or more"),
+      N_("Beat %s PBs by a second or more"), "arrow-trend-up",
       Metric::PbLeaps, Unit::Count, { 1, 10, 50, 100 },                false, false },
     // ---- Freestyle: FMX totals. A trick counts when its CHAIN completes
     // (FmxManager::completeTrick), the same rule the FMX HUD's session totals
     // follow, so a chain that ends in a crash earns nothing here either.
-    { "fmx_tricks",     "Show-off",         Group::Freestyle, nullptr,
-      "Land %s freestyle tricks",              "wand-magic-sparkles",
+    { "fmx_tricks",     N_("Show-off"),         Group::Freestyle, nullptr,
+      N_("Land %s freestyle tricks"),              "wand-magic-sparkles",
       Metric::FmxTricks,   Unit::Count,   { 10, 100, 1000, 10000 },           false, true },
-    { "fmx_points",     "Style Points",     Group::Freestyle, nullptr,
-      "Score %s FMX points",          "certificate",
+    { "fmx_points",     N_("Style Points"),     Group::Freestyle, nullptr,
+      N_("Score %s FMX points"),          "certificate",
       Metric::FmxScore,    Unit::Count,   { 1000, 10000, 100000, 500000 },   false, true },
-    { "fmx_chain",      "Chain Reaction",   Group::Freestyle, nullptr,
-      "Score %s points in one chain",          "link",
+    { "fmx_chain",      N_("Chain Reaction"),   Group::Freestyle, nullptr,
+      N_("Score %s points in one chain"),          "link",
       Metric::FmxChainScore, Unit::Count, { 250, 750, 1500, 2500 },        false, true },
-    { "fmx_kinds",      "Trick Collector",  Group::Freestyle, nullptr,
-      "Land %s kinds of freestyle trick",      "list-check",
+    { "fmx_kinds",      N_("Trick Collector"),  Group::Freestyle, nullptr,
+      N_("Land %s kinds of freestyle trick"),      "list-check",
       Metric::FmxKinds, Unit::Count, { 4, 8, 12, 15 },                 false, true },
     // ---- Air: jumping, which is not freestyle --------------------------------
     // THE MATRIX, and the page reads in this order: three measurements (time,
@@ -500,20 +501,20 @@ inline constexpr Entry kCatalogue[] = {
     // aloft). Air miles are a DISTANCE, so the kilometres row took the name and
     // the seconds row took the one the crash row used to carry. The ids are
     // stats-file keys and never move; grep by id and read the title here.
-    { "air_miles",      "Frequent Flyer",   Group::Air, nullptr,
-      "Spend %s in the air",                   "cloud",
+    { "air_miles",      N_("Frequent Flyer"),   Group::Air, nullptr,
+      N_("Spend %s in the air"),                   "cloud",
       Metric::Exploration, Unit::Seconds, { 7200, 54000, 180000, 360000 }, false, true,
       Exploration::Signal::AirtimeSec },
-    { "air_distance",   "Air Miles",        Group::Air, nullptr,
-      "Cover %s through the air",              "suitcase",
+    { "air_distance",   N_("Air Miles"),        Group::Air, nullptr,
+      N_("Cover %s through the air"),              "suitcase",
       Metric::Exploration, Unit::Km,    { 1, 10, 50, 150 },                    false, true,
       Exploration::Signal::AirDistanceKm },
     // The third measurement, summed: every metre of climb, banked at touchdown
     // like the two above it. PLACEHOLDER THRESHOLDS: nobody has reported what a
     // season's worth of climb actually comes to, so these are a first cut, to be
     // re-cut once real telemetry says what the numbers look like.
-    { "air_height",     "To the Moon",      Group::Air, nullptr,
-      "Climb %s in jumps",                     "rocket",
+    { "air_height",     N_("To the Moon"),      Group::Air, nullptr,
+      N_("Climb %s in jumps"),                     "rocket",
       Metric::Exploration, Unit::Km,    { 1, 5, 20, 50 },                      false, true,
       Exploration::Signal::AirHeightKm },
     // WAS Metric::FmxAirtimeSec, the longest airborne TRICK - so a five-second
@@ -521,46 +522,46 @@ inline constexpr Entry kCatalogue[] = {
     // jump". It reads the flight detector now, like the five rows around it,
     // which is what the sentence always claimed. The stored value restarts
     // (it is a different measurement); earned tiers are kept, as tiers only rise.
-    { "fmx_airtime",    "Hang Time",        Group::Air, nullptr,
-      "Stay airborne %s and land it",          "parachute-box",
+    { "fmx_airtime",    N_("Hang Time"),        Group::Air, nullptr,
+      N_("Stay airborne %s and land it"),          "parachute-box",
       Metric::Exploration, Unit::SecondsTenths, { 2, 3, 4, 5 },        false, true,
       Exploration::Signal::LongestFlightSec },
     // RE-CUT: a big track jump clears the 60 m this used to top out at.
-    { "jump_distance",  "Gap Jumper",       Group::Air, nullptr,
-      "Land a %s jump",                        "ruler-horizontal",
+    { "jump_distance",  N_("Gap Jumper"),       Group::Air, nullptr,
+      N_("Land a %s jump"),                        "ruler-horizontal",
       Metric::Exploration, Unit::Metres, { 10, 30, 60, 100 },                  false, true,
       Exploration::Signal::JumpDistanceM },
     // The flight itself, measured at every landing you RIDE AWAY FROM
     // (FmxManager::updateFlight): how high above where it left the ground, how
     // far across it, and how far in total. Casing one out credits nothing. The
     // HEIGHT is still a guess: nothing has reported what a big one comes to.
-    { "jump_height",    "Sent It",          Group::Air, nullptr,
-      "Reach %s above takeoff and land it",    "ruler-vertical",
+    { "jump_height",    N_("Sent It"),          Group::Air, nullptr,
+      N_("Reach %s above takeoff and land it"),    "ruler-vertical",
       Metric::Exploration, Unit::Metres, { 5, 10, 18, 25 },                    false, true,
       Exploration::Signal::JumpHeightM },
     // ---- Tricks: the named ones ---------------------------------------------
-    { "fmx_backflips",  "Flipper",          Group::Tricks, "Land a backflip",
-      "Land %s backflips",                     "arrow-rotate-left",
+    { "fmx_backflips",  N_("Flipper"),          Group::Tricks, N_("Land a backflip"),
+      N_("Land %s backflips"),                     "arrow-rotate-left",
       Metric::FmxBackflips,   Unit::Count,   { 1, 10, 50, 100 },               false, true,
       Exploration::Signal::None, TIER_COUNT, false, "@Lynds" },
     // "Hold a wheelie for 30s" never said the part that decides it: the duration
     // only counts once the chain BANKS, so a wheelie ridden into a crash is
     // worth nothing. Same verb as its endo counterpart, so the pair reads as one
     // idea - hold it, then put it down.
-    { "fmx_wheelie",    "Wheelie King",     Group::Tricks, nullptr,
-      "Land a %s wheelie",                     "wheelie",
+    { "fmx_wheelie",    N_("Wheelie King"),     Group::Tricks, nullptr,
+      N_("Land a %s wheelie"),                     "wheelie",
       Metric::FmxWheelieSec,  Unit::SecondsTenths, { 5, 10, 20, 30 },            false, true },
-    { "fmx_wheelie_km", "One-Wheel Tour",   Group::Freestyle, nullptr,
-      "Ride %s on the back wheel",             "route",
+    { "fmx_wheelie_km", N_("One-Wheel Tour"),   Group::Freestyle, nullptr,
+      N_("Ride %s on the back wheel"),             "route",
       Metric::FmxWheelieKm, Unit::Km,    { 1, 10, 50, 100 },               false, true },
-    { "fmx_whips",      "Whip It",          Group::Tricks, nullptr,
-      "Land %s whips",                         "whip-right",
+    { "fmx_whips",      N_("Whip It"),          Group::Tricks, nullptr,
+      N_("Land %s whips"),                         "whip-right",
       Metric::FmxWhips,       Unit::Count,   { 10, 100, 500, 2500 },             false, true },
-    { "fmx_scrubs",     "Scrubber",         Group::Tricks, nullptr,
-      "Land %s scrubs",                        "arrow-right-arrow-left",
+    { "fmx_scrubs",     N_("Scrubber"),         Group::Tricks, nullptr,
+      N_("Land %s scrubs"),                        "arrow-right-arrow-left",
       Metric::FmxScrubs,      Unit::Count,   { 10, 100, 500, 2500 },             false, true },
-    { "fmx_oppos",      "Oppo",             Group::Tricks, "Land an oppo",
-      "Land %s oppos",                         "turn-up",
+    { "fmx_oppos",      N_("Oppo"),             Group::Tricks, N_("Land an oppo"),
+      N_("Land %s oppos"),                         "turn-up",
       Metric::FmxOppos,       Unit::Count,   { 1, 10, 100, 500 },                false, true },
     // THE HOLD, not the count: tapping the front wheel down is nothing, holding
     // it there is the trick. A ONE-SHOT still - three seconds either happened or
@@ -578,47 +579,47 @@ inline constexpr Entry kCatalogue[] = {
     // CHEESABLE ON PURPOSE -- it measures the front wheel carrying the bike, so a
     // rear wheel parked on a wall holds it forever, and that is fine: a HUD's
     // list is not a ranked competition. Police at classification if ever needed.
-    { "fmx_endos",      "Endo",             Group::Tricks, nullptr,
-      "Land a %s endo or stoppie",             "endo",
+    { "fmx_endos",      N_("Endo"),             Group::Tricks, nullptr,
+      N_("Land a %s endo or stoppie"),             "endo",
       Metric::FmxEndoSec, Unit::SecondsTenths, { 3, 0, 0, 0 },                   false, true,
       Exploration::Signal::None, 1 },
-    { "fmx_turn_downs", "Turn Down",        Group::Tricks, "Land a turn down",
-      "Land %s turn downs",                    "turn-down",
+    { "fmx_turn_downs", N_("Turn Down"),        Group::Tricks, N_("Land a turn down"),
+      N_("Land %s turn downs"),                    "turn-down",
       Metric::FmxTurnDowns,   Unit::Count,   { 1, 10, 100, 500 },                false, true },
     // ---- The one that fires on demand, and the file-and-build rows -----------
-    { "breakout",       "Brick Breaker",    Group::Plugin, nullptr,
+    { "breakout",       N_("Brick Breaker"),    Group::Plugin, nullptr,
       // A NOUN PHRASE where its neighbours are instructions, and it has to be:
       // the credit is part of the rendered sentence, so "Breakout score 5,000
       // (@BennyP118)" already lands on exactly 47 beside "4,999 / 5,000". Every
       // verb-led form ("Score %s at Breakout") is three over. Leave it.
-      "Breakout score %s",                  "cubes",
+      N_("Breakout score %s"),                  "cubes",
       Metric::Breakout,     Unit::Count,   { 5000, 0, 0, 0 },                  false, false,
       Exploration::Signal::None, 1, false, "@BennyP118" },
     // The one that fires on demand. RELOAD_CONFIG is a legitimate thing to
     // count -- tinkering is a real way to use this plugin -- and it is also the
     // one achievement a fresh install can earn on purpose in ten seconds, which
     // is what lets a player (and a developer) see that toasts work at all.
-    { "config_reloads", "Tinkerer",         Group::Tinkering, "Reload the config",
-      "Reload the config %s times",            "wrench",
+    { "config_reloads", N_("Tinkerer"),         Group::Tinkering, N_("Reload the config"),
+      N_("Reload the config %s times"),            "wrench",
       Metric::ConfigReloads, Unit::Count, { 1, 0, 0, 0 },                 false, false,
       Exploration::Signal::None, 1 },
     // ---- Racing extras the callbacks already carry --------------------------
-    { "photo_finish",   "Photo Finish",     Group::Racing, "Win a race by under a tenth",
+    { "photo_finish",   N_("Photo Finish"),     Group::Racing, N_("Win a race by under a tenth"),
       nullptr,                                 "camera",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::PhotoFinish, 1 },
     // Photo Finish from the other side of the line. Same margin, same source
     // (FinishMargin), and deliberately NOT the same row: winning by a tenth and
     // losing by one are not the same thing to the person it happened to.
-    { "so_close",       "So Close",         Group::Misfortune, "Lose a race by under a tenth",
+    { "so_close",       N_("So Close"),         Group::Misfortune, N_("Lose a race by under a tenth"),
       nullptr,                                 "poo",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::SoClose, 1, true },
-    { "back_marker",    "Back Marker",      Group::Misfortune, "Finish a race at least a lap down",
+    { "back_marker",    N_("Back Marker"),      Group::Misfortune, N_("Finish a race at least a lap down"),
       nullptr,                                 "road-barrier",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::BackMarker, 1, true },
-    { "metronome",      "Metronome",        Group::Consistency, "Five laps in a row, all within a tenth",
+    { "metronome",      N_("Metronome"),        Group::Consistency, N_("Five laps in a row, all within a tenth"),
       nullptr,                                 "equals",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::Metronome, 1 },
@@ -626,54 +627,54 @@ inline constexpr Entry kCatalogue[] = {
     // it was lost (Chain Reaction's ladder, so the two rows read together).
     // 2,500 is Chain Reaction's Platinum: the chain you lost has to have been
     // worth the best one anybody banks.
-    { "chain_lost",     "Weakest Link",     Group::Misfortune, nullptr,
-      "Crash out of a %s-point chain",         "link-slash",
+    { "chain_lost",     N_("Weakest Link"),     Group::Misfortune, nullptr,
+      N_("Crash out of a %s-point chain"),         "link-slash",
       Metric::Exploration, Unit::Count, { 2500, 0, 0, 0 }, false, true,
       Exploration::Signal::ChainLost, 1, true },
-    { "tyre_shredder",  "Tyre Shredder",    Group::Freestyle, nullptr,
+    { "tyre_shredder",  N_("Tyre Shredder"),    Group::Freestyle, nullptr,
       // Spelling out what shredding IS - burnouts, donuts and drifts, which is
       // exactly what ShredSec counts - has never fitted the 47-character row
       // once the seconds column takes its 17, and "min" took two more. Two of
       // the three name it well enough; the title carries the rest.
-      "%s in burnouts and drifts",      "tornado",
+      N_("%s in burnouts and drifts"),      "tornado",
       Metric::Exploration, Unit::Seconds, { 60, 600, 1800, 3600 }, false, true,
       Exploration::Signal::ShredSec },
     // ---- Plugin: exploring what it can do, and the community nods ----------
     // Nods carry a placeholder title until the people they thank are named.
-    { "tyre_kicker",    "Tyre Kicker",      Group::Plugin, "Try each HUD and widget",
+    { "tyre_kicker",    N_("Tyre Kicker"),      Group::Plugin, N_("Try each HUD and widget"),
       nullptr,                                 "magnifying-glass",
       Metric::Exploration, Unit::Count, { 100, 0, 0, 0 }, false, false,
       Exploration::Signal::HudsTried, 1, false, "@BrinkleyPT" },
-    { "grand_tour",     "Grand Tour",       Group::Plugin, "Open every settings tab",
+    { "grand_tour",     N_("Grand Tour"),       Group::Plugin, N_("Open every settings tab"),
       nullptr,                                 "compass",
       Metric::Exploration, Unit::Count, { 100, 0, 0, 0 }, false, false,
       Exploration::Signal::TabsVisited, 1 },
     // ONE-SHOTS, both: overriding a colour and installing a pack are things you
     // either did or did not, and a ladder of them only asked a player who had
     // already made the plugin theirs to keep going for the sake of the bar.
-    { "decorator",      "Interior Decorator", Group::Tinkering, "Override a colour, font or theme",
+    { "decorator",      N_("Interior Decorator"), Group::Tinkering, N_("Override a colour, font or theme"),
       nullptr,                                 "palette",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::Customisations, 1 },
-    { "dress_up",       "Made It Yours",    Group::Tinkering, "Install a pack of any type",
+    { "dress_up",       N_("Made It Yours"),    Group::Tinkering, N_("Install a pack of any type"),
       nullptr,                                 "shirt",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::CustomPacks, 1, false, "@bh5o" },
-    { "on_air",         "On Air",           Group::Plugin, "Connect the web overlay",
+    { "on_air",         N_("On Air"),           Group::Plugin, N_("Connect the web overlay"),
       nullptr,                     "tower-broadcast",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::OverlayConnections, 1, false, "@Special Ed" },
-    { "second_screen",  "Second Screen",    Group::Plugin, "Show the HUD on a second screen",
+    { "second_screen",  N_("Second Screen"),    Group::Plugin, N_("Show the HUD on a second screen"),
       nullptr,                                 "display",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::CompanionOpens, 1 },
-    { "directors_cut",  "Director's Cut",   Group::Plugin, nullptr,
+    { "directors_cut",  N_("Director's Cut"),   Group::Plugin, nullptr,
       // Verbless, like Loyal: naming the feature costs more than the verb does.
-      "Watch %s director cuts",                "clapperboard",
+      N_("Watch %s director cuts"),                "clapperboard",
       Metric::Exploration, Unit::Count, { 500, 0, 0, 0 }, false, false,
       Exploration::Signal::DirectorCuts, 1, false, "@Tallon214" },
-    { "backseat",       "Backseat Driver",  Group::Plugin, nullptr,
-      "Hear %s spotter calls",                 "headset",
+    { "backseat",       N_("Backseat Driver"),  Group::Plugin, nullptr,
+      N_("Hear %s spotter calls"),                 "headset",
       Metric::Exploration, Unit::Count, { 500, 0, 0, 0 }, false, false,
       Exploration::Signal::SpotterCallouts, 1, false, "@Foreign" },
     // The SETTING, not hours behind it. The hours version could not be earned
@@ -681,54 +682,54 @@ inline constexpr Entry kCatalogue[] = {
     // reached a stream and stayed locked all night. That is also why it was
     // hidden, and why it no longer is: asking only for the switch makes it a
     // thing a player can go and do, which is what the listed pages are for.
-    { "good_vibrations", "Good Vibrations", Group::Plugin, "Turn rumble on",
+    { "good_vibrations", N_("Good Vibrations"), Group::Plugin, N_("Turn rumble on"),
       nullptr,                                 "wave-square",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::RumbleOn, 1, false, "@Debra" },
-    { "keymaster",      "Keymaster",        Group::Plugin, "Bind a hotkey",
+    { "keymaster",      N_("Keymaster"),        Group::Plugin, N_("Bind a hotkey"),
       nullptr,                                 "keyboard",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::HotkeysBound, 1, false, "@Vegi" },
-    { "profile_hopper", "Profile Hopper",   Group::Plugin, nullptr,
-      "Switch profiles %s times",              "shuffle",
+    { "profile_hopper", N_("Profile Hopper"),   Group::Plugin, nullptr,
+      N_("Switch profiles %s times"),              "shuffle",
       Metric::Exploration, Unit::Count, { 100, 0, 0, 0 }, false, false,
       Exploration::Signal::ProfileSwitches, 1 },
-    { "fresh_coat",     "Fresh Coat",       Group::Plugin, "Install an update in-game",
+    { "fresh_coat",     N_("Fresh Coat"),       Group::Plugin, N_("Install an update in-game"),
       nullptr,                                 "download",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::UpdatesInstalled, 1 },
-    { "split_decision", "Split Decision",   Group::Plugin, "Time a segment",
+    { "split_decision", N_("Split Decision"),   Group::Plugin, N_("Time a segment"),
       nullptr,                                 "scissors",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::Segments, 1, false, "@ZealousidealWin823" },
     // Six hours, not a hundred: this counts time NOT riding, and a hundred
     // hours of it asked players to leave the game running to earn a badge -
     // which is the shape of grind every other row here avoids.
-    { "armchair",       "Armchair Marshal", Group::Plugin, nullptr,
-      "Spectate or replay for %s",     "couch",
+    { "armchair",       N_("Armchair Marshal"), Group::Plugin, nullptr,
+      N_("Spectate or replay for %s"),     "couch",
       Metric::Exploration, Unit::Hours, { 6, 0, 0, 0 }, false, false,
       Exploration::Signal::SpectateHours, 1 },
-    { "regular",        "Regular",          Group::Variety, nullptr,
-      "Show up on %s different days",             "calendar-days",
+    { "regular",        N_("Regular"),          Group::Variety, nullptr,
+      N_("Show up on %s different days"),             "calendar-days",
       Metric::Exploration, Unit::Count, { 7, 30, 100, 365 }, false, false,
       Exploration::Signal::DaysUsed },
-    { "day_streak",     "On a Roll",        Group::Variety, nullptr,
-      "Show up %s days in a row",              "chart-line",
+    { "day_streak",     N_("On a Roll"),        Group::Variety, nullptr,
+      N_("Show up %s days in a row"),              "chart-line",
       Metric::Exploration, Unit::Count, { 3, 4, 5, 7 }, false, false,
       Exploration::Signal::DayStreak },
-    { "servers",        "Well Travelled",   Group::Variety, nullptr,
-      "Join %s different servers",             "server",
+    { "servers",        N_("Well Travelled"),   Group::Variety, nullptr,
+      N_("Join %s different servers"),             "server",
       Metric::Exploration, Unit::Count, { 5, 10, 25, 50 }, false, false,
       Exploration::Signal::Servers },
-    { "bike_classes",   "Class Act",        Group::Variety, nullptr,
-      "Ride bikes from %s classes",            "layer-group",
+    { "bike_classes",   N_("Class Act"),        Group::Variety, nullptr,
+      N_("Ride bikes from %s classes"),            "layer-group",
       Metric::BikeClasses, Unit::Count, { 2, 3, 4, 5 }, false, false,
       Exploration::Signal::None, TIER_COUNT, false, "@Aiden" },
     // Replaces Version Hopper, which counted releases run and so measured our
     // cadence rather than anything the player chose. Opting into pre-releases is
     // a choice, and it is made once. Credit kept: same spirit, running the
     // bleeding edge.
-    { "prerelease",     "Early Access",     Group::Hidden, "Switch to the pre-release channel",
+    { "prerelease",     N_("Early Access"),     Group::Hidden, N_("Switch to the pre-release channel"),
       nullptr,                                 "code-branch",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::Prerelease, 1, true, "@Husk" },
@@ -736,12 +737,12 @@ inline constexpr Entry kCatalogue[] = {
     // against and BenchmarkWidget colours against - so it is the row, and the
     // steps below it were never the interesting part. The signal stays a
     // max-ever of frames in one second, which is what earns it.
-    { "frame_perfect",  "Frame Perfect",    Group::Hidden, nullptr,
-      "Hit %sFPS",                             "gauge-high",
+    { "frame_perfect",  N_("Frame Perfect"),    Group::Hidden, nullptr,
+      N_("Hit %sFPS"),                             "gauge-high",
       Metric::Exploration, Unit::Count, { 480, 0, 0, 0 }, false, false,
       Exploration::Signal::FramePerfect, 1, true, "@Mave" },
-    { "stalker",        "Stalker",          Group::Plugin, nullptr,
-      "Track %s riders",                       "eye",
+    { "stalker",        N_("Stalker"),          Group::Plugin, nullptr,
+      N_("Track %s riders"),                       "eye",
       Metric::Exploration, Unit::Count, { 10, 0, 0, 0 }, false, false,
       Exploration::Signal::RidersTracked, 1, false, "@turkishmonk" },
     // ALWAYS LISTED, unlike Hidden and Misfortune: these are a dashboard, and a
@@ -749,23 +750,23 @@ inline constexpr Entry kCatalogue[] = {
     // deciding whether to bother. Four bars at 0% on a fresh install is the
     // honest picture. (An earlier cut hid them until their value left zero;
     // nothing does that now, and this comment used to claim it still did.)
-    { "all_bronze",     "Bronze Sweep",     Group::Completion, "Counted achievements earned",
+    { "all_bronze",     N_("Bronze Sweep"),     Group::Completion, N_("Counted achievements earned"),
       nullptr,                                 "medal",
       Metric::CompletionBronze,   Unit::Count, { 100, 0, 0, 0 },              false, false,
       Exploration::Signal::None, 1, false },
-    { "all_silver",     "Silver Sweep",     Group::Completion, "Counted achievements at Silver or max",
+    { "all_silver",     N_("Silver Sweep"),     Group::Completion, N_("Counted achievements at Silver or max"),
       nullptr,                                 "medal",
       Metric::CompletionSilver,   Unit::Count, { 100, 0, 0, 0 },              false, false,
       Exploration::Signal::None, 1, false },
-    { "all_gold",       "Gold Sweep",       Group::Completion, "Counted achievements at Gold or max",
+    { "all_gold",       N_("Gold Sweep"),       Group::Completion, N_("Counted achievements at Gold or max"),
       nullptr,                                 "medal",
       Metric::CompletionGold,     Unit::Count, { 100, 0, 0, 0 },              false, false,
       Exploration::Signal::None, 1, false },
-    { "all_platinum",   "Platinum Sweep",   Group::Completion, "Counted achievements maxed out",
+    { "all_platinum",   N_("Platinum Sweep"),   Group::Completion, N_("Counted achievements maxed out"),
       nullptr,                                 "medal",
       Metric::CompletionPlatinum, Unit::Count, { 100, 0, 0, 0 },              false, false,
       Exploration::Signal::None, 1, false },
-    { "phoenix",        "Phoenix",          Group::Hidden, "Come back after a crash to desktop",
+    { "phoenix",        N_("Phoenix"),          Group::Hidden, N_("Come back after a crash to desktop"),
       nullptr,                                 "fire-flame-curved",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::Phoenix, 1, true },
@@ -775,69 +776,69 @@ inline constexpr Entry kCatalogue[] = {
     // zero mid-run - so the sentence has to say counter, not total. Held as a
     // max-ever by raise(), so a reset keeps the progress already made but
     // never adds across one: 50, reset, 50 more stands at 50, not 100.
-    { "ninety_nine",    "99 Problems",      Group::Misfortune, "Crash counter hits 99",
+    { "ninety_nine",    N_("99 Problems"),      Group::Misfortune, N_("Crash counter hits 99"),
       nullptr,                                 "skull-crossbones",
       Metric::Exploration, Unit::Count, { 99, 0, 0, 0 }, true, false,
       Exploration::Signal::CrashTally99, 1, true, "@TheRealSliX" },
-    { "test_pilot",     "Test Pilot",       Group::Hidden, "Turn on an experimental setting",
+    { "test_pilot",     N_("Test Pilot"),       Group::Hidden, N_("Turn on an experimental setting"),
       nullptr,                                 "paper-plane",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::TestPilot, 1, true },
-    { "under_hood",     "Under the Hood",   Group::Hidden, "Edit the settings file by hand",
+    { "under_hood",     N_("Under the Hood"),   Group::Hidden, N_("Edit the settings file by hand"),
       nullptr,                                 "file-pen",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::SettingsEdited, 1, true },
-    { "backup_plan",    "Backup Plan",      Group::Hidden, "Edit the stats file by hand",
+    { "backup_plan",    N_("Backup Plan"),      Group::Hidden, N_("Edit the stats file by hand"),
       nullptr,                                 "floppy-disk",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::StatsEdited, 1, true },
-    { "stylist",        "Stylist",          Group::Tinkering, "Style the web overlay with custom.css",
+    { "stylist",        N_("Stylist"),          Group::Tinkering, N_("Style the web overlay with custom.css"),
       nullptr,                                 "paintbrush",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::Stylist, 1, false },
-    { "homebrew",       "Homebrew",         Group::Hidden, "Run a build you made yourself",
+    { "homebrew",       N_("Homebrew"),         Group::Hidden, N_("Run a build you made yourself"),
       nullptr,                                 "beer-mug-empty",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::Homebrew, 1, true },
-    { "ungrateful",     "Ungrateful",       Group::Tinkering, "Turn achievement toasts off",
+    { "ungrateful",     N_("Ungrateful"),       Group::Tinkering, N_("Turn achievement toasts off"),
       nullptr,                                 "bell-slash",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::Ungrateful, 1 },
-    { "factory_fresh",  "Factory Fresh",    Group::Tinkering, "Reset every setting to defaults",
+    { "factory_fresh",  N_("Factory Fresh"),    Group::Tinkering, N_("Reset every setting to defaults"),
       nullptr,                                 "industry",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::FactoryFresh, 1 },
-    { "developer",      "Developer",        Group::Hidden, "Enable developer mode",
+    { "developer",      N_("Developer"),        Group::Hidden, N_("Enable developer mode"),
       nullptr,                                 "code",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::Developer, 1, true },
-    { "night_owl",      "Night Owl",        Group::Hidden, "Ride between two and five in the morning",
+    { "night_owl",      N_("Night Owl"),        Group::Hidden, N_("Ride between two and five in the morning"),
       nullptr,                                 "moon",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::NightOwl, 1, true },
-    { "anniversary",    "Anniversary",      Group::Hidden, "Ride on the anniversary of your first run",
+    { "anniversary",    N_("Anniversary"),      Group::Hidden, N_("Ride on the anniversary of your first run"),
       nullptr,                                 "cake-candles",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::Anniversary, 1, true },
-    { "sandbagger",     "Sandbagger",       Group::Racing, "Set a PB on the last lap of a race",
+    { "sandbagger",     N_("Sandbagger"),       Group::Racing, N_("Set a PB on the last lap of a race"),
       nullptr,                                 "weight-hanging",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::Sandbagger, 1 },
-    { "palindrome",     "Palindrome",       Group::Hidden, "Set a lap time the same backwards",
+    { "palindrome",     N_("Palindrome"),       Group::Hidden, N_("Set a lap time the same backwards"),
       nullptr,                                 "arrows-left-right",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::Palindrome, 1, true },
-    { "deja_vu",        "Deja Vu",          Group::Hidden, "Set two identical lap times in a session",
+    { "deja_vu",        N_("Deja Vu"),          Group::Hidden, N_("Set two identical lap times in a session"),
       nullptr,                                 "clone",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::DejaVu, 1, true },
     // A one-shot on purpose: the joke lands on the first one, and a ladder
     // would read as an invitation to the next nine hundred and ninety-nine.
-    { "rage_quit",      "Rage Quit",        Group::Misfortune, "Retire from a race before the finish",
+    { "rage_quit",      N_("Rage Quit"),        Group::Misfortune, N_("Retire from a race before the finish"),
       nullptr,                                 "door-open",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::RageQuits, 1, true },
-    { "bakers_dozen",   "Baker's Dozen",    Group::Misfortune, "Crash 13 times in one session",
+    { "bakers_dozen",   N_("Baker's Dozen"),    Group::Misfortune, N_("Crash 13 times in one session"),
       nullptr,                                 "bread-slice",
       Metric::Exploration, Unit::Count, { 13, 0, 0, 0 }, true, false,
       Exploration::Signal::BakersDozen, 1, true },
@@ -847,27 +848,27 @@ inline constexpr Entry kCatalogue[] = {
     // an unbroken half hour is inside a session by construction. It does not say
     // "clean" either -- that is the undefined word Spotless was rewritten to
     // stop using, and this row means the same thing Rubber Side Down means.
-    { "steady_hands",   "Steady Hands",     Group::Consistency, nullptr,
-      "Ride %s without crashing",              "hand",
+    { "steady_hands",   N_("Steady Hands"),     Group::Consistency, nullptr,
+      N_("Ride %s without crashing"),              "hand",
       Metric::Exploration, Unit::Seconds, { 1800, 0, 0, 0 }, true, false,
       Exploration::Signal::SteadyHands, 1 },
-    { "fumes",          "Running on Fumes", Group::Racing, "Finish a race on 1% of a tank or less",
+    { "fumes",          N_("Running on Fumes"), Group::Racing, N_("Finish a race on 1% of a tank or less"),
       nullptr,                                 "water",
       Metric::Exploration, Unit::Count,    { 1, 0, 0, 0 },                     false, false,
       Exploration::Signal::Fumes, 1 },
-    { "ran_dry",        "Long Walk Home",   Group::Misfortune, "Run out of fuel out on track",
+    { "ran_dry",        N_("Long Walk Home"),   Group::Misfortune, N_("Run out of fuel out on track"),
       nullptr,                                 "person-hiking",
       Metric::Exploration, Unit::Count,    { 1, 0, 0, 0 },                     false, false,
       Exploration::Signal::RanDry, 1, true },
-    { "peak_g",         "Big Hit",          Group::Misfortune, nullptr,
-      "Take a %sG hit",                        "explosion",
+    { "peak_g",         N_("Big Hit"),          Group::Misfortune, nullptr,
+      N_("Take a %sG hit"),                        "explosion",
       Metric::Exploration, Unit::Count,    { 35, 0, 0, 0 },                    false, false,
       Exploration::Signal::PeakG, 1, true },
-    { "solo_race",      "Just Me Then",     Group::Hidden, "Finish a race nobody else started",
+    { "solo_race",      N_("Just Me Then"),     Group::Hidden, N_("Finish a race nobody else started"),
       nullptr,                                 "heart-crack",
       Metric::Exploration, Unit::Count,    { 1, 0, 0, 0 },                     false, false,
       Exploration::Signal::SoloRace, 1, true },
-    { "mondays",        "Case of the Mondays", Group::Misfortune, "Crash out of a chain of five tricks",
+    { "mondays",        N_("Case of the Mondays"), Group::Misfortune, N_("Crash out of a chain of five tricks"),
       nullptr,                                 "face-tired",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, true,
       Exploration::Signal::ChainCrash, 1, true },
@@ -876,16 +877,16 @@ inline constexpr Entry kCatalogue[] = {
     // read from the rider it was taken FROM. Deferred with Last Gasp for the
     // same reason (the pair can still be a lap behind at the flag), so the two
     // are credited by one helper rather than two that could disagree.
-    { "choke",          "Choke",            Group::Misfortune,
-      "Lead into the final lap and lose the race",
+    { "choke",          N_("Choke"),            Group::Misfortune,
+      N_("Lead into the final lap and lose the race"),
       nullptr,                                 "face-sad-cry",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::Choke, 1, true },
     // The pace without the result. OFF THE PODIUM, not merely beaten: a
     // fastest lap in second is a race lost by a little, and this row is for
     // the one where the lap was the only thing that went right.
-    { "consolation",    "Consolation Prize", Group::Misfortune,
-      "Fastest lap, and off the podium with it",
+    { "consolation",    N_("Consolation Prize"), Group::Misfortune,
+      N_("Fastest lap, and off the podium with it"),
       nullptr,                                 "thumbs-up",
       Metric::Exploration, Unit::Count, { 1, 0, 0, 0 }, false, false,
       Exploration::Signal::ConsolationPrize, 1, true },
@@ -894,8 +895,8 @@ inline constexpr Entry kCatalogue[] = {
     // much of a heap as the one you landed on - so it needs a crash state to
     // have any meaning. The sentence says "with", not "already": the row is
     // about the heap, not about who fell into it first.
-    { "pile_up",        "Pile-Up",          Group::Misfortune,
-      "Go down with three others",
+    { "pile_up",        N_("Pile-Up"),          Group::Misfortune,
+      N_("Go down with three others"),
       nullptr,                                 "truck-medical",
       Metric::Exploration, Unit::Count, { 3, 0, 0, 0 }, true, false,
       Exploration::Signal::PileUp, 1, true },
@@ -904,32 +905,32 @@ inline constexpr Entry kCatalogue[] = {
     // degrees of the same thing - one is a crash and the other is avoiding it -
     // and hidden rather than listed because it needs three strangers to fall
     // over near you, which is nothing to aim at. RIDE means moving here too.
-    { "peace_out",      "Peace Out",        Group::Hidden,
-      "Ride through three riders down",
+    { "peace_out",      N_("Peace Out"),        Group::Hidden,
+      N_("Ride through three riders down"),
       nullptr,                                 "hand-peace",
       Metric::Exploration, Unit::Count, { 3, 0, 0, 0 }, true, false,
       Exploration::Signal::PeaceOut, 1, true },
     // The same corner, three times running. A RUN, not a tally: three crashes
     // spread over an afternoon at one corner is a hard corner, three in a row
     // is a grudge.
-    { "favorite_spot",  "Favorite Spot",    Group::Misfortune,
-      "Crash three times in a row in one place",
+    { "favorite_spot",  N_("Favorite Spot"),    Group::Misfortune,
+      N_("Crash three times in a row in one place"),
       nullptr,                                 "campground",
       Metric::Exploration, Unit::Count, { 3, 0, 0, 0 }, true, false,
       Exploration::Signal::FavoriteSpot, 1, true },
     // Measured from the telemetry rather than off the Burnout trick, which
     // has its own INI switch: a row that vanished when someone turned a trick
     // off would be a bug nobody could see. Ten seconds of it, unbroken.
-    { "digging",        "Digging a Hole",   Group::Hidden, nullptr,
-      "Spin the rear wheel in place for %s",    "person-digging",
+    { "digging",        N_("Digging a Hole"),   Group::Hidden, nullptr,
+      N_("Spin the rear wheel in place for %s"),    "person-digging",
       Metric::Exploration, Unit::Seconds, { 10, 0, 0, 0 }, false, false,
       Exploration::Signal::DiggingSec, 1, true },
     // A QUARTER OF FLIPPER'S LADDER at every step (1 / 10 / 50 / 100 -> 1 / 3 /
     // 13 / 25, halves rounded up), because a frontflip is the harder way round
     // and nobody lands them at backflip rates. Tied to that row rather than
     // picked freely, so the two move together if Flipper is ever re-cut.
-    { "fmx_frontflips", "Somersault",       Group::Tricks, "Land a frontflip",
-      "Land %s frontflips",                    "arrow-rotate-right",
+    { "fmx_frontflips", N_("Somersault"),       Group::Tricks, N_("Land a frontflip"),
+      N_("Land %s frontflips"),                    "arrow-rotate-right",
       Metric::FmxFrontflips,  Unit::Count,   { 1, 3, 13, 25 },              false, true },
 };
 
@@ -940,16 +941,15 @@ inline bool isOneShot(const Entry& e) { return e.tierCount <= 1; }
 // Tier 0 is "not yet"; 1..TIER_COUNT are the metals.
 inline const char* tierName(int tier) {
     switch (tier) {
-        case 1: return "Bronze";
-        case 2: return "Silver";
-        case 3: return "Gold";
-        case 4: return "Platinum";
-        default: return "Locked";
+        case 1: return N_("Bronze");
+        case 2: return N_("Silver");
+        case 3: return N_("Gold");
+        case 4: return N_("Platinum");
+        default: return N_("Locked");
     }
 }
 
-// The entry with this id, or nullptr. Linear over the catalogue; called on load
-// and from the settings tab, never per frame.
+// The entry with this id, or nullptr: linear, on load and in Settings, never per frame.
 inline const Entry* findById(const char* id) {
     if (!id) return nullptr;
     for (const Entry& e : kCatalogue) {
@@ -969,7 +969,7 @@ inline int tierFor(const Entry& e, double value) {
 
 // The tag beside a row: the metal, or for a one-shot "Earned" / "Locked".
 inline const char* tierLabel(const Entry& e, int tier) {
-    if (isOneShot(e)) return tier > 0 ? "Earned" : "Locked";
+    if (isOneShot(e)) return tier > 0 ? N_("Earned") : N_("Locked");
     return tierName(tier);
 }
 
