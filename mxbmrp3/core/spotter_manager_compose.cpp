@@ -128,7 +128,7 @@ void SpotterManager::fillAmbientVars(SpotterVars::Vars& v) const {
 
     // Your name as the game has it. UTF-8, so a name with accents reads
     // correctly through text-to-speech but garbles in the SUBTITLE — the
-    // in-game font is a byte-indexed CP1252 table (see CLAUDE.md), which is a
+    // in-game font is a byte-indexed CP1252 table (see AGENTS.md), which is a
     // renderer limit rather than something to fix here.
     if (const RaceEntryData* entry = pd.getRaceEntry(me)) {
         if (entry->name[0] != '\0') {

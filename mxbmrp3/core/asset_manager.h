@@ -154,8 +154,8 @@ struct ThemeAsset {
     // folder has registered nothing. Indices within one folder are consecutive, so
     // spriteFiles[k] holds index firstOwnSprite + k -- the contract
     // HudManager::verifySpriteRegistrationOrder() checks against the registered
-    // sprite table after setupDefaultResources() (the theme-sprite-order
-    // invariant, CLAUDE.md).
+    // sprite table after setupDefaultResources() (the sprite-order invariant,
+    // sprite_order_test.cpp).
     int firstOwnSprite = -1;
 
     // Corner size in GRID CELLS -- how many cells of the horizontal lattice the

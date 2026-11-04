@@ -29,7 +29,7 @@ tools/fontgen/mxbmrp3_fontgen myfont.cfg out.fnt
 | Platform | Windows 32-bit only (needs Wine + `wine32:i386` on Linux) | Linux / macOS / Windows, native |
 | Cell size | opaque auto-fit; `scale` is an inverse *area* knob (2.0 → **smaller** cell) | you set `cell_height` in **pixels**, or omit it for auto-fit |
 | Vertical placement | baked from the font, no control | `center` / `voffset` to fix off-centre fonts |
-| High-range glyphs | CP1252 | correct CP1252 (bytes `0x80–0x9F` mapped to the right Unicode glyphs) |
+| High-range glyphs | CP1252 | correct CP1252 (bytes `0x80–0x9F` mapped to the right Unicode glyphs), plus the Turkish letters in CP1252's six unused bytes |
 
 It reproduces `fontgen`'s packing algorithm faithfully - at a given `cell_height`
 the glyph widths, atlas packing, and advance follow the same rules (`test.sh`
@@ -68,6 +68,18 @@ off-centre (~7% of the cell). `fontgen` has no way to correct this.
   widest digit's width, ink centred, the way a font's `tnum` feature lays them
   out. With `mono_advance` the font is then sized by that widest digit.
 
+## The Turkish slots
+
+With `code_page = 1252` the six bytes CP1252 leaves unused carry Ğ ğ İ ı Ş ş
+(the table is `mxbmrp3/core/font_codepage.h`, shared with the plugin's text
+conversion). A font without one of them gets it composed from its plain letter
+and the font's own accent mark (breve, dot above, cedilla), placed with the
+font's own gap between `x` and the mark and held inside the cell; a font with
+no mark gets the plain letter. A missing dotless ı is the font's `i` with
+everything above the top of `x` cut off, when that `i` has a dot apart from
+its stem (an LCD face's bar-shaped `i` is drawn whole). The slots are left out
+of the cell's ink box, so adding them changed no other glyph of a shipped font.
+
 ## Config format
 
 A superset of PiBoSo `fontgen`'s config - existing configs work unchanged. Keys:
@@ -76,7 +88,7 @@ A superset of PiBoSo `fontgen`'s config - existing configs work unchanged. Keys:
 [config]                                 # section header optional
 name        = Roboto Mono Regular        # font name stored in the .fnt
 filename    = RobotoMono-Regular.ttf     # source .ttf/.otf (path relative to cwd)
-code_page   = 1252                        # 1252 (CP1252) or anything else = Latin-1
+code_page   = 1252                        # 1252 (the plugin's CP1252 + Turkish slots) or anything else = Latin-1
 char_start  = 32                          # first byte (0..255)
 char_end    = 255                         # last byte
 spacing     = 20                          # px gap between glyphs in the atlas (mip-safe; normalised default)

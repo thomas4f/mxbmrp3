@@ -74,7 +74,7 @@ if [ "${fail}" -ne 0 ]; then
     echo "TESTING.md's catalogue is a census - it names the test, it does not"
     echo "describe it. Say in the header what the test pins and why it exists"
     echo "(the bug it would have caught, the trap the obvious implementation"
-    echo "falls into). See CLAUDE.md -> 'Bug lore belongs in the regression test'."
+    echo "falls into). See AGENTS.md -> 'Bug lore belongs in the regression test'."
     exit 1
 fi
 

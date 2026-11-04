@@ -27,7 +27,7 @@
 # (game/ is header-only, reached through the TUs via HeaderFilterRegex). Suppress a reviewed false positive with
 # `// NOLINT(<check>): <reason>` on the line.
 #
-# CLANG THREAD SAFETY ANALYSIS rides the same parse. THE INVARIANT (CLAUDE.md):
+# CLANG THREAD SAFETY ANALYSIS rides the same parse. THE INVARIANT (AGENTS.md):
 # a mutex-guarded member is guarded at EVERY access site, including private
 # helpers called from already-locked-looking code (the RecordsHud crash class).
 # Members are annotated MXB_GUARDED_BY(mutex), helpers MXB_REQUIRES(mutex) (see

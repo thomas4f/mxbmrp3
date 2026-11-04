@@ -444,7 +444,7 @@ private:
     // (settings UI / getControllerName), hence atomic.
     std::atomic<bool> m_lastConnectedState[4];
     std::atomic<bool> m_connectionStateChanged{ false };
-    std::chrono::steady_clock::time_point m_lastConnectionScan;
+    std::chrono::steady_clock::time_point m_lastConnectionScan;  // mt-plain: I/O thread only (its 1 Hz all-slot scan)
 
     // Backoff for polling the SELECTED slot while it is disconnected (I/O-thread-owned).
     static constexpr int DISCONNECTED_POLL_INTERVAL_MS = 500;
@@ -453,24 +453,25 @@ private:
     static constexpr int IO_LOOP_INTERVAL_MS = 5;
 
     // Vibration state tracking to avoid redundant API calls
-    float m_lastLeftMotor;
+    float m_lastLeftMotor;  // mt-plain: caller thread only (setVibration, setControllerIndex)
     bool m_rumbleLive = false;   // mt-plain: game thread only (updateRumbleFromTelemetry writes, DrawHandler reads)
-    float m_lastRightMotor;
+    float m_lastRightMotor;  // mt-plain: caller thread only (setVibration, setControllerIndex)
 
     // Motor speeds last sent via XInputSetState (8-bit quantized). Nonzero
     // rumble is a continuous capped-rate feed (controllers decay rumble
     // without refreshes); only the all-zero idle state is deduped so an idle
     // pad generates no Bluetooth traffic. See setVibration().
-    uint8_t m_lastSentLeftMotor;
-    uint8_t m_lastSentRightMotor;
+    uint8_t m_lastSentLeftMotor;  // mt-plain: caller thread only; send-policy state, like m_hasSentVibration
+    uint8_t m_lastSentRightMotor;  // mt-plain: caller thread only; send-policy state, like m_hasSentVibration
     bool m_hasSentVibration;  // mt-plain: send-policy state, caller thread only — the I/O thread sees only m_pendingRumble (guarded)
-    std::chrono::steady_clock::time_point m_lastVibrationSend;
-    int m_rumbleSendIntervalMs = DEFAULT_RUMBLE_SEND_INTERVAL_MS;
+    std::chrono::steady_clock::time_point m_lastVibrationSend;  // mt-plain: caller thread only; send-policy state, like m_hasSentVibration
+    int m_rumbleSendIntervalMs = DEFAULT_RUMBLE_SEND_INTERVAL_MS;  // mt-plain: caller thread only; send-policy state, like m_hasSentVibration
     static constexpr int DEFAULT_RUMBLE_SEND_INTERVAL_MS = 10;  // 100Hz live feed (matches the telemetry tick)
     static constexpr int MIN_RUMBLE_SEND_INTERVAL_MS = 4;       // ~250Hz (effectively uncapped)
     static constexpr int MAX_RUMBLE_SEND_INTERVAL_MS = 200;     // 5Hz floor
 
     // Individual effect values (for visualization)
+    // mt-plain-block: caller thread only (updateRumbleFromTelemetry writes, the rumble HUD reads)
     float m_lastSuspensionRumble;
     float m_lastWheelspinRumble;
     float m_lastLockupRumble;

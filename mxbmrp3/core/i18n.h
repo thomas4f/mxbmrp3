@@ -187,6 +187,9 @@ void setLanguage(const std::string& folder);
 void ensureLoaded();
 // The selection as stored (a folder, "" or kSystemLanguage).
 const std::string& languageFolder();
+// The pack actually in effect: what "system" resolved to, "" for English (none
+// selected, none matched, not installed, or failed to load).
+const std::string& activeFolder();
 // The active language's display name ("English" when none or unknown).
 const char* languageDisplayName();
 

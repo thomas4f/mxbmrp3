@@ -1,0 +1,5774 @@
+# Türkçe (Turkish) language pack for MXBMRP3 - BETA.
+# Drafted for 1.35; not yet reviewed line by line by a native speaker.
+# Corrections are welcome: see README.md in the parent folder.
+# Ğ ğ İ ı Ş ş are drawn by every shipped font from 1.35 on.
+#
+# Glossary (keep these consistent):
+#   rider = sürücü, bike = motor, lap = tur, sector = sektör, split = ara,
+#   gap = fark (the Gap Bar HUD = Fark Barı), PB = PB / kişisel en iyi,
+#   standings = sıralama, pits = pit, penalty = ceza, session = seans,
+#   practice = antrenman, qualify = kalifikasyon, race = yarış,
+#   settings = ayarlar, hotkeys = kısayollar, rumble = titreşim,
+#   notice/toast = bildirim, callout = anons, achievement = başarım,
+#   profile = profil, crash = kaza, controller = kontrolcü,
+#   race number = yarış no, web overlay = web overlay,
+#   On/Off = Açık/Kapalı, Default = Varsayılan. Ordinals: 1. 2. 3.
+#   Kept in English as players say them: HUD, Dash, Companion, widget,
+#   spotter, holeshot, whip, scrub, oppo, endo, stoppie, wheelie, backflip,
+#   frontflip, turn down, FMX, OBS. RPM stays English.
+msgid ""
+msgstr ""
+"Project-Id-Version: mxbmrp3\n"
+"PO-Revision-Date: 2026-11-03 00:00+0000\n"
+"Last-Translator: MXBMRP3\n"
+"Language-Team: Turkish\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "  Stop   "
+msgstr "  Dur    "
+
+msgid " (does not count towards progress)"
+msgstr " (ilerlemeye sayılmaz)"
+
+#, c-format
+msgid "#%d takes the lead"
+msgstr "#%d liderliği aldı"
+
+#, c-format
+msgid "%.1f laps"
+msgstr "%.1f tur"
+
+#, c-format
+msgid "%d TO GO"
+msgstr "%d KALDI"
+
+#, c-format
+msgid "%d achievements unlocked"
+msgstr "%d başarım açıldı"
+
+#, c-format
+msgid "%d lap"
+msgstr "%d tur"
+
+#, c-format
+msgid "%d laps"
+msgstr "%d tur"
+
+#, c-format
+msgid "%s + %d lap"
+msgstr "%s + %d tur"
+
+#, c-format
+msgid "%s + %d laps"
+msgstr "%s + %d tur"
+
+#, c-format
+msgid "%s - halfway to %s"
+msgstr "%s - %s hedefinin yarısı"
+
+#, c-format
+msgid "%s Local"
+msgstr "%s Yerel"
+
+#, c-format
+msgid "%s UTC"
+msgstr "%s UTC"
+
+#, c-format
+msgid "%s cancelled"
+msgstr "%s iptal edildi"
+
+#, c-format
+msgid "%s complete"
+msgstr "%s tamamlandı"
+
+#, c-format
+msgid "%s copied to %s"
+msgstr "%s, %s profiline kopyalandı"
+
+#, c-format
+msgid "%s copied to every profile"
+msgstr "%s tüm profillere kopyalandı"
+
+#, c-format
+msgid "%s did not start"
+msgstr "%s başlamadı"
+
+#, c-format
+msgid "%s disqualified"
+msgstr "%s diskalifiye"
+
+#, c-format
+msgid "%s ended"
+msgstr "%s sona erdi"
+
+#, c-format
+msgid "%s entered pits"
+msgstr "%s pite girdi"
+
+#, c-format
+msgid "%s fastest lap"
+msgstr "%s en hızlı tur"
+
+#, c-format
+msgid "%s finished"
+msgstr "%s bitirdi"
+
+#, c-format
+msgid "%s hidden"
+msgstr "%s gizlendi"
+
+#, c-format
+msgid "%s in burnouts and drifts"
+msgstr "%s burnout ve drift"
+
+#, c-format
+msgid "%s laps in a row, crash/penalty free"
+msgstr "Kaza/cezasız art arda %s tur"
+
+#, c-format
+msgid "%s left pits"
+msgstr "%s pitten çıktı"
+
+#, c-format
+msgid "%s penalty (%s)"
+msgstr "%s ceza (%s)"
+
+#, c-format
+msgid "%s penalty changed"
+msgstr "%s cezası değişti"
+
+#, c-format
+msgid "%s penalty cleared"
+msgstr "%s cezası kaldırıldı"
+
+#, c-format
+msgid "%s profile"
+msgstr "%s profili"
+
+#, c-format
+msgid "%s reset"
+msgstr "%s sıfırlandı"
+
+#, c-format
+msgid "%s retired"
+msgstr "%s yarışı bıraktı"
+
+#, c-format
+msgid "%s started"
+msgstr "%s başladı"
+
+#, c-format
+msgid "%s time expired"
+msgstr "%s süresi doldu"
+
+#, c-format
+msgid "%s: %s"
+msgstr "%s: %s"
+
+#, c-format
+msgid "%s: Pre-Start"
+msgstr "%s: Start öncesi"
+
+msgid "(click to track/untrack)"
+msgstr "(izlemek/bırakmak için tıkla)"
+
+msgid "- Front"
+msgstr "- Ön"
+
+msgid "- Rear"
+msgstr "- Arka"
+
+msgid "99 Problems"
+msgstr "99 Sorun"
+
+msgctxt "tooltip"
+msgid "A Twitch or YouTube icon on each line. Auto shows it while both are switched on."
+msgstr "Her satırda Twitch veya YouTube simgesi. Oto: ikisi de açıkken gösterir."
+
+#. max 38 characters
+msgid "A comment or rating, a star or a"
+msgstr "Yorum veya puan, bir yıldız ya da bir"
+
+msgctxt "tooltip"
+msgid "A crash tally for streaming - counts across sessions and restarts until you reset it."
+msgstr "Yayın için kaza sayacı: sıfırlayana dek seanslar ve yeniden başlatmalar boyunca sayar."
+
+msgctxt "tooltip"
+msgid "A new notice takes the card over, drawn as on Notices, then your page comes back."
+msgstr "Yeni bir bildirim kartı devralır (Bildirimler'deki gibi), sonra sayfan geri gelir."
+
+msgctxt "tooltip"
+msgid "A soft halo behind the lights that call for action: RPM, gear at shift, warnings, Dash RPM and fuel."
+msgstr "Harekete çağıran ışıkların ardında yumuşak hale: RPM, vites, uyarılar, Dash RPM ve yakıt."
+
+msgid "ALL-TIME PB"
+msgstr "TÜM ZAMANLAR PB"
+
+msgid "AM"
+msgstr "ÖÖ"
+
+#. max 6 characters
+msgid "About"
+msgstr "Bilgi"
+
+msgid "About MXBMRP3"
+msgstr "MXBMRP3 Hakkında"
+
+#. max 11 characters
+msgid "Accent"
+msgstr "Vurgu"
+
+msgid "Achievement"
+msgstr "Başarım"
+
+msgid "Achievement toasts appear here"
+msgstr "Başarım bildirimleri burada görünür"
+
+#. max 12 characters
+msgid "Achievements"
+msgstr "Başarımlar"
+
+#. max 48 characters
+msgid "Achievements earned, at any tier"
+msgstr "Kazanılan başarımlar, her seviyede"
+
+msgctxt "tooltip"
+msgid "Adapt density to the on-screen map, so every track looks and costs about the same."
+msgstr "Yoğunluğu ekrandaki haritaya uyarla; her pist aynı görünür ve aynı maliyette olur."
+
+#. max 15 characters
+msgid "Adaptive detail"
+msgstr "Uyarlanır detay"
+
+#. max 15 characters
+msgid "Adaptive range"
+msgstr "Uyarl. menzil"
+
+msgctxt "tooltip"
+msgid "Add a comparison row against the best lap by anyone this session."
+msgstr "Bu seansta herkesin en iyi turuna karşı bir karşılaştırma satırı ekler."
+
+msgctxt "tooltip"
+msgid "Add a comparison row against the fastest record from the Records HUD."
+msgstr "Rekorlar HUD'undaki en hızlı rekora karşı bir karşılaştırma satırı ekler."
+
+msgctxt "tooltip"
+msgid "Add a comparison row against your all-time personal best."
+msgstr "Tüm zamanların kişisel en iyine karşı bir karşılaştırma satırı ekler."
+
+msgctxt "tooltip"
+msgid "Add a comparison row against your ideal lap (sum of best sectors)."
+msgstr "İdeal turuna (en iyi sektörlerin toplamı) karşı bir karşılaştırma satırı ekler."
+
+msgctxt "tooltip"
+msgid "Add a comparison row against your previous lap."
+msgstr "Önceki turuna karşı bir karşılaştırma satırı ekler."
+
+msgctxt "tooltip"
+msgid "Add a comparison row against your session personal best."
+msgstr "Seanstaki kişisel en iyine karşı bir karşılaştırma satırı ekler."
+
+msgctxt "tooltip"
+msgid "Add a shadow behind text and HUD icons for improved readability."
+msgstr "Okunabilirlik için yazıların ve HUD simgelerinin arkasına gölge ekler."
+
+msgctxt "tooltip"
+msgid "Add your own presence as a top row (labeled You) to confirm what you're broadcasting."
+msgstr "Yayınladığını doğrulamak için kendi durumunu en üst satıra (Sen) ekler."
+
+msgid "Adjacent"
+msgstr "Komşu"
+
+msgctxt "tooltip"
+msgid "After manual control, auto-resume once the controller is idle this long. Off = stay paused."
+msgstr "Elle kontrolden sonra kontrolcü bu süre boşta kalınca devam eder. Kapalı = duraklı kalır."
+
+msgid "Air Miles"
+msgstr "Hava Milleri"
+
+#. max 23 characters
+msgid "Alert distance"
+msgstr "Uyarı mesafesi"
+
+msgid "All"
+msgstr "Tümü"
+
+#. max 10 characters
+msgid "All HUDs"
+msgstr "Tüm HUD"
+
+msgid "All HUDs hidden"
+msgstr "Tüm HUD'lar gizlendi"
+
+#. max 15 characters
+msgid "All-time"
+msgstr "Tüm zamanlar"
+
+#. max 15 characters
+msgid "All-time PB"
+msgstr "Tüm zaman. PB"
+
+#. max 15 characters
+msgid "Alongside back"
+msgstr "Yanda arkada"
+
+#. max 15 characters
+msgid "Alongside front"
+msgstr "Yanda önde"
+
+msgctxt "tooltip"
+msgid "Also show message text in the chatter's name color."
+msgstr "Mesaj yazısını da sohbet edenin isim renginde göster."
+
+msgid "Always"
+msgstr "Her zaman"
+
+msgctxt "tooltip"
+msgid "Always show the top N leaders, even when rows center on you (0 = off)."
+msgstr "Satırlar sana ortalansa bile ilk N lideri hep göster (0 = kapalı)."
+
+msgid "Amber"
+msgstr "Kehribar"
+
+msgctxt "tooltip"
+msgid "Analog speedometer gauge showing current speed, with odometer and trip meter."
+msgstr "Anlık hızı gösteren analog hız göstergesi; kilometre sayacı ve trip sayacı ile."
+
+msgctxt "tooltip"
+msgid "Animate position changes. Off: none; Basic: slide rows; Colored: slide + green/red tint."
+msgstr "Sıra değişimlerini canlandır. Kapalı: yok; Temel: satır kayar; Renkli: kayma + yeşil/kırmızı."
+
+#. max 15 characters
+msgid "Animation"
+msgstr "Animasyon"
+
+msgid "Anniversary"
+msgstr "Yıldönümü"
+
+msgctxt "tooltip"
+msgid "Anonymous usage survey: one ping at startup, no personal data. On by default."
+msgstr "Anonim kullanım anketi: açılışta tek ping, kişisel veri yok. Varsayılan açık."
+
+#. max 12 characters
+msgid "Appearance"
+msgstr "Görünüm"
+
+msgid "Aqua"
+msgstr "Su mavisi"
+
+msgid "Armchair Marshal"
+msgstr "Koltuk Hakemi"
+
+#. max 23 characters
+msgid "Arrow colors"
+msgstr "Ok renkleri"
+
+#. max 23 characters
+msgid "Arrow icon"
+msgstr "Ok simgesi"
+
+#. max 23 characters
+msgid "Arrow mode"
+msgstr "Ok modu"
+
+#. max 23 characters
+msgid "Arrow scale"
+msgstr "Ok ölçeği"
+
+msgid "At laps"
+msgstr "Turlarda"
+
+msgctxt "tooltip"
+msgid "At laps and At splits: how long the standings show after each crossing."
+msgstr "Turlarda ve Aralarda: her geçişten sonra sıralamanın görünme süresi."
+
+msgid "At pit"
+msgstr "Pitte"
+
+msgid "At splits"
+msgstr "Aralarda"
+
+msgctxt "tooltip"
+msgid "At splits shows timing only after crossing a split point. Always shows timing constantly."
+msgstr "Aralarda: zaman yalnız ara noktası geçilince görünür. Her zaman: sürekli görünür."
+
+msgctxt "tooltip"
+msgid "At splits: how long the board shows after each split and the line."
+msgstr "Aralarda: her ara ve çizgiden sonra tabelanın görünme süresi."
+
+msgid "Auto"
+msgstr "Oto"
+
+msgid "Auto-director disabled"
+msgstr "Oto-yönetmen kapalı"
+
+msgid "Auto-director enabled"
+msgstr "Oto-yönetmen açık"
+
+msgctxt "tooltip"
+msgid "Auto-director for spectating: follows the most interesting rider - battles, passes, hot laps."
+msgstr "İzleme için oto-yönetmen: en ilginç sürücüyü izler - düellolar, geçişler, hızlı turlar."
+
+msgid "Auto-director resumed"
+msgstr "Oto-yönetmen devam ediyor"
+
+#. max 23 characters
+msgid "Auto-fetch"
+msgstr "Oto-getir"
+
+msgid "Auto-hide"
+msgstr "Oto-gizle"
+
+#. max 12 characters
+msgid "Auto-save"
+msgstr "Oto-kayıt"
+
+msgctxt "tooltip"
+msgid "Auto-saves on leaving the track (never while riding); use Save anytime. Disable to edit INI."
+msgstr "Pistten çıkınca kaydeder (sürerken asla); Kaydet her an çalışır. INI'yi düzenlemek için kapat."
+
+#. max 23 characters
+msgid "Auto-switch"
+msgstr "Oto-geçiş"
+
+msgctxt "tooltip"
+msgid "Auto: leader in races, session PB solo. Server best: anyone's fastest. Record: from Records HUD."
+msgstr "Oto: yarışta lider, tek başına seans PB. Sunucu en iyisi: herkesin en hızlısı. Rekor: Rekorlar HUD."
+
+msgctxt "tooltip"
+msgid "Automatic update checking and installation. Downloads and installs new versions from GitHub."
+msgstr "Otomatik güncelleme denetimi ve kurulumu. Yeni sürümleri GitHub'dan indirir ve kurar."
+
+msgctxt "tooltip"
+msgid "Automatically fetch records when entering an event."
+msgstr "Bir etkinliğe girerken rekorları otomatik getir."
+
+msgctxt "tooltip"
+msgid "Automatically switch profiles based on session type."
+msgstr "Seans türüne göre profilleri otomatik değiştir."
+
+msgid "Available:"
+msgstr "Mevcut:"
+
+msgid "Avg"
+msgstr "Ort"
+
+msgid "Avg speed"
+msgstr "Ort. hız"
+
+#. max 15 characters
+msgid "Axis labels"
+msgstr "Eksen etiketi"
+
+msgid "BLUE FLAG"
+msgstr "MAVİ BAYRAK"
+
+#. max 56 characters
+msgid "Back"
+msgstr "Geri"
+
+msgid "Back Marker"
+msgstr "Arkadaki"
+
+msgctxt "tooltip"
+msgid "Back to the More page."
+msgstr "Diğer sayfasına dön."
+
+#. max 11 characters
+msgid "Background"
+msgstr "Arka plan"
+
+msgctxt "tooltip"
+msgid "Background color for HUD panels."
+msgstr "HUD panellerinin arka plan rengi."
+
+#, c-format
+msgctxt "tooltip"
+msgid "Background transparency. 0% is fully transparent, 100% is fully opaque."
+msgstr "Arka plan saydamlığı. 0% iken tamamen saydam, 100% iken tamamen opak."
+
+msgid "Backseat Driver"
+msgstr "Arka Koltuk Pilotu"
+
+msgid "Backup"
+msgstr "Yedek"
+
+msgid "Backup Plan"
+msgstr "B Planı"
+
+msgid "Baker's Dozen"
+msgstr "Fırıncı Düzinesi"
+
+#. max 11 characters
+msgid "Bars"
+msgstr "Çubuklar"
+
+msgid "Basic"
+msgstr "Temel"
+
+#, c-format
+msgid "Battle %s"
+msgstr "Düello %s"
+
+#, c-format
+msgid "Battle %s vs %s"
+msgstr "Düello %s - %s"
+
+#. max 15 characters
+msgid "Battle gap"
+msgstr "Düello farkı"
+
+#. max 15 characters
+msgid "Battles"
+msgstr "Düellolar"
+
+#, c-format
+msgid "Beat %s PBs by a second or more"
+msgstr "%s PB'yi bir saniye veya daha fazla geç"
+
+msgid "Beat a PB by a second or more"
+msgstr "Bir PB'yi bir saniye veya daha fazla geç"
+
+#. max 15 characters
+msgid "Behind distance"
+msgstr "Arka mesafe"
+
+msgctxt "tooltip"
+msgid "Behind the Companion HUD. Green, Blue or Magenta: an OBS Chroma Key filter of that colour shows only the HUD."
+msgstr "Companion HUD'un arkası. Yeşil, Mavi veya Macenta: o renkte bir OBS Chroma Key filtresi yalnız HUD'u gösterir."
+
+#. max 23 characters
+msgid "Benchmark profiler"
+msgstr "Benchmark profilleyici"
+
+msgid "Best"
+msgstr "En iyi"
+
+msgid "Best lap"
+msgstr "En iyi tur"
+
+#. max 15 characters
+msgid "Best lap time"
+msgstr "En iyi tur"
+
+#. max 43 characters
+msgid "Best sectors combined"
+msgstr "En iyi sektörlerin toplamı"
+
+#. max 4 characters
+msgid "Beta"
+msgstr "Beta"
+
+msgid "Big Hit"
+msgstr "Sert Darbe"
+
+msgid "Bike"
+msgstr "Motor"
+
+msgctxt "tooltip"
+msgid "Bike = PB per bike. Class = PB across all bikes in the same class (MX1, MX2, ...)."
+msgstr "Motor = motor başına PB. Sınıf = aynı sınıftaki (MX1, MX2, ...) tüm motorlarda PB."
+
+msgctxt "tooltip"
+msgid "Bike heading dial with N/E/S/W labels (classic needle or modern rotating-card style)."
+msgstr "N/E/S/W etiketli yön göstergesi (klasik ibre veya modern dönen kart)."
+
+#. max 15 characters
+msgid "Bike model"
+msgstr "Motor modeli"
+
+msgid "Bind Dash + / Dash -"
+msgstr "Dash + / Dash - ata"
+
+msgid "Bind a hotkey"
+msgstr "Kısayol ata"
+
+msgid "Black"
+msgstr "Siyah"
+
+msgid "Blue"
+msgstr "Mavi"
+
+#. max 23 characters
+msgid "Blue flag"
+msgstr "Mavi bayrak"
+
+msgid "Bmp"
+msgstr "Tms"
+
+msgid "Both"
+msgstr "İkisi"
+
+msgid "Bottom"
+msgstr "Alt"
+
+msgid "Brand"
+msgstr "Marka"
+
+#. max 15 characters
+msgid "Breakout score"
+msgstr "Breakout puanı"
+
+#, c-format
+msgid "Breakout score %s"
+msgstr "Breakout puanı %s"
+
+msgid "Brick Breaker"
+msgstr "Tuğla Kırıcı"
+
+msgctxt "tooltip"
+msgid "Briefly flash to a rider who just set the overall fastest lap of the race."
+msgstr "Yarışın genel en hızlı turunu yeni atan sürücüye kısaca geç."
+
+msgid "Bright Yellow"
+msgstr "Parlak Sarı"
+
+#. max 60 characters
+msgid "Broadcast"
+msgstr "Yayın"
+
+msgctxt "tooltip"
+msgid "Broadcast your status and see friends running the plugin. Needs the Steam build; on by default."
+msgstr "Durumunu yayınla, eklentiyi kullanan arkadaşlarını gör. Steam sürümü gerekir; varsayılan açık."
+
+msgid "Bronze"
+msgstr "Bronz"
+
+msgid "Bronze Sweep"
+msgstr "Bronz Süpürme"
+
+msgid "Brown"
+msgstr "Kahverengi"
+
+#. max 11 characters
+msgid "Bumps"
+msgstr "Tümsekler"
+
+#, c-format
+msgid "Burn %s of fuel"
+msgstr "%s yakıt yak"
+
+msgid "By tab or section"
+msgstr "Sekme veya bölüme göre"
+
+msgid "CBR"
+msgstr "CBR"
+
+msgid "CHECKERED"
+msgstr "DAMALI"
+
+msgctxt "tooltip"
+msgid "Callout volume, separate from the game's audio."
+msgstr "Anons ses düzeyi, oyunun sesinden ayrı."
+
+#. max 60 characters
+msgid "Callouts"
+msgstr "Anonslar"
+
+#. max 10 characters
+msgid "Cam Lock"
+msgstr "Kam. kilit"
+
+msgid "Can you read this clearly?"
+msgstr "Bunu net okuyabiliyor musun?"
+
+msgid "Can't read"
+msgstr "Okunmuyor"
+
+msgid "Cancelled"
+msgstr "İptal edildi"
+
+msgid "Carbon Footprint"
+msgstr "Karbon Ayak İzi"
+
+msgid "Case of the Mondays"
+msgstr "Pazartesi Sendromu"
+
+msgctxt "tooltip"
+msgid "Caution indicators, low fuel, and proximity alerts."
+msgstr "Uyarı göstergeleri, düşük yakıt ve yakınlık uyarıları."
+
+msgid "Chain"
+msgstr "Zincir"
+
+msgid "Chain Reaction"
+msgstr "Zincirleme Reaksiyon"
+
+msgid "Channel not found"
+msgstr "Kanal bulunamadı"
+
+msgctxt "tooltip"
+msgid "Channel to read. Click, type or paste a name or twitch.tv link, then press Enter."
+msgstr "Okunacak kanal. Tıkla, bir ad ya da twitch.tv bağlantısı yaz veya yapıştır, Enter'a bas."
+
+msgctxt "tooltip"
+msgid "Channel to read. Click, type or paste your @handle or channel link, then press Enter."
+msgstr "Okunacak kanal. Tıkla, @kullanıcı adını ya da kanal bağlantını yaz veya yapıştır, Enter'a bas."
+
+#. max 60 characters
+msgid "Channels"
+msgstr "Kanallar"
+
+msgid "Charger"
+msgstr "Şarj Aleti"
+
+#. max 15 characters
+msgid "Chart height"
+msgstr "Grafik yüks."
+
+#. max 10 characters
+msgid "Charts"
+msgstr "Grafikler"
+
+#. max 10 characters
+msgid "Chat"
+msgstr "Sohbet"
+
+msgid "Check MXBMRP3 Settings > General"
+msgstr "MXBMRP3 Ayarlar > Genel'e bak"
+
+msgid "Check MXBMRP3 Settings > Rumble"
+msgstr "MXBMRP3 Ayarlar > Titreşim'e bak"
+
+msgid "Check MXBMRP3 Settings > Stream Chat"
+msgstr "MXBMRP3 Ayarlar > Canlı Sohbet'e bak"
+
+msgid "Check Now"
+msgstr "Şimdi Denetle"
+
+msgctxt "tooltip"
+msgid "Check for a new version now."
+msgstr "Yeni sürümü şimdi denetle."
+
+#. max 23 characters
+msgid "Check for updates"
+msgstr "Güncellemeleri denetle"
+
+msgctxt "tooltip"
+msgid "Check for updates when the game starts."
+msgstr "Oyun açılınca güncellemeleri denetle."
+
+#. max 60 characters
+msgid "Checking for updates..."
+msgstr "Güncellemeler denetleniyor..."
+
+msgid "Choke"
+msgstr "Jikle"
+
+msgid "Circle"
+msgstr "Daire"
+
+msgid "Circle Chevron Up"
+msgstr "Daire Ok Yukarı"
+
+#. max 15 characters
+msgid "Class"
+msgstr "Sınıf"
+
+msgid "Class Act"
+msgstr "Sınıf Farkı"
+
+msgid "Clean Sheet"
+msgstr "Temiz Sayfa"
+
+msgid "Clear"
+msgstr "Güneşli"
+
+msgctxt "tooltip"
+msgid "Clear the failed download so you can try again."
+msgstr "Yeniden deneyebilmen için başarısız indirmeyi temizle."
+
+msgid "Click Compare to load records"
+msgstr "Rekorları yüklemek için Karşılaştır'a tıkla"
+
+#, c-format
+msgid "Click here to get %s"
+msgstr "%s almak için buraya tıkla"
+
+msgid "Click here to see what's new"
+msgstr "Yenilikleri görmek için buraya tıkla"
+
+msgid "Click the menu button to open settings"
+msgstr "Ayarları açmak için menü düğmesine tıkla"
+
+msgctxt "tooltip"
+msgid "Click to connect or disconnect. YouTube is read unofficially and may stop working."
+msgstr "Bağlanmak veya kesmek için tıkla. YouTube resmi olmayan yolla okunur, çalışmayı bırakabilir."
+
+msgctxt "tooltip"
+msgid "Click to connect or disconnect; hiding the chat keeps it connected. Not found? is a typo."
+msgstr "Bağlanmak/kesmek için tıkla; sohbeti gizlemek bağlantıyı korur. Bulunamadı? = yazım hatası."
+
+msgid "Click to launch"
+msgstr "Başlatmak için tıkla"
+
+#. max 34 characters
+msgid "Click to set"
+msgstr "Atamak için tıkla"
+
+#, c-format
+msgid "Climb %s in jumps"
+msgstr "Atlamalarda %s tırman"
+
+#, c-format
+msgid "Climb %s places from the first split"
+msgstr "İlk aradan itibaren %s sıra yüksel"
+
+#. max 11 characters
+msgid "Clock"
+msgstr "Saat"
+
+#. max 13 characters
+msgid "Clock format"
+msgstr "Saat biçimi"
+
+msgctxt "tooltip"
+msgid "Clock time format. 24h uses 00:00-23:59, 12h uses 1:00-12:59 AM/PM."
+msgstr "Saat biçimi. 24s 00:00-23:59, 12s 1:00-12:59 ÖÖ/ÖS kullanır."
+
+#. max 50 characters
+msgid "Close"
+msgstr "Kapat"
+
+msgid "Cloudy"
+msgstr "Bulutlu"
+
+msgid "Clu"
+msgstr "Dbr"
+
+#. max 23 characters
+msgid "Clutch"
+msgstr "Debriyaj"
+
+msgid "Collapse"
+msgstr "Daralt"
+
+#, c-format
+msgid "Collect %s penalties"
+msgstr "%s ceza topla"
+
+msgid "Collector"
+msgstr "Koleksiyoncu"
+
+msgctxt "tooltip"
+msgid "Color indicating neutral values (no change)."
+msgstr "Nötr değerleri (değişim yok) gösteren renk."
+
+msgctxt "tooltip"
+msgid "Color mode for proximity arrows. Distance fades with proximity, Position uses relative colors."
+msgstr "Yakınlık oklarının renk modu. Mesafe yakınlıkla solar, Sıra göreli renkler kullanır."
+
+msgctxt "tooltip"
+msgid "Color of the tint."
+msgstr "Tonun rengi."
+
+msgid "Colored"
+msgstr "Renkli"
+
+#. max 15 characters
+msgid "Colors"
+msgstr "Renkler"
+
+msgctxt "tooltip"
+msgid "Colours the track green where you gain and red where you lose. Default follows General."
+msgstr "Pisti kazandığın yerde yeşil, kaybettiğin yerde kırmızı boyar. Varsayılan Genel'i izler."
+
+#. max 15 characters
+msgid "Column headers"
+msgstr "Sütun başlığı"
+
+msgid "Combo & Score"
+msgstr "Kombo ve Puan"
+
+#. max 23 characters
+msgid "Combo arc & score"
+msgstr "Kombo yayı ve puan"
+
+msgid "Come back after a crash to desktop"
+msgstr "Masaüstüne çöküşten sonra geri dön"
+
+#. max 13 characters
+msgid "Compact times"
+msgstr "Kısa süreler"
+
+msgid "Companion"
+msgstr "Companion"
+
+#. max 13 characters
+msgid "Companion bg"
+msgstr "Companion af."
+
+#. max 60 characters
+msgid "Companion window"
+msgstr "Companion penceresi"
+
+msgid "Compare"
+msgstr "Karşılaştır"
+
+msgid "Compare failed - try again"
+msgstr "Karşılaştırma başarısız - tekrar dene"
+
+#, c-format
+msgid "Compare failed: %s"
+msgstr "Karşılaştırma başarısız: %s"
+
+#. max 60 characters
+msgid "Comparisons"
+msgstr "Karşılaştırmalar"
+
+#. max 11 characters
+msgid "Compass"
+msgstr "Pusula"
+
+msgid "Complete"
+msgstr "Tamamlandı"
+
+#, c-format
+msgid "Complete %s laps"
+msgstr "%s tur tamamla"
+
+#, c-format
+msgid "Complete %s laps at one track"
+msgstr "Tek pistte %s tur tamamla"
+
+#, c-format
+msgid "Complete %s laps in one session"
+msgstr "Tek seansta %s tur tamamla"
+
+msgctxt "tooltip"
+msgid "Configure controller vibration for racing events like bumps, wheelspin, and impacts."
+msgstr "Tümsek, patinaj ve darbe gibi yarış olayları için kontrolcü titreşimini ayarla."
+
+msgid "Confirm"
+msgstr "Onayla"
+
+msgid "Confirm?"
+msgstr "Onaylıyor musun?"
+
+msgid "Connect the web overlay"
+msgstr "Web overlay'i bağla"
+
+msgid "Connected"
+msgstr "Bağlı"
+
+msgid "Connecting"
+msgstr "Bağlanıyor"
+
+#, c-format
+msgid "Connecting to #%s..."
+msgstr "#%s kanalına bağlanılıyor..."
+
+#, c-format
+msgid "Connecting to %s..."
+msgstr "Bağlanılıyor: %s..."
+
+msgid "Connection lost - retrying..."
+msgstr "Bağlantı koptu - yeniden deneniyor..."
+
+msgid "Consolation Prize"
+msgstr "Teselli Ödülü"
+
+#. max 60 characters
+msgid "Content"
+msgstr "İçerik"
+
+msgctxt "tooltip"
+msgid "Continue rumble effects while the rider is crashed."
+msgstr "Sürücü düşmüşken titreşim efektlerini sürdür."
+
+#. max 12 characters
+msgid "Controller"
+msgstr "Kontrolcü"
+
+#, c-format
+msgid "Controller %d Not Connected"
+msgstr "Kontrolcü %d Bağlı Değil"
+
+msgctxt "tooltip"
+msgid "Controller artwork and the button positions that go with it."
+msgstr "Kontrolcü görseli ve ona uyan düğme konumları."
+
+#. max 56 characters
+msgid "Copy"
+msgstr "Kopyala"
+
+msgctxt "tooltip"
+msgid "Copy current profile settings to another profile."
+msgstr "Geçerli profil ayarlarını başka bir profile kopyala."
+
+#. max 23 characters
+msgid "Copy profile to"
+msgstr "Profili kopyala:"
+
+msgid "Could not check for updates."
+msgstr "Güncellemeler denetlenemedi."
+
+#, c-format
+msgid "Could not open port %d. Is it in use?"
+msgstr "%d portu açılamadı. Kullanımda mı?"
+
+#, c-format
+msgid "Could not write %s. Is it read-only?"
+msgstr "%s yazılamadı. Salt okunur mu?"
+
+msgid "Could not write to mxbmrp3\\benchmarks"
+msgstr "mxbmrp3\\benchmarks klasörüne yazılamadı"
+
+msgid "Counted achievements at Gold or max"
+msgstr "Altın veya maks. seviyedeki sayılan başarımlar"
+
+msgid "Counted achievements at Silver or max"
+msgstr "Gümüş veya maks. seviyedeki sayılan başarımlar"
+
+msgid "Counted achievements earned"
+msgstr "Kazanılan sayılan başarımlar"
+
+msgid "Counted achievements maxed out"
+msgstr "Maksimuma ulaşan sayılan başarımlar"
+
+#, c-format
+msgid "Cover %s through the air"
+msgstr "Havada %s katet"
+
+#, c-format
+msgid "Crash %s times in total"
+msgstr "Toplam %s kez kaza yap"
+
+msgid "Crash 13 times in one session"
+msgstr "Tek seansta 13 kez kaza yap"
+
+msgid "Crash counter hits 99"
+msgstr "Kaza sayacı 99'a ulaşır"
+
+#, c-format
+msgid "Crash out of a %s-point chain"
+msgstr "%s puanlık zincirden kazayla düş"
+
+msgid "Crash out of a chain of five tricks"
+msgstr "Beş hareketlik zincirden kazayla düş"
+
+msgid "Crash three times in a row in one place"
+msgstr "Aynı yerde art arda üç kez kaza yap"
+
+#. max 11 characters
+msgid "Crashes"
+msgstr "Kazalar"
+
+msgid "Crashes 0"
+msgstr "Kaza 0"
+
+msgid "Crimson"
+msgstr "Kızıl"
+
+msgid "Crowd Surfer"
+msgstr "Kalabalık Sörfçüsü"
+
+#. max 10 characters
+msgid "Current:"
+msgstr "Şu an:"
+
+msgid "Custom"
+msgstr "Özel"
+
+msgctxt "tooltip"
+msgid "Customize the visual style of all HUD elements including fonts and colors."
+msgstr "Yazı tipleri ve renkler dahil tüm HUD öğelerinin görsel stilini özelleştir."
+
+msgctxt "tooltip"
+msgid "Cut to a rider setting a session-best sector - a hot lap forming. Practice/quali only."
+msgstr "Seansın en iyi sektörünü atan sürücüye geç: hızlı tur geliyor. Yalnız antrenman/kalif."
+
+msgctxt "tooltip"
+msgid "Cut to a rider the instant they crash (or go off / stall). Highest priority."
+msgstr "Kaza yapan (veya pistten çıkan / stop eden) sürücüye anında geç. En yüksek öncelik."
+
+msgctxt "tooltip"
+msgid "Cut to a rider who just completed an on-track pass. Multi-place moves score higher."
+msgstr "Pistte geçiş yapan sürücüye geç. Birden çok sıra kazandıran geçiş daha çok puan alır."
+
+msgid "Cyan"
+msgstr "Camgöbeği"
+
+msgid "DEFAULT SETUP"
+msgstr "VARSAYILAN AYAR"
+
+msgctxt "tooltip"
+msgid "Dangers: blue flag, rider down ahead, wrong-way rider."
+msgstr "Tehlikeler: mavi bayrak, önde düşen sürücü, ters yöndeki sürücü."
+
+msgid "Dark"
+msgstr "Koyu"
+
+#. max 10 characters
+msgid "Dash"
+msgstr "Dash"
+
+#. max 10 characters
+msgid "Dash +"
+msgstr "Dash +"
+
+#. max 10 characters
+msgid "Dash -"
+msgstr "Dash -"
+
+msgid "Dash: Delta Trace"
+msgstr "Dash: Delta Eğrisi"
+
+msgid "Dash: Event Log"
+msgstr "Dash: Olay Kaydı"
+
+msgid "Dash: Flat Map"
+msgstr "Dash: Düz Harita"
+
+msgid "Dash: Fuel"
+msgstr "Dash: Yakıt"
+
+msgid "Dash: Gap Bar"
+msgstr "Dash: Fark Barı"
+
+msgid "Dash: Gap Chart"
+msgstr "Dash: Fark Grafiği"
+
+msgid "Dash: Ideal"
+msgstr "Dash: İdeal"
+
+msgid "Dash: Laps"
+msgstr "Dash: Turlar"
+
+msgid "Dash: Notices"
+msgstr "Dash: Bildirimler"
+
+msgid "Dash: Now Playing"
+msgstr "Dash: Çalan Parça"
+
+msgid "Dash: RPM"
+msgstr "Dash: RPM"
+
+msgid "Dash: Session"
+msgstr "Dash: Seans"
+
+msgid "Dash: Standings"
+msgstr "Dash: Sıralama"
+
+msgid "Dash: Telemetry"
+msgstr "Dash: Telemetri"
+
+msgid "Dash: Time"
+msgstr "Dash: Süre"
+
+msgid "Dash: Timing"
+msgstr "Dash: Zamanlama"
+
+msgctxt "tooltip"
+msgid "Data source for leaderboard records. CBR or MXB Ranked."
+msgstr "Lider tablosu rekorlarının kaynağı. CBR veya MXB Ranked."
+
+msgid "Date"
+msgstr "Tarih"
+
+#. max 23 characters
+msgid "Date recorded"
+msgstr "Kayıt tarihi"
+
+msgid "Debug"
+msgstr "Hata ayıklama"
+
+#. max 23 characters
+msgid "Debug mode (test)"
+msgstr "Hata ayıklama (test)"
+
+#. max 23 characters
+msgid "Debug values"
+msgstr "Hata ayıklama değeri"
+
+msgid "Default"
+msgstr "Varsayılan"
+
+msgid "Default (All-time PB)"
+msgstr "Varsayılan (Tüm zam. PB)"
+
+msgid "Default (Last lap)"
+msgstr "Varsayılan (Son tur)"
+
+msgid "Default (Server best)"
+msgstr "Varsayılan (Sunucu en iyisi)"
+
+msgid "Default (Session PB)"
+msgstr "Varsayılan (Seans PB)"
+
+#. max 23 characters
+msgid "Default setup"
+msgstr "Varsayılan ayar"
+
+msgid "Defaults restored"
+msgstr "Varsayılanlar geri yüklendi"
+
+#, c-format
+msgid "Defaults restored in %s"
+msgstr "Varsayılanlar geri yüklendi: %s"
+
+msgid "Deja Vu"
+msgstr "Déjà Vu"
+
+#. max 10 characters
+msgid "Delta"
+msgstr "Delta"
+
+#. max 15 characters
+msgid "Delta Trace"
+msgstr "Delta Eğrisi"
+
+msgid "Descriptions"
+msgstr "Açıklamalar"
+
+#. max 15 characters
+msgid "Detail"
+msgstr "Detay"
+
+msgctxt "tooltip"
+msgid "Detection radius in meters. Riders outside this range are not shown."
+msgstr "Algılama yarıçapı (metre). Bu menzilin dışındaki sürücüler gösterilmez."
+
+#. max 60 characters
+msgid "Developer"
+msgstr "Geliştirici"
+
+#. max 60 characters
+msgid "Diagnostics"
+msgstr "Tanılama"
+
+msgctxt "tooltip"
+msgid "Dial faces and the ranges that place the needles on them."
+msgstr "Kadranlar ve ibreleri üzerlerine yerleştiren aralıklar."
+
+msgid "Digging a Hole"
+msgstr "Çukur Kazmak"
+
+#. max 7 characters
+msgid "Digits"
+msgstr "Rakam"
+
+#. max 12 characters
+msgid "Direct GL"
+msgstr "Direct GL"
+
+msgid "Direct GL Rendering is ON."
+msgstr "Direct GL Çizimi AÇIK."
+
+msgctxt "tooltip"
+msgid "Directional arrows for nearby riders. Edge shows on screen edge, Circle shows around center."
+msgstr "Yakındaki sürücüler için yön okları. Kenar: ekran kenarında, Daire: merkez çevresinde."
+
+#. max 10 characters
+msgid "Director"
+msgstr "Yönetmen"
+
+msgid "Director's Cut"
+msgstr "Yönetmen Kurgusu"
+
+msgid "Discord"
+msgstr "Discord"
+
+#. max 60 characters
+msgid "Display"
+msgstr "Ekran"
+
+msgctxt "tooltip"
+msgid "Display mode. Graphs shows visual meters, Numbers shows text values, Both shows both."
+msgstr "Gösterim modu. Grafikler görsel ölçer, Sayılar metin değer, İkisi her ikisini gösterir."
+
+#. max 15 characters
+msgid "Display order"
+msgstr "Gösterim sırası"
+
+msgctxt "tooltip"
+msgid "Display order. Oldest shows oldest laps at top, Newest shows newest at top."
+msgstr "Gösterim sırası. Eski: eski turlar üstte, Yeni: yeni turlar üstte."
+
+msgctxt "tooltip"
+msgid "Display your track, session, and lap progress in Discord's Rich Presence."
+msgstr "Pistini, seansını ve tur ilerlemeni Discord Rich Presence'ta göster."
+
+msgctxt "tooltip"
+msgid "Displays your theoretical best lap time calculated from your fastest individual sectors."
+msgstr "En hızlı sektörlerinden hesaplanan teorik en iyi tur zamanını gösterir."
+
+#. max 15 characters
+msgid "Distance"
+msgstr "Mesafe"
+
+msgctxt "tooltip"
+msgid "Distance at which proximity arrows appear."
+msgstr "Yakınlık oklarının belirdiği mesafe."
+
+#. max 21 characters
+msgid "Docs & guides"
+msgstr "Belgeler ve rehberler"
+
+msgid "Down"
+msgstr "Aşağı"
+
+msgid "Download"
+msgstr "İndir"
+
+msgctxt "tooltip"
+msgid "Download and install the new version. Restart the game to apply it."
+msgstr "Yeni sürümü indir ve kur. Uygulamak için oyunu yeniden başlat."
+
+msgctxt "tooltip"
+msgid "Draw a dot at each lap's point along every line."
+msgstr "Her çizgide, her turun noktasına bir nokta çiz."
+
+msgctxt "tooltip"
+msgid "Draw the HUD in the game's OpenGL context, not the engine. Off/on retries a Failed."
+msgstr "HUD'u motor yerine oyunun OpenGL bağlamında çiz. Kapat/aç, Başarısız'ı yeniden dener."
+
+msgctxt "tooltip"
+msgid "Drop a segment boundary: 2 points time a section, close the loop for a full lap."
+msgstr "Bir bölüm sınırı bırak: 2 nokta bir bölümü ölçer, döngüyü kapatmak tam turu ölçer."
+
+#. max 13 characters
+msgid "Drop shadow"
+msgstr "Gölge"
+
+#. max 15 characters
+msgid "Drops"
+msgstr "Sıra kaybı"
+
+msgctxt "tooltip"
+msgid "Drops the leading 0: for times under a minute. The web overlay also uses tenths for gaps."
+msgstr "Baştaki 0'ı atar: bir dakikanın altındaki süreler için. Web overlay farklarda ondalık da kullanır."
+
+#. max 15 characters
+msgid "Duration"
+msgstr "Süre"
+
+msgid "ECU"
+msgstr "ECU"
+
+#. max 60 characters
+msgid "Each page follows the settings of the HUD it comes from."
+msgstr "Her sayfa geldiği HUD'un ayarlarını izler."
+
+msgid "Early Access"
+msgstr "Erken Erişim"
+
+msgid "Earned"
+msgstr "Kazanıldı"
+
+msgctxt "tooltip"
+msgid "Earned by trading in a completed achievement ladder. Texture picks the badge."
+msgstr "Tamamlanmış bir başarım merdiveni takas edilerek kazanılır. Doku rozeti seçer."
+
+msgid "Edge"
+msgstr "Kenar"
+
+msgid "Edit the settings file by hand"
+msgstr "Ayar dosyasını elle düzenle"
+
+msgid "Edit the stats file by hand"
+msgstr "İstatistik dosyasını elle düzenle"
+
+#. max 15 characters
+msgid "Effect profile"
+msgstr "Efekt profili"
+
+#. max 15 characters
+msgid "Effects"
+msgstr "Efektler"
+
+#. max 15 characters
+msgid "Emote names"
+msgstr "Emote adları"
+
+msgid "Enable auto-check or click Check Now."
+msgstr "Oto-denetimi aç veya Şimdi Denetle'ye tıkla."
+
+msgid "Enable developer mode"
+msgstr "Geliştirici modunu aç"
+
+msgctxt "tooltip"
+msgid "Enable or disable controller vibration for all events."
+msgstr "Tüm olaylar için kontrolcü titreşimini aç veya kapat."
+
+msgctxt "tooltip"
+msgid "Enable the auto-director. Acts only while spectating or watching a replay."
+msgstr "Oto-yönetmeni aç. Yalnız izlerken veya tekrar izlerken çalışır."
+
+msgctxt "tooltip"
+msgid "Enable the helmet overlay."
+msgstr "Kask katmanını aç."
+
+#. max 15 characters
+msgid "Enabled"
+msgstr "Etkin"
+
+msgid "Endo"
+msgstr "Endo"
+
+msgid "English"
+msgstr "English"
+
+msgid "Enter your Twitch channel name above to connect."
+msgstr "Bağlanmak için yukarıya Twitch kanal adını yaz."
+
+msgid "Enter your YouTube @handle above to connect."
+msgstr "Bağlanmak için yukarıya YouTube @kullanıcı adını yaz."
+
+msgid "Error"
+msgstr "Hata"
+
+msgid "Error: "
+msgstr "Hata: "
+
+msgid "Est"
+msgstr "Thn"
+
+#. max 10 characters
+msgid "Event Log"
+msgstr "Olay Kaydı"
+
+#. max 60 characters
+msgid "Events"
+msgstr "Olaylar"
+
+#. max 15 characters
+msgid "Events to show"
+msgstr "Gösterilen olay"
+
+msgctxt "tooltip"
+msgid "Every rider along the lap as the Gap Bar's markers, the race leader crowned."
+msgstr "Fark Barı işaretleri olarak tur boyunca her sürücü; yarış lideri taçlı."
+
+#. max 49 characters
+msgid "Everything"
+msgstr "Her şey"
+
+msgid "Expand"
+msgstr "Genişlet"
+
+msgctxt "tooltip"
+msgid "Extra rows below the comparisons: position, lap, time left, session format, fuel, server and track."
+msgstr "Karşılaştırmaların altında ek satırlar: sıra, tur, kalan süre, seans formatı, yakıt, sunucu ve pist."
+
+msgid "Extract"
+msgstr "Çıkar"
+
+msgid "FASTEST LAP"
+msgstr "EN HIZLI TUR"
+
+msgid "FINAL LAP"
+msgstr "SON TUR"
+
+msgid "FINISHED"
+msgstr "BİTİRDİ"
+
+#, c-format
+msgid "FINISHED %d%s"
+msgstr "%d%s BİTİRDİ"
+
+#. max 10 characters
+msgid "FMX"
+msgstr "FMX"
+
+msgid "FPS"
+msgstr "FPS"
+
+msgid "Factory Fresh"
+msgstr "Fabrikadan Yeni"
+
+msgid "Failed"
+msgstr "Başarısız"
+
+#, c-format
+msgid "Fast sector %s"
+msgstr "Hızlı sektör %s"
+
+msgctxt "tooltip"
+msgid "Faster times, improvements, and gains."
+msgstr "Daha hızlı süreler, iyileşmeler ve kazanımlar."
+
+#. max 10 characters
+msgid "Fastest"
+msgstr "En hızlı"
+
+#. max 15 characters
+msgid "Fastest lap"
+msgstr "En hızlı tur"
+
+#, c-format
+msgid "Fastest lap %s"
+msgstr "En hızlı tur %s"
+
+msgid "Fastest lap, and off the podium with it"
+msgstr "En hızlı tur, üstelik podyum dışında"
+
+#. max 15 characters
+msgid "Fastest laps"
+msgstr "En hızlı turlar"
+
+#. max 15 characters
+msgid "Fastest sectors"
+msgstr "En hızlı sektör"
+
+msgid "Favorite Spot"
+msgstr "Favori Nokta"
+
+msgid "Fbr"
+msgstr "ÖFr"
+
+#. max 43 characters
+msgid "Feed of race events"
+msgstr "Yarış olayları akışı"
+
+#. max 15 characters
+msgid "Fender"
+msgstr "Çamurluk"
+
+msgctxt "tooltip"
+msgid "Fender onboards to allow: Off, Front (rider ahead), Rear (a chaser), or Both."
+msgstr "İzin verilen çamurluk kameraları: Kapalı, Ön (öndeki sürücü), Arka (takipçi) veya İkisi."
+
+#. max 15 characters
+msgid "Field cutoff"
+msgstr "Alan sınırı"
+
+msgid "Filter"
+msgstr "Filtre"
+
+#. max 15 characters
+msgid "Filter outliers"
+msgstr "Aykırıyı ele"
+
+msgid "Final"
+msgstr "Final"
+
+#. max 15 characters
+msgid "Final lap"
+msgstr "Son tur"
+
+#, c-format
+msgid "Final lap %s"
+msgstr "Son tur %s"
+
+#. max 12 characters
+msgid "Find"
+msgstr "Bul"
+
+msgctxt "tooltip"
+msgid "Find a setting by its name, its tab, or a word from its description. Esc clears it."
+msgstr "Bir ayarı adıyla, sekmesiyle veya açıklamasındaki bir sözcükle bul. Esc temizler."
+
+#, c-format
+msgid "Finish %s races"
+msgstr "%s yarış bitir"
+
+#, c-format
+msgid "Finish %s races in the rain"
+msgstr "Yağmurda %s yarış bitir"
+
+#, c-format
+msgid "Finish %s races on a 20+ rider grid"
+msgstr "20+ sürücülü gridde %s yarış bitir"
+
+#, c-format
+msgid "Finish %s races where a quarter quit"
+msgstr "Dörtte birin bıraktığı %s yarış bitir"
+
+#, c-format
+msgid "Finish %s races without crashing"
+msgstr "Kaza yapmadan %s yarış bitir"
+
+msgid "Finish a race"
+msgstr "Bir yarış bitir"
+
+msgid "Finish a race at least a lap down"
+msgstr "Bir yarışı en az bir tur geride bitir"
+
+msgid "Finish a race in the rain"
+msgstr "Yağmurda bir yarış bitir"
+
+msgid "Finish a race nobody else started"
+msgstr "Kimsenin başlamadığı bir yarışı bitir"
+
+#, c-format
+msgid "Finish a race on 1% of a tank or less"
+msgstr "Bir yarışı deponun 1% oranı veya daha azıyla bitir"
+
+msgid "Finish a race on a 20+ rider grid"
+msgstr "20+ sürücülü gridde bir yarış bitir"
+
+msgid "Finish a race where a quarter quit"
+msgstr "Dörtte birin bıraktığı bir yarışı bitir"
+
+msgid "Finish a race without crashing"
+msgstr "Kaza yapmadan bir yarış bitir"
+
+#. max 15 characters
+msgid "Finish lock"
+msgstr "Bitiş kilidi"
+
+msgid "Finish on the podium"
+msgstr "Podyumda bitir"
+
+#, c-format
+msgid "Finish on the podium %s times"
+msgstr "%s kez podyumda bitir"
+
+#. max 15 characters
+msgid "Finished"
+msgstr "Bitirdi"
+
+#, c-format
+msgid "Finishing %s"
+msgstr "Bitiriyor: %s"
+
+msgctxt "tooltip"
+msgid "First-person helmet overlay with lean tilt and vibration."
+msgstr "Yatma eğimi ve titreşimli birinci şahıs kask katmanı."
+
+msgid "Five laps in a row, all within a tenth"
+msgstr "Art arda beş tur, hepsi saniyenin onda biri içinde"
+
+#. max 15 characters
+msgid "Flat Map"
+msgstr "Düz Harita"
+
+msgid "Flipper"
+msgstr "Takla Ustası"
+
+msgid "Follow"
+msgstr "İzle"
+
+msgctxt "tooltip"
+msgid "Follow a rider tumbling down the order - losing several places fast. Below a real battle."
+msgstr "Sıralamada hızla düşen sürücüyü izle - kısa sürede birkaç sıra kaybeden. Gerçek düellodan sonra gelir."
+
+msgctxt "tooltip"
+msgid "Follow shows more track the faster you go: Range when slow, up to twice it (500m at most) at speed."
+msgstr "İzle: hızlandıkça daha çok pist gösterir; yavaşken Menzil, hızlıyken iki katına dek (en çok 500 m)."
+
+#, c-format
+msgid "Following %s"
+msgstr "İzlenen: %s"
+
+msgctxt "tooltip"
+msgid "Font used for HUD titles."
+msgstr "HUD başlıkları için yazı tipi."
+
+msgctxt "tooltip"
+msgid "Font used for column headers and row/legend labels across HUDs."
+msgstr "HUD'lardaki sütun başlıkları ve satır/açıklama etiketleri için yazı tipi."
+
+msgctxt "tooltip"
+msgid "Font used for normal text."
+msgstr "Normal metin için yazı tipi."
+
+msgctxt "tooltip"
+msgid "Font used for numeric values (times, gaps, telemetry)."
+msgstr "Sayısal değerler (süreler, farklar, telemetri) için yazı tipi."
+
+msgctxt "tooltip"
+msgid "Font used for pitboard handwritten text."
+msgstr "Pit tabelası el yazısı için yazı tipi."
+
+msgctxt "tooltip"
+msgid "Font used for small text and footnotes."
+msgstr "Küçük metin ve dipnotlar için yazı tipi."
+
+#. max 60 characters
+msgid "Fonts"
+msgstr "Yazı tipleri"
+
+msgid "Format"
+msgstr "Format"
+
+#. max 23 characters
+msgid "Format & state"
+msgstr "Format ve durum"
+
+msgid "Frame Perfect"
+msgstr "Kare Kusursuz"
+
+msgid "Frame Rate"
+msgstr "Kare Hızı"
+
+#. max 43 characters
+msgid "Frame rate and plugin time"
+msgstr "Kare hızı ve eklenti süresi"
+
+#. max 23 characters
+msgid "Frames per second"
+msgstr "Saniyedeki kare"
+
+msgctxt "tooltip"
+msgid "Freestyle trick detection with scoring, chain combos, and rotation visualization."
+msgstr "Puanlama, zincir kombolar ve dönüş görselleştirmeli serbest stil hareket algılama."
+
+#. max 12 characters
+msgid "Freeze"
+msgstr "Dondur"
+
+msgid "Frequent Flyer"
+msgstr "Sık Uçan Yolcu"
+
+msgid "Fresh Coat"
+msgstr "Taze Boya"
+
+#. max 10 characters
+msgid "Friends"
+msgstr "Arkadaşlar"
+
+#, c-format
+msgid "From %s"
+msgstr "Kimden: %s"
+
+msgid "Front"
+msgstr "Ön"
+
+#. max 23 characters
+msgid "Front brake"
+msgstr "Ön fren"
+
+#. max 23 characters
+msgid "Front suspension"
+msgstr "Ön süspansiyon"
+
+msgid "Fsu"
+msgstr "ÖSü"
+
+msgid "Fue"
+msgstr "Ykt"
+
+#. max 11 characters
+msgid "Fuel"
+msgstr "Yakıt"
+
+#. max 15 characters
+msgid "Fuel laps left"
+msgstr "Yakıt (tur)"
+
+#. max 13 characters
+msgid "Fuel unit"
+msgstr "Yakıt birimi"
+
+msgid "Full lap"
+msgstr "Tam tur"
+
+msgid "Full release notes are on GitHub."
+msgstr "Sürüm notlarının tamamı GitHub'da."
+
+#. max 11 characters
+msgid "G-Force"
+msgstr "G-Kuvveti"
+
+msgctxt "tooltip"
+msgid "G-G diagram plotting lateral vs longitudinal G-force with a peak marker."
+msgstr "Yanal ve boylamsal G-kuvvetini tepe işaretiyle çizen G-G diyagramı."
+
+msgid "GAME OVER - Click to exit"
+msgstr "OYUN BİTTİ - Çıkmak için tıkla"
+
+#. max 15 characters
+msgid "Gained/lost"
+msgstr "Kazanılan/kayıp"
+
+#. max 7 characters
+msgid "Gamepad"
+msgstr "Gamepad"
+
+#. max 15 characters
+msgid "Gap"
+msgstr "Fark"
+
+#. max 10 characters
+msgid "Gap Bar"
+msgstr "Fark Barı"
+
+#. max 15 characters
+msgid "Gap Chart"
+msgstr "Fark Grafiği"
+
+msgid "Gap Jumper"
+msgstr "Boşluk Atlayan"
+
+msgctxt "tooltip"
+msgid "Gap chart: seconds behind the leader (best lap in practice/qual)."
+msgstr "Fark grafiği: liderin kaç saniye gerisinde (antrenman/kalif.'te en iyi tur)."
+
+#. max 15 characters
+msgid "Gap column"
+msgstr "Fark sütunu"
+
+#. max 23 characters
+msgid "Gap compare"
+msgstr "Fark karşılaştırma"
+
+#. max 23 characters
+msgid "Gap freeze"
+msgstr "Fark dondurma"
+
+#. max 13 characters
+msgid "Gap reference"
+msgstr "Fark ref."
+
+msgctxt "tooltip"
+msgid "Gap reference: Leader shows gaps to P1, Player relative to you, Auto alternates the two."
+msgstr "Fark referansı: Lider P1'e farkı, Oyuncu sana göre, Oto ikisini dönüşümlü gösterir."
+
+#. max 23 characters
+msgid "Gap row"
+msgstr "Fark satırı"
+
+msgid "Gap to Best Lap"
+msgstr "En İyi Tura Fark"
+
+msgid "Gap to Leader"
+msgstr "Lidere Fark"
+
+msgid "Gaps"
+msgstr "Farklar"
+
+#. max 60 characters
+msgid "Gauges"
+msgstr "Göstergeler"
+
+msgid "Gea"
+msgstr "Vts"
+
+#. max 11 characters
+msgid "Gear"
+msgstr "Vites"
+
+#. max 23 characters
+msgid "Gear indicator"
+msgstr "Vites göstergesi"
+
+#. max 9 characters
+msgid "General"
+msgstr "Genel"
+
+msgid "Ghost"
+msgstr "Hayalet"
+
+msgctxt "tooltip"
+msgid "Ghost: your best lap marker. Opponents: other riders. Both: all of them. Off: no markers at all."
+msgstr "Hayalet: en iyi tur işaretin. Rakipler: diğer sürücüler. İkisi: hepsi. Kapalı: hiç işaret yok."
+
+msgid "GitHub Releases"
+msgstr "GitHub Sürümleri"
+
+#. max 16 characters
+msgid "Global"
+msgstr "Küresel"
+
+msgctxt "tooltip"
+msgid "Global settings including unit preferences, profiles, and configuration options."
+msgstr "Birim tercihleri, profiller ve yapılandırma seçenekleri dahil genel ayarlar."
+
+msgid "Globetrotter"
+msgstr "Dünya Gezgini"
+
+#. max 13 characters
+msgid "Glow"
+msgstr "Parıltı"
+
+#, c-format
+msgid "Go %s races in a row penalty-free"
+msgstr "Art arda %s yarışı cezasız tamamla"
+
+msgid "Go down with three others"
+msgstr "Üç kişiyle birlikte düş"
+
+msgid "Goggles"
+msgstr "Gözlük"
+
+msgid "Gold"
+msgstr "Altın"
+
+msgid "Gold Sweep"
+msgstr "Altın Süpürme"
+
+msgid "Good Vibrations"
+msgstr "İyi Titreşimler"
+
+msgid "Grand Tour"
+msgstr "Büyük Tur"
+
+#. max 23 characters
+msgid "Graph height"
+msgstr "Grafik yüksekliği"
+
+msgid "Graphite"
+msgstr "Grafit"
+
+msgid "Graphs"
+msgstr "Grafikler"
+
+msgid "Gray"
+msgstr "Gri"
+
+msgid "Green"
+msgstr "Yeşil"
+
+#. max 15 characters
+msgid "Grid lines"
+msgstr "Izgara çizgisi"
+
+#. max 12 characters
+msgid "Grid snap"
+msgstr "Izgara hiza"
+
+msgid "HAZARD AHEAD"
+msgstr "ÖNDE TEHLİKE"
+
+#. max 13 characters
+msgid "HUD display"
+msgstr "HUD gösterimi"
+
+msgctxt "tooltip"
+msgid "HUDs, notices and this menu fade and slide in and out, and the gear and odometer roll. Off draws them as before."
+msgstr "HUD'lar, bildirimler ve bu menü kayarak açılıp kapanır; vites ve sayaç yuvarlanır. Kapalı: eskisi gibi."
+
+msgid "Hang Time"
+msgstr "Havada Kalış"
+
+#. max 15 characters
+msgid "Hazards"
+msgstr "Tehlikeler"
+
+#, c-format
+msgid "Hear %s spotter calls"
+msgstr "%s spotter anonsu dinle"
+
+#. max 11 characters
+msgid "Heavy"
+msgstr "Ağır"
+
+msgctxt "tooltip"
+msgid "Height of EACH chart, in text rows -- how tall the panel is, not how much data it holds."
+msgstr "HER grafiğin yüksekliği, metin satırı olarak: panelin boyu, tuttuğu veri miktarı değil."
+
+msgctxt "tooltip"
+msgid "Height of each graph, in text rows. Resizes the panel without scaling its text."
+msgstr "Her grafiğin yüksekliği, metin satırı olarak. Paneli yazıyı ölçeklemeden boyutlandırır."
+
+msgctxt "tooltip"
+msgid "Height of the graph, in text rows. Resizes the panel without scaling its text."
+msgstr "Grafiğin yüksekliği, metin satırı olarak. Paneli yazıyı ölçeklemeden boyutlandırır."
+
+#. max 10 characters
+msgid "Helmet"
+msgstr "Kask"
+
+msgid "Helmet 1"
+msgstr "Kask 1"
+
+msgid "Helmet 2"
+msgstr "Kask 2"
+
+msgctxt "tooltip"
+msgid "Helmet views to allow: Off, Helmet 1 (POV), Helmet 2 (side), or Both. All forward-facing."
+msgstr "İzin verilen kask görünümleri: Kapalı, Kask 1 (POV), Kask 2 (yan) veya İkisi. Hepsi ileri bakar."
+
+#. max 21 characters
+msgid "Help"
+msgstr "Yardım"
+
+#. max 15 characters
+msgid "Hide DNS riders"
+msgstr "DNS'leri gizle"
+
+msgctxt "tooltip"
+msgid "Hide bot commands: messages starting with !."
+msgstr "Bot komutlarını gizle: ! ile başlayan mesajlar."
+
+#. max 15 characters
+msgid "Hide bots"
+msgstr "Botları gizle"
+
+#. max 15 characters
+msgid "Hide commands"
+msgstr "Komutları gizle"
+
+#. max 15 characters
+msgid "Hide links"
+msgstr "Linkleri gizle"
+
+msgctxt "tooltip"
+msgid "Hide messages from common chat bots such as Nightbot and StreamElements."
+msgstr "Nightbot ve StreamElements gibi yaygın sohbet botlarının mesajlarını gizle."
+
+msgctxt "tooltip"
+msgid "Hide messages that contain a link."
+msgstr "Link içeren mesajları gizle."
+
+msgctxt "tooltip"
+msgid "Hide riders who did not start (DNS) from standings, position counts, and other displays."
+msgstr "Başlamayan (DNS) sürücüleri sıralamadan, sıra sayılarından ve diğer gösterimlerden gizle."
+
+msgctxt "tooltip"
+msgid "History of your recent lap times with sector breakdowns. Shows lap-by-lap performance."
+msgstr "Son tur sürelerinin sektör dökümüyle geçmişi. Tur tur performansı gösterir."
+
+#, c-format
+msgid "Hit %sFPS"
+msgstr "%sFPS'e ulaş"
+
+msgid "Holeshot, every lap led, fastest lap, win"
+msgstr "Holeshot, her tur önde, en hızlı tur, galibiyet"
+
+msgid "Holeshot-ish"
+msgstr "Holeshot Sayılır"
+
+msgid "Homebrew"
+msgstr "Ev Yapımı"
+
+msgid "Hot Lapper"
+msgstr "Hızlı Turcu"
+
+#. max 12 characters
+msgid "Hotkeys"
+msgstr "Kısayollar"
+
+msgctxt "tooltip"
+msgid "How close (seconds) two riders must be to count as a battle. Used by camera and overlay."
+msgstr "İki sürücünün düello sayılması için gereken yakınlık (saniye). Kamera ve overlay kullanır."
+
+msgctxt "tooltip"
+msgid "How close a rider behind must be to be called. Shorter means fewer, later warnings."
+msgstr "Arkadaki sürücünün anons edilmesi için gereken yakınlık. Kısa: daha az, daha geç uyarı."
+
+msgctxt "tooltip"
+msgid "How far ACROSS the track a rider still counts as near. Wider is ignored, as the Radar ignores it."
+msgstr "Pistin ENİNE ne kadar uzaktaki sürücü yakın sayılır. Fazlası, Radar gibi yok sayılır."
+
+msgctxt "tooltip"
+msgid "How far AHEAD still counts. Keep it short: you can see those riders. 0 = none."
+msgstr "ÖNDE ne kadar uzak sayılır. Kısa tut: o sürücüleri görebilirsin. 0 = hiç."
+
+msgctxt "tooltip"
+msgid "How far BEHIND you a rider still counts as alongside - your blind spot."
+msgstr "Senin ne kadar ARKANDAKİ sürücü yanında sayılır - kör noktan."
+
+msgctxt "tooltip"
+msgid "How far the helmet moves when hitting bumps. Negative inverts the direction."
+msgstr "Tümseklerde kaskın ne kadar oynadığı. Negatif yönü ters çevirir."
+
+msgctxt "tooltip"
+msgid "How long Gap Bar, Lap Log and Timing hold an official gap when set to Default."
+msgstr "Varsayılan ayarda Fark Barı, Tur Kaydı ve Zamanlama resmi farkı ne kadar tutar."
+
+msgctxt "tooltip"
+msgid "How long each toast stays on screen."
+msgstr "Her bildirimin ekranda kalma süresi."
+
+msgctxt "tooltip"
+msgid "How long the chat stays visible after the last message in auto-hide mode."
+msgstr "Oto-gizle modunda sohbetin son mesajdan sonra görünür kalma süresi."
+
+msgctxt "tooltip"
+msgid "How long the gap holds the official gap after each split and the line. Off keeps it live. Default follows General."
+msgstr "Fark her aradan ve çizgiden sonra resmi farkı ne kadar tutar. Kapalı: canlı. Varsayılan Genel'i izler."
+
+msgctxt "tooltip"
+msgid "How long the gap row holds the official gap after each split and the line. Default follows General."
+msgstr "Fark satırı her aradan ve çizgiden sonra resmi farkı ne kadar tutar. Varsayılan Genel'i izler."
+
+msgctxt "tooltip"
+msgid "How long the impact vignette takes to clear after the hardest hits; lighter hits clear sooner."
+msgstr "Darbe vinyetinin en sert darbelerden sonra kaybolma süresi; hafif darbeler daha çabuk geçer."
+
+msgctxt "tooltip"
+msgid "How long the log stays visible after the last event in auto-hide mode."
+msgstr "Oto-gizle modunda kaydın son olaydan sonra görünür kalma süresi."
+
+msgctxt "tooltip"
+msgid "How long timed notices stay up. Wrong-way, blue-flag and hazard notices last while active."
+msgstr "Süreli bildirimlerin kalma süresi. Ters yön, mavi bayrak ve tehlike etkin oldukça kalır."
+
+msgctxt "tooltip"
+msgid "How long to hold a story shot (crash / fastest lap) before cutting back."
+msgstr "Hikâye çekiminde (kaza / en hızlı tur) geri kesmeden önce ne kadar kalınacağı."
+
+msgctxt "tooltip"
+msgid "How long to hold the split/lap time and its gaps after a split. Off shows no gaps. Default follows General."
+msgstr "Bir aradan sonra ara/tur zamanı ve farkların tutulma süresi. Kapalı: fark yok. Varsayılan Genel'i izler."
+
+msgctxt "tooltip"
+msgid "How much the helmet tilts with lean angle."
+msgstr "Kaskın yatma açısıyla ne kadar eğildiği."
+
+msgctxt "tooltip"
+msgid "How often to dip into an onboard camera: every Nth cut. Needs Max shot on; Off = always trackside."
+msgstr "Araç kamerasına ne sıklıkla geçilir: her N. kesmede bir. Maks. çekim gerekir; Kapalı = hep pist kenarı."
+
+msgctxt "tooltip"
+msgid "How responsive vibration is to small bumps."
+msgstr "Titreşimin küçük tümseklere ne kadar duyarlı olduğu."
+
+msgctxt "tooltip"
+msgid "Icon shape for proximity warning arrows."
+msgstr "Yakınlık uyarı oklarının simge şekli."
+
+msgctxt "tooltip"
+msgid "Icon shape for rider markers on the map. Off hides non-tracked riders."
+msgstr "Haritadaki sürücü işaretlerinin simge şekli. Kapalı: izlenmeyenleri gizler."
+
+msgctxt "tooltip"
+msgid "Icon shape for rider markers on the radar."
+msgstr "Radardaki sürücü işaretlerinin simge şekli."
+
+msgctxt "tooltip"
+msgid "Icon shape used for rider markers on the bar."
+msgstr "Bardaki sürücü işaretlerinin simge şekli."
+
+#. max 15 characters
+msgid "Ideal"
+msgstr "İdeal"
+
+#. max 10 characters
+msgid "Ideal Lap"
+msgstr "İdeal Tur"
+
+#. max 60 characters
+msgid "If MXBMRP3 makes the game a little better for you, or"
+msgstr "MXBMRP3 oyunu senin için biraz daha iyi yaptıysa ya da"
+
+msgctxt "tooltip"
+msgid "Ignore battles/incidents/overtakes past this position. Off = no limit. Gates the overlay."
+msgstr "Bu sıradan sonraki düello/olay/geçişleri yok say. Kapalı = sınırsız. Overlay'i de sınırlar."
+
+#. max 60 characters
+msgid "Impact"
+msgstr "Darbe"
+
+#. max 23 characters
+msgid "Impact vignette"
+msgstr "Darbe vinyeti"
+
+msgid "In Progress"
+msgstr "Sürüyor"
+
+msgctxt "tooltip"
+msgid "In races. Off: at the splits; Gaps: live gaps; Both: live gaps and order, also on the Position widget and Dash."
+msgstr "Yarışlarda. Kapalı: aralarda; Farklar: canlı farklar; İkisi: canlı fark ve sıra, Sıra widget'ı ve Dash'te de."
+
+msgid "In-game"
+msgstr "Oyun içi"
+
+#, c-format
+msgid "Incident %s"
+msgstr "Olay %s"
+
+#. max 15 characters
+msgid "Incidents"
+msgstr "Olaylar"
+
+#. max 23 characters
+msgid "Info"
+msgstr "Bilgi"
+
+msgctxt "tooltip"
+msgid "Info board at pit area or timing points. Shows position, lap times, and gap comparisons."
+msgstr "Pit alanında veya zamanlama noktalarında bilgi tabelası. Sıra, tur süreleri ve fark gösterir."
+
+msgid "Input"
+msgstr "Girdi"
+
+msgid "Install"
+msgstr "Kur"
+
+msgid "Install Update"
+msgstr "Güncellemeyi Kur"
+
+msgid "Install a pack of any type"
+msgstr "Herhangi türde bir paket kur"
+
+msgid "Install an update in-game"
+msgstr "Oyun içinden bir güncelleme kur"
+
+#. max 60 characters
+msgid "Integrations"
+msgstr "Entegrasyonlar"
+
+msgctxt "tooltip"
+msgid "Interactive elements, hover highlights, and the player/spectated rider's name in standings."
+msgstr "Etkileşimli öğeler, üzerine gelme vurguları ve sıralamada oyuncu/izlenen sürücü adı."
+
+msgid "Interior Decorator"
+msgstr "İç Mimar"
+
+#. max 48 characters
+msgid "Iron Butt"
+msgstr "Demir Popo"
+
+#. max 60 characters
+msgid "It is free, with no paid tier, no locked features and no"
+msgstr "Ücretsizdir: ücretli sürüm, kilitli özellik ve reklam"
+
+#. max 60 characters
+msgid "It started in 2024, after development of MaxHUD, the"
+msgstr "2024'te, topluluğun uzun soluklu HUD'u MaxHUD'un"
+
+#. max 60 characters
+msgid "Its behavior will change based on your feedback."
+msgstr "Davranışı geri bildirimlerine göre değişecek."
+
+#, c-format
+msgid "Join %s different servers"
+msgstr "%s farklı sunucuya katıl"
+
+msgid "Joining"
+msgstr "Katılıyor"
+
+msgid "Just Me Then"
+msgstr "Demek Sadece Ben"
+
+msgid "Keep"
+msgstr "Koru"
+
+msgctxt "tooltip"
+msgid "Keep emote names such as Kappa as text. Off drops them; emoji never render."
+msgstr "Kappa gibi emote adlarını yazı olarak tut. Kapalı onları atar; emoji hiç çizilmez."
+
+#. max 60 characters
+msgid "Keeping MXBMRP3 open source is deliberate: it can be"
+msgstr "MXBMRP3'ün açık kaynak olması bilinçli bir tercih:"
+
+#. max 9 characters
+msgid "Keyboard"
+msgstr "Klavye"
+
+msgctxt "tooltip"
+msgid "Keyboard and controller bindings. Click a field to rebind it (ESC cancels), right-click to clear it."
+msgstr "Klavye ve kontrolcü atamaları. Yeniden atamak için alana tıkla (ESC iptal), silmek için sağ tıkla."
+
+msgid "Keymaster"
+msgstr "Anahtar Ustası"
+
+#, c-format
+msgid "L%d  SCORE: %d"
+msgstr "S%d  PUAN: %d"
+
+msgid "LAPPER AHEAD"
+msgstr "ÖNDE TUR GERİDEKİ"
+
+msgid "LEADER"
+msgstr "LİDER"
+
+msgctxt "tooltip"
+msgid "Label each line with the rider's race number at its end."
+msgstr "Her çizginin ucuna sürücünün yarış numarasını yaz."
+
+msgctxt "tooltip"
+msgid "Labels next to riders. Position shows P1/P2, Race number shows numbers, Both shows both."
+msgstr "Sürücülerin yanındaki etiketler. Sıra P1/P2, Yarış no numaraları, İkisi her ikisini gösterir."
+
+msgctxt "tooltip"
+msgid "Labels shown next to markers. Position, race number, or both."
+msgstr "İşaretlerin yanındaki etiketler. Sıra, yarış numarası veya ikisi."
+
+#, c-format
+msgid "Land %s backflips"
+msgstr "%s backflip yap"
+
+#, c-format
+msgid "Land %s freestyle tricks"
+msgstr "%s serbest stil hareket yap"
+
+#, c-format
+msgid "Land %s frontflips"
+msgstr "%s frontflip yap"
+
+#, c-format
+msgid "Land %s kinds of freestyle trick"
+msgstr "%s farklı serbest stil hareket yap"
+
+#, c-format
+msgid "Land %s oppos"
+msgstr "%s oppo yap"
+
+#, c-format
+msgid "Land %s scrubs"
+msgstr "%s scrub yap"
+
+#, c-format
+msgid "Land %s turn downs"
+msgstr "%s turn down yap"
+
+#, c-format
+msgid "Land %s whips"
+msgstr "%s whip yap"
+
+#, c-format
+msgid "Land a %s endo or stoppie"
+msgstr "%s endo veya stoppie yap"
+
+#, c-format
+msgid "Land a %s jump"
+msgstr "%s atlayış yap"
+
+#, c-format
+msgid "Land a %s wheelie"
+msgstr "%s wheelie yap"
+
+msgid "Land a backflip"
+msgstr "Bir backflip yap"
+
+msgid "Land a frontflip"
+msgstr "Bir frontflip yap"
+
+msgid "Land a turn down"
+msgstr "Bir turn down yap"
+
+msgid "Land an oppo"
+msgstr "Bir oppo yap"
+
+msgid "Language"
+msgstr "Dil"
+
+msgctxt "tooltip"
+msgid "Language of the menus and HUDs. System follows Windows; untranslated text stays English."
+msgstr "Menülerin ve HUD'ların dili. Sistem Windows'u izler; çevrilmemiş metin İngilizce kalır."
+
+#. max 11 characters
+msgid "Lap"
+msgstr "Tur"
+
+#, c-format
+msgid "Lap %d/%d"
+msgstr "Tur %d/%d"
+
+msgid "Lap Chart"
+msgstr "Tur Grafiği"
+
+#. max 48 characters
+msgid "Lap Counter"
+msgstr "Tur Sayacı"
+
+#. max 10 characters
+msgid "Lap Log"
+msgstr "Tur Kaydı"
+
+msgctxt "tooltip"
+msgid "Lap and sector timing display with comparisons to session best and personal records."
+msgstr "Seans en iyisi ve kişisel rekorlarla karşılaştırmalı tur ve sektör zamanlaması."
+
+#. max 15 characters
+msgid "Lap chart"
+msgstr "Tur grafiği"
+
+msgctxt "tooltip"
+msgid "Lap chart: running order over the laps, one row per rider. Shows overtakes."
+msgstr "Tur grafiği: turlar boyunca sıralama, sürücü başına bir satır. Geçişleri gösterir."
+
+#. max 15 characters
+msgid "Lap delta"
+msgstr "Tur deltası"
+
+#. max 15 characters
+msgid "Lap dots"
+msgstr "Tur noktaları"
+
+#. max 23 characters
+msgid "Lap number"
+msgstr "Tur numarası"
+
+msgctxt "tooltip"
+msgid "Lap records from online providers (CBR, MXB-Ranked) for your current track."
+msgstr "Bulunduğun pist için çevrimiçi sağlayıcılardan (CBR, MXB-Ranked) tur rekorları."
+
+msgctxt "tooltip"
+msgid "Lap the gap is measured against. All-time PB is saved; Server best is anyone's fastest. Default follows General."
+msgstr "Farkın ölçüldüğü tur. Tüm zamanlar PB kayıtlıdır; Sunucu en iyisi herkesin en hızlısı. Varsayılan Genel'i izler."
+
+msgctxt "tooltip"
+msgid "Lap the gap row is measured against. All-time PB is saved; Server best is anyone's fastest. Default follows General."
+msgstr "Fark satırının ölçüldüğü tur. Tüm zam. PB kayıtlı; Sunucu en iyi: herkesin en hızlısı. Varsayılan Genel'i izler."
+
+#. max 23 characters
+msgid "Lap times"
+msgstr "Tur süreleri"
+
+msgid "Lapped the Field"
+msgstr "Herkese Tur Bindir"
+
+#. max 23 characters
+msgid "Lapper ahead"
+msgstr "Öndeki tur geride"
+
+#, c-format
+msgid "Lapping %s"
+msgstr "Tur bindiriyor: %s"
+
+#. max 15 characters
+msgid "Laps"
+msgstr "Turlar"
+
+msgid "Laps left"
+msgstr "Kalan tur"
+
+#. max 23 characters
+msgid "Laps to show"
+msgstr "Gösterilen tur"
+
+#. max 43 characters
+msgid "Laps, crashes, top speed"
+msgstr "Turlar, kazalar, maks. hız"
+
+msgid "Last"
+msgstr "Son"
+
+msgid "Last Gasp"
+msgstr "Son Nefes"
+
+#. max 10 characters
+msgid "Last Lap"
+msgstr "Son Tur"
+
+#. max 15 characters
+msgid "Last lap"
+msgstr "Son tur"
+
+#. max 15 characters
+msgid "Last lap time"
+msgstr "Son tur süresi"
+
+msgid "Launch the game via Steam"
+msgstr "Oyunu Steam üzerinden başlat"
+
+#. max 60 characters
+msgid "Layout"
+msgstr "Düzen"
+
+msgctxt "tooltip"
+msgid "Lays the zoomed map down, seen from behind; higher tilts it further. Best with Rotate map on."
+msgstr "Yakın haritayı arkadan bakılmış gibi yatırır; arttıkça daha çok eğer. Harita döndürme açıkken en iyisi."
+
+msgid "Lck"
+msgstr "Kil"
+
+msgid "Lead at the first split"
+msgstr "İlk arada önde ol"
+
+#, c-format
+msgid "Lead at the first split in %s races"
+msgstr "%s yarışta ilk arada önde ol"
+
+msgid "Lead into the final lap and lose the race"
+msgstr "Son tura önde gir ve yarışı kaybet"
+
+msgid "Leader"
+msgstr "Lider"
+
+#. max 15 characters
+msgid "Leader change"
+msgstr "Lider değişimi"
+
+#. max 11 characters
+msgid "Lean"
+msgstr "Yatış"
+
+msgid "Leap Forward"
+msgstr "İleri Sıçrayış"
+
+msgid "Left"
+msgstr "Sol"
+
+msgid "Left as it is. Stats are not saved this session"
+msgstr "Olduğu gibi bırakıldı. Bu seans istatistik kaydedilmiyor"
+
+msgctxt "tooltip"
+msgid "Let close battles steer the camera. Off holds the leader/solo baseline."
+msgstr "Yakın düellolar kamerayı yönlendirsin. Kapalı: lider/tek sürücü temelinde kalır."
+
+msgctxt "tooltip"
+msgid "Lifetime milestones as Bronze-to-Platinum progress bars, plus a toast when a tier is earned."
+msgstr "Bronzdan Platine ilerleme çubukları olarak ömür boyu hedefler; seviye kazanılınca bildirim."
+
+#. max 11 characters
+msgid "Light"
+msgstr "Hafif"
+
+msgid "Light Gray"
+msgstr "Açık Gri"
+
+msgid "Lime"
+msgstr "Limon yeşili"
+
+#. max 15 characters
+msgid "Line labels"
+msgstr "Çizgi etiketi"
+
+msgctxt "tooltip"
+msgid "Lines of chat to show. Long messages wrap onto several lines."
+msgstr "Gösterilecek sohbet satırı. Uzun mesajlar birkaç satıra kayar."
+
+#. max 15 characters
+msgid "Lines to show"
+msgstr "Satır sayısı"
+
+#. max 23 characters
+msgid "Live gap row"
+msgstr "Canlı fark satırı"
+
+#. max 15 characters
+msgid "Live overlay"
+msgstr "Canlı overlay"
+
+msgctxt "tooltip"
+msgid "Live race standings showing position, gaps, and rider information for all competitors."
+msgstr "Tüm yarışçılar için sıra, fark ve sürücü bilgisi gösteren canlı yarış sıralaması."
+
+#. max 15 characters
+msgid "Live updates"
+msgstr "Canlı yenileme"
+
+msgid "Local"
+msgstr "Yerel"
+
+msgid "Local Hero"
+msgstr "Yerel Kahraman"
+
+msgctxt "tooltip"
+msgid "Lock the director onto the current rider so it won't cut away. Press again to release."
+msgstr "Yönetmeni geçerli sürücüye kilitle, başkasına geçmesin. Bırakmak için tekrar bas."
+
+#. max 6 characters
+msgid "Locked"
+msgstr "Kilit"
+
+#, c-format
+msgid "Locked on %s"
+msgstr "Kilitli: %s"
+
+#. max 11 characters
+msgid "Lockup"
+msgstr "Kilitlenme"
+
+msgctxt "tooltip"
+msgid "Log session lifecycle: started (with format), pre-start, ended, cancelled, complete."
+msgstr "Seans yaşam döngüsünü kaydet: başladı (formatla), start öncesi, bitti, iptal, tamamlandı."
+
+#. max 23 characters
+msgid "Log telemetry"
+msgstr "Telemetri kaydı"
+
+msgctxt "tooltip"
+msgid "Log trick detection state to the plugin log file at 10fps (developer mode only)."
+msgstr "Hareket algılama durumunu eklenti kaydına 10fps ile yaz (yalnız geliştirici modu)."
+
+msgctxt "tooltip"
+msgid "Log when a different rider takes the lead position. Race sessions only."
+msgstr "Liderliği başka bir sürücü aldığında kaydet. Yalnız yarış seansları."
+
+msgctxt "tooltip"
+msgid "Log when a rider crosses the finish line with their finishing position."
+msgstr "Bir sürücü bitiş çizgisini geçtiğinde bitiş sırasıyla kaydet."
+
+msgctxt "tooltip"
+msgid "Log when a rider enters or exits the pits. Can be frequent in practice sessions."
+msgstr "Bir sürücü pite girince veya çıkınca kaydet. Antrenmanda sık olabilir."
+
+msgctxt "tooltip"
+msgid "Log when a rider receives a penalty, or when a penalty is cleared or changed."
+msgstr "Bir sürücü ceza alınca veya ceza kaldırılıp değişince kaydet."
+
+msgctxt "tooltip"
+msgid "Log when a rider retires, is disqualified, or does not start."
+msgstr "Bir sürücü bırakınca, diskalifiye olunca veya başlamayınca kaydet."
+
+msgctxt "tooltip"
+msgid "Log when a rider sets the overall fastest lap of the session."
+msgstr "Bir sürücü seansın genel en hızlı turunu atınca kaydet."
+
+msgctxt "tooltip"
+msgid "Log when a rider starts their final lap. Race sessions only."
+msgstr "Bir sürücü son turuna başlayınca kaydet. Yalnız yarış seansları."
+
+msgctxt "tooltip"
+msgid "Log when a timed race enters overtime, or when a non-race session timer expires."
+msgstr "Süreli yarış uzatmaya girince veya yarış dışı seans süresi dolunca kaydet."
+
+msgctxt "tooltip"
+msgid "Log your lap when it beats your best lap of this session."
+msgstr "Turun bu seanstaki en iyini geçince kaydet."
+
+msgctxt "tooltip"
+msgid "Log your lap when it sets a new all-time PB."
+msgstr "Turun yeni tüm zamanlar PB'si olunca kaydet."
+
+msgid "Long"
+msgstr "Uzun"
+
+#. max 48 characters
+msgid "Long Hauler"
+msgstr "Uzun Yolcu"
+
+msgid "Long Walk Home"
+msgstr "Eve Uzun Yürüyüş"
+
+msgctxt "tooltip"
+msgid "Longest time on one rider before cutting away. Off = cut only for stories, then back to your rider."
+msgstr "Bir sürücüde kalınacak en uzun süre. Kapalı = yalnız hikâyeler için kes, sonra sürücüne dön."
+
+msgid "Lose a race by under a tenth"
+msgstr "Bir yarışı saniyenin onda birinden azla kaybet"
+
+#, c-format
+msgid "Losing places %s"
+msgstr "Sıra kaybı %s"
+
+msgctxt "tooltip"
+msgid "Lower helmet texture (chin bar)."
+msgstr "Alt kask dokusu (çene)."
+
+#. max 23 characters
+msgid "Lower offset"
+msgstr "Alt kaydırma"
+
+#. max 23 characters
+msgid "Lower texture"
+msgstr "Alt doku"
+
+msgid "Loyal"
+msgstr "Sadık"
+
+msgid "MXB Ranked"
+msgstr "MXB Ranked"
+
+#. max 60 characters
+msgid "MXBMRP3 is a community project: one person's spare-time"
+msgstr "MXBMRP3 bir topluluk projesi: tek bir kişinin boş zaman"
+
+msgid "Made It Yours"
+msgstr "Artık Senin"
+
+msgid "Magenta"
+msgstr "Macenta"
+
+msgctxt "tooltip"
+msgid "Main text color for values, times, and key data."
+msgstr "Değerler, süreler ve önemli veriler için ana metin rengi."
+
+#. max 60 characters
+msgid "Manual Control"
+msgstr "Elle Kontrol"
+
+msgid "Manual camera"
+msgstr "Elle kamera"
+
+msgid "Manual control (gamepad)"
+msgstr "Elle kontrol (gamepad)"
+
+#, c-format
+msgid "Manual pick %s"
+msgstr "Elle seçim %s"
+
+#. max 10 characters
+msgid "Map"
+msgstr "Harita"
+
+#. max 48 characters
+msgid "Marathon"
+msgstr "Maraton"
+
+#. max 7 characters
+msgid "Marker"
+msgstr "İşaret"
+
+#. max 13 characters
+msgid "Marker colors"
+msgstr "İşaret rengi"
+
+#. max 13 characters
+msgid "Marker icon"
+msgstr "İşaret ikonu"
+
+#. max 13 characters
+msgid "Marker labels"
+msgstr "İşaret yazısı"
+
+#. max 13 characters
+msgid "Marker scale"
+msgstr "İşaret ölçeği"
+
+msgctxt "tooltip"
+msgid "Marks where on the lap you were furthest ahead and furthest behind, with the gap there."
+msgstr "Turun neresinde en çok önde ve en çok geride olduğunu, oradaki farkla işaretler."
+
+#. max 8 characters
+msgid "Max"
+msgstr "Maks"
+
+#. max 15 characters
+msgid "Max shot"
+msgstr "Maks. çekim"
+
+msgctxt "tooltip"
+msgid "Maximum number of event rows to display. The log scrolls when this limit is reached."
+msgstr "Gösterilecek en çok olay satırı. Sınıra ulaşınca kayıt kayar."
+
+msgctxt "tooltip"
+msgid "Maximum number of friend rows to show."
+msgstr "Gösterilecek en çok arkadaş satırı."
+
+msgctxt "tooltip"
+msgid "Maximum rider rows to show. More rows use more screen space."
+msgstr "Gösterilecek en çok sürücü satırı. Daha çok satır daha çok yer kaplar."
+
+#. max 66 characters
+msgid "Measures the engine's per-primitive draw cost."
+msgstr "Motorun öğe başına çizim maliyetini ölçer."
+
+#. max 60 characters
+msgid "Media"
+msgstr "Medya"
+
+msgid "Message"
+msgstr "Mesaj"
+
+#. max 15 characters
+msgid "Message colors"
+msgstr "Mesaj renkleri"
+
+#. max 13 characters
+msgid "Messages"
+msgstr "Mesajlar"
+
+msgid "Metronome"
+msgstr "Metronom"
+
+#. max 11 characters
+msgid "Min"
+msgstr "Min"
+
+#. max 15 characters
+msgid "Min shot"
+msgstr "Min. çekim"
+
+#. max 60 characters
+msgid "Misc"
+msgstr "Diğer"
+
+#. max 15 characters
+msgid "Mode"
+msgstr "Mod"
+
+#. max 9 characters
+msgid "More"
+msgstr "Diğer"
+
+#. max 13 characters
+msgid "Motion"
+msgstr "Hareket"
+
+msgid "Mudder"
+msgstr "Çamur Ustası"
+
+msgctxt "tooltip"
+msgid "Music from Windows' media controls, for Now Playing. Spotify: turn on its desktop overlay for media keys."
+msgstr "Çalan Parça için Windows medya kontrollerinden müzik. Spotify: medya tuşları için masaüstü katmanını aç."
+
+#. max 11 characters
+msgid "Muted"
+msgstr "Soluk"
+
+msgid "N/C"
+msgstr "N/C"
+
+msgid "ND"
+msgstr "."
+
+msgid "Name"
+msgstr "Ad"
+
+#. max 15 characters
+msgid "Name colors"
+msgstr "İsim renkleri"
+
+msgid "Names"
+msgstr "Adlar"
+
+msgid "Navy"
+msgstr "Lacivert"
+
+#. max 11 characters
+msgid "Negative"
+msgstr "Negatif"
+
+#. max 11 characters
+msgid "Neutral"
+msgstr "Nötr"
+
+#. max 3 characters
+msgid "New"
+msgstr "Yni"
+
+msgid "Newest"
+msgstr "Yeni"
+
+msgctxt "tooltip"
+msgid "Next page."
+msgstr "Sonraki sayfa."
+
+msgid "Night Owl"
+msgstr "Gece Kuşu"
+
+msgid "No channel"
+msgstr "Kanal yok"
+
+msgid "No channel set"
+msgstr "Kanal ayarlanmadı"
+
+msgid "No charts enabled"
+msgstr "Hiç grafik açık değil"
+
+msgid "No controller selected"
+msgstr "Kontrolcü seçilmedi"
+
+msgid "No friends in-game"
+msgstr "Oyunda arkadaş yok"
+
+msgid "No matches"
+msgstr "Eşleşme yok"
+
+msgid "No player"
+msgstr "Oyuncu yok"
+
+msgid "No records found for this track/category"
+msgstr "Bu pist/kategori için rekor bulunamadı"
+
+msgid "No setting is called that or mentions it. Try a shorter word."
+msgstr "Bu adda ya da bunu anan bir ayar yok. Daha kısa bir sözcük dene."
+
+msgid "No trace until a new PB"
+msgstr "Yeni PB'ye dek iz yok"
+
+#. max 7 characters
+msgid "None"
+msgstr "Hiçbiri"
+
+#. max 7 characters
+msgid "Normal"
+msgstr "Normal"
+
+msgid "Not found?"
+msgstr "Bulunamadı?"
+
+msgid "Not installed correctly"
+msgstr "Doğru kurulmamış"
+
+msgid "Not live"
+msgstr "Yayında değil"
+
+msgid "Not live - checking every minute"
+msgstr "Yayında değil - her dakika denetleniyor"
+
+#. max 66 characters
+msgid "Note: YouTube chat is unofficial."
+msgstr "Not: YouTube sohbeti resmi değildir."
+
+#. max 23 characters
+msgid "Notice focus"
+msgstr "Bildirim odağı"
+
+#. max 10 characters
+msgid "Notices"
+msgstr "Bildirim"
+
+msgid "Now"
+msgstr "Şimdi"
+
+#. max 11 characters
+msgid "Now Playing"
+msgstr "Çalan Parça"
+
+#. max 23 characters
+msgid "Now playing"
+msgstr "Çalan parça"
+
+msgid "Now playing is off"
+msgstr "Çalan parça kapalı"
+
+msgctxt "tooltip"
+msgid "Number of recent laps to show."
+msgstr "Gösterilecek son tur sayısı."
+
+msgctxt "tooltip"
+msgid "Number of records to show from the leaderboard."
+msgstr "Lider tablosundan gösterilecek rekor sayısı."
+
+msgid "Numbers"
+msgstr "Sayılar"
+
+#. max 66 characters
+msgid "OBS: Window Capture of MXBMRP3 + Chroma Key of the bg colour"
+msgstr "OBS: MXBMRP3'ün Pencere Yakalaması + arka plan renginde Chroma Key"
+
+msgid "OK"
+msgstr "Tamam"
+
+msgid "OVERTIME"
+msgstr "UZATMA"
+
+#. max 3 characters
+msgid "Off"
+msgstr "Kpl"
+
+msgctxt "tooltip"
+msgid "Off = no tint. Visor = tint behind helmet (full-face). Goggles = tint in front (open-face)."
+msgstr "Kapalı = ton yok. Vizör = kask arkasında ton (kapalı kask). Gözlük = önde ton (açık kask)."
+
+msgctxt "tooltip"
+msgid "Off hides column. Player: your gap; Adjacent: riders ahead/behind; All: everyone."
+msgstr "Kapalı sütunu gizler. Oyuncu: senin farkın; Komşu: önde/arkadakiler; Tümü: herkes."
+
+msgctxt "tooltip"
+msgid "Off hides the chat. Auto-hide shows it briefly when a message arrives."
+msgstr "Kapalı sohbeti gizler. Oto-gizle mesaj gelince kısaca gösterir."
+
+msgctxt "tooltip"
+msgid "Off hides the log. On always shows it. Auto-hide shows it briefly when new events arrive."
+msgstr "Kapalı kaydı gizler. Açık hep gösterir. Oto-gizle yeni olay gelince kısaca gösterir."
+
+msgid "Oldest"
+msgstr "Eski"
+
+msgctxt "tooltip"
+msgid "Oldest puts the newest message at the bottom, as on Twitch and YouTube. Newest puts it at the top."
+msgstr "Eski: en yeni mesaj altta, Twitch ve YouTube'daki gibi. Yeni: en yenisi üstte."
+
+msgctxt "tooltip"
+msgid "Oldest shows events chronologically top to bottom. Newest puts latest events at the top."
+msgstr "Eski: olaylar yukarıdan aşağı zaman sırasıyla. Yeni: son olaylar en üstte."
+
+msgid "On"
+msgstr "Açık"
+
+msgctxt "tooltip"
+msgid "On = shown while racing; Off = only in the settings menu (helps controllers seen as a mouse)."
+msgstr "Açık = sürerken görünür; Kapalı = yalnız ayar menüsünde (fare sanılan kontrolcülere yardımcı)."
+
+msgid "On Air"
+msgstr "Yayında"
+
+msgid "On a Roll"
+msgstr "Seri Hâlinde"
+
+msgid "On finish"
+msgstr "Bitişte"
+
+msgid "On join"
+msgstr "Katılınca"
+
+msgctxt "tooltip"
+msgid "On the leader's final lap, lock onto the front so the win is never missed."
+msgstr "Liderin son turunda öndekine kilitlen, galibiyet hiç kaçmasın."
+
+msgctxt "tooltip"
+msgid "On-screen notices for race events, personal bests, and setup warnings."
+msgstr "Yarış olayları, kişisel rekorlar ve ayar uyarıları için ekran bildirimleri."
+
+#. max 60 characters
+msgid "Onboard Variety"
+msgstr "Araç Kamera Çeşitliliği"
+
+#. max 15 characters
+msgid "Onboard every"
+msgstr "Araç kam. her"
+
+#, c-format
+msgid "One bike, %s"
+msgstr "Tek motor, %s"
+
+msgctxt "tooltip"
+msgid "One card that cycles through the pages picked below."
+msgstr "Aşağıda seçilen sayfalar arasında dönen tek bir kart."
+
+msgid "One-Wheel Tour"
+msgstr "Tek Teker Turu"
+
+msgid "Online"
+msgstr "Çevrimiçi"
+
+msgid "Online lap records"
+msgstr "Çevrimiçi tur rekorları"
+
+#. max 8 characters
+msgid "Opacity"
+msgstr "Opaklık"
+
+msgid "Open Practice"
+msgstr "Serbest Antrenman"
+
+msgid "Open every settings tab"
+msgstr "Her ayar sekmesini aç"
+
+msgctxt "tooltip"
+msgid "Open the full release notes on GitHub."
+msgstr "Sürüm notlarının tamamını GitHub'da aç."
+
+msgid "Oppo"
+msgstr "Oppo"
+
+#. max 15 characters
+msgid "Opponents"
+msgstr "Rakipler"
+
+msgid "Orange"
+msgstr "Turuncu"
+
+#. max 60 characters
+msgid "Other"
+msgstr "Diğer"
+
+#. max 60 characters
+msgid "Overall"
+msgstr "Genel"
+
+msgctxt "tooltip"
+msgid "Overhead view of the track with real-time rider positions. Supports zoom and display modes."
+msgstr "Pistin üstten görünümü, gerçek zamanlı sürücü konumlarıyla. Yakınlaştırma ve gösterim modları."
+
+msgid "Override a colour, font or theme"
+msgstr "Bir rengi, yazı tipini veya temayı değiştir"
+
+#, c-format
+msgid "Overtake %s"
+msgstr "%s geçişi"
+
+#, c-format
+msgid "Overtake %s on %s"
+msgstr "%s geçiyor: %s"
+
+#. max 15 characters
+msgid "Overtakes"
+msgstr "Geçişler"
+
+#. max 23 characters
+msgid "Overtime"
+msgstr "Uzatma"
+
+msgid "Overview"
+msgstr "Genel bakış"
+
+msgctxt "tooltip"
+msgid "Overview shows the entire track. Follow shows the stretch around you, Range meters across."
+msgstr "Genel bakış tüm pisti gösterir. İzle çevrendeki kısmı, Menzil metre genişliğinde gösterir."
+
+msgctxt "tooltip"
+msgid "Overwrite the selected profile with this profile's settings."
+msgstr "Seçili profilin üzerine bu profilin ayarlarını yaz."
+
+#. max 12 characters
+msgid "PB scope"
+msgstr "PB kapsamı"
+
+msgid "PM"
+msgstr "ÖS"
+
+msgid "PREVIEW"
+msgstr "ÖNİZLEME"
+
+#. max 15 characters
+msgid "Pace"
+msgstr "Tempo"
+
+msgctxt "tooltip"
+msgid "Pace chart: each rider's lap time per lap. Any session."
+msgstr "Tempo grafiği: her sürücünün tur başına süresi. Her seans."
+
+msgctxt "tooltip"
+msgid "Pace chart: hide the opening lap, invalid laps, and slow outliers."
+msgstr "Tempo grafiği: ilk turu, geçersiz turları ve yavaş aykırıları gizle."
+
+#. max 15 characters
+msgid "Pad takeover"
+msgstr "Pad devralma"
+
+msgid "Page"
+msgstr "Sayfa"
+
+#. max 60 characters
+msgid "Page Settings"
+msgstr "Sayfa Ayarları"
+
+#. max 23 characters
+msgid "Page names"
+msgstr "Sayfa adları"
+
+#. max 23 characters
+msgid "Page strip"
+msgstr "Sayfa şeridi"
+
+#. max 60 characters
+msgid "Pages"
+msgstr "Sayfalar"
+
+msgid "Palette"
+msgstr "Palet"
+
+msgid "Palindrome"
+msgstr "Palindrom"
+
+msgctxt "tooltip"
+msgid "Panel frame, title band and card art shared by every element."
+msgstr "Her öğenin paylaştığı panel çerçevesi, başlık bandı ve kart görseli."
+
+msgid "Panel theme"
+msgstr "Panel teması"
+
+msgctxt "tooltip"
+msgid "Panel theme for this element only. Default follows the global theme."
+msgstr "Yalnız bu öğe için panel teması. Varsayılan genel temayı izler."
+
+msgctxt "tooltip"
+msgid "Panel width in characters. Messages wrap to fit it."
+msgstr "Karakter olarak panel genişliği. Mesajlar sığacak şekilde kayar."
+
+msgid "Pass on the last lap"
+msgstr "Son turda geçiş yap"
+
+#, c-format
+msgid "Pass on the last lap in %s races"
+msgstr "%s yarışta son turda geçiş yap"
+
+msgid "Peace Out"
+msgstr "Hoşça Kal"
+
+#. max 23 characters
+msgid "Peaks"
+msgstr "Tepeler"
+
+msgid "Pen"
+msgstr "Cza"
+
+#. max 15 characters
+msgid "Pen. time"
+msgstr "Ceza süresi"
+
+#. max 15 characters
+msgid "Penalties"
+msgstr "Cezalar"
+
+#. max 15 characters
+msgid "Penalty"
+msgstr "Ceza"
+
+msgid "Per lap"
+msgstr "Tur başına"
+
+msgid "Per-Bike"
+msgstr "Motor Başına"
+
+msgctxt "tooltip"
+msgid "Per-track statistics including lap counts, crashes, gear shifts, top speed, and riding time."
+msgstr "Pist başına istatistik: tur sayısı, kazalar, vites değişimleri, maks. hız ve sürüş süresi."
+
+#. max 10 characters
+msgid "Perf"
+msgstr "Perf"
+
+msgid "Perfect Race"
+msgstr "Kusursuz Yarış"
+
+#. max 12 characters
+msgid "Performance"
+msgstr "Performans"
+
+msgid "Performance (threaded)"
+msgstr "Performans (iş parçacıklı)"
+
+msgid "Personal Best"
+msgstr "Kişisel En İyi"
+
+#. max 60 characters
+msgid "Personal Bests"
+msgstr "Kişisel Rekorlar"
+
+msgid "Phoenix"
+msgstr "Anka Kuşu"
+
+msgid "Photo Finish"
+msgstr "Foto Finiş"
+
+msgctxt "tooltip"
+msgid "Pick the artwork this element draws from. Elements whose artwork is mandatory have no Off option."
+msgstr "Bu öğenin çizdiği görseli seç. Görseli zorunlu öğelerde Kapalı seçeneği yoktur."
+
+msgid "Pile-Up"
+msgstr "Zincirleme Kaza"
+
+msgid "Pink"
+msgstr "Pembe"
+
+msgid "Pit"
+msgstr "Pit"
+
+#. max 15 characters
+msgid "Pit activity"
+msgstr "Pit hareketi"
+
+msgctxt "tooltip"
+msgid "Pit board artwork and the row positions that go with it."
+msgstr "Pit tabelası görseli ve ona uyan satır konumları."
+
+msgid "Pit limiter"
+msgstr "Pit limiti"
+
+#. max 10 characters
+msgid "Pitboard"
+msgstr "Pit Tabela"
+
+msgid "Pitch"
+msgstr "Yunuslama"
+
+msgctxt "tooltip"
+msgid "Placeholders, grid lines, and unavailable data."
+msgstr "Yer tutucular, ızgara çizgileri ve olmayan veriler."
+
+#. max 15 characters
+msgid "Platform icons"
+msgstr "Platform ikonu"
+
+msgid "Platinum"
+msgstr "Platin"
+
+msgid "Platinum Sweep"
+msgstr "Platin Süpürme"
+
+msgctxt "tooltip"
+msgid "Playback speed for every callout. 1.00x is as recorded."
+msgstr "Her anonsun çalma hızı. 1.00x kaydedildiği gibidir."
+
+msgid "Player"
+msgstr "Oyuncu"
+
+msgctxt "tooltip"
+msgid "Plot a point per sector instead of per lap on the lap, trace and gap charts. Races only."
+msgstr "Tur, iz ve fark grafiklerinde tur yerine sektör başına nokta çiz. Yalnız yarışlar."
+
+msgid "Plugin Time"
+msgstr "Eklenti Süresi"
+
+#. max 23 characters
+msgid "Plugin time"
+msgstr "Eklenti süresi"
+
+msgctxt "tooltip"
+msgid "Plugin timing per callback and HUD. Saves a report on leaving the track, on quitting and when switched off."
+msgstr "Geri çağrı ve HUD başına eklenti süresi. Pistten çıkınca, kapatınca ve çıkarken rapor kaydeder."
+
+msgid "Podium Regular"
+msgstr "Podyum Müdavimi"
+
+#. max 15 characters
+msgid "Podiums (1/2/3)"
+msgstr "Podyum (1/2/3)"
+
+#. max 11 characters
+msgid "Pointer"
+msgstr "İbre"
+
+msgctxt "tooltip"
+msgid "Popup cards when a hotkey hides a HUD, a profile switches, a report is saved, or a file or the web overlay fails."
+msgstr "Kısayol HUD gizleyince, profil değişince, rapor kaydedilince ya da dosya/web overlay hata verince kartlar."
+
+msgctxt "tooltip"
+msgid "Port for the web server. Change if the default is in use by another application."
+msgstr "Web sunucusunun portu. Varsayılan başka bir uygulamada kullanılıyorsa değiştir."
+
+#. max 11 characters
+msgid "Position"
+msgstr "Sıra"
+
+#. max 43 characters
+msgid "Position and gap charts"
+msgstr "Sıra ve fark grafikleri"
+
+#. max 11 characters
+msgid "Positive"
+msgstr "Pozitif"
+
+#. max 8 characters
+msgid "Practice"
+msgstr "Antrenm."
+
+msgid "Pre-Qualify"
+msgstr "Ön Kalifikasyon"
+
+msgid "Pre-Start"
+msgstr "Start Öncesi"
+
+msgid "PreFinal"
+msgstr "Ön Final"
+
+#. max 60 characters
+msgid "Preferences"
+msgstr "Tercihler"
+
+msgid "Prerelease"
+msgstr "Ön sürüm"
+
+msgid "Press"
+msgstr "Bas"
+
+#, c-format
+msgid "Press %s to open settings"
+msgstr "Ayarları açmak için %s tuşuna bas"
+
+#, c-format
+msgid "Press %s to show it again"
+msgstr "Tekrar göstermek için %s tuşuna bas"
+
+#, c-format
+msgid "Press %s to show them again"
+msgstr "Tekrar göstermek için %s tuşuna bas"
+
+#. TRANSLATORS: %s is the held keys with a trailing " + ", e.g. "Ctrl + ".
+#, c-format
+msgid "Press %sthe key under Esc to open settings"
+msgstr "Ayarları açmak için %sEsc altındaki tuşa bas"
+
+msgid "Press key"
+msgstr "Tuşa bas"
+
+#. max 11 characters
+msgid "Prestige"
+msgstr "Prestij"
+
+msgid "Preview"
+msgstr "Önizleme"
+
+msgctxt "tooltip"
+msgid "Previous page."
+msgstr "Önceki sayfa."
+
+#. max 11 characters
+msgid "Primary"
+msgstr "Birincil"
+
+#. max 16 characters
+msgid "Profile"
+msgstr "Profil"
+
+msgid "Profile Hopper"
+msgstr "Profil Gezgini"
+
+msgid "Profile copied"
+msgstr "Profil kopyalandı"
+
+#. max 66 characters
+msgid "Profile resets this profile only; Everything resets all."
+msgstr "Profil yalnız bu profili sıfırlar; Her şey tümünü sıfırlar."
+
+msgid "Profiler report not saved"
+msgstr "Profil raporu kaydedilmedi"
+
+msgid "Profiler report saved"
+msgstr "Profil raporu kaydedildi"
+
+#. max 60 characters
+msgid "Profiles"
+msgstr "Profiller"
+
+#. max 60 characters
+msgid "Progress"
+msgstr "İlerleme"
+
+#, c-format
+msgid "Progress (Prestige %d)"
+msgstr "İlerleme (Prestij %d)"
+
+msgctxt "tooltip"
+msgid "Progression charts: running order, race trace, gap to leader, and pace."
+msgstr "İlerleme grafikleri: sıralama, yarış izi, lidere fark ve tempo."
+
+#. max 23 characters
+msgid "Provider"
+msgstr "Sağlayıcı"
+
+#. max 15 characters
+msgid "Proximity"
+msgstr "Yakınlık"
+
+#. max 60 characters
+msgid "Proximity Arrows"
+msgstr "Yakınlık Okları"
+
+msgid "Purple"
+msgstr "Mor"
+
+msgctxt "tooltip"
+msgid "Push a stick to grab Free-Roam and pause the director. Auto-resumes when the stick goes idle."
+msgstr "Serbest kamerayı almak ve yönetmeni duraklatmak için bir çubuğu it. Çubuk boşta kalınca devam eder."
+
+msgid "Qualify"
+msgstr "Kalifikasyon"
+
+msgid "Qualify Heat"
+msgstr "Kalifikasyon Serisi"
+
+msgid "Qualify Practice"
+msgstr "Kalifikasyon Antrenmanı"
+
+msgid "Quarter-Finals"
+msgstr "Çeyrek Final"
+
+msgid "RD"
+msgstr "."
+
+#. max 15 characters
+msgid "RET/DSQ/DNS"
+msgstr "BRK/DSK/BŞL"
+
+msgid "RIDER ONCOMING"
+msgstr "KARŞIDAN SÜRÜCÜ"
+
+#. max 11 characters
+msgid "RPM"
+msgstr "RPM"
+
+msgid "Race"
+msgstr "Yarış"
+
+msgid "Race 1"
+msgstr "Yarış 1"
+
+msgid "Race 2"
+msgstr "Yarış 2"
+
+#. max 60 characters
+msgid "Race Events"
+msgstr "Yarış Olayları"
+
+msgid "Race Over"
+msgstr "Yarış Bitti"
+
+msgid "Race Trace"
+msgstr "Yarış İzi"
+
+#. max 11 characters
+msgid "Race number"
+msgstr "Yarış no"
+
+msgid "Race sessions only"
+msgstr "Yalnız yarış seansları"
+
+#. max 15 characters
+msgid "Race trace"
+msgstr "Yarış izi"
+
+msgctxt "tooltip"
+msgid "Race trace: cumulative time vs a fixed reference pace. Race only."
+msgstr "Yarış izi: sabit referans tempoya karşı toplam süre. Yalnız yarış."
+
+#, c-format
+msgid "Race winner %s"
+msgstr "Yarış galibi %s"
+
+msgid "Racer"
+msgstr "Yarışçı"
+
+#. max 15 characters
+msgid "Races"
+msgstr "Yarışlar"
+
+#. max 10 characters
+msgid "Radar"
+msgstr "Radar"
+
+#. max 23 characters
+msgid "Radar range"
+msgstr "Radar menzili"
+
+msgid "Rage Quit"
+msgstr "Sinirden Çıkış"
+
+msgid "Rainy"
+msgstr "Yağmurlu"
+
+#. max 15 characters
+msgid "Range"
+msgstr "Menzil"
+
+msgid "Rbr"
+msgstr "AFr"
+
+#, c-format
+msgid "Reach %s above takeoff and land it"
+msgstr "Kalkışın %s üstüne çık ve yere in"
+
+#. max 11 characters
+msgid "Readouts"
+msgstr "Göstergeler"
+
+msgctxt "tooltip"
+msgid "Real-time input data including throttle, brake, clutch, RPM, suspension travel, and gear."
+msgstr "Gaz, fren, debriyaj, RPM, süspansiyon yolu ve vites dahil gerçek zamanlı girdi verisi."
+
+msgid "Rear"
+msgstr "Arka"
+
+#. max 23 characters
+msgid "Rear brake"
+msgstr "Arka fren"
+
+#. max 23 characters
+msgid "Rear suspension"
+msgstr "Arka süspansiyon"
+
+msgid "Rebind in Settings > Hotkeys"
+msgstr "Değiştir: Ayarlar > Kısayollar"
+
+#. max 15 characters
+msgid "Record"
+msgstr "Rekor"
+
+#. max 60 characters
+msgid "Recorded voice packs can replace Windows speech."
+msgstr "Kayıtlı ses paketleri Windows konuşmasının yerini alabilir."
+
+#. max 10 characters
+msgid "Records"
+msgstr "Rekorlar"
+
+#. max 23 characters
+msgid "Records to show"
+msgstr "Gösterilen rekor"
+
+msgid "Red"
+msgstr "Kırmızı"
+
+#. max 15 characters
+msgid "Reference line"
+msgstr "Referans çizgi"
+
+msgid "Regular"
+msgstr "Müdavim"
+
+msgid "Reinstall it with mxbmrp3_data"
+msgstr "mxbmrp3_data ile yeniden kur"
+
+msgid "Release Notes"
+msgstr "Sürüm Notları"
+
+#. max 10 characters
+msgid "Reload"
+msgstr "Yenile"
+
+msgctxt "tooltip"
+msgid "Reload configuration from disk."
+msgstr "Yapılandırmayı diskten yeniden yükle."
+
+msgid "Reload the config"
+msgstr "Yapılandırmayı yeniden yükle"
+
+#, c-format
+msgid "Reload the config %s times"
+msgstr "Yapılandırmayı %s kez yeniden yükle"
+
+msgctxt "tooltip"
+msgid "Remove the last segment boundary. With none left, the Timing HUD shows normal split/lap timing."
+msgstr "Son bölüm sınırını kaldır. Hiç kalmayınca Zamanlama HUD normal ara/tur zamanlamasını gösterir."
+
+#. max 60 characters
+msgid "Reset"
+msgstr "Sıfırla"
+
+#, c-format
+msgid "Reset %s"
+msgstr "Sıfırla: %s"
+
+msgctxt "tooltip"
+msgid "Reset all profiles and settings to defaults."
+msgstr "Tüm profilleri ve ayarları varsayılana sıfırla."
+
+msgctxt "tooltip"
+msgid "Reset current profile to default settings."
+msgstr "Geçerli profili varsayılan ayarlara sıfırla."
+
+msgid "Reset every setting to defaults"
+msgstr "Her ayarı varsayılana sıfırla"
+
+msgctxt "tooltip"
+msgid "Reset the Crashes widget's tally to zero."
+msgstr "Kazalar widget'ının sayacını sıfırla."
+
+msgid "Resets ALL profiles and globals. Click again to confirm."
+msgstr "TÜM profilleri ve genel ayarları sıfırlar. Onaylamak için tekrar tıkla."
+
+msgid "Resets this profile's settings. Click again to confirm."
+msgstr "Bu profilin ayarlarını sıfırlar. Onaylamak için tekrar tıkla."
+
+#, c-format
+msgid "Restart %s to apply."
+msgstr "Uygulamak için yeniden başlat: %s."
+
+#. max 15 characters
+msgid "Resume after"
+msgstr "Devam süresi"
+
+msgid "Retire from a race before the finish"
+msgstr "Bir yarışı bitişten önce bırak"
+
+msgid "Retry"
+msgstr "Tekrar dene"
+
+msgid "Retrying"
+msgstr "Yeniden deneniyor"
+
+msgid "Rev"
+msgstr "Dvr"
+
+#. max 11 characters
+msgid "Rev limiter"
+msgstr "Kesici"
+
+#, c-format
+msgid "Ride %s different bikes"
+msgstr "%s farklı motor sür"
+
+#, c-format
+msgid "Ride %s different tracks"
+msgstr "%s farklı pistte sür"
+
+#, c-format
+msgid "Ride %s in a rider's wake"
+msgstr "Bir sürücünün arkasında %s sür"
+
+#, c-format
+msgid "Ride %s in one day"
+msgstr "Bir günde %s sür"
+
+#, c-format
+msgid "Ride %s in total"
+msgstr "Toplam %s sür"
+
+#, c-format
+msgid "Ride %s on the back wheel"
+msgstr "Arka teker üstünde %s sür"
+
+#, c-format
+msgid "Ride %s without crashing"
+msgstr "Kaza yapmadan %s sür"
+
+msgid "Ride between two and five in the morning"
+msgstr "Sabahın ikisiyle beşi arasında sür"
+
+#, c-format
+msgid "Ride bikes from %s classes"
+msgstr "%s sınıftan motor sür"
+
+msgid "Ride on the anniversary of your first run"
+msgstr "İlk sürüşünün yıldönümünde sür"
+
+msgid "Ride through three riders down"
+msgstr "Düşen üç sürücünün arasından geç"
+
+#. max 15 characters
+msgid "Ride time"
+msgstr "Sürüş süresi"
+
+#. max 60 characters
+msgid "Rider Markers"
+msgstr "Sürücü İşaretleri"
+
+msgctxt "tooltip"
+msgid "Rider line colours: a hue per position, or bike brand colour."
+msgstr "Sürücü çizgisi renkleri: sıra başına bir ton veya motor markası rengi."
+
+msgid "Rider lock off"
+msgstr "Sürücü kilidi kapalı"
+
+msgid "Rider lock on"
+msgstr "Sürücü kilidi açık"
+
+msgctxt "tooltip"
+msgid "Rider marker colors. Uniform uses same color, Brand uses bike colors, Position by relative pos."
+msgstr "Sürücü işaret renkleri. Tek tip aynı renk, Marka motor renkleri, Sıra göreli konuma göre."
+
+#. max 15 characters
+msgid "Rider name"
+msgstr "Sürücü adı"
+
+msgctxt "tooltip"
+msgid "Rider name display. Off hides the column, Short shows 3-letter abbreviation, Long shows full name."
+msgstr "Sürücü adı gösterimi. Kapalı sütunu gizler, Kısa 3 harf, Uzun tam adı gösterir."
+
+#. max 12 characters
+msgid "Riders"
+msgstr "Sürücüler"
+
+#. max 43 characters
+msgid "Riders around you"
+msgstr "Çevrendeki sürücüler"
+
+msgctxt "tooltip"
+msgid "Riders around you right now: behind, alongside, boxed in, backmarkers."
+msgstr "Şu an çevrendeki sürücüler: arkada, yanda, sıkışmış, geride kalanlar."
+
+msgid "Right"
+msgstr "Sağ"
+
+#. max 15 characters
+msgid "Role icons"
+msgstr "Rol ikonları"
+
+msgctxt "tooltip"
+msgid "Role icons in each platform's badge colors: owner, moderators, VIPs, members and more."
+msgstr "Her platformun rozet renklerinde rol ikonları: sahip, moderatör, VIP, üyeler ve dahası."
+
+msgid "Roll"
+msgstr "Yalpa"
+
+msgid "Roost"
+msgstr "Toprak Püskürtme"
+
+#. max 15 characters
+msgid "Rotate map"
+msgstr "Haritayı döndür"
+
+msgid "Rotation Arcs"
+msgstr "Dönüş Yayları"
+
+#. max 23 characters
+msgid "Rotation arcs"
+msgstr "Dönüş yayları"
+
+msgid "Round"
+msgstr "Yuvarlak"
+
+#. max 15 characters
+msgid "Rows to show"
+msgstr "Satır sayısı"
+
+msgid "Royal"
+msgstr "Kraliyet"
+
+msgid "Rsu"
+msgstr "ASü"
+
+msgid "Rubber Side Down"
+msgstr "Lastik Tarafı Aşağı"
+
+msgid "Rule Bender"
+msgstr "Kural Esnetici"
+
+#. max 10 characters
+msgid "Rumble"
+msgstr "Titreşim"
+
+msgid "Rumble off"
+msgstr "Titreşim kapalı"
+
+msgid "Run a build you made yourself"
+msgstr "Kendi derlediğin bir sürümü çalıştır"
+
+msgid "Run out of fuel out on track"
+msgstr "Pistte yakıtın bitsin"
+
+#. max 56 characters
+msgid "Run sweep"
+msgstr "Taramayı çalıştır"
+
+#. max 10 characters
+msgid "Rundown"
+msgstr "Özet"
+
+msgid "Running on Fumes"
+msgstr "Buharla Gidiyor"
+
+#, c-format
+msgid "SEG %d ADDED"
+msgstr "BÖL %d EKLENDİ"
+
+#, c-format
+msgid "SEG %d REMOVED"
+msgstr "BÖL %d SİLİNDİ"
+
+msgid "SEG ADDED"
+msgstr "BÖL EKLENDİ"
+
+msgid "SEG REMOVED"
+msgstr "BÖL SİLİNDİ"
+
+msgid "SEGMENT"
+msgstr "BÖLÜM"
+
+msgid "SESSION PB"
+msgstr "SEANS PB"
+
+msgid "SHA256 checksum mismatch"
+msgstr "SHA256 sağlaması uyuşmuyor"
+
+msgid "SHA256 verification failed (could not compute hash)"
+msgstr "SHA256 doğrulaması başarısız (hash hesaplanamadı)"
+
+msgid "ST"
+msgstr "."
+
+msgid "Sandbagger"
+msgstr "Sinsi Yavaş"
+
+msgid "Save"
+msgstr "Kaydet"
+
+#. max 34 characters
+msgid "Saved"
+msgstr "Kaydedildi"
+
+#. max 7 characters
+msgid "Scale"
+msgstr "Ölçek"
+
+msgctxt "tooltip"
+msgid "Scale the helmet. Zoom in to see less frame."
+msgstr "Kaskı ölçekle. Yakınlaştırınca daha az çerçeve görünür."
+
+msgid "Score"
+msgstr "Puan"
+
+#, c-format
+msgid "Score %s FMX points"
+msgstr "%s FMX puanı topla"
+
+#, c-format
+msgid "Score %s points in one chain"
+msgstr "Tek zincirde %s puan topla"
+
+#. max 12 characters
+msgid "Screen clamp"
+msgstr "Ekran sınırı"
+
+msgctxt "tooltip"
+msgid "Scrolling feed of race events: session changes, fastest laps, penalties, and finishes."
+msgstr "Kayan yarış olayları akışı: seans değişimleri, en hızlı turlar, cezalar ve bitişler."
+
+msgid "Scrubber"
+msgstr "Scrub Ustası"
+
+#. max 48 characters
+msgid "Seat Time"
+msgstr "Sele Mesaisi"
+
+msgid "Second Chance"
+msgstr "İkinci Şans"
+
+msgid "Second Screen"
+msgstr "İkinci Ekran"
+
+#. max 11 characters
+msgid "Secondary"
+msgstr "İkincil"
+
+msgid "Sector"
+msgstr "Sektör"
+
+#. max 15 characters
+msgid "Sector points"
+msgstr "Sektör noktası"
+
+#. max 23 characters
+msgid "Sector times"
+msgstr "Sektör süreleri"
+
+#. max 10 characters
+msgid "Sectors"
+msgstr "Sektörler"
+
+msgid "See Settings > Achievements"
+msgstr "Ayarlar > Başarımlar'a bak"
+
+#. max 10 characters
+msgid "Segment +"
+msgstr "Bölüm +"
+
+#. max 10 characters
+msgid "Segment -"
+msgstr "Bölüm -"
+
+msgid "Select"
+msgstr "Seç"
+
+msgctxt "tooltip"
+msgid "Select which controller to use for gamepad widget and rumble effects."
+msgstr "Gamepad widget'ı ve titreşim efektleri için kullanılacak kontrolcüyü seç."
+
+msgid "Semi-Finals"
+msgstr "Yarı Final"
+
+msgid "Sent It"
+msgstr "Gönder Gitsin"
+
+#, c-format
+msgid "Serve %s of penalty time"
+msgstr "%s ceza süresi çek"
+
+#. max 15 characters
+msgid "Server"
+msgstr "Sunucu"
+
+msgid "Server Players"
+msgstr "Sunucu Oyuncuları"
+
+#. max 15 characters
+msgid "Server best"
+msgstr "Sunucu en iyi"
+
+#. max 23 characters
+msgid "Server name"
+msgstr "Sunucu adı"
+
+#. max 10 characters
+msgid "Session"
+msgstr "Seans"
+
+#. max 15 characters
+msgid "Session PB"
+msgstr "Seans PB"
+
+#. max 15 characters
+msgid "Session format"
+msgstr "Seans formatı"
+
+#. max 15 characters
+msgid "Session info"
+msgstr "Seans bilgisi"
+
+msgctxt "tooltip"
+msgid "Session information including track, server details, player count, and password display."
+msgstr "Pist, sunucu bilgisi, oyuncu sayısı ve şifre gösterimi dahil seans bilgileri."
+
+msgctxt "tooltip"
+msgid "Session shows the session timer value. Clock shows your local time."
+msgstr "Seans seans sayacını gösterir. Saat yerel saatini gösterir."
+
+msgctxt "tooltip"
+msgid "Session, format and state (e.g. Race 2, In Progress), or In Menus / Unknown between sessions."
+msgstr "Seans, format ve durum (ör. Yarış 2, Sürüyor) ya da seanslar arasında Menülerde / Bilinmiyor."
+
+#, c-format
+msgid "Set %s personal bests"
+msgstr "%s kişisel rekor kır"
+
+msgid "Set a PB on the last lap of a race"
+msgstr "Bir yarışın son turunda PB kır"
+
+msgid "Set a lap time the same backwards"
+msgstr "Tersten de aynı okunan bir tur süresi yap"
+
+msgid "Set a personal best"
+msgstr "Bir kişisel rekor kır"
+
+#, c-format
+msgid "Set the fastest lap in %s races"
+msgstr "%s yarışta en hızlı turu at"
+
+msgid "Set the fastest lap in a race"
+msgstr "Bir yarışta en hızlı turu at"
+
+msgid "Set two identical lap times in a session"
+msgstr "Bir seansta iki aynı tur süresi yap"
+
+#. max 10 characters
+msgid "Settings"
+msgstr "Ayarlar"
+
+msgid "Settings > General"
+msgstr "Ayarlar > Genel"
+
+msgctxt "tooltip"
+msgid "Settings and every switch in one strip; drag it to an edge to turn it. Rest on one that is off to preview it."
+msgstr "Ayarlar ve her anahtar tek şeritte; döndürmek için bir kenara sürükle. Önizlemek için kapalı birinin üstünde dur."
+
+msgid "Settings not saved"
+msgstr "Ayarlar kaydedilmedi"
+
+msgid "Settings reloaded"
+msgstr "Ayarlar yeniden yüklendi"
+
+msgctxt "tooltip"
+msgid "Settings whose name, tab or description holds every word you typed. Click one to open it."
+msgstr "Adı, sekmesi veya açıklaması yazdığın her sözcüğü içeren ayarlar. Açmak için birine tıkla."
+
+#. max 21 characters
+msgid "Setup, every setting"
+msgstr "Kurulum, her ayar"
+
+#, c-format
+msgid "Shift %s times"
+msgstr "%s kez vites değiştir"
+
+#. max 48 characters
+msgid "Shift Happens"
+msgstr "Vites Bağımlısı"
+
+msgctxt "tooltip"
+msgid "Shift lights: green, amber, then red from the shift point. The red ones flash on the limiter."
+msgstr "Vites ışıkları: vites noktasından itibaren yeşil, kehribar, kırmızı. Kırmızılar sınırda yanıp söner."
+
+msgctxt "tooltip"
+msgid "Shift the lower part up or down."
+msgstr "Alt kısmı yukarı veya aşağı kaydır."
+
+msgctxt "tooltip"
+msgid "Shift the upper part up or down."
+msgstr "Üst kısmı yukarı veya aşağı kaydır."
+
+#. max 15 characters
+msgid "Shifts"
+msgstr "Vites değişimi"
+
+msgid "Short"
+msgstr "Kısa"
+
+msgctxt "tooltip"
+msgid "Shortest time on a shot before cutting away - the main pace dial. Raise it to slow cuts down."
+msgstr "Bir çekimde kesmeden önceki en kısa süre - ana tempo ayarı. Kesmeleri yavaşlatmak için artır."
+
+msgctxt "tooltip"
+msgid "Show S/F, sector markers and segment lines. Off leaves just the track and riders."
+msgstr "Başlangıç/bitiş, sektör işaretleri ve bölüm çizgilerini göster. Kapalı: yalnız pist ve sürücüler."
+
+msgctxt "tooltip"
+msgid "Show a header row labeling each column above the lap rows."
+msgstr "Tur satırlarının üstünde her sütunu adlandıran başlık satırı göster."
+
+msgctxt "tooltip"
+msgid "Show a header row labeling each column above the records."
+msgstr "Rekorların üstünde her sütunu adlandıran başlık satırı göster."
+
+msgctxt "tooltip"
+msgid "Show a header row labeling each enabled column above the rider rows."
+msgstr "Sürücü satırlarının üstünde her açık sütunu adlandıran başlık satırı göster."
+
+msgctxt "tooltip"
+msgid "Show a header row labeling each enabled column."
+msgstr "Her açık sütunu adlandıran başlık satırı göster."
+
+msgctxt "tooltip"
+msgid "Show a session-info row below the title (session, time remaining, leader's lap, or overtime label)."
+msgstr "Başlığın altında seans bilgisi satırı göster (seans, kalan süre, liderin turu veya uzatma)."
+
+msgctxt "tooltip"
+msgid "Show all-time column with lifetime stats for this track and bike."
+msgstr "Bu pist ve motor için ömür boyu istatistikli tüm zamanlar sütununu göster."
+
+msgctxt "tooltip"
+msgid "Show axis labels: values on the left, lap numbers on the bottom."
+msgstr "Eksen etiketlerini göster: değerler solda, tur numaraları altta."
+
+msgctxt "tooltip"
+msgid "Show best lap time column."
+msgstr "En iyi tur süresi sütununu göster."
+
+msgctxt "tooltip"
+msgid "Show bike model column."
+msgstr "Motor modeli sütununu göster."
+
+msgctxt "tooltip"
+msgid "Show clutch input percentage."
+msgstr "Debriyaj girdisi yüzdesini göster."
+
+msgctxt "tooltip"
+msgid "Show combo arc with chain multiplier and score breakdown."
+msgstr "Zincir çarpanı ve puan dökümüyle kombo yayını göster."
+
+msgctxt "tooltip"
+msgid "Show current gear number."
+msgstr "Geçerli vites numarasını göster."
+
+msgctxt "tooltip"
+msgid "Show current session column with accumulated session stats."
+msgstr "Biriken seans istatistikleriyle geçerli seans sütununu göster."
+
+msgctxt "tooltip"
+msgid "Show current track name."
+msgstr "Geçerli pist adını göster."
+
+msgctxt "tooltip"
+msgid "Show current weather conditions."
+msgstr "Geçerli hava durumunu göster."
+
+msgctxt "tooltip"
+msgid "Show date when the record was set."
+msgstr "Rekorun kırıldığı tarihi göster."
+
+msgctxt "tooltip"
+msgid "Show duration, distance, jump height and peak rotation below the active trick name."
+msgstr "Etkin hareketin adının altında süre, mesafe, atlama yüksekliği ve tepe dönüşü göster."
+
+msgctxt "tooltip"
+msgid "Show each callout as on-screen text for a few seconds. Drag the widget to place it."
+msgstr "Her anonsu birkaç saniye ekranda yazı olarak göster. Yerleştirmek için widget'ı sürükle."
+
+msgctxt "tooltip"
+msgid "Show each rider's class (MX1, MX2 OEM...)."
+msgstr "Her sürücünün sınıfını göster (MX1, MX2 OEM...)."
+
+msgctxt "tooltip"
+msgid "Show elapsed session time row."
+msgstr "Geçen seans süresi satırını göster."
+
+msgctxt "tooltip"
+msgid "Show engine RPM."
+msgstr "Motor RPM'ini göster."
+
+msgctxt "tooltip"
+msgid "Show finishing position when crossing the line (e.g. FINISHED 1ST). Updates with penalties."
+msgstr "Çizgiyi geçince bitiş sırasını göster (ör. 1. BİTİRDİ). Cezalarla güncellenir."
+
+msgctxt "tooltip"
+msgid "Show frames per second (FPS)."
+msgstr "Saniyedeki kare sayısını (FPS) göster."
+
+msgctxt "tooltip"
+msgid "Show front brake input percentage."
+msgstr "Ön fren girdisi yüzdesini göster."
+
+msgctxt "tooltip"
+msgid "Show front suspension travel."
+msgstr "Ön süspansiyon yolunu göster."
+
+#. max 23 characters
+msgid "Show gap"
+msgstr "Farkı göster"
+
+#. max 23 characters
+msgid "Show gap bar"
+msgstr "Fark barını göster"
+
+msgctxt "tooltip"
+msgid "Show gap comparison row. Displays time difference based on gap compare mode."
+msgstr "Fark karşılaştırma satırını göster. Fark karşılaştırma moduna göre süre farkını gösterir."
+
+msgctxt "tooltip"
+msgid "Show gap time text in the center of the bar."
+msgstr "Fark süresini barın ortasında yazı olarak göster."
+
+msgctxt "tooltip"
+msgid "Show grid lines behind the chart, with a line at each lap."
+msgstr "Grafiğin arkasında her turda bir çizgiyle ızgara çizgileri göster."
+
+#. max 15 characters
+msgid "Show icons"
+msgstr "İkonları göster"
+
+msgctxt "tooltip"
+msgid "Show icons next to each row. Off displays text only."
+msgstr "Her satırın yanında ikon göster. Kapalı yalnız yazı gösterir."
+
+msgctxt "tooltip"
+msgid "Show icons on HUD titles, settings tabs and controls, and the Toggles strip. Off uses text like [x]."
+msgstr "HUD başlıkları, ayar sekmeleri, kontroller ve Anahtarlar şeridinde ikon. Kapalı [x] gibi yazı kullanır."
+
+msgctxt "tooltip"
+msgid "Show lap number row."
+msgstr "Tur numarası satırını göster."
+
+msgctxt "tooltip"
+msgid "Show last completed lap column with per-lap stats."
+msgstr "Tur başına istatistikle son tamamlanan tur sütununu göster."
+
+msgctxt "tooltip"
+msgid "Show last lap time column (each rider's most recent lap, cuts included)."
+msgstr "Son tur süresi sütununu göster (her sürücünün son turu, kesmeler dahil)."
+
+msgctxt "tooltip"
+msgid "Show last lap time row."
+msgstr "Son tur süresi satırını göster."
+
+msgctxt "tooltip"
+msgid "Show live gap to personal best below the current lap time."
+msgstr "Geçerli tur süresinin altında kişisel en iyiye canlı farkı göster."
+
+#. max 15 characters
+msgid "Show markers"
+msgstr "İşaret göster"
+
+#. max 15 characters
+msgid "Show mode"
+msgstr "Gösterim modu"
+
+#. max 23 characters
+msgid "Show myself"
+msgstr "Beni göster"
+
+msgctxt "tooltip"
+msgid "Show notice when a faster rider is approaching to pass. Race sessions only."
+msgstr "Daha hızlı bir sürücü geçmek için yaklaşınca bildirim göster. Yalnız yarış seansları."
+
+msgctxt "tooltip"
+msgid "Show notice when setting a session personal best lap."
+msgstr "Seans kişisel en iyi turunu atınca bildirim göster."
+
+msgctxt "tooltip"
+msgid "Show notice when setting an all-time personal best lap."
+msgstr "Tüm zamanlar kişisel en iyi turunu atınca bildirim göster."
+
+msgctxt "tooltip"
+msgid "Show notice when setting the fastest lap in an online race."
+msgstr "Çevrimiçi yarışta en hızlı turu atınca bildirim göster."
+
+msgctxt "tooltip"
+msgid "Show notice when starting the final lap of a race."
+msgstr "Yarışın son turuna başlarken bildirim göster."
+
+msgctxt "tooltip"
+msgid "Show notice when the session timer expires in a time+laps race and extra laps begin."
+msgstr "Süre+tur yarışında seans süresi dolup ek turlar başlayınca bildirim göster."
+
+msgctxt "tooltip"
+msgid "Show notice when you are closing on a rider ahead who is a lap or more down. Race sessions only."
+msgstr "Bir veya daha çok tur gerideki öndeki sürücüye yaklaşınca bildirim göster. Yalnız yarış."
+
+msgctxt "tooltip"
+msgid "Show or hide the Stream Chat HUD. It stays connected while hidden."
+msgstr "Canlı Sohbet HUD'unu göster veya gizle. Gizliyken bağlı kalır."
+
+msgctxt "tooltip"
+msgid "Show or hide this element during gameplay."
+msgstr "Oyun sırasında bu öğeyi göster veya gizle."
+
+msgctxt "tooltip"
+msgid "Show penalty indicator when riders have active penalties."
+msgstr "Sürücülerin etkin cezası varken ceza göstergesini göster."
+
+msgctxt "tooltip"
+msgid "Show pitch, yaw, and roll rotation arcs with start and peak markers."
+msgstr "Başlangıç ve tepe işaretleriyle yunuslama, sapma ve yalpa dönüş yaylarını göster."
+
+msgctxt "tooltip"
+msgid "Show position number column."
+msgstr "Sıra numarası sütununu göster."
+
+msgctxt "tooltip"
+msgid "Show positions gained or lost since the race start (caret up/down with a count). Race sessions only."
+msgstr "Yarış başından beri kazanılan veya kaybedilen sıraları göster (sayıyla yukarı/aşağı ok). Yalnız yarış."
+
+msgctxt "tooltip"
+msgid "Show race number column."
+msgstr "Yarış numarası sütununu göster."
+
+msgctxt "tooltip"
+msgid "Show race position row."
+msgstr "Yarış sırası satırını göster."
+
+msgctxt "tooltip"
+msgid "Show raw rotation values for pitch, yaw, and roll (developer mode only)."
+msgstr "Yunuslama, sapma ve yalpa için ham dönüş değerlerini göster (yalnız geliştirici modu)."
+
+msgctxt "tooltip"
+msgid "Show rear brake input percentage."
+msgstr "Arka fren girdisi yüzdesini göster."
+
+msgctxt "tooltip"
+msgid "Show rear suspension travel."
+msgstr "Arka süspansiyon yolunu göster."
+
+msgctxt "tooltip"
+msgid "Show rider name row."
+msgstr "Sürücü adı satırını göster."
+
+msgctxt "tooltip"
+msgid "Show sector split times (S1, S2, S3)."
+msgstr "Sektör ara sürelerini göster (S1, S2, S3)."
+
+msgctxt "tooltip"
+msgid "Show sector time columns (S1, S2, S3). Only available with MXB Ranked provider."
+msgstr "Sektör süresi sütunlarını göster (S1, S2, S3). Yalnız MXB Ranked sağlayıcısıyla."
+
+msgctxt "tooltip"
+msgid "Show session format (time/laps) and current state."
+msgstr "Seans formatını (süre/tur) ve geçerli durumu göster."
+
+msgctxt "tooltip"
+msgid "Show session information row."
+msgstr "Seans bilgisi satırını göster."
+
+msgctxt "tooltip"
+msgid "Show small icons next to each event indicating the event type."
+msgstr "Her olayın yanında olay türünü belirten küçük ikonlar göster."
+
+msgctxt "tooltip"
+msgid "Show status icons: hazard warnings, blue flags, checkered flags, and tracked rider markers."
+msgstr "Durum ikonlarını göster: tehlike uyarıları, mavi ve damalı bayraklar, izlenen sürücü işaretleri."
+
+msgctxt "tooltip"
+msgid "Show the Dash's next page."
+msgstr "Dash'in sonraki sayfasını göster."
+
+msgctxt "tooltip"
+msgid "Show the Dash's previous page."
+msgstr "Dash'in önceki sayfasını göster."
+
+msgid "Show the HUD on a second screen"
+msgstr "HUD'u ikinci ekranda göster"
+
+msgctxt "tooltip"
+msgid "Show the auto-director's shot decisions and state changes in the log. Frequent, so off by default."
+msgstr "Oto-yönetmenin çekim kararlarını ve durum değişimlerini kayıtta göster. Sık olduğu için varsayılan kapalı."
+
+msgctxt "tooltip"
+msgid "Show the big time row at the top (current/frozen split or lap time)."
+msgstr "Üstte büyük zaman satırını göster (geçerli/donmuş ara veya tur süresi)."
+
+msgctxt "tooltip"
+msgid "Show the dashed reference line (the trace's reference pace)."
+msgstr "Kesikli referans çizgisini göster (izin referans temposu)."
+
+msgctxt "tooltip"
+msgid "Show the green/red gap visualization bars."
+msgstr "Yeşil/kırmızı fark çubuklarını göster."
+
+msgctxt "tooltip"
+msgid "Show the live gap to a reference lap under the time, as the Gap Bar shows it. Default follows General."
+msgstr "Sürenin altında, Fark Barı gibi, referans tura canlı farkı göster. Varsayılan Genel'i izler."
+
+msgctxt "tooltip"
+msgid "Show the local time each message was sent."
+msgstr "Her mesajın gönderildiği yerel saati göster."
+
+msgctxt "tooltip"
+msgid "Show the new track's title and artist when Now playing changes track."
+msgstr "Çalan parça değişince yeni parçanın adını ve sanatçısını göster."
+
+msgctxt "tooltip"
+msgid "Show the server name (online) / 'Testing' (offline) as the headline row."
+msgstr "Sunucu adını (çevrimiçi) / 'Test' (çevrimdışı) başlık satırı olarak göster."
+
+msgctxt "tooltip"
+msgid "Show throttle input percentage."
+msgstr "Gaz girdisi yüzdesini göster."
+
+#, c-format
+msgid "Show up %s days in a row"
+msgstr "Art arda %s gün gel"
+
+#, c-format
+msgid "Show up on %s different days"
+msgstr "%s farklı günde gel"
+
+msgctxt "tooltip"
+msgid "Show warning when a rider going the wrong way is on the track ahead."
+msgstr "Önde pistte ters yönde giden sürücü varken uyarı göster."
+
+msgctxt "tooltip"
+msgid "Show warning when a stationary rider is on the track ahead."
+msgstr "Önde pistte duran sürücü varken uyarı göster."
+
+msgctxt "tooltip"
+msgid "Show warning when entering the track with the default bike setup."
+msgstr "Piste varsayılan motor ayarıyla girince uyarı göster."
+
+msgctxt "tooltip"
+msgid "Show warning when riding in the wrong direction."
+msgstr "Ters yönde sürerken uyarı göster."
+
+msgctxt "tooltip"
+msgid "Show your fastest individual sector times (S1, S2, S3)."
+msgstr "En hızlı tekil sektör sürelerini göster (S1, S2, S3)."
+
+msgctxt "tooltip"
+msgid "Show your last lap, best lap, and calculated ideal lap times."
+msgstr "Son turunu, en iyi turunu ve hesaplanan ideal tur sürelerini göster."
+
+msgid "Show-off"
+msgstr "Gösterişçi"
+
+msgctxt "tooltip"
+msgid "Shows ECU aids: map, traction, engine braking, anti-wheeling. Chips brighten on intervention."
+msgstr "ECU yardımlarını gösterir: harita, çekiş, motor freni, anti-wheeling. Müdahalede çipler parlar."
+
+msgctxt "tooltip"
+msgid "Shows a page's name for a moment as you step to it, then its content."
+msgstr "Bir sayfaya geçerken adını bir an, sonra içeriğini gösterir."
+
+msgctxt "tooltip"
+msgid "Shows current gear with shift indicator that turns red at shift point."
+msgstr "Vites noktasında kırmızıya dönen vites göstergesiyle geçerli vitesi gösterir."
+
+msgctxt "tooltip"
+msgid "Shows current ground speed in mph or km/h."
+msgstr "Anlık yer hızını mph veya km/s olarak gösterir."
+
+msgctxt "tooltip"
+msgid "Shows current lap number and total laps in the session."
+msgstr "Geçerli tur numarasını ve seanstaki toplam turu gösterir."
+
+msgctxt "tooltip"
+msgid "Shows current local time. Supports 12h/24h format and optional UTC display."
+msgstr "Yerel saati gösterir. 12s/24s biçimi ve isteğe bağlı UTC gösterimi."
+
+msgctxt "tooltip"
+msgid "Shows elapsed session time or time remaining."
+msgstr "Geçen seans süresini veya kalan süreyi gösterir."
+
+msgctxt "tooltip"
+msgid "Shows front and rear tyre temperatures."
+msgstr "Ön ve arka lastik sıcaklıklarını gösterir."
+
+msgctxt "tooltip"
+msgid "Shows nearby riders relative to your position. Useful for close racing awareness."
+msgstr "Yakındaki sürücüleri konumuna göre gösterir. Yakın yarışta farkındalık için kullanışlı."
+
+msgctxt "tooltip"
+msgid "Shows remaining fuel level and estimated laps."
+msgstr "Kalan yakıtı ve tahmini turu gösterir."
+
+msgctxt "tooltip"
+msgid "Shows rider lean angle in degrees with arc gauge."
+msgstr "Sürücünün yatma açısını derece olarak yay göstergesiyle gösterir."
+
+msgctxt "tooltip"
+msgid "Shows your current race position (P1, P2, etc.)."
+msgstr "Geçerli yarış sıranı gösterir (P1, P2 vb.)."
+
+msgid "Sighting Lap"
+msgstr "Isınma Turu"
+
+msgid "Silver"
+msgstr "Gümüş"
+
+msgid "Silver Sweep"
+msgstr "Gümüş Süpürme"
+
+msgctxt "tooltip"
+msgid "Simple HUD elements showing speed, position, lap count, session time, and other info."
+msgstr "Hız, sıra, tur sayısı, seans süresi ve diğer bilgileri gösteren basit HUD öğeleri."
+
+msgctxt "tooltip"
+msgid "Size multiplier for rider markers."
+msgstr "Sürücü işaretleri için boyut çarpanı."
+
+msgctxt "tooltip"
+msgid "Size multiplier: make this HUD bigger or smaller. Affects all its text and graphics."
+msgstr "Boyut çarpanı: bu HUD'u büyüt veya küçült. Tüm yazı ve grafiklerini etkiler."
+
+msgctxt "tooltip"
+msgid "Size of every HUD and this menu. Each HUD's own Scale is relative to it."
+msgstr "Her HUD'un ve bu menünün boyutu. Her HUD'un kendi Ölçeği buna görelidir."
+
+msgctxt "tooltip"
+msgid "Size of proximity warning arrows."
+msgstr "Yakınlık uyarı oklarının boyutu."
+
+msgctxt "tooltip"
+msgid "Size of rider markers on the radar."
+msgstr "Radardaki sürücü işaretlerinin boyutu."
+
+msgctxt "tooltip"
+msgid "Size of rider markers relative to the map."
+msgstr "Sürücü işaretlerinin haritaya göre boyutu."
+
+msgid "Skill Issue"
+msgstr "Yetenek Sorunu"
+
+msgid "Sld"
+msgstr "Kym"
+
+#. max 11 characters
+msgid "Slide"
+msgstr "Kayma"
+
+msgctxt "tooltip"
+msgid "Slower times, losses, and critical alerts."
+msgstr "Daha yavaş süreler, kayıplar ve kritik uyarılar."
+
+#. max 7 characters
+msgid "Small"
+msgstr "Küçük"
+
+msgid "So Close"
+msgstr "Kıl Payı"
+
+msgid "Somersault"
+msgstr "Perende"
+
+msgctxt "tooltip"
+msgid "Speak callouts aloud (Windows text-to-speech). Subtitles work without it."
+msgstr "Anonsları sesli oku (Windows metin okuma). Altyazılar onsuz da çalışır."
+
+msgctxt "tooltip"
+msgid "Speak your pack's hotkey_triggered line. Nothing is built in - write it first."
+msgstr "Paketinin hotkey_triggered satırını oku. Yerleşik bir şey yok - önce onu yaz."
+
+msgid "Spectate"
+msgstr "İzle"
+
+#, c-format
+msgid "Spectate or replay for %s"
+msgstr "%s izle veya tekrar izle"
+
+#. max 11 characters
+msgid "Speed"
+msgstr "Hız"
+
+#. max 13 characters
+msgid "Speed unit"
+msgstr "Hız birimi"
+
+#. max 11 characters
+msgid "Speedo"
+msgstr "Hızölçer"
+
+#, c-format
+msgid "Spend %s in the air"
+msgstr "Havada %s geçir"
+
+#, c-format
+msgid "Spend %s on track"
+msgstr "Pistte %s geçir"
+
+#, c-format
+msgid "Spin the rear wheel in place for %s"
+msgstr "Arka tekeri yerinde %s döndür"
+
+msgid "Split Decision"
+msgstr "Ara Karar"
+
+#. max 23 characters
+msgid "Splits"
+msgstr "Aralar"
+
+msgctxt "tooltip"
+msgid "Splits shows each row's time at the next split. Full lap shows its whole-lap time all the way round."
+msgstr "Aralar: her satırın sonraki aradaki süresi. Tam tur: tüm tur süresini tur boyunca gösterir."
+
+msgid "Spn"
+msgstr "Pat"
+
+#. max 23 characters
+msgid "Spoken audio"
+msgstr "Sesli anons"
+
+msgctxt "tooltip"
+msgid "Spoken race callouts - fastest laps, leader changes, penalties - with optional subtitles."
+msgstr "Sesli yarış anonsları - en hızlı turlar, lider değişimleri, cezalar - isteğe bağlı altyazıyla."
+
+msgctxt "tooltip"
+msgid "Spotify or any player in Windows' media controls, with its controls and volume. Needs Now playing in General."
+msgstr "Spotify ya da Windows medya kontrollerindeki bir oynatıcı, kontrol ve sesiyle. Genel'de Çalan parça gerekir."
+
+msgid "Spotless"
+msgstr "Lekesiz"
+
+#. max 9 characters
+msgid "Spotter"
+msgstr "Spotter"
+
+msgid "Srf"
+msgstr "Zmn"
+
+msgid "Stable"
+msgstr "Kararlı"
+
+msgctxt "tooltip"
+msgid "Stable only shows final releases. Prerelease includes test builds."
+msgstr "Kararlı yalnız son sürümleri gösterir. Ön sürüm test derlemelerini de içerir."
+
+#. max 15 characters
+msgid "Stack forces"
+msgstr "Kuvvet topla"
+
+msgid "Stalker"
+msgstr "Gölge Takipçi"
+
+#. max 9 characters
+msgid "Standings"
+msgstr "Sıralama"
+
+msgid "Start Sequence"
+msgstr "Start Dizisi"
+
+msgctxt "tooltip"
+msgid "Start or stop the draw-cost sweep. Writes a report when it ends."
+msgstr "Çizim maliyeti taramasını başlat veya durdur. Bitince rapor yazar."
+
+msgid "Started fresh. A copy is kept in the mxbmrp3 folder"
+msgstr "Sıfırdan başlandı. mxbmrp3 klasöründe bir kopya tutuldu"
+
+#. max 23 characters
+msgid "Stationary rider"
+msgstr "Duran sürücü"
+
+#. max 10 characters
+msgid "Stats"
+msgstr "İstatistik"
+
+msgid "Stats file unreadable"
+msgstr "İstatistik dosyası okunamıyor"
+
+msgid "Stats not saved"
+msgstr "İstatistik kaydedilmedi"
+
+#. max 23 characters
+msgid "Status"
+msgstr "Durum"
+
+#. max 15 characters
+msgid "Status icon"
+msgstr "Durum ikonu"
+
+#, c-format
+msgid "Stay airborne %s and land it"
+msgstr "%s havada kal ve yere in"
+
+msgid "Steady Hands"
+msgstr "Sağlam Eller"
+
+#. max 23 characters
+msgid "Steam"
+msgstr "Steam"
+
+msgctxt "tooltip"
+msgid "Steam friends in the same game: where they are, badged when on your server and track."
+msgstr "Aynı oyundaki Steam arkadaşları: nerede oldukları, sunucunda ve pistindeyken rozetli."
+
+msgid "Steam integration off"
+msgstr "Steam entegrasyonu kapalı"
+
+msgid "Steam not available"
+msgstr "Steam kullanılamıyor"
+
+#. max 11 characters
+msgid "Steering"
+msgstr "Direksiyon"
+
+#. max 60 characters
+msgid "Stories"
+msgstr "Hikâyeler"
+
+#. max 15 characters
+msgid "Story hold"
+msgstr "Hikâye süresi"
+
+msgid "Str"
+msgstr "Drk"
+
+msgid "Straight Rhythm"
+msgstr "Düz Ritim"
+
+#. max 12 characters
+msgid "Stream Chat"
+msgstr "Canlı Sohbet"
+
+msgid "Stream chat off"
+msgstr "Canlı sohbet kapalı"
+
+msgctxt "tooltip"
+msgid "Strength of the tint."
+msgstr "Tonun gücü."
+
+#. max 7 characters
+msgid "Strong"
+msgstr "Kalın"
+
+#. max 23 characters
+msgid "Style"
+msgstr "Stil"
+
+msgid "Style Points"
+msgstr "Stil Puanı"
+
+msgid "Style the web overlay with custom.css"
+msgstr "Web overlay'i custom.css ile biçimlendir"
+
+msgid "Stylist"
+msgstr "Stilist"
+
+#, c-format
+msgid "Submit by playing on %s servers"
+msgstr "%s sunucuda oynayarak gönder"
+
+#. max 15 characters
+msgid "Subtitles"
+msgstr "Altyazılar"
+
+msgid "Subtle"
+msgstr "İnce"
+
+msgctxt "tooltip"
+msgid "Subtle labels, axis markers, and category names."
+msgstr "İnce etiketler, eksen işaretleri ve kategori adları."
+
+msgctxt "tooltip"
+msgid "Supporting text for live data, telemetry values, and descriptions."
+msgstr "Canlı veri, telemetri değerleri ve açıklamalar için destek metni."
+
+#. max 11 characters
+msgid "Surface"
+msgstr "Zemin"
+
+msgid "Survivor"
+msgstr "Hayatta Kalan"
+
+msgid "Sweeping - about a minute, frame rate drops."
+msgstr "Taranıyor - yaklaşık bir dakika, kare hızı düşer."
+
+#, c-format
+msgid "Switch profiles %s times"
+msgstr "%s kez profil değiştir"
+
+msgid "Switch to the pre-release channel"
+msgstr "Ön sürüm kanalına geç"
+
+msgid "Switched for practice"
+msgstr "Antrenman için değişti"
+
+msgid "Switched for qualifying"
+msgstr "Kalifikasyon için değişti"
+
+msgid "Switched for spectating"
+msgstr "İzleme için değişti"
+
+msgid "Switched for the race"
+msgstr "Yarış için değişti"
+
+msgid "System"
+msgstr "Sistem"
+
+msgid "System default"
+msgstr "Sistem varsayılanı"
+
+msgctxt "tooltip"
+msgid "System performance metrics including frame rate and plugin execution time."
+msgstr "Kare hızı ve eklenti çalışma süresi dahil sistem performans ölçümleri."
+
+msgid "TH"
+msgstr "."
+
+#. max 23 characters
+msgid "TTS voice"
+msgstr "TTS sesi"
+
+msgid "Tab"
+msgstr "Sekme"
+
+msgid "Tabs"
+msgstr "Sekmeler"
+
+#. max 11 characters
+msgid "Tacho"
+msgstr "Takometre"
+
+msgctxt "tooltip"
+msgid "Tachometer gauge showing engine RPM."
+msgstr "Motor RPM'ini gösteren takometre göstergesi."
+
+#, c-format
+msgid "Take a %sG hit"
+msgstr "%sG darbe al"
+
+#. max 23 characters
+msgid "Target"
+msgstr "Hedef"
+
+#. max 10 characters
+msgid "Telemetry"
+msgstr "Telemetri"
+
+#. max 13 characters
+msgid "Temp unit"
+msgstr "Sıcaklık br."
+
+#. max 11 characters
+msgid "Tertiary"
+msgstr "Üçüncül"
+
+msgid "Test Pilot"
+msgstr "Test Pilotu"
+
+msgctxt "tooltip"
+msgid "Test update installation without overwriting the real plugin."
+msgstr "Güncelleme kurulumunu gerçek eklentinin üzerine yazmadan test et."
+
+msgid "Testing"
+msgstr "Test"
+
+#. max 8 characters
+msgid "Texture"
+msgstr "Doku"
+
+#. max 38 characters
+msgid "Thanks"
+msgstr "Teşekkürler"
+
+msgctxt "tooltip"
+msgid "The Delta Trace HUD's chart: your gap to its reference lap across the lap."
+msgstr "Delta Eğrisi HUD'unun grafiği: tur boyunca referans tura farkın."
+
+msgctxt "tooltip"
+msgid "The Event Log's three newest events, with its icons and event filter."
+msgstr "Olay Kaydı'nın en yeni üç olayı, ikonları ve olay filtresiyle."
+
+msgctxt "tooltip"
+msgid "The Fuel widget's rows: your fuel, use per lap and laps left, beside a bar showing how full your tank is."
+msgstr "Yakıt widget'ının satırları: yakıtın, tur başına tüketim ve kalan tur, deponun doluluğunu gösteren çubuğun yanında."
+
+msgctxt "tooltip"
+msgid "The Gap Bar's fill for your live gap to your reference lap, with your last and best lap."
+msgstr "Fark Barı'nın referans tura canlı farkın dolgusu, son ve en iyi turunla."
+
+#. max 60 characters
+msgid "The HUD itself can stay off: its page still works."
+msgstr "HUD'un kendisi kapalı kalabilir: sayfası yine çalışır."
+
+msgctxt "tooltip"
+msgid "The Now Playing widget's track, controls and volume. Needs Now playing in General."
+msgstr "Çalan Parça widget'ının parçası, kontrolleri ve sesi. Genel'de Çalan parça gerekir."
+
+msgctxt "tooltip"
+msgid "The RPM widget's shift lights, with the revs under them."
+msgstr "RPM widget'ının vites ışıkları, altında devirle."
+
+msgctxt "tooltip"
+msgid "The Session Charts HUD's Gap chart: you and the riders just ahead and behind."
+msgstr "Seans Grafikleri HUD'unun Fark grafiği: sen ve hemen önündeki ve arkandaki sürücüler."
+
+msgctxt "tooltip"
+msgid "The Session HUD's rows: server, track and format."
+msgstr "Seans HUD'unun satırları: sunucu, pist ve format."
+
+msgctxt "tooltip"
+msgid "The Telemetry HUD's inputs as traces across the card."
+msgstr "Telemetri HUD'unun girdileri, kart boyunca izler olarak."
+
+msgctxt "tooltip"
+msgid "The field's race news: others' laps, penalties, pit stops, retirements."
+msgstr "Alanın yarış haberleri: diğerlerinin turları, cezalar, pit stoplar, bırakanlar."
+
+msgctxt "tooltip"
+msgid "The friend's current track."
+msgstr "Arkadaşın geçerli pisti."
+
+msgctxt "tooltip"
+msgid "The friend's server name (blank when offline)."
+msgstr "Arkadaşın sunucu adı (çevrimdışıyken boş)."
+
+msgctxt "tooltip"
+msgid "The friend's session clock: MM:SS, or N TO GO / FINAL LAP / CHECKERED. Coarse snapshot, not live."
+msgstr "Arkadaşın seans saati: DD:SS veya N TO GO / FINAL LAP / CHECKERED. Kaba anlık görüntü, canlı değil."
+
+msgid "The key under Esc opens settings"
+msgstr "Esc altındaki tuş ayarları açar"
+
+msgctxt "tooltip"
+msgid "The lap Gap Bar, Lap Log, Delta Trace, Timing and the map's Lap delta compare against when set to Default."
+msgstr "Varsayılanda Fark Barı, Tur Kaydı, Delta Eğrisi, Zamanlama ve harita Tur deltasının kıyasladığı tur."
+
+msgctxt "tooltip"
+msgid "The less-used HUDs and tools. Click a name to open its settings."
+msgstr "Az kullanılan HUD'lar ve araçlar. Ayarlarını açmak için bir ada tıkla."
+
+msgctxt "tooltip"
+msgid "The rider's color on standings, map, and radar."
+msgstr "Sürücünün sıralama, harita ve radardaki rengi."
+
+msgctxt "tooltip"
+msgid "The rider's icon on the map and radar."
+msgstr "Sürücünün harita ve radardaki ikonu."
+
+msgctxt "tooltip"
+msgid "The screen edges darken when you take a hard hit, further the harder it is, then clear."
+msgstr "Sert bir darbe alınca ekran kenarları kararır, darbe sertleştikçe daha çok; sonra açılır."
+
+msgctxt "tooltip"
+msgid "The session and your own status: flags, your penalty, your pit lane."
+msgstr "Seans ve kendi durumun: bayraklar, cezan, pit yolun."
+
+msgctxt "tooltip"
+msgid "The session clock: counts down in a timed session, up otherwise, then the laps to go."
+msgstr "Seans saati: süreli seansta geri, diğerlerinde ileri sayar; sonra kalan turlar."
+
+msgctxt "tooltip"
+msgid "The toast card shown when a tier is earned. Off still tracks."
+msgstr "Seviye kazanılınca gösterilen bildirim kartı. Kapalıyken de izlenir."
+
+msgid "Theme"
+msgstr "Tema"
+
+msgctxt "tooltip"
+msgid "Thickness of the track outline line."
+msgstr "Pist dış çizgisinin kalınlığı."
+
+#. max 60 characters
+msgid "This is a demonstration, not a finished spotter."
+msgstr "Bu bir gösterimdir, bitmiş bir spotter değil."
+
+msgid "Thr"
+msgstr "Gaz"
+
+#. max 23 characters
+msgid "Throttle"
+msgstr "Gaz"
+
+#. max 43 characters
+msgid "Throttle, brake, suspension"
+msgstr "Gaz, fren, süspansiyon"
+
+msgctxt "tooltip"
+msgid "Ticks at the bar's edges where the track's splits are."
+msgstr "Barın kenarlarında pistin ara noktalarını gösteren çentikler."
+
+#. max 15 characters
+msgid "Tilt"
+msgstr "Eğim"
+
+#. max 23 characters
+msgid "Tilt strength"
+msgstr "Eğim gücü"
+
+#. max 11 characters
+msgid "Time"
+msgstr "Süre"
+
+msgid "Time Served"
+msgstr "Ceza Çekildi"
+
+msgid "Time a segment"
+msgstr "Bir bölümü ölç"
+
+#. max 23 characters
+msgid "Time elapsed"
+msgstr "Geçen süre"
+
+#. max 15 characters
+msgid "Time expired"
+msgstr "Süre doldu"
+
+#. max 15 characters
+msgid "Time left"
+msgstr "Kalan süre"
+
+msgctxt "tooltip"
+msgid "Time range displayed on the gap bar in seconds. Auto fits the largest gap of the lap so far."
+msgstr "Fark barında gösterilen zaman aralığı (saniye). Oto, turun şimdiye dek en büyük farkına uyar."
+
+msgctxt "tooltip"
+msgid "Time the plugin itself spends per frame, in ms. Not system CPU."
+msgstr "Eklentinin kare başına harcadığı süre (ms). Sistem CPU'su değil."
+
+#. max 23 characters
+msgid "Timer"
+msgstr "Sayaç"
+
+#. max 15 characters
+msgid "Timestamp"
+msgstr "Zaman damgası"
+
+#. max 9 characters
+msgid "Timing"
+msgstr "Zamanlama"
+
+msgid "Tinkerer"
+msgstr "Kurcalayıcı"
+
+#. max 23 characters
+msgid "Tint color"
+msgstr "Ton rengi"
+
+#. max 23 characters
+msgid "Tint opacity"
+msgstr "Ton opaklığı"
+
+#. max 66 characters
+msgid "Tip: lower Detail or Track outline to gain FPS."
+msgstr "İpucu: FPS kazanmak için Detay veya Pist dış çizgisini azalt."
+
+#. max 66 characters
+msgid "Tip: select your controller in the General tab."
+msgstr "İpucu: kontrolcünü Genel sekmesinde seç."
+
+#. max 7 characters
+msgid "Title"
+msgstr "Başlık"
+
+#. max 60 characters
+msgid "To change what a page shows, use that HUD's own tab."
+msgstr "Sayfanın gösterdiğini o HUD'un kendi sekmesinden değiştir."
+
+msgid "To the Moon"
+msgstr "Aya Kadar"
+
+#. max 60 characters
+msgid "Toasts"
+msgstr "Bildirimler"
+
+msgctxt "tooltip"
+msgid "Toggle all HUDs on/off."
+msgstr "Tüm HUD'ları aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle all widgets on/off."
+msgstr "Tüm widget'ları aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the Charts HUD on/off."
+msgstr "Grafikler HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the Dash on/off."
+msgstr "Dash'i aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the FMX HUD on/off."
+msgstr "FMX HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the auto-director on/off."
+msgstr "Oto-yönetmeni aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the delta trace HUD on/off."
+msgstr "Delta eğrisi HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the event log HUD on/off."
+msgstr "Olay kaydı HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the friends HUD on/off."
+msgstr "Arkadaşlar HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the gap bar HUD on/off."
+msgstr "Fark barı HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the helmet overlay on/off."
+msgstr "Kask katmanını aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the ideal lap HUD on/off."
+msgstr "İdeal tur HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the input display HUD on/off."
+msgstr "Girdi gösterimi HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the lap log HUD on/off."
+msgstr "Tur kaydı HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the notices HUD on/off."
+msgstr "Bildirimler HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the performance HUD on/off."
+msgstr "Performans HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the pitboard HUD on/off."
+msgstr "Pit tabelası HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the radar HUD on/off."
+msgstr "Radar HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the records HUD on/off."
+msgstr "Rekorlar HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the rumble HUD on/off."
+msgstr "Titreşim HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the session HUD on/off."
+msgstr "Seans HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the settings menu on/off."
+msgstr "Ayar menüsünü aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the standings HUD on/off."
+msgstr "Sıralama HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the stats HUD on/off."
+msgstr "İstatistik HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the telemetry HUD on/off."
+msgstr "Telemetri HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the timing HUD on/off."
+msgstr "Zamanlama HUD'unu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the title bar at the top of this HUD."
+msgstr "Bu HUD'un üstündeki başlık çubuğunu aç/kapat."
+
+msgctxt "tooltip"
+msgid "Toggle the track map HUD on/off."
+msgstr "Pist haritası HUD'unu aç/kapat."
+
+#. max 10 characters
+msgid "Toggles"
+msgstr "Anahtarlar"
+
+msgid "Top"
+msgstr "Üst"
+
+#. max 15 characters
+msgid "Top positions"
+msgstr "Üst sıralar"
+
+msgid "Top speed"
+msgstr "Maks. hız"
+
+msgid "Total"
+msgstr "Toplam"
+
+msgctxt "tooltip"
+msgid "Total rider lines shown: the top-N plus a window centered on you."
+msgstr "Gösterilen toplam sürücü çizgisi: ilk N artı sana ortalanmış bir pencere."
+
+#. max 15 characters
+msgid "Track"
+msgstr "Pist"
+
+#, c-format
+msgid "Track %s riders"
+msgstr "%s sürücüyü izle"
+
+#. max 23 characters
+msgid "Track change"
+msgstr "Pist değişimi"
+
+msgctxt "tooltip"
+msgid "Track detail 20-200%. Higher = smoother ribbon, more quads = more CPU/GPU cost."
+msgstr "Pist detayı 20-200%. Yüksek = daha düzgün şerit, daha çok dörtgen = daha çok CPU/GPU."
+
+#. max 23 characters
+msgid "Track name"
+msgstr "Pist adı"
+
+#. max 15 characters
+msgid "Track outline"
+msgstr "Pist dış çizgi"
+
+msgctxt "tooltip"
+msgid "Track outline width; Off hides it. Outline doubles the map's quads - Off is fastest."
+msgstr "Pist dış çizgi kalınlığı; Kapalı gizler. Dış çizgi haritanın dörtgenlerini ikiye katlar - Kapalı en hızlısı."
+
+msgctxt "tooltip"
+msgid "Track specific riders with custom colors and icons. Highlighted on standings, map, and radar."
+msgstr "Belirli sürücüleri özel renk ve ikonla izle. Sıralama, harita ve radarda vurgulanır."
+
+#. max 15 characters
+msgid "Track width"
+msgstr "Pist genişliği"
+
+#. max 43 characters
+msgid "Track, server and players"
+msgstr "Pist, sunucu ve oyuncular"
+
+#. max 60 characters
+msgid "Tracked Riders"
+msgstr "İzlenen Sürücüler"
+
+msgctxt "tooltip"
+msgid "Trades every achievement and its counters for a badge. Lap records kept. Click twice; no way back."
+msgstr "Her başarımı ve sayaçlarını bir rozetle takas eder. Tur rekorları kalır. İki kez tıkla; geri dönüş yok."
+
+msgid "Trick Collector"
+msgstr "Hareket Koleksiyoncusu"
+
+msgid "Trick Stack"
+msgstr "Hareket Yığını"
+
+#. max 43 characters
+msgid "Trick scoring and combos"
+msgstr "Hareket puanı ve kombolar"
+
+#. max 23 characters
+msgid "Trick stack"
+msgstr "Hareket yığını"
+
+#. max 23 characters
+msgid "Trick stats"
+msgstr "Hareket istatistiği"
+
+msgctxt "tooltip"
+msgid "Tricks shown in the stack. Off hides it, 1 shows the active trick, 2+ shows history."
+msgstr "Yığında gösterilen hareketler. Kapalı gizler, 1 etkin hareketi, 2+ geçmişi gösterir."
+
+msgid "Try each HUD and widget"
+msgstr "Her HUD'u ve widget'ı dene"
+
+msgctxt "tooltip"
+msgid "Tune front/rear wheels separately. They start from the combined value, then stay independent."
+msgstr "Ön/arka tekeri ayrı ayarla. Birleşik değerden başlarlar, sonra bağımsız kalırlar."
+
+msgid "Turn Down"
+msgstr "Turn Down"
+
+msgid "Turn achievement toasts off"
+msgstr "Başarım bildirimlerini kapat"
+
+msgid "Turn off"
+msgstr "Kapat"
+
+msgid "Turn on an experimental setting"
+msgstr "Deneysel bir ayarı aç"
+
+msgid "Turn rumble on"
+msgstr "Titreşimi aç"
+
+#. max 25 characters
+msgid "Twitch"
+msgstr "Twitch"
+
+msgid "Twitch connection lost - retrying automatically."
+msgstr "Twitch bağlantısı koptu - otomatik yeniden deneniyor."
+
+msgid "Twitch didn't confirm this channel - check the spelling."
+msgstr "Twitch bu kanalı doğrulamadı - yazımı kontrol et."
+
+msgctxt "tooltip"
+msgid "Twitch names in the chatter's color, YouTube names by role. Off uses your primary color."
+msgstr "Twitch adları sohbet edenin renginde, YouTube adları role göre. Kapalı birincil rengini kullanır."
+
+#. max 66 characters
+msgid "Type a setting's name, its tab, or a word from its description."
+msgstr "Bir ayarın adını, sekmesini veya açıklamasındaki bir sözcüğü yaz."
+
+msgid "Type or Ctrl+V a @handle or URL. Enter saves, ESC cancels."
+msgstr "Bir @kullanıcı adı veya URL yaz ya da Ctrl+V. Enter kaydeder, ESC iptal."
+
+msgid "Type or Ctrl+V a name or URL. Enter saves, ESC cancels."
+msgstr "Bir ad veya URL yaz ya da Ctrl+V. Enter kaydeder, ESC iptal."
+
+msgid "Tyre Kicker"
+msgstr "Lastik Tekmeleyen"
+
+msgid "Tyre Shredder"
+msgstr "Lastik Öğütücü"
+
+msgid "Tyre Temp"
+msgstr "Lastik Sıc."
+
+#. max 13 characters
+msgid "UI icons"
+msgstr "Arayüz ikonu"
+
+#. max 13 characters
+msgid "UI scale"
+msgstr "Arayüz ölç."
+
+msgid "UPDATE AVAILABLE"
+msgstr "GÜNCELLEME VAR"
+
+#, c-format
+msgid "UPDATED TO %s"
+msgstr "GÜNCELLENDİ: %s"
+
+msgid "UTC"
+msgstr "UTC"
+
+msgid "Unavailable"
+msgstr "Kullanılamıyor"
+
+msgid "Under the Hood"
+msgstr "Kaputun Altında"
+
+msgid "Ungrateful"
+msgstr "Nankör"
+
+msgid "Uniform"
+msgstr "Tek tip"
+
+msgctxt "tooltip"
+msgid "Unit for fuel display. Liters or Gallons."
+msgstr "Yakıt gösterim birimi. Litre veya Galon."
+
+msgctxt "tooltip"
+msgid "Unit for speed display. mph or km/h."
+msgstr "Hız gösterim birimi. mph veya km/s."
+
+msgctxt "tooltip"
+msgid "Unit for temperature display. Celsius or Fahrenheit."
+msgstr "Sıcaklık gösterim birimi. Celsius veya Fahrenheit."
+
+msgid "Unknown"
+msgstr "Bilinmiyor"
+
+msgid "Unknown error"
+msgstr "Bilinmeyen hata"
+
+#. max 47 characters
+msgid "Unlocked"
+msgstr "Açıldı"
+
+msgid "Up"
+msgstr "Yukarı"
+
+msgid "Update"
+msgstr "Güncelle"
+
+#. max 23 characters
+msgid "Update channel"
+msgstr "Güncelleme kanalı"
+
+msgid "Update check pending..."
+msgstr "Güncelleme denetimi bekliyor..."
+
+msgid "Update installed!"
+msgstr "Güncelleme kuruldu!"
+
+#. max 9 characters
+msgid "Updates"
+msgstr "Güncelle"
+
+msgctxt "tooltip"
+msgid "Upper helmet texture (visor rim and top)."
+msgstr "Üst kask dokusu (vizör kenarı ve tepe)."
+
+#. max 23 characters
+msgid "Upper offset"
+msgstr "Üst kaydırma"
+
+#. max 23 characters
+msgid "Upper texture"
+msgstr "Üst doku"
+
+msgid "Usage survey"
+msgstr "Kullanım anketi"
+
+msgid "Use"
+msgstr "Tük"
+
+msgctxt "tooltip"
+msgid "Use shared settings (Global) or separate settings per bike."
+msgstr "Ortak ayarlar (Küresel) veya motor başına ayrı ayarlar kullan."
+
+msgid "Used"
+msgstr "Kullanılan"
+
+msgid "Verify"
+msgstr "Doğrula"
+
+msgctxt "tooltip"
+msgid "Vertical bars showing throttle, brake, clutch, RPM, suspension, and fuel levels."
+msgstr "Gaz, fren, debriyaj, RPM, süspansiyon ve yakıt seviyelerini gösteren dikey çubuklar."
+
+msgctxt "tooltip"
+msgid "Vibration during wheelies. Min/Max set the pitch angle range in degrees."
+msgstr "Wheelie sırasında titreşim. Min/Maks yunuslama açısı aralığını derece olarak ayarlar."
+
+msgctxt "tooltip"
+msgid "Vibration from rear wheel spin. Min/Max set the wheel slip ratio range."
+msgstr "Arka teker patinajından titreşim. Min/Maks teker kayma oranı aralığını ayarlar."
+
+msgctxt "tooltip"
+msgid "Vibration from rough terrain. Min/Max set the vehicle speed range when off-track."
+msgstr "Bozuk zeminden titreşim. Min/Maks pist dışındayken araç hızı aralığını ayarlar."
+
+msgctxt "tooltip"
+msgid "Vibration from steering forces. Min/Max set the steering torque range in Newton-meters."
+msgstr "Direksiyon kuvvetlerinden titreşim. Min/Maks direksiyon torku aralığını Nm olarak ayarlar."
+
+msgctxt "tooltip"
+msgid "Vibration from suspension travel over bumps. Min/Max set the suspension velocity range in m/s."
+msgstr "Tümseklerde süspansiyon yolundan titreşim. Min/Maks süspansiyon hızı aralığını m/s olarak ayarlar."
+
+msgctxt "tooltip"
+msgid "Vibration near the rev limiter. Min/Max set the range in percent of limiter RPM. Muted off-throttle."
+msgstr "Devir sınırına yakın titreşim. Min/Maks aralığı sınır RPM'inin yüzdesi. Gaz kapalıyken sessiz."
+
+#. max 23 characters
+msgid "Vibration sensitivity"
+msgstr "Titreşim duyarlılığı"
+
+#. max 23 characters
+msgid "Vibration strength"
+msgstr "Titreşim gücü"
+
+msgctxt "tooltip"
+msgid "Vibration synchronized with engine RPM. Min/Max set the RPM range."
+msgstr "Motor RPM'iyle eşzamanlı titreşim. Min/Maks RPM aralığını ayarlar."
+
+msgctxt "tooltip"
+msgid "Vibration when brakes lock up. Min/Max set the wheel slip ratio range."
+msgstr "Frenler kilitlenince titreşim. Min/Maks teker kayma oranı aralığını ayarlar."
+
+msgctxt "tooltip"
+msgid "Vibration when the bike slides sideways. Min/Max set the slide angle range in degrees."
+msgstr "Motor yana kayınca titreşim. Min/Maks kayma açısı aralığını derece olarak ayarlar."
+
+msgctxt "tooltip"
+msgid "Vibration while the pit-lane speed limiter is active. Light/Heavy set the intensity."
+msgstr "Pit yolu hız sınırlayıcısı etkinken titreşim. Hafif/Ağır yoğunluğu ayarlar."
+
+#. max 23 characters
+msgid "Vignette fade"
+msgstr "Vinyet sönümü"
+
+#. max 8 characters
+msgid "Visible"
+msgstr "Görünür"
+
+#. max 60 characters
+msgid "Visor"
+msgstr "Vizör"
+
+msgctxt "tooltip"
+msgid "Visual progress bar showing your gap to the rider ahead and behind."
+msgstr "Öndeki ve arkadaki sürücüye farkını gösteren görsel ilerleme çubuğu."
+
+msgctxt "tooltip"
+msgid "Visual representation of controller button inputs."
+msgstr "Kontrolcü düğme girdilerinin görsel gösterimi."
+
+#. max 60 characters
+msgid "Voice"
+msgstr "Ses"
+
+#. max 23 characters
+msgid "Voice pack"
+msgstr "Ses paketi"
+
+#. max 23 characters
+msgid "Volume"
+msgstr "Ses düzeyi"
+
+msgid "WELCOME"
+msgstr "HOŞ GELDİN"
+
+msgid "WRONG WAY"
+msgstr "TERS YÖN"
+
+msgid "Waiting"
+msgstr "Bekleniyor"
+
+msgid "Warmup"
+msgstr "Isınma"
+
+#. max 11 characters
+msgid "Warning"
+msgstr "Uyarı"
+
+#. max 60 characters
+msgid "Warnings & Hazards"
+msgstr "Uyarılar ve Tehlikeler"
+
+#, c-format
+msgid "Watch %s director cuts"
+msgstr "%s yönetmen kesmesi izle"
+
+msgid "Weakest Link"
+msgstr "En Zayıf Halka"
+
+#. max 23 characters
+msgid "Weather & temp"
+msgstr "Hava ve sıcaklık"
+
+msgctxt "tooltip"
+msgid "Web overlay for OBS. Add as Browser Source at the displayed port."
+msgstr "OBS için web overlay. Gösterilen portta Tarayıcı Kaynağı olarak ekle."
+
+msgid "Web overlay not started"
+msgstr "Web overlay başlatılmadı"
+
+msgctxt "tooltip"
+msgid "Web overlay: force the best-sectors carousel in now, one sector per page (momentary)."
+msgstr "Web overlay: en iyi sektör karuselini şimdi getir, sayfa başına bir sektör (anlık)."
+
+msgctxt "tooltip"
+msgid "Web overlay: force the down-the-order (backmarkers) rundown in now (momentary)."
+msgstr "Web overlay: geride kalanlar (backmarker) özetini şimdi getir (anlık)."
+
+msgctxt "tooltip"
+msgid "Web overlay: force the fastest-last-lap board in now (momentary)."
+msgstr "Web overlay: en hızlı son tur tablosunu şimdi getir (anlık)."
+
+msgctxt "tooltip"
+msgid "Web overlay: force the session-best lap board in now (momentary)."
+msgstr "Web overlay: seans en iyi tur tablosunu şimdi getir (anlık)."
+
+msgctxt "tooltip"
+msgid "Web overlay: force the session-charts carousel in now, one chart per page (momentary)."
+msgstr "Web overlay: seans grafikleri karuselini şimdi getir, sayfa başına bir grafik (anlık)."
+
+#. max 23 characters
+msgid "Web server"
+msgstr "Web sunucusu"
+
+#. max 23 characters
+msgid "Web server port"
+msgstr "Web sunucusu portu"
+
+msgid "Well Travelled"
+msgstr "Çok Gezmiş"
+
+msgctxt "tooltip"
+msgid "What this plugin is, where it came from, and who is behind it."
+msgstr "Bu eklenti nedir, nereden geldi ve arkasında kim var."
+
+#. max 11 characters
+msgid "Wheelie"
+msgstr "Wheelie"
+
+msgid "Wheelie King"
+msgstr "Wheelie Kralı"
+
+#. max 11 characters
+msgid "Wheelspin"
+msgstr "Patinaj"
+
+msgctxt "tooltip"
+msgid "When On, the map rotates so your heading is always up. When Off, the map stays fixed to track."
+msgstr "Açıkken harita, gidiş yönün hep yukarıda olacak şekilde döner. Kapalıyken pist sabit kalır."
+
+#. max 15 characters
+msgid "When crashed"
+msgstr "Kazadayken"
+
+msgctxt "tooltip"
+msgid "When enabled, HUDs are clamped to stay within screen bounds when dragging."
+msgstr "Açıkken HUD'lar sürüklenirken ekran sınırları içinde tutulur."
+
+msgctxt "tooltip"
+msgid "When enabled, HUDs snap to a grid when dragging."
+msgstr "Açıkken HUD'lar sürüklenirken ızgaraya hizalanır."
+
+msgctxt "tooltip"
+msgid "When enabled, multiple rumble effects combine. When off, only the strongest effect plays."
+msgstr "Açıkken birden çok titreşim efekti birleşir. Kapalıyken yalnız en güçlüsü çalar."
+
+msgctxt "tooltip"
+msgid "When to show. Always displays on track, On finish appears after crossing the finish line."
+msgstr "Ne zaman gösterilir. Her zaman pistte gösterir, Bitişte bitiş çizgisini geçince belirir."
+
+msgctxt "tooltip"
+msgid "When to show. Always: constantly; At laps: after the line; At splits: after each split and the line."
+msgstr "Ne zaman gösterilir. Her zaman: sürekli; Turlarda: çizgiden sonra; Aralarda: her ara ve çizgiden sonra."
+
+msgctxt "tooltip"
+msgid "When to show. Always: constantly; At pit: near pit area; At splits: after timing points."
+msgstr "Ne zaman gösterilir. Her zaman: sürekli; Pitte: pit alanına yakın; Aralarda: zamanlama noktalarından sonra."
+
+msgctxt "tooltip"
+msgid "When to show. Off hides radar, On shows always, Auto-hide shows only when riders are nearby."
+msgstr "Ne zaman gösterilir. Kapalı radarı gizler, Açık hep gösterir, Oto-gizle yalnız sürücüler yakınken."
+
+msgctxt "tooltip"
+msgid "When to show: Always; Friends (one is in-game); or On join (briefly). Visible = master on/off."
+msgstr "Ne zaman: Her zaman; Arkadaşlar (biri oyundayken); Katılınca (kısaca). Görünür = ana anahtar."
+
+msgctxt "tooltip"
+msgid "Where the HUD draws: In-game, a Companion window you can drag to a second monitor, or Both."
+msgstr "HUD'un çizildiği yer: Oyun içi, ikinci monitöre sürükleyebileceğin Companion penceresi veya İkisi."
+
+msgctxt "tooltip"
+msgid "Where the page icons sit around the card, or Off to hide them."
+msgstr "Sayfa ikonlarının kart çevresindeki yeri; gizlemek için Kapalı."
+
+msgctxt "tooltip"
+msgid "Which Windows voice speaks the text-to-speech cues."
+msgstr "Metin okuma anonslarını hangi Windows sesinin okuyacağı."
+
+msgctxt "tooltip"
+msgid "Which pack's wording and clips to use. 'default' is the shipped one."
+msgstr "Hangi paketin metin ve kliplerinin kullanılacağı. 'default' birlikte gelendir."
+
+msgid "Whip It"
+msgstr "Kırbaç Gibi"
+
+msgid "White"
+msgstr "Beyaz"
+
+msgid "Whl"
+msgstr "Whl"
+
+#. max 9 characters
+msgid "Widgets"
+msgstr "Widgetlar"
+
+msgid "Widgets hidden"
+msgstr "Widget'lar gizlendi"
+
+#. max 15 characters
+msgid "Width"
+msgstr "Genişlik"
+
+msgctxt "tooltip"
+msgid "Width multiplier for the gap bar."
+msgstr "Fark barı için genişlik çarpanı."
+
+#, c-format
+msgid "Win %s races"
+msgstr "%s yarış kazan"
+
+#, c-format
+msgid "Win %s races leading every lap"
+msgstr "Her turu önde götürerek %s yarış kazan"
+
+msgid "Win a race"
+msgstr "Bir yarış kazan"
+
+msgid "Win a race by under a tenth"
+msgstr "Bir yarışı saniyenin onda birinden azla kazan"
+
+msgid "Win a race leading every lap"
+msgstr "Her turu önde götürerek bir yarış kazan"
+
+msgid "Win with every rider at least a lap down"
+msgstr "Her sürücü en az bir tur gerideyken kazan"
+
+msgid "Winner"
+msgstr "Kazanan"
+
+msgid "Wire to Wire"
+msgstr "Baştan Sona"
+
+#. max 23 characters
+msgid "Wrong way"
+msgstr "Ters yön"
+
+#. max 23 characters
+msgid "Wrong way rider"
+msgstr "Ters yöndeki sürücü"
+
+msgid "Yaw"
+msgstr "Sapma"
+
+msgid "Yellow"
+msgstr "Sarı"
+
+msgid "You"
+msgstr "Sen"
+
+msgid "You have the latest version."
+msgstr "En son sürümü kullanıyorsun."
+
+#. max 25 characters
+msgid "YouTube"
+msgstr "YouTube"
+
+msgid "YouTube chat can't be read. Support is unofficial."
+msgstr "YouTube sohbeti okunamıyor. Destek resmi değil."
+
+msgid "YouTube chat unavailable"
+msgstr "YouTube sohbeti kullanılamıyor"
+
+msgid "YouTube connection lost - retrying automatically."
+msgstr "YouTube bağlantısı koptu - otomatik yeniden deneniyor."
+
+msgid "YouTube has no such channel - check the spelling."
+msgstr "YouTube'da böyle bir kanal yok - yazımı kontrol et."
+
+msgid "YouTube's chat can't be read"
+msgstr "YouTube sohbeti okunamıyor"
+
+msgid "YouTube: not live right now - checking every minute."
+msgstr "YouTube: şu an yayında değil - her dakika denetleniyor."
+
+msgctxt "tooltip"
+msgid "Your Twitch and YouTube chat in game, merged in one window. Read-only, no login."
+msgstr "Twitch ve YouTube sohbetin oyunda, tek pencerede birleşik. Salt okunur, giriş yok."
+
+msgid "Your final lap"
+msgstr "Son turun"
+
+msgctxt "tooltip"
+msgid "Your gap to a reference lap across the whole lap: green where you gained, red where you lost."
+msgstr "Tüm tur boyunca referans tura farkın: kazandığın yerde yeşil, kaybettiğin yerde kırmızı."
+
+msgctxt "tooltip"
+msgid "Your last and best lap with their gap to your ideal lap, and the ideal itself."
+msgstr "Son ve en iyi turun, ideal tura farklarıyla, ve idealin kendisi."
+
+msgctxt "tooltip"
+msgid "Your last three laps with their gap to your best, in the Lap Log's order."
+msgstr "Son üç turun, en iyine farklarıyla, Tur Kaydı sırasında."
+
+msgctxt "tooltip"
+msgid "Your numbers: lap and sector times, position, gaps, time left."
+msgstr "Senin sayıların: tur ve sektör süreleri, sıra, farklar, kalan süre."
+
+msgctxt "tooltip"
+msgid "Your row and the riders around it, drawn as on Standings."
+msgstr "Senin satırın ve çevresindeki sürücüler, Sıralama'daki gibi."
+
+msgctxt "tooltip"
+msgid "Your running lap time, with your gap to your reference lap under it."
+msgstr "Akan tur süren, altında referans tura farkınla."
+
+#. max 23 characters
+msgid "Zoom"
+msgstr "Yakınlaştırma"
+
+msgctxt "tooltip"
+msgid "Zoom: how many meters of track Follow shows around you."
+msgstr "Yakınlaştırma: İzle'nin çevrende kaç metre pist gösterdiği."
+
+#. max 60 characters
+msgid "ads, and every release is built from the public source."
+msgstr "yoktur; her sürüm herkese açık kaynaktan derlenir."
+
+#. max 21 characters
+msgid "and the web overlay."
+msgstr "ve web overlay."
+
+#. max 38 characters
+msgid "coffee helps. All optional."
+msgstr "kahve destek olur. Hepsi isteğe bağlı."
+
+#. max 60 characters
+msgid "community's long-standing HUD, came to an end. The first"
+msgstr "geliştirilmesi sona erince başladı. İlk sürüm, MXBMRP -"
+
+#. max 60 characters
+msgid "doing. That grew through several versions into MXBMRP3, a"
+msgstr "MXBMRP3'e, oyunun eklenti API'si üzerine kurulu tam bir"
+
+#. max 60 characters
+msgid "features, test new ideas and find new ways to use it."
+msgstr "ve onu kullanmanın yeni yollarını bulan sürücülerden."
+
+#. max 60 characters
+msgid "full plugin built on the game's plugin API."
+msgstr "eklentiye dönüştü."
+
+msgid "in Settings > Hotkeys"
+msgstr "Ayarlar > Kısayollar'dan"
+
+#. max 60 characters
+msgid "inspires something new, it has done what I hoped it would."
+msgstr "yeni bir şeye ilham verdiyse, umduğumu yapmış demektir."
+
+#. max 60 characters
+msgid "small experiment I built before I really knew what I was"
+msgstr "kurduğum küçük bir deneydi. Birkaç sürüm boyunca büyüyerek"
+
+#. max 60 characters
+msgid "studied, changed and built on, and does not depend on me."
+msgstr "incelenip değiştirilebilir ve bana bağlı değildir."
+
+msgid "to turn the pages"
+msgstr "sayfaları çevirmek için"
+
+#. max 60 characters
+msgid "version, MXBMRP - MX Bikes Memory Reader Project, was a"
+msgstr "MX Bikes Memory Reader Project, ne yaptığımı tam bilmeden"
+
+#. max 60 characters
+msgid "who use it - the riders who report problems, suggest"
+msgstr "sorun bildiren, özellik öneren, yeni fikirleri deneyen"
+
+#. max 60 characters
+msgid "work, and much of what it has become comes from the people"
+msgstr "işi; bugünkü hâlinin çoğu onu kullananlardan geliyor:"

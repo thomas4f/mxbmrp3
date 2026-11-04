@@ -26,8 +26,8 @@
 //     (Row::hasActiveTrackPos). The leader row is exempt from the FRESHNESS
 //     requirement only — it must still carry a strictly positive realTimeGap,
 //     exactly like anyone else, so a rider showing 0 reads as "no live sample
-//     yet" rather than "live sample of zero". This is the `canUseLiveForRider`
-//     half of the distinction CLAUDE.md draws against the overlay's
+//     yet" rather than "live sample of zero". This is the in-game row
+//     half of the distinction AGENTS.md draws against the overlay's
 //     `liveGapValid` — the two answer different questions and must not be
 //     unified. Both halves are pinned in the test.
 //   - PLAYER reference subtracts the player's own live gap from every row, so

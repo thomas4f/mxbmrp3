@@ -166,8 +166,9 @@ label with share then count. Two things are worth internalising:
   (*"68 days, 51 observed"*). The one thing the report will not do is interpolate.
 
 - **Achievements are Steam-style global stats.** Since 2.21.0 the launch ping carries every
-  achievement at tier 1 or higher by its catalogue id (`ach_<id>` = tier), beside two totals
-  (`ach_pct`, `ach_unlocked`). The section shows how far installs get, how many they hold,
+  achievement at tier 1 or higher by its catalogue id (`ach_<id>` = tier), beside three totals
+  (`ach_pct`, `ach_unlocked`, and since 2.23 `ach_bonus` - earned hidden rows outside the
+  listed total). The section shows how far installs get, how many they hold,
   and the share of reporting installs holding each one; rows are labelled from
   [`docs/achievements.md`](../docs/achievements.md), which is generated from the plugin's
   own catalogue - which is also where the row icons come from, so neither can drift from

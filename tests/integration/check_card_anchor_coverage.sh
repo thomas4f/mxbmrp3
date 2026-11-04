@@ -6,7 +6,7 @@
 # THE INVARIANT: a HUD that anchors content on its CARD box -- any user of the
 # PanelPlan::sectionBox* accessors -- is swept by card_anchor_sweep_test.
 #
-# WHY THIS EXISTS. CLAUDE.md carried the rule as prose ("a new HUD joins its
+# WHY THIS EXISTS. AGENTS.md carried the rule as prose ("a new HUD joins its
 # target list") explicitly labelled CONVENTION, and the convention silently
 # failed: four panels used the accessors and were never swept. One of them was
 # VersionWidget, which turned out to have a real anchor defect of its own --

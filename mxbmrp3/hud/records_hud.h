@@ -273,6 +273,7 @@ private:
     // fetcher must be destroyed FIRST, while the mutex and result strings are
     // still alive. (The orchestrated path joins long before any destructor runs;
     // this ordering is the backstop's backstop.)
+    // joined-by: joinFetchThread() (HudManager::clear, before the HUD pointers are nulled)
     RecordsFetcher m_fetcher;
 
     // UI state

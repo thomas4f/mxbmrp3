@@ -8,7 +8,7 @@
 // They belong together because they answer one question at three scopes - what
 // does this button put back - and share one rule: replay the factory snapshot
 // captured at startup through the same applier loadSettings() uses, never a
-// hand-written list of setters. See CLAUDE.md ("don't add a third list"), the
+// hand-written list of setters. See AGENTS.md ("don't add a third list"), the
 // snapshot fields in settings_manager.h, and reset_tab_test.cpp, which presses
 // every tab's Reset and requires the saved file back at factory.
 // ============================================================================

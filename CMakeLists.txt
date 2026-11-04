@@ -70,7 +70,7 @@ enable_testing()
 # objects across even a clean rebuild, which is what keeps the whole-plugin
 # cross-build cheap in CI (the workflow caches ~/.ccache between runs). The TU
 # count used to be quoted here and had drifted by a third — same reason
-# CLAUDE.md refuses to quote counts: they move every time a file lands.
+# AGENTS.md refuses to quote counts: they move every time a file lands.
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
     set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
@@ -141,6 +141,7 @@ mxb_gate(style fast 120 "-" "./tests/integration/check_style.sh")
 mxb_gate(api-guards fast 120 "-" "./tests/integration/check_api_guards.sh")
 mxb_gate(visibility-gates fast 120 "-" "./tests/integration/check_visibility_gates.sh")
 mxb_gate(mt-flags fast 120 "-" "./tests/integration/check_mt_flags.sh")
+mxb_gate(banned-constructs fast 120 "-" "./tests/integration/check_banned_constructs.sh")
 mxb_gate(thread-safety fast 120 "-" "./tests/integration/check_thread_safety.sh")
 mxb_gate(hud-raw-cache fast 120 "-" "./tests/integration/check_hud_raw_cache.sh")
 mxb_gate(name-literals fast 120 "-" "./tests/integration/check_name_literals.sh")
@@ -164,6 +165,8 @@ mxb_gate(name-literals-selftest fast 120 "-" "./tests/integration/check_name_lit
 mxb_gate(change-consumers-selftest fast 120 "-" "./tests/integration/check_change_consumers.sh --self-test")
 mxb_gate(test-hook-placement-selftest fast 120 "-" "./tests/integration/check_test_hook_placement.sh --self-test")
 mxb_gate(thread-join-selftest fast 120 "-" "./tests/integration/check_thread_join.sh --self-test")
+mxb_gate(mt-flags-selftest fast 120 "-" "./tests/integration/check_mt_flags.sh --self-test")
+mxb_gate(banned-constructs-selftest fast 120 "-" "./tests/integration/check_banned_constructs.sh --self-test")
 # The provisioning hook, which is what makes an unprovisioned box distinguishable
 # from a healthy one — so it is the last file that should be uncovered. TOOLS is
 # "-" deliberately and the fixture stubs the whole toolchain to keep it that way:
@@ -297,7 +300,7 @@ mxb_gate(installer slow 900 "makensis wine python3" "./tests/integration/run_ins
 # same queries. This gate is the LOCAL/private-repo path, where codeql.yml cannot
 # run at all — that's the window it exists to close.
 #
-# OPT-IN, unlike every other gate here: it skips unless MXBMRP3_CODEQL=1 is set,
+# OPT-IN, like dll-coverage below: it skips unless MXBMRP3_CODEQL=1 is set,
 # even on a box that HAS the bundle installed. `slow` alone doesn't achieve that
 # — CTest labels select (-L), they don't exclude, so a bare `ctest` runs
 # everything — and the tool-missing SKIP stops protecting you the moment you

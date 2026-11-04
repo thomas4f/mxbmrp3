@@ -15,7 +15,7 @@
 # voices, run this, and hand out the zips. Never hand-edit a clip; it silently
 # stops matching its siblings' voice, level and pacing.
 #
-# Why bespoke (CLAUDE.md rule): synthesis is off the shelf (sherpa-onnx,
+# Why bespoke (AGENTS.md rule): synthesis is off the shelf (sherpa-onnx,
 # chatterbox-tts, orpheus-cpp). This script holds what no standard tool knows:
 # the cue table, the racing-style number wording that MUST match
 # SpotterPhrase::numberWords (--selftest), the chunk-name convention shared

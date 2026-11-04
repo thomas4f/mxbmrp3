@@ -27,7 +27,7 @@
 
 /* ── ANIMATIONS ──────────────────────────────────────────────────────────────
  * Durations + easing for every transition in the overlay. The slide/focus/logo
- * durations are also read by app.js, so retuning them here stays in sync. */
+ * durations are also read by js/overlay-config.js, so retuning them here stays in sync. */
 /*
 :root {
     --ease:       ease;       (try: ease-in-out, linear, cubic-bezier(.2,.8,.2,1))
@@ -52,7 +52,7 @@
 /* ── SIZES & SPACING ─────────────────────────────────────────────────────────
  * The 4 spacing tokens drive every padding/margin/gap; the size tokens are
  * rem-based, so they scale with the Settings panel's Font Size.
- * Note: --col-gap-w and --badge-w AUTO-FIT the synced font (app.js measures
+ * Note: --col-gap-w and --badge-w AUTO-FIT the synced font (js/overlay-render.js measures
  * them). You normally never touch them — but you CAN re-declare them here to
  * pin a fixed width, and a direct value wins over the auto-fit (no !important).
  * The rider focus card has no width token — it auto-tracks the standings table

@@ -93,7 +93,7 @@ TEST_CASE("the thresholds are ordered, and the widget shares them") {
 }
 
 TEST_CASE("non-finite inputs refuse to guess, like every other guard") {
-    // The project invariant (CLAUDE.md): NaN slips every ordering comparison
+    // The project invariant (AGENTS.md): NaN slips every ordering comparison
     // and +Inf slips `<=` — an infinite average returned a confident 0.0
     // ("empty tank", so fuel_critical fired) instead of the -1 "cannot be
     // known", and a NaN tank leaked NaN into the widget's readout.

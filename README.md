@@ -14,7 +14,7 @@ https://github.com/user-attachments/assets/4d5e126e-6940-4ec9-92bd-2083ff99521c
 ## Features
 
 - **Racing:** Live standings, timing, dash, gap bar, track map, radar and online records
-- **Social:** Steam friends, Discord Rich Presence and tracked riders
+- **Social:** Steam friends, Discord Rich Presence (MX Bikes only) and tracked riders
 - **Progress:** Stats, personal bests, achievements and FMX trick scoring
 - **Layout:** Customizable HUDs with themes, hotkeys and auto-switching profiles
 - **Analysis:** Lap analysis with splits, a delta trace, telemetry and fuel tracking
@@ -33,7 +33,7 @@ https://github.com/user-attachments/assets/4d5e126e-6940-4ec9-92bd-2083ff99521c
 > 3. Move the mouse to bring up the pointer, then right-click and drag to reposition elements
 > 4. Click an icon in the **Toggles** strip (right edge, shown while the mouse moves) to switch it on or off, or the gear at its start - or **Tilde (~)** - for the settings menu
 >
-> The installer isn't signed yet, so Windows will warn about an "unknown publisher" - [why & how to proceed](#windows-warns-me-when-downloading-or-installing).
+> The installer isn't code-signed, so Windows will warn about an "unknown publisher" - [why & how to proceed](#windows-warns-me-when-downloading-or-installing).
 
 ## Contents
 
@@ -46,6 +46,7 @@ https://github.com/user-attachments/assets/4d5e126e-6940-4ec9-92bd-2083ff99521c
 - [Advanced Settings](#advanced-settings)
 - [Modding](#modding)
 - [Troubleshooting](#troubleshooting)
+- [How It Works](#how-it-works)
 - [Privacy](#privacy)
 - [Feedback & Issues](#feedback--issues)
 - [Uninstallation](#uninstallation)
@@ -126,8 +127,8 @@ The settings menu provides global settings that apply to all profiles, followed 
 
 | Icon | Tab | Description |
 |:----:|-----|-------------|
-| <img src="assets/icons/hud-general.svg" width="20" height="20" alt=""> | **General** | Preferences with reference and freeze defaults, presence integrations, usage survey, web overlay, profiles |
-| <img src="assets/icons/hud-appearance.svg" width="20" height="20" alt=""> | **Appearance** | Panel theme, language, units, motion, glow, messages, UI scale, fonts, colors, and which display the HUD draws on |
+| <img src="assets/icons/hud-general.svg" width="20" height="20" alt=""> | **General** | Preferences, presence integrations, usage survey, web overlay, profiles |
+| <img src="assets/icons/hud-appearance.svg" width="20" height="20" alt=""> | **Appearance** | Theme, language, units, motion, glow, messages, fonts, colors, scale, display |
 | <img src="assets/icons/hud-hotkeys.svg" width="20" height="20" alt=""> | **Hotkeys** | Keyboard and controller bindings |
 | <img src="assets/icons/hud-riders.svg" width="20" height="20" alt=""> | **Riders** | Track specific riders with custom colors and icons |
 | <img src="assets/icons/hud-rumble.svg" width="20" height="20" alt=""> | **Rumble** | Controller vibration feedback effects |
@@ -177,22 +178,24 @@ Four separate profiles store complete HUD layout configurations:
 | **G-Force** | Lateral/longitudinal G-force gauge with peak marker |
 | **Compass** | Heading dial (classic needle or modern rotating card) |
 | **Tyre Temp** | Front and rear tyre temperatures (GP Bikes only) |
-| **ECU** | Engine map, traction control, engine braking and anti-wheeling (GP Bikes only) |
-| **Toggles** | The settings button and every on/off switch from the menu in one strip, shown while the mouse moves; drag it to a side edge for a column or to the top or bottom edge for a row; the arrow after the settings button folds the switches away, and resting the mouse on a switch that is off shows a dimmed preview of it |
+| **ECU** | Engine map, traction control, engine braking, anti-wheeling (GP Bikes only) |
+| **Toggles** | Settings button and every on/off switch, shown while the mouse moves |
 | **Gamepad** | Controller visualization |
 | **Clock** | Real-time clock |
-| **Now Playing** | What Windows' media controls are playing (Spotify, a browser tab, ...) with previous, play/pause, next and the player's volume. Turn on Now playing in General; `nowPlayingApps=spotify` under `[General]` in the settings file follows only the players named |
-| **Pointer** | The mouse cursor. Off = settings menu only, which helps if a pad reads as a mouse |
-| **Prestige** | A badge earned by trading in a completed achievement ladder (MX Bikes only) |
+| **Now Playing** | Windows media (Spotify, a browser, ...): previous, play/pause, next, volume |
+| **Pointer** | Mouse cursor; Off = settings menu only (helps if a pad reads as a mouse) |
+| **Prestige** | A badge for trading in a completed achievement ladder (MX Bikes only) |
+
+Drag the **Toggles** strip to a side edge for a column or to the top or bottom edge for a row; the arrow after the settings button folds the switches away, and resting the mouse on a switch that is off shows a dimmed preview of it. **Now Playing** needs Now playing turned on in General; `nowPlayingApps=spotify` under `[General]` in the settings file follows only the players named.
 
 ### HUDs
 
 | Icon | HUD | Description |
 |:----:|-----|-------------|
-| <img src="assets/icons/hud-dash.svg" width="20" height="20" alt=""> | **Dash** | Compact card that steps through pages drawn from other HUDs (Dash + / Dash - hotkeys) and shows new notices |
-| <img src="assets/icons/hud-map.svg" width="20" height="20" alt=""> | **Map** | Top-down track map with rider positions (click to spectate), a zoomed Follow view you can tilt and that can show more track the faster you go, and lap delta colours |
+| <img src="assets/icons/hud-dash.svg" width="20" height="20" alt=""> | **Dash** | Pages through other HUDs (Dash + / Dash - hotkeys) and shows new notices |
+| <img src="assets/icons/hud-map.svg" width="20" height="20" alt=""> | **Map** | Track map: riders (click to spectate), tiltable Follow view, lap delta colours |
 | <img src="assets/icons/hud-notices.svg" width="20" height="20" alt=""> | **Notices** | Race status notices (wrong way, blue flag, PB alerts, last lap, finished) |
-| <img src="assets/icons/hud-standings.svg" width="20" height="20" alt=""> | **Standings** | Race positions with gaps, live between the splits if you like, status, and tracked rider indicators |
+| <img src="assets/icons/hud-standings.svg" width="20" height="20" alt=""> | **Standings** | Race positions, gaps (optionally live between splits), status, tracked riders |
 | <img src="assets/icons/hud-friends.svg" width="20" height="20" alt=""> | **Friends** | Steam friends in-game: their server/track and who's joined your session |
 | <img src="assets/icons/hud-timing.svg" width="20" height="20" alt=""> | **Timing** | Split and lap times, a live gap and gap comparisons |
 | <img src="assets/icons/hud-laplog.svg" width="20" height="20" alt=""> | **Lap Log** | Historical lap times with PB indicators |
@@ -206,19 +209,21 @@ Four separate profiles store complete HUD layout configurations:
 | <img src="assets/icons/hud-stats.svg" width="20" height="20" alt=""> | **Stats** | Riding stats with columns for last lap, session, and all-time totals |
 | <img src="assets/icons/hud-telemetry.svg" width="20" height="20" alt=""> | **Telemetry** | Throttle, brake, suspension graphs |
 | <img src="assets/icons/hud-deltatrace.svg" width="20" height="20" alt=""> | **Delta Trace** | Your gap to your all-time or session PB or last lap across the whole lap |
-| <img src="assets/icons/hud-fmx.svg" width="20" height="20" alt=""> | **FMX** | Freestyle trick detection, scoring and chain combos (MX Bikes and GP Bikes only) |
+| <img src="assets/icons/hud-fmx.svg" width="20" height="20" alt=""> | **FMX** | Trick detection, scoring and chain combos (MX Bikes and GP Bikes only) |
 | <img src="assets/icons/hud-eventlog.svg" width="20" height="20" alt=""> | **Event Log** | Timestamped feed of race events (laps, penalties, finishes, pit activity) |
 | <img src="assets/icons/hud-sessioncharts.svg" width="20" height="20" alt=""> | **Charts** | Session-progression charts: position, race trace, gap to leader, pace |
+
+The Map's **Follow** view can show more track the faster you go.
 
 ## More Features
 
 Each of these has its own switch in the settings menu.
 
 ### Web Overlay
-Turn on **Web server** (Settings > General) and the plugin serves a live browser overlay: a standings tower, event log, rider focus card, and periodic broadcast panels (fastest-lap boards, a "down the order" rundown, and on-track battles). Point an OBS **Browser Source** at `http://localhost:8080` (the address is in the row below the setting, a clickable link while it is serving), or just open it in a browser. Colors and fonts follow your in-game settings, and a gear icon on the overlay sets tower size, filters and the rest per browser. Full guide: [Web overlay](docs/web-overlay.md).
+Turn on **Web server** (Settings > General) and the plugin serves a live browser overlay: a standings tower, event log, rider focus card, and periodic broadcast panels (fastest-lap boards, a "down the order" rundown, and on-track battles). Point an OBS **Browser Source** at `http://localhost:8080` (the address is in the **Live overlay** row below the setting, a clickable link while it is serving), or just open it in a browser. Colors and fonts follow your in-game settings, and a gear icon on the overlay sets tower size, filters and the rest per browser. Full guide: [Web overlay](docs/web-overlay.md).
 
 ### Languages
-**Settings > Appearance > Language**: menus, tooltips, HUDs and messages in another language. The default, **System**, follows Windows' display language; anything a pack does not translate stays English. Shipped: French, German, Portuguese (Brazil), Spanish and Swedish (all Beta). New packs are welcome - how to make one: [languages/README.md](mxbmrp3_data/languages/README.md).
+**Settings > Appearance > Language**: menus, tooltips, HUDs and messages in another language. The default, **System**, follows Windows' display language; anything a pack does not translate stays English. Shipped: Dutch, French, German, Italian, Norwegian (Bokmål), Portuguese (Brazil), Spanish, Swedish and Turkish (all Beta). New packs are welcome - how to make one: [languages/README.md](mxbmrp3_data/languages/README.md).
 
 ### Achievements (MX Bikes only)
 **Settings > Achievements**: a hundred-odd milestones, Bronze to Platinum, for riding, racing, freestyle, jumping and for trying out the plugin itself. A toast marks each tier earned, and a halfway card the long steps to Gold and Platinum (Toasts > **Visible** turns the cards off; tracking continues either way). They read your existing stats, so an install starts with whatever its numbers already earn. A few are hidden until you stumble on them, and the ones about things going wrong have their own page, outside the completion figures.
@@ -250,7 +255,7 @@ Bind the **Segment +** and **Segment -** hotkeys (Settings > Hotkeys) to drop ti
 ### Streaming setup
 - **Session info** - turn on the **Session** HUD (Settings > Session) to show the server name, track, and session format on screen for your viewers.
 - **Pitboard and Gamepad** - both widgets have [fully customizable textures](docs/modding.md#custom-textures), and the Gamepad widget shows your live controller inputs.
-- **Discord** (Settings > General) - Rich Presence shows your current session and track in your Discord profile.
+- **Discord** (Settings > General, MX Bikes only) - Rich Presence shows your current session and track in your Discord profile.
 - **Stream chat in game** (Settings > Stream Chat) - your Twitch and YouTube chat together on screen. Enter your Twitch channel and/or YouTube `@handle`, press Enter, and switch each **Status** on. Read-only, no login.
 - **Broadcast overlay** - for a browser/OBS overlay with standings and battles, see [Web Overlay](#web-overlay).
 - **Just the HUD over your game** - set **Companion bg** (Settings > Appearance > Companion window) to **Green**, **Blue** or **Magenta** and key it out in OBS, see [Second-monitor HUD](#second-monitor-hud-companion-window).
@@ -335,7 +340,7 @@ Fonts, textures and icons are loose files in their own subfolders. Themes, gamep
 ## Troubleshooting
 
 ### Windows Warns Me When Downloading or Installing
-The installer isn't code-signed yet, so Windows may show one or more "unknown publisher" / "not commonly downloaded" warnings. These are reputation warnings about the unsigned installer and its low download count, not a malware detection. Depending on your browser you may see up to three, in this order:
+The installer isn't code-signed, so Windows may show one or more "unknown publisher" / "not commonly downloaded" warnings. These are reputation warnings about the unsigned installer and its low download count, not a malware detection. Depending on your browser you may see up to three, in this order:
 
 - **Downloading (browser):** "isn't commonly downloaded." In Microsoft Edge: open Downloads, click the `...` next to the file, then **Keep** > **Show more** > **Keep anyway** (Chrome is similar).
 - **Running the installer (Windows SmartScreen):** a blue **"Windows protected your PC"** box - click **More info** > **Run anyway**.
@@ -374,7 +379,7 @@ Installing manually from the [ZIP archive](#manual-installation) avoids most of 
 
 ### Web Overlay Not Working
 - If **Web server** reads **Error** (Settings > General), the plugin couldn't open the port - usually because another application already has it
-- Change **Web server port** (Settings > General) to a free one (e.g., 8081). When it's serving, the row below turns into a clickable `http://localhost:<port>` link
+- Change **Web server port** (Settings > General) to a free one (e.g., 8081). When it's serving, the **Live overlay** row shows it as a clickable `http://localhost:<port>` link
 - Remember to update your OBS Browser Source URL to match the new port
 
 ### Stream Chat Shows Unavailable
@@ -388,6 +393,10 @@ Installing manually from the [ZIP archive](#manual-installation) avoids most of 
 ### Game Fails to Launch, Crashes, or Shows Black Screen
 - See the [MX Bikes Troubleshooting Guide](https://gist.github.com/thomas4f/1fd379fafb4ab402b48424ae1c9cf2bd) for general game issues (crashes, mods, plugins, RAM, controllers)
 - If the Windows Event Log shows `mxbmrp3.dlo` as the faulting module, see [Feedback & Issues](#feedback--issues)
+
+## How It Works
+
+MXBMRP3 works through the game's plugin interface. It never reads race data out of the game's memory and never writes to it, never hooks or patches the game's code, never changes the game's files, and has no effect on how the game plays. A few features reach beyond the game: a mouse for the menus, a controller for rumble, a connection to fetch records. [How MXBMRP3 works](docs/what-it-does.md) lists each one, with what it uses, whether it goes online and whether it's on by default.
 
 ## Privacy
 
@@ -404,12 +413,13 @@ What it sends:
 | Enabled features | HUDs, widgets, web overlay, Discord, Steam, rumble, update channel, and so on, as anonymous on/off flags |
 | Panel theme | Which of the plugin's own themes you use, or that you run with none. A theme you installed or made yourself counts only as "custom" - its name never leaves your machine |
 | Spotter voice | Which of the plugin's own voice packs you use, that you use Windows text-to-speech instead, or that the spotter is off. A pack you installed or made yourself counts only as "custom" - its name never leaves your machine |
-| Environment | Operating system and version/build (e.g., Windows 11 22631, or Wine/Proton on Linux), language, and whether it's the Steam or standalone build |
+| Language | Which of the plugin's own languages you read the menus in (English included), and whether it was picked for you by the **System** default. A language pack you installed or made yourself counts only as "custom" - its name never leaves your machine |
+| Environment | Operating system and version/build (e.g., Windows 11 22631, or Wine/Proton on Linux), Windows' regional format (e.g., en-US), and whether it's the Steam or standalone build |
 | Usage counters | How many times this install has launched, and how many days since it was first installed |
-| Achievement progress | Which achievements are unlocked and at what tier, plus two totals: the share of tiers earned, and how many are unlocked |
+| Achievement progress | Which achievements are unlocked and at what tier, plus three totals: the share of tiers earned, how many are unlocked, and how many outside the completion figures (hidden ones and misfortunes) are unlocked |
 | Session length | How long a play session lasted (start to clean exit), so the developer can gauge typical usage |
 | Crashes | If the game crashed last session: which module faulted and where, the error code, the access type (read/write/execute) and the memory address it tried to access (different every launch, so it identifies nothing), the plugin and game versions at the time, and a short backtrace of the faulting call stack (the top several module-and-offset frames, so a plugin fault can be told apart from a bystander to a game or driver crash) - enough to group similar crashes, but never the memory dump or its contents. Reported on the next launch |
-| Link clicks | Which in-plugin link you click (documentation, community, or the thank-you link) - nothing else |
+| Link clicks | Which in-plugin link you click (documentation, community, GitHub, GitHub Releases, or the thank-you link) - nothing else |
 | Prestige | That you traded a finished achievement ladder for a prestige level, and which level it reached |
 
 What it does not send: no names, no in-game/online activity, no telemetry, no lap times, no server or rider data, and no crash dump or log (those stay on your machine) - nothing identifying. The pings are fire-and-forget and never affect performance.
@@ -439,7 +449,7 @@ The plugin catches any crash in the game, so these are usually faults in the gam
 
 ### Automatic Uninstallation
 
-If you used the installer, remove the plugin like any other Windows app: open **Settings > Apps > Installed apps** (or **Control Panel > Programs and Features**), find **MXBMRP3**, and choose **Uninstall**. You can also run `mxbmrp3_uninstall.exe` directly from any game's `plugins\` folder. The uninstaller lets you pick which games to remove from, then deletes the plugin DLO, the `mxbmrp3_data\` folder, and the registry entry.
+If you used the installer, remove the plugin like any other Windows app: open **Settings > Apps > Installed apps** (or **Control Panel > Programs and Features**), find **MXBMRP3**, and choose **Uninstall**. You can also run `mxbmrp3_uninstall.exe` directly from any game's `plugins\` folder. The uninstaller lets you pick which games to remove from, then deletes the plugin DLO, the `mxbmrp3_data\` folder, and the registry entry. If you've ever updated from inside the plugin, also delete `plugins\mxbmrp3_update_backup\`; the uninstaller leaves it.
 
 ### Manual Uninstallation
 
@@ -447,6 +457,7 @@ If you installed from the ZIP, delete the files you added from each game's `plug
 
 - the plugin DLO (`mxbmrp3.dlo`, `mxbmrp3_gpb.dlo`, or `mxbmrp3_krp.dlo`)
 - the `mxbmrp3_data\` folder
+- the `mxbmrp3_update_backup\` folder, if you've ever updated from inside the plugin
 
 **Leave the game's own files in place** - `proxy64.dlo`, `proxy_udp64.dlo`, `xinput64.dli`, and `telemetry64.dlo` (GP Bikes). They are not part of the plugin.
 
@@ -469,13 +480,15 @@ Built with C++17, Visual Studio 2022, the PiBoSo Plugin API, and Claude Code.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) - how to report bugs and contribute changes (and how the public mirror works)
 - [`TESTING.md`](TESTING.md) - the layered test suite (unit / integration / specialized) and how to add a test
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) - full technical documentation with diagrams
-- [`CLAUDE.md`](CLAUDE.md) - quick-start context for developers and AI assistants
+- [`AGENTS.md`](AGENTS.md) - quick-start context for developers and AI assistants
 
 Quick start: clone, run `cmake --preset msvc`, then open the generated `build/msvc/mxbmrp3.sln` in Visual Studio 2022 and build.
 
 ## License
 
 Licensed under the [MIT License](LICENSE). See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for bundled asset attributions.
+
+Forking or building on it? See [Building on MXBMRP3](CONTRIBUTING.md#building-on-mxbmrp3).
 
 ## Acknowledgments
 

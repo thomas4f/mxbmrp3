@@ -23,7 +23,7 @@ body:
     attributes:
       label: Plugin version
       description: Shown in the settings UI and at the top of `mxbmrp3_log.txt`.
-      placeholder: "1.27.6"
+      placeholder: "As shown in Settings > Updates"
     validations:
       required: true
   - type: textarea

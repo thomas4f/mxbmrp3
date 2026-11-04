@@ -122,7 +122,7 @@ private:
     void completeError(const char* what) noexcept;
 
     // joined-by: join() (RecordsHud::joinFetchThread, from HudManager::clear()
-    // BEFORE the HUD pointers are nulled — the ordering CLAUDE.md pins).
+    // BEFORE the HUD pointers are nulled — the ordering AGENTS.md pins).
     std::thread m_thread;
     ResultCallback m_onDone;
 
@@ -132,6 +132,7 @@ private:
     // or game-thread-mutated state (the HUD's m_provider / m_categoryIndex /
     // m_categoryList) directly — everything it needs is captured here first,
     // while still on the game thread.
+    // mt-plain-block: written by start() on the game thread after join() and before the worker starts; read only by that worker
     DataProvider m_provider = DataProvider::CBR;  // Provider captured at fetch start
     std::string m_trackName;                      // Track name captured at fetch start
     std::string m_category;                       // Resolved category (empty => "All" / no filter)

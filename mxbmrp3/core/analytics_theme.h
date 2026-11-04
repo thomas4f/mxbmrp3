@@ -13,7 +13,7 @@
 //
 // WHY THE `installed` FLAG. The stored name and the theme actually on screen
 // are not the same question. An unknown name degrades to a flat panel WITHOUT
-// rewriting the setting (see the asset-pack invariant in CLAUDE.md), so a
+// rewriting the setting (see the asset-pack invariant in AGENTS.md), so a
 // user who deleted a theme folder still has its name in their INI while
 // looking at unthemed panels. Reporting that as "custom" would both overstate
 // third-party adoption and hide the broken reference — hence "missing", which

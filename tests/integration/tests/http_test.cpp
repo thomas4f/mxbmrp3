@@ -101,6 +101,14 @@ TEST_CASE("http: the server serves /api/state and it matches the direct snapshot
     const std::string rootFull = host.rawGetFull("/");
     CHECK(rootFull.find("mount-marker") != std::string::npos);
 
+    // Since cpp-httplib 0.64 the mount refuses a segment ending in '.' or a
+    // space. Windows trims both off a file name, so on 0.63 these served
+    // index.html under a name no handler before the mount had matched. (0.64
+    // also refuses ':' on Windows, but Wine has no NTFS streams to serve
+    // "index.html::$DATA" from, so a check here could not fail.)
+    CHECK(host.rawGetFull("/index.html.").find("mount-marker") == std::string::npos);
+    CHECK(host.rawGetFull("/index.html%20").find("mount-marker") == std::string::npos);
+
     host.shutdown();
 }
 

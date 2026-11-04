@@ -2,7 +2,7 @@
 
 How to build and test MXBMRP3. This is the home for build/test/dev workflow;
 [`README.md`](README.md) is user-facing, [`ARCHITECTURE.md`](ARCHITECTURE.md)
-is the technical deep-dive, and [`CLAUDE.md`](CLAUDE.md) is the AI-assistant
+is the technical deep-dive, and [`AGENTS.md`](AGENTS.md) is the AI-assistant
 context.
 
 There are **two build tracks**:
@@ -79,7 +79,7 @@ are gated by `MXBMRP3_TEST_BUILD` / `_MSC_VER`, so the MSVC build is unaffected.
 
 The game engine doesn't support C++ exceptions in the render/telemetry path and
 runs at up to 480fps - see [`ARCHITECTURE.md`](ARCHITECTURE.md) and
-[`CLAUDE.md`](CLAUDE.md) for the invariants that follow from that.
+[`AGENTS.md`](AGENTS.md) for the invariants that follow from that.
 
 ---
 
@@ -97,7 +97,7 @@ gates and builds nothing):
 
 ```bash
 cmake -S . -B build/tests                            # once
-ctest --test-dir build/tests --output-on-failure     # every gate (26 today)
+ctest --test-dir build/tests --output-on-failure     # every gate
 ctest --test-dir build/tests -L fast                 # no mingw/wine needed
 ```
 
@@ -121,8 +121,10 @@ MXBMRP3_DLL_COVERAGE=1 ctest --test-dir build/tests -R dll-coverage  # opt-in: D
 tools/hud_window/companion_demo.sh out.png   # Layer 6: visual (instrument, not a gate)
 ```
 
-Alongside the layers, the **enforced invariant checks** (fast, no Wine) fail CI
-on violations - run them before pushing anything they cover:
+Alongside the layers, the **enforced invariant checks** fail CI on violations -
+run them before pushing anything they cover. Most take seconds and need no Wine;
+`check_game_configs.sh`, `check_clang_tidy.sh`, `check_lazy_module_imports.sh` and
+`run_cppcheck.sh` are CTest `slow` gates (mingw/clang/cppcheck, minutes):
 
 ```bash
 ./tests/integration/check_game_configs.sh     # GPB/KRP feature-macro syntax
@@ -131,14 +133,15 @@ on violations - run them before pushing anything they cover:
 ./tests/integration/check_whats_new.sh          # "New" markers name this release
 ./tests/integration/check_api_guards.sh       # DLL-export exception barriers
 ./tests/integration/check_thread_safety.sh    # no raw std::mutex (the analysis cannot see it)
-./tests/integration/check_mt_flags.sh         # plain bool in a thread-owning class
+./tests/integration/check_mt_flags.sh         # plain value member in a thread-owning class
+./tests/integration/check_banned_constructs.sh # own throw, strcpy/strcat/sprintf, printf
 ./tests/integration/check_clang_tidy.sh       # clang-tidy: use-after-move + clang -Wthread-safety (minutes)
 ./tests/integration/check_title_tier.sh       # a full HUD's caption asks for the Large tier
 ./tests/integration/check_hud_raw_cache.sh    # raw Unified:: members cached in a HUD
 ./tests/integration/check_name_literals.sh    # the mxbmrp3 / mxbmrp3_data folder names spelled outside plugin_names.h
 ./tests/integration/check_change_consumers.sh # onDataChanged consumers state their change-gate
-./tests/integration/check_test_hook_placement.sh # MXBMRP3_Test_* code only in test_hooks.cpp
-./tests/integration/check_thread_join.sh      # std::thread members name their Shutdown-path join
+./tests/integration/check_test_hook_placement.sh # MXBMRP3_Test_* code only in core/test_hooks*.cpp
+./tests/integration/check_thread_join.sh      # std::thread members name their Shutdown-path join; HUD workers joined in clear()
 ./tests/integration/check_hud_helpers.sh      # HUD hand-rolling a BaseHud helper (12 rules)
 ./tests/integration/check_section_spacing.sh  # addSpacing() before a settings addSectionHeading()
 ./tests/integration/check_file_budgets.sh     # file-size ratchet: >1,000 lines needs a stated `// file-budget:`
@@ -153,18 +156,10 @@ python3 tools/check_docs.py                   # doc + source-comment paths, labe
 ```
 
 Separate from those, `./tests/integration/run_codeql.sh` runs **GitHub's CodeQL
-security queries** over the C++ tree (CTest gate `codeql`, label `slow`, opt-in
-via `./tools/install_deps.sh codeql`). It is the only gate that is *also* a CI job
-elsewhere, and opt-in (as is the report-only `dll-coverage`); TESTING.md -> *CodeQL* has why both
-are true and what a local run buys you. Budget ~10-15 min: it
-rebuilds the plugin clean under the CodeQL extractor (an incremental build
-compiles nothing and yields an empty, falsely-green database), then evaluates the
-`cpp-code-scanning` suite (the same one the codeql-action runs). Findings
-inside `mxbmrp3/vendor/**` are filtered out on both sides - we don't patch
-cpp-httplib, so its alerts are permanent noise. Accepted findings live in
-`tests/integration/codeql_baseline.txt`; the gate prints them as `KNOWN` and
-fails only on new ones. Run it before a release, or after touching a parser, a trust boundary or a
-dependency; it is deliberately not part of `-L fast`.
+security queries** over the C++ tree: CTest gate `codeql`, opt-in like the
+report-only `dll-coverage` (`./tools/install_deps.sh codeql` once, then
+`MXBMRP3_CODEQL=1 ctest --test-dir build/tests -R codeql`). TESTING.md ->
+*CodeQL* has when to run it, its cost, the baseline file and its false-green guards.
 
 `check_session_hook.sh` is the odd one out: it tests a *script*, not the plugin.
 `.claude/hooks/session-start.sh` is what makes an unprovisioned box
@@ -260,11 +255,11 @@ the one you tested.
 
 ## Git & versioning
 
-- **Branches**: `claude/descriptive-name-sessionID` for AI-assisted work.
+- **Branches**: `claude/<descriptive-name>` for AI-assisted work, as the session assigns it.
 - **Version**: edit only `VER_MAJOR/MINOR/PATCH` in `mxbmrp3/resource.h`; the
   4th component is stamped at build time from the git commit count. The version
   isn't kept in git tags - but cutting a release creates a `vX.Y.Z` tag (see
-  below), derived from `resource.h`. See [`CLAUDE.md`](CLAUDE.md) →
+  below), derived from `resource.h`. See [`AGENTS.md`](AGENTS.md) →
   "Version Management".
 
 ---
@@ -365,11 +360,9 @@ MXBMRP3_CODEQL=1 ctest --test-dir build/tests -R codeql   # ~15 min, opt-in
 ```
 
 That second line is not optional diligence, it is the only pre-release scan that
-exists: [`codeql.yml`](.github/workflows/codeql.yml) is gated to the PUBLIC
-mirror, and the mirror only receives code at step 4 below - so without the local
-gate, the first CodeQL scan of a change happens *at* its release. That is exactly
-how v1.28.0's three alerts arrived. `ctest` alone cannot substitute: `codeql`
-skips silently in it, and a SKIP is not a pass.
+exists: [`codeql.yml`](.github/workflows/codeql.yml) runs only on the PUBLIC
+mirror, which receives code at step 4 below (TESTING.md -> *CodeQL* has the why).
+`ctest` alone cannot substitute: `codeql` skips in it, and a SKIP is not a pass.
 
 The end-to-end release flow (all buttons, no local git):
 
@@ -378,9 +371,9 @@ The end-to-end release flow (all buttons, no local git):
    compare link), and merge everything into private `main`. The changelog is the
    source for the Release body - write it for players, not for reviewers.
 2. **Private** → Actions → **tests** (Run workflow), then **release**, box
-   **unticked** (dry run). Two separate buttons: a dry run SKIPS the test matrix,
-   so `tests` is what tells you the commit is green and `release` only tells you
-   it builds. Inspect the built zip/installer artifacts.
+   **unticked** (dry run). Two buttons because a dry run skips the test matrix:
+   `tests` says the commit is green, `release` only that it builds. Inspect the
+   built zip/installer artifacts.
 3. **Private** → Actions → **mirror**, box **unticked** - preview
    `git diff --stat public/main..HEAD` (the "verify before push" step).
 4. **Private** → Actions → **mirror**, box **ticked** - push the squashed tree
@@ -418,6 +411,4 @@ also refuses to run from any ref other than the default branch.
 **One-time setup**: the public repo needs the `APTABASE_KEY` / `GOATCOUNTER_TOKEN`
 Actions Secrets (a Release build hard-errors without them); the private repo needs
 a `PUBLIC_REPO_TOKEN` secret - a fine-grained PAT with `contents: write` on
-`thomas4f/mxbmrp3` - for the mirror push. `packaging/make_release.bat` stays as the
-offline/local build path; it shares the template + SBOM generator with the
-workflow, so its output matches CI.
+`thomas4f/mxbmrp3` - for the mirror push.

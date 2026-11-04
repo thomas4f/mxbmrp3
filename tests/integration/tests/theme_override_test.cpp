@@ -15,7 +15,7 @@
 // The companion-instance keys four lines below it in settings_serde.h are the model
 // this was meant to copy and only half did -- `if (compConfigured) ... else
 // clearCompanionState()` -- and those ARE pinned (companion_decouple_test.cpp),
-// which is why this one went unnoticed. CLAUDE.md states the rule by name: "capture
+// which is why this one went unnoticed. AGENTS.md states the rule by name: "capture
 // that persists only when the companion has diverged, and apply that clears
 // authoritatively when absent".
 //

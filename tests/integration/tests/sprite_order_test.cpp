@@ -1,6 +1,6 @@
 // ============================================================================
 // tests/integration/tests/sprite_order_test.cpp
-// THE SPRITE-ORDER INVARIANT (CLAUDE.md): discovery (AssetManager) hands out
+// THE SPRITE-ORDER INVARIANT: discovery (AssetManager) hands out
 // absolute 1-based sprite indices in one order; registration
 // (HudManager::setupDefaultResources) pushes file names in what must be the
 // same order. The two walks live in different files and mirror each other's

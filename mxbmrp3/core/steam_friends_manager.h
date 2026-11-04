@@ -154,7 +154,7 @@ private:
     // steam_api64.dll interfaces + resolved functions
     void* m_friends;           // ISteamFriends*
     void* m_utils;             // ISteamUtils*
-    uint32_t m_appId;          // our AppID (0 = unknown, no game filter)
+    uint32_t m_appId;          // mt-plain: game thread, outside the worker's lifetime (hookSteamApi, like m_friends); our AppID (0 = unknown, no game filter)
     // Written on the game thread by hookSteamApi() BEFORE the worker starts and
     // cleared only after stopWorker() has joined — the same join-before-teardown
     // rule that makes m_friends/m_fn* safe for the worker to read unlocked.
@@ -173,8 +173,8 @@ private:
     void* m_fnClearRichPresence;
 
     // Throttling / change detection
-    std::string m_lastLocalStatus;                          // skip redundant writes
-    int m_lastLoggedSessionGen = -1;                        // session gen of last logged write (first-write-per-session Release log)
+    std::string m_lastLocalStatus;                          // mt-plain: game thread only (updateLocalPresence; shutdown/setEnabled clear it); skip redundant writes
+    int m_lastLoggedSessionGen = -1;                        // mt-plain: game thread only (updateLocalPresence); session gen of last logged write (first-write-per-session Release log)
 
     // Raw-input fingerprint for updateLocalPresence: Standings notifies fire
     // many times per second on a full grid, and the presence build allocates
@@ -213,7 +213,7 @@ private:
     // mt-plain: game thread only.
     bool m_hasPresenceInputs = false;                       // fingerprint valid?
     SteamFriend m_self;                                     // our own presence as a row ("Show myself")
-    std::chrono::steady_clock::time_point m_lastHookAttempt; // throttle deferred re-hook
+    std::chrono::steady_clock::time_point m_lastHookAttempt; // mt-plain: game thread only (initialize/shutdown/setEnabled/onDataChanged); throttle deferred re-hook
     static constexpr int SCAN_INTERVAL_MS = 10000;          // re-scan / re-hook at most every 10s
 
     // ---- worker thread ----------------------------------------------------

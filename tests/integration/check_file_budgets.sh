@@ -25,7 +25,7 @@
 # file back under the default is itself a failure: the ledger stays true, and
 # a successful split tightens the ratchet behind it.
 #
-# WHY BESPOKE (CLAUDE.md: prefer the off-the-shelf tool): no tool in this
+# WHY BESPOKE (AGENTS.md: prefer the off-the-shelf tool): no tool in this
 # project's stack gates FILE length against a per-file budget — clang-tidy's
 # readability-* checks bound function size, cppcheck has no length checks,
 # and cpplint caps line WIDTH. The web overlay's JS does not need this script:

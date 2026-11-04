@@ -9,7 +9,7 @@
 #   tools/i18n/pot.sh            check: fail when template.pot is out of date
 #   tools/i18n/pot.sh --update   rewrite it
 #
-# Standard tooling on purpose (CLAUDE.md, "Reach for standard tooling"): xgettext
+# Standard tooling on purpose (AGENTS.md, "Reach for standard tooling"): xgettext
 # already parses C++ string literals, contexts and TRANSLATORS comments; a
 # homemade extractor would be the first thing to drift.
 #

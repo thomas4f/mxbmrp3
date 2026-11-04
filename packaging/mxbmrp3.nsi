@@ -94,7 +94,7 @@
 ; Subfolder globs are *.* on purpose: the build workspace only contains files that
 ; are meant to ship, and extension-globs (e.g. fonts\*.ttf) are exactly the drift
 ; trap this macro removes. When ADDING a new mxbmrp3_data subfolder: add it here
-; (once), plus sw.js PRECACHE_URLS / AssetManager::syncUserAssets per CLAUDE.md.
+; (once), plus sw.js PRECACHE_URLS / AssetManager::syncUserAssets per AGENTS.md.
 ;
 ; Setup writes files and never deletes any. It briefly pruned each pack's
 ; pre-rename <name>.ini here, which meant re-deriving PackIni::resolve's rules in

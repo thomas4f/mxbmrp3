@@ -105,7 +105,7 @@ private:
     // them. m_lastPresenceRefresh is connection-thread only.
     std::atomic<std::chrono::steady_clock::time_point> m_lastUpdateTime;
     std::atomic<std::chrono::steady_clock::time_point> m_lastConnectionAttempt;
-    std::chrono::steady_clock::time_point m_lastPresenceRefresh;
+    std::chrono::steady_clock::time_point m_lastPresenceRefresh;  // mt-plain: connection thread only
 
     // Update throttling
     static constexpr int MIN_UPDATE_INTERVAL_MS = 5000;   // Minimum 5 seconds between updates
@@ -142,5 +142,5 @@ private:
     };
     mutable Mutex m_snapshotMutex;
     SessionSnapshot m_snapshot MXB_GUARDED_BY(m_snapshotMutex);
-    int m_lastLoggedSessionGen = -1;  // connection-thread only: session gen of last logged send
+    int m_lastLoggedSessionGen = -1;  // mt-plain: connection thread only (sendPresenceUpdate); session gen of last logged send
 };

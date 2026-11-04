@@ -19,10 +19,12 @@
 // changed is marked fuzzy by msgmerge and IGNORED here, so the player sees the
 // new English rather than a translation of the old one.
 //
-// THE FONT. The .fnt renderer is a byte-indexed CP1252 table (see chat_text.h),
-// so every translation is converted ONCE, here, at load. An entry holding a
-// character CP1252 cannot draw is dropped whole -- it falls back to English --
-// rather than drawn with holes in it; the loader counts them so the log says so.
+// THE FONT. The .fnt renderer is a byte-indexed table in the plugin's code page,
+// CP1252 plus the six Turkish letters CP1252 lacks (see chat_text.h and
+// font_codepage.h), so every translation is converted ONCE, here, at load. An
+// entry holding a character the code page cannot draw is dropped whole -- it
+// falls back to English -- rather than drawn with holes in it; the loader counts
+// them so the log says so.
 // ============================================================================
 #pragma once
 
@@ -156,9 +158,10 @@ inline std::vector<PoEntry> parsePo(const std::string& text) {
     return out;
 }
 
-// UTF-8 -> CP1252 that refuses rather than drops: false when any character has
-// no CP1252 byte. Unlike ChatText::utf8ToCp1252 it keeps every space and line
-// break as written -- a translation's spacing is the translator's.
+// UTF-8 -> the font code page that refuses rather than drops: false when any
+// character has no byte (ChatText::toCp1252 returns 0). Unlike
+// ChatText::utf8ToCp1252 it keeps every space and line break as written -- a
+// translation's spacing is the translator's.
 inline bool utf8ToCp1252Exact(const std::string& in, std::string& out) {
     out.clear();
     out.reserve(in.size());

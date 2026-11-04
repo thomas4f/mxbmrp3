@@ -3,7 +3,7 @@
 # tests/integration/check_visibility_gates.sh
 # Visibility-gate lint for HUD sources (no compiler needed, pure grep/awk).
 #
-# THE INVARIANT (CLAUDE.md "Maintenance Invariants"): a HUD that skips its
+# THE INVARIANT (AGENTS.md "Maintenance Invariants"): a HUD that skips its
 # rebuild/tick when hidden must gate on isVisibleAnySurface() — visible
 # in-game OR on the companion window — never isVisible()/m_bVisible alone.
 # A HUD enabled only on the companion otherwise renders STALE (the reported
@@ -107,7 +107,7 @@ if [[ $fail -ne 0 ]]; then
 VISIBILITY-GATE LINT FAILED.
 Each line above reads isVisible()/m_bVisible directly. If it
 gates a rebuild/tick, use isVisibleAnySurface() instead (a HUD enabled only on
-the companion window must still update — see CLAUDE.md Maintenance Invariants).
+the companion window must still update — see AGENTS.md Maintenance Invariants).
 If the game-surface flag really is correct there (active-surface-only element,
 toggle-transition logic), say why with a `// vis-gate: <reason>` annotation on
 the same line or the line above.

@@ -3,7 +3,7 @@
 The goal is systematic coverage of the whole plugin API surface, with gaps
 **visible** rather than incidental. This manifest tracks every game-facing DLL
 export plus the internal actions (reachable via `MXBMRP3_Test_*` hooks in
-`mxbmrp3/core/test_hooks.cpp`). Keep it honest - update it when you add a test.
+the `mxbmrp3/core/test_hooks*.cpp` files). Keep it honest - update it when you add a test.
 
 Status legend:
 - ✅ **asserted** - a test drives it and asserts its observable effect.
@@ -139,61 +139,29 @@ Legend: ✅ fully headless-testable · ⚠️ decision logic testable, external 
 
 ## Prioritised gaps (highest value first)
 
-1. ~~**RaceLap**~~ - ✅ done (lap_test): last lap, fastest-lap chip + event, moves when beaten.
-2. ~~**RaceTrackPosition**~~ - ✅ done (trackpos_test): real-time leader gap via a white-box hook (the live gap is internal, not in the JSON - so it's read directly, not through the snapshot).
-3. ~~**Best-sectors board** (`sectors[]`)~~ - ✅ done (sectors_test): per-sector fastest-first ranking. (It's fed by RaceLap splits, not RaceSplit - a finding while writing it.) Remaining: **RaceSplit**'s own `posDeltaSplit` (race, positions gained since last split).
-4. ~~**Reset active-profile / HUD scope + copy/switch**~~ - ✅ done (reset_profile_test): profile-diff perturbation clears the active-profile / named-HUD diff (base + non-active profiles untouched); copy-to-all propagates the active diff; switch persists the active profile and preserves diffs. Remaining: **auto-by-session** profile switch.
-5. ~~**RaceSessionState** transitions~~ - ✅ done (sessionstate_test): green snapshots the grid (`posDeltaStart`), started/ended events.
-6. ~~**SpectateVehicles**~~ - ✅ done (spectate_test): the `camera` chip follows the spectated rider. (**RaceVehicleData** rpm/gear/lean isn't emitted to the JSON - it is now asserted through the `MXBMRP3_Test_BikeTelemetry` hook instead: vehicle_data_test.)
-7. ~~**Personal bests / stats file, ideal lap, posDeltaSplit**~~ - ✅ done: stats_test (PB persist + faster-replaces-only, top speed + `finiteOrZero` guard), ideal_lap_test (`idealLapMs`), posdelta_split_test (positions gained since the last split). ~~Remaining: **distance/odometer** accumulation~~ - ✅ done (odometer_test, via the injectable odometer clock). (RaceHoleshot / RunLap are intentionally unexported/stub - not gaps.)
+Every gap once listed here is closed; the test that closed each is named in the
+tables above (RaceLap, RaceTrackPosition, best sectors, profile reset/copy/switch,
+RaceSessionState, SpectateVehicles, RaceVehicleData, PB/stats, ideal lap,
+posDeltaSplit, odometer, FMX). RaceHoleshot and RunLap are intentionally
+unexported/stub, not gaps.
 
 Callbacks with no headless-observable effect (RunStop's prod-only pit flush,
 TrackCenterline geometry, the widget/helmet half of RunTelemetry) are covered for
 **survival** by the callback fuzzer and marked ⛔/🟠 above rather than left as silent
-gaps. The **deinits** are no longer in that group - deinit_test asserts them directly.
+gaps.
 
 No ⚪ rows remain in the game-callback table. What is left is ⛔ (nothing a headless
 harness can observe) and 🟡/🟠 (driven, output not asserted); each says which.
 
-~~**Top remaining open gap: FMX (freestyle trick scoring) - whole subsystem untested.**~~
-- ✅ done (fmx_test), exactly along the sketched seam: every FMX wall-clock read
-(FmxManager's `dt`/grace/animation timing AND `FmxScore`'s chain timer) now goes through
-one `Fmx::clockNow()` helper (fmx_types.h) whose `MXBMRP3_TEST_BUILD`-only override
-mirrors `DirectorManager::testSetNowMs`; `MXBMRP3_Test_FmxSetNowUs` steps simulated time
-10ms per telemetry frame and `MXBMRP3_Test_FmxState` exposes score/chain/active-trick.
-The test drives real RunTelemetry orientation sequences and asserts a *detection*, not a
-tautology: a sub-debounce hop banks nothing; a full-pitch airborne rotation classifies
-as `BACKFLIP`, survives the 0.75s landing grace, and banks a non-zero score into the
-session when the 2s chain window expires; a crash during grace fails it. The odometer
-gap closed with the sibling seam (`StatsManager::odometerNow()` + `StatsSetNowUs`,
-odometer_test).
-
 ## Known logic gaps needing a new seam (visible, not silent)
 
-These are confirmed behaviours worth a test, but each needs a new observability
-seam the harness doesn't have yet - recorded here so they're managed, not lost.
+Confirmed behaviours worth a test that need an observability seam the harness
+doesn't have yet. Both items once here are closed (updater locked-file retry:
+`updater_test`; masked-notice consumption: `test_notice_priority`); what they
+leave open:
 
-1. ~~**Updater - no retry/backoff on a locked/in-use target**~~ - ✅ done
-   (updater_test): `moveFileWithRetry` now retries the backup/restore moves on a
-   transient sharing/access lock (~1.5s backoff), and `restoreFromBackup` returns
-   an accurate result. Tested via the `MXBMRP3_Test_ExtractAndInstall` hook
-   against a temp dir with an in-memory zip (`zipwrite.h`): happy install; target
-   locked for the whole attempt → abort with the original `.dlo` intact; transient
-   lock released mid-attempt → the retry recovers and the install succeeds. The
-   live WinHTTP download stays manual-only (no injection seam); `SHA256` /
-   `mapToInstallPath` / `shouldSkipFile` still unit-testable via a future hook.
-2. ~~**Notices - a timed notice can be consumed while masked**~~ - ✅ done. The
-   consumable timed notices (all-time PB / fastest lap / session PB / default
-   setup / segment) used to run their display countdown from the *event* time,
-   independent of whether they were ever on screen - so a PB set on a lap where
-   the player also briefly went WRONG WAY counted down behind the banner and was
-   cleared unseen ("incorrect notices"). Fixed by measuring the window from the
-   *unmask* moment: `hud/notice_priority.h`'s pure `stepTimer({pending, masked,
-   triggerMs, timer}, now, duration)` HOLDS a masked notice (never shown, never
-   consumed), starts its window when the mask clears and resumes it after a
-   later mask (shown time counts in total, so a flickering banner cannot keep a
-   PB up); a fresh re-trigger restarts the window. `notices_hud.cpp` computes the status-tier `statusMasking` flag and
-   feeds it per consumable notice. Tested as pure logic in `tests/unit/`
-   (test_notice_priority) - held-while-masked, window-from-unmask, mid-display
-   mask resuming, flickering mask, re-trigger restart, not-pending reset. (The in-game render ladder itself
-   stays a manual check; the consumption *decision* is now unit-tested.)
+- The updater's live WinHTTP download stays manual-only (no injection seam);
+  `SHA256` / `mapToInstallPath` / `shouldSkipFile` are unit-testable via a future
+  hook.
+- The notices' in-game render ladder stays a manual check; the consumption
+  *decision* is unit-tested.

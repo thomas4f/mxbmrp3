@@ -18,6 +18,31 @@ file; their wording is preserved too.
 
 ## [Unreleased]
 
+### Added
+- **Italian** language pack (Beta): Settings > Appearance > Language, or
+  automatic when Windows is in Italian. Corrections from Italian players
+  are welcome: see languages\README.md.
+- **Turkish** language pack (Beta): Settings > Appearance > Language, or
+  automatic when Windows is in Turkish. Corrections from Turkish players
+  are welcome: see languages\README.md.
+- **Dutch** language pack (Beta): Settings > Appearance > Language, or
+  automatic when Windows is in Dutch. Corrections from Dutch players are
+  welcome: see languages\README.md.
+- **Norwegian (Bokmål)** language pack (Beta): Settings > Appearance >
+  Language, or automatic when Windows is in Norwegian. Corrections from
+  Norwegian players are welcome: see languages\README.md.
+
+### Changed
+- Updated vendored cpp-httplib to 0.64.0
+- **Usage survey**: now reports which of the plugin's languages you read
+  it in, and whether the **System** default chose it, so new packs go
+  where players are. A pack you made yourself counts only as "custom".
+- The fonts now draw the Turkish letters Ğ ğ İ ı Ş ş, so Turkish names
+  and messages in the Stream Chat HUD show as written. A font without one
+  of them builds it from the plain letter and its accent, or shows the
+  plain letter: the default Title font shows a plain G, g and I, and the
+  LCD fonts plain letters, as for other accents.
+
 ## [1.34.3] - 2026-11-03
 
 Menus, tooltips and HUDs can now be in French, German, Portuguese,

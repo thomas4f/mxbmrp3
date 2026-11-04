@@ -22,7 +22,7 @@
 /* ============================================================================
  * FONTS
  * Each @font-face uses a family name that matches the in-game .fnt filename
- * so the availableFonts set in app.js can do a direct 1:1 lookup.
+ * so the availableFonts set in overlay-util.js can do a direct 1:1 lookup.
  * The plugin sends font names like "RobotoMono-Regular", "EnterSansman-Italic", etc.
  * ============================================================================ */
 @font-face {
@@ -147,7 +147,7 @@
 }
 
 html {
-    font-size: 28px;  /* Fallback — overridden by CONFIG.fontSize in app.js */
+    font-size: 28px;  /* Fallback — overridden by CONFIG.fontSize in overlay-shell.js */
 }
 
 /* ============================================================================
@@ -224,7 +224,7 @@ html {
 
     /* Layout */
     /* Tower width is driven by the name column character count (--name-chars).
-       Overridden live by app.js from CONFIG.nameChars (default 10, range 3-30).
+       Overridden live by overlay-shell.js from CONFIG.nameChars (default 10, range 3-30).
        Overall overlay width = N * 1ch + fixed chrome (pos + num + gap + padding). */
     --name-chars:    10;
     /* Width of the optional positions-gained (±) column. Sized to fit 3 chars at the
@@ -249,7 +249,7 @@ html {
        font) so it scales with whatever font the palette syncs in — a wide face
        (Audiowide) gets a wide column, a narrow mono one a tight column, no dead
        space and no JS. Sized for 2 position digits.
-       --col-gap-w and --badge-w AUTO-FIT: app.js measures the exact rendered
+       --col-gap-w and --badge-w AUTO-FIT: overlay-render.js measures the exact rendered
        worst-case width per font (measureGapWidth / measureBadgeWidth) and writes
        it to the *-measured vars below, which these fall back to. A `ch` value
        can't be tight for those two — time strings/plates mix wide and narrow
@@ -273,7 +273,7 @@ html {
        card). The ± term can't live in this token: a var() inside a custom property is
        substituted at the DECLARING element (here :root, where --posdelta-w is always 2rem),
        so folding it in here would freeze the ± reserve and defeat the hide-posdelta
-       collapse. (Same rule as --col-gap-w-measured; see app.js.) */
+       collapse. (Same rule as --col-gap-w-measured; see overlay-render.js.) */
     /* The brand marker is reserved EXPLICITLY. It never was: the strip fitted inside
        the flat 1.5rem slack while it was a 0.15rem bar, so widening it into an arrow
        silently pushed the gap column toward the tower edge. Naming it here means a
@@ -294,7 +294,7 @@ html {
 
     /* Animation — durations + easing for every transition/animation in the
        overlay. Lower a value to speed things up, set to 0s to disable. The
-       slide/focus/logo durations are also read by app.js so the JS teardown
+       slide/focus/logo durations are also read by overlay-config.js (cssTimeMs) so the JS teardown
        timers stay in sync, so these are safe to retune from custom.css. */
     --ease:          ease;
     --anim-fast:     0.3s;   /* reflows (min-height), event fade-in, settings UI */
@@ -450,7 +450,7 @@ body {
 }
 
 /* Column header bar — a single title strap styled like the fastest-last-lap
-   panel header rather than per-column labels. renderHeader() in app.js sets the
+   panel header rather than per-column labels. renderHeader() in overlay-render.js sets the
    labels per session: race = "Behind Leader" (left) / "Gap" (right), non-race =
    "Lap Times" (left, right cleared). The data rows keep their own column widths. */
 #standings-header {
@@ -584,7 +584,7 @@ body {
 }
 
 /* Positions gained/lost since race start (caret + count). Shown only during races
-   (app.js toggles .hide-posdelta on the overlay for non-race sessions / when disabled). */
+   (overlay-render.js toggles .hide-posdelta on the overlay for non-race sessions / when disabled). */
 .col-posdelta {
     flex: 0 0 var(--posdelta-w);
     text-align: center;  /* caret+count centered in the slot, like the # column */
@@ -796,7 +796,7 @@ body {
  * fastest-laps (by session best). The outer panel is a fixed clipping window
  * pinned at the standings/event-log boundary; the inner content slides up into
  * it from the bottom (portcullis-style) so it never extends into the event log
- * or out from behind the tower. app.js drives the show/hide on a timer.
+ * or out from behind the tower. overlay-slots.js drives the show/hide on a timer.
  * ============================================================================ */
 #fastlap-panel,
 #bestlap-panel,
@@ -838,7 +838,7 @@ body {
 .bestlap-title,
 .charts-title,
 .sectors-title {
-    /* Height is set to the measured row height by app.js (with box-sizing:
+    /* Height is set to the measured row height by overlay-panels.js (with box-sizing:
        border-box) so the panel is an exact whole number of rows tall; the rem
        value here is just a pre-render fallback. */
     display: flex;
@@ -867,13 +867,13 @@ body {
 .sectors-page {
     flex: 0 0 100%;             /* one tower-width page per sector */
 }
-/* Each page's title is its first row (built by app.js), so the header slides in
+/* Each page's title is its first row (built by overlay-panels.js), so the header slides in
    with its board instead of swapping in place. */
 .sectors-page > .sectors-title { width: 100%; box-sizing: border-box; }
 
 /* Session-charts carousel: a horizontal track that pages one chart at a time (each an
    inline SVG line chart), mirroring the best-sectors carousel — each page slides out to
-   the left as the next slides in from the right. The viewport height is set by app.js to
+   the left as the next slides in from the right. The viewport height is set by overlay-charts.js to
    an exact whole number of measured rows (like the boards) so the panel lands on a row
    boundary. */
 .charts-viewport {
@@ -887,11 +887,11 @@ body {
     flex: 0 0 100%;             /* one tower-width page per chart */
     box-sizing: border-box;
 }
-/* Each page's title is its first row (built by app.js), so the header slides in
+/* Each page's title is its first row (built by overlay-charts.js), so the header slides in
    with its chart instead of swapping in place. */
 .charts-page > .charts-title { width: 100%; box-sizing: border-box; }
-/* The SVG fills the rest of its page (explicit px height set by app.js so the
-   viewBox stays 1:1); strokes/labels are coloured inline per-rider by app.js.
+/* The SVG fills the rest of its page (explicit px height set by overlay-charts.js so the
+   viewBox stays 1:1); strokes/labels are coloured inline per-rider there.
    vector-effect keeps line/grid widths crisp regardless of the viewBox scale. */
 .charts-svg {
     display: block;
@@ -955,7 +955,7 @@ body {
  * Shares the bottom slot with the fastest-last-lap panel: same bottom-up gate
  * (an inner that slides within a pinned clip window). Inside, a horizontal
  * track pages through the riders hidden below the Max Riders cutoff — each page
- * slides out to the left as the next slides in from the right. app.js builds the
+ * slides out to the left as the next slides in from the right. overlay-panels.js builds the
  * pages and drives the timing; row/title heights are set to the measured row
  * height so the panel is an exact whole number of rows tall.
  * ============================================================================ */
@@ -981,7 +981,7 @@ body {
 .tail-title {
     display: flex;
     align-items: center;
-    height: var(--row-height);  /* exact px set by app.js */
+    height: var(--row-height);  /* exact px set by overlay-panels.js */
     padding: 0 var(--sp-md);
     font-family: var(--font-display);
     font-size: var(--fs-xs);
@@ -997,7 +997,7 @@ body {
 }
 /* Single vertical column of ALL tail riders; scrolls with translateY inside the
    clipped viewport (slide up -> pause -> scroll down -> pause -> scroll up -> pause).
-   The scroll duration is set inline per phase by app.js. */
+   The scroll duration is set inline per phase by overlay-panels.js. */
 .tail-track {
     transition: transform var(--anim-base) var(--ease);
     will-change: transform;
@@ -1005,12 +1005,12 @@ body {
 
 /* Tail rows mirror the tower's .row-main columns so widths/styling match and
    they respect .hide-posdelta — but they sit in normal flow (not absolute).
-   Heights are set to the measured row height by app.js. */
+   Heights are set to the measured row height by overlay-panels.js. */
 .tail-row {
     display: flex;
     align-items: center;
     width: 100%;
-    height: var(--row-height);  /* exact px set by app.js */
+    height: var(--row-height);  /* exact px set by overlay-panels.js */
     padding: 0 var(--sp-md);
     min-width: 0;
 }
@@ -1030,7 +1030,7 @@ body {
  * Shares the bottom slot (same bottom-up gate as the fastlap/tail panels).
  * Highlights a cluster of riders running close together. Each rider is a card:
  * a main line (ordinal + plate + name + interval to the front) plus optional
- * detail sub-rows (bike / last lap / fastest lap). app.js builds the cards.
+ * detail sub-rows (bike / last lap / fastest lap). overlay-panels.js builds the cards.
  * ============================================================================ */
 #battle-panel {
     position: absolute;
@@ -1053,11 +1053,11 @@ body {
 
 /* Battle→battle cut. A cut to a DIFFERENT battle is a full panel change like every other
    slot panel — the whole #battle-panel slides DOWN and out (revealing the tower behind it),
-   then a fresh one slides UP with the new battle (see #battle-panel + app.js restart()). So
+   then a fresh one slides UP with the new battle (see #battle-panel + overlay-slots.js restart()). So
    there is only ever ONE .battle-track (one header) — no in-place two-card reel. #battle-list
    is the clip window; its height animates only for a same-battle membership change (a rider
    joining/leaving grows/shrinks the box smoothly instead of the bottom-anchored edge jumping),
-   pinned in px by app.js — auto->auto in-place data updates don't transition. */
+   pinned in px by overlay-panels.js — auto->auto in-place data updates don't transition. */
 #battle-list {
     position: relative;
     overflow: hidden;
@@ -1067,7 +1067,7 @@ body {
 .battle-title {
     display: flex;
     align-items: center;
-    height: var(--row-height);  /* exact px set by app.js */
+    height: var(--row-height);  /* exact px set by overlay-panels.js */
     padding: 0 var(--sp-md);
     font-family: var(--font-display);
     font-size: var(--fs-xs);
@@ -1080,7 +1080,7 @@ body {
 
 /* One card per battling rider: a body column (main line + sub-rows) plus a
    large right-hand headline. The card is brand-tinted (gradient + accent bar set
-   inline by app.js). Heights set by app.js so cards stay row-grid aligned. */
+   inline by overlay-panels.js). Heights set by overlay-panels.js so cards stay row-grid aligned. */
 .battle-card {
     position: relative;   /* anchors the headline overlay */
     background-color: var(--bg-row-odd);
@@ -1114,7 +1114,7 @@ body {
 
 /* A real-time (live) interval — slightly de-emphasised from the static split so a
    caster can tell at a glance it's a moving value. Overriding a color synced from
-   the palette needs !important (see the theming note in CLAUDE.md). */
+   the palette needs !important (see the theming note in AGENTS.md). */
 .battle-value.live {
     font-style: italic;
     color: var(--gp-secondary) !important;
@@ -1123,10 +1123,10 @@ body {
 .battle-main {
     display: flex;
     align-items: center;
-    height: var(--row-height);   /* exact px set by app.js */
+    height: var(--row-height);   /* exact px set by overlay-panels.js */
     padding: 0 var(--sp-md);
     min-width: 0;
-    /* whole-row brand highlight colour is set inline by app.js */
+    /* whole-row brand highlight colour is set inline by overlay-panels.js */
 }
 .battle-pos {
     /* Exactly the tower's .col-pos: same width and RIGHT alignment, so the position
@@ -1159,7 +1159,7 @@ body {
 .battle-sub {
     display: flex;
     align-items: center;
-    height: var(--row-height);   /* exact px set by app.js */
+    height: var(--row-height);   /* exact px set by overlay-panels.js */
     /* indent past the ordinal + plate so values line up under the name; reserve
        space on the right so values clear the floating headline. The sp-md*3 is the
        battle-main left pad + col-num left margin + col-num right margin (the col-num
@@ -1247,7 +1247,7 @@ body {
    position, floating on the middle-right over the detail rows, so the detail rows
    keep the headline width reserve on the right. The ± reserve is zeroed (no ±
    column to align to); the brand gradient and identity-row tint are applied inline
-   by app.js, like buildBattle(). */
+   by overlay-focus.js, like buildBattle(). */
 .focus-body {
     --posdelta-w: 0rem;        /* no ± column to reserve space for */
     position: relative;        /* anchors the .focus-value position headline */
@@ -1257,7 +1257,7 @@ body {
        token formula (shared .battle-sub) assumes each identity-row column renders
        at its token width, but they don't: the ordinal ("1ST" / "10TH") overflows
        --col-pos-w and the plate widens with digit count, so the formula lands the
-       text ~30px left of the name. app.js measures the name's real left edge and
+       text ~30px left of the name. overlay-focus.js measures the name's real left edge and
        sets --focus-sub-indent; the calc() below is only the first-paint fallback.
        padding-right reserves the headline width so the detail values clear the
        floating position headline (same as the base .battle-sub). */
@@ -1489,7 +1489,7 @@ body {
 /* ============================================================================
  * MOBILE — fill the viewport width
  * On phone-sized touch screens, drop the fixed corner-widget placement and let
- * the tower span the full width. app.js scales the root font-size so the tower's
+ * the tower span the full width. overlay-shell.js scales the root font-size so the tower's
  * computed width equals the viewport (everything is proportional to font-size);
  * here we just put it in normal flow at the top-left and allow the page to
  * scroll vertically for the rest of the content. Names already truncate to the
@@ -1514,7 +1514,7 @@ body {
        that overflows a phone screen, so suppress it here even if a user enabled
        it in settings. Unaffected on desktop/OBS (pointer: fine). */
     #focus-card { display: none !important; }
-    /* The gear is revealed by a screen touch and auto-hides (handled in app.js,
+    /* The gear is revealed by a screen touch and auto-hides (handled in overlay-settings.js,
        since mousemove never fires on touch), mirroring the desktop mouse reveal —
        so it isn't pinned permanently over the top-right of the full-width tower. */
     /* Status chips hang off the right of each row (left: 100%), which is off-screen

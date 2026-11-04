@@ -32,7 +32,7 @@ TEST_CASE("layout metrics: a non-finite font size or line height cannot poison t
     // coordinate computed from them go NaN, and the settings writer then persists `nan`
     // straight back out. Nothing recovers on its own.
     //
-    // Hand-editing the INI is a supported workflow (CLAUDE.md), so this arrives from a
+    // Hand-editing the INI is a supported workflow (AGENTS.md), so this arrives from a
     // file, not from the UI -- which is why the guard is in the setter and not in a
     // control's validation.
     for (float bad : {std::numeric_limits<float>::quiet_NaN(),

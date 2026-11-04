@@ -358,7 +358,7 @@ private:
     // All access (hotkeys, settings load, UI dispatch, onDataChanged) is on the
     // game thread, so these members are deliberately non-atomic. A future
     // background writer would need to make the touched fields atomic (see the
-    // cross-thread-flags invariant in CLAUDE.md).
+    // cross-thread-flags invariant in AGENTS.md).
 
     long long minShotMs() const { return static_cast<long long>(m_minShotSec) * 1000; }
     long long maxShotMs() const { return static_cast<long long>(m_maxShotSec) * 1000; }

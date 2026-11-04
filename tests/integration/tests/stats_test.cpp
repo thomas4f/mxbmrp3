@@ -66,7 +66,7 @@ TEST_CASE("stats: PB written on RunDeinit, not while riding; only a faster lap r
 
     // Top speed: a running max over telemetry. A non-finite speed (a bad physics
     // sample) must be clamped to 0 before it reaches the PERSISTED top speed /
-    // odometer — the finiteOrZero write guard (CLAUDE.md). Drive 50 m/s, then +Inf
+    // odometer — the finiteOrZero write guard (AGENTS.md). Drive 50 m/s, then +Inf
     // (must be ignored, not poison the value), then 30 m/s → top speed stays 50.
     host.telemetry(50.0f);
     host.telemetry(std::numeric_limits<float>::infinity());

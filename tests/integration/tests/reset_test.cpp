@@ -13,7 +13,7 @@
 // SCOPE: only Reset ALL is asserted here. Per-profile / per-HUD resets clear the
 // *profile diff*, not the shared base section — so perturbing a base-section value
 // doesn't exercise them (the "m_hudDefaults is not a clean factory snapshot"
-// property in CLAUDE.md); reset_profile_test covers those. The per-TAB "Reset
+// property in AGENTS.md); reset_profile_test covers those. The per-TAB "Reset
 // <tab>" buttons were a documented gap here for their whole life, and every
 // hand-written one had fallen behind its tab by the time anything pressed one:
 // reset_tab_test.cpp now drives all of them.

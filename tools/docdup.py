@@ -17,7 +17,7 @@ twenty lines of Jaccard over content-word sets, stdlib only.
 WHY THIS IS NOT A CI GATE. It has no crisp pass/fail. On the sweep it was
 written for it surfaced twelve pairs over 0.55 and six of them were correct as
 they stood -- a shipped README that must stand alone, and one rule aimed at
-humans in CONTRIBUTING.md and at agents in CLAUDE.md. A gate that is half false
+humans in CONTRIBUTING.md and at agents in AGENTS.md. A gate that is half false
 positives gets its threshold raised until it says nothing. Run it when you are
 about to write documentation, and judge each pair: the question is never "are
 these similar" but "which file owns this fact, and does the other one need more

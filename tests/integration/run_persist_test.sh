@@ -8,7 +8,7 @@
 #
 # Targets the highest-severity, least-covered area: a setting applied in memory
 # but never written to disk (the hudOrder "third hardcoded list" trap) reverts
-# silently on restart. See CLAUDE.md "Adding a New HUD" step 6.
+# silently on restart. See AGENTS.md "Adding a New HUD" step 6.
 #
 # Requires: mingw-w64 (posix), wine64, python3.
 # ============================================================================

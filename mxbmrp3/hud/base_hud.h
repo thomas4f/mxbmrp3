@@ -432,7 +432,7 @@ public:
     float getOffsetX() const { return m_fOffsetX; }
     float getOffsetY() const { return m_fOffsetY; }
 
-    // --- Companion-surface instance (decoupled on/off + position) ---------------
+    // --- Companion-surface instance (on/off + position); a new per-surface setting: see companion_decouple_test.cpp's header
     // The companion window is a second HUD surface. Each HUD keeps an independent
     // visibility + position for it. While m_bCompanionConfigured is false the companion
     // values MIRROR the game (the accessors fall back to the game value) — the state for

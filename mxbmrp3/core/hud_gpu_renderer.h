@@ -9,7 +9,7 @@
 // multiplies quads 27x), 4x MSAA edge antialiasing on colored quads (the map
 // ribbon, needles), and bilinear sprite/glyph sampling.
 //
-// WHY BESPOKE (evaluated before writing, per CLAUDE.md "reach for standard
+// WHY BESPOKE (evaluated before writing, per AGENTS.md "reach for standard
 // tooling"): Direct2D cannot modulate a bitmap by a per-draw color without an
 // effect graph, and texel × quad-color — including alpha — is exactly the
 // game's texture stage that both backends must reproduce (white icons take the

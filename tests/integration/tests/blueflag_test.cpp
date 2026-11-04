@@ -90,7 +90,7 @@ TEST_CASE("blue flag: lapping detection, proximity, same-lap early-out, pit excl
     // This case is where the cost of NOT doing so was measured: back when
     // ~PluginHost was a bare FreeLibrary, the three subcases each unmapped the
     // DLL with the plugin's background threads still live — the
-    // unload-without-Shutdown() path CLAUDE.md flags as having cost two shipped
+    // unload-without-Shutdown() path AGENTS.md flags as having cost two shipped
     // crashes — and it crashed 8/10 runs under CPU saturation, 0/10 with this
     // call. The destructor now shuts down as well, so this is idempotent.
     host.shutdown();

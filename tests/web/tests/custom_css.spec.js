@@ -4,7 +4,7 @@
 // to custom.css, edit it, and the overlay picks it up. index.html links custom.css
 // (absent by default → 404s harmlessly), and it must load AFTER style.css so its
 // rules win the cascade. Colours/fonts are synced from the in-game palette as
-// inline styles, so an override of those needs !important (documented in CLAUDE.md);
+// inline styles, so an override of those needs !important (documented in AGENTS.md);
 // this test uses !important, as a real user would.
 //
 // The override is COLOUR-ONLY (no geometry): while custom.css briefly exists on the

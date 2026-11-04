@@ -634,7 +634,7 @@ namespace Settings {
     // applied to these, a theme in `retro;90s` loads as `retro`, degrades to
     // unthemed, and the next save writes the TRUNCATED name back -- destroying
     // the choice permanently, which is the one thing the by-name asset storage
-    // exists to prevent (CLAUDE.md: an unknown name degrades WITHOUT rewriting
+    // exists to prevent (AGENTS.md: an unknown name degrades WITHOUT rewriting
     // the stored value).
     //
     // ONE TABLE, THROUGH THE KEY SYMBOLS, not string literals of its own: a

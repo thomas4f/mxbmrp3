@@ -94,7 +94,7 @@ TEST_CASE("telemetry history accumulates whenever the HUD is visible on ANY surf
         CHECK_MESSAGE(host.tmHistoryDepth() > 0,
                       "no telemetry history recorded for a HUD visible ONLY on the "
                       "companion window — isTelemetryHistoryNeeded() is reading the "
-                      "game-surface flag again (see CLAUDE.md Maintenance Invariants)");
+                      "game-surface flag again (see AGENTS.md Maintenance Invariants)");
 
         // And it really is the companion keeping it alive: drop the override so the
         // HUD mirrors the (hidden) game surface again, and accumulation must stop.

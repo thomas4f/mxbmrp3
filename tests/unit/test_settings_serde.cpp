@@ -17,7 +17,7 @@
 // the moment the two tables disagree by so much as a case difference.
 //
 // The second property is the DEFAULT FALLBACK. The INI is hand-editable — an
-// explicitly supported workflow (CLAUDE.md) — so every stringTo* takes a caller-
+// explicitly supported workflow (AGENTS.md) — so every stringTo* takes a caller-
 // supplied default and must return exactly that for input it doesn't recognise,
 // including empty, whitespace, wrong-case and near-miss spellings. A converter
 // that fell through to a hardcoded value instead of the caller's default would

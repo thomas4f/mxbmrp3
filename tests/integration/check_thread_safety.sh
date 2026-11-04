@@ -3,7 +3,7 @@
 # tests/integration/check_thread_safety.sh
 # The raw-std::mutex lint: synchronization must use the annotated wrappers.
 #
-# THE INVARIANT (CLAUDE.md): a mutex-guarded member is guarded at EVERY access
+# THE INVARIANT (AGENTS.md): a mutex-guarded member is guarded at EVERY access
 # site. Clang's thread-safety analysis enforces that for annotated members, and
 # it runs inside check_clang_tidy.sh (same TUs, same flags, one parse instead
 # of the two this gate and that one used to spend). What the analysis cannot do

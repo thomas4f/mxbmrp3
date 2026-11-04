@@ -20,7 +20,7 @@ virtualCallInConstructor
 
 # HUD subclasses intentionally redeclare a few members/accessors that also exist
 # on BaseHud (public configuration data the settings UI touches directly — a
-# documented design decision, see CLAUDE.md "Public member variables on HUDs").
+# documented design decision, see AGENTS.md "Public member variables on HUDs").
 duplInheritedMember
 
 # Several render paths initialise two locals (e.g. currentColor/peakColor,

@@ -25,8 +25,19 @@
 //  Also guards the default: a fresh profile writes NO companion keys (the
 //  instance mirrors the game, so there is nothing to persist).
 //
+// ADDING A PER-SURFACE SETTING takes four places, or it half-works:
+//  (1) a getCompanionX() that falls back to the game value while unconfigured,
+//      plus a setCompanionX() that configures first (base_hud.h);
+//  (2) capture that persists ONLY when the companion has diverged from the
+//      game, and apply that clears authoritatively when absent -
+//      captureBaseHudSettings says why that gate is load-bearing;
+//  (3) collectSurface() reading the companion value on the companion pass only;
+//  (4) input routed by getActiveSurface(), with interactive HUDs mapping the
+//      cursor into build space (ui_viewport.h, pinned by viewport_test.cpp)
+//      before hit-testing.
+//
 // Self-contained doctest, one process (singletons persist across cases). See
-// run_tests.sh; the hooks live in core/test_hooks.cpp (MXBMRP3_TEST_BUILD only).
+// run_tests.sh; the hooks live in core/test_hooks*.cpp (MXBMRP3_TEST_BUILD only).
 // ============================================================================
 #include "doctest.h"
 #include "integration_main.h"

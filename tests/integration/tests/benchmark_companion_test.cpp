@@ -82,7 +82,7 @@ TEST_CASE("benchmark collection follows visibility on ANY surface") {
         CHECK_MESSAGE(host.bmMetricsActive(),
                       "no collection for a profiler visible ONLY on the companion "
                       "window — bm.active is being latched from the game-surface "
-                      "toggle again, so the tables render empty (see CLAUDE.md "
+                      "toggle again, so the tables render empty (see AGENTS.md "
                       "Maintenance Invariants)");
 
         host.companionWindow(false);

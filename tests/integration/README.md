@@ -5,7 +5,7 @@ non-Windows host (CI, a Linux dev box, Wine) can exercise the real plugin data
 pipeline end-to-end - not just the isolated pure functions in `../unit`.
 
 This is **not** the shipping build. The shipping `.dlo` is built with MSVC (see
-the root `CLAUDE.md`). This is a parallel *portability* configuration used only
+the root `AGENTS.md`). This is a parallel *portability* configuration used only
 for testing.
 
 > **Where the tests live and how to run them: [`../../TESTING.md`](../../TESTING.md).**
@@ -28,23 +28,20 @@ The cross-build powers the Layer-2 and Layer-3 tests (see `../../TESTING.md`):
 ```
 
 This directory also holds the **enforced invariant checks** - the `check_*.sh`
-scripts (compile/grep passes, no Wine, CI fails on violations). What each one
-enforces is in its own header, alongside the escape-hatch annotation that opts a
-line out of it; [`DEVELOPMENT.md`](../../DEVELOPMENT.md) lists them in one place,
-one line each. Not repeated here: this listing was eleven of the nineteen by the
-time anyone noticed, which is what a second copy of a list is for.
+scripts (compile/grep passes, no Wine, CI fails on violations). Each one's header
+says what it enforces and its escape-hatch annotation; [`DEVELOPMENT.md`](../../DEVELOPMENT.md)
+lists them in one place, so they are deliberately not listed again here.
 
 Every `*.cpp` under `core/`, `handlers/`, `hud/`, `diagnostics/` (minus
 `discord_manager.cpp`, which `mxbmrp3/CMakeLists.txt` drops under
 `MXBMRP3_TEST_BUILD` because `GAME_HAS_DISCORD` is 0 there and the TU would only
 drag the SDK in), plus `mxb_api.cpp` and the miniz `.c` files, compiles clean
-into a genuine PE32+ DLL exporting the full PiBoSo plugin API - ~185 translation
-units. `build.sh` prints the exported-symbol count on each link; a sudden drop
+into a genuine PE32+ DLL exporting the full PiBoSo plugin API. `build.sh` prints the exported-symbol count on each link; a sudden drop
 means a TU quietly stopped being compiled. Under Wine it runs the real lifecycle:
 all managers initialize, settings load/save round-trips, HUDs rebuild render
 primitives, and the HTTP overlay server starts on :8080. Feature parity with the
 shipping build **except** Discord Rich Presence and Aptabase analytics (see
-below). All of it is wired into CI (`.github/workflows/tests.yml`).
+below).
 
 ## Requirements
 
@@ -67,13 +64,11 @@ installed with the `mingw` group.
 ./build.sh -B         # force full rebuild
 ```
 
-`build.sh` is a thin wrapper over **CMake**, which replaced the Makefile that
-used to live here - that Makefile was a second, independent description of the
-same source tree sitting alongside the vcxproj's explicit list, with nothing
-comparing the two. Both are gone: `mxbmrp3/CMakeLists.txt` is the single
-definition for every toolchain. The build tree is `build/cross/`, configured from
-the `cross` preset so the toolchain file and `MXBMRP3_TEST_BUILD` live only in
-`CMakePresets.json`. It doesn't rebuild everything every time:
+`build.sh` is a thin wrapper over **CMake**: `mxbmrp3/CMakeLists.txt` is the
+single source-list definition for every toolchain. The build tree is
+`build/cross/`, configured from the `cross` preset so the toolchain file and
+`MXBMRP3_TEST_BUILD` live only in `CMakePresets.json`. It doesn't rebuild
+everything every time:
 
 - **Incremental** - CMake/Ninja-style dependency tracking recompiles only the
   affected TUs + the link when you edit one `.cpp` or header.
@@ -88,8 +83,6 @@ Approximate timings (4 cores):
 | Clean build, cold cache | ~120s |
 | One `.cpp` changed | ~1s |
 | Clean rebuild, warm ccache | ~1s |
-
-(A flat "recompile everything serially" script was ~370s every time.)
 
 ## How it differs from the MSVC build
 
@@ -118,8 +111,7 @@ Source changes that support this (all no-ops on MSVC):
 
 ## Test-only exports
 
-`core/test_hooks.cpp` adds `MXBMRP3_Test_*` exports (start the web server, reset
-settings, compare versions, force a save) used by the tests. The whole file is
-gated on `MXBMRP3_TEST_BUILD`, so these exports **never exist in a shipping DLL**.
-It's compiled only under `MXBMRP3_TEST_BUILD`; mxbmrp3/CMakeLists.txt removes it
-from the source list for every shipping target.
+The `core/test_hooks*.cpp` files add the `MXBMRP3_Test_*` exports the tests drive
+(see `../../TESTING.md` → *Test-only hooks*). They are gated on
+`MXBMRP3_TEST_BUILD` and `mxbmrp3/CMakeLists.txt` drops them from every shipping
+target, so these exports **never exist in a shipping DLL**.

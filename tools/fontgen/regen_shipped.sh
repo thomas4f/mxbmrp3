@@ -24,7 +24,7 @@
 # TO ADD OR REPLACE ONE font without regenerating the rest: drop the .ttf in
 # mxbmrp3_data/web/fonts/, run
 #   tools/fontgen/mxbmrp3_fontgen <font>.ttf mxbmrp3_data/fonts/<font>.fnt
-# and commit the .fnt. (This text lived in CLAUDE.md, which is read in full before
+# and commit the .fnt. (This text lived in AGENTS.md, which is read in full before
 # every task and charged for it; a tool recipe belongs with the tool.)
 # ============================================================================
 set -euo pipefail

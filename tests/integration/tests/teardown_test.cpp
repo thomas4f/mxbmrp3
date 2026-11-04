@@ -52,7 +52,7 @@
 // process rather than crashing it. See the analytics case at the bottom of this
 // file for the mechanism, the two workers it was reproduced with, and why fixing
 // it is a design call rather than a test change. It is also carried as a
-// Maintenance Invariant in CLAUDE.md ("A worker thread must not outlive the
+// Maintenance Invariant in AGENTS.md ("A worker thread must not outlive the
 // DLL") — a hazard that only exists in a test comment is one the next person to
 // add a background thread will never read.
 // ============================================================================

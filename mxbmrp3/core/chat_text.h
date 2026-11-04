@@ -7,12 +7,16 @@
 // HUD wraps with it only when a rebuild is due. Pinned by
 // tests/unit/test_twitch_irc.cpp and tests/unit/test_youtube_chat.cpp.
 //
-// THE FONT. The game's .fnt renderer is a byte-indexed CP1252 table, so text is
-// converted here, once, off the game thread: Latin-1 and the CP1252 specials
-// survive, everything else (emoji, CJK, Cyrillic) is dropped, and the spaces a
-// dropped emoji leaves behind are collapsed.
+// THE FONT. The game's .fnt renderer is a byte-indexed table in the plugin's
+// code page -- CP1252 plus the six Turkish letters in CP1252's unused bytes
+// (core/font_codepage.h) -- so text is converted here, once, off the game
+// thread: Latin-1, the CP1252 specials and Ğ ğ İ ı Ş ş survive, everything else
+// (emoji, CJK, Cyrillic) is dropped, and the spaces a dropped emoji leaves
+// behind are collapsed.
 // ============================================================================
 #pragma once
+
+#include "font_codepage.h"
 
 #include <cstdint>
 #include <string>
@@ -91,7 +95,8 @@ inline std::vector<uint32_t> decodeUtf8(const std::string& s) {
     return cps;
 }
 
-// One code point -> its CP1252 byte, or 0 when the font cannot draw it.
+// One code point -> its byte in the plugin's code page (CP1252 + the Turkish
+// slots), or 0 when the font cannot draw it.
 inline unsigned char toCp1252(uint32_t cp) {
     if (cp == '\t') return ' ';
     if (cp >= 0x20 && cp < 0x7F) return static_cast<unsigned char>(cp);
@@ -106,7 +111,10 @@ inline unsigned char toCp1252(uint32_t cp) {
     case 0x2013: return 0x96; case 0x2014: return 0x97; case 0x02DC: return 0x98;
     case 0x2122: return 0x99; case 0x0161: return 0x9A; case 0x203A: return 0x9B;
     case 0x0153: return 0x9C; case 0x017E: return 0x9E; case 0x0178: return 0x9F;
-    default: return 0;
+    default: {
+        const FontCodePage::ExtraSlot* slot = FontCodePage::slotForCodepoint(cp);
+        return slot ? slot->byte : static_cast<unsigned char>(0);
+    }
     }
 }
 

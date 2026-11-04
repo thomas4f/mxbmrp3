@@ -261,8 +261,8 @@ std::string generateTricksDoc() {
     const FmxConfig c;
     std::ostringstream out;
     out << "# FMX tricks\n\n";
-    out << "What the FMX HUD recognises, what each trick is worth and how a score is built, at the "
-           "defaults. Left and right variants are one trick here, as in the settings: `trickEnabled_<INI key>=0` "
+    out << "What the FMX HUD (MX Bikes and GP Bikes only) recognises, what each trick is worth and how a "
+           "score is built, at the defaults. Left and right variants are one trick here, as in the settings: `trickEnabled_<INI key>=0` "
            "under `[FmxHud]` in the settings file turns one off, both directions at once. *Base* is the score before the "
            "multipliers below; *Scored on* is the axis whose rotation scales it; *Full progress* is what "
            "fills the HUD's bar.\n\n";

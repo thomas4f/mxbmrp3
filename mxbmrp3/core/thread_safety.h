@@ -2,7 +2,7 @@
 // core/thread_safety.h
 // Clang Thread Safety Analysis (TSA) wrappers: an annotated Mutex + RAII locks.
 //
-// THE INVARIANT THIS ENFORCES (CLAUDE.md): a mutex-guarded member is guarded
+// THE INVARIANT THIS ENFORCES (AGENTS.md): a mutex-guarded member is guarded
 // at EVERY access site — including private helpers called from already-locked-
 // *looking* code. The crash-grade bug was RecordsHud::findPlayerPositionInRecords()
 // iterating live m_records unlocked while its caller had carefully copied

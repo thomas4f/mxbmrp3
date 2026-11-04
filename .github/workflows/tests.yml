@@ -181,7 +181,7 @@ jobs:
       # Docs rot silently and are followed anyway. This fails on a path that no
       # longer exists, on a Maintenance Invariant that claims an enforcement it
       # doesn't have (or carries no Enforced/Pinned/Convention label at all), and
-      # on CLAUDE.md exceeding its size budget. Pure stdlib, ~1s.
+      # on AGENTS.md exceeding its size budget. Pure stdlib, ~1s.
       - name: Docs are honest (paths resolve, invariants labelled, budget kept)
         run: python3 tools/check_docs.py
 
@@ -424,7 +424,7 @@ jobs:
 
       # Card-anchor sweep coverage: a HUD that anchors content on its card box
       # (PanelPlan::sectionBox*) must be swept by card_anchor_sweep_test. This
-      # was CLAUDE.md prose labelled "convention", and four panels had quietly
+      # was AGENTS.md prose labelled "convention", and four panels had quietly
       # fallen outside it. See the script header.
       - name: Card-anchor sweep coverage lint
         run: ./tests/integration/check_card_anchor_coverage.sh
@@ -459,12 +459,22 @@ jobs:
         run: ./tests/integration/check_thread_safety.sh
 
       # The other half of the threading invariant. -Wthread-safety only checks
-      # members that are MUTEX-annotated; a plain unannotated bool is outside
-      # the analysis entirely. This requires every `bool m_*` in a class that
-      # owns a std::thread to be std::atomic, MXB_GUARDED_BY, or carry an
-      # `mt-plain: <which thread>` reason. See the script header.
-      - name: Cross-thread flag lint (thread-owning classes)
+      # members that are MUTEX-annotated; a plain unannotated member is outside
+      # the analysis entirely. This requires every plain value member (bool,
+      # numbers, strings, time points) in a class that owns a std::thread to be
+      # std::atomic, MXB_GUARDED_BY, or carry an `mt-plain: <which thread>`
+      # reason. See the script header.
+      - name: Cross-thread member lint (thread-owning classes)
         run: ./tests/integration/check_mt_flags.sh
+      - name: Cross-thread member lint (self-test)
+        run: ./tests/integration/check_mt_flags.sh --self-test
+
+      # No `throw` of our own, no strcpy/strcat/sprintf, no printf in plugin
+      # source (test-build-only code exempt). See the script header.
+      - name: Banned-construct lint
+        run: ./tests/integration/check_banned_constructs.sh
+      - name: Banned-construct lint (self-test)
+        run: ./tests/integration/check_banned_constructs.sh --self-test
 
       # Import-table lint. opengl32/d3d11/d3dcompiler/dcomp are resolved at
       # RUNTIME so a machine without them falls back instead of failing to load

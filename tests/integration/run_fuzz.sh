@@ -5,7 +5,7 @@
 # config files (fuzz_gen.py) to the plugin's Startup under Wine and asserts it
 # never crashes — the parse sites must degrade gracefully, not abort or fault.
 # Targets the "one bad value aborts the whole settings load" and "malformed
-# JSON throws past a load site" bug classes (see CLAUDE.md).
+# JSON throws past a load site" bug classes (see AGENTS.md).
 #
 # Requires: mingw-w64 (posix), wine64, python3.
 # Exit non-zero if the build fails or any case crashes the plugin.

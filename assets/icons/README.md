@@ -15,17 +15,12 @@ colour inside the SVG doesn't matter.
 | **Identity** | `hud-*` (e.g. `hud-standings`, `hud-timing`, `hud-widgets`, `hud-updates`) | Flat, no outline - they sit beside HUD titles / settings tabs and get an in-game **drop shadow** | *(none - defaults)* |
 | **Status / marker** | everything else (`flag-checkered`, `clock`, `circle`, `crown`, `ban`, `gamepad`, …) | **Outlined** (2px) for contrast over the track; no shadow. Also selectable as tracked-rider markers | `--outline 2` |
 
-Both roles use the same **smooth anti-aliased edges** (`--crisp 0`, the default).
-The *only* difference is the outline: `hud-*` get none, everything else gets a
-2px outline. The split is exactly the filename prefix, with no exceptions. The
-namespacing exists because a few glyphs
-(`flag-checkered`, `clock`) are used in *both* roles; the identity copy is `hud-*`
-so it never collides with the outlined status set.
-
-> ℹ️ **`--crisp 0` (smooth AA) is the default and what the whole set uses.** A
-> higher `--crisp` adds an unsharp pass + a hard alpha threshold (binary edges);
-> the icons were historically built that way for the outlined set but are now
-> uniformly smooth so identity and status icons match.
+Both roles use the same **smooth anti-aliased edges** (`--crisp 0`, the default),
+so the outline is the *only* difference, and the filename prefix decides it with
+no exceptions. A higher `--crisp` (an unsharp pass + a hard alpha threshold) is
+not used, so identity and status icons match. The namespacing exists because a
+few glyphs (`flag-checkered`, `clock`) are used in *both* roles; the identity copy
+is `hud-*` so it never collides with the outlined status set.
 
 ## Taking an icon from Font Awesome
 

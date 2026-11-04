@@ -16,6 +16,12 @@
 //   * Correct CP1252 high-range mapping (bytes 0x80-0x9F -> the right glyphs).
 //   * Fixed-width digits (`tabular_digits`) for proportional fonts, so a
 //     changing number (a running clock, a lap time) does not jiggle.
+//   * The plugin's code page, not plain CP1252: the six bytes CP1252 leaves
+//     unused carry the Turkish letters it lacks (core/font_codepage.h). A font
+//     without one of them gets it built from its own plain letter and accent
+//     mark (ı: its i with the dot cut off), or failing that the plain letter,
+//     so no slot is ever left blank
+//     where the letter it stands for would have ink.
 //
 // Config format is a superset of PiBoSo fontgen's (same keys work); see README.md.
 //
@@ -50,6 +56,7 @@
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "../../mxbmrp3/vendor/stb/stb_truetype.h"
+#include "../../mxbmrp3/core/font_codepage.h"
 
 // MINIZ_NO_ZLIB_COMPATIBLE_NAMES drops miniz's zlib-alias layer (compress/
 // inflate/crc32/zError/...), which this file does not use — it goes straight to
@@ -74,8 +81,162 @@ const int kCp1252High[32] = {
     0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x9D,   0x017E, 0x0178,
 };
 int byteToUnicode(int b, bool cp1252) {
-    if (cp1252 && b >= 0x80 && b <= 0x9F) return kCp1252High[b - 0x80];
+    if (!cp1252) return b;
+    if (const FontCodePage::ExtraSlot* s = FontCodePage::slotForByte(static_cast<unsigned char>(b)))
+        return static_cast<int>(s->codepoint);
+    if (b >= 0x80 && b <= 0x9F) return kCp1252High[b - 0x80];
     return b;
+}
+bool isExtraSlot(int b, bool cp1252) {
+    return cp1252 && FontCodePage::slotForByte(static_cast<unsigned char>(b)) != nullptr;
+}
+
+// What one byte is drawn from: a code point, plus an accent mark composed onto
+// it when the font lacks the slot's own letter (core/font_codepage.h). markCp 0
+// = no mark. The mark is placed with the font's OWN spacing between a lowercase
+// letter and its accent, measured on 'x', so a capital's mark sits as far above
+// the capital as the font puts one above a lowercase letter.
+struct Source {
+    int cp = 0;
+    int markCp = 0;
+    bool markAbove = false;
+    bool dropAboveX = false;   // dotless i from i: nothing above the font's x-height
+};
+
+Source sourceFor(const stbtt_fontinfo& font, int b, bool cp1252) {
+    Source src;
+    src.cp = byteToUnicode(b, cp1252);
+    const FontCodePage::ExtraSlot* slot =
+        cp1252 ? FontCodePage::slotForByte(static_cast<unsigned char>(b)) : nullptr;
+    if (!slot || stbtt_FindGlyphIndex(&font, src.cp) != 0) return src;
+    // The font lacks the letter: its plain letter, with the mark when it has one.
+    // A spacing mark first (the fonts that have marks at all have these), then
+    // the combining one.
+    src.cp = slot->plain;
+    int marks[2] = { 0, 0 };
+    switch (slot->codepoint) {
+        case 0x011E: case 0x011F: marks[0] = 0x02D8; marks[1] = 0x0306; src.markAbove = true; break;   // breve
+        case 0x0130:              marks[0] = 0x02D9; marks[1] = 0x0307; src.markAbove = true; break;   // dot above
+        case 0x015E: case 0x015F: marks[0] = 0x00B8; marks[1] = 0x0327; break;                         // cedilla
+        default:
+            // Dotless i from the font's own i, its dot cut off: ı and i are
+            // different letters in Turkish (sınır, sinir), so a dotted stand-in
+            // changes the word rather than merely losing an accent.
+            src.dropAboveX = true;
+            break;
+    }
+    for (int m : marks) {
+        if (m && stbtt_FindGlyphIndex(&font, m) != 0) { src.markCp = m; break; }
+    }
+    return src;
+}
+
+// The highest a composed mark may reach (bitmap-box y, i.e. -rows above the
+// baseline): the cell's top, once the baseline is known. A capital's accent in a
+// font with tall capitals would otherwise land above the cell and be cropped
+// away; held at the top it sits closer to the letter instead (Reenie Beanie's Ğ).
+// INT_MIN until set = no limit (the auto-fit pass, which only measures widths).
+int g_markTopLimit = INT_MIN;
+
+// Where the mark's bitmap box lands relative to the letter's pen (pixels).
+void markOffset(const stbtt_fontinfo& font, const Source& src, float scale, int& dx, int& dy) {
+    dx = dy = 0;
+    if (!src.markCp) return;
+    int bx0, by0, bx1, by1, mx0, my0, mx1, my1;
+    stbtt_GetCodepointBitmapBox(&font, src.cp, scale, scale, &bx0, &by0, &bx1, &by1);
+    stbtt_GetCodepointBitmapBox(&font, src.markCp, scale, scale, &mx0, &my0, &mx1, &my1);
+    // Centre the mark's ink on the letter's ink.
+    dx = ((bx0 + bx1) - (mx0 + mx1)) / 2;
+    if (src.markAbove) {
+        int xx0, xy0, xx1, xy1;
+        stbtt_GetCodepointBitmapBox(&font, 'x', scale, scale, &xx0, &xy0, &xx1, &xy1);
+        const int gap = std::max(1, xy0 - my1);   // the font's own x-height-to-mark gap
+        dy = (by0 - gap) - my1;
+        if (my0 + dy < g_markTopLimit) dy = g_markTopLimit - my0;
+    }
+}
+
+// The source's ink box at a scale (stb's bitmap-box convention: y down, relative
+// to the baseline), the mark included.
+// The top row a dotless i keeps (bitmap-box y): one row above the top of 'x',
+// so a stem that overshoots the x-height by antialiasing keeps its tip.
+int xHeightCut(const stbtt_fontinfo& font, float scale) {
+    int xx0, xy0, xx1, xy1;
+    stbtt_GetCodepointBitmapBox(&font, 'x', scale, scale, &xx0, &xy0, &xx1, &xy1);
+    return xy0 - 1;
+}
+
+// Whether the font's i has a dot apart from its stem: ink above the cut with a
+// blank row between it and the cut. Faces whose i is a capital-height bar (the
+// LCD fonts) have none, and cutting theirs would only chop the bar's top.
+bool iHasDetachedDot(const stbtt_fontinfo& font, float scale) {
+    int x0, y0, x1, y1;
+    stbtt_GetCodepointBitmapBox(&font, 'i', scale, scale, &x0, &y0, &x1, &y1);
+    const int w = x1 - x0, h = y1 - y0, cut = xHeightCut(font, scale);
+    if (w <= 0 || h <= 0 || cut <= y0) return false;
+    std::vector<uint8_t> px(size_t(w) * h);
+    stbtt_MakeCodepointBitmap(&font, px.data(), w, h, w, scale, scale, 'i');
+    bool inkAbove = false, gap = false;
+    for (int y = y0; y < cut && y < y1; ++y) {
+        bool lit = false;
+        for (int x = 0; x < w && !lit; ++x) lit = px[size_t(y - y0) * w + x] != 0;
+        if (lit) inkAbove = true;
+        else if (inkAbove) gap = true;
+    }
+    return inkAbove && gap;
+}
+
+bool dropsAboveX(const stbtt_fontinfo& font, const Source& src, float scale) {
+    return src.dropAboveX && iHasDetachedDot(font, scale);
+}
+
+void sourceBox(const stbtt_fontinfo& font, const Source& src, float scale,
+               int& x0, int& y0, int& x1, int& y1) {
+    stbtt_GetCodepointBitmapBox(&font, src.cp, scale, scale, &x0, &y0, &x1, &y1);
+    if (dropsAboveX(font, src, scale) && x1 > x0 && y1 > y0) y0 = std::min(y1, std::max(y0, xHeightCut(font, scale)));
+    if (!src.markCp || x1 <= x0 || y1 <= y0) return;
+    int mx0, my0, mx1, my1, dx, dy;
+    stbtt_GetCodepointBitmapBox(&font, src.markCp, scale, scale, &mx0, &my0, &mx1, &my1);
+    markOffset(font, src, scale, dx, dy);
+    x0 = std::min(x0, mx0 + dx); y0 = std::min(y0, my0 + dy);
+    x1 = std::max(x1, mx1 + dx); y1 = std::max(y1, my1 + dy);
+}
+
+// Rasterise the source into a w x h buffer whose origin is its box's (x0, y0).
+void rasterize(const stbtt_fontinfo& font, const Source& src, float scale,
+               int x0, int y0, int w, int h, std::vector<uint8_t>& out) {
+    out.assign(size_t(w) * h, 0);
+    auto blit = [&](int cp, int ox, int oy) {
+        int cx0, cy0, cx1, cy1;
+        stbtt_GetCodepointBitmapBox(&font, cp, scale, scale, &cx0, &cy0, &cx1, &cy1);
+        const int cw = cx1 - cx0, chh = cy1 - cy0;
+        if (cw <= 0 || chh <= 0) return;
+        std::vector<uint8_t> tmp(size_t(cw) * chh);
+        stbtt_MakeCodepointBitmap(&font, tmp.data(), cw, chh, cw, scale, scale, cp);
+        for (int gy = 0; gy < chh; ++gy) {
+            const int ty = cy0 + oy - y0 + gy;
+            if (ty < 0 || ty >= h) continue;
+            for (int gx = 0; gx < cw; ++gx) {
+                const int tx = cx0 + ox - x0 + gx;
+                if (tx < 0 || tx >= w) continue;
+                uint8_t& d = out[size_t(ty) * w + tx];
+                d = std::max(d, tmp[size_t(gy) * cw + gx]);
+            }
+        }
+    };
+    blit(src.cp, 0, 0);
+    if (dropsAboveX(font, src, scale)) {
+        // The box already starts at the cut (sourceBox); clear anything a
+        // rounding put above it.
+        const int cut = xHeightCut(font, scale) - y0;
+        for (int ty = 0; ty < std::min(cut, h); ++ty)
+            std::fill(out.begin() + size_t(ty) * w, out.begin() + size_t(ty + 1) * w, uint8_t(0));
+    }
+    if (src.markCp) {
+        int dx, dy;
+        markOffset(font, src, scale, dx, dy);
+        blit(src.markCp, dx, dy);
+    }
 }
 
 struct Config {
@@ -237,7 +398,12 @@ int main(int argc, char** argv) {
     // so advance/cellH matches (the plugin's monospace columns depend on that ratio).
     // Work in font units (scale-independent) for the box, using the glyph outlines.
     int unitTop = INT32_MIN, unitBot = INT32_MAX;   // y-up font units: top = max, bottom = min
+    // The extra slots stay out of it: they are additions to the code page, and
+    // letting a Turkish capital's accent widen the box would rescale every other
+    // glyph of a font that was right before. A mark taller than the box is
+    // cropped to the cell like any other overhang.
     for (int b = cfg.charStart; b <= cfg.charEnd; ++b) {
+        if (isExtraSlot(b, cfg.cp1252)) continue;
         int gi = stbtt_FindGlyphIndex(&font, byteToUnicode(b, cfg.cp1252));
         if (gi == 0) continue;
         int x0, y0, x1, y1;
@@ -255,10 +421,10 @@ int main(int argc, char** argv) {
         float scale = scaleFor(ch);
         int px = cfg.spacing, py = cfg.spacing, rowH = ch + cfg.spacing;
         for (int b = cfg.charStart; b <= cfg.charEnd; ++b) {
-            int cp = byteToUnicode(b, cfg.cp1252);
-            if (stbtt_FindGlyphIndex(&font, cp) == 0) continue;
+            const Source src = sourceFor(font, b, cfg.cp1252);
+            if (stbtt_FindGlyphIndex(&font, src.cp) == 0) continue;
             int x0, y0, x1, y1;
-            stbtt_GetCodepointBitmapBox(&font, cp, scale, scale, &x0, &y0, &x1, &y1);
+            sourceBox(font, src, scale, x0, y0, x1, y1);
             int w = x1 - x0;
             if (w <= 0) continue;
             if (px + w + cfg.spacing > cfg.bitmapX) { px = cfg.spacing; py += rowH; }
@@ -352,6 +518,7 @@ int main(int argc, char** argv) {
         }
     }
     baseline += int(std::lround(cfg.voffset));
+    g_markTopLimit = -baseline;
 
     // Ensure the glyphs pack into the atlas at the chosen scale; grow it (up to
     // 2048) if not. Needed mainly for width-normalised wide fonts, whose larger
@@ -359,10 +526,10 @@ int main(int argc, char** argv) {
     auto fitsAtlas = [&](int bw, int bh) -> bool {
         int px = cfg.spacing, py = cfg.spacing, rh = cellH + cfg.spacing;
         for (int b = cfg.charStart; b <= cfg.charEnd; ++b) {
-            int cp = byteToUnicode(b, cfg.cp1252);
-            if (stbtt_FindGlyphIndex(&font, cp) == 0) continue;
+            const Source src = sourceFor(font, b, cfg.cp1252);
+            if (stbtt_FindGlyphIndex(&font, src.cp) == 0) continue;
             int x0, y0, x1, y1;
-            stbtt_GetCodepointBitmapBox(&font, cp, scale, scale, &x0, &y0, &x1, &y1);
+            sourceBox(font, src, scale, x0, y0, x1, y1);
             int w = x1 - x0;
             if (w <= 0) continue;
             if (px + w + cfg.spacing > bw) { px = cfg.spacing; py += rh; }
@@ -381,7 +548,8 @@ int main(int argc, char** argv) {
     Glyph glyphs[256];
     int px = cfg.spacing, py = cfg.spacing, rowH = cellH + cfg.spacing, placed = 0;
     for (int b = cfg.charStart; b <= cfg.charEnd; ++b) {
-        int cp = byteToUnicode(b, cfg.cp1252);
+        const Source src = sourceFor(font, b, cfg.cp1252);
+        const int cp = src.cp;
         int gi = stbtt_FindGlyphIndex(&font, cp);
         int aw, lsb; stbtt_GetCodepointHMetrics(&font, cp, &aw, &lsb);
         const bool tabular = maxDigitUnits > 0 && cp >= '0' && cp <= '9';
@@ -391,7 +559,7 @@ int main(int argc, char** argv) {
         if (tabular) aw = maxDigitUnits;
         int advance = int(aw * scale);   // truncate (matches fontgen; keeps advance <= cell ratio)
         int x0, y0, x1, y1;
-        stbtt_GetCodepointBitmapBox(&font, cp, scale, scale, &x0, &y0, &x1, &y1);
+        sourceBox(font, src, scale, x0, y0, x1, y1);
         int w = x1 - x0, h = y1 - y0;
 
         Glyph& g = glyphs[b];
@@ -408,8 +576,8 @@ int main(int argc, char** argv) {
         // Rasterize to a temp buffer, then copy only the rows that fall inside the
         // cell [py, py+cellH) and columns inside the bitmap — so ink taller than the
         // cell is cropped cleanly (never spilling into a neighbouring glyph).
-        std::vector<uint8_t> tmp(size_t(w) * h);
-        stbtt_MakeCodepointBitmap(&font, tmp.data(), w, h, w, scale, scale, cp);
+        std::vector<uint8_t> tmp;
+        rasterize(font, src, scale, x0, y0, w, h, tmp);
         int cellTop = py, cellBot = py + cellH;
         for (int gy = 0; gy < h; ++gy) {
             int ay = inkTop + gy;

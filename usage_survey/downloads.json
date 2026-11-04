@@ -2,14 +2,19 @@
  "repo": "thomas4f/mxbmrp3",
  "releases": [
   {
+   "tag": "v1.34.3",
+   "published": "2026-11-03",
+   "downloads": 13
+  },
+  {
    "tag": "v1.34.2",
    "published": "2026-10-31",
-   "downloads": 61
+   "downloads": 70
   },
   {
    "tag": "v1.34.1",
    "published": "2026-10-31",
-   "downloads": 1533
+   "downloads": 1810
   },
   {
    "tag": "v1.34.0",

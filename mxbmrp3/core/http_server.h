@@ -132,6 +132,7 @@ private:
     std::atomic<int> m_throttleMs;
     std::string m_bindAddress MXB_GUARDED_BY(m_bindMutex);
     mutable Mutex m_bindMutex;  // Protects m_bindAddress (std::string not atomic)
+    // mt-plain-block: game thread, before start() spawns the server thread (constructor / initialize()); the server threads only read them
     std::string m_savePath;
     std::string m_webRoot;  // Path to web/ directory serving static files
 

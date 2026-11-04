@@ -457,7 +457,7 @@ public:
 // compares false against BOTH bounds. These two feed derive(), so a NaN here is not
 // one bad setting -- every metric, the snap lattice and every HUD coordinate derived
 // from them become NaN, and writeGlobalSettings then persists `nan` back out, so the
-// UI never recovers on its own. Exactly the both-ends rule CLAUDE.md states for
+// UI never recovers on its own. Exactly the both-ends rule AGENTS.md states for
 // persisted floats; Settings::parseFiniteFloat is the load-side half.
 //
 // The fallback is the DEFAULT rather than the previous value: these arrive from a

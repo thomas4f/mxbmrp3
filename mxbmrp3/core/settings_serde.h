@@ -162,7 +162,7 @@ namespace Settings {
     // A malformed value is logged with the key so the INI line can be found.
     //
     // Why per key and not one try/catch around the applier: the INI is hand-
-    // editable (CLAUDE.md), and a `std::stoi("yes")` throwing out of the middle
+    // editable (AGENTS.md), and a `std::stoi("yes")` throwing out of the middle
     // of an applier used to abandon EVERY key after it for that HUD -- a single
     // typo silently reset half a panel, with one log line to say so. Resetting
     // more than the bad key is worse, not safer: with auto_save on, the next

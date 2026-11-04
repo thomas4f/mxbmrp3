@@ -89,7 +89,7 @@ JOBS="$(nproc 2>/dev/null || echo 4)"
 # this script is the only place the GPB/KRP branches are compiled at all, so
 # nothing downstream would notice. One throwaway compile per run closes that.
 #
-# This is the "one test for a gate" CLAUDE.md calls normal, not a lint checking
+# This is the "one test for a gate" AGENTS.md calls normal, not a lint checking
 # a lint: it asserts this script's own contract, in this script, with no second
 # implementation to maintain. Same idiom as run_perf.sh's analyzer-contract
 # check and 12e800db's skip-idiom self-test.

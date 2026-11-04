@@ -456,10 +456,10 @@ private:
     // separate download). HudManager::initialize() loads it after the
     // settings pass; a missing folder degrades to the shipped pack's wording
     // without rewriting the name, per the stored-by-name invariant.
-    std::string m_packName = "default";
-    std::string m_packDisplayName;  // game thread only; label for the picker
+    std::string m_packName = "default";  // mt-plain: game thread only
+    std::string m_packDisplayName;  // mt-plain: game thread only; label for the picker
     SpotterCuePack::Pack m_pack;
-    std::string m_packDir;
+    std::string m_packDir;  // mt-plain: game thread only; each cue carries its own copy (mixDir)
     // Proximity/hazard detector state + tuning (game thread only).
     SpotterHazard::Detector m_detector;
     SpotterHazard::Config m_hazardCfg;
@@ -477,7 +477,7 @@ private:
     bool m_lapReportFreshGapsOnly = false;  // mt-plain: game thread only
     // Minimum margin for the on_pace_* cues (game thread only). 0.2s: below
     // that the remaining sector decides it, so the call would be noise.
-    int m_onPaceMarginMs = 200;
+    int m_onPaceMarginMs = 200;  // mt-plain: game thread only
     // Session-progress milestones (game thread only).
     SpotterMilestones::State m_milestones;
     // Pace reports (game thread only). The tracker holds every rider's recent
@@ -489,7 +489,7 @@ private:
     // point) key equals the one the focused rider just crossed. A departed
     // rider also drops out of the classification order, so they cannot be
     // picked as the neighbour at all. The residual case is the project's known
-    // race-number reuse (CLAUDE.md): a NEW rider takes a departed number, is
+    // race-number reuse (AGENTS.md): a NEW rider takes a departed number, is
     // immediately the rider ahead, and has not yet crossed a point — then one
     // gap could be measured against the old rider's crossing. It is one cue,
     // on one lap, within the tracker's 30s cap; evicting from here would mean
@@ -516,13 +516,13 @@ private:
     // SECTOR time can be recovered from the game's cumulative ones. Reset by
     // the lap number changing rather than by a lap event, so a mid-lap join
     // simply skips the first sector instead of reporting a whole-lap figure.
-    int m_lastSplitLap = -1;
-    int m_lastSplitRider = -1;
-    int m_lastSplitCumMs = 0;
+    int m_lastSplitLap = -1;  // mt-plain: game thread only
+    int m_lastSplitRider = -1;  // mt-plain: game thread only
+    int m_lastSplitCumMs = 0;  // mt-plain: game thread only
 
     // Fuel warnings are once-per-session downward edges; re-armed on a green
     // flag with the other once-per-session state.
-    int m_sessionState = 0;   // see onSessionState
+    int m_sessionState = 0;   // mt-plain: game thread only; see onSessionState
 
     // The lap crossing's report, measured then, spoken once the
     // classification catches up (see flushDeferredCues). vars carries what the
@@ -622,7 +622,7 @@ private:
     // Your penalties this session, as the spotter has announced them. The
     // standings column is authoritative but a beat behind the penalty cue that
     // needs it — see the Penalty branch in onRaceEvent. Game thread only.
-    int m_penaltyTotalMs = 0;
+    int m_penaltyTotalMs = 0;  // mt-plain: game thread only
     // Up between a penalty CLEAR/REVISION and the next classification: the
     // standings column still holds the pre-revision figure in that window,
     // and max()ing against it resurrects a total the game just took back.
@@ -635,7 +635,7 @@ private:
     // already had its cue, not just that one did, so the suppression cannot
     // reach a different lap. Armed by onPersonalBest, read by the FastestLap
     // intake, cleared by onRaceLapCompleted.
-    int m_higherLapCueTimeMs = -1;
+    int m_higherLapCueTimeMs = -1;  // mt-plain: game thread only
 
     // True when the subject's best lap is their opening lap — a gate start or
     // an out-lap, so a fact but not a reference. Gates the best-lap
@@ -650,16 +650,16 @@ private:
     // The last position spoken by the lap report, and whose it was. The
     // reference for position_gained/_lost — see flushDeferredCues for why neither
     // of PluginData's two position references answers this question.
-    int m_lastReportedPos = 0;
-    int m_lastReportedPosNum = -1;
+    int m_lastReportedPos = 0;  // mt-plain: game thread only
+    int m_lastReportedPosNum = -1;  // mt-plain: game thread only
 
     SpotterPace::Gap m_lastAhead;
     SpotterPace::Gap m_lastBehind;
 
-    uint32_t m_rngState = 0x9E3779B9u;
-    uint32_t m_categoryMask = 0x1F;  // game thread only; every category on
-    int m_volume = 100;        // game thread only; SAPI SetVolume 0..100
-    float m_speed = 1.0f;      // game thread only; playback multiplier
+    uint32_t m_rngState = 0x9E3779B9u;  // mt-plain: game thread only
+    uint32_t m_categoryMask = 0x1F;  // mt-plain: game thread only; every category on
+    int m_volume = 100;        // mt-plain: game thread only; SAPI SetVolume 0..100 (the worker reads m_volumePublished)
+    float m_speed = 1.0f;      // mt-plain: game thread only; playback multiplier (the worker reads m_speedPublished)
     // Worker-facing copies of volume/rate (the only settings the audio
     // thread reads), refreshed by publishAudioSettings().
     std::atomic<int> m_volumePublished{100};
@@ -671,7 +671,7 @@ private:
     // The chosen TTS voice (game thread) and the worker's copy. A string
     // can't ride an atomic, so the published one is guarded like the cue log
     // and copied under the lock at each utterance.
-    std::string m_ttsVoice;
+    std::string m_ttsVoice;  // mt-plain: game thread only; the worker reads the guarded copy below
     // getTtsVoices()' session list (game thread); null until first asked.
     std::shared_ptr<const std::vector<std::string>> m_ttsVoices;
     // The chosen voice's DISPLAY NAME (empty = system default), which the

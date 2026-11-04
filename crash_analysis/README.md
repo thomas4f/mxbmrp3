@@ -58,8 +58,7 @@ Behaviour:
 
 `samples` is **internal provenance** (`source`/`sha256`/`fault`/…) and is **not** emitted into the
 player-facing `KNOWN_GAME_CRASHES.md`. The `source` basename is the real crash filename, whose
-`<date>_<pid>` suffix also names the paired `.log`. It records only the files behind a
-*catalogued* crash; an unmatched dump is never stored (catalogue the crash first).
+`<date>_<pid>` suffix also names the paired `.log`.
 
 ## Upload-and-go workflow
 

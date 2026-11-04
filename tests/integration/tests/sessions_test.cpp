@@ -6,7 +6,7 @@
 // positions, gaps (race vs non-race semantics), penalties and states, and that
 // per-rider state resets correctly across sessions.
 //
-// Targets the maintenance invariants CLAUDE.md flags as bug-prone: the reused-
+// Targets the maintenance invariants AGENTS.md flags as bug-prone: the reused-
 // race-number stale-state trap, and the #240 spurious lead-change on a session
 // boundary. Self-contained doctest; see run_tests.sh.
 // ============================================================================

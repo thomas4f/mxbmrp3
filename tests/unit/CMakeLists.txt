@@ -53,11 +53,13 @@ set(MXB_UNIT_SOURCES
     test_render_asset_decode_mips.cpp
     test_analytics_theme.cpp
     test_analytics_spotter.cpp
+    test_analytics_language.cpp
     test_director_airtime.cpp
     test_session_charts_math.cpp
     test_segment_cumulative.cpp
     test_fmx_scoring.cpp
     test_font_metrics.cpp
+    test_font_codepage.cpp
     test_tooltip_length.cpp
     test_media_app_filter.cpp
     test_update_asset_select.cpp

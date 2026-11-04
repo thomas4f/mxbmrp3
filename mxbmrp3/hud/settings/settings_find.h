@@ -29,6 +29,7 @@
 // ============================================================================
 #pragma once
 
+#include "../../core/font_codepage.h"
 #include "../../core/i18n.h"
 
 #include <cctype>
@@ -58,11 +59,15 @@ struct Entry {
     bool isWidget = false;     // a widget's row on the Widgets tab
 };
 
-// One CP1252 character folded for matching: lower case, and an accented letter
-// to its plain one (É, é and e all match), so "ecart" finds "Écart" and a
-// keyboard without the accent still finds the row. Labels are CP1252 bytes --
-// the font's code page, which every translation is converted to at load.
+// One character folded for matching: lower case, and an accented letter to its
+// plain one (É, é and e all match), so "ecart" finds "Écart" and a keyboard
+// without the accent still finds the row. Labels are bytes in the font's code
+// page (CP1252 + the Turkish slots, core/font_codepage.h), which every
+// translation is converted to at load. The Turkish slots fold to their plain
+// letter, so "deger" finds "Değer" and "istatistik" finds "İstatistik".
 inline unsigned char foldChar(unsigned char c) {
+    if (const FontCodePage::ExtraSlot* slot = FontCodePage::slotForByte(c))
+        return static_cast<unsigned char>(std::tolower(static_cast<unsigned char>(slot->plain)));
     if (c < 0x80) return static_cast<unsigned char>(std::tolower(c));
     // 0xC0..0xFF: À..ÿ, upper and lower halves 0x20 apart.
     static const char kLatin1[] =

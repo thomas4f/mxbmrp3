@@ -9,7 +9,7 @@
 // Pins the PerRider<> registry in plugin_data.h: per-rider containers register
 // their removeRaceEntry()/clear() eviction at declaration, so a newly added
 // map can't silently miss the eviction list (the recurring bug class the old
-// hand-maintained erase list produced — see CLAUDE.md Maintenance Invariants).
+// hand-maintained erase list produced — see AGENTS.md Maintenance Invariants).
 // Self-contained doctest; see run_tests.sh.
 // ============================================================================
 #include "doctest.h"

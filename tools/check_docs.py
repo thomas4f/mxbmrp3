@@ -17,7 +17,7 @@ describing the same suite in BOTH directions):
      comment, so a header pointing at a deleted file misdirects every one of
      them. See check_comment_paths for why the comment rule is stricter.
 
-  2. UNBACKED ENFORCEMENT CLAIM - CLAUDE.md's Maintenance Invariants label each
+  2. UNBACKED ENFORCEMENT CLAIM - AGENTS.md's Maintenance Invariants label each
      rule **Enforced** / **Pinned** / **Convention**. An "Enforced" bullet whose
      named check no longer exists silently downgrades to an unchecked rule that
      merely LOOKS checked. Every bullet must carry one of the three labels, and
@@ -27,7 +27,7 @@ describing the same suite in BOTH directions):
      test covers X?", so a test that isn't in it is invisible. Every test file on
      disk must appear.
 
-  4. REGROWTH - CLAUDE.md, TESTING.md and ARCHITECTURE.md each have a byte
+  4. REGROWTH - AGENTS.md, TESTING.md and ARCHITECTURE.md each have a byte
      budget; exceeding one means compressing something or moving it next to the
      code it describes, not raising the cap reflexively. (Raise it deliberately
      when the project genuinely grows.) See DOC_BUDGETS for why the budgets
@@ -52,7 +52,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #
 # The two exist for different reasons, and the difference is the point:
 #
-#   CLAUDE.md is read IN FULL before every task, so its size is a recurring cost
+#   AGENTS.md is read IN FULL before every task, so its size is a recurring cost
 #   paid on work that never touches the thing being described. That is what
 #   justifies a tight ceiling.
 #
@@ -61,7 +61,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #   budgeted ones combined, which is exactly the shape the ratchet exists to
 #   prevent. Its catalogue is a CENSUS: one line per test so a reader can pick
 #   which file to open. Entries had grown into essays restating the test's own
-#   header — the mirroring CLAUDE.md forbids — so 98 of them were cut back to
+#   header — the mirroring AGENTS.md forbids — so 98 of them were cut back to
 #   the claim they lead with, and the ceiling set just above the result. Size
 #   was the smaller half of that argument: a duplicated claim is the one that
 #   goes stale (this catalogue named `kShippedPacks` for a while after the code
@@ -87,17 +87,20 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #   pressures the next writer to trim a sentence to fit rather than say what is
 #   needed. Duplicated facts and mechanism detail mirrored from headers were cut
 #   (to 47.9 / 98.7 / 93.0 KB) and each ceiling reset to that size plus ~2%.
+#   Ratcheted DOWN again 2026-11-04 after the docs sprint cut repetition and
+#   bug lore (to 47.9 / 77.5 / 89.7 KB): same rule, size plus ~2%. AGENTS.md
+#   again to 45.4 KB when single-subsystem invariants moved next to their code.
 DOC_BUDGETS = {
-    "CLAUDE.md": 48_900,
-    "TESTING.md": 101_100,
-    "ARCHITECTURE.md": 94_900,
+    "AGENTS.md": 46_300,
+    "TESTING.md": 79_000,
+    "ARCHITECTURE.md": 91_500,
 }
 
 # EVERY tracked .md is checked -- the top-level docs and every sub-README -- minus
 # the exclusions below. Opt-OUT rather than a hand-kept opt-in list: a new doc is
 # covered on the day it lands, and a doc that should NOT be covered has to say why
 # here. A sub-README outside the check drifts like any other doc (a build engine
-# the migration deleted, a "cannot be built on Linux" that CLAUDE.md contradicts)
+# the migration deleted, a "cannot be built on Linux" that AGENTS.md contradicts)
 # and nothing catches it.
 DOCS_EXCLUDED = {
     # Historical by definition: old entries name files that were later renamed
@@ -158,7 +161,7 @@ NOT_PATHS = {
     "format_utils.cpp", "format_utils.h", "test_format_utils.cpp",
     # Deleted ON PURPOSE and named as HISTORY, not as a pointer: the post-mortem
     # for a bespoke tool that a standard one replaced is worth more with the
-    # casualty's name in it (CLAUDE.md's "say what you evaluated and why it fell
+    # casualty's name in it (AGENTS.md's "say what you evaluated and why it fell
     # short" cuts both ways). Only the ones a comment cites this way belong here
     # -- a reference that still reads as "go look at this" is stale, not history.
     "tools/coverage_report.py",
@@ -324,7 +327,7 @@ def check_comment_paths(failures, list_only=False):
     headers still citing tests/unit/run_tests.sh -- the hand-written unit runner
     the CTest migration deleted.
 
-    WHY BESPOKE (CLAUDE.md: prefer the off-the-shelf tool). Validating references
+    WHY BESPOKE (AGENTS.md: prefer the off-the-shelf tool). Validating references
     inside comments is thoroughly conventional -- rustdoc's broken_intra_doc_links,
     javadoc -Xdoclint:reference, Sphinx's nitpicky mode, Doxygen's unresolved-ref
     warnings -- but every one of them validates references written in ITS OWN
@@ -371,16 +374,16 @@ def check_comment_paths(failures, list_only=False):
 
 def check_invariant_labels(failures):
     """Every Maintenance Invariant bullet is labelled, and a claimed check exists."""
-    text = open(os.path.join(REPO, "CLAUDE.md"), encoding="utf-8").read()
+    text = open(os.path.join(REPO, "AGENTS.md"), encoding="utf-8").read()
     m = re.search(r"^## Maintenance Invariants.*?(?=^## )", text, re.S | re.M)
     if not m:
-        failures.append("CLAUDE.md: the Maintenance Invariants section is gone — "
+        failures.append("AGENTS.md: the Maintenance Invariants section is gone — "
                         "check_docs.py enforces its labelling contract")
         return
     section = m.group(0)
     bullets = [b for b in re.findall(r"^- \*\*.*?(?=^- \*\*|\Z)", section, re.S | re.M)]
     if not bullets:
-        failures.append("CLAUDE.md: no invariant bullets found (format changed?)")
+        failures.append("AGENTS.md: no invariant bullets found (format changed?)")
         return
     for bullet in bullets:
         title = re.match(r"^- \*\*(.{0,60})", bullet).group(1)
@@ -388,7 +391,7 @@ def check_invariant_labels(failures):
                   if re.search(rf"\*\*{lab}\.?\*\*", bullet)]
         if not labels:
             failures.append(
-                f"CLAUDE.md invariant '{title}…': no **Enforced**/**Pinned**/**Convention** "
+                f"AGENTS.md invariant '{title}…': no **Enforced**/**Pinned**/**Convention** "
                 "label — say what catches a violation, or admit that nothing does")
             continue
         if "Convention" in labels and len(labels) == 1:
@@ -398,7 +401,7 @@ def check_invariant_labels(failures):
                  if any(resolve(p) for p in brace_expand(t))]
         if not named:
             failures.append(
-                f"CLAUDE.md invariant '{title}…': labelled {'/'.join(labels)} but names no "
+                f"AGENTS.md invariant '{title}…': labelled {'/'.join(labels)} but names no "
                 "existing check or test file — the claim is unbacked")
 
 
@@ -429,7 +432,7 @@ def check_gate_catalogue(failures):
     The catalogue check above censuses TESTING.md against *test files*, so a new
     GATE could land fully undocumented and nothing complained — which is exactly
     what happened with `codeql`: registered in CMakeLists.txt, described in
-    DEVELOPMENT.md, absent from TESTING.md (the file CLAUDE.md calls the guide),
+    DEVELOPMENT.md, absent from TESTING.md (the file AGENTS.md calls the guide),
     and green the whole time.
 
     Matching is deliberately loose — the script's basename stem, or the gate
@@ -467,12 +470,25 @@ def check_budget(failures):
                 "never just to make this check pass.")
 
 
+def check_claude_md_imports_agents(failures):
+    """CLAUDE.md is only `@AGENTS.md`. AGENTS.md is the one instruction file every
+    coding agent reads. With a CLAUDE.md present, Claude Code reads only that and
+    reaches AGENTS.md through the import. Anything else written into CLAUDE.md
+    is a second, unbudgeted copy that only Claude would see."""
+    path = os.path.join(REPO, "CLAUDE.md")
+    text = open(path, encoding="utf-8").read() if os.path.exists(path) else None
+    if text != "@AGENTS.md\n":
+        failures.append(
+            "CLAUDE.md must contain exactly the line `@AGENTS.md`. Put the "
+            "content in AGENTS.md, which the import pulls in.")
+
+
 def check_named_singletons_exist(failures):
-    """Every singleton CLAUDE.md names must still be one.
+    """Every singleton AGENTS.md names must still be one.
 
     The list is deliberately NOT exhaustive -- `grep -l getInstance` is, and a
     hand-kept copy of a thing the code already states is the "don't index the
-    tree" mistake CLAUDE.md itself warns about. What a reader cannot grep for is
+    tree" mistake AGENTS.md itself warns about. What a reader cannot grep for is
     which ones matter and why, so that is all the list carries.
 
     The failure mode worth catching is therefore not incompleteness but a name
@@ -481,11 +497,11 @@ def check_named_singletons_exist(failures):
     class that is not there. Adding a singleton needs no edit here; renaming or
     removing one does.
     """
-    claude = open(os.path.join(REPO, "CLAUDE.md"), encoding="utf-8").read()
+    claude = open(os.path.join(REPO, "AGENTS.md"), encoding="utf-8").read()
     start = claude.find("**Key Singletons**")
     if start < 0:
         failures.append(
-            "CLAUDE.md has no '**Key Singletons**' block. If it was renamed, update "
+            "AGENTS.md has no '**Key Singletons**' block. If it was renamed, update "
             "check_named_singletons_exist so the names stay checked.")
         return
     block = claude[start:claude.find("\n\n", start)]
@@ -505,7 +521,7 @@ def check_named_singletons_exist(failures):
 
     for name in sorted(named - real):
         failures.append(
-            f"CLAUDE.md's Key Singletons names `{name}`, which is no longer a "
+            f"AGENTS.md's Key Singletons names `{name}`, which is no longer a "
             "singleton in mxbmrp3/ (no `static X& getInstance`). Renamed, removed, or "
             "demoted -- update the entry or drop it. The list may be incomplete; it "
             "may not be wrong.")
@@ -514,7 +530,7 @@ def check_named_singletons_exist(failures):
 def check_display_components_listed(failures):
     """Every HUD and widget class is listed in ARCHITECTURE.md's component list.
 
-    CLAUDE.md sends readers to *Two Types of Display Components* for the full
+    AGENTS.md sends readers to *Two Types of Display Components* for the full
     set, so a class missing there is a reader told the set is smaller than it
     is. Seven were missing, unnoticed until a release review.
     """
@@ -546,7 +562,7 @@ def check_symbol_homes(failures):
 
     check_paths already proves the FILE exists, which is why this one was
     needed: `finiteOrZero()` moved to stats_manager_persistence.cpp in a file
-    split, both CLAUDE.md and ARCHITECTURE.md kept pointing at
+    split, both AGENTS.md and ARCHITECTURE.md kept pointing at
     stats_manager.cpp, and every existing check stayed green because that file
     is still there. A reader following the pointer finds the wrong file and no
     symbol, which is worse than no pointer at all.
@@ -567,7 +583,7 @@ def check_symbol_homes(failures):
         re.compile(
             r"`([A-Za-z_][A-Za-z0-9_]*)`\s+\(([a-z_0-9/]+\.(?:h|cpp))\)"),
     )
-    for doc in ("CLAUDE.md", "ARCHITECTURE.md", "TESTING.md", "DEVELOPMENT.md"):
+    for doc in ("AGENTS.md", "ARCHITECTURE.md", "TESTING.md", "DEVELOPMENT.md"):
         full = os.path.join(REPO, doc)
         if not os.path.exists(full):
             continue
@@ -1587,6 +1603,7 @@ def main():
     check_shipped_theme_geometry(failures)
     check_shipped_pack_skins(failures)
     check_budget(failures)
+    check_claude_md_imports_agents(failures)
     check_gate_tools_installable(failures)
     check_named_singletons_exist(failures)
     check_display_components_listed(failures)
@@ -1622,7 +1639,7 @@ def main():
           f"shipped themes share one geometry, legacy redirects intact, "
           f"icon SVGs tinted, generated docs noted alike, zip readme copies the README, "
           f"CI and the gate list agree both "
-          f"ways, {sizes} bytes.")
+          f"ways, CLAUDE.md imports AGENTS.md, {sizes} bytes.")
     return 0
 
 

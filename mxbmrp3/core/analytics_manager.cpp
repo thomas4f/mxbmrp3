@@ -22,6 +22,8 @@
 #include "asset_manager.h"
 #include "analytics_spotter.h"
 #include "analytics_theme.h"
+#include "analytics_language.h"
+#include "i18n.h"
 #include "../hud/helmet_overlay_hud.h"
 #include "../hud/stream_chat_hud.h"
 #include "../game/game_config.h"
@@ -178,7 +180,12 @@ namespace {
 //          level taken, or developer mode). It used to read the stored switch
 //          alone, which defaulted on, so nearly every install reported it.
 // 2.31.0 = widget_version is gone with the Version widget (and out of widget_count).
-constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.31.0";
+// 2.32.0 = added language (the pack IN EFFECT: "en" for none, a shipped pack by
+//          folder, "custom" for anyone else's; see analytics_language.h) and
+//          language_system (1 = the System default, following Windows) to
+//          app_started. Aptabase's own `locale` is the Windows REGIONAL format,
+//          which says nothing about the language on screen.
+constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.32.0";
 
 // The two Aptabase ingest paths a queued POST can name.
 constexpr const wchar_t* PATH_EVENTS = L"/api/v0/events";
@@ -536,6 +543,13 @@ std::string AnalyticsManager::buildEventBody() const {
         props["spotter"] =
             AnalyticsSpotter::label(spotter.isEnabled(), packName, installed);
     }
+
+    // Language: what the player READS (the resolved pack, English when none), plus
+    // whether that came from the System default. Sampled after the settings load,
+    // which resolves the selection (I18n::ensureLoaded), so "system" is already a
+    // real pack or English here. See analytics_language.h.
+    props["language"] = AnalyticsLanguage::label(I18n::activeFolder());
+    props["language_system"] = (I18n::languageFolder() == I18n::kSystemLanguage) ? 1 : 0;
 
     json event;
     event["timestamp"] = isoTimestamp();

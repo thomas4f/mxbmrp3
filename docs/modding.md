@@ -1,6 +1,6 @@
 # Modding
 
-Textures, packs, fonts, icons and the web overlay files. Everything here goes in your Documents plugin folder, which the [README](../README.md#modding) explains. Spotter voices are a pack type too, and have their own guide: [Spotter voice packs](spotter.md).
+Textures, packs, fonts, icons, language packs and the web overlay files. Everything here goes in your Documents plugin folder, which the [README](../README.md#modding) explains. Spotter voices are a pack type too, and have their own guide: [Spotter voice packs](spotter.md).
 
 ## Where custom assets go
 
@@ -16,6 +16,7 @@ mxbmrp3/
 ├── pitboards/   ← Pit board packs, one folder per board (<name>/ + pitboard.ini)
 ├── spotters/    ← Spotter voice packs, one folder per voice (<name>/ + spotter.ini)
 ├── gauges/      ← Gauges packs, one folder per dial set (<name>/ + gauge.ini)
+├── languages/   ← Language packs, one folder per language (<code>/ + language.ini + strings.po)
 └── web/         ← Overlay files (index.html, style.css, custom.css)
     ├── js/      ← Overlay scripts (overlay-config.js and the rest)
     ├── fonts/   ← Overlay fonts
@@ -55,7 +56,7 @@ Bring a `.tga` too and it replaces that one slice, leaving the other twenty-six 
 
 Textures use the naming convention `{element_name}_{number}.tga` (e.g., `radar_hud_2.tga`). Drop them into the `textures\` subfolder and they are auto-discovered at startup.
 
-**The Texture control appears where there is art to pick, not on every HUD.** That row is a Texture cycle when the folder holds files for that element's name, and the per-HUD **Theme** override when it does not - so out of the box only Pointer and Radar show it, plus the three packs below. This is the useful half of the rule for a modder: add `standings_hud_1.tga` and Standings grows a Texture control it never had. (The helmet overlay is its own case - two variant controls on its own tab rather than the shared row.)
+**The Texture control appears where there is art to pick, not on every HUD.** That row is a Texture cycle when the folder holds files for that element's name, and the per-HUD **Theme** override when it does not - so out of the box only Pointer and Radar show it (and Prestige, once you have earned it), plus the three packs below. This is the useful half of the rule for a modder: add `standings_hud_1.tga` and Standings grows a Texture control it never had. (The helmet overlay is its own case - two variant controls on its own tab rather than the shared row.)
 
 The element name is the HUD's own, spelled as in the shipped `textures\` folder (`radar_hud`, `pointer_widget`, ...). The plugin's log names every texture base it discovered, which is how to confirm a file was picked up rather than misnamed.
 
@@ -98,9 +99,13 @@ The faces are square and drawn as a circle, so there is no aspect to state - onl
 
 If you had drawn your own `tacho_widget_1.tga` before this, the plugin copies it into `gauges\legacy\` for you the first time it runs and selects it, so nothing is lost. That only works for art in your Documents plugin folder - a file dropped straight into the game's own `plugins\` folder cannot be told apart from the one older versions shipped there, so that one is left alone and the log says what to do with it.
 
-**Helmet** - The helmet overlay uses two textures: `helmet_upper_1.tga` (visor rim/top) and `helmet_lower_1.tga` (chin bar). Author at screen resolution (up to 4096 px wide) with transparent visor openings and ~10% bleed on all sides (extra opaque border beyond the visible area) so tilt and vibration don't expose hard edges.
+**Helmet** - The helmet overlay uses two textures: `helmet_upper_N.tga` (visor rim/top) and `helmet_lower_N.tga` (chin bar); `_1` and `_2` ship, and a new number becomes another choice on the Helmet tab. Author at screen resolution (up to 4096 px wide) with transparent visor openings and ~10% bleed on all sides (extra opaque border beyond the visible area) so tilt and vibration don't expose hard edges. Two more can be replaced the same way: `helmet_lens_1.tga` / `helmet_lens_2.tga` shape the tint in Goggles / Visor mode, and `impact_vignette_N.tga` (up to 8) are the hard-hit vignettes, one picked per hit.
 
-**Twitch chat badges** - The stream chat shows an icon for each chatter's role. For Twitch lines, to use Twitch's own badge images instead, add them yourself - the plugin can't ship Twitch's badge art - as `.tga` files in `textures\`, named `twitch_` plus Twitch's badge name and `_1`: `twitch_broadcaster_1.tga`, `twitch_lead_moderator_1.tga`, `twitch_moderator_1.tga`, `twitch_vip_1.tga`, `twitch_staff_1.tga`, `twitch_partner_1.tga`, `twitch_artist_1.tga`, `twitch_premium_1.tga` (Prime), `twitch_turbo_1.tga`, `twitch_founder_1.tga`, `twitch_subscriber_1.tga`. Each file replaces that role's icon and is drawn as-is, not tinted; roles without a file keep their icon. Square images work best - Twitch serves its badges at 72x72.
+**Chat badges** - The stream chat shows an icon for each chatter's role. To use the platforms' own badge images instead, add them yourself - the plugin can't ship their badge art - as `.tga` files in `textures\`. For Twitch: `twitch_broadcaster_1.tga`, `twitch_lead_moderator_1.tga`, `twitch_moderator_1.tga`, `twitch_vip_1.tga`, `twitch_staff_1.tga`, `twitch_partner_1.tga`, `twitch_artist_1.tga`, `twitch_premium_1.tga` (Prime), `twitch_turbo_1.tga`, `twitch_founder_1.tga`, `twitch_subscriber_1.tga`. For YouTube: `youtube_owner_1.tga`, `youtube_moderator_1.tga`, `youtube_verified_1.tga`, `youtube_member_1.tga`. Each file replaces that role's icon and is drawn as-is, not tinted; roles without a file keep their icon. Square images work best - Twitch serves its badges at 72x72.
+
+## Language packs
+
+Each language is a folder under `languages\` named by its code, holding a `language.ini` and the translated `strings.po`; pick one in Settings > Appearance > Language. [Language packs](../mxbmrp3_data/languages/README.md) is the full guide, including how to translate.
 
 ## Custom Fonts
 

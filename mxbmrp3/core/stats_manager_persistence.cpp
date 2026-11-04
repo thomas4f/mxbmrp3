@@ -581,7 +581,7 @@ void StatsManager::writeStatsFile() {
             nlohmann::json ex;
             for (const Exploration::SignalInfo& si : Exploration::kSignals) {
                 const double v = m_exploration.rawValue(static_cast<int>(si.signal));
-                if (std::isfinite(v) && v != 0.0) ex[si.key] = v;   // both sides guard (CLAUDE.md)
+                if (std::isfinite(v) && v != 0.0) ex[si.key] = v;   // both sides guard (AGENTS.md)
             }
             for (int which = 0; which < ExplorationStats::NAME_SET_COUNT; ++which) {
                 if (!m_exploration.names(which).empty()) ex[ExplorationStats::kNameSets[which]] = m_exploration.names(which);

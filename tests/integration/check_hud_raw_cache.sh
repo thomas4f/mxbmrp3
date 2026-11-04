@@ -3,7 +3,7 @@
 # tests/integration/check_hud_raw_cache.sh
 # Raw-game-data lint for HUD headers (no compiler needed, pure grep/awk).
 #
-# THE INVARIANT (CLAUDE.md "Design Decisions"): HUDs cache FORMATTED render
+# THE INVARIANT (AGENTS.md "Design Decisions"): HUDs cache FORMATTED render
 # data — quads, strings, display rows — and read game STATE from PluginData at
 # rebuild. A HUD keeping its own copy of state PluginData already owns has
 # duplicated it, and the copy goes stale in exactly the situations nobody tests
@@ -147,7 +147,7 @@ scan() {
 # error, because a dead script also exits non-zero. So the cases live here, they
 # assert on the MATCHER OUTPUT rather than an exit code, and the gate runs them.
 #
-# This is the "one test for a gate" that CLAUDE.md calls normal, not a lint
+# This is the "one test for a gate" that AGENTS.md calls normal, not a lint
 # checking a lint: same file, same matcher, no second implementation to keep in
 # step.
 # --------------------------------------------------------------------------

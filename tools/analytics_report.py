@@ -1673,6 +1673,35 @@ def _geography(r, snap):
                          [(c, int(n), None, pc(n, len(cn))) for c, n in top.items()],
                          subtitle="{:,} of {:,} installs report a country".format(len(cn), len(snap))),
                 "Installs by country")
+    _languages(r, snap)
+
+
+# The `language` label's values (core/analytics_language.h) as the report names
+# them. Anything not listed (a pack added later) shows as its folder.
+LANGUAGE_NAMES = {"en": "English", "de": "German", "es": "Spanish", "fr": "French",
+                  "it": "Italian", "nb": "Norwegian", "nl": "Dutch", "pt": "Portuguese",
+                  "sv": "Swedish", "tr": "Turkish", "pseudo": "Pseudo (test)",
+                  "custom": "Custom pack"}
+
+
+def _languages(r, snap):
+    """The language players READ the plugin in (2.32.0's `language`): the pack
+    in effect, English when none. Beside Geography because country says where a
+    player is and this what they read; Aptabase's own `locale` is the Windows
+    regional format and answers neither, which is why it is not used. Coverage-
+    aware like every other prop: only installs that sent it are counted."""
+    lang = snap["_s"].map(lambda s: s.get("language")).dropna()
+    if not len(lang):
+        return
+    r.w("### Language", "")
+    sysv = pd.to_numeric(snap["_n"].map(lambda n: n.get("language_system")),
+                         errors="coerce").dropna()
+    note = "{:,} of {:,} installs report a language".format(len(lang), len(snap))
+    if len(sysv):
+        note += ", {:,} of them through the System default".format(int((sysv == 1).sum()))
+    breakdown(r, "Language", "Installs",
+              [(LANGUAGE_NAMES.get(k, k), int(v)) for k, v in ranked(lang).items()],
+              len(lang), note)
 
 
 def _os(r, snap):
@@ -2200,7 +2229,8 @@ def selftest():
     ev("app_started", base, "userA1", "install-1",
        sp={"panel_theme": "carbon-dark", "spotter": "default", "_ver": "1.30.1.56"}, npr=flags)
     ev("app_started", base + 86400, "userA2", "install-1",
-       sp={"panel_theme": "carbon-dark", "spotter": "default", "_ver": "1.30.1.56"}, npr=flags)
+       sp={"panel_theme": "carbon-dark", "spotter": "default", "language": "fr",
+           "_ver": "1.30.1.56"}, npr=dict(flags, language_system=1))
     ev("session_end", base + 100, "userA1", "install-1", npr={"duration_seconds": 600})
     # A minimal (early-build) launch with NO feature flags -> coverage must exclude it.
     ev("app_started", base + 200, "userB1", "install-2",
@@ -2612,6 +2642,11 @@ def selftest():
     # THE CONTAINER RULE (breakdown() has it in full): a breakdown is a TABLE,
     # not a two-bar chart and not a sentence. Pinned on the two that were charts
     # and the one that was prose, since each would revert as an ordinary edit.
+    # The language table: the label by its name, coverage-aware (the other
+    # installs' builds sent none, so French is 1 of 1 reporting), and the System count.
+    assert re.search(r"\| French \| 100% \(1\) \|", md), "language breakdown row missing"
+    assert re.search(r"1 of \d+ installs report a language, 1 of them through the System default", md), \
+        "language coverage note missing"
     assert "| OS | Installs |" in md, \
         "the OS breakdown is a table, not a chart"
     assert "| Access-violation type | Reports |" in md, \

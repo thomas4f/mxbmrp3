@@ -4,7 +4,7 @@
 // can't stall whichever thread drives telemetry/hotkeys. The blocking XInputSetState
 // moved off-thread, but the rumble SEND POLICY (idle-silence, first-send, transition
 // -to-zero, disabled-guard) and the 8-bit quantization stay on the caller in
-// setVibration() — CLAUDE.md warns that policy must not change. This asserts those
+// setVibration() — AGENTS.md warns that policy must not change. This asserts those
 // branches are preserved by inspecting the command setVibration posts to the I/O
 // thread (with the I/O thread stopped so it can't drain the post first).
 //

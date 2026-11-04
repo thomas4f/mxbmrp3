@@ -95,6 +95,7 @@ std::unordered_map<std::string, int> s_limits;
 std::string s_folder = kSystemLanguage;             // what the INI stores
 bool s_loaded = false;                              // s_folder has been resolved
 std::string s_activeDisplayName = "English";
+std::string s_activeFolder;                         // the pack in effect, "" = English
 // Every catalogue ever activated, kept for the session: a pointer one handed out
 // may still sit in a slot or in the Find index until they next re-resolve.
 std::vector<std::unique_ptr<Catalog>> s_catalogs;
@@ -157,6 +158,7 @@ void loadActive() {
             DEBUG_WARN_F("I18n: language '%s' is not installed - showing English", folder.c_str());
         }
         s_activeDisplayName = "English";
+        s_activeFolder.clear();
         activate(nullptr);
     } else {
         auto cat = std::make_unique<Catalog>(info->pseudo);
@@ -167,11 +169,13 @@ void loadActive() {
             DEBUG_WARN_F("I18n: language '%s' failed to load (%s) - showing English",
                          info->folder.c_str(), e.what());
             s_activeDisplayName = "English";
+            s_activeFolder.clear();
             activate(nullptr);
             HudManager::getInstance().markAllHudsDirty();
             return;
         }
         s_activeDisplayName = info->displayName;
+        s_activeFolder = info->folder;
         activate(cat.get());
         s_catalogs.push_back(std::move(cat));
     }
@@ -204,6 +208,10 @@ void ensureLoaded() {
 
 const std::string& languageFolder() {
     return s_folder;
+}
+
+const std::string& activeFolder() {
+    return s_activeFolder;
 }
 
 const char* languageDisplayName() {

@@ -543,7 +543,7 @@ void AssetManager::readThemeIni(const std::string& iniPath, ThemeAsset& theme) {
     // and never std::stof, so no conversion throws today -- but a theme file is
     // user-editable, this runs inside asset discovery, and one exception here
     // aborts discovery for EVERY asset type, leaving the plugin with no fonts.
-    // CLAUDE.md makes exception-guarding an INI parse site a rule rather than a
+    // AGENTS.md makes exception-guarding an INI parse site a rule rather than a
     // judgement call. The catch keeps whatever the file applied before the throw;
     // a half-read theme is a cosmetic problem, no assets is not.
     try {

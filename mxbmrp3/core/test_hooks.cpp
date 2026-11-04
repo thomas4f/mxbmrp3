@@ -2263,7 +2263,7 @@ __declspec(dllexport) unsigned int MXBMRP3_Test_PitboardTextColor(const char* pa
 // THE STEM TABLE ITSELF, so a fixture that has to stage a complete pack on
 // disk stages exactly what discovery requires. pack_skin_test builds real
 // gamepads/<name>/ trees; hardcoding the seventeen names there would be a
-// second copy of GamepadSprite::kStems, and the CLAUDE.md invariant that keeps
+// second copy of GamepadSprite::kStems, and the AGENTS.md invariant that keeps
 // discovery and registration in step (one table, static_assert'd) would not
 // cover it -- add a stem and the fixture silently stages an incomplete base
 // pack, which surfaces as a misleading "missing X.tga" cascade pointing at the
@@ -2472,7 +2472,7 @@ __declspec(dllexport) void MXBMRP3_Test_ForceActiveSurface(int surface) {
 // current live HUDs. settings_sections_test asserts every one of them is actually
 // serialized to the INI — guarding against the "third hardcoded list" trap where a
 // HUD is captured/applied but missing from serializeSettings' order list, and so
-// silently dropped from the file. See CLAUDE.md "Adding a New HUD" step 6.
+// silently dropped from the file. See AGENTS.md "Adding a New HUD" step 6.
 __declspec(dllexport) void MXBMRP3_Test_CapturedSections(char* out, int cap) {
     if (!out || cap <= 0) return;
     const auto names = SettingsManager::getInstance()

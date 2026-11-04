@@ -6,7 +6,7 @@
 # from assets/icons/*.svg under the pinned renderer and requires every byte to
 # match what is committed.
 #
-# It catches two drifts that nothing else did:
+# It catches three drifts that nothing else did:
 #   1. A cairosvg bump that moves pixels. The pin in tools/requirements.txt
 #      exists because edge anti-aliasing is only stable for a fixed renderer
 #      version, and the rule "do not bump it without regenerating (and
@@ -20,8 +20,8 @@
 #
 # THE TWO RENDER RULES come from assets/icons/README.md: hud-* are flat identity
 # icons, everything else gets --outline 2. That this is uniform across the whole
-# set is not an assumption - regenerating all 208 icons under exactly these two
-# rules reproduces all 208 committed files byte-for-byte. An icon needing other
+# set is not an assumption - regenerating every icon under exactly these two
+# rules reproduces every committed file byte-for-byte. An icon needing other
 # flags would fail here, which is the point: the set has one recipe.
 #
 # No --self-test: what this asserts is `cmp`, and a lint whose own correctness

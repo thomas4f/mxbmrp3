@@ -3,7 +3,7 @@
 # tests/integration/check_change_consumers.sh
 # onDataChanged-consumer lint (no compiler needed, pure grep/awk).
 #
-# THE INVARIANT (CLAUDE.md "Maintenance Invariants"): PluginData::notify fans
+# THE INVARIANT (AGENTS.md "Maintenance Invariants"): PluginData::notify fans
 # every DataChangeType out to each consumer, and DataChangeType::Standings
 # fires many times per second on a full grid — so every onDataChanged
 # DEFINITION must either be trivially cheap or gate on consumer activity
@@ -130,7 +130,7 @@ Each line above defines an onDataChanged consumer without a change-gate
 annotation. DataChangeType::Standings fires many times per second on a full
 grid, so the consumer must be trivially cheap OR gate on consumer activity
 before any string/alloc work (models: HttpServer::hasActiveClients(),
-SteamFriendsManager's POD fingerprint — see CLAUDE.md Maintenance
+SteamFriendsManager's POD fingerprint — see AGENTS.md Maintenance
 Invariants). Say which it is, on the definition line or the comment block
 above it:
 

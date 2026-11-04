@@ -34,7 +34,7 @@ to discuss the approach before investing the time.
 
 ## Working on the code
 
-- **Start with [CLAUDE.md](CLAUDE.md)** - the quick-start context (architecture
+- **Start with [AGENTS.md](AGENTS.md)** - the quick-start context (architecture
   sketch, do/don't lists, and the Maintenance Invariants that CI enforces).
   [ARCHITECTURE.md](ARCHITECTURE.md) has the deep version.
 - **Building**: the shipping DLL needs Visual Studio 2022 (x64) via CMake
@@ -57,7 +57,8 @@ to discuss the approach before investing the time.
   The markdown carries the rules that no single file can state. `python3
   tools/check_docs.py` (also in CI) fails on a doc path that no longer exists, on
   a Maintenance Invariant claiming an enforcement it doesn't have, on a test
-  missing from TESTING.md's catalogue, and on CLAUDE.md outgrowing its budget.
+  missing from TESTING.md's catalogue, and on AGENTS.md, TESTING.md or
+  ARCHITECTURE.md outgrowing its budget.
 - **Style**: match the surrounding code - layout (wrapping, comment alignment)
   is a review concern, not a formatter's, and
   `tests/integration/check_style.sh`'s header records why clang-format was
@@ -66,6 +67,38 @@ to discuss the approach before investing the time.
   enforced by that script in CI. Commit messages use imperative verbs
   and say what actually changed ("Fix stale gap cache on raceNum reuse", not
   "Fix bug").
+
+## Building on MXBMRP3
+
+MXBMRP3 is MIT licensed: you're free to fork it, change it, ship it and
+build on it. You don't need to ask. If you do, there are three good routes:
+
+1. **Contribute here**, if you agree with the project's direction and its
+   limits below. Open an issue first for anything bigger than a small fix.
+2. **Make your own fork under its own name.** Do whatever you want with it.
+3. **Build something new** and use this code as a reference.
+
+What we ask, so players can tell the projects apart:
+
+- **Keep the license.** Leave `LICENSE` and the copyright notice in place
+  (MIT requires this) and say your project is based on MXBMRP3.
+- **Use a different name.** The license covers the code, not the name. Don't
+  ship under "MXBMRP3" or a name close to it, and don't present your build as
+  official or as an MXBMRP3 release.
+- **Give it its own identity on disk**, so it never overwrites or updates a
+  real install: your own DLL names (`mxbmrp3/CMakeLists.txt`), `Documents`
+  folders (`mxbmrp3/core/plugin_names.h`), installer name, publisher,
+  registry and uninstall keys (`packaging/mxbmrp3.nsi`), and update check and
+  analytics (`mxbmrp3/core/plugin_constants.h`).
+
+Why the name matters: it comes with a few limits. It works only through the
+game's plugin interface; it never reads race data out of the game's memory
+and never writes to it, never patches or hooks the game, never changes game
+files, and has no effect on physics ([how it works](docs/what-it-does.md)).
+It is free, with no paid tier, no locked features and no ads. A fork may
+choose differently, and that is fine, under its own name.
+
+If you use an AI assistant to work on a fork, point it at this section.
 
 ## License
 

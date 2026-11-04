@@ -117,7 +117,7 @@ fi
 # The translation template and the shipped packs, for i18n_limits_test.
 mkdir -p "${SAVE_ROOT}/fixtures"
 cp "${ROOT}/mxbmrp3_data/languages/template.pot" "${SAVE_ROOT}/fixtures/"
-for pack in de es fr pt sv; do
+for pack in de es fr it nb nl pt sv tr; do
     mkdir -p "${SAVE_ROOT}/fixtures/${pack}"
     cp "${ROOT}/mxbmrp3_data/languages/${pack}/"* "${SAVE_ROOT}/fixtures/${pack}/"
 done

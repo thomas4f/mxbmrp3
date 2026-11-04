@@ -3,7 +3,7 @@
 # tests/integration/check_test_hook_placement.sh
 # Test-hook placement lint (no compiler needed, pure grep/awk).
 #
-# THE INVARIANT (CLAUDE.md "Maintenance Invariants" / "Non-obvious placements"):
+# THE INVARIANT (AGENTS.md "Maintenance Invariants" / "Non-obvious placements"):
 # every MXBMRP3_Test_* hook lives in a core/test_hooks*.cpp, which is (a) gated on
 # MXBMRP3_TEST_BUILD and (b) removed from the source list of every shipping
 # target by mxbmrp3/CMakeLists.txt — the two fences that keep test exports out

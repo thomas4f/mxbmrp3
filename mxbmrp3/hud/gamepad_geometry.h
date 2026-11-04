@@ -168,7 +168,7 @@ inline constexpr PadGeometryIniEntry kPadGeometryIni[] = {
 // 0` (a typo, or a value commented out so it parses as absent-but-present) divides the
 // whole pad by zero: backgroundHeight becomes inf, fitPanelToGrid returns inf/NaN, and
 // NaN vertices go to the game's DrawQuad for every quad the widget owns. The ini is
-// a trust boundary, and this is the guard CLAUDE.md asks every parse site to carry.
+// a trust boundary, and this is the guard AGENTS.md asks every parse site to carry.
 //
 // REJECTED, not clamped: the field keeps its shipped default, which is the same way an
 // unknown pack name degrades. A clamp would invent a number the author never wrote.

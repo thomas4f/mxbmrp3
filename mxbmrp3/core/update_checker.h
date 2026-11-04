@@ -268,7 +268,7 @@ private:
     void* m_hHttpConnect MXB_GUARDED_BY(m_httpHandleMutex) {nullptr};
     void* m_hHttpRequest MXB_GUARDED_BY(m_httpHandleMutex) {nullptr};
     std::atomic<bool> m_debugMode;  // Forces update available for testing
-    unsigned long m_lastCheckTimestamp;  // When last check started (for cooldown)
+    unsigned long m_lastCheckTimestamp;  // mt-plain: game thread only (checkForUpdates, isOnCooldown); when the last check started
 
     // GitHub API endpoint (host is always api.github.com, path uses constants from plugin_constants.h)
     static constexpr const char* GITHUB_API_HOST = "api.github.com";

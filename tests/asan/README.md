@@ -20,9 +20,7 @@ far too rare to reproduce on demand.
 build time and faults **at the corrupting write**, with the writing *and*
 allocating call stacks. So instead of reproducing a 1-in-600 wild crash, we run the
 suspect code under ASan over adversarial + realistic input and let the sanitizer
-prove the negative (clean) or hand us the culprit line (a hit). See the main
-discussion for why this is the right tool; the short version: it converts an
-intractable "catch the rare crash" into a tractable "prove the code is clean."
+prove the negative (clean) or hand us the culprit line (a hit).
 
 There are two layers, by necessity of the toolchain.
 
@@ -33,11 +31,9 @@ There are two layers, by necessity of the toolchain.
 Two complementary pieces, both host g++/clang + `libasan` (no game, no Windows, no
 Wine), both fast enough to gate every run. The CI `memory-safety` job runs both.
 
-**(a) The whole unit suite under ASan** - reuses the existing pure-logic tests, so
-every portable surface they already exercise (`sanitizeUntrusted`, `fitText`,
-formatting, hex/config parsing, notice priority, session-charts math, director
-airtime, update-asset selection, …) is checked for out-of-bounds / use-after-free /
-UB, not just for correct output. New unit tests get sanitizer coverage for free.
+**(a) The whole unit suite under ASan + UBSan** - every portable surface the unit
+tests already exercise is checked for out-of-bounds / use-after-free / UB, not just
+for correct output. New unit tests get sanitizer coverage for free.
 
 ```sh
 ctest --test-dir build/tests -R unit-asan
@@ -92,11 +88,8 @@ callbacks** by the existing boundary fuzzer - so it covers the live `PluginData`
 this is the definitive test.
 
 **In CI:** the `memory-safety-msvc` job in `.github/workflows/tests.yml` does exactly
-this on a `windows-latest` runner - it builds the `Debug` DLL with `MXBMRP3_ASAN=ON` and
-runs the boundary fuzzer against it. It runs **automatically
-in the free public mirror** and is **opt-in in the metered private repo** (tick
-"Also run the Windows MSVC AddressSanitizer job" on Run workflow); see the workflow
-header for the full policy. `Debug` is exempt from the Release analytics-key
+this on a `windows-latest` runner (automatic in the public mirror, opt-in in the
+private repo - the workflow header has the policy). `Debug` is exempt from the Release analytics-key
 requirement, so it needs no secrets. To reproduce locally on Windows,
 `run_asan_msvc.ps1` automates the same flow; the steps are:
 

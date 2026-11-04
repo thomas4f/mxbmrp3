@@ -2,7 +2,7 @@
 // tests/integration/tests/http_gating_test.cpp
 // Pins HttpServer::onDataChanged's two-class change gating.
 //
-// THE RULE (CLAUDE.md "Maintenance Invariants"). Change types split in two:
+// THE RULE (AGENTS.md "Maintenance Invariants"). Change types split in two:
 //   - FREQUENT (Standings, EventLog) fire many times per second on a full grid.
 //     While nothing is consuming — no SSE client, no /api/state poll in the last
 //     5s — they must NOT rebuild the JSON snapshot. buildJsonSnapshot() runs on

@@ -163,8 +163,9 @@ private:
     std::atomic<bool> m_shutdownRequested;
 
     // Download parameters
-    std::string m_downloadUrl;
-    std::string m_checksumHash;
+    std::string m_downloadUrl MXB_GUARDED_BY(m_mutex);
+    std::string m_checksumHash MXB_GUARDED_BY(m_mutex);
+    // mt-plain: written by startDownload() on the game thread, which joins the previous worker first and only then starts the next; after that only the worker reads it
     size_t m_expectedSize;
 
     // Progress tracking

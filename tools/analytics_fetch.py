@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pull Aptabase exports over HTTP, so the usage survey can regenerate unattended.
 
-WHY THIS IS BESPOKE (see CLAUDE.md - "reach for standard tooling first"): Aptabase
+WHY THIS IS BESPOKE (see AGENTS.md - "reach for standard tooling first"): Aptabase
 ships no public query API, no CLI and no export SDK. Its own MCP server wraps the
 dashboard's internal endpoints and explicitly declines bulk export. The dashboard's
 `/api/_export/download` is therefore the only route to the raw events, and nothing

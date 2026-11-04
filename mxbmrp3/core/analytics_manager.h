@@ -198,6 +198,7 @@ private:
     // atomic. Defaults true (full): a fast quit before the config fetch completes, or any
     // fetch failure, keeps the consented full behavior (fail-open).
     std::atomic<bool> m_fullLaunch{true};
+    // mt-plain-block: written by initialize() on the game thread before it starts m_thread/m_eventWorker; read-only from then on, on any thread
     std::string m_installId;              // anonymous random UUID (game thread)
     std::string m_prevVersion;            // plugin version from the previous launch ("" = new install)
     std::string m_versionStatus;          // "new" | "update" | "same"

@@ -10,7 +10,7 @@
 //  1. A solid opaque quad fills exactly its interior with the quad color.
 //  2. Per-quad ALPHA blends over the background (the HUD opacity slider).
 //  3. The texture stage is texel × quad color: a WHITE icon takes the quad
-//     color, and the quad alpha fades textures too — CLAUDE.md explicitly
+//     color, and the quad alpha fades textures too — AGENTS.md explicitly
 //     warns "don't simplify the blit back to a plain copy or icons stop
 //     tinting / ignore opacity"; this is that guard.
 //  4. .fnt bitmap text renders real glyph coverage in the expected region and

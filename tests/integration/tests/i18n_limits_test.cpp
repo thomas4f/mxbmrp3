@@ -211,3 +211,22 @@ TEST_CASE("i18n limits: the shipped German pack runs no settings text into the n
 TEST_CASE("i18n limits: the shipped Spanish pack runs no settings text into the next") {
     checkShippedPack("es", "Apariencia", "Idioma");
 }
+
+TEST_CASE("i18n limits: the shipped Italian pack runs no settings text into the next") {
+    checkShippedPack("it", "Aspetto", "Lingua");
+}
+
+TEST_CASE("i18n limits: the shipped Turkish pack runs no settings text into the next") {
+    // The sidebar's General and Hotkeys tabs: "Kısayollar" carries a Turkish
+    // slot (core/font_codepage.h), so a loader that dropped it would show English.
+    checkShippedPack("tr", "Genel", "K\x8Fsayollar");
+}
+
+TEST_CASE("i18n limits: the shipped Dutch pack runs no settings text into the next") {
+    checkShippedPack("nl", "Algemeen", "Taal");
+}
+
+TEST_CASE("i18n limits: the shipped Norwegian pack runs no settings text into the next") {
+    // "Språk" carries å, so a loader that dropped CP1252 letters would show English.
+    checkShippedPack("nb", "Generelt", "Spr\xe5k");
+}

@@ -4,7 +4,7 @@
 //
 // THE BUG THIS PINS. Every per-HUD applier in settings_hud_registry.cpp used to
 // parse its keys with bare `std::stoi(settings.at(key))` inside ONE try/catch
-// around the whole HUD. Hand-editing the INI is a supported workflow (CLAUDE.md),
+// around the whole HUD. Hand-editing the INI is a supported workflow (AGENTS.md),
 // and a single `rotateToPlayer=yes` threw out of the middle of the Map applier,
 // so every Map key the applier had not reached yet -- zoom, markers, anchor --
 // was silently left at its default. One log line said "Failed to parse

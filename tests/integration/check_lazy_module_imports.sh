@@ -23,7 +23,7 @@
 # directly rather than through the resolved pointer. Nothing else in the tree
 # notices that - it compiles, links, and works on the developer's machine.
 #
-# WHY BESPOKE (CLAUDE.md: prefer the off-the-shelf tool): this is a property of
+# WHY BESPOKE (AGENTS.md: prefer the off-the-shelf tool): this is a property of
 # a LINKED ARTIFACT, not of source, so no source linter can see it. objdump
 # ships with the mingw toolchain the cross-build already requires, and the
 # whole check is one grep over its output - there is no tool to adopt here,

@@ -3,7 +3,7 @@
 # tests/integration/check_api_guards.sh
 # DLL-export exception-barrier lint (no compiler needed, pure awk).
 #
-# THE INVARIANT (CLAUDE.md DO-list): every DLL export in
+# THE INVARIANT (AGENTS.md DO-list): every DLL export in
 # mxbmrp3/vendor/piboso/*_api.cpp wraps its body in try { ... }
 # API_GUARD_CATCH("Name") — the host game does not support C++ exceptions
 # across the plugin API, so an uncaught throw escaping an export terminates

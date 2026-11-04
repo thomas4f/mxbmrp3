@@ -18,7 +18,7 @@
 // m_shutdownRequested and notifies the condition; HttpServer::stop() then
 // JOINS the server thread, which cannot finish while a pool worker is still in
 // the provider. Get that wrong and the failure is not a wrong pixel — it is
-// the DLL-detach hang CLAUDE.md keeps a maintenance invariant for
+// the DLL-detach hang AGENTS.md keeps a maintenance invariant for
 // (FreeLibrary's loader lock versus a live worker), and the game hangs on exit
 // rather than crashing. So shutdown is timed WITH A CLIENT ATTACHED: prompt
 // means the wake path worked, and anything near the keepalive interval means

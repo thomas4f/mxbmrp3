@@ -1,18 +1,9 @@
 # Web overlay tests (Playwright)
 
-Headless browser tests for the OBS/browser overlay in `../mxbmrp3_data/web`. Most
-drive the overlay's built-in **`?demo` mode** - a synthetic 22-rider warmup +
-race that feeds the same snapshots into `render()` that the live SSE stream
-would - and assert the **rendered DOM**. No game, no plugin, no network.
-
-`overlay_snapshot.spec.js` is the deliberate exception: it renders a **real**
-plugin snapshot (`../fixtures/overlay_snapshot.json`, captured by the C++
-integration suite) instead, because a demo the overlay writes itself cannot
-notice the plugin renaming a field.
-
-This is the client-side complement to the C++ integration tests: those assert the
-plugin's `/api/state` JSON (what the overlay *receives*); these assert what the
-overlay *draws* from it (tower rows, ordering, gaps, session/clock).
+Headless Playwright tests for the OBS/browser overlay in `../../mxbmrp3_data/web`,
+mostly driving its built-in **`?demo` mode** and asserting the rendered DOM. What
+this layer is for, and why `overlay_snapshot.spec.js` uses a real plugin snapshot
+instead of the demo, is in [`../../TESTING.md`](../../TESTING.md) → *Layer 4*.
 
 ## Run
 
@@ -24,11 +15,8 @@ overlay *draws* from it (tower rows, ordering, gaps, session/clock).
 
 ## Lint
 
-`./lint.sh` runs ESLint over every `.js` in the repo (the overlay, `sw.js` and
-this suite) from the same npm install - seconds, no browser. `--fix` applies the
-fixable ones. The rule set is eslint's `recommended`; `eslint.config.mjs`
-documents the three rules the overlay's shared-global-scope, ES5-by-design
-client makes unusable.
+`./lint.sh` (`--fix` to apply) runs ESLint over every `.js` in the repo from the
+same npm install; `eslint.config.mjs` documents the rules it turns off and why.
 
 `run.sh` installs deps on first use and resolves Chromium (a no-op when a
 preinstalled browser is already on `PLAYWRIGHT_BROWSERS_PATH`). Requires Node.js;
@@ -66,30 +54,24 @@ see the warmup. For real-data preview instead of the synthetic demo, use
 
 ## What's covered
 
-`tests/overlay.spec.js`:
-- **Tower renders a full, ordered field** - the 22-rider demo fills the tower;
-  the visible rows carry contiguous positions `1..N`, ascend top-to-bottom on
-  screen (rows are `translateY`-slotted over a stable DOM order, so ranking is
-  read by on-screen Y, not DOM index), every row has a name, real roster names
-  come through, the session type + clock render, and **no uncaught JS errors**.
-- **Race phase + leader gap** - `?speed=` fast-forwards the demo past the warmup
-  into the timed race; the P1 row's gap column shows the `Leader` label (race
-  gap semantics), not a lap time.
+Each spec's header says what it pins:
 
-(Representative highlights - `overlay.spec.js` also covers the bottom-slot
-panels/battle lifecycle. The other specs: `assets.spec.js` pins the asset wiring
-- every `index.html`/`style.css`/`sw.js` reference resolves and the split
-overlay scripts load in the same order everywhere; `custom_css.spec.js` the
-`custom.css` override contract; `empty_panels.spec.js` the forced-empty
-placeholder behavior; `tail.spec.js` the down-the-order scroller with data
-(below-cutoff riders, viewport sizing, the scroll pass); `mobile.spec.js` the
-phone fill-width mode (device-emulated `pointer: coarse`: width fixed point,
-focus-card/chip suppression, touch-revealed gear); `parity.spec.js` the
-JS side of the shared C++/JS golden vectors
-(`tests/fixtures/cpp_js_parity.json`) plus the `overlayPanelName()` ↔
-`createSlotPanel` name lockstep; `status_lines.spec.js` the overlay's own
-connection lines in the event log - a green one expires on its own, a red one
-stays until an event pushes it out.)
+- `overlay.spec.js` - the tower (a full, ordered field read by on-screen Y, real
+  roster names, session + clock, no uncaught JS errors), the race-phase `Leader`
+  gap, and the bottom-slot panels/battle lifecycle.
+- `overlay_snapshot.spec.js` - the committed real-plugin snapshot through `render()`.
+- `assets.spec.js` - every `index.html`/`style.css`/`sw.js` reference resolves and
+  the overlay scripts load in the same order everywhere.
+- `custom_css.spec.js` - the `custom.css` override contract.
+- `empty_panels.spec.js` - forced-empty placeholder behaviour.
+- `tail.spec.js` - the down-the-order scroller.
+- `mobile.spec.js` - the phone fill-width mode (device-emulated `pointer: coarse`).
+- `parity.spec.js` - the JS side of `../fixtures/cpp_js_parity.json`, plus the
+  `overlayPanelName()` ↔ `createSlotPanel` name lockstep.
+- `status_lines.spec.js` - the overlay's own connection lines in the event log.
+- `trnfix_web.spec.js` - `tools/trnfix/web/index.html`, the trainer triage page.
+- `usage_page.spec.js` - the usage survey's Pages copy written by
+  `tools/analytics_page.py`.
 
 ## Notes / gotchas
 
@@ -102,5 +84,6 @@ stays until an event pushes it out.)
   mid-animation read is deterministic.
 - Riders below the **Max Riders** cutoff stay in the DOM as `display:none`;
   ranking assertions filter to the shown rows.
-- The pinned `@playwright/test` version matches the Chromium the tests download,
-  so the browser and API can't drift.
+- CI installs the Chromium revision `@playwright/test` pins; `run.sh` locally uses
+  whatever Chromium it finds first, so local green is not proof of CI green
+  (TESTING.md → *Layer 4*).

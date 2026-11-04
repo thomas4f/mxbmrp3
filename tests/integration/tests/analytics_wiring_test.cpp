@@ -20,6 +20,8 @@
 
 #include <string>
 
+#include <windows.h>
+
 static bool has(const std::string& hay, const std::string& needle) {
     return hay.find(needle) != std::string::npos;
 }
@@ -81,6 +83,29 @@ TEST_CASE("analytics wiring: app_started always built; sampling gates session_en
         host.clearTheme();
         CHECK(has(host.analyticsAppStarted(), "\"panel_theme\":\"none\""));
     }
+
+    // --- language: the pack IN EFFECT, through the real I18n state. ---
+    // The label's rules are pinned in tests/unit/test_analytics_language.cpp;
+    // this proves the payload reads the RESOLVED pack and the stored choice.
+    // Untouched, the selection is the System default.
+    CHECK(has(app, "\"language_system\":1"));
+    CHECK(has(app, "\"language\":\""));
+    // English picked explicitly: "en", and no longer the System default.
+    host.setLanguage("");
+    {
+        const std::string en = host.analyticsAppStarted();
+        CHECK(has(en, "\"language\":\"en\""));
+        CHECK(has(en, "\"language_system\":0"));
+    }
+    // A stored pack that is not installed shows English, so it reports English,
+    // and its folder name never reaches the payload.
+    host.setLanguage("no-such-pack-xyz");
+    {
+        const std::string gone = host.analyticsAppStarted();
+        CHECK(has(gone, "\"language\":\"en\""));
+        CHECK(!has(gone, "no-such-pack-xyz"));
+    }
+    host.setLanguage("system");
 
     // --- FULL launch: session_end + custom both enqueue. ---
     host.analyticsSetFullLaunch(true);
@@ -154,4 +179,48 @@ TEST_CASE("analytics wiring: app_started always built; sampling gates session_en
     }
 
     host.shutdown();
+}
+
+// A pack the player made, staged where a player installs one (Documents\...\
+// mxbmrp3\languages\<name>\) and selected: the ping counts it as "custom" and
+// its folder name never leaves. The guard removes the plugin's synced copy, a
+// tree every test of the run shares (see i18n_test.cpp's SyncedPack).
+TEST_CASE("analytics wiring: a user's own language pack reports as custom, never by name") {
+    const std::string save = "Z:\\tmp\\mxbmrp3-tests\\analytics_language\\";
+    const char* kFolder = "my-own-lang-pack";
+    const std::string root = save + "mxbmrp3";
+    CreateDirectoryA(save.c_str(), nullptr);
+    CreateDirectoryA(root.c_str(), nullptr);
+    CreateDirectoryA((root + "\\languages").c_str(), nullptr);
+    const std::string dir = root + "\\languages\\" + kFolder;
+    CreateDirectoryA(dir.c_str(), nullptr);
+    {
+        const std::string ini = "[pack]\nname = Mine\n";
+        HANDLE h = CreateFileA((dir + "\\language.ini").c_str(), GENERIC_WRITE, 0, nullptr,
+                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        REQUIRE(h != INVALID_HANDLE_VALUE);
+        DWORD written = 0;
+        WriteFile(h, ini.data(), static_cast<DWORD>(ini.size()), &written, nullptr);
+        CloseHandle(h);
+    }
+    struct Synced {
+        std::string dir;
+        ~Synced() {
+            DeleteFileA((dir + "\\language.ini").c_str());
+            RemoveDirectoryA(dir.c_str());
+        }
+    } synced{ std::string("plugins\\mxbmrp3_data\\languages\\") + kFolder };
+
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    REQUIRE(host.hasAnalytics());
+    host.writeSettingsFile(save.c_str(),
+        "[Settings]\nversion=11\n\n[Display]\nlanguage=my-own-lang-pack\n");
+    REQUIRE(host.startup(save.c_str()) >= 0);
+    host.analyticsPrime();
+
+    const std::string app = host.analyticsAppStarted();
+    CHECK(has(app, "\"language\":\"custom\""));
+    CHECK(has(app, "\"language_system\":0"));
+    CHECK(!has(app, kFolder));
 }

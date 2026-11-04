@@ -6,10 +6,11 @@ Turn on **Spoken audio** (Settings > Spotter, or the checkbox beside the tab).
 
 ## What it calls
 
-- **Around you** - a rider behind you and when you're clear again, someone alongside on your left or right, and a separate call when you're boxed in on both sides at once. A backmarker ahead, and blue flags when you're the one being lapped.
-- **Hazards** - a rider down, or one coming the wrong way.
+- **Around you** - a rider behind you and when you're clear again, someone alongside on your left or right, and a separate call when you're boxed in on both sides at once, and a backmarker ahead.
+- **Hazards** - a rider down, one coming the wrong way, and blue flags when you're the one being lapped.
 - **Each time you cross the line** - your position, then the gap to the rider ahead and the rider behind, and whether each is closing or stretching.
 - **The session** - the start, the milestones on the way through (ten minutes, five, halfway), the last lap, and who has finished.
+- **Your own race** - low fuel, penalties, pit in and out, a personal best or record, sector bests, and being on pace for a best lap at the last split. The [reference](spotter-reference.md) lists every one.
 
 The gap to the rider *behind* deliberately waits until they reach a split or the line you've already crossed. That costs a few seconds of freshness and buys a number that actually happened, rather than one extrapolated from where they were.
 
@@ -27,7 +28,7 @@ Cycling either one plays a sample line, so you pick by ear rather than by name. 
 
 ## What gets announced
 
-Five **Callouts** switches - General, Timing, Opponents, Proximity and Hazards - decide what you hear. Mute the ones you don't want. The two worth telling apart are **Proximity**, the spotting half (who is beside or behind *you*), and **Opponents**, the news half (the rest of the field's laps, penalties and pit stops). You can keep one without the other - plenty of people want to be spotted and don't want a running commentary.
+Five **Callouts** switches - General, Timing, Opponents, Proximity and Hazards - decide what you hear. Mute the ones you don't want. The two worth telling apart are **Proximity**, the spotting half (who is beside or behind *you* - blue flags are under Hazards, so they survive muting it), and **Opponents**, the news half (the rest of the field's laps, penalties and pit stops). You can keep one without the other - plenty of people want to be spotted and don't want a running commentary.
 
 **Subtitles** shows every callout as on-screen text on its own draggable widget, and works with the audio off. Run the spotter silent and captioned if you'd rather read it, or leave both on so you can check what you just heard.
 
@@ -43,7 +44,7 @@ A spotter voice is a **pack**: a folder holding a `spotter.ini` that names every
 
 **The shipped `default` pack is the spotter's vocabulary**, not a set of overrides on something built into the plugin - there is nothing behind it. Comment a row out of it and that callout stops happening. Any other pack you pick **layers over** it: what your pack defines wins, what it leaves out is answered from `default`, so a recorded voice covering twenty callouts still speaks the rest in the shipped words. `key =` with an empty value is how a pack mutes a callout outright instead of inheriting it.
 
-**Text only.** This is what ships - `spotters\default\spotter.ini`, every line the spotter says, read by Windows text-to-speech. Rewording a callout, muting one (`key =` with nothing after it), or adding alternates needs no audio tools at all: copy the folder, rename it, edit, and pick it in Settings > Spotter. It's grouped under the same five headings as the Callouts switches there - **General**, **Timing**, **Opponents**, **Proximity**, **Hazards** - so silencing a whole group is a switch, not an edit; editing is for the finer cut.
+**Text only.** This is what ships - `spotters\default\spotter.ini`, every line the spotter says, read by Windows text-to-speech. Rewording a callout, muting one, or adding alternates needs no audio tools at all: copy the folder, rename it, edit, and pick it in Settings > Spotter. It's grouped under the same five headings as the Callouts switches there - **General**, **Timing**, **Opponents**, **Proximity**, **Hazards** - so silencing a whole group is a switch, not an edit; editing is for the finer cut.
 
 **Recorded.** The packs with real audio (the separate download above) add `_wav` and `_mix` rows pointing at their clips:
 

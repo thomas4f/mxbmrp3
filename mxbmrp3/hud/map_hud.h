@@ -491,6 +491,10 @@ private:
     bool m_bAdaptiveDetail;
     float m_fDetailBaseline;   // INI-only multiplier the 20-200% scale anchors to
 
+    // RULE: a new input to renderTrack()'s output goes
+    // into TrackRibbonKey (screen quads) or WorldRibbonKey (world points) - the
+    // wrong one, or neither, serves stale geometry. Pinned by map_render_test.cpp.
+    //
     // Cached track-ribbon quads (outline + fill passes of renderTrack).
     // The ribbon re-tessellates the whole centerline with per-sample trig on
     // every rebuild, but its inputs only change when the VIEW changes - with

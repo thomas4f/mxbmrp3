@@ -210,6 +210,7 @@ private:
     // (on the worker, the PluginData owner). Note the semantic shift: in threaded mode
     // "plugin time" is the WORKER's build cost — the game-thread cost is ~0 by design.
     std::atomic<float> m_fps{ 0.0f };
+    // mt-plain-block: game thread only (requestFrame), per the note above
     std::chrono::steady_clock::time_point m_fpsLastTp{};
     float m_fpsEma = 0.0f;
 

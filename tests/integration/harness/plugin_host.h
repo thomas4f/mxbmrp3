@@ -511,7 +511,7 @@ public:
     // host.shutdown() — four had not, and blueflag_test crashed 8/10 times under
     // CPU load because its three SUBCASEs each unmapped the DLL with the
     // plugin's background threads still running (the unload-without-Shutdown()
-    // path CLAUDE.md flags as having cost two shipped crashes). Fixing the four
+    // path AGENTS.md flags as having cost two shipped crashes). Fixing the four
     // call sites left the same trap for the 65th test, and for the abort path:
     // an explicit shutdown() is the LAST statement in a test body, so a failing
     // REQUIRE above it skips teardown and restores exactly the crashy path.

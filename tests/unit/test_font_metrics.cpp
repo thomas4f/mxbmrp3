@@ -27,6 +27,7 @@
 // ============================================================================
 #include "doctest.h"
 
+#include "core/font_codepage.h"
 #include "core/layout_metrics.h"
 #include "core/plugin_constants.h"
 #include "core/render_asset_decode.h"
@@ -234,4 +235,63 @@ TEST_CASE("font metrics: the Title font holds more of a title than a cell a char
     CHECK_FALSE(hudassets::decodeFntAdvances(junk, sizeof(junk), untouched));
     CHECK_FALSE(hudassets::decodeFntAdvances(table.data(), 100, untouched));
     CHECK(untouched[0] == 1.0f);
+}
+
+// The Turkish slots (core/font_codepage.h): CP1252's six unused bytes carry
+// Ğ ğ İ ı Ş ş. Before they were drawn, every shipped font held a blank glyph
+// there, so a Turkish translation rendered with holes. A font that inks the
+// slot's plain letter has to ink the slot too -- its own letter, else the plain
+// letter with the font's accent mark, else the plain letter (fontgen).
+TEST_CASE("font metrics: every shipped font inks the Turkish slots wherever it inks their plain letter") {
+    const auto fonts = shippedFonts();
+    REQUIRE(!fonts.empty());
+    for (const auto& p : fonts) {
+        CAPTURE(p.filename().string());
+        const Font f = loadFnt(p.string());
+        REQUIRE(f.ok);
+        for (const FontCodePage::ExtraSlot& slot : FontCodePage::kExtraSlots) {
+            CAPTURE(int(slot.byte));
+            const bool plainInked = inkBand(f, std::string(1, slot.plain)).any;
+            if (!plainInked) continue;   // the LCD faces have no lowercase
+            CHECK(inkBand(f, std::string(1, static_cast<char>(slot.byte))).any);
+            CHECK(f.g[slot.byte].adv() > 0);
+        }
+    }
+}
+
+// Dotless ı is a different letter from i in Turkish (sınır, sinir), so a font
+// without its own ı must not stand a dotted i in for it: fontgen cuts the dot
+// off the font's i. Enter Sansman, the default Title font, is the shipped face
+// that needs it. Any font whose i carries a detached dot must draw slot ı with
+// no ink above the top of its x.
+TEST_CASE("font metrics: the dotless i slot has no dot in any shipped font") {
+    const unsigned char dotless = FontCodePage::slotForCodepoint(0x0131)->byte;
+    int checked = 0;
+    for (const auto& p : shippedFonts()) {
+        CAPTURE(p.filename().string());
+        const Font f = loadFnt(p.string());
+        REQUIRE(f.ok);
+        auto litRows = [&](unsigned char ch) {
+            std::vector<bool> lit(size_t(f.cellH), false);
+            const Glyph& gl = f.g[ch];
+            for (int y = gl.y0; gl.x1 > gl.x0 && y < gl.y1; ++y)
+                for (int x = gl.x0; x < gl.x1; ++x)
+                    if (f.atlas[size_t(y) * f.aw + x] != 0) { lit[size_t(y - gl.y0)] = true; break; }
+            return lit;
+        };
+        auto firstLit = [](const std::vector<bool>& lit) {
+            for (size_t r = 0; r < lit.size(); ++r) if (lit[r]) return int(r);
+            return -1;
+        };
+        const std::vector<bool> i = litRows('i');
+        const int xTop = firstLit(litRows('x'));
+        const int iTop = firstLit(i);
+        if (xTop < 0 || iTop < 0 || iTop >= xTop) continue;
+        bool detached = false;
+        for (int r = iTop; r < xTop - 1; ++r) detached = detached || !i[size_t(r)];
+        if (!detached) continue;   // a capital-style i (the LCD faces): nothing to cut
+        ++checked;
+        CHECK(firstLit(litRows(dotless)) >= xTop - 2);
+    }
+    CHECK(checked > 10);
 }

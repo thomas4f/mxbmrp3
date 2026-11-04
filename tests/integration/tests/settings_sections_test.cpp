@@ -59,7 +59,7 @@ TEST_CASE("settings sections: every captured section is serialized to the INI") 
                       "captured section '" << section
                       << "' was NOT written to the INI — it is missing from "
                          "serializeSettings' section-order list (the third "
-                         "hardcoded list; see CLAUDE.md 'Adding a New HUD' step 6)");
+                         "hardcoded list; see AGENTS.md 'Adding a New HUD' step 6)");
     }
 
     host.shutdown();

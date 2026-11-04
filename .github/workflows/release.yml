@@ -47,8 +47,8 @@
 #      Actions). A keyless build is not wired. (GOATCOUNTER_CODE is NOT a secret —
 #      the site code is public and hardcoded in plugin_constants.h; it's only an
 #      optional override, not required.)
-#   2. Code signing (the "unknown publisher" warning) is NOT handled here — add a
-#      signing step once you have a certificate.
+#   2. Releases are not code-signed (hence the "unknown publisher" warning); there
+#      is no signing step.
 # ============================================================================
 name: release
 
