@@ -106,6 +106,15 @@ jobs:
     # point.
     runs-on: windows-2022
     timeout-minutes: 40
+    # Job-level permissions REPLACE the workflow-level block, so contents: write is
+    # restated. The other two are the build provenance attestation's (see the
+    # "Attest build provenance" step): id-token to get a Sigstore signing cert,
+    # attestations to store it. No artifact-metadata: that is only for
+    # push-to-registry, which a file attestation does not use.
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     # Consumed by the `package` job, which finishes the release on Linux.
     outputs:
       version: ${{ steps.ver.outputs.version }}
@@ -247,7 +256,16 @@ jobs:
                 Write-Error "$($t.path): TEST HOOK '$th' is exported from a shipping DLL"; exit 1
               }
             }
-            Write-Host ("ok  {0,-36} modId={1,-8} interfaceVersion={2}  (no test hooks)" -f $t.path, $modId, $ifFn.Invoke())
+            # The plain-ASCII "open source, read the source" line (SOURCE_NOTICE in
+            # core/plugin_version.cpp) must survive /OPT:REF + /LTCG, which only
+            # this MSVC artifact can show: the mingw test build links differently.
+            # Searched with this release's tag, so a stale notice fails too.
+            $notice = "MXBMRP3 is open source (MIT). Source for this build: https://github.com/thomas4f/mxbmrp3/tree/${{ steps.ver.outputs.tag }}"
+            $bytes = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($abs))
+            if (-not $bytes.Contains($notice)) {
+              Write-Error "$($t.path): source notice missing or stale (expected '$notice')"; exit 1
+            }
+            Write-Host ("ok  {0,-36} modId={1,-8} interfaceVersion={2}  (no test hooks, source notice)" -f $t.path, $modId, $ifFn.Invoke())
           }
 
       - name: Stage + package (zip)
@@ -316,6 +334,33 @@ jobs:
             Write-Error ("zip is missing required entries:`n  " + ($missing -join "`n  ")); exit 1
           }
           Write-Host "zip manifest ok ($($required.Count) required entries present)"
+
+      # Build provenance: a signed statement, stored on the repo, that these exact
+      # bytes came from this commit and this workflow run. Anyone holding a copy can
+      # check it with `gh attestation verify mxbmrp3.dlo -R thomas4f/mxbmrp3`, so
+      # "every release is built from the source" is checkable rather than taken on
+      # trust, and a repackaged or modified copy fails it. The .dlo files are
+      # attested as well as the zip because the auto-updater and manual installs put
+      # the bare DLL on disk, and that is the file people hand to a disassembler.
+      # Setup.exe is attested in the package job, where it is built.
+      #
+      # FIRST RUN IS A REAL RELEASE: both conditions below keep it out of every dry
+      # run, so a mistake here fails the release before the tag/draft are made
+      # (package job). Fix forward and re-run; nothing is half-published.
+      #
+      # REAL RELEASES ONLY: a dry-run artifact never ships, and attesting it would
+      # put a valid-looking provenance on a file nobody should be running. PUBLIC
+      # REPO ONLY: attestations on a private repo need GitHub Enterprise Cloud, so
+      # there the step would fail the release.
+      - name: Attest build provenance
+        if: inputs.release && !github.event.repository.private
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            build/MXB-Release/mxbmrp3.dlo
+            build/GPB-Release/mxbmrp3_gpb.dlo
+            build/KRP-Release/mxbmrp3_krp.dlo
+            dist/mxbmrp3-v${{ steps.ver.outputs.version }}/mxbmrp3.zip
 
       # Archive the debug symbols (.pdb) + linker maps (.map) for all three games.
       # A crash reported by the analytics dashboard is just "mxbmrp3.dlo+0xNNNN" — an
@@ -412,6 +457,15 @@ jobs:
     if: ${{ !cancelled() && needs.build-release.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Job-level permissions REPLACE the workflow-level block, so contents: write is
+    # restated. The other two are the build provenance attestation's (see the
+    # "Attest build provenance" step): id-token to get a Sigstore signing cert,
+    # attestations to store it. No artifact-metadata: that is only for
+    # push-to-registry, which a file attestation does not use.
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v7
 
@@ -467,6 +521,14 @@ jobs:
           [ -f dist/mxbmrp3-Setup.exe ] || { echo "ERROR: Setup.exe not produced" >&2; exit 1; }
           file dist/mxbmrp3-Setup.exe
 
+      # Same provenance as the build-release job's attestation, for the one file
+      # built here; that step's comment has the why and the two conditions.
+      - name: Attest build provenance (installer)
+        if: inputs.release && !github.event.repository.private
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/mxbmrp3-Setup.exe
+
       # Always publish the zip + installer as downloadable workflow artifacts. This is
       # what makes a manual (workflow_dispatch) run on a branch a real DRY RUN: it
       # validates the whole MSVC build + NSIS packaging and hands you the files to
@@ -501,6 +563,10 @@ jobs:
           TAG: ${{ needs.build-release.outputs.tag }}
           SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPO: ${{ github.repository }}
+          # Same condition as the two "Attest build provenance" steps, so the notes
+          # never offer a check that has nothing to find.
+          ATTESTED: ${{ inputs.release && !github.event.repository.private }}
           NOTES: ${{ runner.temp }}/release_notes.md
           STRICT: ${{ inputs.release }}
         run: |
@@ -553,6 +619,15 @@ jobs:
               "[run log](%s)." % (os.environ["SHA"], os.environ["RUN_URL"]),
               "",
           ])
+          if os.environ["ATTESTED"] == "true":
+              body += "\n".join([
+                  "",   # body ends in one newline: a blank line starts a new paragraph
+                  "🔏 The installer, the zip and each `.dlo` carry a signed build "
+                  "attestation. To check that a copy came from this build, run "
+                  "`gh attestation verify <file> -R %s` (GitHub CLI, signed in)."
+                  % os.environ["REPO"],
+                  "",
+              ])
 
           with open(os.environ["NOTES"], "w", encoding="utf-8") as fh:
               fh.write(body)

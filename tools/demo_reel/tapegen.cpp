@@ -6,10 +6,11 @@
 // The race: 8 riders, 4 laps, then a PB lap that ends tailSecs before the tape
 // does. Every rider's laps, splits and the classification follow from where they
 // are, and the order changes: 10 takes the lead from 22, the player gets by 7, 18
-// gets by 3. In the last liveSecs (what the reel plays live): the player catches and
-// passes backmarker 12, a lap down (LAPPER AHEAD), then 22 crashes just ahead
-// (HAZARD AHEAD), is passed while down, and rejoins behind. Telemetry, positions
-// and a Draw at 100 Hz.
+// gets by 3. In the last liveSecs (what the reel plays live): early on 7 sits
+// right behind (for the Radar's preview); in the last half minute (the reel's
+// racing beat) the player catches and passes backmarker 12, a lap down (LAPPER
+// AHEAD), then 22 crashes just ahead (HAZARD AHEAD), is passed while down and
+// rejoins behind, then the PB lap ends. Telemetry, positions and a Draw at 100 Hz.
 //   wine tapegen.exe mxbmrp3_test.dlo out.tape [tailSecs] [liveSecs]
 // The harness's own builders fill the payloads (PluginHost's export pointers are
 // swapped for writers), so the bytes are what those callbacks carry.
@@ -274,8 +275,10 @@ int main(int argc, char** argv) {
     // so the order changes for real. Session time ~354 s; the reel plays the last
     // liveSecs live.
     const double liveStart = totalSecs - liveSecs;
-    const double catchAt = liveStart + 14.0;   // the player reaches backmarker 12
-    const double crashAt = liveStart + 32.0;   // 22 goes down just ahead
+    // Both in the reel's racing beat, before the PB lap ends; hover_reel captions
+    // them at the same distances from the end.
+    const double catchAt = totalSecs - 25.0;   // the player reaches backmarker 12 (LAPPER AHEAD)
+    const double crashAt = totalSecs - 14.0;   // 22 goes down just ahead (HAZARD AHEAD)
     struct Key { double t, off; };
     auto keyed = [](const std::vector<Key>& ks, double t) {
         if (t <= ks.front().t) return ks.front().off;
@@ -290,7 +293,11 @@ int main(int argc, char** argv) {
     const double E = totalSecs;
     const std::vector<Key> k10 = { { 0, 0.045 }, { 110, 0.030 }, { 200, 0.075 }, { E, 0.085 } };   // takes the lead from 22
     const std::vector<Key> k22 = { { 0, 0.075 }, { 110, 0.050 }, { 200, 0.030 }, { liveStart, 0.022 }, { crashAt, 0.035 } };
-    const std::vector<Key> k7  = { { 0, 0.020 }, { 90, 0.008 }, { 150, -0.012 }, { E, -0.025 } };  // the player gets by
+    // The player gets by 7, who sits right behind from 14 s into the live part to
+    // 36 s (the strip pass previews the Radar in there) and then drops back.
+    const std::vector<Key> k7  = { { 0, 0.020 }, { 90, 0.008 }, { 150, -0.012 }, { liveStart + 6, -0.018 },
+                                   { liveStart + 14, -0.007 }, { liveStart + 36, -0.007 },
+                                   { liveStart + 48, -0.020 }, { E, -0.025 } };
     const std::vector<Key> k3  = { { 0, -0.030 }, { E, -0.060 } };
     const std::vector<Key> k18 = { { 0, -0.070 }, { 140, -0.050 }, { 240, -0.040 }, { E, -0.035 } };  // gets by 3
     const std::vector<Key> k31 = { { 0, -0.100 }, { E, -0.170 } };

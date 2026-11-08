@@ -21,28 +21,26 @@ SessionChartsHud::TestSeries SessionChartsHud::testSeries() const {
     return out;
 }
 
-void SessionChartsHud::neighbourGaps(NeighbourGaps& out) const {
-    out.ahead.clear();
-    out.mine.clear();
-    out.behind.clear();
-    out.aheadNum = out.mineNum = out.behindNum = -1;
+void SessionChartsHud::gapChartLines(GapChartLines& out) const {
+    // Each line's vector keeps its capacity across rebuilds (the Dash holds one
+    // GapChartLines), so a redraw with the same riders allocates nothing new.
+    for (GapChartLine& l : out.lines) {
+        l.gaps.clear();
+        l.raceNum = -1;
+    }
+    out.count = 0;
     FieldData field;
     collectField(field);
     out.pointsPerLap = field.pointsPerLap;
-    const int displayRaceNum = PluginData::getInstance().getDisplayRaceNum();
-    const size_t n = field.raceNums.size();
-    for (size_t i = 0; i < n; ++i) {
-        if (field.raceNums[i] != displayRaceNum) continue;
-        out.mine = field.gaps[i];
-        out.mineNum = field.raceNums[i];
-        if (i > 0) {
-            out.ahead = field.gaps[i - 1];
-            out.aheadNum = field.raceNums[i - 1];
-        }
-        if (i + 1 < n) {
-            out.behind = field.gaps[i + 1];
-            out.behindNum = field.raceNums[i + 1];
-        }
-        break;
+    GapChartPicks::Pick picks[GapChartPicks::MAX_LINES];
+    const int count = GapChartPicks::pick(field.raceNums.data(), field.raceNums.size(),
+                                          PluginData::getInstance().getDisplayRaceNum(), picks);
+    for (int k = 0; k < count; ++k) {
+        const size_t i = static_cast<size_t>(picks[k].index);
+        GapChartLine& l = out.lines[k];
+        l.gaps = field.gaps[i];
+        l.raceNum = field.raceNums[i];
+        l.role = picks[k].role;
     }
+    out.count = count;
 }

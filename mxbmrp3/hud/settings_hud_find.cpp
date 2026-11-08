@@ -24,7 +24,6 @@
 // ============================================================================
 #include "settings_hud.h"
 #include "settings/settings_layout.h"
-#include "settings/whats_new.h"
 #include "../core/color_config.h"
 #include "../core/hotkey_manager.h"
 #include "../core/input_manager.h"
@@ -169,19 +168,23 @@ void SettingsHud::buildFindField(const ScaledDimensions& dim, const PanelPlan& p
         color = hovered ? cc.getAccent() : cc.getMuted();
     }
     SettingsLayoutContext ctx(this, dim, x, x, x, x, cw * static_cast<float>(FIELD_CHARS), right, y);
-    ctx.addInputField(x, FIELD_CHARS, "", color, typing, cursorColumn);
-    // The release's "New" band, like a marked row's, until the pointer reaches the
-    // field (the hover in settings_hud.cpp dismisses it). It is the Find tab's
-    // marker, so the test count takes it only there: the field is that tab's row.
-    if (WhatsNew::liveForRow(TAB_FIND, "find.field")) {
-        addRowHighlight(field.x, y, field.width, dim.lineHeightNormal,
-                        PluginUtils::applyOpacity(cc.getPositive(), ROW_HOVER_ALPHA));
-#if defined(MXBMRP3_TEST_BUILD)
-        if (m_activeTab == TAB_FIND) ++m_testWhatsNewBands;
-#endif
+    // The box is a SECTION CARD in miniature: the theme's own card art at the
+    // field's rect, so it is sunken where the cards are (Retro) and rimmed where
+    // they are rimmed, with no art of its own to author. The card is the body's
+    // surface, which is also what keeps the body's text colours legible on a bar
+    // (muted on a blue bar is ~1.1:1). Without card art, a themed band gets a
+    // well in the body's colour instead, at the panel's opacity.
+    const bool card = hasThemedCard();
+    if (card) {
+        addThemedCard(field.x, y + dim.lineHeightNormal * 0.06f, field.width, dim.lineHeightNormal * 0.88f,
+                      /*reserveOnly=*/false, /*coversFill=*/false);
+    } else if (plan.g.hasTitle && hasThemedTitleBand()) {
+        ctx.addSolidQuad(field.x, y + dim.lineHeightNormal * 0.06f, field.width, dim.lineHeightNormal * 0.88f,
+                         PluginUtils::applyOpacity(cc.getBackground(), getBackgroundOpacity()));
     }
+    ctx.addInputField(x, FIELD_CHARS, "", color, typing, cursorColumn, /*box=*/!card);
     addString(inner, x + cw * 3.0f, y, Justify::LEFT, Fonts::getNormal(), color, dim.fontSize);
-    drawTabIcon(x + cw * 1.0f, y, "magnifying-glass", typing ? cc.getAccent() : color, dim, cw * 1.5f);
+    drawTabIcon(x + cw * 1.0f, y, "hud-find", typing ? cc.getAccent() : color, dim, cw * 1.5f);
     if (typing || showing) {
         char hits[8];
         snprintf(hits, sizeof(hits), "%d", static_cast<int>(std::min<size_t>(m_find.hits.size(), 999)));

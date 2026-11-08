@@ -1,7 +1,8 @@
 // ============================================================================
 // tests/unit/test_spotter_queue.cpp
 // Pins the spotter cue queue's policy (core/spotter_queue.h): FIFO order, the
-// drop-OLDEST overflow rule, and the perishable-cue expiry at pop.
+// drop-OLDEST overflow rule, the perishable-cue expiry at pop, and the turn
+// policy (a clip finishes unless an urgent call cuts in).
 //
 // The overflow rule is worth pinning because a refactor that flips it to
 // reject-newest would still "bound the queue" and pass a size assert, but a
@@ -136,4 +137,70 @@ TEST_CASE("SpotterCueQueue tolerates a clock that appears to go backwards") {
     SpotterCue cue;
     REQUIRE(q.pop(cue, kT0 - 5000));
     CHECK(cue.payload == "rider behind");
+}
+
+// TURN POLICY. A recorded pack talked over itself: winmm has one channel, so
+// every clip started cut the one before it off mid-word. These pin what the
+// worker now does instead - wait for the clip, unless an urgent call is
+// pending - and that the urgent call jumps the line rather than waiting
+// behind the cues that made the clip late in the first place.
+static SpotterCue urgent(const char* text, uint64_t atMs) {
+    SpotterCue cue = perishable(text, atMs);
+    cue.cutsIn = true;
+    return cue;
+}
+
+TEST_CASE("SpotterCueQueue next(): waits out a clip unless a cue cuts in") {
+    SpotterCueQueue q;
+    using Next = SpotterCueQueue::Next;
+    const uint64_t clipEnds = kT0 + 2000;
+
+    CHECK(q.next(kT0, clipEnds) == Next::Idle);
+    CHECK(q.next(kT0, 0) == Next::Idle);
+
+    q.push({SpotterCue::Kind::WavFile, "session best.wav", {}, {}});
+    CHECK(q.next(kT0, clipEnds) == Next::Wait);       // mid-clip: wait
+    CHECK(q.next(clipEnds, clipEnds) == Next::Play);  // clip over: its turn
+    CHECK(q.next(kT0, 0) == Next::Play);              // nothing sounding
+
+    q.push(urgent("rider left", kT0));
+    CHECK(q.next(kT0, clipEnds) == Next::CutIn);
+    // ...but not once it has gone stale: a dead call cuts nothing off.
+    CHECK(q.next(kT0 + SpotterCueQueue::kPerishMs + 1, clipEnds) == Next::Wait);
+}
+
+TEST_CASE("SpotterCueQueue popCutIn(): the urgent call jumps the line") {
+    SpotterCueQueue q;
+    q.push({SpotterCue::Kind::WavFile, "fastest lap.wav", {}, {}});
+    q.push(perishable("clear", kT0));                    // waits its turn
+    q.push(urgent("rider right", kT0));
+    q.push({SpotterCue::Kind::WavFile, "fuel low.wav", {}, {}});
+
+    SpotterCue cue;
+    REQUIRE(q.popCutIn(cue, kT0));
+    CHECK(cue.payload == "rider right");
+    // Everything else keeps its order behind it.
+    REQUIRE(q.pop(cue, kT0));
+    CHECK(cue.payload == "fastest lap.wav");
+    REQUIRE(q.pop(cue, kT0));
+    CHECK(cue.payload == "clear");
+    REQUIRE(q.pop(cue, kT0));
+    CHECK(cue.payload == "fuel low.wav");
+    CHECK_FALSE(q.popCutIn(cue, kT0));
+}
+
+TEST_CASE("SpotterCueQueue popCutIn(): stale cues it passes are dropped") {
+    SpotterCueQueue q;
+    q.push(urgent("rider left", kT0));                   // stale by then
+    q.push(perishable("clear", kT0));                    // stale by then
+    q.push(urgent("rider behind", kT0 + 2000));
+    q.push({SpotterCue::Kind::WavFile, "lap.wav", {}, {}});
+
+    SpotterCue cue;
+    const uint64_t now = kT0 + 2000;
+    REQUIRE(q.popCutIn(cue, now));
+    CHECK(cue.payload == "rider behind");
+    CHECK(q.size() == 1);
+    REQUIRE(q.pop(cue, now));
+    CHECK(cue.payload == "lap.wav");
 }

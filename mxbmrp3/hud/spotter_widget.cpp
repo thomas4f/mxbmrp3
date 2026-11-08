@@ -9,6 +9,7 @@
 #include "../core/i18n.h"
 #include "default_slots.h"
 
+#include "../core/chat_text.h"
 #include "../core/color_config.h"
 #include "../core/plugin_constants.h"
 #include "../core/plugin_utils.h"
@@ -40,7 +41,10 @@ void SpotterWidget::update() {
     const uint32_t rev = spotter.getCueLogRevision();
     if (rev != m_lastRevision) {
         m_lastRevision = rev;
-        m_text = spotter.getLatestCueText();
+        // The cue is UTF-8 (what the voice reads); the font is the plugin's
+        // code page, so a translated line's å and a rider's é are converted
+        // here, once per cue.
+        m_text = ChatText::utf8ToCp1252(spotter.getLatestCueText());
         m_shownAt = std::chrono::steady_clock::now();
         setDataDirty();
     } else if (!m_text.empty() &&

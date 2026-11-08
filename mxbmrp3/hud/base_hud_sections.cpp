@@ -250,7 +250,10 @@ bool BaseHud::hasThemedCard() const {
 // not know about sits on the frame's centre fill and composites twice, which at
 // any opacity below 100% reads a shade darker than the panel around it. Recording
 // HERE, at the one place every card is emitted, is what makes a new card-drawing
-// caller correct by construction.
+// caller correct by construction. The one opt-out is an INSET card (coversFill =
+// false, the settings Find box): a box drawn on another surface, the title band,
+// where the second composite is the point -- it reads as a well -- and where
+// counting it as a section would hand the panel's card geometry a phantom card.
 void BaseHud::recordCardCover(int firstQuad, float x, float y, float width, float height) {
     for (SectionCardSpan& sp : m_sectionCards) {
         if (sp.firstQuad == firstQuad) {
@@ -261,11 +264,12 @@ void BaseHud::recordCardCover(int firstQuad, float x, float y, float width, floa
     m_sectionCards.push_back({ y, y + height, x, x + width, firstQuad });
 }
 
-void BaseHud::addThemedCard(float x, float y, float width, float height, bool reserveOnly) {
+void BaseHud::addThemedCard(float x, float y, float width, float height, bool reserveOnly,
+                            bool coversFill) {
     const ThemeAsset* theme = activeTheme();
     if (!theme->hasCard()) return;
     if (!reserveOnly && (width <= 0.0f || height <= 0.0f)) return;
-    if (!reserveOnly) recordCardCover(static_cast<int>(m_quads.size()), x, y, width, height);
+    if (!reserveOnly && coversFill) recordCardCover(static_cast<int>(m_quads.size()), x, y, width, height);
     applyOffset(x, y);
     emitThemedSlices(*theme, x, y, width, height, -1, /*useCard=*/true);
 }

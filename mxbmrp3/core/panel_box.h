@@ -195,6 +195,15 @@ struct Spec {
     // this is the term margins cannot express: a seam without edge air. A
     // junction's total seam is gap + the facing margins.
     double gap = 0.0;
+    // THE CAPTION BAND AS THE FRAME'S TOP (`[title] placement = frame`), the
+    // Windows 7 shape: the band is no longer a child INSIDE the frame but the
+    // panel's top strip, flush with its outer top, left and right edges, and
+    // the frame is drawn BELOW it (Geom::frameTop). Only while a band is
+    // actually drawn (hasTitle) -- a bare caption or a hidden title leaves an
+    // ordinary panel, so the art never draws a title bar with nothing on it.
+    // The band->card junction gap is not spent: band and frame are siblings
+    // that touch, which is the look the option exists for.
+    bool titleInFrame = false;
 };
 
 struct SectionGeom {
@@ -241,6 +250,10 @@ struct Geom {
     // Both 0/unset without a caption.
     double titleSlack = 0.0;
     double bandDrawnBot = 0.0;
+    // Where the FRAME's art starts, y-cells from the panel top: 0, except with
+    // Spec::titleInFrame, where it is the band's whole quantized advance -- the
+    // frame is drawn from here to panelH and the band fills the strip above.
+    double frameTop = 0.0;
     // THE BODY, general and flattened. `bands` is every column of every band;
     // `sections` is the first column of each, top to bottom — the view every
     // reader in the tree walks, and the whole body while nothing states a split.
@@ -381,7 +394,10 @@ inline Geom layoutPanel(const Spec& spec) {
     }
     g.innerW = innerW;
     g.panelInnerLeft = panelInnerLeft;
-    g.captionX = panelInnerLeft + insetL(t);
+    // A TITLE BAR spans the panel's OUTER box, so its column starts at the
+    // panel's left edge rather than inside the frame (see Spec::titleInFrame).
+    const bool titleBar = hasTitle && spec.titleInFrame;
+    g.captionX = (titleBar ? 0.0 : panelInnerLeft) + insetL(t);
     g.rowsX = panelInnerLeft + insetL(c);
     g.buttonX = panelInnerLeft + insetL(b);
     g.panelCols = panelInnerLeft + innerW + P.p.r + P.b.r;
@@ -390,7 +406,7 @@ inline Geom layoutPanel(const Spec& spec) {
     // ---- vertical, outside in ----------------------------------------------
     const double gapY = spec.gap * unit;
     g.panelInner = P.b.t + P.p.t;
-    double y = g.panelInner;
+    double y = titleBar ? 0.0 : g.panelInner;
     if (hasCaption) {
         g.hasCaptionRow = true;
         g.titleTop = y + t.m.t;
@@ -408,10 +424,17 @@ inline Geom layoutPanel(const Spec& spec) {
         // gap is folded INTO the quantized advance: it exists only when the
         // caption does, so left outside it would be a second differential
         // fractional term and reintroduce the titled/untitled slack split.
-        const double adv = t.m.t + g.titleH + t.m.b + gapY;
+        const double adv = t.m.t + g.titleH + t.m.b + (titleBar ? 0.0 : gapY);
         g.titleSlack = std::ceil(adv - 1e-9) - adv;
         g.bandDrawnBot = g.titleBot + (hasTitle ? g.titleSlack : 0.0);
         y += adv + g.titleSlack;
+    }
+    // THE FRAME STARTS UNDER THE TITLE BAR, and its own top chrome is spent
+    // there -- the body sits exactly where it would below a frame of its own.
+    if (titleBar) {
+        g.frameTop = y;
+        g.panelInner = y + P.b.t + P.p.t;
+        y = g.panelInner;
     }
     // ONE BOX PER SECTION, stacked down its column; the seam between two is the
     // sum of their margins plus the junction gap. A BAND is as tall as its
@@ -562,6 +585,7 @@ inline Geom layoutPanel(const Spec& spec) {
     const auto lOf = [&](const BoxVals& x) { return panelInnerLeft + x.m.l; };
     const auto wOf = [&](const BoxVals& x) { return innerW - x.m.l - x.m.r; };
     g.titleLeft = lOf(t); g.titleW = wOf(t);
+    if (titleBar) { g.titleLeft = t.m.l; g.titleW = g.panelCols - t.m.l - t.m.r; }
     g.cardLeft = lOf(c); g.cardW = wOf(c);
     // The one-column view of the ROW box, matching g.rowsX beside it: the column
     // the panel actually LAID OUT, which is what this field's own comment (and

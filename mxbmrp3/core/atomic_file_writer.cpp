@@ -12,10 +12,9 @@
 #include <cstdint>
 #include <cstdio>    // std::remove, snprintf
 #include <deque>
-#include <fstream>
 #include <string>
 #include <thread>
-#include <unordered_set>
+#include <unordered_map>
 
 namespace {
 
@@ -92,18 +91,19 @@ void sweepStaleTemps(const std::string& path) {
     }
 }
 
-// The paths whose last write failed (needsRetry). A file-scope static rather than a
-// Worker member: inline writes record here too, before the worker exists or after it
-// stopped. Constructed at DLL load, so it outlives every singleton that asks.
+// The paths whose last write failed (needsRetry), with why (lastFailure). A file-scope
+// static rather than a Worker member: inline writes record here too, before the worker
+// exists or after it stopped. Constructed at DLL load, so it outlives every singleton
+// that asks.
 Mutex s_failedMutex;
-std::unordered_set<std::string> s_failedPaths MXB_GUARDED_BY(s_failedMutex);
+std::unordered_map<std::string, WriteFailure> s_failedPaths MXB_GUARDED_BY(s_failedMutex);
 
-void recordOutcome(const std::string& path, bool ok) {
+void recordOutcome(const std::string& path, WriteFailure why) {
     MutexLock lock(s_failedMutex);
-    if (ok) {
+    if (why == WriteFailure::None) {
         s_failedPaths.erase(path);
     } else {
-        s_failedPaths.insert(path);
+        s_failedPaths[path] = why;
     }
 }
 
@@ -231,46 +231,127 @@ void runWorker(Worker& w) {
     w.finished.store(true, std::memory_order_release);
 }
 
-bool writeAtomic(const std::string& path, const std::string& bytes) {
+// Name the cause from the Windows error. `target` is the file being replaced, checked
+// for the read-only attribute; null when the failure was the temp file's, whose own
+// folder is the problem and the target's attribute says nothing about it.
+// GetFileAttributesA resets the thread's last error, so `err` is read by the caller first.
+WriteFailure classify(DWORD err, const char* target) {
+    if (target) {
+        const DWORD attrs = GetFileAttributesA(target);
+        if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY) &&
+            !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+            return WriteFailure::ReadOnly;
+        }
+    }
+    switch (err) {
+        case ERROR_ACCESS_DENIED:
+        case ERROR_SHARING_VIOLATION:
+        case ERROR_LOCK_VIOLATION:
+            return WriteFailure::AccessDenied;
+        default:
+            return WriteFailure::Other;
+    }
+}
+
+// THE FALLBACK. Some machines refuse the temp-and-rename: an antivirus that
+// watches for ransomware-like behaviour (a new file swapped in over an old one),
+// or a file held open by a sync tool. The game itself saves to the same folder by
+// writing in place, and those saves go through, so when the atomic write is
+// refused (access denied, or a sharing or lock violation: what classify() calls
+// AccessDenied, never anything else) the same bytes are written over the file
+// directly. That gives up the crash-safety of the rename, but only on a machine
+// where the alternative is saving nothing at all; a machine where the rename
+// works never gets here. Concretely: CREATE_ALWAYS truncates first, so a write
+// that dies partway leaves a short file. A hidden or system file refuses
+// CREATE_ALWAYS with FILE_ATTRIBUTE_NORMAL, which ends as the usual notice.
+// Every use is logged: it is the evidence that a player's setup refuses the
+// normal way.
+bool writeInPlace(const std::string& path, const std::string& bytes, DWORD refusedErr) {
+    HANDLE f = CreateFileA(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (f == INVALID_HANDLE_VALUE) {
+        DEBUG_WARN_F("[AtomicFileWriter] in-place fallback also refused (err %lu): %s",
+                     static_cast<unsigned long>(GetLastError()), path.c_str());
+        return false;
+    }
+    DWORD written = 0;
+    const BOOL wrote = bytes.empty() ||
+        WriteFile(f, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr);
+    const DWORD err = wrote ? ERROR_SUCCESS : GetLastError();
+    if (wrote) FlushFileBuffers(f);   // what MOVEFILE_WRITE_THROUGH gave the normal path
+    CloseHandle(f);
+    if (!wrote || written != bytes.size()) {
+        DEBUG_WARN_F("[AtomicFileWriter] in-place fallback failed writing (err %lu): %s",
+                     static_cast<unsigned long>(err), path.c_str());
+        return false;
+    }
+    DEBUG_WARN_F("[AtomicFileWriter] atomic save refused (err %lu); saved in place instead: %s",
+                 static_cast<unsigned long>(refusedErr), path.c_str());
+    return true;
+}
+
+// The atomic write's failure, after the fallback has had its turn where it applies.
+WriteFailure refused(const std::string& path, const std::string& bytes, DWORD err, WriteFailure why) {
+    if (why == WriteFailure::AccessDenied && writeInPlace(path, bytes, err)) return WriteFailure::None;
+    return why;
+}
+
+// Win32 rather than std::ofstream for the temp, so a failure comes with the
+// Windows error that names its cause (the stream only says it failed).
+WriteFailure writeAtomic(const std::string& path, const std::string& bytes) {
     const std::string temp = tempNameFor(path);
     {
-        std::ofstream f(temp, std::ios::binary | std::ios::trunc);
-        if (!f.is_open()) {
-            DEBUG_WARN_F("[AtomicFileWriter] cannot open temp for write: %s", temp.c_str());
-            return false;
+        HANDLE f = CreateFileA(temp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                               FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (f == INVALID_HANDLE_VALUE) {
+            const DWORD err = GetLastError();
+            DEBUG_WARN_F("[AtomicFileWriter] cannot open temp for write (err %lu): %s",
+                         static_cast<unsigned long>(err), temp.c_str());
+            return refused(path, bytes, err, classify(err, nullptr));
         }
-        f.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-        f.close();
-        if (f.fail()) {
-            DEBUG_WARN_F("[AtomicFileWriter] failed writing temp: %s", temp.c_str());
+        DWORD written = 0;
+        const BOOL wrote = bytes.empty() ||
+            WriteFile(f, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr);
+        const DWORD err = wrote ? ERROR_SUCCESS : GetLastError();
+        CloseHandle(f);
+        if (!wrote || written != bytes.size()) {
+            DEBUG_WARN_F("[AtomicFileWriter] failed writing temp (err %lu): %s",
+                         static_cast<unsigned long>(err), temp.c_str());
             std::remove(temp.c_str());
-            return false;
+            return refused(path, bytes, err, classify(err, nullptr));
         }
     }
     // Atomic replace; MOVEFILE_WRITE_THROUGH flushes to disk. The one copy of this
     // pattern for every persisted file.
     if (!MoveFileExA(temp.c_str(), path.c_str(),
                      MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        const DWORD err = GetLastError();
         DEBUG_WARN_F("[AtomicFileWriter] atomic replace failed (err %lu): %s",
-                     static_cast<unsigned long>(GetLastError()), path.c_str());
+                     static_cast<unsigned long>(err), path.c_str());
         std::remove(temp.c_str());
-        return false;
+        return refused(path, bytes, err, classify(err, path.c_str()));
     }
     sweepStaleTemps(path);
-    return true;
+    return WriteFailure::None;
 }
 
 }  // namespace
 
 bool AtomicFileWriter::writeNow(const std::string& path, const std::string& bytes) {
-    const bool ok = writeAtomic(path, bytes);
-    recordOutcome(path, ok);
-    return ok;
+    const WriteFailure why = writeAtomic(path, bytes);
+    recordOutcome(path, why);
+    return why == WriteFailure::None;
 }
 
 bool AtomicFileWriter::needsRetry(const std::string& path) {
     MutexLock lock(s_failedMutex);
     return s_failedPaths.count(path) != 0;
+}
+
+WriteFailure AtomicFileWriter::lastFailure(const std::string& path) {
+    MutexLock lock(s_failedMutex);
+    const auto it = s_failedPaths.find(path);
+    return it == s_failedPaths.end() ? WriteFailure::None : it->second;
 }
 
 bool AtomicFileWriter::submit(const std::string& path, std::string bytes) {

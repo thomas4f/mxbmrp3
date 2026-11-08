@@ -36,6 +36,8 @@ namespace AnalyticsTheme {
 // directory and fails on exactly that omission.
 inline constexpr const char* kShippedThemes[] = {
     "carbon-dark", "carbon-light",
+    "modern-dark", "modern-light",
+    "retro-dark", "retro-light",
 };
 
 inline bool isShipped(const std::string& name) {

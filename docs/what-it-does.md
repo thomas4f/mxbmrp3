@@ -10,6 +10,7 @@ MXBMRP3 is a plugin: the game loads it from its `plugins` folder and calls it th
 - **It never sends input to the game** and has no effect on physics, timing or anything else about how the game plays.
 - **It never runs outside the game.** There's no launcher, background service, startup entry or tray app: you start the game as usual, and when you close it the plugin is gone.
 - **It never needs an account or a login.** That includes the stream chat, which reads anonymously.
+- **It never asks you to pay to use it.** There's no paid tier, no locked features and no ads: every copy has every feature, and the MIT license leaves it free to use, change and share. The thanks links on the About page are optional and unlock nothing.
 
 The source is public and every release is built from it, so all of this can be checked.
 
@@ -24,6 +25,7 @@ The plugin interface covers race data and drawing. Some features need more than 
 | HUDs and widgets | The game's plugin interface: race data in, quads and text out | No | On |
 | Settings menu, dragging, hotkeys | Reads mouse and keyboard state from Windows, because the plugin interface has no input. Reads the clipboard when you paste, and opens links in your browser when you click one. It never sends input. | No | On |
 | Settings, stats, profiles, logs | Files in `Documents\PiBoSo\[Game]\mxbmrp3\` | No | On |
+| Diagnostics in the log | At launch, at the first frame and at shutdown, writes what a graphics problem is diagnosed from: Windows version, CPU, memory, monitors, the graphics card and driver as the game's OpenGL reports them, and the file names of the other DLLs loaded in the game, such as overlays or a ReShade-style `opengl32.dll`. File names only, never paths, and no other program is looked at | No | On |
 | Crash files | A Windows crash handler that writes a standard Windows crash dump (`.dmp`) to `crashes\`, then lets the crash continue exactly as it would have | Only a summary, with the usage survey | On |
 | Usage survey | An anonymous ping per launch; see [Privacy](../README.md#privacy) for exactly what | Yes | On; the installer asks first, a ZIP install doesn't |
 | Update check | Asks GitHub for the latest release. **Install** downloads it, backs up the current version, and the new one loads the next time you start the game. | Yes | Notify; installs only when you click |
@@ -54,3 +56,5 @@ For the files the plugin keeps, see [Data Files](../README.md#data-files).
 **Is it the cause of my crash?** Every point where the game calls the plugin is guarded, so a plugin error is logged instead of being thrown back at the game. If the game does crash, the crash file names the module that faulted, the plugin included, and the [known-crash list](../crash_analysis/KNOWN_GAME_CRASHES.md) collects the ones that turned out to be in the game itself.
 
 **What does it cost in frame rate?** It does its work inside the game's frame, about the same every frame, and while you ride it writes no files and makes no network calls on the game's thread. The **Performance** HUD shows its own time per frame, and [Getting the most FPS](../README.md#getting-the-most-fps) lists what costs the most.
+
+**Can I make it do something else?** Yes, you're free to change it. Changes that keep to the limits on this page are welcome in MXBMRP3; anything else belongs in a fork under a name of its own. [Building on MXBMRP3](https://github.com/thomas4f/mxbmrp3/blob/main/CONTRIBUTING.md#building-on-mxbmrp3) shows how.

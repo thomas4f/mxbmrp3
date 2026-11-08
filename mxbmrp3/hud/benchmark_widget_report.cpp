@@ -19,10 +19,10 @@
 #include <psapi.h>   // K32GetProcessMemoryInfo
 
 #include "../diagnostics/logger.h"
+#include "../diagnostics/system_info.h"
 #include "../core/atomic_file_writer.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_thread.h"
-#include "../core/plugin_utils.h"
 #include "../core/settings_manager.h"
 #include "../core/ui_config.h"
 #include "../core/hud_manager.h"
@@ -82,24 +82,14 @@ double BenchmarkWidget::processMemoryMB() {
 
 static void appendMachine(std::string& out, double startMemMB, double nowMemMB) {
     char line[256];
-    char cpu[128] = "unknown";
-    DWORD cpuSize = sizeof(cpu);
-    if (RegGetValueA(HKEY_LOCAL_MACHINE, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
-                     "ProcessorNameString", RRF_RT_REG_SZ, nullptr, cpu, &cpuSize) != ERROR_SUCCESS) {
-        snprintf(cpu, sizeof(cpu), "unknown");
-    }
-    // Trim the padding some vendors put around the name (AMD pads the end).
-    const char* cpuName = PluginUtils::trimInPlace(cpu);
-    snprintf(line, sizeof(line), "CPU: %s, %lu logical cores\n", cpuName,
-             static_cast<unsigned long>(GetActiveProcessorCount(ALL_PROCESSOR_GROUPS)));
+    char cpu[128];
+    snprintf(line, sizeof(line), "CPU: %s, %u logical cores\n",
+             SystemInfo::cpuName(cpu, sizeof(cpu)), SystemInfo::logicalCores());
     out += line;
 
-    MEMORYSTATUSEX mem{};
-    mem.dwLength = sizeof(mem);
-    if (GlobalMemoryStatusEx(&mem)) {
-        snprintf(line, sizeof(line), "RAM: %.1f GB, %.1f GB free\n",
-                 static_cast<double>(mem.ullTotalPhys) / (1024.0 * 1024.0 * 1024.0),
-                 static_cast<double>(mem.ullAvailPhys) / (1024.0 * 1024.0 * 1024.0));
+    const SystemInfo::Memory mem = SystemInfo::physicalMemory();
+    if (mem.ok) {
+        snprintf(line, sizeof(line), "RAM: %.1f GB, %.1f GB free\n", mem.totalGB, mem.freeGB);
         out += line;
     }
     if (nowMemMB > 0.0) {

@@ -120,6 +120,134 @@ shipped ini - the three deliberately agree.
 | `hazard_ahead` | on | a rider is down ahead of you |
 | `wrong_way_ahead` | on | a rider is coming the wrong way |
 
+### Tricks
+
+| Cue | Ships | When it fires |
+|---|---|---|
+| `trick_started` | on | your trick has a name worth saying and is half done: a wheelie after a second held, an air trick mid-air once it has rotated into one. Never plain Air or Drift, never in a race. Deliberately NO {trick}: the name can still change before the trick is done (a scrub becomes a whip), so it is only said on trick_landed |
+| `trick_landed` | on | you APPEAR to have landed it - still upright 0.4 s after touching down, which is before the trick is confirmed, so a crash can still follow. {trick} has its multiplier ("double backflip") |
+| `trick_crashed` | on | you went down with a named trick or a live chain - the chain is gone. NO {trick}: a trick that never landed was never really that trick |
+| `trick_combo` | on | a chain of three or more tricks banked. {combo_count} |
+
+### Achievements
+
+| Cue | Ships | When it fires |
+|---|---|---|
+| `achievement_distance` | on | you earned Long Hauler - Ride ... in total (every tier; {tier} says which) |
+| `achievement_ride_time` | on | you earned Seat Time - Spend ... on track (every tier; {tier} says which) |
+| `achievement_laps` | on | you earned Lap Counter - Complete ... laps (every tier; {tier} says which) |
+| `achievement_fuel_burnt` | on | you earned Carbon Footprint - Burn ... of fuel |
+| `achievement_gear_shifts` | on | you earned Shift Happens - Shift ... times (every tier; {tier} says which) |
+| `achievement_session_laps` | on | you earned Marathon - Complete ... laps in one session (every tier; {tier} says which) |
+| `achievement_session_time` | on | you earned Iron Butt - Ride ... in one day (every tier; {tier} says which) |
+| `achievement_track_laps` | on | you earned Local Hero - Complete ... laps at one track (every tier; {tier} says which) |
+| `achievement_bike_km` | on | you earned Loyal - One bike, ... (every tier; {tier} says which) |
+| `achievement_races` | on | you earned Racer - Finish ... races (every tier; {tier} says which) |
+| `achievement_wins` | on | you earned Winner - Win ... races (every tier; {tier} says which) |
+| `achievement_podiums` | on | you earned Podium Regular - Finish on the podium ... times (every tier; {tier} says which) |
+| `achievement_lapped_field` | on | you earned Lapped the Field - Win with every rider at least a lap down |
+| `achievement_fastest_laps` | on | you earned Hot Lapper - Set the fastest lap in ... races (every tier; {tier} says which) |
+| `achievement_rain_races` | on | you earned Mudder - Finish ... races in the rain (every tier; {tier} says which) |
+| `achievement_big_grids` | on | you earned Crowd Surfer - Finish ... races on a 20+ rider grid (every tier; {tier} says which) |
+| `achievement_holeshots` | on | you earned Holeshot-ish - Lead at the first split in ... races (every tier; {tier} says which) |
+| `achievement_charger` | on | you earned Charger - Climb ... places from the first split (every tier; {tier} says which) |
+| `achievement_last_lap_pass` | on | you earned Last Gasp - Pass on the last lap in ... races (every tier; {tier} says which) |
+| `achievement_survivor` | on | you earned Survivor - Finish ... races where a quarter quit (every tier; {tier} says which) |
+| `achievement_roost` | on | you earned Roost - Ride ... in a rider's wake (every tier; {tier} says which) |
+| `achievement_clean_races` | on | you earned Rubber Side Down - Finish ... races without crashing (every tier; {tier} says which) |
+| `achievement_penalty_free` | on | you earned Clean Sheet - Go ... races in a row penalty-free (every tier; {tier} says which) |
+| `achievement_wire_to_wire` | on | you earned Wire to Wire - Win ... races leading every lap (every tier; {tier} says which) |
+| `achievement_perfect_race` | on | you earned Perfect Race - Holeshot, every lap led, fastest lap, win |
+| `achievement_clean_laps` | on | you earned Spotless - ... laps in a row, crash/penalty free (every tier; {tier} says which) |
+| `achievement_crashes` | on | you earned Skill Issue - Crash ... times in total |
+| `achievement_penalties` | on | you earned Rule Bender - Collect ... penalties |
+| `achievement_penalty_time` | on | you earned Time Served - Serve ... of penalty time |
+| `achievement_tracks` | on | you earned Globetrotter - Ride ... different tracks (every tier; {tier} says which) |
+| `achievement_bikes` | on | you earned Collector - Ride ... different bikes (every tier; {tier} says which) |
+| `achievement_personal_bests` | on | you earned Personal Best - Set ... personal bests (every tier; {tier} says which) |
+| `achievement_pb_leaps` | on | you earned Leap Forward - Beat ... PBs by a second or more (every tier; {tier} says which) |
+| `achievement_fmx_tricks` | on | you earned Show-off - Land ... freestyle tricks (every tier; {tier} says which) |
+| `achievement_fmx_points` | on | you earned Style Points - Score ... FMX points (every tier; {tier} says which) |
+| `achievement_fmx_chain` | on | you earned Chain Reaction - Score ... points in one chain (every tier; {tier} says which) |
+| `achievement_fmx_kinds` | on | you earned Trick Collector - Land ... kinds of freestyle trick (every tier; {tier} says which) |
+| `achievement_air_miles` | on | you earned Frequent Flyer - Spend ... in the air (every tier; {tier} says which) |
+| `achievement_air_distance` | on | you earned Air Miles - Cover ... through the air (every tier; {tier} says which) |
+| `achievement_air_height` | on | you earned To the Moon - Climb ... in jumps (every tier; {tier} says which) |
+| `achievement_fmx_airtime` | on | you earned Hang Time - Stay airborne ... and land it (every tier; {tier} says which) |
+| `achievement_jump_distance` | on | you earned Gap Jumper - Land a ... jump (every tier; {tier} says which) |
+| `achievement_jump_height` | on | you earned Sent It - Reach ... above takeoff and land it (every tier; {tier} says which) |
+| `achievement_fmx_backflips` | on | you earned Flipper - Land ... backflips (every tier; {tier} says which) |
+| `achievement_fmx_wheelie` | on | you earned Wheelie King - Land a ... wheelie (every tier; {tier} says which) |
+| `achievement_fmx_wheelie_km` | on | you earned One-Wheel Tour - Ride ... on the back wheel (every tier; {tier} says which) |
+| `achievement_fmx_whips` | on | you earned Whip It - Land ... whips (every tier; {tier} says which) |
+| `achievement_fmx_scrubs` | on | you earned Scrubber - Land ... scrubs (every tier; {tier} says which) |
+| `achievement_fmx_oppos` | on | you earned Oppo - Land ... oppos (every tier; {tier} says which) |
+| `achievement_fmx_endos` | on | you earned Endo - Land a ... endo or stoppie |
+| `achievement_fmx_turn_downs` | on | you earned Turn Down - Land ... turn downs (every tier; {tier} says which) |
+| `achievement_breakout` | on | you earned Brick Breaker - Breakout score ... |
+| `achievement_config_reloads` | on | you earned Tinkerer - Reload the config |
+| `achievement_photo_finish` | on | you earned Photo Finish - Win a race by under a tenth |
+| `achievement_so_close` | on | you earned So Close - Lose a race by under a tenth |
+| `achievement_back_marker` | on | you earned Back Marker - Finish a race at least a lap down |
+| `achievement_metronome` | on | you earned Metronome - Five laps in a row, all within a tenth |
+| `achievement_chain_lost` | on | you earned Weakest Link - Crash out of a ...-point chain |
+| `achievement_tyre_shredder` | on | you earned Tyre Shredder - ... in burnouts and drifts (every tier; {tier} says which) |
+| `achievement_tyre_kicker` | on | you earned Tyre Kicker - Try each HUD and widget |
+| `achievement_grand_tour` | on | you earned Grand Tour - Open every settings tab |
+| `achievement_decorator` | on | you earned Interior Decorator - Override a colour, font or theme |
+| `achievement_dress_up` | on | you earned Made It Yours - Install a pack of any type |
+| `achievement_on_air` | on | you earned On Air - Connect the web overlay |
+| `achievement_second_screen` | on | you earned Second Screen - Show the HUD on a second screen |
+| `achievement_directors_cut` | on | you earned Director's Cut - Watch ... director cuts |
+| `achievement_backseat` | on | you earned Backseat Driver - Hear ... spotter calls |
+| `achievement_good_vibrations` | on | you earned Good Vibrations - Turn rumble on |
+| `achievement_keymaster` | on | you earned Keymaster - Bind a hotkey |
+| `achievement_profile_hopper` | on | you earned Profile Hopper - Switch profiles ... times |
+| `achievement_fresh_coat` | on | you earned Fresh Coat - Install an update in-game |
+| `achievement_split_decision` | on | you earned Split Decision - Time a segment |
+| `achievement_armchair` | on | you earned Armchair Marshal - Spectate or replay for ... |
+| `achievement_regular` | on | you earned Regular - Show up on ... different days (every tier; {tier} says which) |
+| `achievement_day_streak` | on | you earned On a Roll - Show up ... days in a row (every tier; {tier} says which) |
+| `achievement_servers` | on | you earned Well Travelled - Join ... different servers (every tier; {tier} says which) |
+| `achievement_bike_classes` | on | you earned Class Act - Ride bikes from ... classes (every tier; {tier} says which) |
+| `achievement_prerelease` | on | you earned Early Access - Switch to the pre-release channel |
+| `achievement_frame_perfect` | on | you earned Frame Perfect - Hit ...FPS |
+| `achievement_stalker` | on | you earned Stalker - Track ... riders |
+| `achievement_all_bronze` | on | you earned Bronze Sweep - Counted achievements earned |
+| `achievement_all_silver` | on | you earned Silver Sweep - Counted achievements at Silver or max |
+| `achievement_all_gold` | on | you earned Gold Sweep - Counted achievements at Gold or max |
+| `achievement_all_platinum` | on | you earned Platinum Sweep - Counted achievements maxed out |
+| `achievement_phoenix` | on | you earned Phoenix - Come back after a crash to desktop |
+| `achievement_ninety_nine` | on | you earned 99 Problems - Crash counter hits 99 |
+| `achievement_test_pilot` | on | you earned Test Pilot - Turn on an experimental setting |
+| `achievement_under_hood` | on | you earned Under the Hood - Edit the settings file by hand |
+| `achievement_backup_plan` | on | you earned Backup Plan - Edit the stats file by hand |
+| `achievement_stylist` | on | you earned Stylist - Style the web overlay with custom.css |
+| `achievement_homebrew` | on | you earned Homebrew - Run a build you made yourself |
+| `achievement_ungrateful` | on | you earned Ungrateful - Turn achievement toasts off |
+| `achievement_factory_fresh` | on | you earned Factory Fresh - Reset every setting to defaults |
+| `achievement_developer` | on | you earned Developer - Enable developer mode |
+| `achievement_night_owl` | on | you earned Night Owl - Ride between two and five in the morning |
+| `achievement_anniversary` | on | you earned Anniversary - Ride on the anniversary of your first run |
+| `achievement_sandbagger` | on | you earned Sandbagger - Set a PB on the last lap of a race |
+| `achievement_palindrome` | on | you earned Palindrome - Set a lap time the same backwards |
+| `achievement_deja_vu` | on | you earned Deja Vu - Set two identical lap times in a session |
+| `achievement_rage_quit` | on | you earned Rage Quit - Retire from a race before the finish |
+| `achievement_bakers_dozen` | on | you earned Baker's Dozen - Crash 13 times in one session |
+| `achievement_steady_hands` | on | you earned Steady Hands - Ride ... without crashing |
+| `achievement_fumes` | on | you earned Running on Fumes - Finish a race on 1% of a tank or less |
+| `achievement_ran_dry` | on | you earned Long Walk Home - Run out of fuel out on track |
+| `achievement_peak_g` | on | you earned Big Hit - Take a ...G hit |
+| `achievement_solo_race` | on | you earned Just Me Then - Finish a race nobody else started |
+| `achievement_mondays` | on | you earned Case of the Mondays - Crash out of a chain of five tricks |
+| `achievement_choke` | on | you earned Choke - Lead into the final lap and lose the race |
+| `achievement_consolation` | on | you earned Consolation Prize - Fastest lap, and off the podium with it |
+| `achievement_pile_up` | on | you earned Pile-Up - Go down with three others |
+| `achievement_peace_out` | on | you earned Peace Out - Ride through three riders down |
+| `achievement_favorite_spot` | on | you earned Favorite Spot - Crash three times in a row in one place |
+| `achievement_digging` | on | you earned Digging a Hole - Spin the rear wheel in place for ... |
+| `achievement_fmx_frontflips` | on | you earned Somersault - Land ... frontflips (every tier; {tier} says which) |
+
 ## Variables
 
 A variable is a NUMBER - it does not happen, it just is.
@@ -150,6 +278,10 @@ template read correctly whether or not the value is there.
 | `{event_gap_to_last_lap}` | ...and against your last lap | zero point four quicker |
 | `{sector_number}` | which sector just ended | two |
 | `{sector_duration}` | that sector on its own, not the elapsed lap time | twenty nine point eight |
+| `{trick}` | the trick you landed, on trick_landed: with its multiplier or level and without the side | double backflip |
+| `{combo_count}` | how many tricks the chain held, on trick_combo | five |
+| `{achievement}` | the achievement's title, on the achievement cues | Skill Issue |
+| `{tier}` | the tier just reached; empty for a one-shot, so bracket it | gold |
 
 ### Sector deltas
 

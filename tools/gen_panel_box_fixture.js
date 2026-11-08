@@ -185,6 +185,17 @@ const cases = [
           { cols: 16, sections: [1 * m.row] },
           { cols: 30, sections: [2 * m.row, 3 * m.row] }] }] };
   })())],
+  // TITLE BAR: the band is the frame's top strip. Pins the band spanning the
+  // OUTER box (titleLeft 0, titleW panelCols), the frame starting at frameTop
+  // with its own top chrome spent below it, and the junction gap NOT spent.
+  // The off cases pin that it is inert without a drawn band.
+  ['title-bar', Object.assign(spec(M_SHIP, { gap: 1, secs: [M_SHIP.row, 2 * M_SHIP.row] }),
+                              { titleInFrame: true })],
+  ['title-bar-margins', Object.assign(spec(M_SHIP, { tm: '0 1 0.5 2', tp: '0.5 1', pb: '1 2 3 4' }),
+                                      { titleInFrame: true })],
+  ['title-bar-no-band', Object.assign(spec(M_SHIP, { band: false }), { titleInFrame: true })],
+  ['title-bar-no-caption', Object.assign(spec(M_SHIP, { caption: false }), { titleInFrame: true })],
+  ['title-bar-buttons', Object.assign(spec(M_ALT, { btns: 2 }), { titleInFrame: true })],
 ];
 // 'caption-sets-width' needs a wide caption; patch its spec (capW isn't a knob
 // of spec() because CAPTION_CELLS is the page's constant).
@@ -204,7 +215,7 @@ const layoutCases = cases.map(([name, sp]) => {
       artBot: g.artBot, panelInner: g.panelInner,
       panelInnerLeft: g.panelInnerLeft, innerW: g.innerW,
       titleTop: g.titleTop, titleH: g.titleH, titleBot: g.titleBot,
-      titleSlack: g.titleSlack, bandDrawnBot: g.bandDrawnBot,
+      titleSlack: g.titleSlack, bandDrawnBot: g.bandDrawnBot, frameTop: g.frameTop,
       titleLeft: g.titleLeft, titleW: g.titleW,
       cardLeft: g.cardLeft, cardW: g.cardW,
       sections: g.sections.map(s => ({ top: s.top, bot: s.bot, rowsTop: s.rowsTop, h: s.h })),

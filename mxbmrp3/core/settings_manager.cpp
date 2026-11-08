@@ -123,6 +123,8 @@ void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* saveP
     std::string filePath = getSettingsFilePath(savePath);
     m_savePath = savePath ? savePath : "";
     m_settingsDirty = false;   // freshly (re)loaded state matches disk
+    m_loadUnreadable = false;
+    m_writesBlocked = false;
 
     // Capture factory defaults from HUDs BEFORE loading any settings
     // This gives us the constructor default values to use for sparse saving
@@ -136,7 +138,14 @@ void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* saveP
 
     std::ifstream file(filePath);
     if (!file.is_open()) {
-        DEBUG_INFO_F("No settings file found at: %s (using defaults)", filePath.c_str());
+        // There but not openable is not "no settings": keep the player's file
+        // safe from the defaults this session would otherwise save over it.
+        if (GetFileAttributesA(filePath.c_str()) != INVALID_FILE_ATTRIBUTES) {
+            m_loadUnreadable = true;
+            keepUnreadableFile(filePath);
+        } else {
+            DEBUG_INFO_F("No settings file found at: %s (using defaults)", filePath.c_str());
+        }
         // Initialize cache with current (default) state for all profiles
         for (int i = 0; i < static_cast<int>(ProfileType::COUNT); ++i) {
             captureToProfile(hudManager, static_cast<ProfileType>(i));
@@ -774,7 +783,10 @@ void SettingsManager::loadSettingsImpl(HudManager& hudManager, const char* saveP
 void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath) {
     const bool reload = m_settingsLoaded;   // any load after the first is RELOAD_CONFIG
     // Read before the load, which is what decides it: no file is a fresh install.
-    const bool freshInstall = !reload && !std::ifstream(getSettingsFilePath(savePath)).is_open();
+    // Whether the file EXISTS, not whether it opens: one that is there but locked is
+    // the player's own (loadSettingsImpl keeps it safe), and owes no welcome.
+    const bool freshInstall = !reload &&
+        GetFileAttributesA(getSettingsFilePath(savePath).c_str()) == INVALID_FILE_ATTRIBUTES;
     loadSettingsImpl(hudManager, savePath);
     I18n::ensureLoaded();   // no language key: follow Windows (core/i18n.h)
     applyInstallPrefs();

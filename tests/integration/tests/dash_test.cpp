@@ -2042,11 +2042,12 @@ TEST_CASE("dash: themed, the page and the strip are each a section card") {
     host.shutdown();
 }
 
-TEST_CASE("dash: the Gap chart page draws the rider and the riders around them, and follows a spectate switch") {
-    // Four laps each for the leader, the player and the rider behind, with a
-    // fourth rider further back: three lines of three segments under the
-    // leader's edge, over the Grid's line at each lap. Spectating the last rider swaps the lines at once (no lap
-    // needed): theirs and the player's, ahead of them.
+TEST_CASE("dash: the Gap chart page draws the leader, the rider and the riders around them, and follows a spectate switch") {
+    // Four laps each for five riders, the player second: four lines (the
+    // leader, the player and the two behind, gap_chart_picks.h) of three
+    // segments under the leader's edge, over the Grid's line at each lap; the
+    // fifth rider has none. Spectating the last rider swaps the lines at once (no
+    // lap needed): the leader's stays, with the two ahead of them and theirs.
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     // One point per lap (Sector points off: 47 = ELEM_DEFAULT before 1.33): the
@@ -2060,6 +2061,7 @@ TEST_CASE("dash: the Gap chart page draws the rider and the riders around them, 
     host.addEntry(1, "Leader");
     host.addEntry(3, "Third");
     host.addEntry(4, "Fourth");
+    host.addEntry(5, "Fifth");
     host.session(6, /*numLaps=*/10);
     host.draw();
     host.draw();
@@ -2067,28 +2069,30 @@ TEST_CASE("dash: the Gap chart page draws the rider and the riders around them, 
     CHECK(shows(host, "dash_hud", "-"));   // no laps yet
     const size_t bare = host.hudQuadRects("dash_hud").size();
 
-    const int pace[4] = { 60000, 60500, 61000, 63000 };   // riders 1..4
+    const int pace[5] = { 60000, 60500, 61000, 61500, 62000 };   // riders 1..5
     for (int lap = 1; lap <= 4; ++lap)
         // Every other lap slower, more so further back: each gap line bends at
         // every lap (a straight one would draw as one quad, BaseHud::addChartSegment).
-        for (int r = 1; r <= 4; ++r) host.raceLap(6, r, lap, pace[r - 1] + (lap % 2) * 300 * r);
+        for (int r = 1; r <= 5; ++r) host.raceLap(6, r, lap, pace[r - 1] + (lap % 2) * 300 * r);
     host.classify(6, 120000, {
         { .num = 1, .laps = 4, .gap = 0 },
         { .num = 2, .laps = 4, .gap = 2000 },
         { .num = 3, .laps = 4, .gap = 4000 },
-        { .num = 4, .laps = 4, .gap = 12000 },
+        { .num = 4, .laps = 4, .gap = 6000 },
+        { .num = 5, .laps = 4, .gap = 8000 },
     });
     host.draw();
     host.draw();
     CHECK_FALSE(shows(host, "dash_hud", "-"));
     // The leader's line, level at a zero gap, is one quad (BaseHud::addChartSegment).
-    CHECK(host.hudQuadRects("dash_hud").size() == bare + 7 + 4);   // and a lap line at each of the four laps
+    CHECK(host.hudQuadRects("dash_hud").size() == bare + 10 + 4);   // and a lap line at each of the four laps
     // The parent's Line labels (on by default): each line's race number at its
-    // end, the three a small row apart although the lines end close together.
+    // end, the four a small row apart although the lines end close together.
     CHECK(shows(host, "dash_hud", "#1"));
     CHECK(shows(host, "dash_hud", "#2"));
     CHECK(shows(host, "dash_hud", "#3"));
-    CHECK_FALSE(shows(host, "dash_hud", "#4"));
+    CHECK(shows(host, "dash_hud", "#4"));
+    CHECK_FALSE(shows(host, "dash_hud", "#5"));
     {
         REQUIRE(host.hasLayoutCells());
         const double cellH = host.layoutCells().cellH;
@@ -2096,24 +2100,64 @@ TEST_CASE("dash: the Gap chart page draws the rider and the riders around them, 
         for (const auto& r : host.hudStringRows("dash_hud"))
             if (!r.text.empty() && r.text[0] == '#') ys.push_back(r.y);
         std::sort(ys.begin(), ys.end());
-        REQUIRE(ys.size() == 3);
-        CHECK(ys[1] - ys[0] >= 1.4 * cellH);   // lineHeightSmall is 1.5 cells
-        CHECK(ys[2] - ys[1] >= 1.4 * cellH);
+        REQUIRE(ys.size() == 4);
+        for (size_t i = 1; i < ys.size(); ++i) CHECK(ys[i] - ys[i - 1] >= 1.4 * cellH);   // lineHeightSmall is 1.5 cells
+        // Four small rows fill the card's three rows (six cells) exactly: the
+        // stack spans three small rows, top tag to bottom tag.
+        CHECK(ys.back() - ys.front() <= 3 * 1.5 * cellH + 0.01 * cellH);
     }
     // A lap logged with the same riders around: one more segment each.
-    for (int r = 1; r <= 4; ++r) host.raceLap(6, r, 5, pace[r - 1] + 300 * r);
+    for (int r = 1; r <= 5; ++r) host.raceLap(6, r, 5, pace[r - 1] + 300 * r);
     host.draw();
     host.draw();
-    CHECK(host.hudQuadRects("dash_hud").size() == bare + 9 + 5);   // the leader's still one
+    CHECK(host.hudQuadRects("dash_hud").size() == bare + 13 + 5);   // the leader's still one
 
-    host.spectateVehicles({ { 4, "Fourth" } }, /*curSelection=*/0);
+    host.spectateVehicles({ { 5, "Fifth" } }, /*curSelection=*/0);
     host.draw();
     host.draw();
-    CHECK(host.hudQuadRects("dash_hud").size() == bare + 8 + 5);
+    CHECK(host.hudQuadRects("dash_hud").size() == bare + 13 + 5);
+    CHECK(shows(host, "dash_hud", "#1"));   // the leader stays
     CHECK(shows(host, "dash_hud", "#3"));
     CHECK(shows(host, "dash_hud", "#4"));
-    CHECK_FALSE(shows(host, "dash_hud", "#1"));
+    CHECK(shows(host, "dash_hud", "#5"));
     CHECK_FALSE(shows(host, "dash_hud", "#2"));
+    host.shutdown();
+}
+
+TEST_CASE("dash: the Gap chart page keeps the leader when the rider runs mid-field") {
+    // Six riders, the player fourth: the leader's line joins the rider ahead's,
+    // the player's and the rider behind's; second and sixth have none. Before,
+    // the page drew only the three around the player, so a rider in P4 never
+    // saw the leader's race.
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    startWithIni(host, "Z:\\tmp\\mxbmrp3-tests\\dash_gapchart_leader\\",
+                 "[DashHud]\nvisible=1\npage=gapchart\nnotice_takeover=0\npage_names=0\n\n"
+                 "[SessionChartsHud]\nenabledElements=47\n");
+    host.eventInit("TestTrack", "Me");
+    host.raceEvent("TestTrack");
+    host.addEntry(4, "Me");
+    for (int r : { 1, 2, 3, 5, 6 }) host.addEntry(r, "Rider");
+    host.session(6, /*numLaps=*/10);
+    for (int lap = 1; lap <= 3; ++lap)
+        for (int r = 1; r <= 6; ++r) host.raceLap(6, r, lap, 60000 + r * 400);
+    host.classify(6, 120000, {
+        { .num = 1, .laps = 3, .gap = 0 },
+        { .num = 2, .laps = 3, .gap = 1200 },
+        { .num = 3, .laps = 3, .gap = 2400 },
+        { .num = 4, .laps = 3, .gap = 3600 },
+        { .num = 5, .laps = 3, .gap = 4800 },
+        { .num = 6, .laps = 3, .gap = 6000 },
+    });
+    host.draw();
+    host.draw();
+    REQUIRE(host.dashPage() == 10);
+    CHECK(shows(host, "dash_hud", "#1"));
+    CHECK(shows(host, "dash_hud", "#3"));
+    CHECK(shows(host, "dash_hud", "#4"));
+    CHECK(shows(host, "dash_hud", "#5"));
+    CHECK_FALSE(shows(host, "dash_hud", "#2"));
+    CHECK_FALSE(shows(host, "dash_hud", "#6"));
     host.shutdown();
 }
 
@@ -2467,6 +2511,37 @@ TEST_CASE("dash: a click on a Standings row or a Flat map marker spectates that 
         CHECK(clickAsks(host, x, y + 0.002) == 41);
         REQUIRE(at(host, "dash_hud", "52", x, y));
         CHECK(clickAsks(host, x, y + 0.002) == -1);
+        host.shutdown();
+    }
+    // A click is the topmost HUD's under it (BaseHud::ownsClick): a click on the
+    // open menu once also picked the rider on the row behind it.
+    SUBCASE("Standings: a row under the open menu asks for nobody") {
+        PluginHost host(dllPath());
+        start(host, "Z:\\tmp\\mxbmrp3-tests\\dash_click_menu\\", "standings");
+        REQUIRE(host.hasScreenEdges());
+        ride(host, 0);
+        host.showSettings(true);
+        host.drawWithState(1);
+        const PluginHost::ScreenEdges menu = host.hudScreenEdges("settings_hud");
+        REQUIRE(menu.r > menu.l);
+        const double mx = (menu.l + menu.r) * 0.5e-6, my = (menu.t + menu.b) * 0.5e-6;
+        // Move the Dash so row 63 sits in the middle of the menu.
+        double x = 0, y = 0;
+        REQUIRE(at(host, "dash_hud", "63", x, y));
+        const PluginHost::ScreenEdges dash = host.hudScreenEdges("dash_hud");
+        REQUIRE(host.setHudOffset("dash_hud", 0.0f, 0.0f));
+        host.drawWithState(1);
+        const PluginHost::ScreenEdges home = host.hudScreenEdges("dash_hud");
+        REQUIRE(host.setHudOffset("dash_hud",
+                                  static_cast<float>(mx - (x - dash.l * 1e-6) - home.l * 1e-6),
+                                  static_cast<float>(my - (y + 0.002 - dash.t * 1e-6) - home.t * 1e-6)));
+        host.drawWithState(1);
+        REQUIRE(at(host, "dash_hud", "63", x, y));
+        REQUIRE(x == doctest::Approx(mx).epsilon(0.01));
+        CHECK(clickAsks(host, mx, my) == -1);
+        host.showSettings(false);
+        host.drawWithState(1);
+        CHECK(clickAsks(host, mx, my) == 63);
         host.shutdown();
     }
 }

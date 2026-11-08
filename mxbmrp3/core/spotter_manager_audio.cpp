@@ -20,9 +20,11 @@
 #include <mmsystem.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <cwchar>
 
 // spotter_tts_voice.h spells the speak flags as raw numbers so the unit suite
 // can pin them without sapi.h; these make sure they mean what they say.
@@ -116,18 +118,29 @@ std::vector<std::pair<std::string, std::string>> enumerateTtsVoicesViaSapi() {
                     for (const auto& have : voices) {
                         if (have.first == name) { seen = true; break; }
                     }
-                    // The ID is kept for the log only. Selection matches on
-                    // the NAME against a live enumeration (see the worker),
-                    // because a dynamically produced token has no registry
-                    // path for SetId to resolve.
+                    // Selection matches on the NAME against a live
+                    // enumeration (see the worker), because a dynamically
+                    // produced token has no registry path for SetId to
+                    // resolve. The LOCALE is what a language's spotter picks a
+                    // voice by (SpotterTtsVoice::forLanguage): the token's
+                    // Attributes\Language, a hex LCID list ("41D", "409;9")
+                    // whose first entry is the voice's own.
                     if (!seen && !name.empty()) {
-                        WCHAR* id = nullptr;
-                        std::string idStr;
-                        if (SUCCEEDED(token->GetId(&id)) && id) {
-                            idStr = wideToUtf8(id);
-                            CoTaskMemFree(id);
+                        std::string locale;
+                        ISpDataKey* attrs = nullptr;
+                        if (SUCCEEDED(token->OpenKey(L"Attributes", &attrs)) && attrs) {
+                            WCHAR* lang = nullptr;
+                            if (SUCCEEDED(attrs->GetStringValue(L"Language", &lang)) && lang) {
+                                const LCID lcid = static_cast<LCID>(wcstoul(lang, nullptr, 16));
+                                CoTaskMemFree(lang);
+                                wchar_t loc[LOCALE_NAME_MAX_LENGTH] = {};
+                                if (lcid != 0 && LCIDToLocaleName(lcid, loc, LOCALE_NAME_MAX_LENGTH, 0) > 0) {
+                                    locale = wideToUtf8(loc);
+                                }
+                            }
+                            attrs->Release();
                         }
-                        voices.emplace_back(name, idStr);
+                        voices.emplace_back(name, locale);
                     }
                 }
                 token->Release();
@@ -328,7 +341,8 @@ std::vector<std::pair<std::string, std::string>> enumerateTtsVoices() {
         if (first) {
             DEBUG_INFO_F("Spotter: TTS voices - %zu from SAPI", viaSapi.size());
             for (const auto& v : viaSapi) {
-                DEBUG_INFO_F("Spotter:   voice '%s'", v.first.c_str());
+                DEBUG_INFO_F("Spotter:   voice '%s' (%s)", v.first.c_str(),
+                             v.second.empty() ? "language unknown" : v.second.c_str());
             }
         }
         return viaSapi;
@@ -372,13 +386,18 @@ void SpotterManager::publishAudioSettings() {
 
 void SpotterManager::setTtsVoice(const std::string& name) {
     m_ttsVoice = name;
+    publishTtsVoice();
+}
+
+void SpotterManager::publishTtsVoice() {
     // Resolved HERE, not in publishAudioSettings() and not at the utterance.
     // Not at the utterance because the worker must touch neither the
     // registry nor a game-thread member; not in publishAudioSettings()
     // because that is the volume/speed stepper's per-tick callback — a
     // registry enumeration behind it would walk the SAPI catalogue ten times a
-    // second while somebody holds the volume arrow. The voice can only change
-    // here, so this is the only place the lookup belongs.
+    // second while somebody holds the volume arrow. The voice changes only
+    // with the setting or the spotter's language (reloadCuePack), and both
+    // land here, so this is the only place the lookup belongs.
     //
     // What crosses to the worker is the DISPLAY NAME, which the worker matches
     // against a live SAPI enumeration. Not `<voice required="Name=...">`
@@ -404,6 +423,20 @@ void SpotterManager::setTtsVoice(const std::string& name) {
             voiceName.clear();
         }
     }
+    // The system default, with the spotter speaking another language: that
+    // language's voice when one is installed, so Swedish lines are not read
+    // in an English accent. Only the DEFAULT is replaced -- a voice the player
+    // picked is theirs. Without one the default voice reads the translation
+    // anyway: the words are right even when the accent is not.
+    if (m_ttsVoice.empty() && !m_spokenLanguage.empty()) {
+        getTtsVoices();
+        voiceName = SpotterTtsVoice::forLanguage(*m_ttsVoices, m_ttsVoiceLocales,
+                                                 m_spokenLanguage);
+        if (voiceName.empty()) {
+            DEBUG_INFO_F("Spotter: no '%s' voice installed - the default voice "
+                         "reads the translation", m_spokenLanguage.c_str());
+        }
+    }
     DEBUG_INFO_F("Spotter: TTS voice set to '%s'",
                  voiceName.empty() ? "system default" : voiceName.c_str());
     MutexLock lock(m_mutex);
@@ -418,7 +451,11 @@ int g_ttsVoiceReads = 0;
 const std::shared_ptr<const std::vector<std::string>>& SpotterManager::getTtsVoices() {
     if (!m_ttsVoices) {
         std::vector<std::string> voices;
-        for (const auto& v : enumerateTtsVoices()) voices.push_back(v.first);
+        m_ttsVoiceLocales.clear();
+        for (const auto& v : enumerateTtsVoices()) {
+            voices.push_back(v.first);
+            m_ttsVoiceLocales.push_back(v.second);
+        }
         m_ttsVoices = std::make_shared<const std::vector<std::string>>(std::move(voices));
 #if defined(MXBMRP3_TEST_BUILD)
         ++g_ttsVoiceReads;
@@ -454,12 +491,13 @@ SpotterManager::~SpotterManager() {
     PlaySoundA(nullptr, nullptr, 0);
 }
 
-void SpotterManager::say(const std::string& utf8Text, bool perishable) {
+void SpotterManager::say(const std::string& utf8Text, bool perishable, bool cutsIn) {
     if (utf8Text.empty()) return;
     SpotterCue cue;
     cue.kind = SpotterCue::Kind::Speech;
     cue.payload = utf8Text;
     cue.perishable = perishable;
+    cue.cutsIn = cutsIn;
     cue.enqueuedMs = GetTickCount64();
     enqueue(std::move(cue));
 }
@@ -884,19 +922,58 @@ void SpotterManager::workerThread() {
             }
         };
 
+        // TAKING TURNS (spotter_queue.h, TURN POLICY): a clip handed to winmm
+        // sounds until busyUntil and the next waits for it, since winmm has
+        // ONE channel and a new clip cuts the old one off mid-word. TTS needs
+        // none of this (speak() returns when SAPI is done); a file played
+        // straight from disk has no known length and leaves busyUntil at 0.
+        uint64_t busyUntil = 0;
+        bool busyCutsIn = false;
+        auto markPlaying = [&](const std::vector<uint8_t>& wav, bool cutsIn) {
+            busyUntil = GetTickCount64() + SpotterMix::durationMs(wav);
+            busyCutsIn = cutsIn;
+        };
+
         for (;;) {
             SpotterCue cue;
+            bool cuttingIn = false;
             {
                 CvLock lk(m_mutex);
-                while (m_running.load(std::memory_order_acquire) && m_queue.empty()) {
+                SpotterCueQueue::Next next = SpotterCueQueue::Next::Idle;
+                for (;;) {
+                    if (!m_running.load(std::memory_order_acquire)) break;
+                    const uint64_t now = GetTickCount64();
+                    // A settings click wants its preview NOW (previewVoice).
+                    const uint64_t until =
+                        m_interruptSpeech.load(std::memory_order_acquire) ? 0
+                                                                         : busyUntil;
+                    next = m_queue.next(now, until);
+                    if (next == SpotterCueQueue::Next::Play ||
+                        next == SpotterCueQueue::Next::CutIn) {
+                        break;
+                    }
                     // Published from inside the lock, immediately before the
-                    // wait: the only moment the worker holds nothing in flight.
-                    m_workerParked.store(true, std::memory_order_release);
-                    m_cv.wait(lk.native());
+                    // wait: the only moment nothing is in flight or pending.
+                    m_workerParked.store(next == SpotterCueQueue::Next::Idle,
+                                         std::memory_order_release);
+                    if (next == SpotterCueQueue::Next::Wait) {
+                        // Until the clip ends, or a new cue (it may cut in).
+                        m_cv.wait_for(lk.native(),
+                                      std::chrono::milliseconds(
+                                          static_cast<long long>(until - now)));
+                    } else {
+                        m_cv.wait(lk.native());
+                    }
                 }
                 m_workerParked.store(false, std::memory_order_release);
                 if (!m_running.load(std::memory_order_acquire)) break;
-                if (!m_queue.pop(cue, GetTickCount64())) continue;
+                const uint64_t now = GetTickCount64();
+                if (next == SpotterCueQueue::Next::CutIn) {
+                    if (!m_queue.popCutIn(cue, now)) continue;
+                    cuttingIn = true;
+                } else if (!m_queue.pop(cue, now)) {
+                    continue;
+                }
                 // Popping IS the moment nothing is speaking, so an interrupt
                 // that nobody consumed dies here rather than cutting off the
                 // cue it was asking for. It only ever means "stop what is
@@ -917,7 +994,24 @@ void SpotterManager::workerThread() {
                 m_interruptSpeech.store(false, std::memory_order_release);
             }
 
+            // The stumble before a cut-in - not when cutting off another
+            // urgent call ("left... right" is a correction) - or a lead-in.
+            const bool withFiller = !cue.fillerPath.empty() &&
+                                    (cue.leadIn || (cuttingIn && !busyCutsIn));
+            auto loadFiller = [&]() {
+                const std::vector<uint8_t> bytes = readFileBytes(cue.fillerPath);
+                SpotterMix::Pcm pcm = SpotterMix::parseWav(bytes.data(), bytes.size());
+                const float sp = m_speedPublished.load(std::memory_order_relaxed);
+                if (pcm.valid() && !SpotterStretch::isUnity(sp)) {
+                    pcm.samples = SpotterStretch::apply(pcm.samples, sp, pcm.sampleRate);
+                }
+                return pcm;
+            };
+
             if (cue.kind == SpotterCue::Kind::Speech) {
+                // Cutting in over a clip: silence it, since SAPI does not.
+                if (cuttingIn) PlaySoundA(nullptr, nullptr, 0);
+                busyUntil = 0;
                 speak(cue.payload);
             } else if (cue.kind == SpotterCue::Kind::MixSpec) {
                 // The recipe carries its own parts (see SpotterCue). All file
@@ -987,40 +1081,44 @@ void SpotterManager::workerThread() {
                             m_mixGapPublished.load(std::memory_order_relaxed) /
                             (sp > 0.0f ? sp : 1.0f));
                         wav = SpotterMix::assemble(chunks, gap);
+                        if (withFiller) SpotterMix::prependClip(loadFiller(), wav);
                     }
                 }
 
                 if (!wav.empty()) {
                     SpotterMix::applyGain(
                         wav, m_volumePublished.load(std::memory_order_relaxed));
+                    markPlaying(wav, cue.cutsIn);
                     playFromMemory(std::move(wav));
                 } else if (!cue.payload.empty()) {
+                    if (cuttingIn) PlaySoundA(nullptr, nullptr, 0);
+                    busyUntil = 0;
                     speak(cue.payload);  // down the ladder, keep the words
                 }
             } else {  // WavFile
-                // At full volume the file plays straight from disk — winmm
-                // handles more formats than our own reader, so the simple
-                // path stays the default one. Below 100 the samples have to
-                // be scaled, which means reading and re-emitting the RIFF
-                // ourselves (PlaySound has no per-sound volume); a file our
-                // reader rejects falls back to playing it unscaled rather
-                // than going silent.
+                // Through our own reader: that gives the clip a LENGTH to wait
+                // out, and the volume PlaySound lacks. A file it rejects still
+                // plays from disk, unscaled and unwaited.
                 const int vol = m_volumePublished.load(std::memory_order_relaxed);
                 const float sp = m_speedPublished.load(std::memory_order_relaxed);
                 bool played = false;
-                if (vol < 100 || !SpotterStretch::isUnity(sp)) {
+                {
                     std::vector<uint8_t> bytes = readFileBytes(cue.payload);
                     SpotterMix::Pcm pcm =
                         SpotterMix::parseWav(bytes.data(), bytes.size());
                     if (pcm.valid()) {
-                        pcm.samples = SpotterStretch::apply(pcm.samples, sp,
-                                                            pcm.sampleRate);
+                        if (!SpotterStretch::isUnity(sp)) {
+                            pcm.samples = SpotterStretch::apply(
+                                pcm.samples, sp, pcm.sampleRate);
+                        }
                         std::vector<SpotterMix::Pcm> one;
                         one.push_back(std::move(pcm));
                         std::vector<uint8_t> wav =
                             SpotterMix::assemble(one, /*gapMs=*/0);
+                        if (withFiller) SpotterMix::prependClip(loadFiller(), wav);
                         if (!wav.empty()) {
                             SpotterMix::applyGain(wav, vol);
+                            markPlaying(wav, cue.cutsIn);
                             playFromMemory(std::move(wav));
                             played = true;
                         }
@@ -1029,6 +1127,7 @@ void SpotterManager::workerThread() {
                 // Fire-and-forget: winmm plays on its own thread and a later
                 // PlaySound (or shutdown's purge) cancels it. SND_NODEFAULT so
                 // a missing file fails silently instead of the system beep.
+                if (!played) busyUntil = 0;
                 if (!played &&
                     !PlaySoundA(cue.payload.c_str(), nullptr,
                                 SND_FILENAME | SND_ASYNC | SND_NODEFAULT)) {

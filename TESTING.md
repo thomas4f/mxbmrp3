@@ -267,16 +267,16 @@ game API is an integration test instead. The authoritative TU list is
 - `test_i18n.cpp` - `core/i18n.h`: .po, TR(), pseudo-locale, shipped packs
 - `test_hotkey_names.cpp` / `test_slider_control.cpp` - hotkey names fit; slider mapping
 - `test_system_messages.cpp` - `core/system_messages.h`: the toast queue and which startup message is owed
-- `test_achievements.cpp` - `core/achievements.h` + `core/exploration_signals.h`: the catalogue's invariants (listed in its header), tiers, progress, formatting, and `docs/achievements.md`, which it GENERATES and diffs against the committed copy
+- `test_achievements.cpp` - `core/achievements.h` + `core/exploration_signals.h`: the catalogue's invariants (listed in its header), tiers, progress, formatting, and generates `docs/achievements.md`
 - `test_analytics_remote_config.cpp` - the remote sampling cost lever (`parseFullSample`/`shouldSendFull`): fails open to full, deterministic 0.0/1.0 endpoints
 - `test_analytics_endpoint.cpp` - App-Key → Aptabase ingest-region routing (unknown/self-hosted → "" = no send)
 - `test_analytics_redact.cpp` - the install id is stripped from a logged request body.
-- `test_log_scrub.cpp` - no log line names the user folder.
+- `test_log_scrub.cpp`, `test_module_census.cpp`, `test_os_label.cpp` - no user folder, modules, OS
 - `test_analytics_identity.cpp` - recovering the install id and counters from a damaged analytics file (`core/analytics_identity.h`): whole values only, garbage refused, a whole file reads as through the parser.
 - `test_analytics_theme.cpp` - the `panel_theme` label (none/shipped/custom/missing) **and** the drift guard: a shipped theme missing from `kShippedThemes` fails here
 - `test_director_airtime.cpp` - the director's airtime helpers: the lull round-robin (`pickNextAirtimeNum`, keyed on race number) and the dead-air floor (`pickBaselineSubject`), so "Max shot = Off" never means dead air
 - `test_session_charts_math.cpp` - race-progression chart maths in `hud/session_charts_math.h`
-- `test_tooltip_length.cpp` - every settings tooltip fits the 2-line/~120-char render limit (compiles the real tooltip table)
+- `test_tooltip_length.cpp` - every settings tooltip fits the 2-line/~120-char render limit
 - `test_media_app_filter.cpp` - `nowPlayingApps` matching
 - `test_update_asset_select.cpp` - the updater's release-asset picker (the symbols-zip-matched-first regression)
 - `test_update_version_match.cpp` - `UpdateChecker::isSameRelease`, the "is the running DLL the update we just installed?" test.
@@ -290,6 +290,7 @@ game API is an integration test instead. The authoritative TU list is
 - `test_hud_sw_renderer.cpp` - golden-frame sampling of the companion window's software renderer (`core/hud_sw_renderer.cpp`): fill, per-quad alpha, white-icon tinting, `.fnt` text, the scale viewport.
 - `test_render_asset_decode_mips.cpp` - the glyph-atlas mip chain (`hudassets::buildFntMips`) all three renderers sample text from.
 - `test_hud_sw_assets.cpp` - malformed `.fnt`/`.tga` input to the same renderer's two binary parsers.
+- `test_fmx_levels.cpp` - FMX trick levels (Big Whip, Flat Whip): every threshold, word and the name length on the large row
 - `test_fmx_scoring.cpp` - FMX trick scoring (`core/fmx_manager` math), and `docs/tricks.md`, which it GENERATES from `core/fmx_types.h` and diffs against the committed copy
 - `test_segment_cumulative.cpp` - cumulative custom-segment timing: a contiguous run aggregates like the official splits; on-sector identity; isolated-arc fallback
 - `test_blue_flag_detect.cpp` - the blue-flag/lapping proximity core (`core/blue_flag_detect.h`): wraparound, direction, backmarker-vs-lapper eligibility, stale samples, first-lapper-wins ordering.
@@ -332,6 +333,8 @@ game API is an integration test instead. The authoritative TU list is
 - `test_spotter_phrase.cpp` - the spotter's phrase composition (`core/spotter_phrase.h`): number words asserted against `tests/fixtures/spotter_number_words.txt`, the SAME fixture `spottergen-selftest` asserts, so C++ wording and the baked `num_*.wav` pass together
 - `test_spotter_hazard.cpp` - the spotter's proximity/hazard cue state machine (`core/spotter_hazard.h`).
 - `test_spotter_milestones.cpp` - the spotter's session-progress milestones (`core/spotter_milestones.h`).
+- `test_spotter_tricks.cpp` - which tricks the spotter names and how (`core/spotter_tricks.h`); one `achievement_<id>` cue per catalogue row.
+- `test_spotter_language.cpp` - the spotter's translation layer: the `say()` word census, `[Words]`, and every shipped language `spotter.ini` complete.
 - `test_analytics_spotter.cpp` - the spotter label (`core/analytics_spotter.h`): the theme classifier for voice packs, off reported as `"none"`.
 - `test_analytics_language.cpp` - the `language` label: the pack in effect (`"en"` for none), others `"custom"`, with the theme guard's folder walk.
 - `test_spotter_tts_voice.cpp` - the in-game TTS voice picker's pure half (`core/spotter_tts_voice.h`).
@@ -356,6 +359,7 @@ game API is an integration test instead. The authoritative TU list is
 - `test_flat_int_map.cpp` - `FlatIntSet`/`FlatIntMap` (`core/flat_int_map.h`): std set/map semantics; a refill never reallocates.
 - `test_engine_cull.cpp` - `core/engine_cull.h`: only pixel-less primitives leave the engine handoff.
 - `test_chart_run.cpp` - `hud/chart_run.h`: the quarter-pixel merge boundary.
+- `test_gap_chart_picks.cpp` - `hud/gap_chart_picks.h`: the Dash Gap chart's four lines keep the leader at every position, fill out from the rider, and stay in classification order.
 - `viewport_test.cpp` - `UiViewport::compute` (`core/ui_viewport.h`): the one centered-16:9 UI rect the companion paint loop and InputManager's cursor map share.
 - `nine_slice_test.cpp` - the pure geometry of `hud/nine_slice.h`: how a slice grid divides a rect.
 - `panel_box_test.cpp` - `core/panel_box.h` against the box model's golden vectors.
@@ -520,6 +524,7 @@ The runner auto-discovers them; this table is a full census, enforced by
 | `settings_defer_test.cpp` | **deferred auto-save**: `markDirty()` applies a change live but writes *nothing* to disk; `flushIfDirty()` (the leave-track flush) then writes exactly once; a flush with nothing dirty is a no-op - the "no settings write while the player is on track" contract |
 | `companion_decouple_test.cpp` | **per-surface companion decoupling** (via the `MXBMRP3_Test_Standings*` hooks): mirror, diverge, revert, persist-only-diverged, render routing. |
 | `gl_render_test.cpp` | the in-context GL backend's rendered OUTPUT (`core/hud_gl_renderer.h`). |
+| `engine_handoff_test.cpp` | the engine cull runs only on frames the engine draws. |
 | `gamepad_layout_test.cpp` | the gamepad widget's button and stick placement against the artwork. |
 | `asset_pack_test.cpp` | An asset pack (gamepad pad, pit board) is selected **by name**, and an unknown name degrades **without forgetting**. |
 | `pack_skin_test.cpp` | a pack SKIN (`base = <pack>`) resolves missing sprites and geometry keys from its base pack. |
@@ -527,6 +532,8 @@ The runner auto-discovers them; this table is a full census, enforced by
 | `dash_test.cpp` | Dash: the shared notice, pages, the +/- cycle |
 | `now_playing_test.cpp` | Now Playing: widget, Dash page, controls, notice |
 | `default_positions_test.cpp`, `spotter_position_test.cpp` | Default spots clear of shipped-on HUDs; v11, v12 moves |
+| `spotter_tricks_test.cpp` | Spotter Tricks/Achievements: Tricks off by default, named mid-air, landing, combo, crash, silent in races |
+| `spotter_language_test.cpp` | Spotter follows the menus' language: shipped Swedish lines and words, runtime switch, a voice pack stays English |
 | `delta_trace_test.cpp` | Delta Trace: the reference line through laps, pits and sessions; no quad wound the way the game culls |
 | `map_lap_delta_test.cpp` | Map **lap delta**: Off tints nothing; On tints the stretch ridden green where gaining and red where losing, in many shades; the previous lap stays ahead of the rider; a new session drops the tint with its reference |
 | `motion_test.cpp` | **Motion**: Off and settled frames are the frame drawn without it; hidden HUDs fade out, shown ones in, tab bodies on a switch; the Map's outline leads its fill |
@@ -578,7 +585,8 @@ The runner auto-discovers them; this table is a full census, enforced by
 | `replay_golden_multi_test.cpp` | **real-data golden master** (24-rider Farm14 race): the whole pipeline at once - winner, time gaps, fastest-lap chip on a non-winner, a real penalty, a lapped rider, DSQ/DNS/retired |
 | `teardown_test.cpp` | shutdown/unload **under load** (HTTP/SSE live + the 24-rider tape), plus unload **without** Shutdown |
 | `spotter_test.cpp` | the spotter cue pipeline through the real callbacks: race events -> enable/category gates -> composed text in the cue log (audio is not asserted: Wine has no SAPI voice) |
-| `log_scrub_test.cpp` | the real log never names the user folder |
+| `log_scrub_test.cpp`, `environment_report_test.cpp` | no user folder in the log; its PC and module lines |
+| `source_notice_test.cpp` | the .dlo carries the plain-ASCII source notice, and the log repeats it |
 | `twitch_chat_test.cpp` | **Stream chat**, Twitch side: rendering, wrap, moderation, filters, role icons, `[StreamChat]` |
 | `youtube_chat_test.cpp` | **YouTube chat**, offline: mixed order, icons, statuses, `[YouTube]` |
 

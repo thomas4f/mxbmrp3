@@ -14,6 +14,8 @@
 // ============================================================================
 #include "doctest.h"
 
+#include <algorithm>
+
 #include "core/spotter_mix.h"
 
 using namespace SpotterMix;
@@ -110,6 +112,162 @@ TEST_CASE("resolveTokens: a lap time on the minute is stitched, not the clip") {
     const auto rider = resolveTokens({"{event_rider}"}, 100, -1, -1);
     REQUIRE(rider.size() == 2);
     CHECK(rider[1] == "num_100.wav");
+}
+
+// WORD CHUNKS (spokenChunks): a recorded pack says every variable from clips
+// named after its words. The number half is an INVERSE of
+// SpotterPhrase::numberWords, so it is pinned over the whole range rather than
+// by examples: any number the text side can say, the audio side must play as
+// that number's own chunk - which the worker then splits at the hundreds when
+// the pack has only num_0..99, exactly as it does for {event_rider}.
+TEST_CASE("spokenChunks: every number numberWords says comes back as its chunk") {
+    for (int n = 0; n <= 999; ++n) {
+        CAPTURE(n);
+        std::vector<std::string> out;
+        REQUIRE(spokenChunks(SpotterPhrase::numberWords(n), out));
+        REQUIRE(out.size() == 1);
+        CHECK(out[0] == "num_" + std::to_string(n) + ".wav");
+    }
+}
+
+// A lap time or a gap read as a variable must play the same chunks the
+// {event_time} placeholder plays, including the "one oh oh" minute.
+TEST_CASE("spokenChunks: lap times match the {event_time} placeholder") {
+    for (int composed = 0; composed <= 999; ++composed) {
+        for (int tenths = 0; tenths <= 9; tenths += 3) {
+            CAPTURE(composed);
+            CAPTURE(tenths);
+            const std::string spoken =
+                SpotterPhrase::lapTimeNumberWords(composed) + " point " +
+                SpotterPhrase::numberWords(tenths);
+            std::vector<std::string> out;
+            REQUIRE(spokenChunks(spoken, out));
+            CHECK(out == resolveTokens({"{event_time}"}, -1, composed, tenths));
+        }
+    }
+}
+
+// The rest of the vocabulary: a multi-word entry is one clip named after it
+// (so "flat three sixty" is never "flat" + 360), and plain words and digits
+// map to the obvious names.
+TEST_CASE("spokenChunks: words, multi-word entries and digits") {
+    std::vector<std::string> out;
+    for (const char* key : SpotterPhrase::kWordKeys) {
+        std::string k(key);
+        if (k.find(' ') == std::string::npos) continue;
+        CAPTURE(k);
+        out.clear();
+        REQUIRE(spokenChunks(k, out));
+        REQUIRE(out.size() == 1);
+        for (char& c : k) if (c == ' ') c = '_';
+        CHECK(out[0] == k + ".wav");
+    }
+
+    out.clear();
+    REQUIRE(spokenChunks("double flat three sixty", out));
+    CHECK(out == std::vector<std::string>{ "double.wav", "flat_three_sixty.wav" });
+
+    out.clear();
+    REQUIRE(spokenChunks("one point two quicker", out));
+    CHECK(out == std::vector<std::string>{ "num_1.wav", "point.wav", "num_2.wav",
+                                           "quicker.wav" });
+
+    out.clear();   // a session label: the digit is a number, case is folded
+    REQUIRE(spokenChunks("Race 1", out));
+    CHECK(out == std::vector<std::string>{ "race.wav", "num_1.wav" });
+
+    out.clear();
+    REQUIRE(spokenChunks("twenty minutes plus one lap", out));
+    CHECK(out == std::vector<std::string>{ "num_20.wav", "minutes.wav", "plus.wav",
+                                           "one_lap.wav" });
+
+    out.clear();   // "Pre-Start", "rider four seventy six"
+    REQUIRE(spokenChunks("Pre-Start, rider four seventy six", out));
+    CHECK(out == std::vector<std::string>{ "pre.wav", "start.wav", "rider.wav",
+                                           "num_476.wav" });
+
+    // A comma or full stop separates two numbers rather than joining them.
+    out.clear();
+    REQUIRE(spokenChunks("nine, forty two. 7", out));
+    CHECK(out == std::vector<std::string>{ "num_9.wav", "num_42.wav", "num_7.wav" });
+
+    // Text no filename can carry is refused rather than mangled.
+    out.clear();
+    CHECK_FALSE(spokenChunks("Jos\xc3\xa9", out));
+    CHECK_FALSE(spokenChunks("lap 1000", out));
+}
+
+// Every trick the spotter can name, with every prefix it can carry, plays from
+// the clips a pack bakes for kWordKeys - the census that keeps the baker's
+// vocabulary and the plugin's in step.
+TEST_CASE("spokenChunks: every spoken trick is made of kWordKeys clips") {
+    std::vector<std::string> vocab;
+    for (const char* key : SpotterPhrase::kWordKeys) {
+        std::string k(key);
+        for (char& c : k) if (c == ' ') c = '_';
+        vocab.push_back(k + ".wav");
+    }
+    for (const char* pre : { "", "double ", "triple ", "quad ", "big ", "flat ",
+                             "deep ", "huge ", "endless " }) {
+        for (const char* key : SpotterPhrase::kWordKeys) {
+            const std::string spoken = std::string(pre) + key;
+            std::vector<std::string> out;
+            REQUIRE(spokenChunks(spoken, out));
+            for (const std::string& f : out) {
+                CAPTURE(spoken);
+                CAPTURE(f);
+                const bool known = f.compare(0, 4, "num_") == 0 ||
+                    std::find(vocab.begin(), vocab.end(), f) != vocab.end();
+                CHECK(known);
+            }
+        }
+    }
+}
+
+// Optional groups and the word-chunk placeholders together: a group drops whole
+// when anything in it is empty - including a REQUIRED placeholder, which
+// outside a group would empty the whole mix - and an empty variable outside a
+// group just says nothing, as it expands to nothing in a phrase.
+TEST_CASE("resolveTokens: optional groups and word-chunk variables") {
+    SpotterVars::Vars v;
+    v.trick = "double backflip";
+    v.tier = "gold";
+    const std::vector<std::string> landed = { "clean.wav", "{trick}" };
+    CHECK(resolveTokens(landed, -1, -1, -1, -1, -1, -1, &v) ==
+          std::vector<std::string>{ "clean.wav", "double.wav", "backflip.wav" });
+
+    const std::vector<std::string> ach = { "winner.wav", "[", "{tier}", "]", "tail.wav" };
+    CHECK(resolveTokens(ach, -1, -1, -1, -1, -1, -1, &v) ==
+          std::vector<std::string>{ "winner.wav", "gold.wav", "tail.wav" });
+    v.tier.clear();   // a one-shot: no tier, the group goes
+    CHECK(resolveTokens(ach, -1, -1, -1, -1, -1, -1, &v) ==
+          std::vector<std::string>{ "winner.wav", "tail.wav" });
+
+    // P {position} [ to {rider_ahead} ] - leading, no rider ahead.
+    const std::vector<std::string> lap = { "p.wav", "{position}", "[", "to.wav",
+                                           "{rider_ahead}", "]" };
+    CHECK(resolveTokens(lap, -1, -1, -1, -1, -1, 1, &v) ==
+          std::vector<std::string>{ "p.wav", "num_1.wav" });
+    v.riderAhead = "rider sixty five";
+    CHECK(resolveTokens(lap, -1, -1, -1, -1, -1, 4, &v) ==
+          std::vector<std::string>{ "p.wav", "num_4.wav", "to.wav", "rider.wav",
+                                    "num_65.wav" });
+
+    // A required placeholder inside a group drops the group, not the mix.
+    const std::vector<std::string> flag = { "flag.wav", "[", "{position}", "]" };
+    CHECK(resolveTokens(flag, -1, -1, -1, -1, -1, -1, &v) ==
+          std::vector<std::string>{ "flag.wav" });
+    // ...and an optional one too.
+    const std::vector<std::string> pen = { "pen.wav", "[", "and.wav", "{penalty_seconds}", "]" };
+    CHECK(resolveTokens(pen, -1, -1, -1, -1, -1, -1, &v) ==
+          std::vector<std::string>{ "pen.wav" });
+
+    // Empty outside a group says nothing; no vars at all is every one empty.
+    CHECK(resolveTokens({ "a.wav", "{tier}" }, -1, -1, -1, -1, -1, -1, nullptr) ==
+          std::vector<std::string>{ "a.wav" });
+    // A value no clip name can carry outside a group fails the mix to TTS.
+    v.riderName = "Jos\xc3\xa9";
+    CHECK(resolveTokens({ "a.wav", "{rider_name}" }, -1, -1, -1, -1, -1, -1, &v).empty());
 }
 
 TEST_CASE("resolveTokens: unresolvable placeholder empties the whole list") {
@@ -236,6 +394,53 @@ TEST_CASE("applyGain: scales samples, leaves the header alone") {
     std::vector<uint8_t> stub(kHeaderSize, 0);
     applyGain(stub, 50);
     CHECK(stub.size() == kHeaderSize);
+}
+
+TEST_CASE("durationMs: how long an assembled clip plays, 0 when unknown") {
+    // The worker waits this long before starting the next clip, so a wrong
+    // answer either cuts a line off (too short) or stalls the spotter (too
+    // long).
+    std::vector<Pcm> chunks(2);
+    chunks[0].samples.assign(12000, 100);   // 0.5 s at 24 kHz
+    chunks[0].sampleRate = 24000;
+    chunks[1] = chunks[0];
+    CHECK(durationMs(assemble(chunks, 0)) == 1000);
+    CHECK(durationMs(assemble(chunks, 100)) == 1100);   // the gap counts
+    // Anything that is not a clip has no length, so it blocks nothing.
+    CHECK(durationMs({}) == 0);
+    CHECK(durationMs(std::vector<uint8_t>(kHeaderSize, 0)) == 0);
+    std::vector<uint8_t> noRate = assemble(chunks, 0);
+    noRate[24] = noRate[25] = noRate[26] = noRate[27] = 0;
+    CHECK(durationMs(noRate) == 0);
+}
+
+TEST_CASE("prependClip: the filler runs straight into the call, or not at all") {
+    std::vector<Pcm> call(1);
+    call[0].samples = {7, 8, 9};
+    call[0].sampleRate = 24000;
+    Pcm uh;
+    uh.samples = {1, 2};
+    uh.sampleRate = 24000;
+
+    std::vector<uint8_t> riff = assemble(call, 0);
+    prependClip(uh, riff);
+    Pcm back = parseWav(riff.data(), riff.size());
+    REQUIRE(back.valid());
+    CHECK(back.samples == std::vector<int16_t>{1, 2, 7, 8, 9});   // no gap
+
+    // Anything unusable leaves the call exactly as it was: losing the
+    // stumble is fine, losing the call is not.
+    const std::vector<uint8_t> plain = assemble(call, 0);
+    std::vector<uint8_t> same = plain;
+    prependClip(Pcm{}, same);
+    CHECK(same == plain);
+    Pcm otherRate = uh;
+    otherRate.sampleRate = 12000;
+    prependClip(otherRate, same);
+    CHECK(same == plain);
+    std::vector<uint8_t> none;
+    prependClip(uh, none);
+    CHECK(none.empty());
 }
 
 TEST_CASE("assemble: concatenates with gaps, enforces one sample rate") {

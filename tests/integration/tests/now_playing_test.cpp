@@ -148,12 +148,59 @@ TEST_CASE("now playing: the buttons and the volume slider queue their commands")
     const int volume = host.mediaPending(1);
     CHECK(volume >= 45);
     CHECK(volume <= 55);
+    host.shutdown();
+}
 
-    // With the settings menu open the card takes no clicks: the menu owns them.
+// A left click is the topmost HUD's under it, and no other's (HudManager::
+// topHudAt, BaseHud::ownsClick). The card was once switched off whenever the
+// menu was open, wherever it sat, so players could not skip a track with the
+// menu up; the menu over it must still keep the click.
+TEST_CASE("now playing: the card works beside the open menu, and not under it") {
+    PluginHost host(dllPath());
+    const char* save = "Z:\\tmp\\mxbmrp3-tests\\now_playing_menu\\";
+    start(host, save, "[NowPlayingWidget]\nvisible=1\n");
+    REQUIRE((host.hasInjectedMouse() && host.hasScreenEdges()));
     host.mediaPublish("Song", "Artist", PLAYING, 1000, 200000, 20);
     host.showSettings(true);
     host.draw();
+    const auto rows = host.hudStringRows("now_playing_widget");
+    const auto* prev = rowOf(rows, "|<");
+    const auto* next = rowOf(rows, ">|");
+    REQUIRE(prev);
+    REQUIRE(next);
+    const float rowY = static_cast<float>(prev->y) + 0.008f;
+    const PluginHost::ScreenEdges menu = host.hudScreenEdges("settings_hud");
+    const PluginHost::ScreenEdges card = host.hudScreenEdges("now_playing_widget");
+    REQUIRE(menu.r > menu.l);
+    REQUIRE(card.r > card.l);
+    // Where it opens by default (the right column) the menu does not cover it.
+    REQUIRE((card.l > menu.r || card.r < menu.l || card.t > menu.b || card.b < menu.t));
+    // The controls queue one command, which the test build's worker never takes.
+    REQUIRE(host.mediaPending(0) == 0);
     clickAt(host, static_cast<float>(prev->x), rowY);
+    CHECK(host.mediaPending(0) == CMD_PREVIOUS);
+
+    // Moved so Next sits in the middle of the menu: the click is the menu's.
+    const float mx = static_cast<float>(menu.l + menu.r) * 0.5e-6f;
+    const float my = static_cast<float>(menu.t + menu.b) * 0.5e-6f;
+    const float dx = static_cast<float>(next->x) - static_cast<float>(card.l) * 1e-6f;
+    const float dy = rowY - static_cast<float>(card.t) * 1e-6f;
+    REQUIRE(host.setHudOffset("now_playing_widget", 0.0f, 0.0f));
+    host.draw();
+    const PluginHost::ScreenEdges home = host.hudScreenEdges("now_playing_widget");
+    REQUIRE(host.setHudOffset("now_playing_widget", mx - dx - static_cast<float>(home.l) * 1e-6f,
+                              my - dy - static_cast<float>(home.t) * 1e-6f));
+    host.draw();
+    const PluginHost::ScreenEdges moved = host.hudScreenEdges("now_playing_widget");
+    REQUIRE(moved.l < static_cast<int>(mx * 1e6f));
+    REQUIRE(moved.r > static_cast<int>(mx * 1e6f));
+    clickAt(host, mx, my);
+    CHECK(host.mediaPending(0) == CMD_PREVIOUS);   // Next never queued
+
+    // The menu shut, the same spot is the card's Next again.
+    host.showSettings(false);
+    host.draw();
+    clickAt(host, mx, my);
     CHECK(host.mediaPending(0) == CMD_NEXT);
     host.shutdown();
 }

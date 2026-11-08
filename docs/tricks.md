@@ -2,7 +2,7 @@
 
 What the FMX HUD (MX Bikes and GP Bikes only) recognises, what each trick is worth and how a score is built, at the defaults. Left and right variants are one trick here, as in the settings: `trickEnabled_<INI key>=0` under `[FmxHud]` in the settings file turns one off, both directions at once. *Base* is the score before the multipliers below; *Scored on* is the axis whose rotation scales it; *Full progress* is what fills the HUD's bar.
 
-<sub>Generated from `mxbmrp3/core/fmx_types.h` and `mxbmrp3/core/fmx_scoring.h` by `tests/unit/test_fmx_scoring.cpp` - do not edit. Run the unit gate and copy `/tmp/tricks.new.md` over this file.</sub>
+<sub>Generated from `mxbmrp3/core/fmx_types.h`, `mxbmrp3/core/fmx_levels.h` and `mxbmrp3/core/fmx_scoring.h` by `tests/unit/test_fmx_scoring.cpp` - do not edit. Run the unit gate and copy `/tmp/tricks.new.md` over this file.</sub>
 
 ## Ground tricks
 
@@ -35,6 +35,19 @@ An air trick classifies once the bike has been off the ground 0.3 s; before that
 | Oppo (L/R) | `Oppo` | 60 | yaw | 90 deg of yaw | Yawed past 67.5 deg with the nose up past 55 deg |
 | Turn Down (L/R) | `TurnDown` | 60 | yaw | 90 deg of yaw | Yawed past 67.5 deg with the nose down past 55 deg |
 | Flat 360 (L/R) | `Flat360` | 180 | pitch | 360 deg of pitch or roll | A flip rolled between 80 deg and 180 deg |
+
+## Levels
+
+How big one trick was, in front of its name: Whip, Big Whip, Flat Whip. The HUD's name grows while the trick does. Levels are only shown, never scored. Full rotations already have theirs (Double, Triple, Quad), and the tricks not listed have none.
+
+| Trick | Measured on | Big | Top |
+|---|---|---|---|
+| Wheelie | time held | 5 s | Endless, 20 s |
+| Endo, Stoppie | time held | 1 s | Endless, 3 s |
+| Air | time airborne | 1.5 s | Huge, 3.5 s |
+| Scrub (L/R) | deepest lean, at the lip or after | 45 deg | Deep, 75 deg |
+| Whip (L/R) | peak yaw | 45 deg | Flat, 90 deg |
+| Oppo (L/R), Turn Down (L/R) | peak yaw | 90 deg | Huge, 150 deg |
 
 ## Scoring
 

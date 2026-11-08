@@ -70,8 +70,6 @@ constexpr GLenum GL_PROJECTION = 0x1701;
 constexpr GLenum GL_TEXTURE = 0x1702;
 constexpr GLenum GL_ALPHA = 0x1906;
 constexpr GLenum GL_RGBA = 0x1908;
-constexpr GLenum GL_VENDOR = 0x1F00;
-constexpr GLenum GL_RENDERER = 0x1F01;
 constexpr GLenum GL_VERSION = 0x1F02;
 constexpr GLenum GL_NEAREST = 0x2600;
 constexpr GLenum GL_LINEAR = 0x2601;
@@ -484,15 +482,11 @@ bool Renderer::init() {
         return false;
     }
 
-    // Logged once, and deliberately verbose: a field report from a machine
-    // unlike the author's has to be diagnosable from the log alone.
-    auto str = [&](GLenum n) {
-        const GLubyte* p = im.gl.GetString(n);
-        return p ? reinterpret_cast<const char*>(p) : "(null)";
-    };
-    im.version = glstate::parseVersion(str(GL_VERSION));
-    DEBUG_INFO_F("hudgl: GL 1.1 backend ready - vendor='%s' renderer='%s' version='%s' (parsed %d)",
-                 str(GL_VENDOR), str(GL_RENDERER), str(GL_VERSION), im.version);
+    // The vendor, renderer and version strings themselves are in the log's
+    // environment block (diagnostics/environment_report.h), every launch.
+    const GLubyte* ver = im.gl.GetString(GL_VERSION);
+    im.version = glstate::parseVersion(ver ? reinterpret_cast<const char*>(ver) : "(null)");
+    DEBUG_INFO_F("hudgl: GL 1.1 backend ready (GL version parsed as %d)", im.version);
 
     // MULTITEXTURE NEUTRALISERS. Read the long comment at the top of render()'s
     // texture-unit block for why these are not optional: without them "unit 0"

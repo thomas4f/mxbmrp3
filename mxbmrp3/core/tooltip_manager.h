@@ -168,7 +168,7 @@ private:
             {"dash.page_fuel", NC_("tooltip", "The Fuel widget's rows: your fuel, use per lap and laps left, beside a bar showing how full your tank is.")},
             {"dash.page_telemetry", NC_("tooltip", "The Telemetry HUD's inputs as traces across the card.")},
             {"dash.page_deltatrace", NC_("tooltip", "The Delta Trace HUD's chart: your gap to its reference lap across the lap.")},
-            {"dash.page_gapchart", NC_("tooltip", "The Session Charts HUD's Gap chart: you and the riders just ahead and behind.")},
+            {"dash.page_gapchart", NC_("tooltip", "The Session Charts HUD's Gap chart: the leader, you and the riders around you.")},
             {"dash.page_eventlog", NC_("tooltip", "The Event Log's three newest events, with its icons and event filter.")},
             {"dash.page_nowplaying", NC_("tooltip", "The Now Playing widget's track, controls and volume. Needs Now playing in General.")},
             {"dash.page_session", NC_("tooltip", "The Session HUD's rows: server, track and format.")},
@@ -576,6 +576,8 @@ private:
             {"spotter.cat_opponents", NC_("tooltip", "The field's race news: others' laps, penalties, pit stops, retirements.")},
             {"spotter.cat_proximity", NC_("tooltip", "Riders around you right now: behind, alongside, boxed in, backmarkers.")},
             {"spotter.cat_hazard", NC_("tooltip", "Dangers: blue flag, rider down ahead, wrong-way rider.")},
+            {"spotter.cat_tricks", NC_("tooltip", "Your freestyle tricks, landings and crashes. Never in a race.")},
+            {"spotter.cat_achievements", NC_("tooltip", "A line for every achievement you earn, good or bad.")},
             {"spotter.pack", NC_("tooltip", "Which pack's wording and clips to use. 'default' is the shipped one.")},
             {"spotter.tts_voice", NC_("tooltip", "Which Windows voice speaks the text-to-speech cues.")},
         };

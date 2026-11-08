@@ -68,6 +68,18 @@ __declspec(dllexport) int MXBMRP3_Test_GlDrewLastFrame() {
     return HudManager::getInstance().glDrewLastFrame() ? 1 : 0;
 }
 
+// Frames that went through HudManager::handOffToEngine, the engine cull. One a
+// frame while the engine draws; none while Direct GL does. Pinned by
+// tests/integration/tests/engine_handoff_test.cpp.
+__declspec(dllexport) int MXBMRP3_Test_EngineHandoffs() {
+    return HudManager::getInstance().testEngineHandoffs();
+}
+
+// 1 = the last GL frame drew layer by layer (HudManager::glDrewLayered).
+__declspec(dllexport) int MXBMRP3_Test_GlDrewLayered() {
+    return HudManager::getInstance().glDrewLayered() ? 1 : 0;
+}
+
 // The last in-game frame's HUD stacking (core/render_layers.h): 0 = none built
 // (Direct GL off), 1 = nothing overlaps, 2+ = HUDs stacked over others' text.
 __declspec(dllexport) int MXBMRP3_Test_GlFrameLayerCount() {

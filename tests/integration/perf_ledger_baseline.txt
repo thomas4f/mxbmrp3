@@ -52,37 +52,37 @@ defaults cb.RaceVehicleData.calls 35520
 defaults cb.RaceVehicleData.allocs 0
 defaults cb.RaceVehicleData.alloc_bytes 0
 defaults cb.RunDeinit.calls 1
-defaults cb.RunDeinit.allocs 263
-defaults cb.RunDeinit.alloc_bytes 31408
+defaults cb.RunDeinit.allocs 262
+defaults cb.RunDeinit.alloc_bytes 27312
 defaults cb.RunStop.calls 1
-defaults cb.RunStop.allocs 302
-defaults cb.RunStop.alloc_bytes 73372
+defaults cb.RunStop.allocs 300
+defaults cb.RunStop.alloc_bytes 65180
 defaults cb.RunTelemetry.calls 29600
 defaults cb.RunTelemetry.allocs 0
 defaults cb.RunTelemetry.alloc_bytes 0
-defaults heap.net_live_bytes 772576
+defaults heap.net_live_bytes 773672
 defaults http.snapshot_builds 0
 defaults frame_hash 3ff415b9d189b8e9
 all replay.frames 35519
 all replay.quads 58393774
 all replay.quads_max 2829
-all replay.strings 55248743
-all replay.strings_max 1658
-all replay.glyphs 236524101
+all replay.strings 55354449
+all replay.strings_max 1660
+all replay.glyphs 241152411
 all replay.sprite_switches 1180466
-all replay.engine_us_per_frame 2843.3
+all replay.engine_us_per_frame 2866.3
 all replay.draw_allocs 190522
-all replay.draw_alloc_bytes 86604436
+all replay.draw_alloc_bytes 86618324
 all replay.draw_alloc_frames 2761
 all replay.draw_allocs_max 618
 all idle.frames 1201
 all idle.quads 1540553
 all idle.quads_max 1287
-all idle.strings 1913481
-all idle.strings_max 1595
-all idle.glyphs 9672790
+all idle.strings 1918285
+all idle.strings_max 1599
+all idle.glyphs 9864950
 all idle.sprite_switches 38432
-all idle.engine_us_per_frame 2728.1
+all idle.engine_us_per_frame 2756.4
 all idle.draw_allocs 662
 all idle.draw_alloc_bytes 81470
 all idle.draw_alloc_frames 11
@@ -112,17 +112,17 @@ all cb.RaceVehicleData.calls 35520
 all cb.RaceVehicleData.allocs 0
 all cb.RaceVehicleData.alloc_bytes 0
 all cb.RunDeinit.calls 1
-all cb.RunDeinit.allocs 263
-all cb.RunDeinit.alloc_bytes 31408
+all cb.RunDeinit.allocs 262
+all cb.RunDeinit.alloc_bytes 27312
 all cb.RunStop.calls 1
-all cb.RunStop.allocs 302
-all cb.RunStop.alloc_bytes 73372
+all cb.RunStop.allocs 300
+all cb.RunStop.alloc_bytes 65180
 all cb.RunTelemetry.calls 29600
 all cb.RunTelemetry.allocs 25212
 all cb.RunTelemetry.alloc_bytes 14002974
-all heap.net_live_bytes 2995277
+all heap.net_live_bytes 2996869
 all http.snapshot_builds 2160
-all frame_hash a571ff5be1a55038
+all frame_hash df996c5001080617
 all HUD helmet_overlay rebuilds=37322 quads=0 strings=0
 all HUD impact_vignette rebuilds=0 quads=0 strings=0
 all HUD standings_hud rebuilds=9692 quads=150 strings=452
@@ -135,7 +135,7 @@ all HUD telemetry_hud rebuilds=29206 quads=44 strings=12
 all HUD performance_hud rebuilds=37322 quads=44 strings=13
 all HUD delta_trace_hud rebuilds=945 quads=44 strings=5
 all HUD pitboard_hud rebuilds=9929 quads=0 strings=0
-all HUD records_hud rebuilds=289 quads=74 strings=24
+all HUD records_hud rebuilds=289 quads=74 strings=26
 all HUD session_charts_hud rebuilds=121 quads=93 strings=16
 all HUD fmx_hud rebuilds=29206 quads=85 strings=12
 all HUD stats_hud rebuilds=440 quads=41 strings=44

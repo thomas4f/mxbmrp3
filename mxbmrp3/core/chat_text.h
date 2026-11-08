@@ -137,6 +137,41 @@ inline std::string utf8ToCp1252(const std::string& s) {
     return codepointsToCp1252(decodeUtf8(s));
 }
 
+// The way back: text in the plugin's code page (a translated TR() string) as
+// UTF-8, for the one consumer that wants Unicode -- the spotter's voice, which
+// speaks a translated session name or achievement title. A byte the font has
+// no letter for is dropped, as the forward direction drops one.
+inline std::string cp1252ToUtf8(const char* s) {
+    static constexpr uint16_t kHigh[32] = {
+        0x20AC, 0, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
+        0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0, 0x017D, 0,
+        0, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
+        0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0, 0x017E, 0x0178};
+    std::string out;
+    if (!s) return out;
+    for (; *s; ++s) {
+        const unsigned char b = static_cast<unsigned char>(*s);
+        uint32_t cp = b;
+        if (const FontCodePage::ExtraSlot* slot = FontCodePage::slotForByte(b)) {
+            cp = slot->codepoint;
+        } else if (b >= 0x80 && b < 0xA0) {
+            cp = kHigh[b - 0x80];
+        }
+        if (cp == 0) continue;
+        if (cp < 0x80) {
+            out += static_cast<char>(cp);
+        } else if (cp < 0x800) {
+            out += static_cast<char>(0xC0 | (cp >> 6));
+            out += static_cast<char>(0x80 | (cp & 0x3F));
+        } else {
+            out += static_cast<char>(0xE0 | (cp >> 12));
+            out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (cp & 0x3F));
+        }
+    }
+    return out;
+}
+
 // True when every character of a UTF-8 string survives the CP1252 conversion --
 // the test for "can this display name be drawn, or fall back to the login".
 inline bool isFullyRenderable(const std::string& s) {

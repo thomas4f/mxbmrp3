@@ -26,15 +26,17 @@
 // THREADING. All audio happens on one worker thread, started lazily on the
 // first cue, so the 480fps game thread never touches COM, disk, or a speech
 // engine. say()/playWav() just enqueue under a mutex and notify (game thread
-// only — the event taps and the Draw path). Speech cues are executed one at
-// a time in order (a spotter talking over itself is noise); wav cues are
-// fire-and-forget via SND_ASYNC — winmm plays on its own internal thread,
-// and a subsequent PlaySound cancels the previous one (single channel).
+// only — the event taps and the Draw path). Cues play one at a time in
+// order (a spotter talking over itself is noise): speech blocks until SAPI is
+// done, and a recorded clip plays via SND_ASYNC on winmm's own thread while
+// the worker waits out its length before starting the next. Only an urgent
+// call cuts a clip off, after the pack's filler (spotter_queue.h, TURN
+// POLICY; spotter_cue_pack.h, TAKING TURNS).
 //
 // LIMITS THAT ARE THE BACKEND'S, NOT A DESIGN CHOICE: PlaySound gives one
-// channel and no ducking, so a cue interrupts the cue before it. Moving wav
-// playback to XAudio2 would fix both; the queue and this API are shaped so
-// only the worker's playback calls would change.
+// channel and no ducking, so cutting in has to cut off - it cannot talk over
+// or under. Moving wav playback to XAudio2 would fix both; the queue and this
+// API are shaped so only the worker's playback calls would change.
 //
 // The [Spotter] volume reaches ALL THREE rungs, not just TTS: SAPI takes it
 // via SetVolume, and both wav paths are scaled sample-by-sample on the way to
@@ -73,6 +75,7 @@
 #include <vector>
 
 #include "spotter_cue_pack.h"
+#include "spotter_position_rows.h"
 #include "spotter_hazard.h"
 #include "spotter_milestones.h"
 #include "spotter_pace.h"
@@ -83,6 +86,7 @@
 #include "thread_safety.h"
 
 namespace Unified { struct TrackPositionData; }
+namespace Fmx { enum class TrickType; }
 
 // One spoken (or subtitle-only) cue, kept in the history ring for the
 // subtitle widget and the headless tests.
@@ -142,6 +146,22 @@ public:
     // Called from the track-position path on the rising edge of a rider's
     // crash flag — the same edge PluginData's per-session crash counter uses.
     void onRiderCrash(int raceNum, int focusedRaceNum, int sessionTimeMs);
+
+    // YOUR freestyle tricks, reported by FmxManager at the four moments
+    // spotter_tricks.h describes (the Tricks category; spotter_manager_tricks.cpp).
+    // multiplier is the trick's rotation count (2 = a double), level its
+    // core/fmx_levels.h level (1 = Big, 2 = Flat/Deep/Huge/Endless). Only the
+    // landing says the trick's name; the start and the crash do not.
+    void onTrickStarted(Fmx::TrickType type);
+    void onTrickLanded(Fmx::TrickType type, int multiplier, int level);
+    void onTrickCrashed();
+    void onTrickCombo(int trickCount);
+
+    // You just earned a tier of an achievement, reported by AchievementManager
+    // at the same point it queues the toast for it - live unlocks only, never
+    // the silent grants on load. Speaks the row's own achievement_<id> cue.
+    // tierName is null for a one-shot.
+    void onAchievement(const char* id, const char* title, const char* tierName);
 
     // Called when the spectate target changes: "now watching rider N", the one
     // cue that is about the CAMERA rather than the race.
@@ -310,6 +330,17 @@ public:
     // what gets stored and cycled.
     const std::string& getPackDisplayName() const { return m_packDisplayName; }
 
+    // ---- language (game thread) -------------------------------------------
+    // The spotter speaks the PLUGIN's language: when the active language pack
+    // (I18n::activeFolder) carries a spotter.ini, its lines layer over the
+    // shipped pack's and its [Words] replace the words the plugin assembles
+    // (SpotterPhrase::say). Not under a selected voice pack, which speaks its
+    // own (English) words: see reloadCuePack. I18n calls this after every language change; it
+    // reloads the pack only when the language actually moved.
+    void onLanguageChanged();
+    // The language whose spotter.ini is in effect, "" = English.
+    const std::string& getSpokenLanguage() const { return m_spokenLanguage; }
+
     // ---- TTS voice ([Spotter] tts_voice=; game thread) ---------------------
     // Which Windows voice speaks when no pack is selected (or a cue falls
     // back to TTS). Empty = the system default. Stored by NAME and resolved
@@ -332,6 +363,7 @@ public:
     // pack dir is set to `dir` so wav cue paths are observable if needed.
     void testInstallPack(const std::string& iniText, const std::string& dir) {
         m_pack = SpotterCuePack::parse(iniText);
+        m_pack.hasPositionRows = SpotterCuePack::anyPositionRows(m_pack);
         m_packDir = dir;
     }
 #endif
@@ -350,8 +382,9 @@ public:
     // first use. Drops the oldest pending cue if the queue is full.
     // `perishable` marks a cue whose value is that it describes NOW — the
     // proximity calls. The queue drops those rather than speaking them stale
-    // (spotter_queue.h); everything else waits its turn.
-    void say(const std::string& utf8Text, bool perishable = false);
+    // (spotter_queue.h); everything else waits its turn. `cutsIn` lets it jump
+    // a clip still sounding (SpotterCuePack::cutsInCue), as a recorded cue may.
+    void say(const std::string& utf8Text, bool perishable = false, bool cutsIn = false);
 
     // Queue a .wav file (path relative to the game working directory, e.g.
     // "plugins/mxbmrp3_data/spotters/am_michael/clear.wav"). Non-blocking.
@@ -380,6 +413,17 @@ private:
     // PluginData so every variable works in every cue (spotter_vars.h). The
     // numeric trailer is the wav mixer's, which can only stitch values it has
     // number chunks for and so takes them as numbers rather than words.
+    // The Tricks category's gate: on, and not in a race session
+    // (spotter_manager_tricks.cpp says why).
+    bool tricksAllowed() const;
+    // A plugin string marked N_() -- a session name, an achievement title --
+    // in the spotter's language, as UTF-8 for the voice. The English when the
+    // spotter speaks English, even with the menus in a language that has no
+    // spotter.ini: one sentence must not mix two languages.
+    std::string spokenText(const char* english) const;
+    // setTtsVoice's resolution, also run when the language changes.
+    void publishTtsVoice();
+
     void emitCue(const char* key,
                  SpotterPhrase::Category cat, SpotterVars::Vars vars,
                  int sessionTimeMs, int riderNum = -1, int timeComposed = -1,
@@ -458,6 +502,10 @@ private:
     // without rewriting the name, per the stored-by-name invariant.
     std::string m_packName = "default";  // mt-plain: game thread only
     std::string m_packDisplayName;  // mt-plain: game thread only; label for the picker
+    std::string m_spokenLanguage;  // mt-plain: game thread only; see onLanguageChanged
+    // The menu language the pack was last loaded for, which may have no
+    // spotter.ini (then m_spokenLanguage stays ""). onLanguageChanged compares it.
+    std::string m_languageLoadedFor;  // mt-plain: game thread only
     SpotterCuePack::Pack m_pack;
     std::string m_packDir;  // mt-plain: game thread only; each cue carries its own copy (mixDir)
     // Proximity/hazard detector state + tuning (game thread only).
@@ -657,7 +705,11 @@ private:
     SpotterPace::Gap m_lastBehind;
 
     uint32_t m_rngState = 0x9E3779B9u;  // mt-plain: game thread only
-    uint32_t m_categoryMask = 0x1F;  // mt-plain: game thread only; every category on
+    // Every category on except Tricks (bit 5), the one for-fun switch that
+    // ships off: it talks through a whole freeride. An INI written before the
+    // last two existed has no line for them, so it gets these defaults too.
+    // (The spotter itself ships off, so none of this speaks until enabled.)
+    uint32_t m_categoryMask = 0x5F;  // mt-plain: game thread only
     int m_volume = 100;        // mt-plain: game thread only; SAPI SetVolume 0..100 (the worker reads m_volumePublished)
     float m_speed = 1.0f;      // mt-plain: game thread only; playback multiplier (the worker reads m_speedPublished)
     // Worker-facing copies of volume/rate (the only settings the audio
@@ -674,6 +726,8 @@ private:
     std::string m_ttsVoice;  // mt-plain: game thread only; the worker reads the guarded copy below
     // getTtsVoices()' session list (game thread); null until first asked.
     std::shared_ptr<const std::vector<std::string>> m_ttsVoices;
+    // Each voice's locale ("sv-SE", "" when unknown), parallel to m_ttsVoices.
+    std::vector<std::string> m_ttsVoiceLocales;
     // The chosen voice's DISPLAY NAME (empty = system default), which the
     // worker matches against a live SAPI enumeration before SetVoice. Not a
     // resolved registry key: an engine that produces its tokens through an

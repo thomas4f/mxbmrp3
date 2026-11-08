@@ -28,6 +28,7 @@
 #include "../hud/stream_chat_hud.h"
 #include "../game/game_config.h"
 #include "../diagnostics/logger.h"
+#include "../diagnostics/system_info.h"
 #include "../vendor/nlohmann/json.hpp"
 
 #if GAME_HAS_DISCORD
@@ -203,90 +204,9 @@ std::string isoTimestamp() {
 }
 
 // Aptabase's osName dimension. Always Windows here (the only supported
-// platform). The version detail goes in osVersion() below.
+// platform). The version detail is SystemInfo::osVersion().
 std::string osName() {
     return "Windows";
-}
-
-// Real OS version string for Aptabase's osVersion dimension. Robust against the
-// compat-mode shim that makes GetVersionEx/RtlGetVersion report a bogus
-// "6.1.7600" (Win7): we read the build straight from the registry, which the
-// shim doesn't touch. Also detects Wine/Proton (many PiBoSo players run on
-// Linux via Steam Play). Returns "" if nothing could be determined.
-//   -> "Windows 11 (22631)", "Windows 10 (19045)", "Wine 9.0 (Linux)", ...
-std::string detectOsVersion() {
-    // --- Wine / Proton / Steam Deck? ntdll exports wine_get_version only under
-    // Wine, which Proton (Steam Play) and the Steam Deck are built on. Refine the
-    // label from Steam's environment when present, and fall back to plain "Wine"
-    // if those hints are missing (graceful downgrade). Examples:
-    //   "Steam Deck [Wine 8.0] (Linux)", "Proton [Wine 8.0] (Linux)", "Wine 9.0 (Linux)"
-    if (HMODULE ntdll = GetModuleHandleA("ntdll.dll")) {
-        typedef const char* (__cdecl *wine_get_version_t)(void);
-        auto pWineVer = reinterpret_cast<wine_get_version_t>(
-            reinterpret_cast<void*>(GetProcAddress(ntdll, "wine_get_version")));
-        if (pWineVer) {
-            const char* wv = pWineVer();   // e.g. "8.0"; guarded below in case it's null
-
-            // Steam sets SteamDeck=1 on the Deck and STEAM_COMPAT_DATA_PATH for any
-            // Proton launch; Proton passes these into the Windows env. Best-effort.
-            const char* label = "Wine";
-            bool refined = false;
-            char envBuf[8] = {};
-            if (GetEnvironmentVariableA("SteamDeck", envBuf, sizeof(envBuf)) > 0 && envBuf[0] == '1') {
-                label = "Steam Deck"; refined = true;
-            } else if (GetEnvironmentVariableA("STEAM_COMPAT_DATA_PATH", nullptr, 0) > 0) {
-                label = "Proton"; refined = true;
-            }
-
-            std::string out;
-            if (!refined) {
-                out = (wv && *wv) ? std::string("Wine ") + wv : "Wine";
-            } else {
-                out = label;
-                if (wv && *wv) { out += " [Wine "; out += wv; out += "]"; }
-            }
-
-            // wine_get_host_version reports the real host OS (e.g. "Linux", "Darwin").
-            typedef void (__cdecl *wine_get_host_version_t)(const char**, const char**);
-            auto pHost = reinterpret_cast<wine_get_host_version_t>(
-                reinterpret_cast<void*>(GetProcAddress(ntdll, "wine_get_host_version")));
-            if (pHost) {
-                const char* sysname = nullptr;
-                const char* release = nullptr;
-                pHost(&sysname, &release);
-                if (sysname && *sysname) { out += " ("; out += sysname; out += ")"; }
-            }
-            return out;
-        }
-    }
-
-    // --- Native Windows: read the true build from the registry (not shimmed). ---
-    HKEY hKey;
-    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE,
-            "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0,
-            KEY_READ | KEY_WOW64_64KEY, &hKey) == ERROR_SUCCESS) {
-        unsigned long build = 0;
-        char buildStr[32] = {};
-        DWORD sz = sizeof(buildStr), type = 0;
-        if (RegQueryValueExA(hKey, "CurrentBuildNumber", nullptr, &type,
-                             reinterpret_cast<LPBYTE>(buildStr), &sz) == ERROR_SUCCESS) {
-            build = strtoul(buildStr, nullptr, 10);
-        }
-        DWORD major = 0; sz = sizeof(major); type = 0;
-        RegQueryValueExA(hKey, "CurrentMajorVersionNumber", nullptr, &type,
-                         reinterpret_cast<LPBYTE>(&major), &sz);  // absent pre-Win10
-        RegCloseKey(hKey);
-
-        // Win 10 and 11 share major 10; 11 is build >= 22000 (ProductName still
-        // says "Windows 10", so the build is the only reliable discriminator).
-        if (build >= 22000) return "Windows 11 (" + std::to_string(build) + ")";
-        if (major == 10 || build >= 10240) return "Windows 10 (" + std::to_string(build) + ")";
-        if (build >= 9600) return "Windows 8.1 (" + std::to_string(build) + ")";
-        if (build >= 9200) return "Windows 8 (" + std::to_string(build) + ")";
-        if (build >= 7600) return "Windows 7 (" + std::to_string(build) + ")";
-        if (build > 0)     return "Windows (" + std::to_string(build) + ")";
-    }
-    return "";
 }
 
 std::string userLocale() {
@@ -871,7 +791,7 @@ void AnalyticsManager::initialize(const char* savePath) {
     loadAndUpdateIdentity(savePath);
 
     // Real OS/Wine version (registry-derived, shim-proof) — computed once here.
-    m_osVersion = detectOsVersion();
+    m_osVersion = SystemInfo::osVersion();
 
     // --- Aptabase (rich structured events) ---
     std::wstring aptHost;

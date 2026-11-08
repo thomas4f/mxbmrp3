@@ -19,8 +19,8 @@
 // (last, best and ideal lap, as the Ideal Lap HUD's lap rows), RPM (the RPM
 // widget's shift lights across the card, the revs under them at the right),
 // Delta trace (the Delta Trace HUD's chart, drawn by the same DeltaTracePlot),
-// Gap chart (the Session Charts HUD's Gap chart for the rider and the riders
-// just ahead and behind), Session
+// Gap chart (the Session Charts HUD's Gap chart for the leader, the rider and
+// the riders nearest them: gap_chart_picks.h), Session
 // (the Session HUD's rows), Telemetry (the Telemetry HUD's traces), Event
 // log (the Event Log's three newest events) and Now Playing (the Now Playing
 // widget's rows; off by default). The pages carry no title: the
@@ -331,16 +331,18 @@ private:
     };
     static LapsView readLaps();
 
-    // The Gap chart page: the Session Charts HUD's Gap chart for the displayed
-    // rider and the riders just ahead and behind. Redrawn when a lap is logged
-    // (handlesDataType), when who those riders are changes, or the parent's look.
+    // The Gap chart page: the Session Charts HUD's Gap chart for the leader, the
+    // displayed rider and the riders nearest them (GapChartPicks). Redrawn when a
+    // lap is logged (handlesDataType), when who those riders are or their order
+    // changes, or the parent's look.
     struct GapChartView {
-        int mine = -1, ahead = -1, behind = -1;   // race numbers; -1 = none
+        int mine = -1;                                  // the displayed rider's race number
+        int lines[GapChartPicks::MAX_LINES] = { -1, -1, -1, -1 };   // race numbers in order; -1 = none
         int sessionGeneration = 0;
-        uint32_t elements = 0;                    // the Session Charts HUD's Elements
+        uint32_t elements = 0;                          // the Session Charts HUD's Elements
         bool operator==(const GapChartView& o) const {
-            return mine == o.mine && ahead == o.ahead && behind == o.behind &&
-                   sessionGeneration == o.sessionGeneration && elements == o.elements;
+            for (int i = 0; i < GapChartPicks::MAX_LINES; ++i) if (lines[i] != o.lines[i]) return false;
+            return mine == o.mine && sessionGeneration == o.sessionGeneration && elements == o.elements;
         }
         bool operator!=(const GapChartView& o) const { return !(*this == o); }
     };
@@ -523,7 +525,7 @@ private:
     GapChartView m_shownGapChart;
     // The Gap chart's series and range sample, kept so a rebuild reuses their
     // storage.
-    SessionChartsHud::NeighbourGaps m_gapSeries;
+    SessionChartsHud::GapChartLines m_gapSeries;
     std::vector<long long> m_gapRangeSample;
     IdealView m_shownIdeal;
     FuelView m_shownFuel;

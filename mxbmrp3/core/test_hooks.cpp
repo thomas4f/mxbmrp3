@@ -316,6 +316,13 @@ __declspec(dllexport) int MXBMRP3_Test_SetThemeTitleBorder(float cells) {
     return 1;
 }
 
+// `[title] placement = frame` (1) or `panel` (0), injected the same way.
+__declspec(dllexport) int MXBMRP3_Test_SetThemeTitleInFrame(int on) {
+    if (!AssetManager::getInstance().testSetThemeTitleInFrame(on != 0)) return 0;
+    HudManager::getInstance().markAllHudsDirty();
+    return 1;
+}
+
 // `[panel] padding-x/-y`, injected into the last installed synthetic theme. Negative
 // puts an axis back on the built-in, which is where it sits for a theme that never
 // names the key -- so a case can assert the fallback as well as the override.

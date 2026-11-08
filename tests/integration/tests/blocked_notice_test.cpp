@@ -14,6 +14,10 @@
 //  - RUMBLE drew flat 0% traces with rumble switched off or no controller, which
 //    reads as "working, nothing happening". Now: a notice per cause, in the same
 //    footprint the graph takes, so the panel does not jump when it starts working.
+//  - RECORDS before a Compare showed the "Click Compare" line only when the player
+//    had no PB, so a player with one saw their row over empty rows and no hint of
+//    how to fill them. Now: the PB row (when there is one) and the notice under it,
+//    in MUTED (nothing is wrong), its hint naming Auto-fetch only while it is off.
 //
 // A test build has no Steam: switching it on lands in "not available", which
 // with "off" is both Friends states this asserts.
@@ -23,12 +27,14 @@
 #include "plugin_host.h"
 
 #include <cstdio>
+#include <fstream>
 #include <string>
 #include <vector>
 
 static const char* kSaveWin = "Z:\\tmp\\mxbmrp3-tests\\blocked_notice\\";
 static const std::string kIniPath =
     "Z:\\tmp\\mxbmrp3-tests\\blocked_notice\\mxbmrp3\\mxbmrp3_settings.ini";
+static const char* kStatsPath = "Z:\\tmp\\mxbmrp3-tests\\blocked_notice\\mxbmrp3\\mxbmrp3_stats.json";
 
 namespace {
 
@@ -166,6 +172,69 @@ TEST_CASE("blocked notice: Rumble says why nothing can rumble, in the graph's fo
 
     host.fakeGamepad(false);
     host.rumbleSetEnabled(false);
+    host.runDeinit();
+    host.shutdown();
+}
+
+TEST_CASE("empty state: Records asks for a Compare under the PB, and names Auto-fetch while off") {
+    std::remove(kIniPath.c_str());
+    std::remove(kStatsPath);
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSaveWin);
+    REQUIRE(host.hasStringRows());
+    REQUIRE(host.hasInkHooks());
+    REQUIRE(host.hasScreenEdges());
+    if (!host.hasRecords()) {   // records are MX Bikes only
+        host.shutdown();
+        return;
+    }
+    // Any fetch this case triggers by mistake ends in the stub, never the network.
+    host.recordsSetFetchStub(0, R"({"notice":"stub","records":[]})");
+
+    const char* kHud = "records_hud";
+    const char* kHeadline = "Click Compare to load records";
+    const char* kHint = "Or turn on Auto-fetch in MXBMRP3 Settings > Records";
+    REQUIRE(host.setHudVisible(kHud, true));
+    host.draw();
+
+    // No event, no PB, Auto-fetch off (the default): the notice with its hint.
+    checkNotice(host, kHud, kHeadline, kHint, kSlotMuted);
+    const Size empty = sizeOf(host, kHud);
+    CHECK(empty.w > 0);
+
+    // A PB on this track and bike: its row, AND the notice under it -- the case that
+    // used to drop the prompt. The panel keeps its size.
+    host.eventInit("TestTrack", "Alice", 1600.0f, 2, "Test 450", "MX1", /*trackId=*/"TestTrack");
+    host.raceEvent("TestTrack");
+    host.session(6, /*numLaps=*/10, /*lengthMs=*/0);
+    host.addEntry(10, "Alice");
+    host.runInit(6);
+    host.raceLap(6, /*raceNum=*/10, /*lap=*/1, 90000, /*best=*/2);
+    host.draw();
+    const int pb = findString(host, kHud, "1:30.000");
+    REQUIRE(pb >= 0);
+    checkNotice(host, kHud, kHeadline, kHint, kSlotMuted);
+    const std::vector<PluginHost::StringRow> rows = host.hudStringRows(kHud);
+    CHECK(rows[static_cast<size_t>(findString(host, kHud, kHeadline))].y > rows[static_cast<size_t>(pb)].y);
+    CHECK(sizeOf(host, kHud).w == empty.w);
+    CHECK(sizeOf(host, kHud).h == empty.h);
+    CHECK(host.recordsFetchState() == 0);   // still IDLE: nothing fetched behind the notice
+
+    // Auto-fetch on: the headline stays, the hint goes. Loaded mid-event, so the track
+    // does not change and nothing auto-fetches.
+    {
+        std::ofstream ini(kIniPath, std::ios::trunc);
+        REQUIRE(ini.is_open());
+        ini << "[Settings]\nversion=6\n\n[General]\nrecordsAutoFetch=1\n";
+    }
+    host.loadSettings(kSaveWin);
+    REQUIRE(host.setHudVisible(kHud, true));
+    host.draw();
+    CHECK(findString(host, kHud, kHeadline) >= 0);
+    CHECK_FALSE(anyStringContains(host, kHud, "Auto-fetch"));
+    CHECK(sizeOf(host, kHud).h == empty.h);
+
     host.runDeinit();
     host.shutdown();
 }

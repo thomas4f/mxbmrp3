@@ -66,10 +66,7 @@ std::string baseKey(std::string k) {
             k.resize(k.size() - len);
         }
     }
-    if (k.size() > 2 && k[k.size() - 2] == '_' && std::isdigit(static_cast<unsigned char>(k.back()))) {
-        k.resize(k.size() - 2);
-    }
-    return k;
+    return SpotterCuePack::stripVariantSuffix(k);
 }
 
 // Every cue key the shipped ini names, live or commented out. Deliberately a
@@ -361,9 +358,19 @@ TEST_CASE("every key in the registry is emitted by something") {
     }
     REQUIRE(returned.size() >= 10);   // a scan that matched nothing proves nothing
 
+    // The achievement_<id> family is generated from the catalogue, so no TU
+    // spells its keys out: the emitter builds them from the shared prefix. What
+    // can be checked is that something does - and the family is complete by
+    // construction, one row per catalogue entry.
+    const bool familyEmitted =
+        mgr.find("SpotterCuePack::kAchievementCuePrefix") != std::string::npos;
     for (const SpotterCuePack::CueKeyInfo& info : SpotterCuePack::allCueKeys()) {
         const std::string key = info.key;
         CAPTURE(key);
+        if (info.category == SpotterPhrase::Category::Achievements) {
+            CHECK_MESSAGE(familyEmitted, "nothing builds the achievement_<id> keys");
+            continue;
+        }
         const bool inManager =
             mgr.find("\"" + key + "\"") != std::string::npos;
         const bool inMapping =
@@ -393,6 +400,8 @@ TEST_CASE("shipped pack: every cue sits under the switch that mutes it") {
         else if (s.rfind("; OPPONENTS", 0) == 0) section = SpotterPhrase::Category::Opponents;
         else if (s.rfind("; PROXIMITY", 0) == 0) section = SpotterPhrase::Category::Proximity;
         else if (s.rfind("; HAZARDS", 0) == 0) section = SpotterPhrase::Category::Hazard;
+        else if (s.rfind("; TRICKS", 0) == 0) section = SpotterPhrase::Category::Tricks;
+        else if (s.rfind("; ACHIEVEMENTS", 0) == 0) section = SpotterPhrase::Category::Achievements;
         if (section == SpotterPhrase::Category::COUNT) continue;
 
         std::string row = s;
@@ -461,11 +470,9 @@ std::vector<std::pair<std::string, bool>> declaredRows(const std::string& text) 
 }
 
 int variantNumber(const std::string& key) {
-    if (key.size() > 2 && key[key.size() - 2] == '_' &&
-        key.back() >= '2' && key.back() <= '9') {
-        return key.back() - '0';
-    }
-    return 1;   // the base row is variant 1
+    const std::string base = SpotterCuePack::stripVariantSuffix(key);
+    if (base == key) return 1;   // the base row is variant 1
+    return std::stoi(key.substr(base.size() + 1));
 }
 
 }  // namespace
@@ -562,6 +569,8 @@ const char* categoryName(SpotterPhrase::Category c) {
         case SpotterPhrase::Category::Opponents: return "Opponents";
         case SpotterPhrase::Category::Proximity: return "Proximity";
         case SpotterPhrase::Category::Hazard:    return "Hazards";
+        case SpotterPhrase::Category::Tricks:    return "Tricks";
+        case SpotterPhrase::Category::Achievements: return "Achievements";
         default:                                 return "Other";
     }
 }

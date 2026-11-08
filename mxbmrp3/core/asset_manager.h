@@ -303,6 +303,20 @@ struct ThemeAsset {
     float buttonBorder = 1.0f;  // Button corner, in cells
     bool hasButton() const { return buttonCenterSprite > 0; }
 
+    // TITLE slice set, optional: the title band's OWN art. Without it the band
+    // draws the card set, as it always has; with it, card_*.tga is free to be the
+    // quiet section card while title_*.tga carries the bar -- which is what a
+    // `[title] placement = frame` theme needs, since a title bar and a section
+    // card are different pictures. Same rules as the card set: title_center.tga
+    // enables it, missing corners/edges fall back to the centre, and it is drawn
+    // at the band's own size (titleBorder()). It only RE-SKINS the band: whether a
+    // band exists still follows the card set (hasThemedTitleBand()), so a theme
+    // with title art and no card art draws no band, as before.
+    int titleCenterSprite = 0;
+    int titleCornerSprites[4] = {0, 0, 0, 0};
+    int titleEdgeSprites[4]   = {0, 0, 0, 0};
+    bool hasTitleArt() const { return titleCenterSprite > 0; }
+
     // ICON OVERRIDES: themes/<name>/icons/<icon>.tga, keyed by the icon's filename
     // stem, valued with the sprite index the override was registered at.
     //
@@ -330,6 +344,14 @@ struct ThemeAsset {
     // inset; a theme wanting a genuinely different title treatment would need its
     // own sprite set, which is deliberately not built until one does.
     bool titleBand = true;
+
+    // `[title] placement = frame` -- the band becomes the FRAME'S TOP, Windows 7
+    // style, instead of a card inside it: flush with the panel's outer edges, the
+    // frame drawn below it (PanelBox::Spec::titleInFrame has the geometry). The
+    // band keeps the card art, so a theme going this way usually turns the body
+    // cards off and spends card_*.tga on the title bar alone. `panel` (default)
+    // is the band inside the frame, as every theme before this key drew it.
+    bool titleInFrame = false;
 
     // PER-FAMILY OVERRIDES of titleBand / contentCard, one slot per PanelKind, each
     // -1 = "no opinion, follow the value above". A theme can then say "bands
@@ -808,6 +830,25 @@ public:
     bool testSetThemeTitleBorder(float cells) {
         if (m_themes.empty() || m_lastSyntheticTheme >= m_themes.size()) return false;
         m_themes[m_lastSyntheticTheme].titleBorderOverride = cells;
+        mxbBumpThemeGeneration();
+        return true;
+    }
+    // TEST ONLY: `[title] placement = frame` on the most recently installed
+    // synthetic theme, same inject-afterwards reasoning as the call above.
+    bool testSetThemeTitleInFrame(bool on) {
+        if (m_themes.empty() || m_lastSyntheticTheme >= m_themes.size()) return false;
+        m_themes[m_lastSyntheticTheme].titleInFrame = on;
+        mxbBumpThemeGeneration();
+        return true;
+    }
+    // TEST ONLY: give the most recently installed synthetic theme a title_* set,
+    // every piece at `sprite` (0 takes it away), so a case can tell the band's art
+    // from the card's by sprite index alone.
+    bool testSetThemeTitleArt(int sprite) {
+        if (m_themes.empty() || m_lastSyntheticTheme >= m_themes.size()) return false;
+        ThemeAsset& t = m_themes[m_lastSyntheticTheme];
+        t.titleCenterSprite = sprite;
+        for (int i = 0; i < 4; ++i) { t.titleCornerSprites[i] = sprite; t.titleEdgeSprites[i] = sprite; }
         mxbBumpThemeGeneration();
         return true;
     }

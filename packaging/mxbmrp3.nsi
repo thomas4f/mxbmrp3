@@ -449,7 +449,9 @@ VIAddVersionKey "LegalCopyright"   "Copyright (c) 2025-2026 ${PLUGIN_PUBLISHER}"
 VIAddVersionKey "OriginalFilename" "${PLUGIN_NAME_LC}-Setup.exe"
 VIAddVersionKey "ProductName"      "${PLUGIN_NAME}"
 VIAddVersionKey "ProductVersion"   "${PLUGIN_VERSION}"
-VIAddVersionKey "Comments"         "${PLUGIN_URL}"
+; The licence first: the payload is LZMA-compressed, so these version keys are
+; all a `strings` pass over Setup.exe shows. Mirrors the DLL's Comments (mxbmrp3.rc).
+VIAddVersionKey "Comments"         "Open source (MIT). Source: ${PLUGIN_URL}"
 
 ; .onInit: Determine registry view & locate games
 Function .onInit

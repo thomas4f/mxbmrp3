@@ -222,6 +222,11 @@ mxb_gate(outlines2ttf fast 300 "g++ python3" "./tools/fontgen/test_outlines2ttf.
 mxb_gate(themeslice fast 120 "python3" "python3 ./tools/themeslice/themeslice.py --selftest")
 mxb_gate(spottergen-selftest fast 120 "python3"
          "python3 ./tools/spottergen/generate.py --selftest")
+# The ElevenLabs baker's offline half: every row of the shipped pack becomes a
+# recipe whose clips exist and whose placeholders the mixer accepts, and every
+# variable's example value plays from baked word clips. No key, no network.
+mxb_gate(spottergen-elevenlabs-selftest fast 120 "python3"
+         "python3 ./tools/spottergen/elevenlabs.py --selftest")
 
 # The analytics report generator's self-test — the other orphan CI step. Its
 # prerequisite is a pip module, not a binary, so the TOOLS column cannot express

@@ -284,7 +284,7 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
     // whatever the pack says; nobody has to edit an ini to quieten a group).
     //
     // The ORDER here is the order of the headings in the shipped pack, so the
-    // file reads as the same five groups these switches name. Reorder one and
+    // file reads as the same groups these switches name. Reorder one and
     // reorder the other. The mapping itself is checked:
     // test_spotter_pack_census.cpp asserts every cue sits under the heading
     // for the category that actually mutes it. ---
@@ -296,8 +296,16 @@ BaseHud* SettingsHud::renderTabSpotter(SettingsLayoutContext& ctx) {
         { N_("Opponents"), SpotterPhrase::Category::Opponents, "spotter.cat_opponents" },
         { N_("Proximity"), SpotterPhrase::Category::Proximity, "spotter.cat_proximity" },
         { N_("Hazards"),   SpotterPhrase::Category::Hazard,    "spotter.cat_hazard" },
+        // The two for-fun switches, last (Tricks ships off); each only where
+        // its game has the feature behind it.
+#if GAME_HAS_FMX
+        { N_("Tricks"),    SpotterPhrase::Category::Tricks,    "spotter.cat_tricks" },
+#endif
+#if GAME_HAS_ACHIEVEMENTS
+        { N_("Achievements"), SpotterPhrase::Category::Achievements, "spotter.cat_achievements" },
+#endif
     };
-    ctx.beginColumns(2, 5);
+    ctx.beginColumns(2, static_cast<int>(sizeof(kRows) / sizeof(kRows[0])));
     for (const auto& row : kRows) {
         const uint32_t bit = 1u << static_cast<unsigned>(row.cat);
         ctx.addToggleControl(I18n::tr(row.label), (mask & bit) != 0,

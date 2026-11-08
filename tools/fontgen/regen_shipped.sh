@@ -52,6 +52,9 @@ TMP="$(mktemp -d)"; trap 'rm -rf "${TMP}"' EXIT
 # file already carries, odd spellings included -- idempotence is worth more here
 # than a tidier string nobody sees.
 NORMALISED=(
+  # Geist, Inter, Manrope, Open Sans, Outfit, Sora and Space Grotesk ship
+  # upstream as variable fonts; their .ttf here are static instances cut with
+  # fontTools' varLib.instancer at wght 400 (Regular) / 600 (SemiBold).
   "Audiowide Regular|Audiowide-Regular"
   "Caveat Brush Regular|CaveatBrush-Regular"
   "Chakra Petch Bold Italic|ChakraPetch-BoldItalic"
@@ -60,22 +63,38 @@ NORMALISED=(
   "Doto Regular|Doto-Regular"
   "Enter Sansman Italic|EnterSansman-Italic"
   "Fuzzy Bubbles Regular|FuzzyBubbles-Regular"
+  "Geist Regular|Geist-Regular"
+  "Geist SemiBold|Geist-SemiBold"
+  "Geist Mono Regular|GeistMono-Regular"
   "Gloria Hallelujah Regular|GloriaHallelujah-Regular"
   "IBM Plex Mono Regular|IBMPlexMono-Regular"
   "IBM Plex Sans Regular|IBMPlexSans-Regular"
   "IBM Plex Sans SemiBold|IBMPlexSans-SemiBold"
+  "Inter Regular|Inter-Regular"
+  "Inter SemiBold|Inter-SemiBold"
   # LCD14-*.ttf is derived from DSEG14 Classic, not downloaded: derive_lcd14.py
   "LCD14 Bold|LCD14-Bold"
   "LCD14 Regular|LCD14-Regular"
   # LCD7-*.ttf likewise, from DSEG7 Classic: derive_lcd7.py
   "LCD7 Bold Italic|LCD7-BoldItalic"
+  "Manrope Regular|Manrope-Regular"
+  "Manrope SemiBold|Manrope-SemiBold"
+  "Open Sans Regular|OpenSans-Regular"
+  "Open Sans SemiBold|OpenSans-SemiBold"
+  "Outfit Regular|Outfit-Regular"
+  "Outfit SemiBold|Outfit-SemiBold"
   "Permanent Marker Regular|PermanentMarker-Regular"
   "Quantico Bold Italic|Quantico-BoldItalic"
   "Reenie Beanie Regular|ReenieBeanie-Regular"
   "Roboto Mono Bold|RobotoMono-Bold"
   "Roboto Mono Regular|RobotoMono-Regular"
   "Rock Salt Regular|RockSalt-Regular"
+  "Sora Regular|Sora-Regular"
+  "Sora SemiBold|Sora-SemiBold"
+  "Space Grotesk Regular|SpaceGrotesk-Regular"
+  "Space Grotesk SemiBold|SpaceGrotesk-SemiBold"
   "Tiny5 Regular|Tiny5-Regular"
+  "VT323 Regular|VT323-Regular"
   "Tomorrow Bold Italic|Tomorrow-BoldItalic"
   "Tomorrow SemiBold Italic|Tomorrow-SemiBoldItalic"
 )

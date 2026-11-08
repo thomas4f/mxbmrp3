@@ -7,9 +7,9 @@ A free, [open-source](https://github.com/thomas4f/mxbmrp3) plugin for MX Bikes, 
 ![MXBMRP3 HUD Screenshot](assets/mxbmrp3.jpg)
 *Default HUD layout. All elements are fully customizable - see [Tips & Tricks](#tips--tricks) for setup ideas.*
 
-https://github.com/user-attachments/assets/4d5e126e-6940-4ec9-92bd-2083ff99521c
+https://github.com/user-attachments/assets/c391d50e-d342-4531-808e-55afac6b51ce
 
-*Toggle HUDs from the strip, flip Dash pages, and restyle fonts and themes in Settings.*
+*Toggle HUDs from the strip, flip Dash pages, and switch themes, languages and fonts in Settings.*
 
 ## Features
 
@@ -21,6 +21,10 @@ https://github.com/user-attachments/assets/4d5e126e-6940-4ec9-92bd-2083ff99521c
 - **Immersion:** Spotter voice, first-person helmet overlay and controller rumble
 - **Streaming:** OBS overlay, auto-director, controller visualization and companion window
 - **Modding:** Moddable themes, fonts, icons and web overlay styling
+
+## How It Works
+
+MXBMRP3 works through the game's plugin interface. It never reads race data out of the game's memory and never writes to it, never hooks or patches the game's code, never changes the game's files, and has no effect on how the game plays. A few features reach beyond the game: a mouse for the menus, a controller for rumble, a connection to fetch records. [How MXBMRP3 works](docs/what-it-does.md) lists each one, with what it uses, whether it goes online and whether it's on by default.
 
 ## Get Started
 
@@ -46,7 +50,6 @@ https://github.com/user-attachments/assets/4d5e126e-6940-4ec9-92bd-2083ff99521c
 - [Advanced Settings](#advanced-settings)
 - [Modding](#modding)
 - [Troubleshooting](#troubleshooting)
-- [How It Works](#how-it-works)
 - [Privacy](#privacy)
 - [Feedback & Issues](#feedback--issues)
 - [Uninstallation](#uninstallation)
@@ -231,7 +234,7 @@ Turn on **Web server** (Settings > General) and the plugin serves a live browser
 Take every counted one to Platinum and a **Prestige** button appears, trading the whole ladder back - achievements and their counters to zero - for a level and the Prestige badge widget, which you then turn on under **Widgets**. Personal bests are untouched; there is no way back, so it asks twice. Full list: [Achievements](docs/achievements.md).
 
 ### Spotter (voice callouts)
-Turn on **Spoken audio** (Settings > Spotter, or the checkbox beside the tab) and the plugin talks to you while you ride: riders behind or alongside you, blue flags, a rider down, and - each time you cross the line - your position and the gaps ahead and behind. Windows text-to-speech reads it out of the box, with **TTS voice**, **Speed** and **Volume** to choose how; recorded voice packs are a separate download. Five **Callouts** switches decide what gets announced, and **Subtitles** puts every call on screen so you can run it silent. It follows whoever you're watching, so it works while spectating and in replays. Full guide: [Spotter voice](docs/spotter.md).
+Turn on **Spoken audio** (Settings > Spotter, or the checkbox beside the tab) and the plugin talks to you while you ride: riders behind or alongside you, blue flags, a rider down, and - each time you cross the line - your position and the gaps ahead and behind. Windows text-to-speech reads it out of the box, with **TTS voice**, **Speed** and **Volume** to choose how; recorded voice packs are a separate download. **Callouts** switches decide what gets announced (two for fun: a line for every achievement, and an over-the-top announcer for your freestyle tricks, off by default), and **Subtitles** puts every call on screen so you can run it silent. It follows whoever you're watching, so it works while spectating and in replays. Full guide: [Spotter voice](docs/spotter.md).
 
 ### Auto-director (spectating & replays)
 Turn on the **Director** (Settings > Director, or its camera icon in the Toggles strip) and it automatically cuts the spectate camera to the most interesting rider or battle, broadcast-style, so you don't have to switch riders by hand. It works while spectating live and in replays - a great way to re-watch or record a session and let it direct the action for you. It also drives the [Web Overlay](#web-overlay)'s battle panel.
@@ -366,6 +369,11 @@ Installing manually from the [ZIP archive](#manual-installation) avoids most of 
 - `mxbmrp3_data\` holds the fonts, textures and icons, and must sit in `plugins\` beside the DLO (see [directory structure](#manual-installation))
 - If you moved or renamed it, restore it from the release archive
 
+### Settings Not Saved
+- The plugin couldn't write `Documents\PiBoSo\[Game]\mxbmrp3\mxbmrp3_settings.ini`, so each launch starts from the defaults. The in-game notice says why
+- **"Windows blocked ..."**: allow the game's `.exe` in Windows Security > Virus & threat protection > Manage ransomware protection > Allow an app through Controlled folder access, or add an exception in your antivirus
+- **"... is read-only"**: right-click the file > Properties and untick **Read-only**
+
 ### Gamepad Widget Appears Cut Off
 - Click **Reset Widgets** (Settings > Widgets) to correct the button positions
 
@@ -393,10 +401,6 @@ Installing manually from the [ZIP archive](#manual-installation) avoids most of 
 ### Game Fails to Launch, Crashes, or Shows Black Screen
 - See the [MX Bikes Troubleshooting Guide](https://gist.github.com/thomas4f/1fd379fafb4ab402b48424ae1c9cf2bd) for general game issues (crashes, mods, plugins, RAM, controllers)
 - If the Windows Event Log shows `mxbmrp3.dlo` as the faulting module, see [Feedback & Issues](#feedback--issues)
-
-## How It Works
-
-MXBMRP3 works through the game's plugin interface. It never reads race data out of the game's memory and never writes to it, never hooks or patches the game's code, never changes the game's files, and has no effect on how the game plays. A few features reach beyond the game: a mouse for the menus, a controller for rumble, a connection to fetch records. [How MXBMRP3 works](docs/what-it-does.md) lists each one, with what it uses, whether it goes online and whether it's on by default.
 
 ## Privacy
 

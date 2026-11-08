@@ -2911,3 +2911,141 @@ TEST_CASE("spotter: a pit lap is not struck out; a cut lap still is") {
 
     host.shutdown();
 }
+
+// POSITION ROWS (spotter_position_rows.h): a recorded pack cannot say
+// {position}, so it records a line per place and the plugin picks the one
+// that applies - `_last` when you are last, else your place's row, else the
+// cue's own line. The grammar is unit-tested; this pins the PICK, which reads
+// your place and the field size from live standings inside emitCue.
+TEST_CASE("spotter: a pack's position rows answer for your place") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\spotter-posrows\\");
+    host.spotterInstallPack(
+        "[Cues]\n"
+        "hotkey_triggered = Generic report.\n"
+        "hotkey_triggered_p1 = You lead.\n"
+        "hotkey_triggered_p2 = Second place.\n"
+        "hotkey_triggered_last = Last place.\n"
+        "hotkey_triggered_p4_wav = p4.wav\n");   // wav-only: the cue's words
+    host.eventInit("TestTrack", "Player");
+    host.raceEvent("TestTrack");
+    host.addEntry(12, "Player");
+    host.addEntry(476, "Rival");
+    host.addEntry(99, "Third");
+    host.spotterEnable(true);
+    host.spotterCategoryMask(0x1F);
+    host.session(RACE1, 10);
+
+    auto said = [&host](const char* line) {
+        const size_t mark = host.spotterCueLog().size();
+        host.spotterHotkey();
+        return host.spotterCueLog().substr(mark).find(line) != std::string::npos;
+    };
+
+    host.classify(RACE1, 60000, {
+        { .num = 12, .laps = 1 }, { .num = 476, .laps = 1 }, { .num = 99, .laps = 1 },
+    });
+    CHECK(said("You lead."));
+    host.classify(RACE1, 59000, {
+        { .num = 476, .laps = 1 }, { .num = 12, .laps = 1 }, { .num = 99, .laps = 1 },
+    });
+    CHECK(said("Second place."));
+    // Last outranks the place's own row...
+    host.classify(RACE1, 58000, {
+        { .num = 476, .laps = 1 }, { .num = 99, .laps = 1 }, { .num = 12, .laps = 1 },
+    });
+    CHECK(said("Last place."));
+    // ...a place with no row of its own takes the generic line...
+    host.addEntry(7, "Fourth");
+    host.classify(RACE1, 57000, {
+        { .num = 476, .laps = 1 }, { .num = 99, .laps = 1 },
+        { .num = 12, .laps = 1 },  { .num = 7, .laps = 1 },
+    });
+    CHECK(said("Generic report."));
+    // ...and a row with only a clip plays it under the cue's own words.
+    host.addEntry(5, "Fifth");
+    host.classify(RACE1, 56000, {
+        { .num = 476, .laps = 1 }, { .num = 99, .laps = 1 }, { .num = 7, .laps = 1 },
+        { .num = 12, .laps = 1 },  { .num = 5, .laps = 1 },
+    });
+    CHECK(said("Generic report."));
+    CHECK(host.spotterLastAudio().find("hotkey_triggered_p4|wav:p4.wav") !=
+          std::string::npos);
+    host.shutdown();
+}
+
+// LEAD-INS (spotter_cue_pack.h, TAKING TURNS): a recorded pack's soft sound
+// opens a line at the pack's chance - but never a proximity call, which
+// cannot afford the half second. The route records the pick at enqueue.
+TEST_CASE("spotter: lead-ins open ordinary lines, never a proximity call") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\spotter-leadin\\");
+    host.eventInit("TestTrack", "Player");
+    host.raceEvent("TestTrack");
+    host.addEntry(12, "Player");
+    host.addEntry(476, "Rival");
+    host.spotterEnable(true);
+    host.spotterCategoryMask(0x1F);
+    host.session(RACE1, 10);
+    host.classify(RACE1, 60000, { { .num = 12, .laps = 2 }, { .num = 476, .laps = 2 } });
+
+    const char* cues =
+        "[Cues]\n"
+        "hotkey_triggered = Report.\nhotkey_triggered_wav = report.wav\n"
+        "rider_behind = Rider behind.\nrider_behind_wav = behind.wav\n";
+    std::string always = std::string("[Mix]\nlead_in = ahem.wav\nlead_in_chance = 100\n") + cues;
+    host.spotterInstallPack(always.c_str());
+
+    host.spotterHotkey();
+    CHECK(host.spotterLastAudio() == "hotkey_triggered|wav:report.wav|lead:ahem.wav");
+
+    host.raceTrackPosition({
+        { .num = 12, .trackPos = 0.500f },
+        { .num = 476, .trackPos = 0.494f },
+    });
+    CHECK(host.spotterLastAudio() == "rider_behind|wav:behind.wav|cut");
+
+    // Chance 0 (or absent): the sounds are listed and never used.
+    std::string never = std::string("[Mix]\nlead_in = ahem.wav\nlead_in_chance = 0\n") + cues;
+    host.spotterInstallPack(never.c_str());
+    host.spotterHotkey();
+    CHECK(host.spotterLastAudio() == "hotkey_triggered|wav:report.wav");
+    host.shutdown();
+}
+
+// CUTTING IN IS THE CALL'S, NOT THE CLIP'S (spotter_queue.h, TURN POLICY). The
+// flag was set on the recorded branch only, so a pack whose urgent rows are
+// text (or a text-only pack) queued "Rider behind" as an ordinary line: it
+// waited out whatever clip was sounding and, perishable, was dropped after
+// 1.5 s instead of spoken. The route records the flag at enqueue on both
+// branches; the shipped TTS pack never had a clip to wait on, which is why
+// this went unheard.
+TEST_CASE("spotter: an urgent call cuts in whether its row is a clip or text") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\spotter-cutin-text\\");
+    host.eventInit("TestTrack", "Player");
+    host.raceEvent("TestTrack");
+    host.addEntry(12, "Player");
+    host.addEntry(476, "Rival");
+    host.spotterEnable(true);
+    host.spotterCategoryMask(0x1F);
+    host.session(RACE1, 10);
+    host.classify(RACE1, 60000, { { .num = 12, .laps = 2 }, { .num = 476, .laps = 2 } });
+
+    // A recorded pack whose urgent row has words but no clip.
+    host.spotterInstallPack(
+        "[Cues]\n"
+        "hotkey_triggered = Report.\nhotkey_triggered_wav = report.wav\n"
+        "rider_behind = Rider behind.\n");
+    host.spotterHotkey();
+    CHECK(host.spotterLastAudio() == "hotkey_triggered|wav:report.wav");
+    host.raceTrackPosition({
+        { .num = 12, .trackPos = 0.500f },
+        { .num = 476, .trackPos = 0.494f },
+    });
+    CHECK(host.spotterLastAudio() == "rider_behind|tts|cut");
+    host.shutdown();
+}

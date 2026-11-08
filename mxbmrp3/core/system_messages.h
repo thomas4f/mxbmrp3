@@ -31,6 +31,8 @@
 #include <deque>
 #include <string>
 
+enum class WriteFailure : unsigned char;   // atomic_file_writer.h
+
 class SystemMessages {
 public:
     static SystemMessages& getInstance();
@@ -67,6 +69,7 @@ public:
         KEY_STATS_SAVE_FAILED,
         KEY_STATS_UNREADABLE,
         KEY_WEB_OVERLAY_FAILED,
+        KEY_SETTINGS_UNREADABLE,
         KEY_HOTKEY_BASE = 1000,
     };
 
@@ -102,6 +105,10 @@ public:
     // its last three folders; leading folders are dropped until it fits `cap`.
     // Never cut mid-name. A trailing separator is dropped.
     static void formatFolder(const char* path, char* out, size_t cap);
+
+    // The detail line for a file the writer could not save (`fileName`, no folder):
+    // the cause the writer saw (AtomicFileWriter::lastFailure), never a guess.
+    static void formatWriteFailure(WriteFailure why, const char* fileName, char* out, size_t cap);
 
     // Observability for the headless tests: every toast ever posted this run,
     // and the last one, whether or not it was shown.

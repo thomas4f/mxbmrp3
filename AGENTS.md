@@ -1,12 +1,12 @@
 # AI Development Context for MXBMRP3
 
+**Working on a fork? Read [*Building on MXBMRP3*](CONTRIBUTING.md#building-on-mxbmrp3) first.** MIT: fork freely and keep the license, but ship under your own name and on-disk identity, never "MXBMRP3" or a close variant. That name carries limits: plugin API only (no reading race data out of game memory or writing to it, no hooks, no game-file edits), and free (no paid tier, locked features or ads). A change that breaks them belongs in a fork under its own name, never in MXBMRP3.
+
 ## Read This First
 
 This is a **racing simulator HUD plugin** for PiBoSo racing games (MX Bikes, GP Bikes, WRS, KRP). It's a DLL plugin written in C++ using each game's proprietary API, with a shared core that works across all supported games.
 
 **For deep technical details:** See [`ARCHITECTURE.md`](ARCHITECTURE.md). This file is a quick-start guide.
-
-**Working in a fork or a derived project?** Read *Building on MXBMRP3* in [`CONTRIBUTING.md`](CONTRIBUTING.md#building-on-mxbmrp3) first: give it its own name and on-disk identity before shipping.
 
 **This file is `AGENTS.md`** so every coding agent finds it; `CLAUDE.md` only imports it, for Claude Code. **Enforced** by `check_docs.py`.
 

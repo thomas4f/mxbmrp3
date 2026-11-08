@@ -36,7 +36,7 @@ A theme draws a frame, a header band and a body card around every HUD and the se
 
 A light theme is worth a note: its text is near-black, so a HUD you run with its background switched off will draw dark text straight onto the track. Turn those backgrounds on, or keep a dark theme for on-track HUDs.
 
-Writing your own: a theme is a folder of 27 `.tga` slices plus a `theme.ini` of its colors, fonts and box terms. `tools/themeslice` cuts the slices out of one master image (it never draws - the art is yours), and `assets/themes/` in the repo holds the masters for the shipped themes plus a **debug** master whose every slice is a different flat color, which is the fastest way to see where each of the 27 pieces actually lands.
+Writing your own: a theme is a folder of 27 `.tga` slices (36 with the optional title-bar art below) plus a `theme.ini` of its colors, fonts and box terms. `tools/themeslice` cuts the slices out of one master image (it never draws - the art is yours), and `assets/themes/` in the repo holds the masters for the shipped themes plus a **debug** master whose every slice is a different flat color, which is the fastest way to see where each of the 27 pieces actually lands.
 
 **Recoloring one is a single file.** With a `base` line, a folder containing nothing but a `theme.ini` is a complete theme:
 
@@ -51,6 +51,8 @@ accent  = #ff8800
 ```
 
 Bring a `.tga` too and it replaces that one slice, leaving the other twenty-six alone - so you can redraw a corner without touching the rest.
+
+**A title bar is nine more slices.** By default the caption sits in a band inside the frame, drawn with the card art. Add `title_*.tga` (the same nine names as the card's, `title_center.tga`, `title_corner_tl.tga` and so on) to give that band its own art, and set `placement = frame` under `[title]` to move it into the frame's own top edge, a window title bar. Modern and Retro ship that way, and their `theme.ini` comments explain each `[title]` key.
 
 ## Custom Textures
 

@@ -765,6 +765,41 @@ def ver_family(v):
     return ".".join(str(v).split(".")[:2])
 
 
+def ver_tuple(family):
+    """A release line as a sortable tuple: "1.10" must sort above "1.9". An
+    unparseable label sorts below every real line."""
+    try:
+        return tuple(int(x) for x in str(family).split("."))
+    except ValueError:
+        return ()
+
+
+def version_headline(versions):
+    """(majority_line, majority_share, newest_line, newest_share) over one day's
+    installs, each given at its latest version, or None for an empty day.
+
+    majority_line is the OLDEST release line such that installs on it or newer
+    are more than half: "a majority run at least X". Lines are walked newest
+    first by VERSION, never by share, because the claim is "X or newer".
+
+    newest_line is the newest line carrying MIN_VERSION_SHARE of the day. A
+    stray dev or next-version pre-release build is a line too, and naming it
+    "newest" at 0.1% would say nothing about how a release is spreading."""
+    fam = pd.Series(versions).map(ver_family)
+    total = len(fam)
+    if not total:
+        return None
+    counts = fam.value_counts()
+    order = sorted(counts.index, key=ver_tuple, reverse=True)
+    newest = next((f for f in order if counts[f] >= MIN_VERSION_SHARE * total), order[0])
+    cum = 0
+    for f in order:
+        cum += int(counts[f])
+        if 2 * cum > total:
+            return f, 100.0 * cum / total, newest, 100.0 * counts[newest] / total
+    return None  # unreachable: the oldest line always closes the sum
+
+
 def ver_ge(v, *minimum):
     """True if version string v is >= the given (major, minor[, patch]) tuple."""
     parts = str(v).split(".")
@@ -1617,6 +1652,18 @@ def _versions(r, snap, started, axis, downloads=None):
             assert abs(total_share - 100.0) < 0.5 or per_day_total.get(days[di], 0) == 0, \
                 "version shares for {} sum to {:.1f}%, not 100 — a version is missing " \
                 "from both the named set and the remainder".format(days[di], total_share)
+        # THE number the chart exists to answer -- what can a player be assumed to
+        # have -- read off the last plotted day rather than the window: the chart
+        # is a rollout, and a window average is mostly versions already replaced.
+        # axis["observed"] already excludes partial edge days and gap days.
+        observed = [d for d in axis["observed"] if d in set(per_day_total.index)]
+        head = version_headline(day_last[day_last["date"] == observed[-1]]["app_version"]) \
+            if observed else None
+        if head:
+            maj, maj_share, newest, newest_share = head
+            r.figures(("- **on {}, the last full day:** a majority of active installs run "
+                       "{} or newer ({:.0f}%)" + FIG_SEP + "{:.0f}% run the newest line, {}")
+                      .format(observed[-1].strftime("%m-%d"), maj, maj_share, newest_share, newest))
         if series:
             r.chart("version_migration.svg",
                     svg.lines("Version migration", axis["labels"], series,
@@ -2934,6 +2981,12 @@ def selftest():
     # catch a dropped remainder series.
     assert "version_migration.svg" in md or snap["app_version"].nunique() <= 1, \
         "multi-version data must produce a migration chart"
+    # The headline is wired into the rendered page, directly ABOVE its chart
+    # (the figures() rule), not just computable by version_headline().
+    if "version_migration.svg" in md:
+        head_at = md.find("a majority of active installs run")
+        assert 0 <= head_at < md.find("![Version migration]"), \
+            "the version majority line must render above the migration chart"
 
     # --- Export-format equivalence. CSV is the live path; both must land on
     # identical data. Written through the REAL
@@ -3029,6 +3082,19 @@ def selftest():
     rollup.write(roll_dir, seed, seed_snap)
     assert open(os.path.join(roll_dir, "installs.csv.gz"), "rb").read() == before, \
         "rewriting unchanged rollup data must be byte-identical"
+
+    # ---- Version headline -----------------------------------------------------
+    # Lines walk by VERSION: 1.10 is newer than 1.9, and a share-ordered walk
+    # would call the biggest line the majority's floor.
+    assert version_headline(["1.10.0.1"] * 3 + ["1.9.0.1"] * 4 + ["1.8.0.1"] * 3) == \
+        ("1.9", 70.0, "1.10", 30.0), "majority line must walk newest first by version"
+    # Exactly half is not a majority: the floor moves one line older.
+    assert version_headline(["1.2.0.1"] * 2 + ["1.1.0.1"] * 2)[0] == "1.1", \
+        "exactly 50% must not count as a majority"
+    # A lone build of a newer line under MIN_VERSION_SHARE is not "the newest line".
+    assert version_headline(["1.35.0.1"] + ["1.34.1.65"] * 200)[2] == "1.34", \
+        "a stray pre-release build must not be named the newest line"
+    assert version_headline([]) is None
 
     print("selftest OK -> {}".format(path))
 

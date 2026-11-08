@@ -18,6 +18,12 @@ file; their wording is preserved too.
 
 ## [Unreleased]
 
+## [1.35.0] - 2026-11-08
+
+Menus, HUDs and the spotter in your language, new themes and fonts, and
+many smaller interface improvements. It is the first public release since
+1.34.1, so the 1.34.2 and 1.34.3 changes below come with it.
+
 ### Added
 - **Italian** language pack (Beta): Settings > Appearance > Language, or
   automatic when Windows is in Italian. Corrections from Italian players
@@ -31,6 +37,33 @@ file; their wording is preserved too.
 - **Norwegian (Bokmål)** language pack (Beta): Settings > Appearance >
   Language, or automatic when Windows is in Norwegian. Corrections from
   Norwegian players are welcome: see languages\README.md.
+- **FMX**: tricks now have levels, shown in front of the name, such as
+  Whip, Big Whip and Flat Whip, or Wheelie, Big Wheelie and Endless
+  Wheelie. Points are unchanged.
+- **Spotter: Tricks and Achievements callouts** under Settings > Spotter >
+  Callouts. Tricks (off by default) is an over-the-top announcer for your
+  freestyle: the trick and its level once you land it, a boo when you
+  crash, and combos (never in a race). Achievements gives every
+  achievement its own line, proud or not (MX Bikes).
+- **Spotter in your language.** The spotter follows the plugin's language
+  when its pack has spotter lines, and picks a matching Windows voice if
+  one is installed. Every shipped language has them (Beta).
+- Recorded spotter voice packs can stitch any value from their own word
+  clips, not only numbers: trick names, achievement tiers, gaps, counts
+  and session names, with optional parts dropping out cleanly.
+- Eight new fonts under Settings > Appearance: Geist, Geist Mono, Inter,
+  Manrope, Open Sans, Outfit, Sora and Space Grotesk, each with its own
+  bold cut for titles and headings.
+- **Modern Dark** and **Modern Light** themes: the caption sits in the
+  window's own title bar, an indigo-to-violet gradient on zinc greys, set
+  in Geist. Theme makers can do the same with `[title] placement = frame`
+  and title_*.tga bar art.
+- **Retro Dark** and **Retro Light** themes: bevelled windows in the
+  VT323 terminal font, amber on black or silver with a teal title bar.
+- **Log**: mxbmrp3_log.txt now names the PC (Windows, CPU, memory,
+  monitors), the graphics card and driver, and the overlays and other
+  DLLs loaded in the game, by file name only, so a graphics problem can
+  be diagnosed from the log.
 
 ### Changed
 - Updated vendored cpp-httplib to 0.64.0
@@ -42,6 +75,52 @@ file; their wording is preserved too.
   of them builds it from the plain letter and its accent, or shows the
   plain letter: the default Title font shows a plain G, g and I, and the
   LCD fonts plain letters, as for other accents.
+- The plugin files now say they are open source (MIT) and link the
+  source of that exact release and the rules for building on it, for
+  anyone who opens them in a tool.
+- **Dash** Gap chart page: the race leader's line is always on it, with
+  yours and the riders nearest you, four lines in all.
+- **Records**: before you click **Compare**, it now asks you to, under
+  your own best lap too, and points to **Auto-fetch** while it is off.
+- Spotter packs can give a callout up to 99 alternate lines (was 9).
+- Spotter packs can give a callout its own line for each place, and for
+  last place, so a voice recorded as whole lines can say where you are.
+- Recorded spotter packs can open an occasional line with a soft sound,
+  like a cleared throat, as a person would.
+- **Settings > Notices** lists its notices in two columns, so the
+  Settings panel is shorter on every tab. "Stationary rider" is now
+  "Stopped rider", and the Updates tab shows one release-note line less.
+
+### Fixed
+- The settings More row and Find box icons drew with an outline the other
+  settings icons don't have.
+- Now Playing's controls work while the settings menu is open, and a
+  click on the menu or on a HUD stacked over another no longer reaches
+  the HUD behind it.
+- Recorded spotter voice packs no longer cut themselves off: each line
+  finishes before the next starts, and only urgent calls (a rider
+  alongside or behind, a crash or a wrong-way rider ahead) cut in, after
+  an optional cough or "uh" from the pack.
+- A settings or stats file the plugin can't save now says why: read-only
+  (and how to undo it), or blocked by another program such as antivirus or
+  OneDrive, instead of always asking "Is it read-only?"
+- A settings file that is there but can't be opened at startup (held by a
+  sync tool, for example) is no longer replaced by default settings: it is
+  copied aside first, or left as it is for the session, and a notice says
+  which.
+- Settings, stats and other files now save on PCs where antivirus or a
+  sync tool blocks the plugin's usual way of saving: the file is written
+  directly instead, and the log notes when that happens.
+- With Direct GL (Settings > General), a HUD or an open dropdown over
+  another HUD hides its text again instead of letting it show through.
+- Less work each frame with Direct GL or `pluginThread=1`: Direct GL no
+  longer prepares a copy of the HUD it then doesn't hand the game, and
+  the plugin thread no longer hands the game the HUD's invisible pieces.
+- Translations that ran out of room: the Dash's hotkey hint and update
+  card (German, French, Italian, Spanish, Swedish), the armed "Confirm?"
+  button and Turkish "On" in the settings menu. The achievement toast
+  preview now follows a language change, and a spotter line the voice
+  reads cuts in for a rider alongside or behind, as its clip would.
 
 ## [1.34.3] - 2026-11-03
 

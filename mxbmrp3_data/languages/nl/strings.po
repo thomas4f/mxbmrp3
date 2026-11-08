@@ -127,6 +127,10 @@ msgid "%s in burnouts and drifts"
 msgstr "%s aan burnouts en drifts"
 
 #, c-format
+msgid "%s is read-only. Untick it in Properties."
+msgstr "%s is alleen-lezen. Zie Eigenschappen."
+
+#, c-format
 msgid "%s laps in a row, crash/penalty free"
 msgstr "%s ronden op rij, zonder crash/straf"
 
@@ -197,6 +201,10 @@ msgstr "Een reactie, beoordeling, ster of een"
 msgctxt "tooltip"
 msgid "A crash tally for streaming - counts across sessions and restarts until you reset it."
 msgstr "Crashteller voor streams - telt door over sessies en herstarts tot je hem reset."
+
+msgctxt "tooltip"
+msgid "A line for every achievement you earn, good or bad."
+msgstr "Een zin voor elke prestatie die je behaalt, goed of slecht."
 
 msgctxt "tooltip"
 msgid "A new notice takes the card over, drawn as on Notices, then your page comes back."
@@ -594,7 +602,7 @@ msgstr "Zwart"
 msgid "Blue"
 msgstr "Blauw"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Blue flag"
 msgstr "Blauwe vlag"
 
@@ -948,7 +956,7 @@ msgid "Confirm"
 msgstr "Bevestigen"
 
 msgid "Confirm?"
-msgstr "Bevestigen?"
+msgstr "Zeker?"
 
 msgid "Connect the web overlay"
 msgstr "Verbind de web-overlay"
@@ -1013,8 +1021,8 @@ msgid "Could not open port %d. Is it in use?"
 msgstr "Kon poort %d niet openen. Is die in gebruik?"
 
 #, c-format
-msgid "Could not write %s. Is it read-only?"
-msgstr "Kon %s niet schrijven. Is het alleen-lezen?"
+msgid "Could not write %s. Details in the log."
+msgstr "Kon %s niet schrijven. Zie het logboek."
 
 msgid "Could not write to mxbmrp3\\benchmarks"
 msgstr "Kon niet schrijven naar mxbmrp3\\\\benchmarks"
@@ -1201,9 +1209,9 @@ msgstr "Standaard (serverbeste)"
 msgid "Default (Session PB)"
 msgstr "Standaard (sessie-PR)"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Default setup"
-msgstr "Standaardafstelling"
+msgstr "Std. afstelling"
 
 msgid "Defaults restored"
 msgstr "Standaardwaarden hersteld"
@@ -1849,7 +1857,7 @@ msgstr "Versnelling"
 msgid "Gear indicator"
 msgstr "Versnellingsindicator"
 
-#. max 9 characters
+#. max 12 characters
 msgid "General"
 msgstr "Algemeen"
 
@@ -2399,9 +2407,9 @@ msgstr "Rondetijden"
 msgid "Lapped the Field"
 msgstr "Veld Op Ronde"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Lapper ahead"
-msgstr "Achterblijver voor"
+msgstr "Achterblijver"
 
 #, c-format
 msgid "Lapping %s"
@@ -2480,6 +2488,9 @@ msgstr "Grote Sprong"
 
 msgid "Left"
 msgstr "Links"
+
+msgid "Left as it is. Settings are not saved this session"
+msgstr "Ongewijzigd gelaten. Instellingen niet opgeslagen deze sessie"
 
 msgid "Left as it is. Stats are not saved this session"
 msgstr "Gelaten zoals het is. Statistieken worden deze sessie niet opgeslagen"
@@ -3022,6 +3033,9 @@ msgstr "Oppo"
 msgid "Opponents"
 msgstr "Tegenstanders"
 
+msgid "Or turn on Auto-fetch in MXBMRP3 Settings > Records"
+msgstr "Of zet Auto-ophalen aan: MXBMRP3 Instellingen > Records"
+
 msgid "Orange"
 msgstr "Oranje"
 
@@ -3052,7 +3066,7 @@ msgstr "Haal %s in op %s"
 msgid "Overtakes"
 msgstr "Inhaalacties"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Overtime"
 msgstr "Overtime"
 
@@ -3989,6 +4003,9 @@ msgctxt "tooltip"
 msgid "Settings and every switch in one strip; drag it to an edge to turn it. Rest on one that is off to preview it."
 msgstr "Instellingen en elke schakelaar in één strip; sleep naar een rand om te draaien. Rust op een uit om te bekijken."
 
+msgid "Settings file unreadable"
+msgstr "Instellingenbestand onleesbaar"
+
 msgid "Settings not saved"
 msgstr "Instellingen niet opgeslagen"
 
@@ -4582,7 +4599,7 @@ msgstr "Krachten optel."
 msgid "Stalker"
 msgstr "Stalker"
 
-#. max 9 characters
+#. max 10 characters
 msgid "Standings"
 msgstr "Stand"
 
@@ -4595,10 +4612,6 @@ msgstr "Start of stop de sweep van tekenkosten. Schrijft een rapport als hij kla
 
 msgid "Started fresh. A copy is kept in the mxbmrp3 folder"
 msgstr "Opnieuw begonnen. Er staat een kopie in de map mxbmrp3"
-
-#. max 23 characters
-msgid "Stationary rider"
-msgstr "Stilstaande rijder"
 
 #. max 10 characters
 msgid "Stats"
@@ -4642,6 +4655,10 @@ msgstr "Steam niet beschikbaar"
 #. max 11 characters
 msgid "Steering"
 msgstr "Sturen"
+
+#. max 15 characters
+msgid "Stopped rider"
+msgstr "Gestopte rijder"
 
 #. max 60 characters
 msgid "Stories"
@@ -4831,8 +4848,8 @@ msgid "The RPM widget's shift lights, with the revs under them."
 msgstr "De schakellampjes van de RPM-widget, met de toeren eronder."
 
 msgctxt "tooltip"
-msgid "The Session Charts HUD's Gap chart: you and the riders just ahead and behind."
-msgstr "De Gapgrafiek van de Sessiegrafieken-HUD: jij en de rijders vlak voor en achter je."
+msgid "The Session Charts HUD's Gap chart: the leader, you and the riders around you."
+msgstr "De Gapgrafiek van de Sessiegrafieken-HUD: de leider, jij en de rijders om je heen."
 
 msgctxt "tooltip"
 msgid "The Session HUD's rows: server, track and format."
@@ -5144,7 +5161,7 @@ msgstr "Baan"
 msgid "Track %s riders"
 msgstr "Volg %s rijders"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Track change"
 msgstr "Baanwissel"
 
@@ -5201,6 +5218,10 @@ msgstr "Trickstapel"
 #. max 23 characters
 msgid "Trick stats"
 msgstr "Trickstatistieken"
+
+#. max 15 characters
+msgid "Tricks"
+msgstr "Tricks"
 
 msgctxt "tooltip"
 msgid "Tricks shown in the stack. Off hides it, 1 shows the active trick, 2+ shows history."
@@ -5329,7 +5350,7 @@ msgstr "Updatecontrole volgt..."
 msgid "Update installed!"
 msgstr "Update geïnstalleerd!"
 
-#. max 9 characters
+#. max 12 characters
 msgid "Updates"
 msgstr "Updates"
 
@@ -5629,17 +5650,21 @@ msgstr "Win een race en leid elke ronde"
 msgid "Win with every rider at least a lap down"
 msgstr "Win met elke rijder minstens een ronde achter"
 
+#, c-format
+msgid "Windows blocked %s. Antivirus or OneDrive?"
+msgstr "Windows blokkeerde %s. Antivirus of OneDrive?"
+
 msgid "Winner"
 msgstr "Winnaar"
 
 msgid "Wire to Wire"
 msgstr "Start tot Finish"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Wrong way"
 msgstr "Verkeerde kant"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Wrong way rider"
 msgstr "Spookrijder"
 
@@ -5683,6 +5708,10 @@ msgstr "Je Twitch- en YouTube-chat in de game, samen in één venster. Alleen le
 
 msgid "Your final lap"
 msgstr "Je laatste ronde"
+
+msgctxt "tooltip"
+msgid "Your freestyle tricks, landings and crashes. Never in a race."
+msgstr "Je freestyletricks, landingen en valpartijen. Nooit in een race."
 
 msgctxt "tooltip"
 msgid "Your gap to a reference lap across the whole lap: green where you gained, red where you lost."

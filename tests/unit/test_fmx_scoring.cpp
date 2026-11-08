@@ -14,6 +14,7 @@
 #include "doctest.h"
 
 #include "core/fmx_scoring.h"
+#include "core/fmx_levels.h"
 #include <cmath>
 #include <cstdio>
 
@@ -130,6 +131,8 @@ TEST_CASE("fmx chain: L/R variants are one type, and the extra active trick coun
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <vector>
+#include <algorithm>
 
 namespace {
 
@@ -237,6 +240,40 @@ std::string recognisedBy(TrickType t, const FmxConfig& c) {
     }
 }
 
+// The levels table (core/fmx_levels.h): one row per rule, in trick order,
+// the tricks sharing a rule listed together. The unit follows what it measures.
+void levelTable(std::ostringstream& out) {
+    out << "| Trick | Measured on | Big | Top |\n";
+    out << "|---|---|---|---|\n";
+    std::vector<const TrickLevelRule*> done;
+    for (int i = 1; i < static_cast<int>(TrickType::COUNT); ++i) {
+        const auto t = static_cast<TrickType>(i);
+        const TrickLevelRule* rule = getTrickLevelRule(t);
+        if (!rule || std::find(done.begin(), done.end(), rule) != done.end()) continue;
+        done.push_back(rule);
+        std::string names;
+        for (int j = i; j < static_cast<int>(TrickType::COUNT); ++j) {
+            const auto u = static_cast<TrickType>(j);
+            if (getTrickLevelRule(u) != rule || getTrickDirection(u) == TrickDirection::RIGHT) continue;
+            std::string n = getTrickName(u);
+            const bool paired = getTrickDirection(u) == TrickDirection::LEFT;
+            if (paired) n.resize(n.size() - 2);   // "Whip L" -> "Whip"
+            if (!names.empty()) names += ", ";
+            names += n + (paired ? " (L/R)" : "");
+        }
+        const char* measure = "time held";
+        std::string (*unit)(float) = secs;
+        switch (getPrimaryAxis(t)) {
+            case RotationAxis::YAW:  measure = "peak yaw"; unit = deg; break;
+            case RotationAxis::ROLL: measure = "deepest lean, at the lip or after"; unit = deg; break;
+            default: if (t == TrickType::AIR) measure = "time airborne"; break;
+        }
+        out << "| " << names << " | " << measure << " | " << unit(rule->big)
+            << " | " << rule->topWord << ", " << unit(rule->top) << " |\n";
+    }
+    out << "\n";
+}
+
 void trickTable(std::ostringstream& out, bool air, const FmxConfig& c) {
     out << "| Trick | INI key | Base | Scored on | Full progress | Recognised by |\n";
     out << "|---|---|---|---|---|---|\n";
@@ -269,7 +306,7 @@ std::string generateTricksDoc() {
     // The generated-doc note, in the one shape every generated page in this
     // repo uses: after the intro, so a reader learns what the page IS before
     // how it is made. check_docs.py holds all six to it.
-    out << "<sub>Generated from `mxbmrp3/core/fmx_types.h` and `mxbmrp3/core/fmx_scoring.h` by "
+    out << "<sub>Generated from `mxbmrp3/core/fmx_types.h`, `mxbmrp3/core/fmx_levels.h` and `mxbmrp3/core/fmx_scoring.h` by "
            "`tests/unit/test_fmx_scoring.cpp` - do not edit. Run the unit gate and copy "
            "`/tmp/tricks.new.md` over this file.</sub>\n\n";
     out << "## Ground tricks\n\n";
@@ -281,6 +318,11 @@ std::string generateTricksDoc() {
         << "; before that a bump is not a trick. Full rotations (" << deg(FULL_ROTATION_MIN)
         << ") are read first, then the turns, then whip and scrub, then plain air.\n\n";
     trickTable(out, true, c);
+    out << "## Levels\n\n";
+    out << "How big one trick was, in front of its name: Whip, Big Whip, Flat Whip. The HUD's name grows "
+           "while the trick does. Levels are only shown, never scored. Full rotations already have theirs "
+           "(Double, Triple, Quad), and the tricks not listed have none.\n\n";
+    levelTable(out);
     out << "## Scoring\n\n";
     out << "- **Rotation.** A trick with an axis is scaled by its peak rotation over 360 deg, never below 1x: "
            "a 540 deg backflip is 1.5x the base.\n";

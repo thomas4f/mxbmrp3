@@ -25,6 +25,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 
 #include "event_log_types.h"
 
@@ -43,6 +44,13 @@ namespace SpotterPhrase {
 //   Opponents  anything whose subject is ANOTHER RIDER — their fastest lap,
 //              their penalty, leader changes, proximity, traffic
 //   Hazard     safety — blue flag, rider down ahead, wrong-way rider
+//   Tricks     YOUR freestyle tricks — the name, the landing, the crash, the
+//              combo (games with FMX detection; never in a race session)
+//   Achievements  an achievement you just earned, each with its own line
+//              (MX Bikes)
+//
+// The last two are for fun rather than for racing. Tricks is the one category
+// that ships OFF (the default mask is in spotter_manager.h).
 //
 // This is not how it started, and the difference was a real bug: the map
 // keyed off the event TYPE alone, so RiderFinished/RiderDSQ/PitEntry/PitExit
@@ -57,6 +65,8 @@ enum class Category : uint8_t {
                    // retirements, pit stops, finishes
     Proximity,     // who is around you RIGHT NOW: behind, alongside, traffic
     Hazard,        // blue flag, incident ahead, wrong way
+    Tricks,        // your FMX tricks: name, landing, crash, combo
+    Achievements,  // an achievement you just earned
     COUNT
 };
 
@@ -94,34 +104,95 @@ inline Category categoryFor(EventLogType type, Subject subj) {
     }
 }
 
+// THE SPOKEN WORDS a language replaces. The sentences translate in a language's
+// own spotter.ini (SpotterManager::reloadCuePack layers it over the shipped
+// pack); the words the plugin ASSEMBLES -- the numbers, "rider", "quicker",
+// a trick's name -- cannot be written there, so that file's [Words] section
+// maps each English word below to its translation, and say() is the one place
+// they are looked up. An empty table is English.
+//
+// kWordKeys is the whole vocabulary, and it is a census, not documentation:
+// test_spotter_language.cpp fails on a word say() is asked for that it does not
+// list, on a key nothing says, and on a shipped language that leaves a key
+// untranslated.
+// Single-word keys on purpose, except the singular nouns ("one lap"): a
+// language whose "one" agrees with the noun (Swedish "ett varv", "en minut")
+// needs the pair, and English needs nothing.
+//
+// Game thread only, like every caller (the cue is composed there; the worker
+// receives finished text).
+inline std::unordered_map<std::string, std::string>& spokenWords() {
+    static std::unordered_map<std::string, std::string> words;
+    return words;
+}
+inline const char* say(const char* english) {
+    const std::unordered_map<std::string, std::string>& words = spokenWords();
+    if (words.empty() || !english) return english;
+    const auto it = words.find(english);
+    return it == words.end() ? english : it->second.c_str();
+}
+
+inline constexpr const char* kNumberOnes[] = {
+    "zero", "one", "two", "three", "four", "five", "six", "seven",
+    "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen",
+    "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"};
+inline constexpr const char* kNumberTens[] = {
+    "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy",
+    "eighty", "ninety"};
+
+// Every word say() is ever asked for (the numbers above are words too). A
+// language may also give 21..99 whole, keyed by their digits (numberWords
+// says why); those are optional and not listed here.
+inline constexpr const char* kWordKeys[] = {
+    "zero", "one", "two", "three", "four", "five", "six", "seven",
+    "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen",
+    "fifteen", "sixteen", "seventeen", "eighteen", "nineteen",
+    "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty",
+    "ninety", "hundred", "oh", "point",
+    "one minute", "minutes", "one second", "seconds", "one lap", "laps",
+    "plus", "rider", "you", "quicker", "slower",
+    "gained", "lost", "closed", "dropped back",
+    // core/spotter_tricks.h
+    "double", "triple", "quad",
+    "big", "flat", "deep", "huge", "endless",
+    "wheelie", "coaster wheelie", "endo", "stoppie", "burnout", "donut",
+    "pivot", "backflip", "frontflip", "barrel roll", "scrub", "whip", "spin",
+    "oppo", "turn down", "flat three sixty",
+};
+
 // Racing-style number words: 56 -> "fifty six", 234 -> "two thirty four",
 // 206 -> "two oh six", 400 -> "four hundred". Valid for 0..999 (rider
 // numbers); out-of-range falls back to digits via std::to_string so a bad
 // input is audible rather than silent.
 inline std::string numberWords(int n) {
-    static const char* kOnes[] = {
-        "zero", "one", "two", "three", "four", "five", "six", "seven",
-        "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen",
-        "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"};
-    static const char* kTens[] = {
-        "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy",
-        "eighty", "ninety"};
-
     if (n < 0 || n > 999) return std::to_string(n);
+    auto ones = [](int v) { return say(kNumberOnes[v]); };
 
     auto twoDigit = [&](int v) -> std::string {
-        if (v < 20) return kOnes[v];
-        std::string out = kTens[v / 10];
-        if (v % 10) { out += " "; out += kOnes[v % 10]; }
+        if (v < 20) return ones(v);
+        // A language whose 21..99 are not "tens ones" - French 76 is
+        // soixante-seize, German sechsundsiebzig - lists them whole in
+        // [Words] by their digits ("76 = soixante-seize"). Optional, so the
+        // others never do.
+        if (v % 10) {
+            const std::unordered_map<std::string, std::string>& words = spokenWords();
+            if (!words.empty()) {
+                const auto whole = words.find(std::to_string(v));
+                if (whole != words.end()) return whole->second;
+            }
+        }
+        std::string out = say(kNumberTens[v / 10]);
+        if (v % 10) { out += " "; out += ones(v % 10); }
         return out;
     };
 
     if (n < 100) return twoDigit(n);
     const int hundreds = n / 100;
     const int rest = n % 100;
-    if (rest == 0) return std::string(kOnes[hundreds]) + " hundred";
-    if (rest < 10) return std::string(kOnes[hundreds]) + " oh " + kOnes[rest];
-    return std::string(kOnes[hundreds]) + " " + twoDigit(rest);
+    const std::string lead = ones(hundreds);
+    if (rest == 0) return lead + " " + say("hundred");
+    if (rest < 10) return lead + " " + say("oh") + " " + ones(rest);
+    return lead + " " + twoDigit(rest);
 }
 
 // The racing-style reading of a lap time's COMPOSED value (minutes*100 +
@@ -137,7 +208,7 @@ inline std::string numberWords(int n) {
 // rather than the num_100 clip a full pack recorded as "one hundred".
 inline std::string lapTimeNumberWords(int composed) {
     if (composed >= 100 && composed % 100 == 0) {
-        return numberWords(composed / 100) + " oh oh";
+        return numberWords(composed / 100) + " " + say("oh") + " " + say("oh");
     }
     return numberWords(composed);
 }
@@ -180,8 +251,23 @@ inline LapTimeParts lapTimePartsMs(int ms) {
 inline std::string lapTimeWordsMs(int ms) {
     const LapTimeParts parts = lapTimePartsMs(ms);
     if (!parts.valid) return std::string();
-    return lapTimeNumberWords(parts.composed) + " point " +
+    return lapTimeNumberWords(parts.composed) + " " + say("point") + " " +
            numberWords(parts.tenths);
+}
+
+// A count with its noun: "five seconds" / "one second"; "" when n < 0 (no
+// amount known). The singular is one word key, not "one" + "second", so a
+// language whose "one" agrees with the noun can say so.
+inline std::string countWords(int n, const char* one, const char* many) {
+    if (n < 0) return std::string();
+    if (n == 1) return say(one);
+    return numberWords(n) + " " + say(many);
+}
+inline std::string secondsWords(int secs) {
+    return countWords(secs, "one second", "seconds");
+}
+inline std::string minutesWords(int minutes) {
+    return countWords(minutes, "one minute", "minutes");
 }
 
 // Milliseconds -> the words for a DURATION that may run to hours of racing:
@@ -200,11 +286,11 @@ inline std::string durationWords(int ms) {
     const int seconds = totalSec % 60;
     std::string out;
     if (minutes > 0) {
-        out = numberWords(minutes) + (minutes == 1 ? " minute" : " minutes");
+        out = minutesWords(minutes);
         if (seconds > 0) out += ", ";
     }
     if (seconds > 0 || minutes == 0) {
-        out += numberWords(seconds) + (seconds == 1 ? " second" : " seconds");
+        out += secondsWords(seconds);
     }
     return out;
 }
@@ -216,7 +302,15 @@ inline std::string gapWordsMs(int ms) {
     if (ms < 0) ms = -ms;
     const int sec = ms / 1000;
     if (sec > 999) return std::string();
-    return numberWords(sec) + " point " + numberWords((ms % 1000) / 100);
+    return numberWords(sec) + " " + say("point") + " " +
+           numberWords((ms % 1000) / 100);
+}
+
+// A gap with the way it went: "zero point four quicker". The word rides WITH
+// the number because spoken aloud a bare "point three" does not say which way
+// it went. Zero is the caller's business (a dead heat says nothing).
+inline std::string paceWords(int deltaMs) {
+    return gapWordsMs(deltaMs) + " " + say(deltaMs < 0 ? "quicker" : "slower");
 }
 
 // A penalty's amount in WHOLE seconds, -1 when none was reported. Rounded the
@@ -226,11 +320,6 @@ inline int penaltyWholeSeconds(const EventNumbers& nums) {
     return nums.penaltyMs > 0 ? (nums.penaltyMs + 500) / 1000 : -1;
 }
 
-// "five seconds" / "one second"; "" when secs < 0 (no amount known).
-inline std::string secondsWords(int secs) {
-    if (secs < 0) return std::string();
-    return numberWords(secs) + (secs == 1 ? " second" : " seconds");
-}
 
 // What a spotter actually says at that moment: how many laps are LEFT, which is
 // one more than the bonus count above. The clock expires with the leader
@@ -268,15 +357,14 @@ inline std::string secondsWords(int secs) {
 // point four" is what happened, which is what a spotter says. The templates put
 // the verb first for the same reason -- "gained zero point four on rider twelve".
 inline const char* trendAheadWord(int deltaMs) {
-    return deltaMs < 0 ? "gained" : "lost";
+    return deltaMs < 0 ? say("gained") : say("lost");
 }
 inline const char* trendBehindWord(int deltaMs) {
-    return deltaMs < 0 ? "closed" : "dropped back";
+    return deltaMs < 0 ? say("closed") : say("dropped back");
 }
 
 inline std::string lapsWords(int laps) {
-    if (laps < 0) return std::string();
-    return numberWords(laps) + (laps == 1 ? " lap" : " laps");
+    return countWords(laps, "one lap", "laps");
 }
 
 // The rider reference used in phrases: "you" for the focused rider (player,
@@ -284,8 +372,8 @@ inline std::string lapsWords(int laps) {
 // (session-level event) yields "".
 inline std::string riderRef(int raceNum, int focusedRaceNum) {
     if (raceNum < 0) return std::string();
-    if (raceNum == focusedRaceNum) return "you";
-    return "rider " + numberWords(raceNum);
+    if (raceNum == focusedRaceNum) return say("you");
+    return std::string(say("rider")) + " " + numberWords(raceNum);
 }
 
 

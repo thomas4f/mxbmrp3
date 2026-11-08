@@ -828,7 +828,7 @@ void GapBarHud::followSpectateClick() {
     const int drawState = PluginData::getInstance().getDrawState();
     if (drawState != ViewState::SPECTATE && drawState != ViewState::REPLAY) return;
     const InputManager& input = InputManager::getInstance();
-    if (!input.getLeftButton().isClicked()) return;
+    if (!input.getLeftButton().isClicked() || !ownsClick()) return;
     // Into build space, so the click lands on a bar moved elsewhere on the
     // companion (a no-op in-game).
     CursorPosition cursor = input.getCursorPosition();

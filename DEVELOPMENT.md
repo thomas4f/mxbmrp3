@@ -152,6 +152,7 @@ run them before pushing anything they cover. Most take seconds and need no Wine;
 ./tests/integration/check_session_hook.sh     # the SessionStart hook still provisions + reports
 ./tests/web/lint.sh                           # eslint over every .js (overlay + the web suite)
 python3 tools/check_vendored_manifest.py      # vendored.json matches vendored sources
+python3 tools/spottergen/elevenlabs.py --selftest # `spottergen-elevenlabs-selftest`: every shipped line records as one whole clip
 python3 tools/check_docs.py                   # doc + source-comment paths, labels, CI vs the gate list both ways
 ```
 
@@ -394,7 +395,8 @@ construction.
 Re-mirroring the same version is normal (mirror, spot something, fix, mirror
 again), so **the private tag moves while the version is unreleased**. Once the
 public repo has that tag the version has shipped and the private tag stays put:
-a later mirror still publishes, it just doesn't drag the tag off what users got.
+a later mirror still publishes, it just doesn't drag the tag off what users got,
+and it is titled "Changes since vX.Y.Z" rather than "Release vX.Y.Z".
 Bump `resource.h` for the next one - the same rule `release` enforces, one step
 earlier.
 

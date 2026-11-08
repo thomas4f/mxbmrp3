@@ -377,7 +377,8 @@ void StatsManager::announceSaveResult(bool ok) {
     m_saveFailureAnnounced = true;
     SystemMessages::Toast t;
     snprintf(t.title, sizeof(t.title), "%s", TR("Stats not saved"));
-    snprintf(t.detail, sizeof(t.detail), TR("Could not write %s. Is it read-only?"), STATS_FILENAME);
+    SystemMessages::formatWriteFailure(AtomicFileWriter::lastFailure(getFilePath()), STATS_FILENAME,
+                                       t.detail, sizeof(t.detail));
     snprintf(t.icon, sizeof(t.icon), "triangle-exclamation");
     t.key = SystemMessages::KEY_STATS_SAVE_FAILED;
     t.severity = SystemMessages::Severity::Warning;

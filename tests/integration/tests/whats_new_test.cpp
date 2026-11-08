@@ -95,12 +95,12 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
     }
 
     SUBCASE("opening a tagged tab clears its tag and no row") {
-        // The Standings tab has room for the tag (unlike Achievements and Stream
+        // The Timing tab has room for the tag (unlike Achievements and Stream
         // Chat and Delta Trace, whose names fill the sidebar: WhatsNew::tabCanTag).
-        REQUIRE(host.whatsNewTabTagged("Standings"));
+        REQUIRE(host.whatsNewTabTagged("Timing"));
 
-        REQUIRE(host.openSettingsTab("Standings"));
-        CHECK_FALSE(host.whatsNewTabTagged("Standings"));
+        REQUIRE(host.openSettingsTab("Timing"));
+        CHECK_FALSE(host.whatsNewTabTagged("Timing"));
         // The rows on it are untouched: opening the tab says you know something
         // is here, not that you found it.
         CHECK(host.whatsNewLiveCount() == total);
@@ -119,7 +119,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         CHECK_FALSE(host.whatsNewTabTagged("Widgets"));
         // Off the tab before the panel next closes: closing dismisses the tab
         // it closes on, and the unlock is taken on the Achievements tab anyway.
-        REQUIRE(host.openSettingsTab("Standings"));
+        REQUIRE(host.openSettingsTab("Timing"));
 
         host.setPrestige(1);
         host.showSettings(true);
@@ -136,7 +136,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // "Delta Trace" (like "Stream Chat" and "Achievements") is 11 of the
         // sidebar's 13 label cells; the tag would overflow it. Its rows are still
         // marked. Only a release that marks a row on one of them can exercise
-        // this: 1.34.1 marks none, so the case says so rather than passing quietly.
+        // this: 1.35 marks none, so the case says so rather than passing quietly.
         const char* fullName = nullptr;
         for (const char* tab : { "Delta Trace", "Stream Chat", "Achievements" }) {
             if (host.whatsNewTabHighlighted(tab)) { fullName = tab; break; }
@@ -150,41 +150,27 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // Its sidebar row is banded instead, until hovered like any banded row.
         // A tab that has room keeps the tag, unbanded, and hovering it leaves the
         // tag alone (that one clears on open).
-        CHECK_FALSE(host.whatsNewTabHighlighted("Standings"));
-        REQUIRE(host.hoverSettingsTab("Standings"));
-        CHECK(host.whatsNewTabTagged("Standings"));
+        CHECK_FALSE(host.whatsNewTabHighlighted("Timing"));
+        REQUIRE(host.hoverSettingsTab("Timing"));
+        CHECK(host.whatsNewTabTagged("Timing"));
         REQUIRE(host.hoverSettingsTab(fullName));
         CHECK_FALSE(host.whatsNewTabHighlighted(fullName));
     }
 
-    SUBCASE("the Find field is banded on every tab until the pointer reaches it") {
-        // Its marker is the Find tab's, but the field sits in the title band of
-        // every tab, so the real pointer path has to dismiss it from any of them.
-        REQUIRE(host.openSettingsTab("Standings"));
-        host.showSettings(true);
-        host.draw();
-        const int before = host.whatsNewLiveCount();
-        float x = 0.0f, y = 0.0f;
-        REQUIRE(host.settingsRegionCenter("find.field", &x, &y));
-        host.injectMouse(true, x, y, 0);
-        host.draw();
-        CHECK(host.whatsNewLiveCount() == before - 1);
-    }
-
     SUBCASE("hovering a marked row clears that row and no other") {
-        REQUIRE(host.openSettingsTab("Standings"));
+        REQUIRE(host.openSettingsTab("Timing"));
         const int before = host.whatsNewLiveCount();
         REQUIRE(before >= 1);
 
-        host.hoverSettingsRow("standings.show_mode");
+        host.hoverSettingsRow("timing.target");
         CHECK(host.whatsNewLiveCount() == before - 1);
 
         // Hovering it again is not a second dismissal.
-        host.hoverSettingsRow("standings.show_mode");
+        host.hoverSettingsRow("timing.target");
         CHECK(host.whatsNewLiveCount() == before - 1);
 
         // An unmarked row on the same tab dismisses nothing.
-        host.hoverSettingsRow("standings.rows");
+        host.hoverSettingsRow("timing.freeze");
         CHECK(host.whatsNewLiveCount() == before - 1);
     }
 
@@ -200,7 +186,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // the case can see it.
         REQUIRE_MESSAGE(host.hasMarkDirty(), "MXBMRP3_Test_FlushIfDirty/IsDirty absent");
         host.setAutoSave(true);
-        REQUIRE(host.openSettingsTab("Standings"));
+        REQUIRE(host.openSettingsTab("Timing"));
 
         // SAVE FIRST, to clear the flag. Opening a tab persists [Profiles] activeTab
         // and marks dirty by itself, so a dirty check straight after the click passes
@@ -209,7 +195,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         host.save();
         REQUIRE_FALSE(host.isDirty());
 
-        host.hoverSettingsRow("standings.show_mode");
+        host.hoverSettingsRow("timing.target");
         const int afterDismiss = host.whatsNewLiveCount();
         REQUIRE(afterDismiss == total - 1);
         CHECK_MESSAGE(host.isDirty(),
@@ -223,7 +209,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         REQUIRE(host.whatsNewLiveCount() == total);
         host.loadSettings(saveWin);
         CHECK(host.whatsNewLiveCount() == afterDismiss);
-        CHECK_FALSE(host.whatsNewTabTagged("Standings"));   // the tab dismissal too
+        CHECK_FALSE(host.whatsNewTabTagged("Timing"));   // the tab dismissal too
     }
 
     SUBCASE("starting up does not silently dismiss a tab") {
@@ -278,14 +264,14 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // anywhere near this. Written against resetAll() alone, a test here would pass
         // while checking half a button.
         REQUIRE_MESSAGE(host.hasResetGlobals(), "MXBMRP3_Test_ResetGlobals not exported");
-        REQUIRE(host.openSettingsTab("Standings"));
-        host.hoverSettingsRow("standings.show_mode");
+        REQUIRE(host.openSettingsTab("Timing"));
+        host.hoverSettingsRow("timing.target");
         REQUIRE(host.whatsNewLiveCount() == total - 1);
-        REQUIRE_FALSE(host.whatsNewTabTagged("Standings"));
+        REQUIRE_FALSE(host.whatsNewTabTagged("Timing"));
 
         host.resetEverything();
         CHECK(host.whatsNewLiveCount() == total - 1);
-        CHECK_FALSE(host.whatsNewTabTagged("Standings"));
+        CHECK_FALSE(host.whatsNewTabTagged("Timing"));
     }
 
     host.shutdown();

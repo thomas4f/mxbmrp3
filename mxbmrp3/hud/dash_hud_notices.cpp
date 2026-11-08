@@ -119,7 +119,7 @@ void DashHud::followMessageClick() {
     const Startup message = m_page == Page::NOTICES ? cardMessage() : Startup::None;
     if (message == Startup::None || message == Startup::BrokenInstall || isHeldBack()) return;
     const InputManager& input = InputManager::getInstance();
-    if (!input.shouldShowCursor() || !input.getLeftButton().isClicked()) return;
+    if (!input.shouldShowCursor() || !input.getLeftButton().isClicked() || !ownsClick()) return;
     CursorPosition cursor = input.getCursorPosition();
     mapCursorToHudSpace(cursor.x, cursor.y);
     if (!cursor.isValid || !isPointInBounds(cursor.x, cursor.y)) return;

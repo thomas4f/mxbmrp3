@@ -145,6 +145,86 @@
     src: url('fonts/Doto-Bold.ttf') format('truetype');
     font-display: swap;
 }
+@font-face {
+    font-family: 'Geist-Regular';
+    src: url('fonts/Geist-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Geist-SemiBold';
+    src: url('fonts/Geist-SemiBold.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'GeistMono-Regular';
+    src: url('fonts/GeistMono-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Inter-Regular';
+    src: url('fonts/Inter-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Inter-SemiBold';
+    src: url('fonts/Inter-SemiBold.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Manrope-Regular';
+    src: url('fonts/Manrope-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Manrope-SemiBold';
+    src: url('fonts/Manrope-SemiBold.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'OpenSans-Regular';
+    src: url('fonts/OpenSans-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'OpenSans-SemiBold';
+    src: url('fonts/OpenSans-SemiBold.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Outfit-Regular';
+    src: url('fonts/Outfit-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Outfit-SemiBold';
+    src: url('fonts/Outfit-SemiBold.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Sora-Regular';
+    src: url('fonts/Sora-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Sora-SemiBold';
+    src: url('fonts/Sora-SemiBold.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'SpaceGrotesk-Regular';
+    src: url('fonts/SpaceGrotesk-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'SpaceGrotesk-SemiBold';
+    src: url('fonts/SpaceGrotesk-SemiBold.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'VT323-Regular';
+    src: url('fonts/VT323-Regular.ttf') format('truetype');
+    font-display: swap;
+}
 
 html {
     font-size: 28px;  /* Fallback — overridden by CONFIG.fontSize in overlay-shell.js */

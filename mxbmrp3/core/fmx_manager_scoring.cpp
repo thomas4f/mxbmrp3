@@ -12,6 +12,7 @@
 #include "fmx_scoring.h"
 #include "plugin_data.h"
 #include "plugin_constants.h"
+#include "spotter_manager.h"
 #include "stats_manager.h"
 #include "../diagnostics/logger.h"
 #include <algorithm>
@@ -24,6 +25,7 @@ void FmxManager::initializeNewTrick(const Unified::TelemetryData& telemetry) {
     m_activeTrick.startPitch = telemetry.pitch;
     m_activeTrick.startYaw = telemetry.yaw;
     m_activeTrick.startRoll = telemetry.roll;
+    m_trickNameCalled = false;
     m_continuousAirborneTime = 0.0f;
     m_airToGroundTime = 0.0f;
     m_rotationTracker.startTracking();
@@ -51,6 +53,7 @@ void FmxManager::startTrick(const Unified::TelemetryData& telemetry) {
 void FmxManager::enterGrace() {
     m_activeTrick.state = Fmx::TrickState::GRACE;
     m_activeTrick.graceStartTime = Fmx::clockNow();
+    m_landingCalled = false;   // the spotter calls it a moment in (GRACE state)
 
     FMX_LOG("FMX: GRACE %s prog=%.0f%% score=%d",
         Fmx::getTrickName(m_activeTrick.type),
@@ -103,6 +106,7 @@ void FmxManager::completeTrick() {
         m_score.bestComboScore = totalScore;
     }
     m_score.currentTrickScore = 0;
+    SpotterManager::getInstance().onTrickCombo(totalTricks);
 
     // Lifetime totals (achievements): every trick of the chain, then the banked
     // score. Here and not at addTrickToChain, so a chain that ends in a crash

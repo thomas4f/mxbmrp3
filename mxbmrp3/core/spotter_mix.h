@@ -39,11 +39,16 @@
 // ============================================================================
 #pragma once
 
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
+
+#include "spotter_phrase.h"
+#include "spotter_vars.h"
 
 namespace SpotterMix {
 
@@ -142,41 +147,273 @@ inline void applyGain(std::vector<uint8_t>& riff, int volumePct) {
     }
 }
 
-// Resolve a pack's mix token sequence into the wav filenames to play, in
-// order. Tokens are wav names or the placeholders {event_rider}, {event_time}, {position}
-// (required — an unresolvable one empties the whole list so the caller
-// falls back rather than skipping words silently) and {penalty_seconds}, {overtime_laps}
-// (optional — omitted when absent; see the comment at the {penalty_seconds} branch).
-// The placeholders a mix recipe may name. THE list — resolveTokens below
-// switches on exactly these, and anything else falls through to "a wav
-// filename", which is how a typo'd or invented placeholder becomes a missing
-// file, drops the whole recipe at playback and lands the cue on TTS. Silent on
-// Windows, and silence itself under Wine, where TTS does not exist.
-//
-// That is not hypothetical: the pack generator baked `{gap_to_behind}` into
-// the three gap recipes — the right name for the PHRASE, which expands
-// variables, and a name this resolver has never known. Published here so
-// SpotterCuePack::parse can reject an unknown one at load, with the pack name
-// and the row in the log, instead of leaving it to be inaudible on track.
-inline bool isMixToken(const std::string& tok) {
+// How long a RIFF that assemble() built plays for, in ms - what the worker
+// waits out before starting the next clip (one winmm channel: starting it
+// early cuts this one off). Reads only the canonical header assemble()
+// writes; 0 for anything shorter, so an unknown length never blocks a cue.
+inline uint32_t durationMs(const std::vector<uint8_t>& riff) {
+    if (riff.size() <= kHeaderSize) return 0;
+    const uint32_t rate = static_cast<uint32_t>(riff[24]) |
+                          (static_cast<uint32_t>(riff[25]) << 8) |
+                          (static_cast<uint32_t>(riff[26]) << 16) |
+                          (static_cast<uint32_t>(riff[27]) << 24);
+    if (rate == 0) return 0;
+    const uint64_t samples = (riff.size() - kHeaderSize) / 2;
+    return static_cast<uint32_t>(samples * 1000 / rate);
+}
+
+// The five placeholders with their own branch in resolveTokens below - the
+// ones a mix could say before every variable could be stitched. Their chunk
+// sequences are fixed ("rider" + number, the lap-time oh-oh case) and their
+// emptiness rules predate optional groups: {event_rider}, {event_time} and
+// {position} are REQUIRED (an unresolvable one empties the whole list so the
+// caller falls back rather than skipping words silently), {penalty_seconds}
+// and {overtime_laps} OPTIONAL (omitted when absent; see the {penalty_seconds}
+// branch).
+inline bool isNumericMixToken(const std::string& tok) {
     return tok == "{event_rider}" || tok == "{event_time}" ||
            tok == "{penalty_seconds}" || tok == "{overtime_laps}" ||
            tok == "{position}";
 }
 
+// The placeholders a mix recipe may name: the five above, plus EVERY variable
+// in spotter_vars.h, which resolveTokens speaks word by word (spokenChunks).
+// Anything else that is braced is a typo - and before this check one fell
+// through to "a wav filename", became a missing file and dropped the whole
+// recipe to TTS: silent on Windows, silence itself under Wine. Not
+// hypothetical: the pack generator once baked `{gap_to_behind}` into three
+// recipes when the resolver did not know it. Published here so
+// SpotterCuePack::parse rejects an unknown one at load, with the pack name and
+// the row in the log, instead of leaving it to be inaudible on track.
+inline bool isMixToken(const std::string& tok) {
+    if (isNumericMixToken(tok)) return true;
+    if (tok.size() < 3 || tok.front() != '{' || tok.back() != '}') return false;
+    const std::string name = tok.substr(1, tok.size() - 2);
+    for (const SpotterVars::Binding& b : SpotterVars::bindings()) {
+        if (name == b.name) return true;
+    }
+    return false;
+}
+
+// WORD CHUNKS: how a variable's SPOKEN value becomes clips, so a recorded pack
+// can say {trick}, {tier}, gaps, counts and session names, not only the five
+// numbers above. The value is the same text the subtitle and TTS get ("double
+// backflip", "one point two quicker", "Race 1"), read left to right:
+//   - a multi-word entry of SpotterPhrase::kWordKeys plays as ONE clip named
+//     after it, spaces as underscores ("flat three sixty" -> flat_three_sixty.wav,
+//     "dropped back" -> dropped_back.wav), longest match first;
+//   - a run of number words is parsed back to the number numberWords() said
+//     and plays num_<N>.wav ("one forty eight" -> num_148.wav, split by the
+//     worker's hundreds fallback when the pack has only num_0..99), with the
+//     lap-time "one oh oh" played num_1 + oh + oh exactly as {event_time} does;
+//   - digits play as the number they are ("Race 1" -> race.wav num_1.wav);
+//   - any other word plays <word>.wav, lowercased, apostrophes dropped.
+// So the chunk for a word IS the word, which is the convention the five
+// placeholders already set (rider.wav, point.wav, laps.wav). A value with a
+// word the pack has no clip for - a rider's NAME, a setup name - fails at
+// playback like any missing chunk and the cue falls back to TTS rather than
+// dropping the word. False only for text no filename can carry (a character
+// outside ASCII letters, digits, spaces and . , ' - : or a number past 999).
+inline bool spokenChunks(const std::string& spoken, std::vector<std::string>& out) {
+    std::vector<std::string> words;
+    std::string w;
+    for (unsigned char c : spoken) {
+        if (std::isalpha(c) || std::isdigit(c)) {
+            if (!w.empty() && (std::isdigit(c) != 0) != (std::isdigit(
+                    static_cast<unsigned char>(w.back())) != 0)) {
+                words.push_back(w);
+                w.clear();
+            }
+            w += static_cast<char>(std::tolower(c));
+        } else if (c == '\'') {
+            continue;
+        } else if (c == ' ' || c == '-') {
+            if (!w.empty()) { words.push_back(w); w.clear(); }
+        } else if (c == ',' || c == '.' || c == ':') {
+            // A pause BETWEEN values: kept as a marker so two numbers either
+            // side ("nine, forty") never read as one ("nine forty").
+            if (!w.empty()) { words.push_back(w); w.clear(); }
+            words.push_back(",");
+        } else {
+            return false;
+        }
+    }
+    if (!w.empty()) words.push_back(w);
+
+    auto onesValue = [](const std::string& s) -> int {
+        for (int i = 0; i < 20; ++i) {
+            if (s == SpotterPhrase::kNumberOnes[i]) return i;
+        }
+        return -1;
+    };
+    auto tensValue = [](const std::string& s) -> int {
+        for (int i = 2; i < 10; ++i) {
+            if (s == SpotterPhrase::kNumberTens[i]) return i * 10;
+        }
+        return -1;
+    };
+    // A two-digit reading at i ("forty eight", "twelve", "forty"); 0 words
+    // consumed when there is none.
+    auto twoDigit = [&](size_t i, int& value) -> size_t {
+        if (i >= words.size()) return 0;
+        const int o = onesValue(words[i]);
+        if (o >= 0) { value = o; return 1; }
+        const int t = tensValue(words[i]);
+        if (t < 0) return 0;
+        const int u = i + 1 < words.size() ? onesValue(words[i + 1]) : -1;
+        if (u >= 1 && u <= 9) { value = t + u; return 2; }
+        value = t;
+        return 1;
+    };
+    auto num = [](int n) { return "num_" + std::to_string(n) + ".wav"; };
+
+    size_t i = 0;
+    while (i < words.size()) {
+        if (words[i] == ",") { ++i; continue; }
+        // Multi-word vocabulary first, longest first, so "flat three sixty"
+        // stays the trick and never becomes "flat" + 360.
+        size_t bestLen = 0;
+        std::string bestName;
+        for (const char* key : SpotterPhrase::kWordKeys) {
+            std::vector<std::string> parts;
+            std::string part;
+            for (const char* k = key; ; ++k) {
+                if (*k == ' ' || *k == '\0') {
+                    parts.push_back(part);
+                    part.clear();
+                    if (*k == '\0') break;
+                } else {
+                    part += *k;
+                }
+            }
+            if (parts.size() < 2 || parts.size() <= bestLen ||
+                i + parts.size() > words.size()) {
+                continue;
+            }
+            bool match = true;
+            for (size_t k = 0; k < parts.size() && match; ++k) {
+                match = words[i + k] == parts[k];
+            }
+            if (!match) continue;
+            bestLen = parts.size();
+            bestName.clear();
+            for (size_t k = 0; k < parts.size(); ++k) {
+                if (k) bestName += '_';
+                bestName += parts[k];
+            }
+        }
+        if (bestLen) {
+            out.push_back(bestName + ".wav");
+            i += bestLen;
+            continue;
+        }
+
+        if (std::isdigit(static_cast<unsigned char>(words[i][0]))) {
+            if (words[i].size() > 3) return false;
+            int n = 0;
+            for (char d : words[i]) n = n * 10 + (d - '0');
+            out.push_back(num(n));
+            ++i;
+            continue;
+        }
+
+        int first = 0;
+        const size_t used = twoDigit(i, first);
+        if (used == 0) {
+            out.push_back(words[i] + ".wav");
+            ++i;
+            continue;
+        }
+        i += used;
+        // The racing-style hundreds: "four seventy six", "three oh five",
+        // "five hundred" - only after a single 1..9 word, as numberWords says
+        // them. "oh oh" is the lap time's whole minute (lapTimeNumberWords).
+        if (used == 1 && first >= 1 && first <= 9 && i < words.size()) {
+            if (words[i] == "hundred") {
+                out.push_back(num(first * 100));
+                ++i;
+                continue;
+            }
+            if (words[i] == "oh") {
+                if (i + 1 < words.size() && words[i + 1] == "oh") {
+                    out.push_back(num(first));
+                    out.push_back("oh.wav");
+                    out.push_back("oh.wav");
+                    i += 2;
+                    continue;
+                }
+                const int u = i + 1 < words.size() ? onesValue(words[i + 1]) : -1;
+                if (u >= 1 && u <= 9) {
+                    out.push_back(num(first * 100 + u));
+                    i += 2;
+                    continue;
+                }
+            }
+            int rest = 0;
+            const size_t more = twoDigit(i, rest);
+            if (more && rest >= 10) {
+                out.push_back(num(first * 100 + rest));
+                i += more;
+                continue;
+            }
+        }
+        out.push_back(num(first));
+    }
+    return true;
+}
+
+// Resolve a pack's mix token sequence into the wav filenames to play, in
+// order. Tokens are wav names, placeholders (isMixToken) and the optional-
+// group markers "[" and "]" (SpotterCuePack::parse splits them off and
+// rejects unbalanced or nested ones).
+//
+// OPTIONAL GROUPS work as they do in a phrase: the group drops whole when any
+// placeholder inside it has no value, so `p.wav {position} [ to.wav
+// {rider_ahead} ]` says "P four" when you lead. A required placeholder inside a
+// group drops the group instead of the whole mix.
+//
+// The word-chunk placeholders (every variable but the five numeric ones) read
+// their value from `vars`; outside a group an empty one says nothing, the way
+// it expands to nothing in a phrase. nullptr vars = every one of them empty.
 inline std::vector<std::string> resolveTokens(
     const std::vector<std::string>& tokens, int riderNum, int timeComposed,
-    int timeTenths, int secs = -1, int laps = -1, int pos = -1) {
-    std::vector<std::string> files;
+    int timeTenths, int secs = -1, int laps = -1, int pos = -1,
+    const SpotterVars::Vars* vars = nullptr) {
+    std::vector<std::string> result;
+    std::vector<std::string> group;
+    bool inGroup = false;
+    bool groupDead = false;
     for (const std::string& tok : tokens) {
+        if (tok == "[") {
+            inGroup = true;
+            groupDead = false;
+            group.clear();
+            continue;
+        }
+        if (tok == "]") {
+            if (!groupDead) result.insert(result.end(), group.begin(), group.end());
+            inGroup = false;
+            continue;
+        }
+        std::vector<std::string>& files = inGroup ? group : result;
+        // A placeholder with nothing to say: the group goes, or - outside one -
+        // the whole mix, for the required placeholders.
+        auto missing = [&]() -> bool {
+            if (inGroup) { groupDead = true; return false; }
+            return true;
+        };
         if (tok == "{event_rider}") {
-            if (riderNum < 0 || riderNum > 999) return {};
+            if (riderNum < 0 || riderNum > 999) {
+                if (missing()) return {};
+                continue;
+            }
             files.push_back("rider.wav");
             files.push_back("num_" + std::to_string(riderNum) + ".wav");
         } else if (tok == "{event_time}") {
             if (timeComposed < 0 || timeComposed > 999 || timeTenths < 0 ||
                 timeTenths > 9) {
-                return {};
+                if (missing()) return {};
+                continue;
             }
             // Seconds of exactly 00 compose to a multiple of a hundred, and
             // the whole-number clip a full pack recorded for it says "one
@@ -204,22 +441,45 @@ inline std::vector<std::string> resolveTokens(
             if (secs >= 0 && secs <= 999) {
                 files.push_back("num_" + std::to_string(secs) + ".wav");
                 files.push_back(secs == 1 ? "second.wav" : "seconds.wav");
+            } else if (inGroup) {
+                groupDead = true;
             }
         } else if (tok == "{overtime_laps}") {
             // Optional like {penalty_seconds}: overtime_started bonus laps.
             if (laps >= 0 && laps <= 999) {
                 files.push_back("num_" + std::to_string(laps) + ".wav");
                 files.push_back(laps == 1 ? "lap.wav" : "laps.wav");
+            } else if (inGroup) {
+                groupDead = true;
             }
         } else if (tok == "{position}") {
             // REQUIRED like {event_rider}: "P" with no number is not a cue.
-            if (pos < 1 || pos > 999) return {};
+            if (pos < 1 || pos > 999) {
+                if (missing()) return {};
+                continue;
+            }
             files.push_back("num_" + std::to_string(pos) + ".wav");
+        } else if (tok.size() > 2 && tok.front() == '{' && tok.back() == '}') {
+            // Every other variable, spoken word by word (spokenChunks).
+            const std::string* value =
+                vars ? SpotterVars::lookup(*vars, tok.substr(1, tok.size() - 2))
+                     : nullptr;
+            if (!value || value->empty()) {
+                if (inGroup) groupDead = true;
+                continue;
+            }
+            std::vector<std::string> words;
+            if (!spokenChunks(*value, words)) {
+                if (missing()) return {};
+                continue;
+            }
+            files.insert(files.end(), words.begin(), words.end());
         } else {
             files.push_back(tok);
         }
     }
-    return files;
+    if (inGroup) return {};  // parse rejects an unclosed group; never guess
+    return result;
 }
 
 // The hundreds-boundary fallback for a missing three-digit chunk: the chunk
@@ -374,6 +634,19 @@ inline std::vector<uint8_t> assemble(const std::vector<Pcm>& chunks,
 
     for (int16_t s : pcm) push16(static_cast<uint16_t>(s));
     return wav;
+}
+
+// Prepend `lead` (a pack's interrupt filler) to a RIFF assemble() built,
+// butt-joined: a stumble runs straight on into the call. Leaves `riff` as it
+// was when either side is unusable or the rates differ - the call still
+// plays, just without its stumble.
+inline void prependClip(const Pcm& lead, std::vector<uint8_t>& riff) {
+    if (!lead.valid()) return;
+    std::vector<Pcm> two(1, lead);
+    two.push_back(parseWav(riff.data(), riff.size()));
+    if (!two[1].valid()) return;
+    std::vector<uint8_t> joined = assemble(two, /*gapMs=*/0);
+    if (!joined.empty()) riff = std::move(joined);
 }
 
 }  // namespace SpotterMix

@@ -116,6 +116,7 @@
   //   buttons: null | { n, w, h },       // n boxes of content w x-cells, h y-cells
   //   minPanelW,                         // optional: minimum PANEL width, x-cells
   //   gap,                               // optional: junction-only air, x-cells
+  //   titleInFrame,                      // optional: the band IS the frame's top
   // }
   //
   // minPanelW exists for panels that share a column and must not shrink below
@@ -204,7 +205,9 @@
         widthSetBy = 'min';
       }
     }
-    const captionX = panelInnerLeft + insetL(t);
+    // A TITLE BAR spans the panel's OUTER box (panel_box.h Spec::titleInFrame).
+    const titleBar = hasTitle && !!spec.titleInFrame;
+    const captionX = (titleBar ? 0 : panelInnerLeft) + insetL(t);
     const rowsX = panelInnerLeft + insetL(c);
     const buttonX = panelInnerLeft + insetL(b);
     const panelCols = panelInnerLeft + innerW + P.p.r + P.b.r;
@@ -212,8 +215,8 @@
 
     // ---- vertical, outside in ----------------------------------------------
     const gapY = (spec.gap || 0) * unit;
-    const panelInner = P.b.t + P.p.t;
-    let y = panelInner;
+    let panelInner = P.b.t + P.p.t;
+    let y = titleBar ? 0 : panelInner;
     let titleTop = null, titleH = 0, titleBot = null, titleSlack = 0, bandDrawnBot = null;
     if (hasCaption) {
       titleTop = y + t.m.t;
@@ -229,10 +232,17 @@
       // junction gap is folded INTO the quantized advance — it exists only
       // when the caption does, so outside it would be a second differential
       // fractional term and reintroduce the titled/untitled slack split.
-      const adv = t.m.t + titleH + t.m.b + gapY;
+      const adv = t.m.t + titleH + t.m.b + (titleBar ? 0 : gapY);
       titleSlack = Math.ceil(adv - 1e-9) - adv;
       bandDrawnBot = titleBot + (hasTitle ? titleSlack : 0);
       y += adv + titleSlack;
+    }
+    // The frame starts under the title bar and spends its own top chrome there.
+    let frameTop = 0;
+    if (titleBar) {
+      frameTop = y;
+      panelInner = y + P.b.t + P.p.t;
+      y = panelInner;
     }
     // ONE BOX PER SECTION, stacked down its column; the seam between two is the
     // sum of their margins plus the junction gap. A BAND is as tall as its
@@ -325,9 +335,10 @@
       P, T: t, C: c, B: b, hasTitle, hasCard, nBtn, widthSetBy, columnSplit,
       bands: bandGeoms,
       artBot, panelInner, panelInnerLeft, innerW,
-      titleTop, titleH, titleBot, titleSlack, bandDrawnBot,
+      titleTop, titleH, titleBot, titleSlack, bandDrawnBot, frameTop,
       sections, seam, btnTop, btnH, btns, btnW,
-      titleLeft: lOf(t), titleW: wOf(t), cardLeft: lOf(c), cardW: wOf(c),
+      titleLeft: titleBar ? t.m.l : lOf(t),
+      titleW: titleBar ? panelCols - t.m.l - t.m.r : wOf(t), cardLeft: lOf(c), cardW: wOf(c),
       panelH, slackY, panelCols, cols: spec.cols,
       captionX, rowsX, buttonX,
       rowsTop: sections[0].rowsTop, contentH: sections[0].h,
@@ -458,7 +469,7 @@
     if (!themed) {
       push({ l: 0, t: 0, r: g.panelCols, b: g.panelH }, 'panel fill', 'flat');
     } else {
-      const fr = sliceRects(0, 0, g.panelCols, g.panelH, g.P.b);
+      const fr = sliceRects(0, g.frameTop, g.panelCols, g.panelH - g.frameTop, g.P.b);
       for (const sl of fr) if (sl.part !== 'mid') push(sl, 'panel border');
       const centre = fr.find(sl => sl.part === 'mid');
       const covers = [];

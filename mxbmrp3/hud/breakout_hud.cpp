@@ -72,6 +72,7 @@ void BreakoutHud::handleClickDetection() {
     if (!input.isCursorEnabled()) return;
 
     // Detect left click (transition from not pressed to pressed)
+    // owns-click-exempt: the running game is the whole screen and not draggable, so never a pick
     const bool isLeftPressed = input.getLeftButton().isPressed;
     const bool isLeftClick = isLeftPressed && !m_wasLeftPressed;
     m_wasLeftPressed = isLeftPressed;

@@ -5,8 +5,6 @@
 #include "now_playing_widget.h"
 
 #include "default_slots.h"
-#include "settings_hud.h"
-#include "../core/hud_manager.h"
 #include "../core/input_manager.h"
 #include "../core/plugin_utils.h"
 
@@ -49,16 +47,16 @@ void NowPlayingWidget::update() {
 }
 
 void NowPlayingWidget::followInput() {
-    // Gated like the Dash page: on screen, the pointer showing, the menu shut
-    // (a click on the menu must not reach a widget under it).
+    // Gated like the Dash page: on screen and the pointer showing. A press
+    // starts a control only when the click is this widget's (ownsClick), so one
+    // on the settings menu, or on a HUD stacked over it, never reaches it.
     const InputManager& input = InputManager::getInstance();
-    const bool live = isVisibleAnySurface() && !isHeldBack() && input.shouldShowCursor() &&
-                      !HudManager::getInstance().getSettingsHud().isVisible();   // vis-gate: the menu's own state
+    const bool live = isVisibleAnySurface() && !isHeldBack() && input.shouldShowCursor();
     CursorPosition cursor = input.getCursorPosition();
     mapCursorToHudSpace(cursor.x, cursor.y);
     const MouseButton& left = input.getLeftButton();
     if (m_card.follow(live && cursor.isValid, cursor.x - getOffsetX(), cursor.y - getOffsetY(),
-                      left.isClicked(), left.isPressed)) {
+                      left.isClicked() && ownsClick(), left.isPressed)) {
         setDataDirty();
     }
 }

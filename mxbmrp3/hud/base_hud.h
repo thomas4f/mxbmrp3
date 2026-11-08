@@ -149,9 +149,9 @@ public:
 
     // Not on screen for a reason other than the visibility flags: the hide-all
     // hotkey, the widgets toggle, the Direct GL prompt (HudManager::isHeldBack).
-    // A HUD that hit-tests its own clicks gates on this beside
-    // isVisibleAnySurface(), else a hidden control keeps taking the click.
     bool isHeldBack() const;
+    // This frame's left click is ours: the topmost HUD drawn under it. The gate for a HUD hit-testing its own clicks
+    bool ownsClick() const;
 
     // Temporary "show even if the mouse is idle" reveal, used by the Toggles strip so
     // its controls (settings / director) can flash into view on entering the track
@@ -721,7 +721,7 @@ protected:
         return fontSize * (layout().lineHeightRatio - 1.0f) * 0.5f;
     }
 
-    void addBackgroundQuad(float x, float y, float width, float height);
+    void addBackgroundQuad(float x, float y, float width, float height, float frameTop = 0.0f);
     // Active panel theme, or nullptr when themes are off/unknown/superseded by a
     // background texture. See the definition for why each of those wins.
     const ThemeAsset* activeTheme() const;
@@ -1091,12 +1091,12 @@ public:
     // Themed card, for elements drawn INSIDE a panel: settings sections and
     // anything else that wants the theme's secondary surface. Coords are pre-offset
     // (the caller is already laying out in offset space). No-op without a theme,
-    // without an card slice set, or when the rect is degenerate.
-    // reserveOnly emits the nine slices at a degenerate rect, positioned later by
-    // rewriteThemedCard -- for cards that must sit behind content whose height
-    // is not known until that content is laid out (settings sections).
+    // without a card slice set, or when the rect is degenerate. reserveOnly emits
+    // the nine slices at a degenerate rect, positioned later by rewriteThemedCard,
+    // for cards behind content laid out after them (settings sections). An inset
+    // card (the Find box) passes coversFill = false: no fill cut, no section span.
     void addThemedCard(float x, float y, float width, float height,
-                            bool reserveOnly = false);
+                       bool reserveOnly = false, bool coversFill = true);
     void rewriteThemedCard(int firstIndex, float x, float y, float width, float height);
     // True when a themed card would actually draw; lets a caller skip
     // reserving quads it would never use.
@@ -1733,7 +1733,7 @@ protected:
     // stays the size it will be once the feature works, so a player positioning it
     // is positioning the real thing.
     //
-    // ONE SHAPE for every HUD with such a state (Gamepad, Friends, Rumble; Stream
+    // ONE SHAPE for every HUD with such a state (Gamepad, Friends, Rumble, Records; Stream
     // Chat draws the same offsets with one headline per platform), so a player learns
     // it once. NEGATIVE for something the player has to fix, MUTED for a state that is
     // simply empty. `hint` may be null.
@@ -1965,7 +1965,7 @@ public:
     // The panel rect that span covers, offset already applied. Recorded so the
     // title band (emitted later, from the plan) can span the same width
     // without every HUD having to pass its panel rect twice.
-    float m_bgRectX = 0.0f, m_bgRectY = 0.0f, m_bgRectW = 0.0f, m_bgRectH = 0.0f;
+    float m_bgRectX = 0.0f, m_bgRectY = 0.0f, m_bgRectW = 0.0f, m_bgRectH = 0.0f, m_bgFrameTop = 0.0f;
     bool m_bgRectValid = false;
 
     // The section card in flight: where its nine reserved slices start, its left

@@ -128,6 +128,10 @@ msgid "%s in burnouts and drifts"
 msgstr "%s med burnouts og drifting"
 
 #, c-format
+msgid "%s is read-only. Untick it in Properties."
+msgstr "%s er skrivebeskyttet. Se Egenskaper."
+
+#, c-format
 msgid "%s laps in a row, crash/penalty free"
 msgstr "%s runder på rad uten krasj/straff"
 
@@ -198,6 +202,10 @@ msgstr "En kommentar, vurdering, stjerne eller"
 msgctxt "tooltip"
 msgid "A crash tally for streaming - counts across sessions and restarts until you reset it."
 msgstr "Krasjteller for strømming - teller på tvers av økter og omstarter til du nullstiller."
+
+msgctxt "tooltip"
+msgid "A line for every achievement you earn, good or bad."
+msgstr "En replikk for hver prestasjon du får, god eller dårlig."
 
 msgctxt "tooltip"
 msgid "A new notice takes the card over, drawn as on Notices, then your page comes back."
@@ -595,7 +603,7 @@ msgstr "Svart"
 msgid "Blue"
 msgstr "Blå"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Blue flag"
 msgstr "Blått flagg"
 
@@ -949,7 +957,7 @@ msgid "Confirm"
 msgstr "Bekreft"
 
 msgid "Confirm?"
-msgstr "Bekrefte?"
+msgstr "Sikker?"
 
 msgid "Connect the web overlay"
 msgstr "Koble til web-overlegget"
@@ -1014,8 +1022,8 @@ msgid "Could not open port %d. Is it in use?"
 msgstr "Kunne ikke åpne port %d. Er den i bruk?"
 
 #, c-format
-msgid "Could not write %s. Is it read-only?"
-msgstr "Kunne ikke skrive %s. Er den skrivebeskyttet?"
+msgid "Could not write %s. Details in the log."
+msgstr "Kunne ikke skrive %s. Detaljer i loggen."
 
 msgid "Could not write to mxbmrp3\\benchmarks"
 msgstr "Kunne ikke skrive til mxbmrp3\\\\benchmarks"
@@ -1202,7 +1210,7 @@ msgstr "Standard (serverbest)"
 msgid "Default (Session PB)"
 msgstr "Standard (PR i økten)"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Default setup"
 msgstr "Standardoppsett"
 
@@ -1850,7 +1858,7 @@ msgstr "Gir"
 msgid "Gear indicator"
 msgstr "Girindikator"
 
-#. max 9 characters
+#. max 12 characters
 msgid "General"
 msgstr "Generelt"
 
@@ -2400,9 +2408,9 @@ msgstr "Rundetider"
 msgid "Lapped the Field"
 msgstr "Rundet Feltet"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Lapper ahead"
-msgstr "Rundet kjører foran"
+msgstr "Rundet foran"
 
 #, c-format
 msgid "Lapping %s"
@@ -2481,6 +2489,9 @@ msgstr "Stort Sprang"
 
 msgid "Left"
 msgstr "Venstre"
+
+msgid "Left as it is. Settings are not saved this session"
+msgstr "Latt som den er. Innstillinger lagres ikke denne økten"
 
 msgid "Left as it is. Stats are not saved this session"
 msgstr "Latt som den er. Statistikk lagres ikke denne økten"
@@ -3023,6 +3034,9 @@ msgstr "Oppo"
 msgid "Opponents"
 msgstr "Motstandere"
 
+msgid "Or turn on Auto-fetch in MXBMRP3 Settings > Records"
+msgstr "Eller Auto-henting: MXBMRP3 Innstillinger > Rekorder"
+
 msgid "Orange"
 msgstr "Oransje"
 
@@ -3053,7 +3067,7 @@ msgstr "Kjør forbi %s på %s"
 msgid "Overtakes"
 msgstr "Forbikjøringer"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Overtime"
 msgstr "Overtid"
 
@@ -3990,6 +4004,9 @@ msgctxt "tooltip"
 msgid "Settings and every switch in one strip; drag it to an edge to turn it. Rest on one that is off to preview it."
 msgstr "Innstillinger og hver bryter i én stripe; dra til en kant for å snu. Hold over en av for å forhåndsvise."
 
+msgid "Settings file unreadable"
+msgstr "Innstillingsfilen er uleselig"
+
 msgid "Settings not saved"
 msgstr "Innstillinger ikke lagret"
 
@@ -4583,7 +4600,7 @@ msgstr "Stable krefter"
 msgid "Stalker"
 msgstr "Stalker"
 
-#. max 9 characters
+#. max 10 characters
 msgid "Standings"
 msgstr "Stilling"
 
@@ -4596,10 +4613,6 @@ msgstr "Start eller stopp tegnekostnad-sveipet. Skriver en rapport når det er f
 
 msgid "Started fresh. A copy is kept in the mxbmrp3 folder"
 msgstr "Startet på nytt. En kopi ligger i mxbmrp3-mappen"
-
-#. max 23 characters
-msgid "Stationary rider"
-msgstr "Stillestående kjører"
 
 #. max 10 characters
 msgid "Stats"
@@ -4643,6 +4656,10 @@ msgstr "Steam ikke tilgjengelig"
 #. max 11 characters
 msgid "Steering"
 msgstr "Styring"
+
+#. max 15 characters
+msgid "Stopped rider"
+msgstr "Stoppet kjører"
 
 #. max 60 characters
 msgid "Stories"
@@ -4832,8 +4849,8 @@ msgid "The RPM widget's shift lights, with the revs under them."
 msgstr "RPM-widgetens skiftlys, med turtallet under."
 
 msgctxt "tooltip"
-msgid "The Session Charts HUD's Gap chart: you and the riders just ahead and behind."
-msgstr "Avstandsdiagrammet i Øktdiagrammer-HUD: deg og kjørerne rett foran og bak."
+msgid "The Session Charts HUD's Gap chart: the leader, you and the riders around you."
+msgstr "Avstandsdiagrammet i Øktdiagrammer-HUD: lederen, deg og kjørerne rundt deg."
 
 msgctxt "tooltip"
 msgid "The Session HUD's rows: server, track and format."
@@ -5145,7 +5162,7 @@ msgstr "Bane"
 msgid "Track %s riders"
 msgstr "Følg %s kjørere"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Track change"
 msgstr "Banebytte"
 
@@ -5202,6 +5219,10 @@ msgstr "Triksstabel"
 #. max 23 characters
 msgid "Trick stats"
 msgstr "Triksstatistikk"
+
+#. max 15 characters
+msgid "Tricks"
+msgstr "Triks"
 
 msgctxt "tooltip"
 msgid "Tricks shown in the stack. Off hides it, 1 shows the active trick, 2+ shows history."
@@ -5330,7 +5351,7 @@ msgstr "Oppdateringssjekk venter..."
 msgid "Update installed!"
 msgstr "Oppdatering installert!"
 
-#. max 9 characters
+#. max 12 characters
 msgid "Updates"
 msgstr "Versjoner"
 
@@ -5630,19 +5651,23 @@ msgstr "Vinn et løp og led hver runde"
 msgid "Win with every rider at least a lap down"
 msgstr "Vinn med alle andre minst en runde bak"
 
+#, c-format
+msgid "Windows blocked %s. Antivirus or OneDrive?"
+msgstr "Windows blokkerte %s. Antivirus/OneDrive?"
+
 msgid "Winner"
 msgstr "Vinner"
 
 msgid "Wire to Wire"
 msgstr "Start til Mål"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Wrong way"
 msgstr "Feil vei"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Wrong way rider"
-msgstr "Kjører i feil retning"
+msgstr "Kjører feil vei"
 
 msgid "Yaw"
 msgstr "Giring"
@@ -5684,6 +5709,10 @@ msgstr "Twitch- og YouTube-chatten din i spillet, samlet i ett vindu. Kun lesing
 
 msgid "Your final lap"
 msgstr "Din siste runde"
+
+msgctxt "tooltip"
+msgid "Your freestyle tricks, landings and crashes. Never in a race."
+msgstr "Dine freestyle-triks, landinger og krasj. Aldri i løp."
 
 msgctxt "tooltip"
 msgid "Your gap to a reference lap across the whole lap: green where you gained, red where you lost."

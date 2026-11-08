@@ -360,7 +360,7 @@ void SettingsLayoutContext::endRow() {
 }
 
 void SettingsLayoutContext::addInputField(float x, int fieldChars, const char* text,
-                                          unsigned long color, bool active, int cursorColumn) {
+                                          unsigned long color, bool active, int cursorColumn, bool box) {
     ColorConfig& colors = ColorConfig::getInstance();
     const float cw = charWidth();
     // The dropdown box's fill and height (addDropdownBox), so the two read as one
@@ -369,7 +369,7 @@ void SettingsLayoutContext::addInputField(float x, int fieldChars, const char* t
     const float boxW = cw * (static_cast<float>(fieldChars) + 0.3f);
     const float boxY = currentY + lineHeightNormal * 0.06f;
     const float boxH = lineHeightNormal * 0.88f;
-    addSolidQuad(boxX, boxY, boxW, boxH, active
+    if (active || box) addSolidQuad(boxX, boxY, boxW, boxH, active
         ? PluginUtils::applyOpacity(colors.getAccent(), 0.18f)
         : PluginUtils::applyOpacity(colors.getPrimary(), 0.10f));
     if (active) {

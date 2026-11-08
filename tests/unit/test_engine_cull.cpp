@@ -36,6 +36,16 @@ Str str(const char* text, unsigned long color) {
 }
 bool cutQ(const Quad& q) { return EngineCull::invisibleQuad(q); }
 bool cutS(const Str& s) { return EngineCull::invisibleString(s); }
+
+// What the engine is handed for `in`: where it points and how many.
+template <typename T>
+struct Handed { const T* data; int count; };
+template <typename T, typename Pred>
+Handed<T> handed(const std::vector<T>& in, std::vector<T>& scratch, Pred pred) {
+    int count = static_cast<int>(in.size());
+    const T* data = EngineCull::visibleOnly(in.empty() ? nullptr : in.data(), count, scratch, pred);
+    return { data, count };
+}
 }  // namespace
 
 TEST_CASE("a quad is cut only when it cannot put a pixel on screen") {
@@ -58,9 +68,25 @@ TEST_CASE("a string is cut only when it has no glyph to draw") {
 TEST_CASE("nothing to cut hands the frame over as is, with no copy") {
     std::vector<Quad> in = { quad(0, 0, 0.1f, 0.1f, 0xFF0000FFul), quad(0.2f, 0, 0.1f, 0.1f, 0xFF00FF00ul) };
     std::vector<Quad> scratch;
-    const std::vector<Quad>& out = EngineCull::visibleOnly(in, scratch, cutQ);
-    CHECK(&out == &in);
+    const auto out = handed(in, scratch, cutQ);
+    CHECK(out.data == in.data());
+    CHECK(out.count == 2);
     CHECK(scratch.empty());
+}
+
+// The threaded path hands over whatever the worker's slot holds, empty
+// included, and a frame of nothing but invisible primitives must reach the
+// engine as no frame at all, not as a dangling pointer into an empty buffer.
+TEST_CASE("an empty frame and an all-invisible frame both reach the engine as nothing") {
+    std::vector<Quad> scratch;
+    int count = 0;
+    CHECK(EngineCull::visibleOnly(static_cast<const Quad*>(nullptr), count, scratch, cutQ) == nullptr);
+    CHECK(count == 0);
+
+    std::vector<Quad> in = { quad(0, 0, 0.1f, 0.1f, 0x00FFFFFFul), quad(0.2f, 0.2f, 0, 0, 0xFFFFFFFFul) };
+    const auto out = handed(in, scratch, cutQ);
+    CHECK(out.data == nullptr);
+    CHECK(out.count == 0);
 }
 
 TEST_CASE("the kept primitives keep their order, whatever is cut between them") {
@@ -73,19 +99,20 @@ TEST_CASE("the kept primitives keep their order, whatever is cut between them") 
         quad(0.5f, 0, 0.1f, 0.1f, 0x00000005ul),                 // cut (last)
     };
     std::vector<Quad> scratch;
-    const std::vector<Quad>& out = EngineCull::visibleOnly(in, scratch, cutQ);
-    REQUIRE(out.size() == 3);
-    CHECK(out[0].m_ulColor == 0xFF000001ul);
-    CHECK(out[1].m_ulColor == 0xFF000003ul);
-    CHECK(out[2].m_ulColor == 0xFF000004ul);
+    const auto out = handed(in, scratch, cutQ);
+    REQUIRE(out.count == 3);
+    CHECK(out.data == scratch.data());
+    CHECK(out.data[0].m_ulColor == 0xFF000001ul);
+    CHECK(out.data[1].m_ulColor == 0xFF000003ul);
+    CHECK(out.data[2].m_ulColor == 0xFF000004ul);
     CHECK(in.size() == 6);                                       // the plugin's frame is untouched
 
     std::vector<Str> sin = { str("A", 0xFFFFFFFFul), str("", 0xFFFFFFFFul), str("B", 0xFFFFFFFFul) };
     std::vector<Str> sscratch;
-    const std::vector<Str>& sout = EngineCull::visibleOnly(sin, sscratch, cutS);
-    REQUIRE(sout.size() == 2);
-    CHECK(sout[0].m_szString[0] == 'A');
-    CHECK(sout[1].m_szString[0] == 'B');
+    const auto sout = handed(sin, sscratch, cutS);
+    REQUIRE(sout.count == 2);
+    CHECK(sout.data[0].m_szString[0] == 'A');
+    CHECK(sout.data[1].m_szString[0] == 'B');
 }
 
 // The copy goes a visible run at a time: every pattern of cut and kept,
@@ -101,10 +128,10 @@ TEST_CASE("the run-wise copy keeps exactly what a one-at-a-time filter keeps") {
             in.push_back(quad(0.1f * i, 0, 0.1f, 0.1f, color));
             if (!cut) want.push_back(color);
         }
-        const std::vector<Quad>& out = EngineCull::visibleOnly(in, scratch, cutQ);
+        const auto out = handed(in, scratch, cutQ);
         INFO("pattern=" << pattern);
-        REQUIRE(out.size() == want.size());
-        for (size_t k = 0; k < want.size(); ++k) CHECK(out[k].m_ulColor == want[k]);
+        REQUIRE(out.count == static_cast<int>(want.size()));
+        for (size_t k = 0; k < want.size(); ++k) CHECK(out.data[k].m_ulColor == want[k]);
     }
 }
 
@@ -112,9 +139,9 @@ TEST_CASE("a refill of the same size reuses the scratch buffer") {
     std::vector<Quad> in(40, quad(0.1f, 0.1f, 0.1f, 0.1f, 0xFFFFFFFFul));
     in[7].m_ulColor = 0;
     std::vector<Quad> scratch;
-    EngineCull::visibleOnly(in, scratch, cutQ);
+    handed(in, scratch, cutQ);
     const Quad* buffer = scratch.data();
-    EngineCull::visibleOnly(in, scratch, cutQ);
+    handed(in, scratch, cutQ);
     CHECK(scratch.data() == buffer);
     CHECK(scratch.size() == 39);
 }

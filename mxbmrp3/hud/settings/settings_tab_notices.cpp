@@ -23,6 +23,7 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
     ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
     ctx.addSectionHeading(TR("Layout"));
+    ctx.beginColumns(2, 1);   // side by side (beginColumns), like every section below
 
     // Duration cycle control: 1s -> 2s -> ... -> 30s (wraps)
     char durationValue[16];
@@ -32,8 +33,10 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
             NoticesHud::DURATION_STEP_MS, NoticesHud::MIN_NOTICE_DURATION_MS,
             NoticesHud::MAX_NOTICE_DURATION_MS, hud),
         hud, true, false, "notices.duration");
+    ctx.endColumns();
     // === CONTENT SECTION ===
     ctx.addSectionHeading(TR("Warnings & Hazards"));
+    ctx.beginColumns(2, 6);
 
     bool wrongWayOn = (hud->m_enabledNotices & NoticesHud::NOTICE_WRONG_WAY) != 0;
     ctx.addToggleControl(TR("Wrong way"), wrongWayOn,
@@ -60,7 +63,7 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
         "notices.default_setup");
 
     bool hazardStationaryOn = (hud->m_enabledNotices & NoticesHud::NOTICE_HAZARD_STATIONARY) != 0;
-    ctx.addToggleControl(TR("Stationary rider"), hazardStationaryOn,
+    ctx.addToggleControl(TR("Stopped rider"), hazardStationaryOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_HAZARD_STATIONARY, true,
         "notices.hazard_stationary");
@@ -70,7 +73,9 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_HAZARD_WRONG_WAY, true,
         "notices.hazard_wrong_way");
+    ctx.endColumns();
     ctx.addSectionHeading(TR("Race Events"));
+    ctx.beginColumns(2, 3);
 
     bool overtimeOn = (hud->m_enabledNotices & NoticesHud::NOTICE_OVERTIME) != 0;
     ctx.addToggleControl(TR("Overtime"), overtimeOn,
@@ -89,7 +94,9 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_FINISHED, true,
         "notices.finished");
+    ctx.endColumns();
     ctx.addSectionHeading(TR("Personal Bests"));
+    ctx.beginColumns(2, 3);
 
     bool allTimePBOn = (hud->m_enabledNotices & NoticesHud::NOTICE_ALLTIME_PB) != 0;
     ctx.addToggleControl(TR("All-time PB"), allTimePBOn,
@@ -108,13 +115,16 @@ BaseHud* SettingsHud::renderTabNotices(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_SESSION_PB, true,
         "notices.session_pb");
+    ctx.endColumns();
     ctx.addSectionHeading(TR("Media"));
+    ctx.beginColumns(2, 1);
 
     bool trackChangedOn = (hud->m_enabledNotices & NoticesHud::NOTICE_TRACK_CHANGED) != 0;
     ctx.addToggleControl(TR("Track change"), trackChangedOn,
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledNotices, NoticesHud::NOTICE_TRACK_CHANGED, true,
         "notices.track_changed");
+    ctx.endColumns();
 
     return hud;
 }

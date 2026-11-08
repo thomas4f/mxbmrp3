@@ -195,7 +195,7 @@ void CrashWidget::handleClickDetection() {
     }
     if (m_resetHovered != wasHovered) setDataDirty();
 
-    if (isLeftClick && m_resetHovered) {
+    if (isLeftClick && m_resetHovered && ownsClick()) {
         DEBUG_INFO("CrashWidget: reset clicked");
         resetCounter();
     }

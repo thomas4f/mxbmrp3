@@ -42,6 +42,11 @@ so you are drawing a panel, not filling in a sprite sheet. The three sets -
 `frame`, `card`, `button` - stack down the image in the ini's section order, each
 captioned in the gutter above it.
 
+An optional fourth set, `title`, goes below them (`--template --title`): the
+title band's own art, for a theme whose bar and section cards are different
+pictures. Without it the band draws the `card` set. Slicing reads the set count
+from the master's size, so a three-set master still cuts as before.
+
 **Gutters are not art.** Cells are separated by a gutter that no slice ever
 reads, so the template can outline and label without any of that reaching a
 `.tga`. Paint inside the cells; whatever is left in the gutter is ignored.

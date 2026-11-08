@@ -377,6 +377,10 @@ void SettingsManager::writeSpotterSettings(std::ostream& out, const HudManager& 
     out << "cat_opponents=" << (spotter.isCategoryEnabled(SpotterPhrase::Category::Opponents) ? 1 : 0) << "\n";
     out << "cat_proximity=" << (spotter.isCategoryEnabled(SpotterPhrase::Category::Proximity) ? 1 : 0) << "\n";
     out << "cat_hazard=" << (spotter.isCategoryEnabled(SpotterPhrase::Category::Hazard) ? 1 : 0) << "\n";
+    // The two for-fun ones (on a game without tricks or achievements, a
+    // switch with nothing behind it).
+    out << "cat_tricks=" << (spotter.isCategoryEnabled(SpotterPhrase::Category::Tricks) ? 1 : 0) << "\n";
+    out << "cat_achievements=" << (spotter.isCategoryEnabled(SpotterPhrase::Category::Achievements) ? 1 : 0) << "\n";
     // Proximity/hazard cue tuning (INI-only, like [Advanced]'s hazard knobs).
     const SpotterHazard::Config& hz = spotter.hazardConfig();
     // ORDER IS LOAD-BEARING, like the cat_opponents/cat_proximity pair above:
@@ -472,6 +476,10 @@ void SettingsManager::applySpotterLine(const std::string& key, const std::string
             spotter.setCategoryEnabled(SpotterPhrase::Category::Opponents, std::stoi(value) != 0);
         } else if (key == "cat_hazard") {
             spotter.setCategoryEnabled(SpotterPhrase::Category::Hazard, std::stoi(value) != 0);
+        } else if (key == "cat_tricks") {
+            spotter.setCategoryEnabled(SpotterPhrase::Category::Tricks, std::stoi(value) != 0);
+        } else if (key == "cat_achievements") {
+            spotter.setCategoryEnabled(SpotterPhrase::Category::Achievements, std::stoi(value) != 0);
         }
     } catch (...) {
         DEBUG_WARN_F("Settings: Invalid [Spotter] value: %s=%s",

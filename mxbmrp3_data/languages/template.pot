@@ -114,6 +114,10 @@ msgid "%s in burnouts and drifts"
 msgstr ""
 
 #, c-format
+msgid "%s is read-only. Untick it in Properties."
+msgstr ""
+
+#, c-format
 msgid "%s laps in a row, crash/penalty free"
 msgstr ""
 
@@ -183,6 +187,10 @@ msgstr ""
 
 msgctxt "tooltip"
 msgid "A crash tally for streaming - counts across sessions and restarts until you reset it."
+msgstr ""
+
+msgctxt "tooltip"
+msgid "A line for every achievement you earn, good or bad."
 msgstr ""
 
 msgctxt "tooltip"
@@ -581,7 +589,7 @@ msgstr ""
 msgid "Blue"
 msgstr ""
 
-#. max 23 characters
+#. max 15 characters
 msgid "Blue flag"
 msgstr ""
 
@@ -1000,7 +1008,7 @@ msgid "Could not open port %d. Is it in use?"
 msgstr ""
 
 #, c-format
-msgid "Could not write %s. Is it read-only?"
+msgid "Could not write %s. Details in the log."
 msgstr ""
 
 msgid "Could not write to mxbmrp3\\benchmarks"
@@ -1188,7 +1196,7 @@ msgstr ""
 msgid "Default (Session PB)"
 msgstr ""
 
-#. max 23 characters
+#. max 15 characters
 msgid "Default setup"
 msgstr ""
 
@@ -1836,7 +1844,7 @@ msgstr ""
 msgid "Gear indicator"
 msgstr ""
 
-#. max 9 characters
+#. max 12 characters
 msgid "General"
 msgstr ""
 
@@ -2386,7 +2394,7 @@ msgstr ""
 msgid "Lapped the Field"
 msgstr ""
 
-#. max 23 characters
+#. max 15 characters
 msgid "Lapper ahead"
 msgstr ""
 
@@ -2466,6 +2474,9 @@ msgid "Leap Forward"
 msgstr ""
 
 msgid "Left"
+msgstr ""
+
+msgid "Left as it is. Settings are not saved this session"
 msgstr ""
 
 msgid "Left as it is. Stats are not saved this session"
@@ -3009,6 +3020,9 @@ msgstr ""
 msgid "Opponents"
 msgstr ""
 
+msgid "Or turn on Auto-fetch in MXBMRP3 Settings > Records"
+msgstr ""
+
 msgid "Orange"
 msgstr ""
 
@@ -3039,7 +3053,7 @@ msgstr ""
 msgid "Overtakes"
 msgstr ""
 
-#. max 23 characters
+#. max 15 characters
 msgid "Overtime"
 msgstr ""
 
@@ -3976,6 +3990,9 @@ msgctxt "tooltip"
 msgid "Settings and every switch in one strip; drag it to an edge to turn it. Rest on one that is off to preview it."
 msgstr ""
 
+msgid "Settings file unreadable"
+msgstr ""
+
 msgid "Settings not saved"
 msgstr ""
 
@@ -4569,7 +4586,7 @@ msgstr ""
 msgid "Stalker"
 msgstr ""
 
-#. max 9 characters
+#. max 10 characters
 msgid "Standings"
 msgstr ""
 
@@ -4581,10 +4598,6 @@ msgid "Start or stop the draw-cost sweep. Writes a report when it ends."
 msgstr ""
 
 msgid "Started fresh. A copy is kept in the mxbmrp3 folder"
-msgstr ""
-
-#. max 23 characters
-msgid "Stationary rider"
 msgstr ""
 
 #. max 10 characters
@@ -4628,6 +4641,10 @@ msgstr ""
 
 #. max 11 characters
 msgid "Steering"
+msgstr ""
+
+#. max 15 characters
+msgid "Stopped rider"
 msgstr ""
 
 #. max 60 characters
@@ -4818,7 +4835,7 @@ msgid "The RPM widget's shift lights, with the revs under them."
 msgstr ""
 
 msgctxt "tooltip"
-msgid "The Session Charts HUD's Gap chart: you and the riders just ahead and behind."
+msgid "The Session Charts HUD's Gap chart: the leader, you and the riders around you."
 msgstr ""
 
 msgctxt "tooltip"
@@ -5131,7 +5148,7 @@ msgstr ""
 msgid "Track %s riders"
 msgstr ""
 
-#. max 23 characters
+#. max 15 characters
 msgid "Track change"
 msgstr ""
 
@@ -5187,6 +5204,10 @@ msgstr ""
 
 #. max 23 characters
 msgid "Trick stats"
+msgstr ""
+
+#. max 15 characters
+msgid "Tricks"
 msgstr ""
 
 msgctxt "tooltip"
@@ -5316,7 +5337,7 @@ msgstr ""
 msgid "Update installed!"
 msgstr ""
 
-#. max 9 characters
+#. max 12 characters
 msgid "Updates"
 msgstr ""
 
@@ -5616,17 +5637,21 @@ msgstr ""
 msgid "Win with every rider at least a lap down"
 msgstr ""
 
+#, c-format
+msgid "Windows blocked %s. Antivirus or OneDrive?"
+msgstr ""
+
 msgid "Winner"
 msgstr ""
 
 msgid "Wire to Wire"
 msgstr ""
 
-#. max 23 characters
+#. max 15 characters
 msgid "Wrong way"
 msgstr ""
 
-#. max 23 characters
+#. max 15 characters
 msgid "Wrong way rider"
 msgstr ""
 
@@ -5669,6 +5694,10 @@ msgid "Your Twitch and YouTube chat in game, merged in one window. Read-only, no
 msgstr ""
 
 msgid "Your final lap"
+msgstr ""
+
+msgctxt "tooltip"
+msgid "Your freestyle tricks, landings and crashes. Never in a race."
 msgstr ""
 
 msgctxt "tooltip"

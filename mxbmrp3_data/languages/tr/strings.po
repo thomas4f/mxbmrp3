@@ -126,6 +126,10 @@ msgid "%s in burnouts and drifts"
 msgstr "%s burnout ve drift"
 
 #, c-format
+msgid "%s is read-only. Untick it in Properties."
+msgstr "%s salt okunur. Özellikler'den kaldırın."
+
+#, c-format
 msgid "%s laps in a row, crash/penalty free"
 msgstr "Kaza/cezasız art arda %s tur"
 
@@ -196,6 +200,10 @@ msgstr "Yorum veya puan, bir yıldız ya da bir"
 msgctxt "tooltip"
 msgid "A crash tally for streaming - counts across sessions and restarts until you reset it."
 msgstr "Yayın için kaza sayacı: sıfırlayana dek seanslar ve yeniden başlatmalar boyunca sayar."
+
+msgctxt "tooltip"
+msgid "A line for every achievement you earn, good or bad."
+msgstr "Kazandığın her başarım için bir söz, iyi ya da kötü."
 
 msgctxt "tooltip"
 msgid "A new notice takes the card over, drawn as on Notices, then your page comes back."
@@ -593,7 +601,7 @@ msgstr "Siyah"
 msgid "Blue"
 msgstr "Mavi"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Blue flag"
 msgstr "Mavi bayrak"
 
@@ -947,7 +955,7 @@ msgid "Confirm"
 msgstr "Onayla"
 
 msgid "Confirm?"
-msgstr "Onaylıyor musun?"
+msgstr "Emin?"
 
 msgid "Connect the web overlay"
 msgstr "Web overlay'i bağla"
@@ -1012,8 +1020,8 @@ msgid "Could not open port %d. Is it in use?"
 msgstr "%d portu açılamadı. Kullanımda mı?"
 
 #, c-format
-msgid "Could not write %s. Is it read-only?"
-msgstr "%s yazılamadı. Salt okunur mu?"
+msgid "Could not write %s. Details in the log."
+msgstr "%s yazılamadı. Ayrıntılar günlükte."
 
 msgid "Could not write to mxbmrp3\\benchmarks"
 msgstr "mxbmrp3\\benchmarks klasörüne yazılamadı"
@@ -1200,7 +1208,7 @@ msgstr "Varsayılan (Sunucu en iyisi)"
 msgid "Default (Session PB)"
 msgstr "Varsayılan (Seans PB)"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Default setup"
 msgstr "Varsayılan ayar"
 
@@ -1848,7 +1856,7 @@ msgstr "Vites"
 msgid "Gear indicator"
 msgstr "Vites göstergesi"
 
-#. max 9 characters
+#. max 12 characters
 msgid "General"
 msgstr "Genel"
 
@@ -2398,9 +2406,9 @@ msgstr "Tur süreleri"
 msgid "Lapped the Field"
 msgstr "Herkese Tur Bindir"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Lapper ahead"
-msgstr "Öndeki tur geride"
+msgstr "Önde turlanan"
 
 #, c-format
 msgid "Lapping %s"
@@ -2479,6 +2487,9 @@ msgstr "İleri Sıçrayış"
 
 msgid "Left"
 msgstr "Sol"
+
+msgid "Left as it is. Settings are not saved this session"
+msgstr "Olduğu gibi bırakıldı. Bu seans ayarlar kaydedilmiyor"
 
 msgid "Left as it is. Stats are not saved this session"
 msgstr "Olduğu gibi bırakıldı. Bu seans istatistik kaydedilmiyor"
@@ -2949,7 +2960,7 @@ msgid "Oldest shows events chronologically top to bottom. Newest puts latest eve
 msgstr "Eski: olaylar yukarıdan aşağı zaman sırasıyla. Yeni: son olaylar en üstte."
 
 msgid "On"
-msgstr "Açık"
+msgstr "Açk"
 
 msgctxt "tooltip"
 msgid "On = shown while racing; Off = only in the settings menu (helps controllers seen as a mouse)."
@@ -3021,6 +3032,9 @@ msgstr "Oppo"
 msgid "Opponents"
 msgstr "Rakipler"
 
+msgid "Or turn on Auto-fetch in MXBMRP3 Settings > Records"
+msgstr "Ya da MXBMRP3 Ayarlar > Rekorlar'da Oto-getir'i aç"
+
 msgid "Orange"
 msgstr "Turuncu"
 
@@ -3051,7 +3065,7 @@ msgstr "%s geçiyor: %s"
 msgid "Overtakes"
 msgstr "Geçişler"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Overtime"
 msgstr "Uzatma"
 
@@ -3988,6 +4002,9 @@ msgctxt "tooltip"
 msgid "Settings and every switch in one strip; drag it to an edge to turn it. Rest on one that is off to preview it."
 msgstr "Ayarlar ve her anahtar tek şeritte; döndürmek için bir kenara sürükle. Önizlemek için kapalı birinin üstünde dur."
 
+msgid "Settings file unreadable"
+msgstr "Ayar dosyası okunamıyor"
+
 msgid "Settings not saved"
 msgstr "Ayarlar kaydedilmedi"
 
@@ -4581,7 +4598,7 @@ msgstr "Kuvvet topla"
 msgid "Stalker"
 msgstr "Gölge Takipçi"
 
-#. max 9 characters
+#. max 10 characters
 msgid "Standings"
 msgstr "Sıralama"
 
@@ -4594,10 +4611,6 @@ msgstr "Çizim maliyeti taramasını başlat veya durdur. Bitince rapor yazar."
 
 msgid "Started fresh. A copy is kept in the mxbmrp3 folder"
 msgstr "Sıfırdan başlandı. mxbmrp3 klasöründe bir kopya tutuldu"
-
-#. max 23 characters
-msgid "Stationary rider"
-msgstr "Duran sürücü"
 
 #. max 10 characters
 msgid "Stats"
@@ -4641,6 +4654,10 @@ msgstr "Steam kullanılamıyor"
 #. max 11 characters
 msgid "Steering"
 msgstr "Direksiyon"
+
+#. max 15 characters
+msgid "Stopped rider"
+msgstr "Duran sürücü"
 
 #. max 60 characters
 msgid "Stories"
@@ -4830,8 +4847,8 @@ msgid "The RPM widget's shift lights, with the revs under them."
 msgstr "RPM widget'ının vites ışıkları, altında devirle."
 
 msgctxt "tooltip"
-msgid "The Session Charts HUD's Gap chart: you and the riders just ahead and behind."
-msgstr "Seans Grafikleri HUD'unun Fark grafiği: sen ve hemen önündeki ve arkandaki sürücüler."
+msgid "The Session Charts HUD's Gap chart: the leader, you and the riders around you."
+msgstr "Seans Grafikleri HUD'unun Fark grafiği: lider, sen ve çevrendeki sürücüler."
 
 msgctxt "tooltip"
 msgid "The Session HUD's rows: server, track and format."
@@ -5143,7 +5160,7 @@ msgstr "Pist"
 msgid "Track %s riders"
 msgstr "%s sürücüyü izle"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Track change"
 msgstr "Pist değişimi"
 
@@ -5200,6 +5217,10 @@ msgstr "Hareket yığını"
 #. max 23 characters
 msgid "Trick stats"
 msgstr "Hareket istatistiği"
+
+#. max 15 characters
+msgid "Tricks"
+msgstr "Hareketler"
 
 msgctxt "tooltip"
 msgid "Tricks shown in the stack. Off hides it, 1 shows the active trick, 2+ shows history."
@@ -5328,7 +5349,7 @@ msgstr "Güncelleme denetimi bekliyor..."
 msgid "Update installed!"
 msgstr "Güncelleme kuruldu!"
 
-#. max 9 characters
+#. max 12 characters
 msgid "Updates"
 msgstr "Güncelle"
 
@@ -5628,19 +5649,23 @@ msgstr "Her turu önde götürerek bir yarış kazan"
 msgid "Win with every rider at least a lap down"
 msgstr "Her sürücü en az bir tur gerideyken kazan"
 
+#, c-format
+msgid "Windows blocked %s. Antivirus or OneDrive?"
+msgstr "Windows engelledi: %s. Antivirüs/OneDrive?"
+
 msgid "Winner"
 msgstr "Kazanan"
 
 msgid "Wire to Wire"
 msgstr "Baştan Sona"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Wrong way"
 msgstr "Ters yön"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Wrong way rider"
-msgstr "Ters yöndeki sürücü"
+msgstr "Ters sürücü"
 
 msgid "Yaw"
 msgstr "Sapma"
@@ -5682,6 +5707,10 @@ msgstr "Twitch ve YouTube sohbetin oyunda, tek pencerede birleşik. Salt okunur,
 
 msgid "Your final lap"
 msgstr "Son turun"
+
+msgctxt "tooltip"
+msgid "Your freestyle tricks, landings and crashes. Never in a race."
+msgstr "Freestyle hareketlerin, inişlerin ve düşüşlerin. Yarışta asla."
 
 msgctxt "tooltip"
 msgid "Your gap to a reference lap across the whole lap: green where you gained, red where you lost."

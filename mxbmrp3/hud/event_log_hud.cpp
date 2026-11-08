@@ -95,7 +95,7 @@ void EventLogHud::update() {
                         break;
                     }
                 }
-                if (input.getLeftButton().isClicked() && !isHeldBack()) {
+                if (input.getLeftButton().isClicked() && ownsClick()) {
                     handleClick(cursor.x, cursor.y);
                 }
             }

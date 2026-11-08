@@ -45,6 +45,23 @@ bool HudManager::staysOnTop(const BaseHud* hud) const {
                    hud == m_pBreakout || hud == m_pPointer);
 }
 
+BaseHud* HudManager::topHudAt(float x, float y, bool companion) const {
+    // What this surface DRAWS (drawsOnSurface: the Dash shown for a message
+    // while switched off, a hover sample) covers what is under it, so it is
+    // what a click lands on. Hit-test at this surface's offset: a HUD on the
+    // companion sits at its companion position. Full-screen effects (helmet,
+    // vignette, the pointer) are not draggable and take no clicks.
+    const bool ordered = m_drawOrder.size() == m_huds.size();
+    for (size_t k = m_huds.size(); k-- > 0;) {
+        const auto& hud = m_huds[ordered ? m_drawOrder[k] : k];
+        if (!hud || !hud->isDraggable() || !drawsOnSurface(hud.get(), companion, true)) continue;
+        const float offX = companion ? hud->getCompanionOffsetX() : hud->getOffsetX();
+        const float offY = companion ? hud->getCompanionOffsetY() : hud->getOffsetY();
+        if (hud->isPointInBoundsAt(x, y, offX, offY)) return hud.get();
+    }
+    return nullptr;
+}
+
 void HudManager::raiseHud(BaseHud* hud) {
     if (!hud || staysOnTop(hud) || !hud->isDraggable()) return;
     int top = 0;

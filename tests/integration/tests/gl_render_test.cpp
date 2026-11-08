@@ -1003,6 +1003,32 @@ TEST_CASE("gl in-game: a HUD over another stacks above it, on Direct GL and the 
     host.companionWindow(false);
 }
 
+TEST_CASE("gl in-game: the backend draws a stacked frame layer by layer") {
+    // The case above proves the stacking is BUILT; this one that the backend
+    // DRAWS it. The engine handoff cuts invisible primitives (core/engine_cull.h)
+    // and Direct GL was handed that cut copy, which the stacking's indices do
+    // not describe: the renderer fell back to every quad, then every string, and
+    // the back HUD's text showed through the front one (1.34.1 to 1.34.3). With
+    // pluginThread on it was fine - the worker publishes the uncut arrays.
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\\\tmp\\\\mxbmrp3-tests\\\\gl_render\\\\");
+    if (!host.glMakeContext(true)) { MESSAGE("no GL context here"); return; }
+    host.setEveryHudVisible(false);
+    REQUIRE(host.setHudVisible("standings_hud", true));
+    REQUIRE(host.setHudVisible("lap_log_hud", true));
+    REQUIRE(host.setHudOffset("standings_hud", 0.3f, 0.3f));
+    REQUIRE(host.setHudOffset("lap_log_hud", 0.3f, 0.3f));
+    host.glInGame(true);
+    host.draw();
+    host.draw();
+    if (!host.glDrewLastFrame()) { MESSAGE("GL backend declined to draw here"); return; }
+    REQUIRE(host.glFrameLayerCount() >= 2);
+    CHECK(host.glDrewLayered());
+    host.glInGame(false);
+    host.draw();
+}
+
 TEST_CASE("gl in-game: an open dropdown covers the rows under it instead of blanking them") {
     // The engine cannot hide text under a quad, so the settings menu blanks the
     // strings its open list covers (settings_layout_test pins that). Under
@@ -1038,6 +1064,12 @@ TEST_CASE("gl in-game: an open dropdown covers the rows under it instead of blan
     REQUIRE(below("Brand") == 1);     // the list is open
     CHECK(below("100%") == 1);        // the row under it keeps its text...
     CHECK(host.glFrameHudLayer("settings_hud") > closedLayer);   // ...under the list's layer
+    // ...and the backend DREW it in layers. Since the engine handoff began
+    // cutting invisible primitives (1.34.1), Direct GL was handed the cut copy:
+    // the layers no longer tiled it, the renderer took the flat order and every
+    // row's text bled through the list (and any HUD over another). The layer
+    // asserts above all passed; only what the backend was handed shows it.
+    CHECK(host.glDrewLayered());
 }
 
 TEST_CASE("gl in-game: Direct GL latching off brings the dropdown blanking back") {

@@ -28,6 +28,11 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
+            // For the PE tools that list every key (sigcheck, pefile, VirusTotal,
+            // Resource Hacker). Explorer's Details tab hides Comments and this block
+            // is UTF-16, which `strings` skips, so the ASCII SOURCE_NOTICE in
+            // core/plugin_version.cpp is what a plain strings pass finds.
+            VALUE "Comments",         VER_COMMENTS
             VALUE "CompanyName",      "thomas4f"
             // Matches the GitHub repository description, and the installer's
             // FileDescription (packaging/mxbmrp3.nsi) modulo its "Setup" prefix.

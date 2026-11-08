@@ -29,6 +29,7 @@ TEST_CASE("the variable names are the ones packs are written against") {
         "positions_changed", "sector_number",
         "event_gap_to_best_lap", "event_gap_to_last_lap",
         "sector_duration",
+        "trick", "combo_count", "achievement", "tier",
         "sector_delta_best_lap", "sector_delta_ideal", "sector_delta_last_lap",
         "sector_delta_alltime", "sector_delta_record",
         "pace_margin", "sector_best_delta",

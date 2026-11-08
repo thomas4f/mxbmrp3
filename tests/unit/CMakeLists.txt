@@ -37,6 +37,7 @@ set(MXB_UNIT_SOURCES
     test_flat_int_map.cpp
     test_engine_cull.cpp
     test_chart_run.cpp
+    test_gap_chart_picks.cpp
     test_cursor_idle.cpp
     test_hotkey_names.cpp
     test_slider_control.cpp
@@ -49,6 +50,8 @@ set(MXB_UNIT_SOURCES
     test_analytics_endpoint.cpp
     test_analytics_redact.cpp
     test_log_scrub.cpp
+    test_module_census.cpp
+    test_os_label.cpp
     test_analytics_identity.cpp
     test_render_asset_decode_mips.cpp
     test_analytics_theme.cpp
@@ -58,6 +61,7 @@ set(MXB_UNIT_SOURCES
     test_session_charts_math.cpp
     test_segment_cumulative.cpp
     test_fmx_scoring.cpp
+    test_fmx_levels.cpp
     test_font_metrics.cpp
     test_font_codepage.cpp
     test_tooltip_length.cpp
@@ -118,6 +122,8 @@ set(MXB_UNIT_SOURCES
     test_spotter_tts_voice.cpp
     test_spotter_vars.cpp
     test_spotter_pack_census.cpp
+    test_spotter_tricks.cpp
+    test_spotter_language.cpp
     test_fuel_estimate.cpp
     test_completion_floor.cpp
     test_finish_margin.cpp

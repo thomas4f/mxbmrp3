@@ -32,10 +32,10 @@
 // probably a typo, and showing it is how the author finds out), but a KNOWN
 // name always resolves, if only to nothing.
 //
-// TEXT ONLY. These feed the subtitle and text-to-speech. The wav-stitching
-// path (spotter_mix.h) understands a smaller set - the ones with a numeric
-// form it can assemble from num_*.wav - because a recorded pack can only say
-// words it has clips for. A text pack, which is what ships, has no such limit.
+// AUDIO TOO. These feed the subtitle and text-to-speech, and a recorded pack's
+// mix speaks the same values word by word from its own clips (spotter_mix.h
+// spokenChunks). It can only say words it has clips for, so a value made of
+// the player's content (a rider or setup name) falls back to TTS there.
 // ============================================================================
 #pragma once
 
@@ -84,6 +84,13 @@ struct Vars {
     std::string eventGapToLastLap;  // {event_gap_to_last_lap}
     std::string sectorNumber;     // {sector_number}
     std::string sectorDuration;   // {sector_duration}  this sector on its own
+    // The opt-in Tricks and Achievements cues (spotter_tricks.h, the
+    // achievement_<id> family in spotter_cue_pack.h). Empty on every other
+    // cue, like the rest of this group.
+    std::string trick;            // {trick}        "double backflip", "flat whip"
+    std::string comboCount;       // {combo_count}  tricks in the chain
+    std::string achievement;      // {achievement}  its title
+    std::string tier;             // {tier}         "gold"; empty for a one-shot
 
     // ---- you ---------------------------------------------------------------
     std::string riderName;    // {rider_name}     your name as the game has it
@@ -278,6 +285,18 @@ inline const std::vector<Binding>& bindings() {
         { "sector_duration", &Vars::sectorDuration,
           kGroupEvent, "that sector on its own, not the elapsed lap time",
           "twenty nine point eight" },
+        { "trick", &Vars::trick,
+          kGroupEvent, "the trick you landed, on trick_landed: with its multiplier or level and without the side",
+          "double backflip" },
+        { "combo_count", &Vars::comboCount,
+          kGroupEvent, "how many tricks the chain held, on trick_combo",
+          "five" },
+        { "achievement", &Vars::achievement,
+          kGroupEvent, "the achievement's title, on the achievement cues",
+          "Skill Issue" },
+        { "tier", &Vars::tier,
+          kGroupEvent, "the tier just reached; empty for a one-shot, so bracket it",
+          "gold" },
         { "sector_delta_best_lap", &Vars::sectorDeltaBestLap,
           kGroupSectors, "elapsed time at this split vs your best lap's, with \"quicker\" or \"slower\"",
           "zero point three quicker" },

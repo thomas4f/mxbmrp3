@@ -160,6 +160,14 @@ private:
     // all reclassifications (including through non-directional intermediaries like Backflip)
     Fmx::TrickDirection m_committedDirection = Fmx::TrickDirection::NONE;
 
+    // The spotter's trick_started fires once per trick, once it has a name
+    // worth saying and is half done (spotter_tricks.h). Cleared with the
+    // trick in initializeNewTrick.
+    bool m_trickNameCalled = false;
+    // ...and its trick_landed once per landing grace, a moment in. Cleared in
+    // enterGrace.
+    bool m_landingCalled = false;
+
     // Ground trick debounce — gates two transitions:
     //   1. IDLE→ACTIVE: rider must hold a ground-trick posture for this long
     //      before a fresh trick is accepted (filters micro-lifts from bumps).

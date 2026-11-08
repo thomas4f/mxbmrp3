@@ -499,9 +499,6 @@ void SettingsHud::update() {
                     // a dozen places, drifting.
                     //
                     dismissMarkedRow(region.tooltipId.c_str());
-                    // The Find field sits in the title band on every tab; its marker is the Find tab's.
-                    if (region.type == ClickRegion::FIND_FIELD && WhatsNew::dismissRow(TAB_FIND, "find.field"))
-                        markSettingsDirty();
                     if (region.type == ClickRegion::TAB) dismissMarkedTab(region.tabIndex);
                 } else {
                     const char* tooltipId = getTooltipIdForRegion(region.type, m_activeTab);
@@ -577,7 +574,8 @@ void SettingsHud::update() {
     // Handle mouse input. Repeatable steppers (+/-) fire on press and then hold-repeat;
     // every other button/toggle fires on RELEASE, so the user can press and slide off to
     // abort. (See findClickRegionAt + m_leftPressArmed.)
-    // held-back-exempt: the menu is held back as a whole by HudManager::standsDown (no update at all)
+    // owns-click-exempt: held back as a whole by HudManager::standsDown (no update at all), on top of
+    // every HUD it could cover (staysOnTop), and an open list must see a press outside the panel
     const auto& leftButton = input.getLeftButton();
     if (leftButton.isClicked() && !m_openingPress) {
         m_leftPressArmed = false;

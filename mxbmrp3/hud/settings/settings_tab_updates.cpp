@@ -309,7 +309,7 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
             int lineCount = 0;
             // As many as fit with the link below them without the panel growing
             // (the tallest-tab measure sizes it); pinned by settings_fit_test.
-            constexpr int MAX_LINES = 11;
+            constexpr int MAX_LINES = 10;
 
             while (std::getline(stream, line)) {
                 // Skip empty lines and markdown headers

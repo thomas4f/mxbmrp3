@@ -125,10 +125,13 @@ TEST_CASE("sprite order self-check is green across rejects, skins and packs") {
     StagedTree tree("green");
 
     // Two accepted themes with a REJECTED one alphabetically between them: the
-    // rewind path. "alpha" also brings a card set, so its file count is not
-    // the minimal nine (the arithmetic must track counts, not assume them).
+    // rewind path. "alpha" also brings a card set and a partial title set, so
+    // its file count is not the minimal nine (the arithmetic must track counts,
+    // not assume them).
     stageFullTheme(tree.themes(), "alpha");
     writeTga(tree.themes() + "\\alpha\\card_center.tga", 8, 8);
+    writeTga(tree.themes() + "\\alpha\\title_center.tga", 8, 8);
+    writeTga(tree.themes() + "\\alpha\\title_corner_tl.tga", 8, 8);
     const std::string bad = tree.themes() + "\\midbad";
     makeDirs(bad);
     writeTga(bad + "\\frame_center.tga", 8, 8);   // incomplete: skipped + rewound

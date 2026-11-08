@@ -224,6 +224,7 @@ bool HudManager::renderInContextGl(const SPluginQuad_t* quads, int quadCount,
     // that can report a stale true is the same failure family as the sweep that
     // measured a draw which never happened.
     m_glDrewLastFrame.store(false, std::memory_order_relaxed);
+    m_glDrewLayered.store(false, std::memory_order_relaxed);
     if (!UiConfig::getInstance().getGlInGame() ||
         m_glLatchedOff.load(std::memory_order_relaxed)) return false;
 
@@ -310,6 +311,8 @@ bool HudManager::renderInContextGl(const SPluginQuad_t* quads, int quadCount,
         return false;
     }
     m_glDrewLastFrame.store(true, std::memory_order_relaxed);
+    m_glDrewLayered.store(layers.layerCount > 1 && hudlayers::tiles(layers, quadCount, stringCount),
+                          std::memory_order_relaxed);
     m_glEverDrew.store(true, std::memory_order_relaxed);
 
     return true;

@@ -443,9 +443,9 @@ void RecordsHud::update() {
             else if (over) m_hoveredCategory = region.entry;
         }
 
-        // Handle clicks; one outside the HUD closes an open list
+        // Handle clicks; one anywhere but on this HUD closes an open list
         if (inputManager.getLeftButton().isClicked() && !isHeldBack()) {
-            if (isPointInBounds(mouseX, mouseY)) handleClick(mouseX, mouseY);
+            if (ownsClick()) handleClick(mouseX, mouseY);
             else if (m_categoryOpen) closeCategoryList();
         }
     }
@@ -817,33 +817,33 @@ void RecordsHud::buildRecordRows(RowCursor& cur, const std::vector<RecordEntry>&
     }
 
     if (!hasFetched) {
-        // Before fetch or error: show player's PB and/or status message
+        // Before fetch or error: the player's own PB first, whatever the state
         if (hasPlayerPB) {
             renderRecordRow(1, playerName, playerPBBike, playerPB->lapTime,
                             playerPB->sector1, playerPB->sector2, playerPB->sector3, playerPB->sector4, playerDateStr, true);
         }
-        // Show status message (error or prompt to compare) - counts as a row to maintain layout
-        const char* statusMessage = nullptr;
-        char errorMessage[64];
         if (currentState == FetchState::FETCH_ERROR) {
+            // A failed fetch reads NEGATIVE, as the Compare button does, in a row.
+            char errorMessage[64];
             if (!lastError.empty()) {
                 snprintf(errorMessage, sizeof(errorMessage), TR("Compare failed: %s"), lastError.c_str());
             } else {
                 strncpy_s(errorMessage, sizeof(errorMessage), TR("Compare failed - try again"), sizeof(errorMessage) - 1);
             }
-            statusMessage = errorMessage;
-        } else if (!hasPlayerPB) {
-            statusMessage = TR("Click Compare to load records");
-        }
-        if (statusMessage) {
-            // A failed fetch reads NEGATIVE (as the Compare button does in that state);
-            // the prompt to compare stays MUTED.
-            const ColorSlot statusSlot = (currentState == FetchState::FETCH_ERROR)
-                ? ColorSlot::NEGATIVE : ColorSlot::MUTED;
-            addString(statusMessage, contentStartX, currentY,
-                      Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(statusSlot), dim.fontSize);
+            addString(errorMessage, contentStartX, currentY,
+                      Justify::LEFT, this->getFont(FontCategory::NORMAL), this->getColor(ColorSlot::NEGATIVE), dim.fontSize);
             currentY += dim.lineHeightNormal;
             rowsRendered++;
+        } else if (currentState != FetchState::FETCHING) {
+            // NOT FETCHED YET (FETCHING has the button's "..."): the empty-state notice
+            // (addBlockedNotice), MUTED as nothing is wrong, centred in the rows the
+            // records fill (>= 2 left: floor 3, PB 1). Takes no rows: the panel holds.
+            const int freeRows = m_recordsToShow - rowsRendered;
+            addBlockedNotice(cur.plan.sectionBoxCenterX(),
+                             currentY + static_cast<float>(freeRows) * dim.lineHeightNormal * 0.5f,
+                             dim.lineHeightNormal, dim.fontSize,
+                             TR("Click Compare to load records"), ColorSlot::MUTED,
+                             m_bAutoFetch ? nullptr : TR("Or turn on Auto-fetch in MXBMRP3 Settings > Records"));
         }
     } else if (allRecords.empty()) {
         // Fetched but no records found - show player's PB and/or message

@@ -3,6 +3,8 @@
 // See the header.
 // ============================================================================
 #include "system_messages.h"
+#include "atomic_file_writer.h"
+#include "i18n.h"
 
 #include <cctype>
 #include <cstdio>
@@ -33,6 +35,16 @@ void SystemMessages::post(const Toast& toast) {
     // the front one.
     if (toast.throughHideAll) m_toasts.push_front(toast);
     else m_toasts.push_back(toast);
+}
+
+void SystemMessages::formatWriteFailure(WriteFailure why, const char* fileName, char* out, size_t cap) {
+    const char* format = nullptr;
+    switch (why) {
+        case WriteFailure::ReadOnly:     format = TR("%s is read-only. Untick it in Properties."); break;
+        case WriteFailure::AccessDenied: format = TR("Windows blocked %s. Antivirus or OneDrive?"); break;
+        default:                         format = TR("Could not write %s. Details in the log."); break;
+    }
+    snprintf(out, cap, format, fileName);
 }
 
 void SystemMessages::formatFolder(const char* path, char* out, size_t cap) {

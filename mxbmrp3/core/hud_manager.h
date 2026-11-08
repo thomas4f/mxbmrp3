@@ -56,6 +56,13 @@ public:
     // through it (companion_demo.sh, any `tab` scene, with HUDs behind it).
     void draw(int iState, int* piNumQuads, void** ppQuad, int* piNumString, void** ppString);
 
+    // The last step before the engine draws a frame, on the game thread in both
+    // render modes, and only once Direct GL has declined it: cuts what cannot put
+    // a pixel on screen (core/engine_cull.h) from the frame in the outputs, in
+    // place. The result points into m_engineQuads/m_engineStrings when anything
+    // was cut, valid until the next call. Pinned by engine_handoff_test.cpp.
+    void handOffToEngine(int* piNumQuads, void** ppQuad, int* piNumString, void** ppString);
+
     // Run the full per-frame update + collect for the given draw state, leaving the
     // built in-game frame in m_quads/m_strings and the companion frame submitted. This
     // is the shared body of draw(); the experimental plugin worker thread calls it
@@ -158,6 +165,10 @@ public:
     // as CompanionWindow::requestArtReload.
     void requestGlArtReload();
     bool glDrewLastFrame() const { return m_glDrewLastFrame.load(std::memory_order_relaxed); }
+    // Whether that frame drew HUD by HUD: its stacking had 2+ layers AND tiled
+    // the arrays the backend was handed. False on a stacked frame means the
+    // renderer fell back to the flat order and text bled through (test hook).
+    bool glDrewLayered() const { return m_glDrewLayered.load(std::memory_order_relaxed); }
     // Whether the backend stood down for the session. The settings row needs
     // this: without it the toggle shows the SETTING and a user whose driver (or
     // whose injected GL layer) turned the feature off has no way to know except
@@ -340,6 +351,9 @@ public:
     // (BaseHud::isHeldBack is the per-HUD view of this). The Breakout
     // easter egg is exempt from the toggles while it runs, in both passes.
     bool isHeldBack(const BaseHud* hud) const;
+    // This frame's left click lands on `hud`: the topmost HUD shown under it,
+    // the same pick a right-drag makes (BaseHud::ownsClick is the per-HUD view).
+    bool ownsClick(const BaseHud* hud) const { return hud && hud == m_pClickOwner; }
     // Notices or Timing while the Dash, switched off, is shown for a message
     // (DashHud::isBorrowed) over them: their text under its card made both
     // unreadable, and a player who switched the Dash off kept them where it sits.
@@ -427,6 +441,8 @@ public:
 
     // Motion's clock, in microseconds; -1 = the real clock (hud_manager_motion.cpp).
     static void testSetMotionNowUs(long long us);
+    // How many frames went through handOffToEngine: a frame Direct GL drew must not.
+    int testEngineHandoffs() const { return m_testEngineHandoffs.load(std::memory_order_relaxed); }
     // In `hud`'s range of the last game frame: the highest alpha of its under
     // layer and of the quad right after it. False if it drew no under layer.
     bool testMotionUnderAlpha(const BaseHud* hud, int& under, int& over) const;
@@ -475,7 +491,7 @@ private:
     // Once per game session, at the first Draw: every HUD switched off.
     void announceAllHiddenAtStart();
     // Same first Draw: what went wrong out of sight while loading (an unreadable
-    // stats file, the web overlay's port taken).
+    // settings or stats file, the web overlay's port taken).
     void announceStartupProblems();
     void announceProfileSwitch(ProfileType profile);
     void collectRenderData();
@@ -536,6 +552,9 @@ private:
 
     // Cache pointer to currently dragging HUD (eliminates search loop every frame)
     BaseHud* m_pDraggingHud;
+    // The HUD this frame's left click landed on, or null (no click, no pointer,
+    // or nothing under it). Resolved once per frame before any HUD updates.
+    BaseHud* m_pClickOwner = nullptr;
 
     // Timestamp of the previous Draw call. A long gap means the game stopped drawing us
     // (menu / loading); when it resumes we treat it as "entered the track" and flash the
@@ -621,9 +640,13 @@ private:
     std::vector<SPluginQuad_t> m_quads;
     std::vector<SPluginString_t> m_strings;
     // The game frame as handed to the engine, without its invisible primitives
-    // (core/engine_cull.h); used only on frames that have some. Reused buffers.
+    // (core/engine_cull.h); used only on frames that have some. Reused buffers,
+    // touched only by handOffToEngine on the game thread, in both render modes.
     std::vector<SPluginQuad_t> m_engineQuads;
     std::vector<SPluginString_t> m_engineStrings;
+#if defined(MXBMRP3_TEST_BUILD)
+    std::atomic<int> m_testEngineHandoffs{ 0 };
+#endif
     // Companion-surface frame (built only while the companion window is open).
     std::vector<SPluginQuad_t> m_companionQuads;
     std::vector<SPluginString_t> m_companionStrings;
@@ -648,6 +671,9 @@ private:
     std::vector<size_t> m_raised;
     void buildDrawOrder();
     bool staysOnTop(const BaseHud* hud) const;
+    // The topmost draggable HUD drawn on this surface under (x, y), walking
+    // last frame's draw order backwards; null when none is.
+    BaseHud* topHudAt(float x, float y, bool companion) const;
     // collectSurface's two layer steps (hud_manager_gl.cpp): close the span that
     // began at (quadStart, stringStart) with its screen rect - the HUD's bounds
     // at this surface's offset, or everywhere - then assign the layers.
@@ -724,6 +750,7 @@ private:
     std::atomic<hudgl::Renderer*> m_glRenderer{ nullptr };
     std::atomic<bool> m_glLatchedOff{ false };
     std::atomic<bool> m_glDrewLastFrame{ false };
+    std::atomic<bool> m_glDrewLayered{ false };   // see glDrewLayered()
     // Sticky: has the backend EVER drawn this session. Written on the Draw
     // thread, read on whichever thread builds the frame, hence atomic.
     std::atomic<bool> m_glEverDrew{ false };

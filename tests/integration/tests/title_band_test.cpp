@@ -41,6 +41,7 @@
 #include <algorithm>
 #include <utility>
 #include <cmath>
+#include <vector>
 
 namespace {
 
@@ -1193,4 +1194,192 @@ TEST_CASE("the legacy and settings chains place a caption to the same rules") {
     host.showSettings(false);
     host.setHudTitle("session_widget", false);
     host.clearTheme();
+}
+
+// ---------------------------------------------------------------------------
+// `[title] placement = frame` MAKES THE BAND THE FRAME'S TOP: flush with the
+// panel's outer top, left and right edges, with the frame (and the fill cut from
+// its centre) starting below it. Off, the same theme draws the band inside the
+// frame, which is the contrast that keeps this from passing on a band that was
+// never moved. The engine's numbers are pinned by panel_box_parity.json's
+// title-bar cases; this pins that BaseHud draws the frame where the engine said.
+TEST_CASE("[title] placement = frame puts the band on the frame's top") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\title_band_in_frame\\");
+    REQUIRE(host.hasThemeGeometry());
+    REQUIRE(host.hasFillCut());
+    REQUIRE(host.hasScreenEdges());
+    host.eventInit("Southwick", "Thomas");
+    host.session(1, 0, 0);
+    host.runInit(1);
+    host.addEntry(4, "Thomas");
+    host.installTheme("tif", FRAME_INSET, CARD_INSET, /*titleBand=*/1, /*card=*/1);
+    host.showSettings(true);
+
+    struct Probe { PluginHost::QuadRect band, centre; double l, t, r; };
+    auto probe = [&]() {
+        host.draw();
+        const PluginHost::FillCut cut = host.hudFillCut(PluginHost::HUD_SETTINGS);
+        REQUIRE_MESSAGE(cut.themed, "settings panel drew no themed centre");
+        REQUIRE_MESSAGE(!cut.covers.empty(), "no band cover recorded");
+        const auto e = host.hudScreenEdges(PluginHost::HUD_SETTINGS);
+        return Probe{ cut.covers.front(), cut.centre, e.l / 1e6, e.t / 1e6, e.r / 1e6 };
+    };
+
+    constexpr double kEq = 1e-4;   // a fifth of a pixel at 1080p, see the margin case
+    const Probe inside = probe();
+    INFO("inside: band l/t/r " << inside.band.l << "/" << inside.band.t << "/" << inside.band.r
+         << " panel l/t/r " << inside.l << "/" << inside.t << "/" << inside.r);
+    CHECK_MESSAGE(inside.band.l - inside.l > kEq, "default placement: band should sit inside the frame");
+    CHECK_MESSAGE(inside.band.t - inside.t > kEq, "default placement: band should sit inside the frame");
+
+    REQUIRE(host.setThemeTitleInFrame(true));
+    const Probe bar = probe();
+    INFO("frame: band l/t/r/b " << bar.band.l << "/" << bar.band.t << "/" << bar.band.r
+         << "/" << bar.band.b << " panel l/t/r " << bar.l << "/" << bar.t << "/" << bar.r
+         << " centre top " << bar.centre.t);
+    CHECK_MESSAGE(std::abs(bar.band.t - bar.t) < kEq, "title bar does not start at the panel's top edge");
+    CHECK_MESSAGE(std::abs(bar.band.l - bar.l) < kEq, "title bar does not reach the panel's left edge");
+    CHECK_MESSAGE(std::abs(bar.band.r - bar.r) < kEq, "title bar does not reach the panel's right edge");
+    CHECK_MESSAGE(bar.centre.t > bar.band.b - 1e-6, "the frame's centre starts under the title bar, not behind it");
+
+    host.setThemeTitleInFrame(false);
+    host.showSettings(false);
+    host.clearTheme();
+}
+
+// ---------------------------------------------------------------------------
+// title_*.tga IS THE BAND'S OWN ART: with the set present the band's nine quads
+// draw it, and without it they draw the card set, as before. The point of the
+// set is that a `[title] placement = frame` theme's bar and its section cards are
+// different pictures (Modern: a gradient bar over quiet rimmed cards), so the pin
+// is on the sprite each quad inside the band's rect draws.
+TEST_CASE("title_* art draws the band, and the card set draws without it") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\title_band_art\\");
+    REQUIRE(host.hasFillCut());
+    REQUIRE(host.hasQuadRects());
+    REQUIRE(host.hasQuadSprite());
+    host.eventInit("Southwick", "Thomas");
+    host.session(1, 0, 0);
+    host.runInit(1);
+    host.addEntry(4, "Thomas");
+    host.installTheme("tart", FRAME_INSET, CARD_INSET, /*titleBand=*/1, /*card=*/1);
+    REQUIRE(host.setThemeTitleInFrame(true));
+    host.showSettings(true);
+
+    // Sprites of the TEXTURED quads lying wholly inside the band's rect (the
+    // untextured ones there are fills, not art).
+    auto bandSprites = [&]() {
+        host.draw();
+        const PluginHost::FillCut cut = host.hudFillCut(PluginHost::HUD_SETTINGS);
+        REQUIRE_MESSAGE(!cut.covers.empty(), "no band cover recorded");
+        const PluginHost::QuadRect band = cut.covers.front();
+        const auto rects = host.hudQuadRects(PluginHost::HUD_SETTINGS);
+        constexpr double kEq = 1e-5;
+        std::vector<int> out;
+        for (size_t i = 0; i < rects.size(); ++i) {
+            const auto& q = rects[i];
+            if (q.l >= band.l - kEq && q.r <= band.r + kEq
+                && q.t >= band.t - kEq && q.b <= band.b + kEq) {
+                const int sp = host.quadSprite(PluginHost::HUD_SETTINGS, static_cast<int>(i));
+                if (sp != 0) out.push_back(sp);
+            }
+        }
+        return out;
+    };
+
+    constexpr int kTitleSprite = 7;   // the synthetic card and frame sets are all sprite 1
+    const std::vector<int> card = bandSprites();
+    REQUIRE_MESSAGE(card.size() >= 9, "expected the band's nine slices inside its rect");
+    for (int sp : card) CHECK_MESSAGE(sp == 1, "without title art the band draws the card set");
+
+    // The band's nine come FIRST: the Find box's card lies inside the band too, but
+    // it is drawn after the band, and in the card set (its own case pins that).
+    REQUIRE(host.setThemeTitleArt(kTitleSprite));
+    const std::vector<int> title = bandSprites();
+    REQUIRE(title.size() >= 9);
+    for (size_t i = 0; i < 9; ++i)
+        CHECK_MESSAGE(title[i] == kTitleSprite, "the band's slices should draw title_* art");
+
+    host.setThemeTitleArt(0);
+    host.setThemeTitleInFrame(false);
+    host.showSettings(false);
+    host.clearTheme();
+}
+
+// ---------------------------------------------------------------------------
+// THE FIND BOX IS A SECTION CARD IN MINIATURE. Where the theme draws section
+// cards, the field's box is that card art at the field's rect (sunken in Retro,
+// rimmed elsewhere), banded or not, with no flat tint over it. Without card art
+// a themed band still gets the well in the body's colour: the field's text
+// colours are the body's, and on bar art they fail (grey on a saturated bar
+// such as Modern Dark's is far under 4.5:1). Read from the TOP of the stack
+// under the field's centre: a card leaves a textured slice there, field-wide; a
+// missing card leaves the band's or frame's panel-wide slice on top, and the
+// tint drawn over it a flat quad.
+TEST_CASE("the settings Find box is a themed card, else a well on a themed band") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\title_band_find_well\\");
+    REQUIRE(host.hasQuadRects());
+    REQUIRE(host.hasQuadSprite());
+    host.eventInit("Southwick", "Thomas");
+    host.session(1, 0, 0);
+    host.runInit(1);
+    host.addEntry(4, "Thomas");
+
+    // The quads under the Find field's centre, topmost first, with their sprites.
+    struct Hit { PluginHost::QuadRect r; int sprite; };
+    auto underField = [&](int titleBand, int card) {
+        host.installTheme("twell", FRAME_INSET, CARD_INSET, titleBand, card);
+        host.showSettings(true);
+        host.draw();
+        float fx = 0.0f, fy = 0.0f;
+        REQUIRE_MESSAGE(host.settingsRegionCenter("find.field", &fx, &fy), "no Find field drawn");
+        const auto rects = host.hudQuadRects(PluginHost::HUD_SETTINGS);
+        std::vector<Hit> hits;
+        for (size_t i = rects.size(); i-- > 0;) {
+            const auto& q = rects[i];
+            if (fx < q.l || fx > q.r || fy < q.t || fy > q.b) continue;
+            hits.push_back({ q, host.quadSprite(PluginHost::HUD_SETTINGS, static_cast<int>(i)) });
+        }
+        host.showSettings(false);
+        host.clearTheme();
+        return hits;
+    };
+
+    // The panel's width, to tell the field's card (a box of about a quarter of
+    // it) from the band's or frame's centre slice, which spans nearly all of it.
+    host.showSettings(true);
+    host.draw();
+    const auto edges = host.hudScreenEdges(PluginHost::HUD_SETTINGS);
+    const double panelW = (edges.r - edges.l) / 1e6;
+    host.showSettings(false);
+    REQUIRE(panelW > 0.1);
+    for (int band = 0; band <= 1; ++band) {
+        CAPTURE(band);
+        const auto hits = underField(band, /*card=*/1);
+        REQUIRE(!hits.empty());
+        CHECK_MESSAGE(hits[0].sprite != 0, "the field's box is a flat quad, not the card art");
+        CHECK_MESSAGE(hits[0].r.r - hits[0].r.l < panelW * 0.5,
+                      "the topmost quad under the field spans the panel: no card of its own");
+    }
+
+    // No card art: the field's flat tint on top, and on a band a flat well of the
+    // same rect under it; without a band, nothing of the field's rect under it.
+    auto sameRect = [](const PluginHost::QuadRect& a, const PluginHost::QuadRect& b) {
+        return std::abs(a.l - b.l) < 1e-4 && std::abs(a.t - b.t) < 1e-4 &&
+               std::abs(a.r - b.r) < 1e-4 && std::abs(a.b - b.b) < 1e-4;
+    };
+    const auto banded = underField(1, /*card=*/0);
+    REQUIRE(banded.size() >= 2);
+    CHECK(banded[0].sprite == 0);
+    CHECK((banded[1].sprite == 0 && sameRect(banded[0].r, banded[1].r)));
+    const auto bandless = underField(0, /*card=*/0);
+    REQUIRE(bandless.size() >= 2);
+    CHECK(bandless[0].sprite == 0);
+    CHECK_FALSE(sameRect(bandless[0].r, bandless[1].r));
 }

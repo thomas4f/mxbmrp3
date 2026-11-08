@@ -626,6 +626,19 @@ void HudManager::announceAllHiddenAtStart() {
 // an "Error" on a settings row a player who is not looking never sees. Once, at
 // the first Draw.
 void HudManager::announceStartupProblems() {
+    const SettingsManager& settings = SettingsManager::getInstance();
+    if (settings.lastLoadUnreadable()) {
+        SystemMessages::Toast t;
+        snprintf(t.title, sizeof(t.title), "%s", TR("Settings file unreadable"));
+        snprintf(t.detail, sizeof(t.detail), "%s",
+                 settings.writesBlocked() ? TR("Left as it is. Settings are not saved this session")
+                                          : TR("Started fresh. A copy is kept in the mxbmrp3 folder"));
+        snprintf(t.icon, sizeof(t.icon), "triangle-exclamation");
+        t.key = SystemMessages::KEY_SETTINGS_UNREADABLE;
+        t.severity = SystemMessages::Severity::Warning;
+        t.durationMs = SystemMessages::WARNING_DURATION_MS;
+        SystemMessages::getInstance().post(t);
+    }
     const StatsManager& stats = StatsManager::getInstance();
     if (stats.lastLoadUnreadable()) {
         SystemMessages::Toast t;

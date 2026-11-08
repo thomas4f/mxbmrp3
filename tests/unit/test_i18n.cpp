@@ -18,7 +18,9 @@
 // The shipped data is checked too: template.pot parses, holds every tooltip
 // (a tooltip added without NC_() would stay English forever), and every
 // shipped pack's strings are ones the template still has, with each translated
-// tooltip fitting the same two-line box the English must. The loader's file I/O
+// tooltip fitting the same two-line box the English must, and each translated
+// write-failure notice fitting the toast's detail line with its file name in
+// (a review of #635 found eight packs cut mid-word). The loader's file I/O
 // (i18n.cpp) is Windows-only and is the integration layer's.
 // ============================================================================
 #include "doctest.h"
@@ -29,6 +31,7 @@
 #include "hud/settings/settings_find.h"
 #include "core/tooltip_manager.h"
 #include "core/layout_metrics.h"
+#include "core/system_messages.h"
 #include "hud/settings/text_wrap.h"
 
 #include <filesystem>
@@ -635,4 +638,80 @@ TEST_CASE("shipped: template.pot parses and every shipped pack translates string
         }
     }
     CHECK(packs >= 1);
+}
+
+// The notices that put a file name into the toast's detail line
+// (SystemMessages::formatWriteFailure, the settings/stats save notices). The
+// detail is a fixed char array and snprintf cuts what does not fit, mid-word, so
+// every pack's line must fit it with the longest name it is given filled in. The
+// name is what the line is about: a cut that loses it loses the notice.
+TEST_CASE("shipped: every pack's write-failure notice fits the toast with its file name") {
+    namespace fs = std::filesystem;
+    const char* const formats[] = {
+        "%s is read-only. Untick it in Properties.",
+        "Windows blocked %s. Antivirus or OneDrive?",
+        "Could not write %s. Details in the log.",
+    };
+    const std::string longestName = "mxbmrp3_settings.ini";   // vs mxbmrp3_stats.json
+    constexpr size_t room = sizeof(SystemMessages::Toast{}.detail) - 1;
+    const auto filled = [&](const std::string& text) {
+        std::string out = text;
+        const size_t at = out.find("%s");
+        if (at != std::string::npos) out.replace(at, 2, longestName);
+        return out;
+    };
+    for (const char* f : formats) CHECK(filled(f).size() <= room);   // the English too
+
+    const std::set<std::string> wanted(std::begin(formats), std::end(formats));
+    int checked = 0;
+    for (const fs::directory_entry& d : fs::directory_iterator(fs::path(LANGUAGES_DIR))) {
+        const fs::path po = d.path() / "strings.po";
+        if (!d.is_directory() || !fs::exists(po)) continue;
+        for (const I18n::PoEntry& e : I18n::parsePo(readAll(po))) {
+            if (!e.context.empty() || wanted.count(e.english) == 0) continue;
+            std::string cp;
+            REQUIRE(I18n::utf8ToCp1252Exact(e.text, cp));
+            ++checked;
+            CHECK_MESSAGE(filled(cp).size() <= room,
+                          po.string() << ": '" << e.text << "' is " << filled(cp).size()
+                          << " characters with the file name in; the toast holds " << room);
+        }
+    }
+    CHECK(checked >= 3);   // a pack translates them: the check is not vacuous
+}
+
+// Labels whose room is FIXED IN CODE, not measured in the panel, so the limits
+// fixture (i18n_limits.json, from the drawn settings labels) never sees them:
+// a value cut to its cell by formatValue, a button box sized by its idle label
+// while the armed "Confirm?" takes the same box, a char array a HUD formats
+// into. Each site is named, so a wider box or buffer moves the number here too.
+TEST_CASE("shipped: every pack's code-sized labels fit their boxes") {
+    namespace fs = std::filesystem;
+    struct Room { const char* english; int chars; const char* where; };
+    const Room rooms[] = {
+        { "On",  3, "Widgets tab inline cycles, formatValue(value, 3)" },
+        { "Off", 3, "Widgets tab inline cycles, formatValue(value, 3)" },
+        { "Confirm?", 8, "Copy button box (settings_tab_general.cpp, labelChars 8)" },
+        { "Rebind in Settings > Hotkeys", 63, "Dash hint, char where[64] (dash_hud_pages.cpp)" },
+        { "in Settings > Hotkeys", 63, "Dash hint, char where[64] (dash_hud_pages.cpp)" },
+        { "UPDATE AVAILABLE", 31, "Dash startup card, char name[32] (dash_hud_pages.cpp)" },
+    };
+    int checked = 0;
+    for (const fs::directory_entry& d : fs::directory_iterator(fs::path(LANGUAGES_DIR))) {
+        const fs::path po = d.path() / "strings.po";
+        if (!d.is_directory() || !fs::exists(po)) continue;
+        for (const I18n::PoEntry& e : I18n::parsePo(readAll(po))) {
+            if (!e.context.empty()) continue;
+            for (const Room& r : rooms) {
+                if (e.english != r.english) continue;
+                std::string cp;
+                REQUIRE(I18n::utf8ToCp1252Exact(e.text, cp));
+                ++checked;
+                CHECK_MESSAGE(static_cast<int>(cp.size()) <= r.chars,
+                              po.string() << ": '" << e.text << "' is " << cp.size()
+                              << " characters; " << std::string(r.where) << " holds " << r.chars);
+            }
+        }
+    }
+    CHECK(checked >= 6);   // a pack translates them: the check is not vacuous
 }

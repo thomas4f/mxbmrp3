@@ -483,7 +483,8 @@ void BaseHud::updateBackgroundQuadPosition(float startX, float startY, float wid
     if (m_quads.empty()) return;
 
     float x = startX;
-    float y = startY;
+    float y = startY + m_bgFrameTop;   // the frame's rect, as addBackgroundQuad drew it
+    height -= m_bgFrameTop;
     applyOffset(x, y);
 
     // A themed background occupies 9 quads, not 1. Rewrite the whole recorded span

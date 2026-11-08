@@ -372,13 +372,9 @@ DashHud::GapChartView DashHud::readGapChart() {
     view.sessionGeneration = pd.getSessionData().sessionGeneration;
     view.mine = pd.getDisplayRaceNum();
     const std::vector<int>& order = pd.getClassificationOrder();
-    const size_t n = order.size();
-    for (size_t i = 0; i < n; ++i) {
-        if (order[i] != view.mine) continue;
-        if (i > 0) view.ahead = order[i - 1];
-        if (i + 1 < n) view.behind = order[i + 1];
-        break;
-    }
+    GapChartPicks::Pick picks[GapChartPicks::MAX_LINES];
+    const int count = GapChartPicks::pick(order.data(), order.size(), view.mine, picks);
+    for (int k = 0; k < count; ++k) view.lines[k] = order[static_cast<size_t>(picks[k].index)];
     return view;
 }
 

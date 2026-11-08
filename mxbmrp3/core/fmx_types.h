@@ -336,11 +336,17 @@ inline TrickType withDirection(TrickType type, TrickDirection dir) {
     return (dir == TrickDirection::LEFT) ? leftVariant : flipTrickDirection(leftVariant);
 }
 
-// Format trick name with named multiplier prefix (e.g. "Double Backflip")
-// Writes into caller-provided buffer to avoid heap allocation in hot paths.
-inline void formatTrickName(TrickType type, int multiplier, char* buffer, size_t bufferSize) {
+// Format trick name with named multiplier prefix (e.g. "Double Backflip") or
+// its level word (e.g. "Flat Whip L"; core/fmx_levels.h, nullptr = none). The
+// two never meet on one trick: levels are only for tricks that cannot rotate
+// a full turn. Writes into caller-provided buffer to avoid heap allocation in
+// hot paths.
+inline void formatTrickName(TrickType type, int multiplier, const char* levelWord,
+                            char* buffer, size_t bufferSize) {
     const char* name = getTrickName(type);
-    if (multiplier == 2) {
+    if (levelWord) {
+        snprintf(buffer, bufferSize, "%s %s", levelWord, name);
+    } else if (multiplier == 2) {
         snprintf(buffer, bufferSize, "Double %s", name);
     } else if (multiplier == 3) {
         snprintf(buffer, bufferSize, "Triple %s", name);

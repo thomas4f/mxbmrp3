@@ -6,6 +6,7 @@
 
 #include "../settings_hud.h"
 #include "../../core/plugin_constants.h"
+#include "../../game/game_config.h"
 
 #include <algorithm>
 #include <set>
@@ -19,31 +20,27 @@ namespace {
 // check_whats_new.sh fails the build if a version here falls behind resource.h,
 // so the review is not optional.
 //
-// 1.34.1 is the first stable 1.34 (1.34.0 was a pre-release), so the line
-// is "1.34" and it marks both: the Standings' Show mode and Live updates, the
-// Server best behind General's Gap reference, and the Updates tab's Update
-// channel, now shown to everyone; and from 1.34.0, Now playing on General and
-// its widget. Click to spectate has no row to mark. The Benchmark profiler,
-// also shown to everyone now, stays unmarked: the Performance tab sits under
-// More, and moving it up for one release would reorder the sidebar for
-// everyone (the README's troubleshooting entry points players to it instead).
-// The Now Playing Dash page and new-track notice stay unmarked to keep the
-// table short. The Find box in the title band, new in 1.34.1, leads: it is
-// the Find tab's row, banded on every tab until the pointer reaches it.
-// 1.34.2 adds the Timing tab's Target row (Splits / Full lap).
+// 1.35.0 is the first public release since 1.34.1 (1.34.2 and 1.34.3 were
+// pre-releases), so the line is "1.35" and it marks what those brought that a
+// 1.34.1 player has no reason to go looking for: the Timing tab's Target row
+// (Splits / Full lap), and the spotter's Tricks and Achievements callouts,
+// each only in a game that draws its row. The Spotter tab's Beta badge takes
+// the sidebar slot, so those two band their rows without a "New" tag. The 1.34
+// rows are pruned: a 1.34.1 player has had them for a release. Nothing on
+// Appearance (the languages, themes and fonts): a marker tags the Appearance
+// sidebar row, and German "Darstellung" leaves no room for the tag.
 //
 // Prestige is the table's one Gate::Unlocked row: it is not new in a release,
 // it is new the moment a player trades their ladder for it, and the row it
 // bands does not exist on the Widgets tab until then.
 const Marker kMarkers[] = {
-    { SettingsHud::TAB_FIND,         "find.field",               "1.34" },
-    { SettingsHud::TAB_STANDINGS,    "standings.live_updates",   "1.34" },
-    { SettingsHud::TAB_STANDINGS,    "standings.show_mode",      "1.34" },
-    { SettingsHud::TAB_GENERAL,      "general.reference",        "1.34" },
-    { SettingsHud::TAB_GENERAL,      "general.now_playing",      "1.34" },
-    { SettingsHud::TAB_WIDGETS,      "widgets.now_playing",      "1.34" },
-    { SettingsHud::TAB_UPDATES,      "updates.channel",          "1.34" },
-    { SettingsHud::TAB_TIMING,       "timing.target",            "1.34" },
+    { SettingsHud::TAB_TIMING,       "timing.target",            "1.35" },
+#if GAME_HAS_FMX
+    { SettingsHud::TAB_SPOTTER,      "spotter.cat_tricks",       "1.35" },
+#endif
+#if GAME_HAS_ACHIEVEMENTS
+    { SettingsHud::TAB_SPOTTER,      "spotter.cat_achievements", "1.35" },
+#endif
     { SettingsHud::TAB_WIDGETS,      "widgets.prestige",         nullptr, Gate::Unlocked },
 };
 
@@ -153,8 +150,6 @@ bool tabHighlightsRow(int tabId) {
 
 int firstTabWithNews() {
     for (int i = 0; i < MARKER_COUNT; ++i) {
-        // The Find field is not a tab to open: it is in the title band of every one.
-        if (kMarkers[i].tabId == SettingsHud::TAB_FIND) continue;
         if (tabHasNews(kMarkers[i].tabId)) return kMarkers[i].tabId;
     }
     return -1;

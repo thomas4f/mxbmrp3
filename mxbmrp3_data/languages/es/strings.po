@@ -125,6 +125,10 @@ msgid "%s in burnouts and drifts"
 msgstr "%s en burnouts y derrapes"
 
 #, c-format
+msgid "%s is read-only. Untick it in Properties."
+msgstr "%s es de solo lectura (ver Propiedades)."
+
+#, c-format
 msgid "%s laps in a row, crash/penalty free"
 msgstr "%s vueltas seguidas, sin caídas/sanciones"
 
@@ -195,6 +199,10 @@ msgstr "Un comentario o nota, una estrella o"
 msgctxt "tooltip"
 msgid "A crash tally for streaming - counts across sessions and restarts until you reset it."
 msgstr "Contador de caídas para directos - suma entre sesiones y reinicios hasta que lo pongas a cero."
+
+msgctxt "tooltip"
+msgid "A line for every achievement you earn, good or bad."
+msgstr "Una frase para cada logro que consigas, bueno o malo."
 
 msgctxt "tooltip"
 msgid "A new notice takes the card over, drawn as on Notices, then your page comes back."
@@ -592,7 +600,7 @@ msgstr "Negro"
 msgid "Blue"
 msgstr "Azul"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Blue flag"
 msgstr "Bandera azul"
 
@@ -946,7 +954,7 @@ msgid "Confirm"
 msgstr "Confirmar"
 
 msgid "Confirm?"
-msgstr "¿Confirmar?"
+msgstr "¿Seguro?"
 
 msgid "Connect the web overlay"
 msgstr "Conecta el overlay web"
@@ -1011,8 +1019,8 @@ msgid "Could not open port %d. Is it in use?"
 msgstr "No se pudo abrir el puerto %d. ¿Está en uso?"
 
 #, c-format
-msgid "Could not write %s. Is it read-only?"
-msgstr "No se pudo escribir %s. ¿Es de solo lectura?"
+msgid "Could not write %s. Details in the log."
+msgstr "No se pudo escribir %s. Ver el registro."
 
 msgid "Could not write to mxbmrp3\\benchmarks"
 msgstr "No se pudo escribir en mxbmrp3\\benchmarks"
@@ -1199,9 +1207,9 @@ msgstr "Estándar (Mejor servidor)"
 msgid "Default (Session PB)"
 msgstr "Estándar (RP sesión)"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Default setup"
-msgstr "Setup por defecto"
+msgstr "Setup estándar"
 
 msgid "Defaults restored"
 msgstr "Valores por defecto restaurados"
@@ -1847,7 +1855,7 @@ msgstr "Marcha"
 msgid "Gear indicator"
 msgstr "Indicador marcha"
 
-#. max 9 characters
+#. max 12 characters
 msgid "General"
 msgstr "General"
 
@@ -2397,7 +2405,7 @@ msgstr "Tiempos de vuelta"
 msgid "Lapped the Field"
 msgstr "Doblaste a Todos"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Lapper ahead"
 msgstr "Doblado delante"
 
@@ -2478,6 +2486,9 @@ msgstr "Salto Adelante"
 
 msgid "Left"
 msgstr "Izquierda"
+
+msgid "Left as it is. Settings are not saved this session"
+msgstr "Se deja como está. Ajustes no guardados en esta sesión"
 
 msgid "Left as it is. Stats are not saved this session"
 msgstr "Se deja como está. Estadísticas no guardadas en esta sesión"
@@ -3020,6 +3031,9 @@ msgstr "Oppo"
 msgid "Opponents"
 msgstr "Rivales"
 
+msgid "Or turn on Auto-fetch in MXBMRP3 Settings > Records"
+msgstr "O activa Buscar auto en MXBMRP3 Ajustes > Récords"
+
 msgid "Orange"
 msgstr "Naranja"
 
@@ -3050,7 +3064,7 @@ msgstr "Adelanta %s en %s"
 msgid "Overtakes"
 msgstr "Adelantamientos"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Overtime"
 msgstr "Tiempo extra"
 
@@ -3987,6 +4001,9 @@ msgctxt "tooltip"
 msgid "Settings and every switch in one strip; drag it to an edge to turn it. Rest on one that is off to preview it."
 msgstr "Ajustes y cada interruptor en una tira; arrástrala a un borde para girarla. Ratón sobre uno apagado: vista previa."
 
+msgid "Settings file unreadable"
+msgstr "Archivo de ajustes ilegible"
+
 msgid "Settings not saved"
 msgstr "Ajustes no guardados"
 
@@ -4580,7 +4597,7 @@ msgstr "Sumar fuerzas"
 msgid "Stalker"
 msgstr "Acosador"
 
-#. max 9 characters
+#. max 10 characters
 msgid "Standings"
 msgstr "Clasif."
 
@@ -4593,10 +4610,6 @@ msgstr "Inicia o para el barrido de coste de dibujo. Escribe un informe al termi
 
 msgid "Started fresh. A copy is kept in the mxbmrp3 folder"
 msgstr "Empezado de cero. Queda una copia en la carpeta mxbmrp3"
-
-#. max 23 characters
-msgid "Stationary rider"
-msgstr "Piloto parado"
 
 #. max 10 characters
 msgid "Stats"
@@ -4640,6 +4653,10 @@ msgstr "Steam no disponible"
 #. max 11 characters
 msgid "Steering"
 msgstr "Dirección"
+
+#. max 15 characters
+msgid "Stopped rider"
+msgstr "Piloto parado"
 
 #. max 60 characters
 msgid "Stories"
@@ -4829,8 +4846,8 @@ msgid "The RPM widget's shift lights, with the revs under them."
 msgstr "Las luces de cambio del widget RPM, con las revoluciones debajo."
 
 msgctxt "tooltip"
-msgid "The Session Charts HUD's Gap chart: you and the riders just ahead and behind."
-msgstr "El gráfico Dif. del HUD Gráficos de Sesión: tú y los pilotos justo delante y detrás."
+msgid "The Session Charts HUD's Gap chart: the leader, you and the riders around you."
+msgstr "El gráfico Dif. del HUD Gráficos de Sesión: el líder, tú y los pilotos a tu alrededor."
 
 msgctxt "tooltip"
 msgid "The Session HUD's rows: server, track and format."
@@ -5142,7 +5159,7 @@ msgstr "Pista"
 msgid "Track %s riders"
 msgstr "Sigue a %s pilotos"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Track change"
 msgstr "Cambio de pista"
 
@@ -5199,6 +5216,10 @@ msgstr "Pila de trucos"
 #. max 23 characters
 msgid "Trick stats"
 msgstr "Estadísticas trucos"
+
+#. max 15 characters
+msgid "Tricks"
+msgstr "Trucos"
 
 msgctxt "tooltip"
 msgid "Tricks shown in the stack. Off hides it, 1 shows the active trick, 2+ shows history."
@@ -5327,7 +5348,7 @@ msgstr "Búsqueda pendiente..."
 msgid "Update installed!"
 msgstr "¡Actualización instalada!"
 
-#. max 9 characters
+#. max 12 characters
 msgid "Updates"
 msgstr "Versiones"
 
@@ -5627,19 +5648,23 @@ msgstr "Gana una carrera liderando todas las vueltas"
 msgid "Win with every rider at least a lap down"
 msgstr "Gana con todos los pilotos doblados"
 
+#, c-format
+msgid "Windows blocked %s. Antivirus or OneDrive?"
+msgstr "Windows bloqueó %s. ¿Antivirus u OneDrive?"
+
 msgid "Winner"
 msgstr "Ganador"
 
 msgid "Wire to Wire"
 msgstr "De Principio a Fin"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Wrong way"
-msgstr "Sentido contrario"
+msgstr "Sentido inverso"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Wrong way rider"
-msgstr "Piloto en contra"
+msgstr "Piloto al revés"
 
 msgid "Yaw"
 msgstr "Guiñada"
@@ -5681,6 +5706,10 @@ msgstr "Tu chat de Twitch y YouTube en el juego, juntos en una ventana. Solo lec
 
 msgid "Your final lap"
 msgstr "Tu última vuelta"
+
+msgctxt "tooltip"
+msgid "Your freestyle tricks, landings and crashes. Never in a race."
+msgstr "Tus trucos de freestyle, aterrizajes y caídas. Nunca en carrera."
 
 msgctxt "tooltip"
 msgid "Your gap to a reference lap across the whole lap: green where you gained, red where you lost."

@@ -7,9 +7,7 @@
 // ============================================================================
 #include "dash_hud.h"
 
-#include "../core/hud_manager.h"
 #include "../core/input_manager.h"
-#include "settings_hud.h"
 
 using namespace PluginConstants;
 
@@ -39,16 +37,16 @@ void DashHud::drawNowPlaying(float rowL, float rowR, float contentY, const Scale
 
 void DashHud::followMediaInput() {
     // Live only on the page fully up (no fade, name or hint over it), with the
-    // pointer showing, as the card's message click.
+    // pointer showing, as the card's message click; a press starts a control
+    // only when the click is the Dash's own (ownsClick).
     const InputManager& input = InputManager::getInstance();
     const bool live = isVisibleAnySurface() && m_page == Page::NOW_PLAYING && m_fadeMs <= 0.0f && !m_nameUp && m_stepTried &&
-                      !isHeldBack() && input.shouldShowCursor() &&
-                      !HudManager::getInstance().getSettingsHud().isVisible();   // vis-gate: the menu's own state
+                      !isHeldBack() && input.shouldShowCursor();
     CursorPosition cursor = input.getCursorPosition();
     mapCursorToHudSpace(cursor.x, cursor.y);
     const MouseButton& left = input.getLeftButton();
     if (m_nowPlaying.follow(live && cursor.isValid, cursor.x - getOffsetX(), cursor.y - getOffsetY(),
-                            left.isClicked(), left.isPressed)) {
+                            left.isClicked() && ownsClick(), left.isPressed)) {
         setDataDirty();
     }
 }

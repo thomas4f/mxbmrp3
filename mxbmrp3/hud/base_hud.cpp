@@ -26,6 +26,10 @@ bool BaseHud::isHeldBack() const {
     return HudManager::getInstance().isHeldBack(this);
 }
 
+bool BaseHud::ownsClick() const {
+    return HudManager::getInstance().ownsClick(this);
+}
+
 bool BaseHud::handleMouseInput(bool allowInput) {
     if (!m_bDraggable) return false;
 

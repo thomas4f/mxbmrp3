@@ -297,7 +297,7 @@ void SettingsHud::buildMoreRow(const ScaledDimensions& dim, const PanelPlan& pla
     }
 
     const unsigned long color = selected ? cc.getPrimary() : cc.getAccent();
-    drawTabIcon(tabStartX, tabStartY, "layer-group", color, dim, checkboxWidth);
+    drawTabIcon(tabStartX, tabStartY, "hud-more", color, dim, checkboxWidth);
 
     const float labelX = tabStartX + checkboxWidth;
     const float labelW = tabWidth - checkboxWidth;

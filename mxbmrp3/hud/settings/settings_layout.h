@@ -253,9 +253,10 @@ struct SettingsLayoutContext {
     // cursorColumn >= 0 draws a caret before that column. The box spans
     // [x + 0.7 cell, x + fieldChars + 1 cells], so a field at controlX - one cell
     // with valueChars + 1 characters lines up with a row's dropdown box. No click
-    // region: the caller owns it.
+    // region: the caller owns it. box = false leaves out the idle tint, for a
+    // caller that draws its own box under the field (the Find box's card).
     void addInputField(float x, int fieldChars, const char* text, unsigned long color,
-                       bool active = false, int cursorColumn = -1);
+                       bool active = false, int cursorColumn = -1, bool box = true);
 
     // Background for a button drawn INSIDE a tab's content: takes the theme's button
     // slices when there are any, a solid quad otherwise, and fills its row. `color`

@@ -409,6 +409,7 @@ void HudManager::clear(bool allowCrossSingleton) {
     }
     m_hudSlotClearers.clear();
     m_pDraggingHud = nullptr;  // transient drag state, not a registered HUD slot
+    m_pClickOwner = nullptr;   // transient too: this frame's left-click pick
 
     // Now safe to destroy HUD objects
     m_huds.clear();

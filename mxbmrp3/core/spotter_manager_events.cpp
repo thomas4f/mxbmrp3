@@ -273,8 +273,7 @@ void SpotterManager::onRaceEvent(EventLogType type, int raceNum,
             // and a rival matching you to the millisecond earns the same
             // silence — the optional group drops.
             if (d == 0) return;
-            out = SpotterPhrase::gapWordsMs(d) +
-                  (d < 0 ? " quicker" : " slower");
+            out = SpotterPhrase::paceWords(d);
         };
         against(myBest, vars.eventGapToBestLap);
         against(myLast, vars.eventGapToLastLap);
@@ -660,7 +659,7 @@ void SpotterManager::onRaceSplit(int raceNum, int lapNum, int splitIndex,
     auto sectorDelta = [splitTimeMs](int ref, std::string& out) {
         if (ref <= 0) return;
         const int d = splitTimeMs - ref;
-        out = SpotterPhrase::gapWordsMs(d) + (d < 0 ? " quicker" : " slower");
+        out = SpotterPhrase::paceWords(d);
     };
 
     // The OPENING lap as the session's only reference is the gate/out-lap --

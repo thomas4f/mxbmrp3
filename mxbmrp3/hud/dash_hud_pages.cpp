@@ -297,18 +297,19 @@ void DashHud::drawDeltaTrace(float x, float y, float w, float h, const ScaledDim
 }
 
 void DashHud::drawGapChart(float x, float y, float w, float h, const ScaledDimensions& dim) {
-    // The Session Charts HUD's Gap chart for three riders: the leader the top
-    // edge, the gap growing downward, the displayed rider's line in the accent
-    // colour and weight it has there, the rider ahead's in the Standings' ahead
-    // colour and the rider behind's in its behind colour. Its grid (lap lines
-    // included), dots and Line labels ("#num" at each line's end, in a right
-    // margin as wide as its own), at its resolution (Sector points in a race);
-    // without its axis labels, which the card has no room for. Each line is its
-    // rider's whole race, so a pass redraws them.
+    // The Session Charts HUD's Gap chart for up to four riders (GapChartPicks):
+    // the leader's gap the top edge, the gap growing downward, the displayed
+    // rider's line in the accent colour and weight it has there, the leader's in
+    // the primary colour, riders ahead in the Standings' ahead colour and riders
+    // behind in its behind colour. Its grid (lap lines included), dots and Line
+    // labels ("#num" at each line's end, in a right margin as wide as its own),
+    // at its resolution (Sector points in a race); without its axis labels,
+    // which the card has no room for. Each line is its rider's whole race, so a
+    // pass redraws them.
     m_shownGapChart = readGapChart();
     const uint32_t on = m_shownGapChart.elements;
-    SessionChartsHud::NeighbourGaps& gaps = m_gapSeries;
-    HudManager::getInstance().getSessionChartsHud().neighbourGaps(gaps);
+    SessionChartsHud::GapChartLines& gaps = m_gapSeries;
+    HudManager::getInstance().getSessionChartsHud().gapChartLines(gaps);
     const bool tags = (on & SessionChartsHud::ELEM_LEGEND) != 0;
     const float plotW = tags
         ? w - PluginUtils::calculateMonospaceTextWidth(SessionChartsHud::TAG_WIDTH_CHARS, dim.fontSizeSmall)
@@ -317,14 +318,19 @@ void DashHud::drawGapChart(float x, float y, float w, float h, const ScaledDimen
     // The parent's robust range: a rider minutes behind does not squash the
     // others against the leader; their line clips to the bottom edge.
     m_gapRangeSample.clear();
-    for (const std::vector<long long>* s : { &gaps.ahead, &gaps.mine, &gaps.behind })
-        for (long long g : *s)
+    const SessionChartsHud::GapChartLine* mine = nullptr;
+    size_t points = 0;
+    for (int k = 0; k < gaps.count; ++k) {
+        const SessionChartsHud::GapChartLine& l = gaps.lines[k];
+        if (l.role == GapChartPicks::Role::MINE) mine = &l;
+        points = std::max(points, l.gaps.size());
+        for (long long g : l.gaps)
             if (g < SessionChartsMath::kNoValidLap / 2) m_gapRangeSample.push_back(g);
+    }
     const SessionChartsMath::AxisRange range = SessionChartsMath::robustRange(m_gapRangeSample);
     const long long gapMax = std::max<long long>(1000, range.valid ? range.hi : 0);
 
-    // One x scale for the three, the longest series across the card.
-    const size_t points = std::max(gaps.mine.size(), std::max(gaps.ahead.size(), gaps.behind.size()));
+    // One x scale for the lines (`points`): the longest series across the card.
     if (on & SessionChartsHud::ELEM_GRID) {
         const float grid = stripChartGridThickness();
         const unsigned long gridColor = getColor(ColorSlot::MUTED);
@@ -334,7 +340,7 @@ void DashHud::drawGapChart(float x, float y, float w, float h, const ScaledDimen
         const float perLap = static_cast<float>(std::max(1, gaps.pointsPerLap));
         if (points > 1) addChartLapLines(x, y, plotW, h, 1.0f / perLap, static_cast<float>(points) / perLap);
     }
-    if (gaps.mine.empty()) {
+    if (!mine || mine->gaps.empty()) {
         addString(Placeholders::GENERIC, x + w * 0.5f, y + (h - dim.lineHeightNormal) * 0.5f, Justify::CENTER,
                   getFont(FontCategory::DIGITS), getColor(ColorSlot::MUTED), dim.fontSize);
         return;
@@ -344,7 +350,7 @@ void DashHud::drawGapChart(float x, float y, float w, float h, const ScaledDimen
     const float dotSize = 0.004f * dim.scale;
     // Where each line ends, for its tag: top to bottom once drawn.
     struct Tag { float y; int raceNum; unsigned long color; };
-    Tag tagAt[3];
+    Tag tagAt[GapChartPicks::MAX_LINES];
     int tagCount = 0;
     auto line = [&](const std::vector<long long>& series, int raceNum, unsigned long color, float thickness) {
         bool hasPrev = false;
@@ -362,16 +368,23 @@ void DashHud::drawGapChart(float x, float y, float w, float h, const ScaledDimen
         }
         if (hasPrev && raceNum >= 0) tagAt[tagCount++] = { prevY, raceNum, color };
     };
-    // The neighbours first, so the rider's own line sits on top.
-    line(gaps.ahead, gaps.aheadNum, getColor(ColorSlot::NEGATIVE), thin);
-    line(gaps.behind, gaps.behindNum, getColor(ColorSlot::POSITIVE), thin);
-    line(gaps.mine, gaps.mineNum, getColor(ColorSlot::ACCENT), thin * 1.6f);
+    // The others first, in classification order, so the rider's own line sits on top.
+    for (int k = 0; k < gaps.count; ++k) {
+        const SessionChartsHud::GapChartLine& l = gaps.lines[k];
+        if (&l == mine) continue;
+        const ColorSlot slot = l.role == GapChartPicks::Role::LEADER ? ColorSlot::PRIMARY
+                             : l.role == GapChartPicks::Role::AHEAD  ? ColorSlot::NEGATIVE
+                                                                     : ColorSlot::POSITIVE;
+        line(l.gaps, l.raceNum, getColor(slot), thin);
+    }
+    line(mine->gaps, mine->raceNum, getColor(ColorSlot::ACCENT), thin * 1.6f);
     if (!tags) return;
 
-    // The three lines end close together by definition (the riders around the
-    // rider), and the card is three rows tall where the parent's chart is ten, so
-    // each tag starts at its line's end and is pushed one small row clear of the
-    // one above, then the stack is pulled back inside the card from the bottom.
+    // The lines around the rider end close together by definition, and the card
+    // is three rows tall where the parent's chart is ten, so each tag starts at
+    // its line's end and is pushed one small row clear of the one above, then
+    // the stack is pulled back inside the card from the bottom. Four small rows
+    // (0.75 of a row each) fill the card's three exactly.
     std::sort(tagAt, tagAt + tagCount, [](const Tag& a, const Tag& b) { return a.y < b.y; });
     const float rowH = dim.lineHeightSmall;
     const float top = y + rowH * 0.5f, bottom = y + h - rowH * 0.5f;
@@ -594,7 +607,7 @@ void DashHud::followRiderClick() {
     const int drawState = data.getDrawState();
     if (drawState != ViewState::SPECTATE && drawState != ViewState::REPLAY) return;
     const InputManager& input = InputManager::getInstance();
-    if (!input.getLeftButton().isClicked()) return;
+    if (!input.getLeftButton().isClicked() || !ownsClick()) return;
     // Into build space, so the click lands on a Dash moved elsewhere on the
     // companion (a no-op in-game).
     CursorPosition cursor = input.getCursorPosition();
@@ -641,7 +654,9 @@ void DashHud::addStepHint(float centerX, float width, float y, const ScaledDimen
     if (bound) snprintf(line, sizeof(line), "%s / %s", names[0], names[1]);
     else snprintf(line, sizeof(line), "%s", TR("Bind Dash + / Dash -"));
     const char* what = TR("to turn the pages");
-    char where[32];
+    // Room for every pack's line (Italian is 42 bytes); fitTextInPlace below
+    // cuts it to the card with an ellipsis, where snprintf would cut mid-word.
+    char where[64];
     snprintf(where, sizeof(where), "%s", bound ? TR("Rebind in Settings > Hotkeys") : TR("in Settings > Hotkeys"));
     // A long binding (modifiers on both) is cut to the card, never wrapped; so is
     // the small line, should a theme's padding leave the card narrower.
@@ -682,7 +697,7 @@ void DashHud::addMessage(Startup message, float centerX, float width, float y, c
         }
         return;
     }
-    char name[24];
+    char name[32];   // es "ACTUALIZACIÓN DISPONIBLE" is 24 bytes; the card fits it to width
     char line[64];
     switch (message) {
         case Startup::Update:

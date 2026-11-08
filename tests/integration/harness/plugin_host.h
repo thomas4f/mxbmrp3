@@ -253,6 +253,8 @@ public:
         m_glConfirmPct = sym<int(*)()>("MXBMRP3_Test_GlConfirmRemainingPct");
         m_glConfirmTick = sym<void(*)(int)>("MXBMRP3_Test_GlConfirmTick");
         m_glDrewLastFrame = sym<int(*)()>("MXBMRP3_Test_GlDrewLastFrame");
+        m_engineHandoffs = sym<int(*)()>("MXBMRP3_Test_EngineHandoffs");
+        m_glDrewLayered = sym<int(*)()>("MXBMRP3_Test_GlDrewLayered");
         m_glFrameLayerCount = sym<int(*)()>("MXBMRP3_Test_GlFrameLayerCount");
         m_glFrameHudLayer = sym<int(*)(const char*)>("MXBMRP3_Test_GlFrameHudLayer");
         m_hudDrawPosition = sym<int(*)(const char*)>("MXBMRP3_Test_HudDrawPosition");
@@ -287,6 +289,9 @@ public:
         m_stSetVisible      = sym<void(*)(int)>("MXBMRP3_Test_StandingsSetVisible");
         m_installTheme      = sym<void(*)(const char*,float,float,int,int,int,int)>("MXBMRP3_Test_InstallTheme");
         m_setThemeTitleBorder  = sym<int(*)(float)>("MXBMRP3_Test_SetThemeTitleBorder");
+        m_setThemeTitleInFrame = sym<int(*)(int)>("MXBMRP3_Test_SetThemeTitleInFrame");
+        m_setThemeTitleArt  = sym<int(*)(int)>("MXBMRP3_Test_SetThemeTitleArt");
+        m_quadSprite        = sym<int(*)(const char*,int)>("MXBMRP3_Test_HudQuadSprite");
         m_setThemePanelPad  = sym<int(*)(float,float)>("MXBMRP3_Test_SetThemePanelPadding");
         m_layoutCells       = sym<void(*)(double*)>("MXBMRP3_Test_LayoutCells");
         m_setHudScale       = sym<int(*)(const char*, float)>("MXBMRP3_Test_SetHudScale");
@@ -2074,6 +2079,11 @@ public:
     int glConfirmPct() const { return m_glConfirmPct ? m_glConfirmPct() : -1; }
     void glConfirmTick(int ms) { if (m_glConfirmTick) m_glConfirmTick(ms); }
     bool glDrewLastFrame() const { return m_glDrewLastFrame && m_glDrewLastFrame() != 0; }
+    // Frames that went through the engine cull (HudManager::handOffToEngine);
+    // -1 = no hook.
+    int engineHandoffs() const { return m_engineHandoffs ? m_engineHandoffs() : -1; }
+    // That frame drew HUD by HUD, its stacking matching the arrays it was handed.
+    bool glDrewLayered() const { return m_glDrewLayered && m_glDrewLayered() != 0; }
     // The last in-game frame's HUD layer count (core/render_layers.h); -1 = no hook.
     int glFrameLayerCount() const { return m_glFrameLayerCount ? m_glFrameLayerCount() : -1; }
     // The highest layer a HUD (registration name) landed in; -1 = none or no hook.
@@ -2744,6 +2754,20 @@ public:
     }
     bool setThemeTitleBorder(float cells) {
         return m_setThemeTitleBorder && m_setThemeTitleBorder(cells) != 0;
+    }
+    // `[title] placement = frame` on the theme just installed. See
+    // MXBMRP3_Test_SetThemeTitleInFrame.
+    bool setThemeTitleInFrame(bool on) {
+        return m_setThemeTitleInFrame && m_setThemeTitleInFrame(on ? 1 : 0) != 0;
+    }
+    // A title_* art set on the synthetic theme, every piece at `sprite` (0 = none).
+    bool setThemeTitleArt(int sprite) {
+        return m_setThemeTitleArt && m_setThemeTitleArt(sprite) != 0;
+    }
+    // The sprite a HUD quad draws (0 = untextured; -1 = no such quad, or no hook).
+    bool hasQuadSprite() const { return m_quadSprite != nullptr; }
+    int quadSprite(HudId which, int i) {
+        return m_quadSprite ? m_quadSprite(hudName(which), i) : -1;
     }
 
     // The plugin's LIVE lattice (MXBMRP3_Test_LayoutCells): cellW/cellH are the
@@ -3826,6 +3850,8 @@ private:
     int         (*m_glConfirmPct)() = nullptr;
     void        (*m_glConfirmTick)(int) = nullptr;
     int         (*m_glDrewLastFrame)() = nullptr;
+    int         (*m_engineHandoffs)() = nullptr;
+    int         (*m_glDrewLayered)() = nullptr;
     int         (*m_glFrameLayerCount)() = nullptr;
     int         (*m_glFrameHudLayer)(const char*) = nullptr;
     int         (*m_hudDrawPosition)(const char*) = nullptr;
@@ -3840,6 +3866,9 @@ private:
     void        (*m_stSetVisible)(int) = nullptr;
     void        (*m_installTheme)(const char*,float,float,int,int,int,int) = nullptr;
     int         (*m_setThemeTitleBorder)(float) = nullptr;
+    int         (*m_setThemeTitleInFrame)(int) = nullptr;
+    int         (*m_setThemeTitleArt)(int) = nullptr;
+    int         (*m_quadSprite)(const char*, int) = nullptr;
     int         (*m_setThemePanelPad)(float,float) = nullptr;
     void        (*m_layoutCells)(double*) = nullptr;
     int         (*m_setHudScale)(const char*, float) = nullptr;

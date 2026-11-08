@@ -149,3 +149,19 @@ TEST_CASE("drainVerdict: only a confirmed S_OK ends the drain as idle") {
     CHECK(drainVerdict(kSFalse, 1, 2) == DrainVerdict::Again);
     CHECK(drainVerdict(kSFalse, 2, 2) == DrainVerdict::Wedged);
 }
+
+TEST_CASE("forLanguage: a translated spotter finds a voice for its language") {
+    const std::vector<std::string> names = { "Microsoft David Desktop", "Microsoft Bengt",
+                                             "Microsoft Hedvig", "Microsoft Maria" };
+    const std::vector<std::string> locales = { "en-US", "sv-SE", "sv-FI", "pt-BR" };
+    // A pack folder is a bare language: the first voice that speaks it.
+    CHECK(forLanguage(names, locales, "sv") == "Microsoft Bengt");
+    // A regional folder prefers its own region, else the language.
+    CHECK(forLanguage(names, locales, "sv-FI") == "Microsoft Hedvig");
+    CHECK(forLanguage(names, locales, "pt_PT") == "Microsoft Maria");
+    CHECK(forLanguage(names, locales, "SV") == "Microsoft Bengt");
+    // None installed, a voice with no known locale, or English: no pick.
+    CHECK(forLanguage(names, locales, "de") == "");
+    CHECK(forLanguage({ "Odd Voice" }, { "" }, "sv") == "");
+    CHECK(forLanguage(names, locales, "") == "");
+}

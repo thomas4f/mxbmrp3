@@ -123,29 +123,37 @@ void HudManager::draw(int iState, int* piNumQuads, void** ppQuad, int* piNumStri
     produceFrame(iState);
 
     // Hand the built in-game frame to the game, honoring the display-target gate that
-    // produceFrame() resolved (COMPANION mode ⇒ empty game frame).
+    // produceFrame() resolved (COMPANION mode ⇒ empty game frame). Uncut: the
+    // invisible primitives come off in handOffToEngine, once Direct GL has had its
+    // turn, so a frame GL draws never pays for a copy the engine would not read.
     if (m_bSuppressInGame) {
         *piNumQuads = 0; *ppQuad = nullptr;
         *piNumString = 0; *ppString = nullptr;
-    } else if (UiConfig::getInstance().getRenderProbeQuads() > 0) {
-        // The render-load probe's quads are the instrument (alpha 0 and zero-area
-        // are two of the things it measures): handed over uncut.
+    } else {
         *piNumQuads = static_cast<int>(m_quads.size());
         *ppQuad = m_quads.empty() ? nullptr : m_quads.data();
         *piNumString = static_cast<int>(m_strings.size());
         *ppString = m_strings.empty() ? nullptr : m_strings.data();
-    } else {
-        // Only what can put a pixel on screen (core/engine_cull.h): the probe
-        // above measured an alpha-0 quad charged in full.
-        const auto& quads = EngineCull::visibleOnly(m_quads, m_engineQuads,
-            [](const SPluginQuad_t& q) { return EngineCull::invisibleQuad(q); });
-        const auto& strings = EngineCull::visibleOnly(m_strings, m_engineStrings,
-            [](const SPluginString_t& st) { return EngineCull::invisibleString(st); });
-        *piNumQuads = static_cast<int>(quads.size());
-        *ppQuad = quads.empty() ? nullptr : const_cast<SPluginQuad_t*>(quads.data());
-        *piNumString = static_cast<int>(strings.size());
-        *ppString = strings.empty() ? nullptr : const_cast<SPluginString_t*>(strings.data());
     }
+}
+
+void HudManager::handOffToEngine(int* piNumQuads, void** ppQuad, int* piNumString, void** ppString) {
+#if defined(MXBMRP3_TEST_BUILD)
+    m_testEngineHandoffs.fetch_add(1, std::memory_order_relaxed);
+#endif
+    // The render-load probe's quads are the instrument (alpha 0 and zero-area
+    // are two of the things it measures): handed over uncut.
+    if (UiConfig::getInstance().getRenderProbeQuads() > 0) return;
+    // Only what can put a pixel on screen (core/engine_cull.h): the probe
+    // above measured an alpha-0 quad charged in full.
+    const SPluginQuad_t* quads = EngineCull::visibleOnly(
+        static_cast<const SPluginQuad_t*>(*ppQuad), *piNumQuads, m_engineQuads,
+        [](const SPluginQuad_t& q) { return EngineCull::invisibleQuad(q); });
+    const SPluginString_t* strings = EngineCull::visibleOnly(
+        static_cast<const SPluginString_t*>(*ppString), *piNumString, m_engineStrings,
+        [](const SPluginString_t& st) { return EngineCull::invisibleString(st); });
+    *ppQuad = const_cast<SPluginQuad_t*>(quads);
+    *ppString = const_cast<SPluginString_t*>(strings);
 }
 
 bool HudManager::standsDown(const BaseHud* hud) const {
@@ -497,45 +505,24 @@ void HudManager::updateHuds() {
 
     const long long dragSearchStart = bmPoll.active ? DrawHandler::getCurrentTimeUs() : 0;
 
-    // Use cached dragging HUD if valid, otherwise find new target
-    BaseHud* inputTarget = nullptr;
+    // ONE PICK PER CLICK: the topmost HUD shown under the pointer, in the order
+    // last frame drew. A right-click there starts its drag; a left-click there is
+    // its own (ownsClick), and no other HUD's -- so a click on the settings menu,
+    // or on a HUD stacked over another, never reaches the one behind it.
+    const InputManager& input = InputManager::getInstance();
+    const CursorPosition& cursor = input.getCursorPosition();
+    const bool leftClick = input.getLeftButton().isClicked();
+    BaseHud* const underClick =
+        (leftClick || input.getRightButton().isClicked()) && input.isCursorEnabled() && cursor.isValid
+            ? topHudAt(cursor.x, cursor.y, dragCompanion) : nullptr;
+    m_pClickOwner = leftClick ? underClick : nullptr;
 
-    // Check if cached dragging HUD is still valid and dragging
-    if (m_pDraggingHud && m_pDraggingHud->isDragging()) {
-        inputTarget = m_pDraggingHud;
-    }
-    else {
-        // Clear cached pointer if drag ended
-        m_pDraggingHud = nullptr;
-
-        // Find new target on click (not every frame)
-        const InputManager& input = InputManager::getInstance();
-        const MouseButton& leftButton = input.getLeftButton();
-        const MouseButton& rightButton = input.getRightButton();
-
-        // Check for either LMB (for clicks) or RMB (for dragging)
-        if ((leftButton.isClicked() || rightButton.isClicked()) && input.isCursorEnabled()) {
-            const CursorPosition& cursor = input.getCursorPosition();
-            if (cursor.isValid) {
-                // Top first, in the order last frame drew (the stacking order).
-                const bool ordered = m_drawOrder.size() == m_huds.size();
-                for (size_t k = m_huds.size(); k-- > 0;) {
-                    auto& hud = m_huds[ordered ? m_drawOrder[k] : k];
-                    if (!hud || !hud->isDraggable() || isHeldBack(hud.get())) continue;
-                    bool visibleHere = dragCompanion ? hud->getCompanionVisible() : hud->isVisible();
-                    if (!visibleHere) continue;
-                    // Hit-test at THIS surface's offset (companion HUDs sit at their
-                    // companion position). Avoids calling handleMouseInput twice.
-                    float offX = dragCompanion ? hud->getCompanionOffsetX() : hud->getOffsetX();
-                    float offY = dragCompanion ? hud->getCompanionOffsetY() : hud->getOffsetY();
-                    if (hud->isPointInBoundsAt(cursor.x, cursor.y, offX, offY)) {
-                        inputTarget = hud.get();
-                        break;
-                    }
-                }
-            }
-        }
-    }
+    // A HUD mid-drag keeps the input; otherwise the one under a fresh click, if
+    // it is switched on here (the borrowed Dash takes a click, never a drag).
+    BaseHud* inputTarget = underClick && (dragCompanion ? underClick->getCompanionVisible()
+                                                        : underClick->isVisible()) ? underClick : nullptr;
+    if (m_pDraggingHud && m_pDraggingHud->isDragging()) inputTarget = m_pDraggingHud;
+    else m_pDraggingHud = nullptr;
 
     // POSITIONING PREVIEW, resolved once per frame: the HUD whose settings tab is
     // open draws placeholder content so it can be dragged into place even when it

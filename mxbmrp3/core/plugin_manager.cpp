@@ -6,6 +6,7 @@
 #include "plugin_constants.h"
 #include "plugin_data.h"
 #include "plugin_utils.h"
+#include "../diagnostics/environment_report.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include "hud_manager.h"
@@ -144,6 +145,9 @@ PluginManager::~PluginManager() {
 void PluginManager::initialize(const char* savePath) {
     // Initialize logger first (so we can log everything else)
     Logger::getInstance().initialize(savePath);
+    // The PC, for reports diagnosed from the log alone; the GPU and what is
+    // loaded in the game follow at the first frame (handleDraw).
+    EnvironmentReport::logStartup();
 
     // Install crash handler immediately after the logger so any unhandled
     // hardware fault (AV, stack overflow, divide-by-zero) writes a
@@ -272,6 +276,9 @@ void PluginManager::shutdown() {
     if (m_bShutdown) return;
     m_bShutdown = true;
     DEBUG_INFO("PluginManager shutdown");
+    // Overlays opened mid-session (an overlay's hotkey) load after the first
+    // frame's module list; name them while the log is still open.
+    EnvironmentReport::logLateModules();
 
     // Stop the plugin worker thread FIRST (before any singleton it touches is torn
     // down). stop() joins it and then drains any still-queued callbacks inline, so
@@ -524,6 +531,10 @@ int PluginManager::handleDrawInit(int* piNumSprites, char** pszSpriteName, int* 
 }
 
 void PluginManager::handleDraw(int iState, int* piNumQuads, void** ppQuad, int* piNumString, void** ppString) {
+    // Once per launch: the first point the game's GL context is current on this
+    // thread, in both render modes. Returns on its own flag every later frame.
+    EnvironmentReport::logFirstFrame();
+
     // Apply any live mode switch first (game thread). A RELOAD_CONFIG hotkey that
     // flipped [Advanced] pluginThread starts/stops the worker here, so legacy<->threaded
     // can change without a game restart. No-op when the flag already matches.
@@ -550,9 +561,14 @@ void PluginManager::handleDraw(int iState, int* piNumQuads, void** ppQuad, int* 
             *ppString = const_cast<SPluginString_t*>(s);
             // In-context GL, on THIS thread because that is where the context
             // is. Suppression follows what actually drew, never the setting.
-            if (HudManager::getInstance().renderInContextGl(q, nq, s, ns, layers)) {
+            // Declined, the engine draws it: the invisible primitives come off
+            // here, on the copy it gets, just as on the sync path below.
+            HudManager& hm = HudManager::getInstance();
+            if (hm.renderInContextGl(q, nq, s, ns, layers)) {
                 *piNumQuads = 0; *ppQuad = nullptr;
                 *piNumString = 0; *ppString = nullptr;
+            } else {
+                hm.handOffToEngine(piNumQuads, ppQuad, piNumString, ppString);
             }
         } else {
             // No frame this time. renderInContextGl OWNS m_glDrewLastFrame, so it
@@ -588,15 +604,28 @@ void PluginManager::handleDraw(int iState, int* piNumQuads, void** ppQuad, int* 
     // Called unconditionally, empty frames included: renderInContextGl owns
     // m_glDrewLastFrame and clears it on entry, so gating the call here is what
     // would let the hook report a stale "we drew".
-    // The stacking describes HudManager's own arrays, which are what draw()
-    // just handed the game in this (synchronous) mode.
+    // HudManager's OWN arrays, never a culled copy: the stacking describes the
+    // uncut arrays, so a copy with the invisible primitives cut
+    // (core/engine_cull.h) no longer matches its indices. Handed one, the
+    // renderer finds the spans do not tile it and draws the flat order - every
+    // quad, then every string - so text bled through any HUD or open dropdown
+    // over it. The cut is made below, for the engine only. Pinned by
+    // gl_render_test's glDrewLayered checks.
     HudManager& hm = HudManager::getInstance();
+    const bool shown = !hm.inGameFrameSuppressed();
+    const std::vector<SPluginQuad_t>& glQuads = hm.gameFrameQuads();
+    const std::vector<SPluginString_t>& glStrings = hm.gameFrameStrings();
     if (hm.renderInContextGl(
-            static_cast<const SPluginQuad_t*>(*ppQuad), *piNumQuads,
-            static_cast<const SPluginString_t*>(*ppString), *piNumString,
-            hm.gameFrameLayers())) {
+            shown ? glQuads.data() : nullptr, shown ? static_cast<int>(glQuads.size()) : 0,
+            shown ? glStrings.data() : nullptr, shown ? static_cast<int>(glStrings.size()) : 0,
+            shown ? hm.gameFrameLayers() : hudlayers::Layers{})) {
         *piNumQuads = 0; *ppQuad = nullptr;
         *piNumString = 0; *ppString = nullptr;
+    } else {
+        // Only now, with the engine certain to draw it, is the frame worth the
+        // cull's copy (core/engine_cull.h). Made ahead of GL, it was built every
+        // frame and thrown away whenever GL drew.
+        hm.handOffToEngine(piNumQuads, ppQuad, piNumString, ppString);
     }
 }
 

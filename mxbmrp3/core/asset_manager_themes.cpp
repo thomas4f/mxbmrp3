@@ -146,6 +146,22 @@ void AssetManager::discoverThemes() {
             }
         }
 
+        // TITLE slice set, optional, registered after the button set; same
+        // fallback-to-centre rule (ThemeAsset::titleCenterSprite).
+        if (exists("title_center")) {
+            theme.titleCenterSprite = add("title_center");
+            for (int i = 0; i < 4; ++i) {
+                const std::string tc = std::string("title_") + kCornerFiles[i];
+                const std::string te = std::string("title_") + kEdgeFiles[i];
+                theme.titleCornerSprites[i] = exists(tc) ? add(tc) : 0;
+                theme.titleEdgeSprites[i]   = exists(te) ? add(te) : 0;
+            }
+            for (int i = 0; i < 4; ++i) {
+                if (theme.titleCornerSprites[i] == 0) theme.titleCornerSprites[i] = theme.titleCenterSprite;
+                if (theme.titleEdgeSprites[i] == 0)   theme.titleEdgeSprites[i]   = theme.titleCenterSprite;
+            }
+        }
+
         // ICON OVERRIDES: themes/<name>/icons/<icon>.tga, one sprite each, registered
         // after the slice sets so a theme without them is unaffected. Ordered by the
         // BASE set so registration order is a property of
@@ -265,6 +281,13 @@ void AssetManager::discoverThemes() {
             if (owns(bc)) theme.buttonCornerSprites[i] = add(bc);
             if (owns(be)) theme.buttonEdgeSprites[i]   = add(be);
         }
+        if (owns("title_center")) theme.titleCenterSprite = add("title_center");
+        for (int i = 0; i < 4; ++i) {
+            const std::string tc = std::string("title_") + kCornerFiles[i];
+            const std::string te = std::string("title_") + kEdgeFiles[i];
+            if (owns(tc)) theme.titleCornerSprites[i] = add(tc);
+            if (owns(te)) theme.titleEdgeSprites[i]   = add(te);
+        }
         // A skin that INTRODUCES a set the base lacked has nothing to inherit for
         // the pieces it did not draw, and a partial set draws a card with holes in
         // it -- so those fall back to the centre, the same flat band the standalone
@@ -279,6 +302,12 @@ void AssetManager::discoverThemes() {
             for (int i = 0; i < 4; ++i) {
                 if (theme.buttonCornerSprites[i] == 0) theme.buttonCornerSprites[i] = theme.buttonCenterSprite;
                 if (theme.buttonEdgeSprites[i] == 0)   theme.buttonEdgeSprites[i]   = theme.buttonCenterSprite;
+            }
+        }
+        if (theme.titleCenterSprite != 0) {
+            for (int i = 0; i < 4; ++i) {
+                if (theme.titleCornerSprites[i] == 0) theme.titleCornerSprites[i] = theme.titleCenterSprite;
+                if (theme.titleEdgeSprites[i] == 0)   theme.titleEdgeSprites[i]   = theme.titleCenterSprite;
             }
         }
 
@@ -486,6 +515,15 @@ static void readThemeIniPairs(const std::string& iniPath, ThemeAsset& theme) {
             }
         }
 
+        // The one WORD-valued layout key: where the title band sits.
+        if (std::strcmp(key, "title.placement") == 0) {
+            if (std::strcmp(rawValue, "frame") == 0)      t.titleInFrame = true;
+            else if (std::strcmp(rawValue, "panel") == 0) t.titleInFrame = false;
+            else DEBUG_WARN_F("Theme '%s': '%s=%s' - placement is 'panel' or 'frame' - "
+                              "keeping the previous value", t.name.c_str(), key, rawValue);
+            return true;
+        }
+
         // Everything below is numeric. A non-number here is a typo, and saying so is
         // the whole reason this walk sees non-numeric lines at all.
         if (!numeric) {
@@ -529,7 +567,8 @@ static void readThemeIniPairs(const std::string& iniPath, ThemeAsset& theme) {
         // The list in the message is the WHOLE per-theme surface.
         DEBUG_WARN_F("Theme '%s': unknown key '%s' - ignored (a theme sets the box keys "
                      "[panel] border/padding and [title]/[content]/[button] "
-                     "margin/border/padding in CSS shorthand, plus [frame] tint, "
+                     "margin/border/padding in CSS shorthand, plus [title] placement, "
+                     "[frame] tint, "
                      "[card] title-band/content and the per-family "
                      "{hud,widget,settings}-{title-band,content}, "
                      "[colors] and [fonts])", t.name.c_str(), key);

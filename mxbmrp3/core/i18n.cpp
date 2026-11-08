@@ -8,6 +8,7 @@
 #include "i18n.h"
 #include "asset_manager.h"
 #include "hud_manager.h"
+#include "spotter_manager.h"
 #include "layout_config.h"
 #include "pack_ini_path.h"
 #include "../diagnostics/logger.h"
@@ -172,6 +173,7 @@ void loadActive() {
             s_activeFolder.clear();
             activate(nullptr);
             HudManager::getInstance().markAllHudsDirty();
+            SpotterManager::getInstance().onLanguageChanged();
             return;
         }
         s_activeDisplayName = info->displayName;
@@ -180,6 +182,8 @@ void loadActive() {
         s_catalogs.push_back(std::move(cat));
     }
     HudManager::getInstance().markAllHudsDirty();
+    // The spotter speaks the menus' language when that pack has a spotter.ini.
+    SpotterManager::getInstance().onLanguageChanged();
 }
 
 }  // namespace

@@ -119,6 +119,9 @@ void Logger::initialize(const char* savePath) {
              PluginConstants::PLUGIN_DISPLAY_NAME,
              PluginConstants::PLUGIN_VERSION);
     info(banner);
+    // Also what keeps SOURCE_NOTICE in the binary (core/plugin_version.cpp):
+    // without this reference the linker strips it from release builds.
+    info(PluginConstants::SOURCE_NOTICE);
     info("========================================");
     info("Logger initialized");
 

@@ -51,12 +51,12 @@ void SpotterManager::fillAmbientVars(SpotterVars::Vars& v) const {
     // Practice" — rather than a second, coarser mapping of the same enum.
     if (const char* label = PluginUtils::getSessionString(sd.eventType,
                                                          sd.session)) {
-        fill(v.sessionName, label);
+        fill(v.sessionName, spokenText(label));
     }
     // "Waiting", "Sighting Lap", "Pre-Start", "In Progress", "Complete",
     // "Race Over", "Cancelled" — the same words the Session HUD shows.
     if (const char* st = PluginUtils::getSessionStateString(m_sessionState)) {
-        fill(v.sessionState, st);
+        fill(v.sessionState, spokenText(st));
     }
 
     // Session length and what is left of it, in TWO shapes. A session is
@@ -71,8 +71,7 @@ void SpotterManager::fillAmbientVars(SpotterVars::Vars& v) const {
         // is nonsense: a short qualifying session announced itself as "Qualify
         // underway, ZERO MINUTES". Under a minute, say the seconds.
         if (minutes <= 0) return SpotterPhrase::durationWords(ms);
-        return SpotterPhrase::numberWords(minutes) +
-               (minutes == 1 ? " minute" : " minutes");
+        return SpotterPhrase::minutesWords(minutes);
     };
     // A gap is in SECONDS while you are on the same lap and in LAPS once you
     // are not — which is what a spotter says, and the only reading of the
@@ -112,7 +111,8 @@ void SpotterManager::fillAmbientVars(SpotterVars::Vars& v) const {
         // fell through to the bonus count. Empty in, empty out: the optional
         // group drops and the line simply omits what is not known yet.
         if (timePart.empty()) return std::string();
-        return timePart + " plus " + SpotterPhrase::lapsWords(sd.sessionNumLaps);
+        return timePart + " " + SpotterPhrase::say("plus") + " " +
+               SpotterPhrase::lapsWords(sd.sessionNumLaps);
     };
     if (timed) {
         fill(v.sessionLength, withBonusLaps(minuteWords(sd.sessionLength)));
@@ -285,8 +285,7 @@ void SpotterManager::fillAmbientVars(SpotterVars::Vars& v) const {
         // The direction word rides WITH the number: spoken aloud, a bare
         // "point three" does not say which way it went, and making every
         // template add the word would be the same clause written many times.
-        gapOut = SpotterPhrase::gapWordsMs(d) +
-                 (d < 0 ? " quicker" : " slower");
+        gapOut = SpotterPhrase::paceWords(d);
     };
     // The lap BEFORE the last one, which is what "gap to last lap" compares
     // your latest against. Walked back through the log rather than kept as a
@@ -487,12 +486,25 @@ void SpotterManager::emitCue(const char* key, SpotterPhrase::Category cat,
     if (ownsPenaltyTotal) ownPenaltyTotal = vars.penaltyTotal;
     fillAmbientVars(vars);
     if (ownsPenaltyTotal) vars.penaltyTotal = std::move(ownPenaltyTotal);
-    // Variant pick: the base key plus any <key>_2.. alternates the pack
+    // Position rows first (spotter_cue_pack.h, POSITION ROWS): a pack with a
+    // `<key>_p3` or `<key>_last` row says that one when it applies, and that
+    // row set is what the alternates are rolled from.
+    std::string rowKey = key;
+    if (m_pack.hasPositionRows) {
+        const PluginData& pd = PluginData::getInstance();
+        const int me = pd.getDisplayRaceNum();
+        const int pos = posValue > 0 ? posValue
+                      : (me > 0 ? pd.getPositionForRaceNum(me) : 0);
+        const int field = static_cast<int>(pd.getClassificationOrder().size());
+        rowKey = SpotterCuePack::positionRowKey(m_pack, key, pos,
+                                                pos > 1 && pos >= field);
+    }
+    // Variant pick: the row key plus any <row>_2.. alternates the pack
     // defines, chosen per firing (xorshift — statistical variety, not
-    // crypto). With no pack variants this collapses to the base key.
+    // crypto). With no pack variants this collapses to the row key.
     const std::vector<std::string> variants =
-        SpotterCuePack::variantKeys(m_pack, key);
-    std::string chosen = key;
+        SpotterCuePack::variantKeys(m_pack, rowKey);
+    std::string chosen = rowKey;
     if (variants.size() > 1) {
         m_rngState ^= m_rngState << 13;
         m_rngState ^= m_rngState >> 17;
@@ -516,7 +528,11 @@ void SpotterManager::emitCue(const char* key, SpotterPhrase::Category cat,
     // explicit mute. The subtitle shows this text whichever backend plays.
     std::string text;
     auto it = m_pack.phrases.find(chosen);
-    if (it == m_pack.phrases.end() && chosen != key) {
+    if (it == m_pack.phrases.end() && chosen != rowKey) {
+        it = m_pack.phrases.find(rowKey);
+    }
+    // A wav-only position row takes its wording from the cue's own line.
+    if (it == m_pack.phrases.end() && rowKey != key) {
         it = m_pack.phrases.find(key);
     }
     // ...then the key this one refines, so a pack that wrote `gap_ahead` with
@@ -561,7 +577,8 @@ void SpotterManager::emitCue(const char* key, SpotterPhrase::Category cat,
     if (mx != m_pack.mixes.end()) {
         mixFiles = SpotterMix::resolveTokens(mx->second, riderNum,
                                              timeComposed, timeTenths,
-                                             penaltySecs, lapsLeft, posValue);
+                                             penaltySecs, lapsLeft, posValue,
+                                             &vars);
     }
     const std::string* wavName = nullptr;
     auto wv = m_pack.wavs.find(chosen);
@@ -664,19 +681,57 @@ void SpotterManager::emitCue(const char* key, SpotterPhrase::Category cat,
     // backlog — see isPerishableCue and spotter_queue.h.
     const bool perish = SpotterCuePack::isPerishableCue(key);
 
-    if (!mixFiles.empty()) {
+    if (!mixFiles.empty() || wavName) {
         SpotterCue cue;
-        cue.kind = SpotterCue::Kind::MixSpec;
-        cue.payload = text;            // the TTS fallback, if a chunk is missing
-        cue.mixDir = m_packDir;
-        cue.mixChunks = std::move(mixFiles);
+        if (!mixFiles.empty()) {
+            cue.kind = SpotterCue::Kind::MixSpec;
+            cue.payload = text;        // the TTS fallback, if a chunk is missing
+            cue.mixDir = m_packDir;
+            cue.mixChunks = std::move(mixFiles);
+        } else {
+            cue.kind = SpotterCue::Kind::WavFile;
+            cue.payload = m_packDir + "\\" + *wavName;
+        }
         cue.perishable = perish;
         cue.enqueuedMs = GetTickCount64();
+        // Whether this call may cut off a clip still playing, and the pack's
+        // stumble to play first if it does (spotter_queue.h, TURN POLICY).
+        // Picked here, where the pack and the RNG live; the worker decides
+        // whether it is needed.
+        cue.cutsIn = SpotterCuePack::cutsInCue(key);
+        const std::vector<std::string>& fillers = m_pack.interruptFillers;
+        if (cue.cutsIn && !fillers.empty()) {
+            m_rngState ^= m_rngState << 13;
+            m_rngState ^= m_rngState >> 17;
+            m_rngState ^= m_rngState << 5;
+            cue.fillerPath = m_packDir + "\\" + fillers[m_rngState % fillers.size()];
+        } else if (!cue.cutsIn && !perish && !m_pack.leadIns.empty() &&
+                   m_pack.leadInChance > 0) {
+            // A LEAD-IN, now and then, on a line that can afford the time.
+            m_rngState ^= m_rngState << 13;
+            m_rngState ^= m_rngState >> 17;
+            m_rngState ^= m_rngState << 5;
+            const uint64_t roll = m_rngState;
+            if (static_cast<int>(roll % 100) < m_pack.leadInChance) {
+                cue.leadIn = true;
+                cue.fillerPath = m_packDir + "\\" +
+                    m_pack.leadIns[(roll / 100) % m_pack.leadIns.size()];
+            }
+        }
+#if defined(MXBMRP3_TEST_BUILD)
+        if (cue.leadIn) m_lastAudioRoute += "|lead:" + cue.fillerPath.substr(m_packDir.size() + 1);
+        if (cue.cutsIn) m_lastAudioRoute += "|cut";
+#endif
         enqueue(std::move(cue));
-    } else if (wavName) {
-        playWav(m_packDir + "\\" + *wavName, perish);
     } else {
-        say(text, perish);
+        // The same turn policy for a line the voice reads: an urgent call must
+        // not wait out a clip (and perish while it waits) because its own row
+        // happens to have no recording, or the pack is text-only.
+        const bool cutsIn = SpotterCuePack::cutsInCue(key);
+#if defined(MXBMRP3_TEST_BUILD)
+        if (cutsIn) m_lastAudioRoute += "|cut";
+#endif
+        say(text, perish, cutsIn);
     }
 }
 
@@ -726,8 +781,8 @@ void SpotterManager::previewVoice(bool ttsOnly) {
     const std::string riderWords =
         SpotterPhrase::riderRef(kPreviewRider, /*focusedRaceNum=*/-1);
     const std::string timeWords =
-        SpotterPhrase::numberWords(kPreviewComposed) + " point " +
-        SpotterPhrase::numberWords(kPreviewTenths);
+        SpotterPhrase::numberWords(kPreviewComposed) + " " +
+        SpotterPhrase::say("point") + " " + SpotterPhrase::numberWords(kPreviewTenths);
 
     // A pack may write its own sample line, with its own recorded segments —
     // `voice_preview` / `preview_mix`, ordinary cue rows. Absent, the assembly below

@@ -4,12 +4,20 @@
 // game, or tapegen's) into the plugin while the companion window renders it,
 // and scripts only the mouse: unfold the Toggles strip, rest on every switch
 // that previews something (Session is clicked on), fold, step the Dash to its
-// Fuel page, then Settings: Tomorrow fonts from the Appearance dropdowns and a
-// panel theme, the Standings Last lap column and opacity 0, and the Gamepad
-// switched on, recoloured and shrunk; closed, the pad is dragged from its spot
-// bottom left to the bottom right. The
-// pad's sticks and triggers follow the rider's inputs on the tape.
-// REEL_SHORT=1 skips the strip pass, for iterating on the rest.
+// Fuel page, then Settings > Appearance, each from its dropdown: the panel
+// theme REEL_KEEP_THEME (kept for the rest of the reel), French and back to
+// English, Tomorrow fonts; then the
+// Standings Last lap column and opacity 0, and the Gamepad switched on,
+// recoloured and shrunk; closed, the pad is dragged from its spot bottom left
+// to the bottom right. The pad's sticks and triggers follow the rider's inputs
+// on the tape. Each beat names itself with a caption: written
+// to captions.tsv (seconds, beat, detail, box as x0,y0,x1,y1; CP1252, as drawn)
+// for make_demo.sh to draw.
+// REEL_SHORT=1 skips the strip pass, for iterating on the rest; the strip pass
+// rests on every switch that previews something, REEL_STRIP=main on the main
+// ones only (a 130 s cut).
+// REEL_W/REEL_H set the capture size (default 1920x1080); REEL_CAPTION_CHECK=1
+// counts frames where anything is drawn under the caption's box.
 // The tape's last demoSecs play in real time; everything before them is
 // replayed at once, so the HUDs open with the history the tape carries.
 //   wine showreel.exe mxbmrp3_test.dlo race.tape [demoSecs]
@@ -70,7 +78,7 @@ static bool loadTape(const char* path, std::vector<TapeEvent>& out) {
 int main(int argc, char** argv) {
     const char* dll = argc > 1 ? argv[1] : "mxbmrp3_test.dlo";
     const char* tapePath = argc > 2 ? argv[2] : "demo.tape";
-    const double demoSecs = argc > 3 ? std::atof(argv[3]) : 116.0;
+    const double demoSecs = argc > 3 ? std::atof(argv[3]) : 165.0;
     std::vector<TapeEvent> events;
     if (!loadTape(tapePath, events) || events.empty()) { fprintf(stderr, "cannot read tape %s\n", tapePath); return 1; }
     PluginHost host(dll);
@@ -199,6 +207,26 @@ int main(int argc, char** argv) {
         std::function<void()> action;
         const char* label;
         std::function<bool()> done;   // PRESS: the button is held until this holds (dur caps it)
+        std::function<bool()> skip;   // the step is passed over while this holds
+    };
+    // Captions: what each beat demonstrates. A caption is a beat name and a
+    // detail line; a new detail inside the same beat (a theme's name) is a new
+    // entry. `box` is where make_demo.sh's caption layout draws it (kCaptionBoxes),
+    // the region the capture checks stays clear.
+    struct Caption { double t; std::string beat, detail; int box; };
+    std::vector<Caption> captions;
+    double nowT = 0;                       // the script's clock, set each loop
+    std::atomic<int> captionBox{ -1 };     // the box in use now, for the capture thread
+    std::atomic<int> captionCount{ 0 };    // captions so far, for the capture thread
+    auto caption = [&](const char* beat, std::string detail, int box = 0) {
+        if (!captions.empty() && captions.back().beat == beat && captions.back().detail == detail) return;
+        captions.push_back({ nowT, beat, std::move(detail), box });
+        captionBox = box;
+        captionCount = static_cast<int>(captions.size());
+        fprintf(stderr, "%6.2f caption %s: %s\n", nowT, beat, captions.back().detail.c_str());
+    };
+    auto say = [&](const char* beat, const char* detail, int box = 0) {
+        return Step{ Step::ACTION, 0, nullptr, [&caption, beat, detail, box] { caption(beat, detail, box); }, "" };
     };
     auto stripRow = [&](const char* name) {
         return [&host, name](float& x, float& y) {
@@ -267,7 +295,9 @@ int main(int argc, char** argv) {
     bool pastEnd = false;     // the strip has no row this far down
     int baseQuads = -1;       // companion frame quads with nothing previewed
     auto compQuads = [&host] { return host.surfaceFrameStats().companionQuads; };
+    script.push_back(say("Default HUDs", "Fresh install, live race"));
     script.push_back({ Step::WAIT, 2.0, nullptr, nullptr, "default screen" });
+    script.push_back(say("Toggles strip", "Hover to preview, click to keep"));
     script.push_back({ Step::MOVE, 1.0, stripRow("Settings"), nullptr, "wake the strip" });
     script.push_back({ Step::MOVE, 0.4, stripRow("Expand"), nullptr, "to the caret" });
     script.push_back({ Step::WAIT, 0.3, nullptr, nullptr, "" });
@@ -291,6 +321,7 @@ int main(int argc, char** argv) {
     script.push_back({ Step::WAIT, 0.6, nullptr, nullptr, "" });
     // The Dash steps to its Fuel page (Page Down, as bound), a page at a time.
     // The cursor waits just right of the card, beside what it steps through.
+    script.push_back(say("Dash pages", "Page Down to the Fuel page"));
     script.push_back({ Step::MOVE, 0.8, [&host](float& x, float& y) {
         double l = 9, t = 9, r = -9, b = -9;
         for (const auto& q : host.hudQuadRects("dash_hud")) {
@@ -306,7 +337,7 @@ int main(int argc, char** argv) {
     }
     script.push_back({ Step::ACTION, 0, nullptr, [&] { fprintf(stderr, "dash page %d\n", host.dashPage()); }, "" });
     script.push_back({ Step::WAIT, 1.2, nullptr, nullptr, "" });
-    // Settings: a new title font, digits font and primary colour.
+    // Settings, on the Appearance tab: themes, languages, then fonts.
     script.push_back({ Step::MOVE, 0.8, stripRow("Settings"), nullptr, "to settings" });
     script.push_back({ Step::WAIT, 0.2, nullptr, nullptr, "" });
     script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "open settings" });
@@ -335,18 +366,6 @@ int main(int argc, char** argv) {
             x = static_cast<float>(bx + 0.02); y = static_cast<float>(byy + 0.006); return true;
         };
     };
-    struct DdPick { const char* row; const char* item; };
-    for (const DdPick& pk : { DdPick{ "appearance.font_title", "Tomorrow Bold" },
-                              DdPick{ "appearance.font_digits", "Tomorrow Bold" } }) {
-        script.push_back({ Step::MOVE, 0.7, dropdownBox(pk.row), nullptr, pk.row });
-        script.push_back({ Step::WAIT, 0.2, nullptr, nullptr, "" });
-        script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "" });
-        script.push_back({ Step::WAIT, 0.6, nullptr, nullptr, "" });
-        script.push_back({ Step::MOVE, 0.7, listItem(pk.row, pk.item), nullptr, pk.item });
-        script.push_back({ Step::WAIT, 0.3, nullptr, nullptr, "" });
-        script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "" });
-        script.push_back({ Step::WAIT, 0.9, nullptr, nullptr, "" });
-    }
     // A control on a settings row: the n-th `glyph` caret (">" or "<") on the line
     // of the string `label` nearest the row's region (strings sit at the line's
     // top, regions at its centre), or with n < 0 the label itself.
@@ -375,13 +394,50 @@ int main(int argc, char** argv) {
         for (const auto& r : rows) if (ly >= 0 && std::fabs(r.y - ly) < 0.002) { line += r.text; line += '|'; }
         fprintf(stderr, "row %s: %s\n", label, line.c_str());
     };
-    // A panel theme, one step along the cycle (the colours stay the theme's: the
-    // Gamepad shows a colour pick below).
-    script.push_back({ Step::MOVE, 0.7, rowCaret("appearance.theme", "Panel theme", 0), nullptr, "panel theme" });
-    script.push_back({ Step::WAIT, 0.2, nullptr, nullptr, "" });
-    script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "" });
-    script.push_back({ Step::WAIT, 1.2, nullptr, nullptr, "" });
-    script.push_back({ Step::ACTION, 0, nullptr, [&] { rowDump("Panel theme"); }, "" });
+    // A cycle row's shown value: the text between its "<" and ">" carets, found
+    // from the row's region (its label may be translated by then).
+    auto rowValue = [&](const char* id) -> std::string {
+        float rx, ry, lx, ly;
+        if (!caret(id)(rx, ry) || !leftCaret(id)(lx, ly)) return std::string();
+        double bx = 9;
+        std::string v;
+        for (const auto& r : host.hudStringRows("settings_hud"))
+            if (r.y <= ry && r.y >= ry - 0.03 && r.x > lx && r.x < rx && r.text.size() > 1 && r.x < bx) { bx = r.x; v = r.text; }
+        v.erase(v.find_last_not_of(' ') + 1);   // the value box pads to its width
+        return v;
+    };
+    // A pick from a settings dropdown: open it, glide to the entry, click.
+    auto pick = [&](const char* row, const char* item, const char* label) {
+        script.push_back({ Step::MOVE, 0.7, dropdownBox(row), nullptr, label });
+        script.push_back({ Step::WAIT, 0.2, nullptr, nullptr, "" });
+        script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "" });
+        script.push_back({ Step::WAIT, 0.9, nullptr, nullptr, "" });   // the list, open
+        script.push_back({ Step::MOVE, 0.8, listItem(row, item), nullptr, item });
+        script.push_back({ Step::WAIT, 0.3, nullptr, nullptr, "" });
+        script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "" });
+    };
+    // A panel theme from the dropdown, with Settings open (the panel and every
+    // HUD around it restyle), kept for the rest of the reel.
+    {
+        const char* keepEnv = getenv("REEL_KEEP_THEME");
+        static const std::string keep = keepEnv ? keepEnv : "Modern Dark";
+        script.push_back(say("Panel themes", "Pick one from the dropdown"));
+        pick("appearance.theme", keep.c_str(), "panel theme");
+        script.push_back({ Step::WAIT, 0.3, nullptr, nullptr, "" });
+        script.push_back({ Step::ACTION, 0, nullptr, [&] { caption("Panel themes", rowValue("appearance.theme")); }, "" });
+        script.push_back({ Step::WAIT, 2.5, nullptr, nullptr, "" });
+    }
+    // A language from the dropdown (French, the native-checked pack), then back
+    // to English, whose labels the rest of the script finds its rows by. The
+    // list names every language in itself, English always as "English".
+    script.push_back(say("Languages", "Pick one from the dropdown"));
+    pick("appearance.language", "Fran", "language");
+    script.push_back({ Step::WAIT, 0.3, nullptr, nullptr, "" });
+    script.push_back({ Step::ACTION, 0, nullptr, [&] { caption("Languages", rowValue("appearance.language")); }, "" });
+    script.push_back({ Step::WAIT, 3.0, nullptr, nullptr, "" });
+    script.push_back(say("Languages", "Back to English"));
+    pick("appearance.language", "English", "");
+    script.push_back({ Step::WAIT, 1.0, nullptr, nullptr, "" });
     // A row's rightmost percentage (Scale on a widget row, Opacity on its own row).
     auto pctOnRow = [&host](const char* label) {
         const auto rows = host.hudStringRows("settings_hud");
@@ -395,7 +451,23 @@ int main(int argc, char** argv) {
             }
         return pct;
     };
+    // Fonts after the theme, so it first shows its own: Tomorrow for titles
+    // and digits, over it.
+    script.push_back(say("Fonts", "Tomorrow over the theme's own"));
+    struct DdPick { const char* row; const char* item; };
+    for (const DdPick& pk : { DdPick{ "appearance.font_title", "Tomorrow Bold" },
+                              DdPick{ "appearance.font_digits", "Tomorrow Bold" } }) {
+        script.push_back({ Step::MOVE, 0.7, dropdownBox(pk.row), nullptr, pk.row });
+        script.push_back({ Step::WAIT, 0.2, nullptr, nullptr, "" });
+        script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "" });
+        script.push_back({ Step::WAIT, 0.6, nullptr, nullptr, "" });
+        script.push_back({ Step::MOVE, 0.7, listItem(pk.row, pk.item), nullptr, pk.item });
+        script.push_back({ Step::WAIT, 0.3, nullptr, nullptr, "" });
+        script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "" });
+        script.push_back({ Step::WAIT, 0.9, nullptr, nullptr, "" });
+    }
     // Standings: the Last lap column on.
+    script.push_back(say("Columns, opacity", "Standings: Last lap on, opacity 0"));
     script.push_back({ Step::MOVE, 0.8, region("standings"), nullptr, "standings tab" });
     script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "" });
     script.push_back({ Step::WAIT, 0.7, nullptr, nullptr, "" });
@@ -412,6 +484,7 @@ int main(int argc, char** argv) {
     script.push_back({ Step::WAIT, 0.8, nullptr, nullptr, "" });
     script.push_back({ Step::ACTION, 0, nullptr, [&] { rowDump("Opacity"); }, "" });
     // Widgets: the Gamepad on, recoloured, shrunk, then dragged bottom right.
+    script.push_back(say("Gamepad widget", "Follows your inputs"));
     script.push_back({ Step::MOVE, 0.8, region("widgets"), nullptr, "widgets tab" });
     script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "" });
     script.push_back({ Step::WAIT, 0.7, nullptr, nullptr, "" });
@@ -445,6 +518,7 @@ int main(int argc, char** argv) {
         return pct > 0 && pct <= 60; } });
     script.push_back({ Step::ACTION, 0, nullptr, [&] { rowDump("Gamepad"); }, "" });
     script.push_back({ Step::WAIT, 0.5, nullptr, nullptr, "" });
+    script.push_back(say("Gamepad widget", "Any colour, any size"));
     script.push_back({ Step::MOVE, 0.9, stripRow("Settings"), nullptr, "close settings" });
     script.push_back({ Step::WAIT, 0.2, nullptr, nullptr, "" });
     script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "" });
@@ -459,6 +533,7 @@ int main(int argc, char** argv) {
         return r > l;
     };
     float padDx = 0, padDy = 0;
+    script.push_back(say("Move any HUD", "Right-drag it anywhere", 1));   // the pad crosses the bottom box
     script.push_back({ Step::MOVE, 0.8, [&](float& x, float& y) {
         double l, t, r, b;
         if (!padBox(l, t, r, b)) { fprintf(stderr, "gamepad not drawn\n"); return false; }
@@ -478,21 +553,53 @@ int main(int argc, char** argv) {
         double l, t, r, b;
         if (padBox(l, t, r, b)) fprintf(stderr, "pad box after %.3f %.3f %.3f %.3f\n", l, t, r, b); }, "" });
     script.push_back({ Step::MOVE, 0.8, at(0.80f, 0.55f), nullptr, "away" });
+    script.push_back(say("Racing", "Positions, gaps, personal bests"));
     script.push_back({ Step::ACTION, 0, nullptr, [&] { mouseIdle = true; host.cursorIdle(); }, "idle" });
+    // What the Dash calls out while the race runs, timed from the reel's end:
+    // tapegen puts the catch, the crash and the PB lap that far from it.
+    struct Callout { double before; const char* detail; };
+    for (const Callout& c : { Callout{ 27.0, "Lapper ahead, on the Dash" }, Callout{ 16.0, "Hazard ahead: a rider down" },
+                              Callout{ 5.5, "Personal best, on the Dash" } }) {
+        script.push_back({ Step::WAIT, 60, nullptr, nullptr, "", [&nowT, demoSecs, c] { return nowT >= demoSecs - c.before; } });
+        script.push_back({ Step::ACTION, 0, nullptr, [&, c] { caption("Racing", c.detail); }, "" });
+    }
     script.push_back({ Step::WAIT, 60, nullptr, nullptr, "end" });
     (void)region; (void)caret; (void)gapX; (void)gapY; (void)dashX; (void)dashY;
 
     // Transparent capture: the companion's frame on a clear backdrop, straight
     // it a FIFO that ffmpeg encodes as it arrives, so raw RGBA never lands on disk).
     // it a FIFO that ffmpeg encodes as it arrives, so full HD never lands on disk).
-    constexpr int CAP_W = 1920, CAP_H = 1080;
+    const int CAP_W = getenv("REEL_W") ? atoi(getenv("REEL_W")) : 1920;
+    const int CAP_H = getenv("REEL_H") ? atoi(getenv("REEL_H")) : 1080;
+    // The caption layout's boxes (fractions of the frame): 0 bottom centre, below
+    // even a title-bar theme's taller Settings panel and clear of the pad, empty
+    // through the whole reel; 1 top, between Position and the Dash, for the drag
+    // (the pad crosses the bottom). make_demo.sh draws them from captions.tsv.
+    static constexpr float kCaptionBoxes[2][4] = { { 0.27f, 0.942f, 0.68f, 0.994f }, { 0.165f, 0.012f, 0.395f, 0.072f } };
+    const bool captionCheck = getenv("REEL_CAPTION_CHECK") && *getenv("REEL_CAPTION_CHECK");
+    int overlapFrames = 0, firstOverlap = -1;
     constexpr double CAP_FPS = 30.0;
     auto capture = host.sym<int (*)(int, int, unsigned char*)>("MXBMRP3_Test_CompanionCaptureRgba");
     std::vector<unsigned char> capBuf(static_cast<size_t>(CAP_W) * CAP_H * 4);
     FILE* capFile = capture && getenv("REEL_CAPTURE") ? fopen("capture.rgba", "wb") : nullptr;
     double nextCap = 0.0;
     int capFrames = 0;
+    // The frame each caption first shows on. Captions are timed by FRAME, not by
+    // the script's clock: when the encoder falls behind, the capture writes fewer
+    // frames than seconds passed (a 1080p run lost 14 s that way), and clock-timed
+    // captions drifted onto the wrong beat.
+    std::vector<int> captionFrame;
     double capMs = 0;
+    // Anything drawn under the caption's box (alpha > 0, sampled every 2 px).
+    auto boxBusy = [&](int box) {
+        const float* b = kCaptionBoxes[box];
+        const int x0 = static_cast<int>(b[0] * CAP_W), x1 = static_cast<int>(b[2] * CAP_W);
+        const int y0 = static_cast<int>(b[1] * CAP_H), y1 = static_cast<int>(b[3] * CAP_H);
+        for (int y = y0; y < y1; y += 2)
+            for (int x = x0; x < x1; x += 2)
+                if (capBuf[(static_cast<size_t>(y) * CAP_W + x) * 4 + 3] != 0) return true;
+        return false;
+    };
     // Pre-roll: REEL_PREROLL frames of the opening scene, which make_demo.sh trims
     // off, so the encoder and the renderer are warm when filming starts. Without
     // it the first ~3.5 s came out at ~4 fps, the frame repeated to keep time.
@@ -514,10 +621,20 @@ int main(int argc, char** argv) {
             const double t = std::chrono::duration<double>(clock::now() - t0).count();
             if (t < nextCap) { std::this_thread::sleep_for(std::chrono::milliseconds(2)); continue; }
             const auto c0 = clock::now();
+            const int shown = captionCount;   // before the capture: the frame shows at least these
             capture(CAP_W, CAP_H, capBuf.data());
             capMs += std::chrono::duration<double, std::milli>(clock::now() - c0).count();
+            const int box = captionBox;
+            if (captionCheck && box >= 0 && boxBusy(box)) {
+                if (firstOverlap < 0) {   // keep the frame, so the log can show what it was
+                    firstOverlap = capFrames;
+                    if (FILE* of = fopen("overlap.rgba", "wb")) { fwrite(capBuf.data(), 1, capBuf.size(), of); fclose(of); }
+                }
+                ++overlapFrames;
+            }
             const double now = std::chrono::duration<double>(clock::now() - t0).count();
             while (capRun && now >= nextCap) {
+                while (static_cast<int>(captionFrame.size()) < shown) captionFrame.push_back(capFrames);
                 fwrite(capBuf.data(), 1, capBuf.size(), capFile);
                 ++capFrames;
                 nextCap += 1.0 / CAP_FPS;
@@ -531,6 +648,7 @@ int main(int argc, char** argv) {
     for (;;) {
         const double t = std::chrono::duration<double>(clock::now() - t0).count();
         if (t > demoSecs) break;
+        nowT = t;
         // The tape, in real time.
         const uint64_t tapeNow = liveUs + static_cast<uint64_t>(t * 1e6);
         for (; next < events.size() && events[next].us <= tapeNow; ++next) {
@@ -546,12 +664,17 @@ int main(int argc, char** argv) {
         if (si < script.size()) {
             Step& st = script[si];
             if (!stepInit && pastEnd && !(st.label && *st.label)) { ++si; continue; }
+            if (!stepInit && st.skip && st.skip()) { ++si; continue; }
             // REST: stop only on icons that preview something; glide past the rest.
             if (!stepInit && st.kind == Step::REST) {
-                static const char* const kShows[] = { "Helmet", "Stream Chat", "Spotter", "Achievements",
+                static const char* const kShowsAll[] = { "Helmet", "Stream Chat", "Spotter", "Achievements",
                     "Notices", "Timing", "Lap Log", "Gap Bar", "Delta Trace", "Pitboard", "Radar",
                     "Ideal Lap", "Session", "Performance", "Stats", "Telemetry", "Records", "FMX",
                     "Event Log", "Charts", "Friends" };
+                // The short pass: the main ones, Session among them (it is kept on).
+                static const char* const kShowsMain[] = { "Timing", "Lap Log", "Gap Bar", "Pitboard", "Radar",
+                    "Session", "Performance", "Records", "Delta Trace" };
+                static const bool fullStrip = !(getenv("REEL_STRIP") && std::string(getenv("REEL_STRIP")) == "main");
                 std::string nm;
                 float hx, hy;
                 for (int r = 0; r < host.toggleStripRow(0); ++r) {
@@ -560,7 +683,8 @@ int main(int argc, char** argv) {
                     nm.clear();
                 }
                 bool shows = false;
-                for (const char* k : kShows) shows |= nm == k;
+                if (fullStrip) { for (const char* k : kShowsAll) shows |= nm == k; }
+                else { for (const char* k : kShowsMain) shows |= nm == k; }
                 if (!shows) { si += 3; continue; }   // skip the rest, its hold and the keep
                 st.kind = Step::WAIT;
             }
@@ -616,6 +740,10 @@ int main(int argc, char** argv) {
                     if (buttons == 1 && st.done && st.done()) a = 1.0f;
                     buttons = a < 1.0f ? 1 : 0;
                     break;
+                case Step::WAIT:   // a WAIT with `done` ends early when it holds
+                    if (st.done && st.done()) a = 1.0f;
+                    buttons = 0;
+                    break;
                 default: buttons = 0; break;
             }
             if (!mouseIdle) host.injectMouse(true, mx, my, buttons);
@@ -629,6 +757,21 @@ int main(int argc, char** argv) {
         capThread.join();
         fclose(capFile);
         fprintf(stderr, "captured %d frames, %.1f ms per capture\n", capFrames, capMs / std::max(1, capFrames));
+        if (captionCheck)
+            fprintf(stderr, "caption overlap: %d frames%s\n", overlapFrames,
+                    firstOverlap >= 0 ? (" from " + std::to_string(firstOverlap / CAP_FPS) + " s").c_str() : "");
+    }
+    // seconds, beat, detail, box (fractions of the frame): one line per caption
+    // change, so captions_ass.py draws exactly the box checked here.
+    if (FILE* cf = fopen("captions.tsv", "wb")) {
+        for (size_t i = 0; i < captions.size(); ++i) {
+            const Caption& c = captions[i];
+            const double at = !capFile ? c.t : i < captionFrame.size() ? captionFrame[i] / CAP_FPS : capFrames / CAP_FPS;
+            const float* b = kCaptionBoxes[c.box];
+            fprintf(cf, "%.3f\t%s\t%s\t%.3f,%.3f,%.3f,%.3f\n", at, c.beat.c_str(), c.detail.c_str(), b[0], b[1], b[2], b[3]);
+        }
+        fprintf(cf, "%.3f\t\t\t\n", capFile ? capFrames / CAP_FPS : demoSecs);
+        fclose(cf);
     }
     fprintf(stderr, "done\n");
     host.companionWindow(false);

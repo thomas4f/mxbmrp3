@@ -121,6 +121,10 @@ msgid "%s in burnouts and drifts"
 msgstr "%s i burnouts och drifter"
 
 #, c-format
+msgid "%s is read-only. Untick it in Properties."
+msgstr "%s är skrivskyddad. Avmarkera i Egenskaper."
+
+#, c-format
 msgid "%s laps in a row, crash/penalty free"
 msgstr "%s varv i rad utan krasch/straff"
 
@@ -191,6 +195,10 @@ msgstr "En kommentar, ett betyg, en stjärna"
 msgctxt "tooltip"
 msgid "A crash tally for streaming - counts across sessions and restarts until you reset it."
 msgstr "En kraschräknare för streaming - räknar över sessioner och omstarter tills du nollställer den."
+
+msgctxt "tooltip"
+msgid "A line for every achievement you earn, good or bad."
+msgstr "En replik för varje utmärkelse du får, bra som dålig."
 
 msgctxt "tooltip"
 msgid "A new notice takes the card over, drawn as on Notices, then your page comes back."
@@ -588,7 +596,7 @@ msgstr "Svart"
 msgid "Blue"
 msgstr "Blå"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Blue flag"
 msgstr "Blå flagga"
 
@@ -942,7 +950,7 @@ msgid "Confirm"
 msgstr "Bekräfta"
 
 msgid "Confirm?"
-msgstr "Bekräfta?"
+msgstr "Säker?"
 
 msgid "Connect the web overlay"
 msgstr "Anslut webböverlägget"
@@ -1007,8 +1015,8 @@ msgid "Could not open port %d. Is it in use?"
 msgstr "Kunde inte öppna port %d. Används den redan?"
 
 #, c-format
-msgid "Could not write %s. Is it read-only?"
-msgstr "Kunde inte skriva %s. Är den skrivskyddad?"
+msgid "Could not write %s. Details in the log."
+msgstr "Kunde inte skriva %s. Detaljer i loggen."
 
 msgid "Could not write to mxbmrp3\\benchmarks"
 msgstr "Kunde inte skriva till mxbmrp3\\benchmarks"
@@ -1195,9 +1203,9 @@ msgstr "Standard (serverbästa)"
 msgid "Default (Session PB)"
 msgstr "Standard (sessions-PB)"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Default setup"
-msgstr "Standardinställning"
+msgstr "Standardsetup"
 
 msgid "Defaults restored"
 msgstr "Standard återställd"
@@ -1843,7 +1851,7 @@ msgstr "Växel"
 msgid "Gear indicator"
 msgstr "Växelindikator"
 
-#. max 9 characters
+#. max 12 characters
 msgid "General"
 msgstr "Allmänt"
 
@@ -2393,7 +2401,7 @@ msgstr "Varvtider"
 msgid "Lapped the Field"
 msgstr "Varvade hela fältet"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Lapper ahead"
 msgstr "Varvare framför"
 
@@ -2474,6 +2482,9 @@ msgstr "Språng framåt"
 
 msgid "Left"
 msgstr "Vänster"
+
+msgid "Left as it is. Settings are not saved this session"
+msgstr "Lämnad som den är. Inställningar sparas inte denna session"
 
 msgid "Left as it is. Stats are not saved this session"
 msgstr "Lämnad som den är. Statistik sparas inte denna session"
@@ -3016,6 +3027,9 @@ msgstr "Oppo"
 msgid "Opponents"
 msgstr "Motståndare"
 
+msgid "Or turn on Auto-fetch in MXBMRP3 Settings > Records"
+msgstr "Eller Hämta automatiskt: MXBMRP3 Inställningar > Rekord"
+
 msgid "Orange"
 msgstr "Orange"
 
@@ -3046,7 +3060,7 @@ msgstr "Kör om %s på %s"
 msgid "Overtakes"
 msgstr "Omkörningar"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Overtime"
 msgstr "Övertid"
 
@@ -3983,6 +3997,9 @@ msgctxt "tooltip"
 msgid "Settings and every switch in one strip; drag it to an edge to turn it. Rest on one that is off to preview it."
 msgstr "Inställningar och alla brytare i en remsa; dra mot en kant för att vrida. Vila på en avslagen för att se den."
 
+msgid "Settings file unreadable"
+msgstr "Inställningsfilen är oläslig"
+
 msgid "Settings not saved"
 msgstr "Inställningar inte sparade"
 
@@ -4576,7 +4593,7 @@ msgstr "Stapla krafter"
 msgid "Stalker"
 msgstr "Förföljare"
 
-#. max 9 characters
+#. max 10 characters
 msgid "Standings"
 msgstr "Ställning"
 
@@ -4589,10 +4606,6 @@ msgstr "Starta eller stoppa ritkostnadssvepet. Skriver en rapport när det sluta
 
 msgid "Started fresh. A copy is kept in the mxbmrp3 folder"
 msgstr "Började om. En kopia sparas i mxbmrp3-mappen"
-
-#. max 23 characters
-msgid "Stationary rider"
-msgstr "Stillastående förare"
 
 #. max 10 characters
 msgid "Stats"
@@ -4636,6 +4649,10 @@ msgstr "Steam är inte tillgängligt"
 #. max 11 characters
 msgid "Steering"
 msgstr "Styrning"
+
+#. max 15 characters
+msgid "Stopped rider"
+msgstr "Stillastående"
 
 #. max 60 characters
 msgid "Stories"
@@ -4825,8 +4842,8 @@ msgid "The RPM widget's shift lights, with the revs under them."
 msgstr "RPM-widgetens växlingslampor, med varvtalet under dem."
 
 msgctxt "tooltip"
-msgid "The Session Charts HUD's Gap chart: you and the riders just ahead and behind."
-msgstr "Sessionsdiagram-HUD:ens gapdiagram: du och förarna närmast före och efter."
+msgid "The Session Charts HUD's Gap chart: the leader, you and the riders around you."
+msgstr "Sessionsdiagram-HUD:ens gapdiagram: ledaren, du och förarna runt dig."
 
 msgctxt "tooltip"
 msgid "The Session HUD's rows: server, track and format."
@@ -5138,7 +5155,7 @@ msgstr "Bana"
 msgid "Track %s riders"
 msgstr "Följ %s förare"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Track change"
 msgstr "Banbyte"
 
@@ -5195,6 +5212,10 @@ msgstr "Trickstapel"
 #. max 23 characters
 msgid "Trick stats"
 msgstr "Trickstatistik"
+
+#. max 15 characters
+msgid "Tricks"
+msgstr "Trick"
 
 msgctxt "tooltip"
 msgid "Tricks shown in the stack. Off hides it, 1 shows the active trick, 2+ shows history."
@@ -5323,7 +5344,7 @@ msgstr "Uppdateringskontroll väntar..."
 msgid "Update installed!"
 msgstr "Uppdatering installerad!"
 
-#. max 9 characters
+#. max 12 characters
 msgid "Updates"
 msgstr "Versioner"
 
@@ -5623,19 +5644,23 @@ msgstr "Vinn ett lopp och led varje varv"
 msgid "Win with every rider at least a lap down"
 msgstr "Vinn med alla andra minst ett varv efter"
 
+#, c-format
+msgid "Windows blocked %s. Antivirus or OneDrive?"
+msgstr "Windows blockerade %s. Antivirus/OneDrive?"
+
 msgid "Winner"
 msgstr "Vinnare"
 
 msgid "Wire to Wire"
 msgstr "Start till mål"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Wrong way"
 msgstr "Fel håll"
 
-#. max 23 characters
+#. max 15 characters
 msgid "Wrong way rider"
-msgstr "Förare åt fel håll"
+msgstr "Förare fel håll"
 
 msgid "Yaw"
 msgstr "Gir"
@@ -5677,6 +5702,10 @@ msgstr "Din Twitch- och YouTube-chatt i spelet, samlade i ett fönster. Bara lä
 
 msgid "Your final lap"
 msgstr "Ditt sista varv"
+
+msgctxt "tooltip"
+msgid "Your freestyle tricks, landings and crashes. Never in a race."
+msgstr "Dina freestyletrick, landningar och vurpor. Aldrig i ett lopp."
 
 msgctxt "tooltip"
 msgid "Your gap to a reference lap across the whole lap: green where you gained, red where you lost."

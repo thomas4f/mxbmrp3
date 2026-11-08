@@ -126,10 +126,10 @@ void AchievementWidget::update() {
 
     // A click on the card opens the menu where it points -- an achievement's
     // page, or the tab a system toast names -- and ends the card: the player
-    // has gone where it pointed. Gated on being on screen like every
-    // self-hit-testing HUD (isHeldBack), and on the cursor: with the menu-only
-    // cursor there is no pointer on track, so no click either.
-    if (m_showing && drawable && !isHeldBack()) {
+    // has gone where it pointed. Gated like every self-hit-testing HUD on the
+    // click being its own (ownsClick: on screen, the topmost under it), and on
+    // the cursor: with the menu-only cursor there is no pointer on track.
+    if (m_showing && drawable && ownsClick()) {
         const InputManager& input = InputManager::getInstance();
         if (input.isCursorEnabled() && input.getLeftButton().isClicked()) {
             CursorPosition cursor = input.getCursorPosition();
@@ -181,17 +181,17 @@ void AchievementWidget::rebuildRenderData() {
     }
     // A real card's shape at its widest tier. Built here, never queued: nothing is
     // earned, nothing is logged, and a click on it opens no page (catalogueIndex
-    // stays -1).
-    static const AchievementManager::Toast kSampleToast = [] {
-        AchievementManager::Toast t;
-        std::snprintf(t.title, sizeof(t.title), "%s", TR("Preview"));
-        std::snprintf(t.detail, sizeof(t.detail), "%s", TR("Achievement toasts appear here"));
-        std::snprintf(t.icon, sizeof(t.icon), "%s", "trophy");
-        t.tier = Achievements::TIER_COUNT;
-        return t;
-    }();
+    // stays -1). Built per rebuild, not once: a static would keep the language
+    // it was first drawn in (core/i18n.h, "never cache TR() in a static").
+    AchievementManager::Toast sampleToast;
+    if (!m_showing) {
+        std::snprintf(sampleToast.title, sizeof(sampleToast.title), "%s", TR("Preview"));
+        std::snprintf(sampleToast.detail, sizeof(sampleToast.detail), "%s", TR("Achievement toasts appear here"));
+        std::snprintf(sampleToast.icon, sizeof(sampleToast.icon), "%s", "trophy");
+        sampleToast.tier = Achievements::TIER_COUNT;
+    }
     const bool system = m_showing && m_source == Source::System;
-    const AchievementManager::Toast& toast = m_showing ? m_toast : kSampleToast;
+    const AchievementManager::Toast& toast = m_showing ? m_toast : sampleToast;
     const char* title = system ? m_system.title : toast.title;
     const char* detail = system ? m_system.detail : toast.detail;
     const char* icon = system ? m_system.icon : toast.icon;

@@ -399,6 +399,8 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
     // typecount 119 -> 123, strings 125 -> 127 (the field and its text).
     // 1.34.2 marks the Timing tab's Target row, which tags its sidebar row:
     // strings 127 -> 128.
+    // 1.35 prunes the 1.34 markers, and with them four sidebar "New" tags:
+    // strings 128 -> 124.
     static const char* kGolden =
         "52:general;52:appearance;52:hotkeys;52:riders;54:-;52:rumble;61:-;52:helmet;77:-;52:director;10:-;52"
         ":stream_chat;78:-;52:spotter;93:-;52:achievements;40:-;52:updates;47:-;48:-;51:-;52:widgets;10:-;52:"
@@ -410,7 +412,7 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
         "controller;3:general.controller;114:general.controller;72:general.steam_friends;72:general.now_playi"
         "ng;72:general.web_server;44:-;44:-;72:general.web_port;45:-;46:-;72:general.auto_switch;49:-;49:-;72"
         ":general.copy_profile;4:general.copy_profile;3:general.copy_profile;114:general.copy_profile;8:gener"
-        "al.reset_profile;9:general.reset_all;53:-;6:-;71:-;119:find.field;typecount=123;strings=128";
+        "al.reset_profile;9:general.reset_all;53:-;6:-;71:-;119:find.field;typecount=123;strings=124";
 
     MESSAGE("General tab signature: " << sig);
     CHECK(sig == kGolden);
@@ -535,6 +537,46 @@ TEST_CASE("settings sidebar: the More row opens a page of its tabs") {
 // (settings_tab_more.cpp); the character width and the label column come from the
 // Appearance tab's two colour cells, as in the test below -- every tab shares the
 // font and the label column.
+// The settings menu draws IDENTITY icons only: the flat hud-* copies. The
+// status/marker set carries a baked 2px outline for contrast over the track
+// (assets/icons/README.md), so one of those among the sidebar's flat glyphs
+// reads as a single heavy, outlined icon -- the More row's "layer-group" and
+// the Find box's "magnifying-glass" did exactly that. The harness stages no
+// icons, so all four names are injected as theme overrides at sprite indices
+// nothing else uses, and the drawn quads say which ones the menu reached for.
+TEST_CASE("settings sidebar: More and Find draw the flat identity icons") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    REQUIRE(host.hasIconTheming());
+    REQUIRE(host.hasQuadSprite());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\settings_layout_flat_icons\\");
+    host.installTheme("tflat", 1.0f, 1.0f, /*titleBand=*/1, /*card=*/1);
+    constexpr int kMoreFlat = 900011, kMoreOutlined = 900012;
+    constexpr int kFindFlat = 900013, kFindOutlined = 900014;
+    REQUIRE(host.setThemeIcon("hud-more", kMoreFlat, 1));
+    REQUIRE(host.setThemeIcon("layer-group", kMoreOutlined, 1));
+    REQUIRE(host.setThemeIcon("hud-find", kFindFlat, 1));
+    REQUIRE(host.setThemeIcon("magnifying-glass", kFindOutlined, 1));
+    host.showSettings(true);
+    host.setActiveTab("Map");
+    host.draw();
+
+    auto drawn = [&](int sprite) {
+        const int n = static_cast<int>(host.hudQuadRects(PluginHost::HUD_SETTINGS).size());
+        for (int i = 0; i < n; ++i) {
+            if (host.quadSprite(PluginHost::HUD_SETTINGS, i) == sprite) return true;
+        }
+        return false;
+    };
+    CHECK_MESSAGE(drawn(kMoreFlat), "the More row should draw hud-more");
+    CHECK_MESSAGE(!drawn(kMoreOutlined), "the More row drew the outlined layer-group");
+    CHECK_MESSAGE(drawn(kFindFlat), "the Find box should draw hud-find");
+    CHECK_MESSAGE(!drawn(kFindOutlined), "the Find box drew the outlined magnifying-glass");
+
+    host.showSettings(false);
+    host.clearTheme();
+}
+
 TEST_CASE("settings More page: a row's icon switches its HUD") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());

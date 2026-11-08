@@ -19,6 +19,9 @@ namespace PluginConstants {
     // so the per-build version bump recompiles only plugin_version.cpp, not every TU that
     // includes this header (resource.h is deliberately kept out of the wide include graph).
     extern const char* const PLUGIN_VERSION;
+    // Also in plugin_version.cpp (it needs resource.h's tag): the "read the source"
+    // line a strings pass over the .dlo finds. Logged once at startup.
+    extern const char* const SOURCE_NOTICE;
     constexpr const char* PLUGIN_AUTHOR = "thomas4f";
 
     // GitHub repository for updates (centralized to support repo moves/renames)

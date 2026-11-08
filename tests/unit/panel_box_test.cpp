@@ -82,6 +82,7 @@ static PanelBox::Spec specFrom(const json& j) {
     }
     if (j.contains("minPanelW")) s.minPanelW = j.at("minPanelW").get<double>();
     if (j.contains("gap")) s.gap = j.at("gap").get<double>();
+    if (j.contains("titleInFrame")) s.titleInFrame = j.at("titleInFrame").get<bool>();
     return s;
 }
 
@@ -178,6 +179,7 @@ TEST_CASE("parity: layoutPanel matches the shared golden vectors") {
         checkNum(o.at("cardTop"), g.cardTop, "cardTop");
         checkNum(o.at("cardBot"), g.cardBot, "cardBot");
         checkNum(o.at("captionY"), g.captionY, "captionY");
+        checkNum(o.at("frameTop"), g.frameTop, "frameTop");
 
         // JS reports "no caption row" / "no button row" as null; the C++ engine
         // as a presence flag beside zeroed values.

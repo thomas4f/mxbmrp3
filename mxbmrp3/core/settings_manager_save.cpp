@@ -24,7 +24,10 @@
 #include "../hud/settings_hud.h"
 #include "../diagnostics/logger.h"
 
+#include <windows.h>
+
 #include <cstdio>
+#include <ctime>
 #include <sstream>
 #include <string>
 
@@ -165,6 +168,11 @@ bool SettingsManager::saveSettings(const HudManager& hudManager, const char* sav
     // bytes to the shared writer, which puts them on disk off the game thread (shutdown
     // drains it before the process goes).
     const std::string filePath = getSettingsFilePath(savePath);
+    if (m_writesBlocked) {   // an unreadable file that could not be copied aside: keep it
+        DEBUG_WARN_F("Settings not saved: %s could not be read at load and is left as it is",
+                     filePath.c_str());
+        return false;
+    }
     DEBUG_INFO_F("Saving settings to: %s", filePath.c_str());
     if (AtomicFileWriter::submit(filePath, serializeSettings(hudManager, savePath))) {
         DEBUG_INFO("Settings saved successfully");
@@ -199,14 +207,48 @@ void SettingsManager::announceSaveResult(bool ok) {
     m_saveFailureAnnounced = true;
     SystemMessages::Toast t;
     snprintf(t.title, sizeof(t.title), "%s", TR("Settings not saved"));
-    snprintf(t.detail, sizeof(t.detail), TR("Could not write %s. Is it read-only?"),
-             SettingsInternal::SETTINGS_FILENAME);
+    SystemMessages::formatWriteFailure(
+        AtomicFileWriter::lastFailure(getSettingsFilePath(m_savePath.c_str())),
+        SettingsInternal::SETTINGS_FILENAME, t.detail, sizeof(t.detail));
     snprintf(t.icon, sizeof(t.icon), "triangle-exclamation");
     t.key = SystemMessages::KEY_SAVE_FAILED;
     t.tab = SettingsHud::TAB_GENERAL;
     t.severity = SystemMessages::Severity::Warning;
     t.durationMs = SystemMessages::WARNING_DURATION_MS;
     SystemMessages::getInstance().post(t);
+}
+
+// An INI that would not open starts the session on defaults, and the next save
+// would replace it: every HUD layout gone for a file that may only have been held
+// by a sync tool for a moment. So it is copied aside first, named by the time,
+// never overwriting an earlier copy -- the same rule as the stats file
+// (StatsManager::keepUnreadableFile). If even that fails, saveSettings() writes
+// nothing this session. Either way the first Draw says so
+// (HudManager::announceStartupProblems).
+void SettingsManager::keepUnreadableFile(const std::string& filePath) {
+    // A probe for the reason, which the stream does not give.
+    HANDLE h = CreateFileA(filePath.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                           nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    const DWORD openErr = (h == INVALID_HANDLE_VALUE) ? GetLastError() : ERROR_SUCCESS;
+    if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
+    DEBUG_WARN_F("Settings file could not be opened (error %lu): %s (using defaults)",
+                 static_cast<unsigned long>(openErr), filePath.c_str());
+
+    time_t now = time(nullptr);
+    struct tm timeInfo;
+    // cppcheck-suppress uninitvar
+    localtime_s(&timeInfo, &now);
+    char stamp[20];
+    strftime(stamp, sizeof(stamp), "%Y%m%d_%H%M%S", &timeInfo);
+    const std::string base = filePath.substr(0, filePath.find_last_of("\\/") + 1);
+    const std::string copy = base + "mxbmrp3_settings_unreadable_" + stamp + ".ini";
+    if (CopyFileA(filePath.c_str(), copy.c_str(), TRUE)) {
+        DEBUG_WARN_F("Unreadable settings file copied to %s", copy.c_str());
+    } else {
+        m_writesBlocked = true;
+        DEBUG_WARN_F("Unreadable settings file could not be copied (error %lu): "
+                     "settings are not saved this session", GetLastError());
+    }
 }
 
 void SettingsManager::flushIfDirty(const HudManager& hudManager) {

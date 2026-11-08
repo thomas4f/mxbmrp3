@@ -14,6 +14,7 @@
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
+#include "../core/fmx_levels.h"
 #include "../core/plugin_data.h"
 #include "../core/fmx_manager.h"
 #include "../core/asset_manager.h"
@@ -215,10 +216,13 @@ float FmxHud::buildTrickStack(const BuildCtx& ctx, float currentY) {
     const bool holdStack = lingering && !endAnimStack.active;
     if (!holdStack) m_trickStack.clear();
 
-    // Helper: append a trick entry to the stack (formats name into fixed buffer)
-    auto pushTrick = [this](Fmx::TrickType type, int multiplier, unsigned long color) {
+    // Helper: append a trick entry to the stack (formats name into fixed buffer).
+    // The level word is read live, so the active row grows "Whip" -> "Flat Whip"
+    // as it rotates (core/fmx_levels.h); static strings, no allocation.
+    auto pushTrick = [this](Fmx::TrickType type, int multiplier, const char* levelWord,
+                            unsigned long color) {
         TrickStackEntry entry;
-        Fmx::formatTrickName(type, multiplier, entry.name, sizeof(entry.name));
+        Fmx::formatTrickName(type, multiplier, levelWord, entry.name, sizeof(entry.name));
         entry.color = color;
         m_trickStack.push_back(entry);
     };
@@ -229,7 +233,7 @@ float FmxHud::buildTrickStack(const BuildCtx& ctx, float currentY) {
         // Linger the ended chain — green if completed, red if failed
         for (size_t i = 0; i < endAnimStack.chainTricks.size(); ++i) {
             const auto& endedTrick = endAnimStack.chainTricks[i];
-            pushTrick(endedTrick.type, endedTrick.multiplier, lingerColor);
+            pushTrick(endedTrick.type, endedTrick.multiplier, Fmx::getTrickLevelWord(endedTrick), lingerColor);
         }
     } else {
         // Normal display logic
@@ -244,21 +248,21 @@ float FmxHud::buildTrickStack(const BuildCtx& ctx, float currentY) {
 
         for (size_t i = 0; i < chainTricks.size(); ++i) {
             const auto& chainTrick = chainTricks[i];
-            pushTrick(chainTrick.type, chainTrick.multiplier, yellowColor);
+            pushTrick(chainTrick.type, chainTrick.multiplier, Fmx::getTrickLevelWord(chainTrick), yellowColor);
         }
 
         if (hasCommittedActiveTrick) {
             // Orange throughout ACTIVE+GRACE — only turns yellow once banked into chain
-            pushTrick(trick.type, trick.multiplier, orangeColor);
+            pushTrick(trick.type, trick.multiplier, Fmx::getTrickLevelWord(trick), orangeColor);
         }
     }
 
     // POSITIONING PREVIEW (isPreviewing) with nothing live: a sample chain, so
     // the stack shows its real shape while the HUD is placed or hover-previewed.
     if (m_trickStack.empty() && isPreviewing()) {
-        pushTrick(Fmx::TrickType::WHIP_LEFT, 1, this->getColor(ColorSlot::NEUTRAL));
-        pushTrick(Fmx::TrickType::BACKFLIP, 1, this->getColor(ColorSlot::NEUTRAL));
-        pushTrick(Fmx::TrickType::SCRUB_RIGHT, 1, this->getColor(ColorSlot::WARNING));
+        pushTrick(Fmx::TrickType::WHIP_LEFT, 1, Fmx::getTrickLevelWord(Fmx::TrickType::WHIP_LEFT, 1), this->getColor(ColorSlot::NEUTRAL));
+        pushTrick(Fmx::TrickType::BACKFLIP, 1, nullptr, this->getColor(ColorSlot::NEUTRAL));
+        pushTrick(Fmx::TrickType::SCRUB_RIGHT, 1, Fmx::getTrickLevelWord(Fmx::TrickType::SCRUB_RIGHT, 2), this->getColor(ColorSlot::WARNING));
     }
 
     if (m_trickStack.empty()) {

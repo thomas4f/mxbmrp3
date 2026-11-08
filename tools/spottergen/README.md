@@ -59,6 +59,23 @@ tenths) is `core/spotter_phrase.h`; the edge/cooldown state machine is
   `generate.py --selftest` (the `spottergen-selftest` CI gate), which also
   checks every key in `CUES` still exists in the plugin's registry.
 
+## Full packs from ElevenLabs
+
+`elevenlabs.py` is the other baker: instead of `generate.py`'s one short line
+per cue, it reads the shipped `spotter.ini` and records ALL of it - every
+alternate, and the default-quiet rows (left commented out). Each line is ONE
+whole clip; nothing is stitched at playback, because stitched pieces never
+sound like one sentence. So a recorded pack gives up the values that change:
+optional groups are dropped, and a line that still needs a value is replaced
+by its row in `recorded_lines.ini` (or muted there, for cues that are only
+numbers). Tone comes from a mood per line that becomes an audio tag in the
+text sent, never in the subtitle. `plan` prints the clip and character count
+offline; `voices`/`audition` pick a voice; `build` renders, writes the pack, a
+listening reel and the zip. The key comes from `ELEVENLABS_API_KEY`. Its
+`--selftest` is the `spottergen-elevenlabs-selftest` gate, and fails on a
+shipped line that needs a `recorded_lines.ini` row and has none. The header
+has the rest.
+
 ## Pack anatomy / player-facing format
 
 See the header of `core/spotter_cue_pack.h` - it is written as the spec a

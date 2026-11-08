@@ -155,11 +155,16 @@ void BaseHud::emitThemedSliceSet(const ThemeAsset& theme, float x, float y,
                       : (useCard ? theme.cardBorder : theme.frameBorder);
     const float inset = NineSlice::cellsToBorderY(cells, layout().cellW,
                                                PluginConstants::UI_ASPECT_RATIO);
+    // The band draws its own title_* art when the theme has it, else the card art.
+    const bool useTitle = (set == SliceSet::BAND) && theme.hasTitleArt();
     const int centerSprite = useButton ? theme.buttonCenterSprite
+                           : useTitle ? theme.titleCenterSprite
                            : (useCard ? theme.cardCenterSprite : theme.centerSprite);
     const int* cornerSprites = useButton ? theme.buttonCornerSprites
+                             : useTitle ? theme.titleCornerSprites
                              : (useCard ? theme.cardCornerSprites : theme.cornerSprites);
     const int* edgeSprites   = useButton ? theme.buttonEdgeSprites
+                             : useTitle ? theme.titleEdgeSprites
                              : (useCard ? theme.cardEdgeSprites   : theme.edgeSprites);
 
     NineSlice::Slice slices[NineSlice::SLICE_COUNT];
@@ -199,11 +204,19 @@ void BaseHud::emitThemedSliceSet(const ThemeAsset& theme, float x, float y,
     }
 }
 
-void BaseHud::addBackgroundQuad(float x, float y, float width, float height) {
+void BaseHud::addBackgroundQuad(float x, float y, float width, float height, float frameTop) {
     using namespace PluginConstants;
 
     // Always add quad to keep indices consistent, but use transparent color if hidden
     SPluginQuad_t quadEntry;
+
+    // A TITLE BAR theme's frame starts below the band (PanelBox::Geom::frameTop),
+    // so everything recorded here -- the slices, m_bgRect*, the centre the fill is
+    // cut from -- is the FRAME's rect, not the panel's. Remembered so the layout
+    // fast path, which is handed the whole panel rect, draws the same frame.
+    m_bgFrameTop = std::min(std::max(frameTop, 0.0f), std::max(height, 0.0f));
+    y += m_bgFrameTop;
+    height -= m_bgFrameTop;
 
     applyOffset(x, y);
 

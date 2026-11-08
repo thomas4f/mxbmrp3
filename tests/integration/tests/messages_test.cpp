@@ -36,6 +36,17 @@
 //      of failures, an unreadable stats file is copied aside before anything
 //      can overwrite it and the first Draw says so, and a web overlay whose
 //      port is taken says so at the first Draw.
+//  12. A save that fails names the cause the writer saw, not a guess: a
+//      read-only INI says so and how to undo it, one held open by another
+//      program names the usual holders. A save refused only the atomic way
+//      (a holder that blocks the swap, not the file) lands in place, quietly,
+//      and the log says so. A player report had "Is it read-only?" asked of
+//      every failure, which sent people hunting for an attribute that was not
+//      set. And an INI that is there but cannot be opened is never saved over
+//      with the defaults the session started on: it stays as it is, the
+//      first Draw says so, and the welcome does not come back for it. (The
+//      copy-aside branch shares the stats file's tested shape; Wine has no
+//      way to make a file copyable but not openable.)
 //
 // Self-contained doctest; see run_tests.sh.
 // ============================================================================
@@ -43,6 +54,7 @@
 #include "integration_main.h"
 #include "plugin_host.h"
 #include "ini.h"
+#include "../../../mxbmrp3/resource.h"
 
 #include <windows.h>
 
@@ -57,6 +69,14 @@ namespace {
 enum { MSG_NONE = 0, MSG_UPDATE, MSG_UPDATED, MSG_WELCOME };
 // DashHud::Page: the page a fresh install opens on, and the card a message holds.
 enum { PAGE_TIMING = 1, PAGE_NOTICES = 15 };
+
+// THE BUILD'S OWN RELEASE LINE ("1.35"), not a literal. The startup cases feed
+// SystemMessages a line by hand, but a save writes lastLine from the line the
+// DLL was built as (WhatsNew::currentLine), so a literal here passes only
+// until the next minor bump - "1.34" went red the day 1.35.0 was closed.
+const char* const kLine = VER_STRINGIZE(VER_MAJOR) "." VER_STRINGIZE(VER_MINOR);
+const std::string kUpdatedTo = std::string("UPDATED TO ") + kLine;
+const std::string kStoredLine = std::string("lastLine=") + kLine;
 
 // The settings folder exists once a startup has run; a case that writes its
 // INI before the first startup makes it.
@@ -283,12 +303,12 @@ TEST_CASE("messages: \"Updated to\" goes after its time on the card; the welcome
         REQUIRE(host.loaded());
         startQuiet(host);
         onTrackQuiet(host);
-        host.messagesStartup(/*fresh=*/false, "1.34", "1.33");
+        host.messagesStartup(/*fresh=*/false, kLine, "1.33");
         host.draw();
         int onCard = -1;
         REQUIRE(host.startupMessage(&onCard) == MSG_UPDATED);
         CHECK(onCard == MSG_UPDATED);
-        CHECK(dashSays(host, "UPDATED TO 1.34"));
+        CHECK(dashSays(host, kUpdatedTo.c_str()));
         CHECK(dashSays(host, "Click here to see what's new"));
 
         host.startupMessageAdvance(4000);
@@ -302,7 +322,7 @@ TEST_CASE("messages: \"Updated to\" goes after its time on the card; the welcome
         REQUIRE(host.save());
         host.shutdown();
     }
-    CHECK(ini::readFile(kIniPath).find("lastLine=1.34") != std::string::npos);   // told once
+    CHECK(ini::readFile(kIniPath).find(kStoredLine) != std::string::npos);   // told once
 
     // The welcome never times out: however long it is up, riding or not, it is
     // still there; only an answer ends it.
@@ -369,7 +389,7 @@ TEST_CASE("messages: a Dash step answers the message; an update for this launch 
         REQUIRE(host.loaded());
         startQuiet(host);
         onTrackQuiet(host);
-        host.messagesStartup(/*fresh=*/false, "1.34", "1.33");
+        host.messagesStartup(/*fresh=*/false, kLine, "1.33");
         host.draw();
         REQUIRE(host.startupMessage() == MSG_UPDATED);
         REQUIRE(host.injectHotkey("dash_prev"));
@@ -378,7 +398,7 @@ TEST_CASE("messages: a Dash step answers the message; an update for this launch 
         REQUIRE(host.save());
         host.shutdown();
     }
-    CHECK(ini::readFile(kIniPath).find("lastLine=1.34") != std::string::npos);
+    CHECK(ini::readFile(kIniPath).find(kStoredLine) != std::string::npos);
 }
 
 TEST_CASE("messages: the menu opening lands on the tab the message names") {
@@ -482,7 +502,7 @@ TEST_CASE("messages: a click on the Dash's card opens the tab the message names"
     REQUIRE(host.loaded());
     startQuiet(host);
     onTrackQuiet(host);
-    host.messagesStartup(/*fresh=*/false, "1.34", "1.33");
+    host.messagesStartup(/*fresh=*/false, kLine, "1.33");
     host.draw();
     REQUIRE(host.startupMessage() == MSG_UPDATED);
     clickDash(host);
@@ -534,7 +554,7 @@ TEST_CASE("messages: a Dash switched off shows for the update messages, not the 
         host.setUpdateCheckEnabled(checker);
         onTrackQuiet(host);
         REQUIRE(host.setHudVisible("dash_hud", false));
-        host.messagesStartup(/*fresh=*/false, "1.34", "1.33");
+        host.messagesStartup(/*fresh=*/false, kLine, "1.33");
         host.draw();
         REQUIRE(host.startupMessage() == MSG_UPDATED);
         CHECK(host.dashBorrowed() == (checker ? 1 : 0));
@@ -689,7 +709,8 @@ TEST_CASE("messages: a stats write that fails says so once") {
     Sleep(1700);
     host.draw();
     CHECK(host.messagesPosted() == before + 1);
-    CHECK(host.lastMessage().rfind("Stats not saved|Could not write mxbmrp3_stats.json. Is it read-only?|"
+    // A directory in the file's place: Windows refuses the replace.
+    CHECK(host.lastMessage().rfind("Stats not saved|Windows blocked mxbmrp3_stats.json. Antivirus or OneDrive?|"
                                    "triangle-exclamation|-1|1", 0) == 0);
     // The writer retries at the next save point; the player already knows.
     host.runInit(1);
@@ -732,6 +753,99 @@ TEST_CASE("messages: an unreadable stats file is copied aside before anything ov
     CHECK(copies == 1);
     CHECK(ini::readFile(copy) == broken);
     DeleteFileA(copy.c_str());
+}
+
+TEST_CASE("messages: a settings save that fails names the cause: read-only, or held by another program") {
+    cleanSaveDir();
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    startQuiet(host);
+    REQUIRE(host.save());                          // a file to protect
+    const std::string before = ini::readFile(kIniPath);
+
+    REQUIRE(SetFileAttributesA(kIniPath.c_str(), FILE_ATTRIBUTE_READONLY));
+    unsigned int posted = host.messagesPosted();
+    CHECK_FALSE(host.save());
+    CHECK(host.messagesPosted() == posted + 1);
+    CHECK(host.lastMessage().rfind("Settings not saved|mxbmrp3_settings.ini is read-only. Untick it in Properties.|"
+                                   "triangle-exclamation|", 0) == 0);
+    REQUIRE(SetFileAttributesA(kIniPath.c_str(), FILE_ATTRIBUTE_NORMAL));
+    CHECK(host.save());                            // lands, and once read back (pollSaveResult)
+    Sleep(1700);                                   // the next failure may speak again
+    host.draw();
+    CHECK(ini::readFile(kIniPath) == before);
+
+    // Held open without delete or write sharing. The replace reports that as
+    // access denied, not as a sharing violation, which is why that line names the
+    // usual holders; and the in-place fallback cannot write it either.
+    HANDLE held = CreateFileA(kIniPath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    REQUIRE(held != INVALID_HANDLE_VALUE);
+    posted = host.messagesPosted();
+    CHECK_FALSE(host.save());
+    CHECK(host.messagesPosted() == posted + 1);
+    CHECK(host.lastMessage().rfind("Settings not saved|Windows blocked mxbmrp3_settings.ini. Antivirus or OneDrive?|"
+                                   "triangle-exclamation|", 0) == 0);
+    CloseHandle(held);
+    host.shutdown();
+}
+
+// The fallback (AtomicFileWriter's writeInPlace): a holder that shares writing
+// but not deleting refuses the rename and allows an in-place write, the shape of
+// a scanner or sync tool that blocks the swap and not the file. The save lands,
+// nothing is announced, and the log says it went the other way.
+TEST_CASE("messages: a settings save refused the atomic way lands in place, quietly, and is logged") {
+    cleanSaveDir();
+    const std::string logPath = std::string(kSaveWin) + "mxbmrp3\\mxbmrp3_log.txt";
+    {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        startQuiet(host);
+        REQUIRE(host.save());
+        REQUIRE(ini::writeFile(kIniPath, "; stale\n"));
+        HANDLE held = CreateFileA(kIniPath.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                  nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        REQUIRE(held != INVALID_HANDLE_VALUE);
+        const unsigned int posted = host.messagesPosted();
+        CHECK(host.save());
+        Sleep(1700);
+        host.draw();
+        CHECK(host.messagesPosted() == posted);   // saved: nothing to tell the player
+        CloseHandle(held);
+        CHECK(ini::readFile(kIniPath).find("[Settings]") != std::string::npos);   // the new bytes
+        host.shutdown();
+    }
+    CHECK(ini::readFile(logPath).find("saved in place instead") != std::string::npos);
+}
+
+TEST_CASE("messages: a settings file that cannot be opened is left as it is, and the first Draw says so") {
+    cleanSaveDir();
+    const std::string mine = "[Settings]\nversion=1\n\n[General]\nwebServer=0\n; the player's own\n";
+    REQUIRE(ini::writeFile(kIniPath, mine));
+    // Held with no sharing at all through the load, as a sync tool can.
+    HANDLE held = CreateFileA(kIniPath.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING,
+                              FILE_ATTRIBUTE_NORMAL, nullptr);
+    REQUIRE(held != INVALID_HANDLE_VALUE);
+    {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        host.keepStartupMessages();
+        host.startup(kSaveWin);
+        CHECK(host.startupMessage() != MSG_WELCOME);   // it is there: not a fresh install
+        onTrack(host);
+        const unsigned int before = host.messagesPosted();
+        host.draw();
+        CHECK(host.messagesPosted() >= before + 1);
+        CHECK(host.lastMessage().rfind("Settings file unreadable|Left as it is. Settings are not saved this session|"
+                                       "triangle-exclamation|-1|1", 0) == 0);
+        CloseHandle(held);
+        held = INVALID_HANDLE_VALUE;
+        CHECK_FALSE(host.save());                  // readable now, but this session's are defaults
+        host.runDeinit();                          // a leave-track flush
+        host.shutdown();                           // and the shutdown save
+    }
+    if (held != INVALID_HANDLE_VALUE) CloseHandle(held);
+    CHECK(ini::readFile(kIniPath) == mine);
 }
 
 TEST_CASE("messages: a web overlay whose port is taken says so at the first Draw") {

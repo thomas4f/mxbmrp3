@@ -60,6 +60,7 @@ PanelBox::Spec BaseHud::resolvePanelSpec(const ScaledDimensions& dim,
     s.themed = th->hasArt();
     s.band = hasThemedTitleBand();
     s.card = hasThemedContentCard();
+    s.titleInFrame = th->titleInFrame;
     s.hasCaption = m_bShowTitle;
     // The caption's box: the normal tier's GLYPH CELL, band or not and WHATEVER
     // the tier — one figure, so a HUD's band still measures the same as a
@@ -250,7 +251,7 @@ void BaseHud::addPlanBackground(PanelPlan& p, float x, float y,
             bodyCards += static_cast<int>(col.sections.size());
     const int covers = (p.g.hasTitle ? 1 : 0) + (p.g.hasCard ? bodyCards : 0);
     m_fillReserve = 5 * (covers + 1);
-    addBackgroundQuad(x, y, p.width(), p.height());
+    addBackgroundQuad(x, y, p.width(), p.height(), p.H(p.g.frameTop));
     const ThemeAsset* theme = activeTheme();
     // The band: the same nine card sprites at the BAND's scale, at the plan's
     // box. Recorded as a card COVER with its real rect — unlike the legacy

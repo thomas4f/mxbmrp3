@@ -11,6 +11,8 @@
 #include "fmx_manager_internal.h"
 #include "plugin_data.h"
 #include "plugin_constants.h"
+#include "spotter_manager.h"
+#include "spotter_tricks.h"
 #include "../diagnostics/logger.h"
 #include <algorithm>
 
@@ -88,6 +90,15 @@ void FmxManager::updateFromTelemetry(const Unified::TelemetryData& telemetry) {
         if (m_activeTrick.state == Fmx::TrickState::ACTIVE ||
             m_activeTrick.state == Fmx::TrickState::GRACE ||
             m_activeTrick.state == Fmx::TrickState::CHAIN) {
+            // Only a crash that took something with it: a named trick, or a
+            // chain. A plain crash off a jump is crashed_you's business.
+            // Between tricks (CHAIN) the type is still the last BANKED one,
+            // which landed fine - so only the chain counts there.
+            const bool between = m_activeTrick.state == Fmx::TrickState::CHAIN;
+            const Fmx::TrickType lost = between ? Fmx::TrickType::NONE : m_activeTrick.type;
+            if (SpotterTricks::isCallable(lost) || m_score.chainCount > 0) {
+                SpotterManager::getInstance().onTrickCrashed();
+            }
             failTrick(true);  // crashed = true: always kill chain
         }
     }
@@ -433,6 +444,16 @@ void FmxManager::updateTrickDetection(const Unified::TelemetryData& telemetry, f
             // Calculate progress based on current type
             m_activeTrick.progress = calculateProgress(m_activeTrick.type);
 
+            // The spotter's name call: once, when the trick has a name worth
+            // saying and is half done - so a wheelie is called after a second
+            // held, not at every pop, and an air trick mid-air once it has
+            // rotated out of plain Air (spotter_tricks.h).
+            if (!m_trickNameCalled && SpotterTricks::isCallable(m_activeTrick.type) &&
+                m_activeTrick.progress >= SpotterTricks::kNameCallProgress) {
+                m_trickNameCalled = true;
+                SpotterManager::getInstance().onTrickStarted(m_activeTrick.type);
+            }
+
             // Calculate multiplier for rotation tricks (use peaks, same as classification)
             float absPitch = std::abs(m_activeTrick.peakPitch);
             float absRoll = std::abs(m_activeTrick.peakRoll);
@@ -526,6 +547,17 @@ void FmxManager::updateTrickDetection(const Unified::TelemetryData& telemetry, f
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                 now - m_activeTrick.graceStartTime).count();
             float graceSeconds = elapsed / 1000.0f;
+
+            // The spotter's landing call, a moment after touching down rather
+            // than at it: the hard crash usually comes just after the wheels do
+            // (spotter_tricks.h). Checked before the chain step below, so a
+            // grace that ends this frame still calls it first.
+            if (!m_landingCalled && graceSeconds >= SpotterTricks::kLandingCallDelaySec) {
+                m_landingCalled = true;
+                SpotterManager::getInstance().onTrickLanded(m_activeTrick.type,
+                                                           m_activeTrick.multiplier,
+                                                           Fmx::getTrickLevel(m_activeTrick));
+            }
 
             if (graceSeconds >= m_config.landingGracePeriod) {
                 // Grace period passed without crash - enter chain

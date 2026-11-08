@@ -2,12 +2,27 @@
 
 #include <string>
 
+// Why a write failed, as the writer saw it, so a notice can name the cause instead of
+// guessing one (AtomicFileWriter::lastFailure). The log line carries the Windows error code.
+enum class WriteFailure : unsigned char {
+    None,           // the last write succeeded (or there was none)
+    ReadOnly,       // the file has the read-only attribute: Windows will not replace it
+    // Windows refused: another program holds the file open (a sync tool, antivirus, an
+    // editor: the replace reports that as access denied too), folder permissions, or
+    // Controlled Folder Access.
+    AccessDenied,
+    Other           // anything else (disk full, a bad path)
+};
+
 // The plugin's one writer for persisted files (settings, stats, PB traces, tracked riders,
 // rumble profiles, analytics identity, reports), and the thread that does its disk I/O.
 //
 // ATOMIC. Each write goes to a uniquely named temp file and is moved over the target with
 // MoveFileExA(REPLACE_EXISTING | WRITE_THROUGH), so a crash mid-write leaves the old file
-// whole, never a half-written one.
+// whole, never a half-written one. When Windows refuses that (access denied: an antivirus
+// or a sync tool), the bytes are written over the file in place instead, and the log says
+// so (writeInPlace in the .cpp has the why). lastFailure() reports a write only when both
+// ways failed.
 //
 // OFF THE GAME THREAD. submit() hands the bytes to a worker and returns; the game thread
 // pays for building the bytes, not for the disk. A WRITE_THROUGH replace plus antivirus can
@@ -44,6 +59,9 @@ public:
     // also asks this: a failed write is retried at the next save point even when nothing
     // has changed since.
     static bool needsRetry(const std::string& path);
+
+    // Why the last write of `path` failed; WriteFailure::None while needsRetry() is false.
+    static WriteFailure lastFailure(const std::string& path);
 
     // Queued writes that failed since launch. A caller that must know its own write landed
     // (the stats migration deletes the old files only then) compares it around submit+flush.

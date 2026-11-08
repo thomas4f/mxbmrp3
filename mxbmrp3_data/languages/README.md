@@ -29,6 +29,14 @@ A folder named after its language code (`fr`, `sv`, ...) holding:
   An optional `base = fr` makes the pack a variant of another one (`fr-ca` over
   `fr`): what it leaves out is answered by its base.
 - `strings.po` - the translations, in the standard gettext format.
+- `spotter.ini` (optional) - the spotter's lines in this language: the
+  shipped `spotters\default\spotter.ini` with the words changed, plus a
+  `[Words]` section for the numbers and words the plugin puts together
+  itself; a language whose 21..99 are not "tens ones" lists them whole by
+  their digits (`76 = soixante-seize`, as `fr\spotter.ini` does).
+  `sv\spotter.ini` is the worked example. A line left out is spoken
+  in English, and so is everything while another spotter voice pack is
+  picked.
 
 Your own packs go in `Documents\PiBoSo\<Game>\mxbmrp3\languages\<code>\`,
 never in the game's `plugins\mxbmrp3_data\languages\`: the plugin copies them
@@ -98,9 +106,9 @@ back fuzzy, and your other translations are kept.
 ## What a pack does not cover
 
 - The web overlay, which is in English.
-- The spotter's words, spoken and subtitled: they come from its voice pack,
-  which you can reword - see the [Spotter voice](../../docs/spotter.md)
-  guide.
+- The spotter, unless the pack has a `spotter.ini` (above). Its words can
+  also be reworded in a voice pack - see the
+  [Spotter voice](../../docs/spotter.md) guide.
 - Names that come from the game, such as riders, tracks and bikes.
 
 The `pseudo` folder is a test language for developers, listed only with

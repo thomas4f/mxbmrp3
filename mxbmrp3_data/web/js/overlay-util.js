@@ -232,7 +232,23 @@ var availableFonts = {
     "LCD14-Bold": true,
     "LCD7-BoldItalic": true,
     "Doto-Regular": true,
-    "Doto-Bold": true
+    "Doto-Bold": true,
+    "Geist-Regular": true,
+    "Geist-SemiBold": true,
+    "GeistMono-Regular": true,
+    "Inter-Regular": true,
+    "Inter-SemiBold": true,
+    "Manrope-Regular": true,
+    "Manrope-SemiBold": true,
+    "OpenSans-Regular": true,
+    "OpenSans-SemiBold": true,
+    "Outfit-Regular": true,
+    "Outfit-SemiBold": true,
+    "Sora-Regular": true,
+    "Sora-SemiBold": true,
+    "SpaceGrotesk-Regular": true,
+    "SpaceGrotesk-SemiBold": true,
+    "VT323-Regular": true
 };
 
 function applyFonts(fonts) {

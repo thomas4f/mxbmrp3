@@ -69,6 +69,14 @@ public:
     // settings-panel Save button: lit + clickable when dirty, grayed "Saved" when clean.
     bool isDirty() const { return m_settingsDirty; }
 
+    // The last load found the INI THERE but could not open it (locked by a sync
+    // tool or antivirus, permissions), and ran on defaults. Not a missing file,
+    // which is a fresh install. Before any save could replace it, it was copied
+    // aside, or, when even that failed, every settings write is off for the
+    // session so the player's file stays as it is. See keepUnreadableFile().
+    bool lastLoadUnreadable() const { return m_loadUnreadable; }
+    bool writesBlocked() const { return m_writesBlocked; }
+
     // Auto-flush on the track->off-track transitions (RunStop = pits, RunDeinit = exit): if
     // Auto-Save is ON and settings are dirty, serialize + write them now (synchronous, atomic)
     // where a frame hitch is invisible — never during active riding. No-op if Auto-Save is off
@@ -428,4 +436,8 @@ private:
     std::chrono::steady_clock::time_point m_saveCheckAt{};
     bool m_saveFailureAnnounced = false;
     void announceSaveResult(bool ok);
+    // See lastLoadUnreadable(). Set by loadSettingsImpl(), reset by every load.
+    bool m_loadUnreadable = false;
+    bool m_writesBlocked = false;
+    void keepUnreadableFile(const std::string& filePath);
 };

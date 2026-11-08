@@ -69,6 +69,34 @@ inline std::string resolve(const std::vector<std::string>& available,
     return std::string();
 }
 
+// A voice that speaks `language` -- a language pack's folder, "sv" or "pt-BR"
+// -- matched against each voice's locale ("sv-SE"), parallel to `names`. An
+// exact locale wins; else the first with the same language ("sv" takes the
+// first Swedish voice whatever its region). "" when none, or no language.
+inline std::string forLanguage(const std::vector<std::string>& names,
+                               const std::vector<std::string>& locales,
+                               const std::string& language) {
+    auto lower = [](std::string v) {
+        for (char& c : v) {
+            if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+            if (c == '_') c = '-';
+        }
+        return v;
+    };
+    auto primary = [](const std::string& v) { return v.substr(0, v.find('-')); };
+    const std::string want = lower(language);
+    if (want.empty()) return std::string();
+    const size_t n = names.size() < locales.size() ? names.size() : locales.size();
+    for (size_t i = 0; i < n; ++i) {
+        if (lower(locales[i]) == want) return names[i];
+    }
+    for (size_t i = 0; i < n; ++i) {
+        const std::string have = lower(locales[i]);
+        if (!have.empty() && primary(have) == primary(want)) return names[i];
+    }
+    return std::string();
+}
+
 // What the settings row SHOWS for a voice. Every Windows voice is named
 // "Microsoft <who> - English (United Kingdom)", longer than the row's value
 // field — so drawn whole, every one of them is cut to the same leading

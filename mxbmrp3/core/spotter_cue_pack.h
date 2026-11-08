@@ -122,6 +122,14 @@
 //     the one finish worth hearing. finished_other is DEFAULT-QUIET for the
 //     same reason the pit traffic is: on a full grid it is a callout per
 //     rider as the flag falls, and none of them is about your race)
+//   trick_started, trick_landed, trick_crashed, trick_combo  (your freestyle
+//     tricks, {trick} / {combo_count}; Tricks category, which ships OFF and
+//     never speaks in a race session. The moments are spotter_tricks.h's)
+//   achievement_<id>               (ONE KEY PER ACHIEVEMENT, generated from the
+//     catalogue in achievements.h rather than listed here: you earned that
+//     row's next tier, {achievement} / {tier}. Achievements category, MX
+//     Bikes only. A new catalogue row is a new cue, and the census
+//     fails until the shipped pack gives it a line)
 //   voice_preview                        (NOT a race cue: the sample line the
 //     settings menu plays when you cycle onto this pack. Absent, the plugin
 //     builds one from chunks the format guarantees - rider.wav, num_*,
@@ -129,7 +137,7 @@
 //     to show off your own recorded segments; an empty value mutes it. It
 //     never reaches the subtitle feed.)
 //
-// VARIANTS: a cue may define alternates as <key>_2 .. <key>_9 (the plain key
+// VARIANTS: a cue may define alternates as <key>_2 .. <key>_99 (the plain key
 // is variant 1), each a complete cue row - its own phrase and optionally its
 // own _wav/_mix. One is picked at random per firing, so "Rider behind." /
 // "On your tail." / "Pressure from behind." rotate instead of repeating. A
@@ -154,6 +162,17 @@
 // known just omits it, keeping the rest of the recipe. The phrase template
 // still provides the subtitle text ({penalty_seconds} expands to words there too).
 //
+// EVERY OTHER VARIABLE works in a mix too, spoken word by word from clips
+// named after the words: {trick} "double backflip" plays double.wav +
+// backflip.wav, {gap_to_ahead} "one point two" plays num_1 + point + num_2,
+// {tier} "gold" plays gold.wav. The rules (multi-word entries, number runs)
+// are spotter_mix.h spokenChunks. An empty one says nothing, and OPTIONAL
+// GROUPS drop whole exactly as in a phrase:
+//
+//   lap_completed_mix = p.wav {position} [ to.wav {rider_ahead} ]
+//
+// A word the pack has no clip for (a rider's name) fails the mix to TTS.
+//
 // JOIN TIGHTNESS is the one thing a mix has that a pre-baked clip doesn't:
 // how the pieces meet. It is per-PACK, because it is a property of how that
 // voice was rendered, not of any one cue:
@@ -170,6 +189,28 @@
 // spotter_mix.h assemble(). The value is in the voice's OWN time - playback
 // speed scales it, so a faster spotter does not keep unnaturally wide joins.
 //
+// TAKING TURNS. Clips play one at a time and each one finishes before the
+// next starts - except a call that cannot wait (a rider alongside or behind,
+// a crash ahead; cutsInCue below), which cuts the clip in progress off. A
+// pack can soften that cut with FILLERS, a stumble played first:
+//
+//   [Mix]
+//   interrupt = uh.wav err.wav     ; one picked at random per cut
+//
+// They play only when an urgent call cuts off a clip that was not itself
+// one; nothing else ever hears them, so they need no subtitle and no row in
+// [Cues]. Same no-path rule as _wav; absent means a plain cut.
+//
+// LEAD-INS are the same idea without the interruption: now and then a line
+// opens with a soft sound, the way a person clears their throat first.
+//
+//   [Mix]
+//   lead_in = uh.wav ahem.wav      ; one picked at random
+//   lead_in_chance = 15            ; percent of lines, 0-100 (absent: 0)
+//
+// Never on a call that cuts in or describes a rider alongside (those cannot
+// afford the half second), and never on top of an interrupt filler.
+//
 // A pack may carry all 1000 number chunks (best prosody) or just num_0..99
 // plus hundred.wav and oh.wav (~104 chunks): a missing three-digit chunk
 // stitches from its hundreds split ("one | forty two") automatically - see
@@ -184,6 +225,7 @@
 #include <string>
 #include <vector>
 
+#include "achievements.h"
 #include "event_log_types.h"
 #include "plugin_utils.h"
 #include "spotter_mix.h"
@@ -207,29 +249,54 @@ struct Pack {
     std::map<std::string, std::string> phrases;
     std::map<std::string, std::string> wavs;
     std::map<std::string, std::vector<std::string>> mixes;
+    // [Words] - the words the plugin assembles (numbers, "rider", a trick's
+    // name), English = translation. Read from a LANGUAGE's spotter.ini only
+    // (SpotterManager::reloadCuePack); a voice pack's are ignored, because a
+    // recorded pack's clips say the English. See SpotterPhrase::say.
+    std::map<std::string, std::string> words;
     // [Mix] gap_ms - how the pack's own clips want to be joined. Absent means
     // "use the plugin's default", which is NOT the same as 0: a pack that
     // deliberately butt-joins says so, and must not be overridden by a future
     // change to that default.
     bool hasGapMs = false;
     int gapMs = 0;
+    // [Mix] interrupt - the fillers played before an urgent call that cuts a
+    // clip off (see TAKING TURNS above). Empty means a plain cut.
+    std::vector<std::string> interruptFillers;
+    // [Mix] lead_in / lead_in_chance (see TAKING TURNS above).
+    std::vector<std::string> leadIns;
+    int leadInChance = 0;
     // Mix rows dropped at parse time, as "<key> (<token>)". Kept so the
     // loader can SAY so: a dropped recipe is invisible otherwise - the cue
     // still speaks, just through TTS, which on Wine means not at all.
     std::vector<std::string> rejectedMixes;
+    // Whether any row is a position row (spotter_position_rows.h), set once
+    // at load so a pack without them costs a cue no lookups.
+    bool hasPositionRows = false;
     bool empty() const {
         return phrases.empty() && wavs.empty() && mixes.empty();
     }
 };
 
-// Strip a `_2`..`_9` variant suffix, so `rider_behind_4` is recognised as the
-// cue `rider_behind`. Anything else is returned unchanged.
+// The highest alternate a cue may have: <key>_2 .. <key>_99. Nine was plenty
+// for a text pack; a RECORDED pack has no variables to vary a line with, so
+// its variety is all in the alternates (a trick callout wants dozens).
+constexpr int kMaxVariant = 99;
+
+// Strip a `_2`..`_99` variant suffix, so `rider_behind_4` and
+// `trick_landed_27` are recognised as their cues. Anything else - `_1`,
+// `_0`, a leading zero, `_100` - is returned unchanged.
 inline std::string stripVariantSuffix(const std::string& key) {
-    if (key.size() > 2 && key[key.size() - 2] == '_' &&
-        key.back() >= '2' && key.back() <= '9') {
-        return key.substr(0, key.size() - 2);
+    const size_t us = key.rfind('_');
+    if (us == std::string::npos || us == 0) return key;
+    const size_t digits = key.size() - us - 1;
+    if (digits < 1 || digits > 2 || key[us + 1] == '0') return key;
+    int n = 0;
+    for (size_t i = us + 1; i < key.size(); ++i) {
+        if (key[i] < '0' || key[i] > '9') return key;
+        n = n * 10 + (key[i] - '0');
     }
-    return key;
+    return (n >= 2 && n <= kMaxVariant) ? key.substr(0, us) : key;
 }
 
 // The stable cue key for an event, or nullptr for events that are never
@@ -256,8 +323,45 @@ struct CueKeyInfo {
     SpotterPhrase::Category category;
 };
 
+// The achievement family's prefix: `achievement_` + the catalogue id. One
+// place, because the emitter builds the key from it and the registry below
+// generates the rows from it.
+constexpr const char* kAchievementCuePrefix = "achievement_";
+
+// One generated registry row per catalogue entry. The key and description are
+// built once into storage that lives as long as the registry does, which is
+// what lets CueKeyInfo stay a pair of plain pointers like every literal row.
+inline void appendAchievementCueKeys(std::vector<CueKeyInfo>& keys) {
+    static std::vector<std::string> s_text;
+    if (s_text.empty()) {
+        s_text.reserve(2 * (sizeof(Achievements::kCatalogue) / sizeof(Achievements::kCatalogue[0])));
+        for (const Achievements::Entry& e : Achievements::kCatalogue) {
+            // The tier sentence with its number left out: "Crash ... times in
+            // total". It is the context a voice needs for the line, and the
+            // tab already words it, so nothing here can drift from the tab.
+            const char* desc = (Achievements::isOneShot(e) && e.descOne) ? e.descOne
+                             : e.descMany ? e.descMany : e.descOne;
+            std::string what = std::string("you earned ") + e.title;
+            if (desc) {
+                std::string d = desc;
+                const size_t at = d.find("%s");
+                if (at != std::string::npos) d.replace(at, 2, "...");
+                what += " - " + d;
+            }
+            if (!Achievements::isOneShot(e)) what += " (every tier; {tier} says which)";
+            s_text.push_back(std::string(kAchievementCuePrefix) + e.id);
+            s_text.push_back(std::move(what));
+        }
+    }
+    for (size_t i = 0; i + 1 < s_text.size(); i += 2) {
+        keys.push_back({ s_text[i].c_str(), s_text[i + 1].c_str(),
+                         SpotterPhrase::Category::Achievements });
+    }
+}
+
 inline const std::vector<CueKeyInfo>& allCueKeys() {
-    static const std::vector<CueKeyInfo> kKeys = {
+    static const std::vector<CueKeyInfo> kKeys = [] {
+    std::vector<CueKeyInfo> keys = {
         // -- session ---------------------------------------------------------
         { "session_started", "this session is now active, any kind. The shipped line does NOT state the length: a race hears session_prestart seconds earlier and it is too late to act on by then. The kind-specific rows below keep it, having no prestart before them. If you do want it here, {session_length} is the variable - {session_remaining} can only repeat it" , SpotterPhrase::Category::General },
         { "gate_drop", "the gate physically falls (standing starts only) - NOT the same moment as session_started, which fires a few seconds earlier with the grid still held" , SpotterPhrase::Category::General },
@@ -338,7 +442,15 @@ inline const std::vector<CueKeyInfo>& allCueKeys() {
         { "spectate_target", "the camera cut to a different rider - the auto-director cuts constantly, so this ships silent" , SpotterPhrase::Category::Opponents },
         { "hotkey_triggered", "the Spotter hotkey was pressed" , SpotterPhrase::Category::General },
         { "voice_preview", "cycling onto this pack in the settings. Optional even for a recorded pack - absent, the plugin builds a preview from the number clips every pack has - and it never reaches the subtitle" , SpotterPhrase::Category::General },
+        // -- your tricks -------------------------------------------------------
+        { "trick_started", "your trick has a name worth saying and is half done: a wheelie after a second held, an air trick mid-air once it has rotated into one. Never plain Air or Drift, never in a race. Deliberately NO {trick}: the name can still change before the trick is done (a scrub becomes a whip), so it is only said on trick_landed" , SpotterPhrase::Category::Tricks },
+        { "trick_landed", "you APPEAR to have landed it - still upright 0.4 s after touching down, which is before the trick is confirmed, so a crash can still follow. {trick} has its multiplier (\"double backflip\")" , SpotterPhrase::Category::Tricks },
+        { "trick_crashed", "you went down with a named trick or a live chain - the chain is gone. NO {trick}: a trick that never landed was never really that trick" , SpotterPhrase::Category::Tricks },
+        { "trick_combo", "a chain of three or more tricks banked. {combo_count}" , SpotterPhrase::Category::Tricks },
     };
+    appendAchievementCueKeys(keys);
+    return keys;
+    }();
     return kKeys;
 }
 
@@ -394,7 +506,21 @@ inline bool isPerishableCue(const std::string& key) {
     return key == "rider_left" || key == "rider_right" ||
            key == "riders_both_sides" ||
            key == "rider_behind" || key == "rider_behind_clear" ||
-           key == "lapping_traffic";
+           key == "lapping_traffic" ||
+           // A trick's name called after it has landed, or "stuck it" after
+           // the crash that followed, is the wrong line rather than a late one.
+           key == "trick_started" || key == "trick_landed";
+}
+
+// The calls that may cut a clip in progress off (spotter_queue.h, TAKING
+// TURNS in the header): where a rider is right now, and a crash ahead. Each
+// is short and is the one call that is wrong if it waits. NOT the other
+// perishable cues: "clear", a backmarker or a trick line can wait a second,
+// and if it waits too long it expires instead.
+inline bool cutsInCue(const std::string& key) {
+    return key == "rider_left" || key == "rider_right" ||
+           key == "riders_both_sides" || key == "rider_behind" ||
+           key == "hazard_ahead" || key == "wrong_way_ahead";
 }
 
 inline bool isCueKey(const std::string& key) {
@@ -472,6 +598,7 @@ inline Pack parse(const std::string& text) {
     bool inCues = false;
     bool inMix = false;
     bool inPack = false;
+    bool inWords = false;
     size_t pos = 0;
     while (pos <= text.size()) {
         size_t eol = text.find('\n', pos);
@@ -498,6 +625,18 @@ inline Pack parse(const std::string& text) {
             inCues = (tag == "[cues]");
             inMix = (tag == "[mix]");
             inPack = (tag == "[pack]");
+            inWords = (tag == "[words]");
+            continue;
+        }
+        if (inWords) {
+            // English = translation. Both sides keep their inner spaces
+            // ("dropped back"); an empty translation is a typo, not a mute.
+            const size_t eq = line.find('=');
+            if (eq == std::string::npos) continue;
+            const size_t ke = line.find_last_not_of(ws, eq == 0 ? 0 : eq - 1);
+            const size_t vb = line.find_first_not_of(ws, eq + 1);
+            if (eq == 0 || ke == std::string::npos || vb == std::string::npos) continue;
+            pack.words[line.substr(0, ke + 1)] = line.substr(vb);
             continue;
         }
         if (inPack) {
@@ -528,10 +667,37 @@ inline Pack parse(const std::string& text) {
         const size_t vb = value.find_first_not_of(ws);
         value = (vb == std::string::npos) ? std::string() : value.substr(vb);
 
+        // A wav/chunk name must not escape the pack folder: reject path
+        // separators and parent references outright (trust boundary - packs
+        // are shared files).
+        auto safeName = [](const std::string& n) {
+            return n.find('/') == std::string::npos &&
+                   n.find('\\') == std::string::npos &&
+                   n.find("..") == std::string::npos;
+        };
+
+        if (inMix && (key == "interrupt" || key == "lead_in")) {
+            // Whitespace-separated wav names. An unsafe one is skipped alone:
+            // a filler is decoration, so losing one costs nothing but itself.
+            std::vector<std::string>& out =
+                key == "interrupt" ? pack.interruptFillers : pack.leadIns;
+            out.clear();
+            size_t i = 0;
+            while (i < value.size()) {
+                const size_t tb = value.find_first_not_of(" \t", i);
+                if (tb == std::string::npos || value[tb] == ';' || value[tb] == '#') break;
+                size_t te = value.find_first_of(" \t", tb);
+                if (te == std::string::npos) te = value.size();
+                const std::string tok = value.substr(tb, te - tb);
+                if (safeName(tok)) out.push_back(tok);
+                i = te;
+            }
+            continue;
+        }
         if (inMix) {
             // Numeric, so an inline comment IS strippable here (unlike a cue
             // phrase, where ';' is legitimate text).
-            if (key != "gap_ms") continue;
+            if (key != "gap_ms" && key != "lead_in_chance") continue;
             const size_t sc = value.find_first_of(";#");
             if (sc != std::string::npos) value = value.substr(0, sc);
             const size_t ve = value.find_last_not_of(ws);
@@ -552,19 +718,15 @@ inline Pack parse(const std::string& text) {
                 if (n > 100000) { n = -1; break; }
             }
             if (n < 0) continue;               // junk: keep the default
+            if (key == "lead_in_chance") {
+                pack.leadInChance = sign < 0 ? 0 : (n > 100 ? 100 : n);
+                continue;
+            }
             pack.gapMs = sign * n;             // assemble() clamps the range
             pack.hasGapMs = true;
             continue;
         }
 
-        // A wav/chunk name must not escape the pack folder: reject path
-        // separators and parent references outright (trust boundary - packs
-        // are shared files).
-        auto safeName = [](const std::string& n) {
-            return n.find('/') == std::string::npos &&
-                   n.find('\\') == std::string::npos &&
-                   n.find("..") == std::string::npos;
-        };
         auto hasSuffix = [&key](const char* suffix) {
             const size_t len = 4;  // both suffixes are 4 chars
             return key.size() > len &&
@@ -576,18 +738,43 @@ inline Pack parse(const std::string& text) {
                 pack.wavs[key.substr(0, key.size() - 4)] = value;
             }
         } else if (hasSuffix("_mix")) {
-            // Whitespace-separated tokens: wav names or {event_rider}/{event_time}.
-            // One unsafe token rejects the whole sequence - a mix with a
-            // hole in it would drop words silently.
+            // Whitespace-separated tokens: wav names, {placeholders} and the
+            // optional-group brackets, which may touch their neighbours
+            // ("[to.wav {rider_ahead}]") and are split off here. One unsafe
+            // token, a nested or unclosed group, or an empty one rejects the
+            // whole sequence - a mix with a hole in it would drop words
+            // silently.
             std::vector<std::string> tokens;
             bool ok = true;
+            bool open = false;
+            size_t groupStart = 0;
+            auto bracket = [&](char mark) {
+                if ((mark == '[') == open ||
+                    (mark == ']' && tokens.size() == groupStart)) {
+                    ok = false;
+                    rejected.push_back(key + " (" + std::string(1, mark) + ")");
+                    return;
+                }
+                open = mark == '[';
+                if (open) groupStart = tokens.size() + 1;
+                tokens.push_back(std::string(1, mark));
+            };
             size_t tb = 0;
-            while (tb < value.size()) {
+            while (tb < value.size() && ok) {
                 const size_t te = value.find_first_of(" \t", tb);
-                const std::string tok =
+                std::string tok =
                     value.substr(tb, te == std::string::npos ? std::string::npos
                                                              : te - tb);
-                if (!tok.empty()) {
+                while (ok && !tok.empty() && tok.front() == '[') {
+                    bracket('[');
+                    tok.erase(0, 1);
+                }
+                size_t closes = 0;
+                while (!tok.empty() && tok.back() == ']') {
+                    ++closes;
+                    tok.pop_back();
+                }
+                if (ok && !tok.empty()) {
                     // A `{...}` token is a PLACEHOLDER and must be one the
                     // mixer knows; anything else is a wav filename. Checking
                     // only two of the placeholders let the other three - and
@@ -603,8 +790,13 @@ inline Pack parse(const std::string& text) {
                     }
                     tokens.push_back(tok);
                 }
+                while (ok && closes--) bracket(']');
                 if (te == std::string::npos) break;
                 tb = te + 1;
+            }
+            if (ok && open) {
+                ok = false;
+                rejected.push_back(key + " ([)");
             }
             if (ok && !tokens.empty()) {
                 pack.mixes[key.substr(0, key.size() - 4)] = tokens;
@@ -625,7 +817,7 @@ inline std::vector<std::string> variantKeys(const Pack& pack,
                                             const std::string& baseKey) {
     std::vector<std::string> keys;
     keys.push_back(baseKey);
-    for (int n = 2; n <= 9; ++n) {
+    for (int n = 2; n <= kMaxVariant; ++n) {
         const std::string k = baseKey + "_" + std::to_string(n);
         if (pack.phrases.count(k) || pack.wavs.count(k) ||
             pack.mixes.count(k)) {

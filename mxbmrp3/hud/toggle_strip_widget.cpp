@@ -208,6 +208,8 @@ ToggleStripWidget::Click ToggleStripWidget::clicked(int* tabId) const {
     // A click needs the cursor, so the revealed Settings icon alone never takes one.
     if (m_show != Show::All || isHeldBack()) return Click::None;
     const InputManager& input = InputManager::getInstance();
+    // owns-click-exempt: dispatched from processKeyboardInput, before the frame's pick, and it
+    // sits over every HUD but the Direct GL prompt (staysOnTop)
     if (!input.shouldShowCursor() || !input.getLeftButton().isClicked()) return Click::None;
     const CursorPosition& cursor = input.getCursorPosition();
     if (!cursor.isValid) return Click::None;

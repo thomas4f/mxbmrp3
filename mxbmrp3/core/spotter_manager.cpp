@@ -9,6 +9,8 @@
 #include "plugin_names.h"
 
 #include "asset_manager.h"   // userAssetDir(), for the shadow warning below
+#include "chat_text.h"       // cp1252ToUtf8, for spokenText
+#include "i18n.h"
 #include "pack_ini_path.h"
 #include "../diagnostics/logger.h"
 
@@ -26,6 +28,9 @@ constexpr const char* kPackRoot = "plugins\\" MXB_DATA_DIR_NAME "\\spotters\\";
 // The shipped pack, which is the ONLY place the spotter's wording lives —
 // every other pack is an overlay on it. See reloadCuePack.
 constexpr const char* kBasePackName = "default";
+// A language pack's spotter lines: languages\<folder>\spotter.ini, beside its
+// strings.po, so a translator ships one folder (see reloadCuePack).
+constexpr const char* kLanguageSpotterFile = "spotter.ini";
 
 // Default join between stitched chunks, for a pack that does not state one.
 // The low end of the 60-90ms range reads best once the radio compression
@@ -169,7 +174,42 @@ bool readPackFile(const std::string& name, SpotterCuePack::Pack& out,
         return false;
     }
 }
+// The active language's spotter.ini, if it has one. False (silently) when it
+// does not: most languages translate the menus only, and the spotter then
+// speaks English.
+bool readLanguageFile(const std::string& folder, SpotterCuePack::Pack& out) {
+    if (folder.empty() || folder.find('/') != std::string::npos ||
+        folder.find('\\') != std::string::npos ||
+        folder.find("..") != std::string::npos) {
+        return false;
+    }
+    const std::string path = std::string(AssetManager::DISCOVERY_DIR) + "\\" +
+                             AssetManager::LANGUAGES_SUBDIR + "\\" + folder +
+                             "\\" + kLanguageSpotterFile;
+    try {
+        std::ifstream file(path, std::ios::binary);
+        if (!file.is_open()) return false;
+        std::ostringstream buffer;
+        buffer << file.rdbuf();
+        out = SpotterCuePack::parse(buffer.str());
+        return true;
+    } catch (...) {
+        DEBUG_WARN_F("Spotter: failed to read language file '%s'", path.c_str());
+        return false;
+    }
+}
 }  // namespace
+
+void SpotterManager::onLanguageChanged() {
+    if (I18n::activeFolder() == m_languageLoadedFor) return;
+    reloadCuePack();
+}
+
+std::string SpotterManager::spokenText(const char* english) const {
+    if (!english) return std::string();
+    if (m_spokenLanguage.empty()) return english;
+    return ChatText::cp1252ToUtf8(I18n::tr(english));
+}
 
 // The active vocabulary: the SHIPPED pack's words, with the selected pack's
 // laid over them.
@@ -186,6 +226,14 @@ bool readPackFile(const std::string& name, SpotterCuePack::Pack& out,
 // falling mute. Audio does NOT: wavs, mixes and the join gap come from the
 // selected pack alone, because a clip is only findable relative to the folder
 // it shipped in — the same reason a _2 variant plays only its own audio.
+//
+// THE LANGUAGE LAYER goes over the SHIPPED pack only: the active language's
+// spotter.ini (languages\<folder>\), when no other voice pack is selected. A
+// cue the translation leaves out is still spoken (in English), and a
+// translated cue owns its alternates exactly as a selected pack's does. Its
+// [Words] replace the words the plugin assembles (SpotterPhrase::say); a
+// voice pack's [Words] are ignored. With a voice pack selected the spotter
+// speaks that pack, in English - the block below says why.
 void SpotterManager::reloadCuePack() {
     m_pack = SpotterCuePack::Pack{};
     m_packDir.clear();
@@ -227,6 +275,30 @@ void SpotterManager::reloadCuePack() {
         overlaid = false;
     }
 
+    // The language layer, for the SHIPPED pack only. A voice pack you picked
+    // speaks its own words -- a recorded one has English clips, and even a
+    // text one was written in one language -- and the [Words] are global, so
+    // laying them under it would fill its English lines with Swedish numbers
+    // ("Rider sju behind"). One sentence, one language: with a voice pack
+    // selected the spotter stays English.
+    const std::string previousLanguage = m_spokenLanguage;
+    m_languageLoadedFor = I18n::activeFolder();
+    m_spokenLanguage.clear();
+    SpotterPhrase::spokenWords().clear();
+    SpotterCuePack::Pack lang;
+    if (!overlaid && readLanguageFile(m_languageLoadedFor, lang)) {
+        m_spokenLanguage = m_languageLoadedFor;
+        base.phrases = SpotterCuePack::mergePhrases(base, lang);
+        for (const auto& kv : lang.words) SpotterPhrase::spokenWords()[kv.first] = kv.second;
+        DEBUG_INFO_F("Spotter: language '%s' (%zu lines, %zu words)",
+                     m_spokenLanguage.c_str(), lang.phrases.size(), lang.words.size());
+    } else if (overlaid && !m_languageLoadedFor.empty()) {
+        DEBUG_INFO_F("Spotter: voice pack '%s' selected - speaking its own "
+                     "words, not language '%s'", m_packName.c_str(),
+                     m_languageLoadedFor.c_str());
+    }
+    if (m_spokenLanguage != previousLanguage) publishTtsVoice();
+
     // The picker's LABEL only. Cycling and the stored setting stay FOLDER names
     // (a pack is stored by name, never by index or title -- the asset-pack
     // invariant), so a pack that renames itself can never reassign anyone's
@@ -251,6 +323,10 @@ void SpotterManager::reloadCuePack() {
     const SpotterCuePack::Pack& audio = overlaid ? sel : base;
     m_pack.wavs = audio.wavs;
     m_pack.mixes = audio.mixes;
+    m_pack.interruptFillers = audio.interruptFillers;
+    m_pack.leadIns = audio.leadIns;
+    m_pack.leadInChance = audio.leadInChance;
+    m_pack.hasPositionRows = SpotterCuePack::anyPositionRows(m_pack);
     m_packDir = overlaid ? selDir : baseDir;
     if (audio.hasGapMs) {
         m_mixGapPublished.store(audio.gapMs, std::memory_order_relaxed);
@@ -271,15 +347,17 @@ void SpotterManager::reloadCuePack() {
     // against the user's own pack -- and sends them looking in a file they did
     // not write.
     auto reportUnknown = [&](const std::string& key, const char* from) {
-        if (SpotterCuePack::isCueKey(SpotterCuePack::stripVariantSuffix(key))) {
+        if (SpotterCuePack::isCueKey(SpotterCuePack::cueRoot(key))) {
             return;
         }
         DEBUG_WARN_F("Spotter: pack '%s' has no cue named '%s' - that line "
                      "will never be spoken", from, key.c_str());
     };
     const char* selName = m_packName.c_str();
+    const std::string langName = "languages\\" + m_spokenLanguage;
     auto whose = [&](const std::string& key) {
-        return (overlaid && sel.phrases.count(key)) ? selName : kBasePackName;
+        if (overlaid && sel.phrases.count(key)) return selName;
+        return lang.phrases.count(key) ? langName.c_str() : kBasePackName;
     };
     // Audio comes from ONE pack, so its rows need no per-key lookup -- but which
     // pack that is depends on whether the overlay loaded, and `overlaid` is

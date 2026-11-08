@@ -19,7 +19,9 @@ slices actually appear on screen:
     corner_bl   edge_bottom   corner_br
 
 so you are drawing a panel, not filling in a sprite sheet. The three sets --
-frame, card, button -- stack down the image, in the ini's section order.
+frame, card, button -- stack down the image, in the ini's section order. An
+optional fourth, title (the title band's own art), stacks below them; a
+master's height says whether it has one (see infer_geometry).
 
 EVERY CELL IS THE SAME SQUARE, so the master really is a picture of a panel: a
 stroke drawn across a cell boundary lands on both sides at the same scale, and a
@@ -86,6 +88,9 @@ def gutter_for(corner):
 GUTTER = gutter_for(64)   # 8, the shipped default
 
 SETS = ("frame", "card", "button")
+# The optional title band art (ThemeAsset::titleCenterSprite). LAST, so a
+# three-set master's cells sit where they always did.
+SETS_WITH_TITLE = SETS + ("title",)
 
 # Row-major, matching the 3x3 picture above.
 PARTS = (
@@ -102,7 +107,11 @@ LABEL = (120, 130, 150, 255)   # label glyphs, drawn in the gutter only
 
 
 def infer_geometry(w, h):
-    """(corner, stretch) for a master of this size, or None if it is not one.
+    """(corner, stretch, sets) for a master of this size, or None if it is not one.
+
+    `sets` is SETS or SETS_WITH_TITLE: the two stackings have different heights
+    for the same width, so the image says which it is. With n sets the height is
+    H = nW - (n-1)c/8, i.e. c = 8(nW - H)/(n-1); n = 3 is the derivation below.
 
     Once the gutter derives from the corner the layout is two equations in two
     unknowns -- W = 2.5c + s and H = 7.25c + 3s -- so eliminating s gives
@@ -115,21 +124,24 @@ def infer_geometry(w, h):
     Solved, then VERIFIED by rebuilding the layout: the algebra assumes the exact
     gutter rule, and a size that merely satisfies the equations is not a master.
     """
-    n = 4 * (3 * w - h)
-    if n <= 0 or n % 8:
-        return None
-    corner = n
-    if corner % 2:                 # stretch = w - 5*corner/2 must be a whole pixel
-        return None
-    stretch = w - (5 * corner) // 2
-    if stretch <= 0 or corner <= 0:
-        return None
-    if layout(corner, stretch)[:2] != (w, h):
-        return None
-    return corner, stretch
+    for sets in (SETS, SETS_WITH_TITLE):
+        k = len(sets)
+        num = 8 * (k * w - h)
+        if num <= 0 or num % (k - 1):
+            continue
+        corner = num // (k - 1)
+        if corner % 8 or corner % 2:   # stretch = w - 5*corner/2 must be a whole pixel
+            continue
+        stretch = w - (5 * corner) // 2
+        if stretch <= 0 or corner <= 0:
+            continue
+        if layout(corner, stretch, sets=sets)[:2] != (w, h):
+            continue
+        return corner, stretch, sets
+    return None
 
 
-def layout(corner=CORNER, stretch=None, gutter=None):
+def layout(corner=CORNER, stretch=None, gutter=None, sets=SETS):
     """(master_w, master_h, {(set, part): rect}, {set: block_top_y}) -- the contract.
 
     `stretch` defaults to the CORNER, i.e. square cells -- so a caller that scales
@@ -148,7 +160,7 @@ def layout(corner=CORNER, stretch=None, gutter=None):
     block_h = sum(row_h) + 2 * g
 
     rects, tops, y0 = {}, {}, g
-    for s in SETS:
+    for s in sets:
         tops[s] = y0
         row_y, y = [], y0
         for h in row_h:
@@ -334,8 +346,8 @@ def draw_text(rows, x, y, text):
         x += 4
 
 
-def make_template(path, corner=CORNER, stretch=None, gutter=None):
-    w, h, rects, tops = layout(corner, stretch, gutter)
+def make_template(path, corner=CORNER, stretch=None, gutter=None, sets=SETS):
+    w, h, rects, tops = layout(corner, stretch, gutter, sets)
     rows = [[GUIDE for _ in range(w)] for _ in range(h)]
     # Cells start fully transparent: the artist paints, and anything unpainted
     # renders as nothing rather than as a colour they did not choose.
@@ -478,7 +490,7 @@ def mean(pixels):
     return tuple(sum(p[i] for p in pixels) / n for i in range(4))
 
 
-def seam_warnings(cells):
+def seam_warnings(cells, sets=SETS):
     """The one art rule nothing else can check.
 
     nine_slice.h: "the edge sprite's inner value must equal the center sprite's
@@ -491,7 +503,7 @@ def seam_warnings(cells):
     centre border it abuts.
     """
     out = []
-    for s in SETS:
+    for s in sets:
         c = cells[(s, "center")]
         checks = (
             ("edge_top", [r[:] for r in cells[(s, "edge_top")]][-1], c[0]),
@@ -547,6 +559,7 @@ def button_warnings(cells):
 def slice_master(master, outdir, name, force_ini=False, corner=None, stretch=None,
                  gutter=None):
     w, h, rows = read_image(master)
+    sets = SETS
     if corner is None or stretch is None:
         guess = infer_geometry(w, h)
         if not guess:
@@ -555,8 +568,8 @@ def slice_master(master, outdir, name, force_ini=False, corner=None, stretch=Non
                 f"stretch wide and 7.25*corner + 3*stretch tall -- 176x512 at the "
                 f"defaults, or any uniform scale of one. Start from --template, or "
                 f"pass --corner/--stretch if the master uses a custom gutter.")
-        corner, stretch = guess
-    mw, mh, rects = layout(corner, stretch, gutter)[:3]
+        corner, stretch, sets = guess
+    mw, mh, rects = layout(corner, stretch, gutter, sets)[:3]
     if (w, h) != (mw, mh):
         raise SystemExit(f"{master}: is {w}x{h}, but --corner {corner} --stretch "
                          f"{stretch} describes a {mw}x{mh} master.")
@@ -586,7 +599,7 @@ def slice_master(master, outdir, name, force_ini=False, corner=None, stretch=Non
             dst.write(src.read())
         written.append(os.path.basename(keep) + "  (source copy)")
 
-    return written, seam_warnings(cells) + button_warnings(cells)
+    return written, seam_warnings(cells, sets) + button_warnings(cells)
 
 
 # ---------------------------------------------------------------------------
@@ -633,11 +646,14 @@ def assemble(theme_dir, out_png):
     def slice_path(s, part):
         return os.path.join(theme_dir, f"{s}_{part}.tga")
 
-    missing = [f"{s}_{p}" for s in SETS for row in PARTS for p in row
+    # The title set rides along when the theme has one (title_center enables it,
+    # as in the plugin); then all nine of its files are required, like the rest.
+    sets = SETS_WITH_TITLE if os.path.exists(slice_path("title", "center")) else SETS
+    missing = [f"{s}_{p}" for s in sets for row in PARTS for p in row
                if not os.path.exists(slice_path(s, p))]
     if missing:
         raise SystemExit(f"{theme_dir}: missing {len(missing)} slice(s), first "
-                         f"{missing[0]}.tga -- assemble needs all 27")
+                         f"{missing[0]}.tga -- assemble needs every slice of each set")
 
     # Geometry comes from the art rather than the flags: a corner file states the
     # corner size, and an edge's stretched axis states the rest.
@@ -646,7 +662,7 @@ def assemble(theme_dir, out_png):
         raise SystemExit(f"{theme_dir}: frame_corner_tl is {cw}x{ch}, expected square")
 
     cells = {(s, part): read_tga(slice_path(s, part))[2]
-             for s in SETS for row in PARTS for part in row}
+             for s in sets for row in PARTS for part in row}
 
     # SQUARE CELLS when the art allows it, which for a theme whose stretched axes
     # are flat -- every theme authored before square cells existed -- it does: the
@@ -655,13 +671,13 @@ def assemble(theme_dir, out_png):
     # its own size instead of being refused; the master is then not square, and
     # that is the honest answer rather than a lossy one.
     def all_fit(stretch):
-        rects = layout(cw, stretch)[2]
+        rects = layout(cw, stretch, sets=sets)[2]
         return all(can_fit(cell, rects[k][2], rects[k][3]) for k, cell in cells.items())
 
     art_stretch = read_tga(slice_path("frame", "edge_top"))[0]
     stretch = cw if all_fit(cw) else art_stretch
 
-    w, h, rects = layout(cw, stretch)[:3]
+    w, h, rects = layout(cw, stretch, sets=sets)[:3]
     # Clear, not GUIDE: this master is real art, and a gutter painted some opaque
     # grey would read as part of it the moment anyone opened the file.
     rows = [[CLEAR for _ in range(w)] for _ in range(h)]
@@ -731,7 +747,7 @@ def selftest():
     for (mw, mh), want in {(224, 656): (64, 64), (112, 328): (32, 32),
                            (176, 512): (64, 16), (168, 488): (64, 8),
                            (352, 1024): (128, 32), (88, 256): (32, 8)}.items():
-        assert infer_geometry(mw, mh) == want, f"{mw}x{mh} inferred wrong"
+        assert infer_geometry(mw, mh) == want + (SETS,), f"{mw}x{mh} inferred wrong"
     for bogus in ((500, 500), (177, 512), (176, 511), (1, 1)):
         assert infer_geometry(*bogus) is None, f"{bogus} should not read as a master"
 
@@ -778,10 +794,36 @@ def selftest():
             want = read_tga(os.path.join(old, f"{s}_corner_tl.tga"))[2]
             assert got == want, f"{s}_corner_tl changed through the square conversion"
 
+    # THE OPTIONAL TITLE SET: a four-set master infers as one (its height says
+    # so), cuts 36 slices that match their regions, and reassembles to the same
+    # pixels; at every scale the two stackings never read as each other.
+    for c in (32, 64, 128):
+        tw, th = layout(c, sets=SETS_WITH_TITLE)[:2]
+        assert infer_geometry(tw, th) == (c, c, SETS_WITH_TITLE), f"{tw}x{th} title master"
+        assert infer_geometry(*layout(c)[:2]) == (c, c, SETS), "three-set master read as four"
+    tw, th, trects = layout(sets=SETS_WITH_TITLE)[:3]
+    trows = [[px(x, y) for x in range(tw)] for y in range(th)]
+    with tempfile.TemporaryDirectory() as td:
+        src = os.path.join(td, "m4.png")
+        write_png(src, trows)
+        out = os.path.join(td, "t4")
+        written, _ = slice_master(src, out, "t4")
+        assert len([x for x in written if x.endswith(".tga")]) == 36, written
+        for (s_, part), (x, y, cw, ch) in trects.items():
+            got = read_tga(os.path.join(out, f"{s_}_{part}.tga"))[2]
+            assert got == [row[x:x + cw] for row in trows[y:y + ch]], f"{s_}_{part} mismatch"
+        back = os.path.join(td, "back.png")
+        assemble(out, back)
+        brows = read_png(back)[2]          # gutters come back CLEAR; compare the cells
+        for (x, y, cw, ch) in trects.values():
+            assert [r[x:x + cw] for r in brows[y:y + ch]] == \
+                   [r[x:x + cw] for r in trows[y:y + ch]], "title master did not reassemble"
+
     print(f"selftest: {w}x{h} square-cell master round-trips through 27 slices (alpha "
           "included); ini preserved; seam check fires; 2x/4x scale exactly; cells stay "
           "square at any corner; pre-square masters still infer; a pre-square theme "
-          "assembles square losslessly")
+          "assembles square losslessly; a four-set (title) master infers, cuts 36 "
+          "and reassembles")
 
 
 def main():
@@ -804,6 +846,9 @@ def main():
     ap.add_argument("--gutter", type=int, default=None,
                     help="gutter in px (default corner/8, which is what makes a "
                          "uniformly scaled master land on exact pixels)")
+    ap.add_argument("--title", action="store_true",
+                    help="--template only: add the optional title set (title_*.tga, "
+                         "the title band's own art) below the other three")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
 
@@ -817,7 +862,8 @@ def main():
         print(f"wrote {out} ({w}x{h}) -- re-cut with --corner {c} --stretch {st}")
         return 0
     if a.template:
-        w, h = make_template(a.template, a.corner or CORNER, a.stretch, a.gutter)
+        w, h = make_template(a.template, a.corner or CORNER, a.stretch, a.gutter,
+                             SETS_WITH_TITLE if a.title else SETS)
         print(f"wrote {a.template} ({w}x{h}) -- paint inside the cells, "
               f"the gutter is ignored")
         return 0

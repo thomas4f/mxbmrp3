@@ -672,7 +672,7 @@ def check_readme_toc(failures):
     user-facing front door and is read on mirrors and forums where GitHub's
     generated outline does not exist -- so it earns a check instead.
 
-    The two sections ABOVE the block (Features, Get Started) are deliberately
+    The sections ABOVE the block (Features, How It Works, Get Started) are deliberately
     not in it: a reader has already passed them.
     """
     readme = open(os.path.join(REPO, "README.md"), encoding="utf-8").read()
@@ -1454,7 +1454,16 @@ GEOMETRY_SECTIONS = ("panel", "title", "content", "button", "frame", "card")
 # rather than a look. Its values are deliberately larger than a real theme's so each
 # band is thick enough to see, and it turns every [card] switch ON -- the shared
 # geometry turns the bands off, which would leave it unable to show a band at all.
+#
 GEOMETRY_EXEMPT = {"debug"}
+
+# A theme FAMILY shares a geometry of its own: compared within the family, not
+# with the rest. The title-bar themes (Modern, Retro) use `[title] placement =
+# frame`, a different geometry by definition (the band is the frame's top), so
+# they cannot share Carbon's numbers -- but they must still match each other,
+# which is the promise the shared geometry makes to a user switching between them.
+GEOMETRY_FAMILY = {t: "titlebar" for t in
+                   ("modern-dark", "modern-light", "retro-dark", "retro-light")}
 
 
 def check_shipped_pack_skins(failures):
@@ -1569,6 +1578,15 @@ def check_shipped_theme_geometry(failures):
                     keys[f"{section}.{k.strip()}"] = " ".join(v.split())
         geoms[theme] = keys
 
+    families = {}
+    for theme in sorted(geoms):
+        families.setdefault(GEOMETRY_FAMILY.get(theme, ""), []).append(theme)
+    for members in families.values():
+        _compare_theme_geometry(failures, {t: geoms[t] for t in members})
+
+
+def _compare_theme_geometry(failures, geoms):
+    """One family's themes against its first, in sorted order."""
     if len(geoms) < 2:
         return
     ref_name = sorted(geoms)[0]
@@ -1584,8 +1602,8 @@ def check_shipped_theme_geometry(failures):
                 f"theme geometry differs: [{key}] is "
                 f"{'absent' if a is None else repr(a)} in {ref_name} and "
                 f"{'absent' if b is None else repr(b)} in {theme}. Shipped themes "
-                f"share one geometry -- change both, or say why this one is exempt "
-                f"in check_docs.py's GEOMETRY_EXEMPT.")
+                f"share one geometry per family -- change both, or say why this one "
+                f"differs in check_docs.py's GEOMETRY_EXEMPT / GEOMETRY_FAMILY.")
 
 
 def main():

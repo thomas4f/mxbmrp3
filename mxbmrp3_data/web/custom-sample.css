@@ -130,8 +130,13 @@
  * 'IBMPlexSans-SemiBold', 'IBMPlexMono-Regular', 'LCD14-Regular',
  * 'LCD14-Bold', 'Doto-Regular', 'Doto-Bold', 'ChakraPetch-BoldItalic',
  * 'ChakraPetch-SemiBoldItalic', 'Quantico-BoldItalic', 'Tomorrow-BoldItalic',
- * 'Tomorrow-SemiBoldItalic', 'LCD7-BoldItalic'. For a font of your own,
- * add an @font-face here (drop the file in this folder) and reference it. */
+ * 'Tomorrow-SemiBoldItalic', 'LCD7-BoldItalic', 'Geist-Regular',
+ * 'Geist-SemiBold', 'GeistMono-Regular', 'Inter-Regular', 'Inter-SemiBold',
+ * 'Manrope-Regular', 'Manrope-SemiBold', 'OpenSans-Regular',
+ * 'OpenSans-SemiBold', 'Outfit-Regular', 'Outfit-SemiBold', 'Sora-Regular',
+ * 'Sora-SemiBold', 'SpaceGrotesk-Regular', 'SpaceGrotesk-SemiBold', 'VT323-Regular'. For a
+ * font of your own, add an @font-face here (drop the file in this folder)
+ * and reference it. */
 /*
 :root {
     --font:         'RobotoMono-Regular', monospace !important;   body / data

@@ -17,6 +17,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "gap_chart_picks.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
 #include "session_charts_math.h"
@@ -48,16 +49,21 @@ public:
     TestSeries testSeries() const;
 
     // The Dash's Gap chart page: the Gap chart's series (gap to the leader at each
-    // lap, or each sector with Sector points in a race) of the displayed rider and
-    // the riders just ahead of and behind them in the classification now; a series
-    // is empty where there is no such rider, and its race number -1. Collects the
-    // whole field, so it is called on a rebuild, never per frame.
-    struct NeighbourGaps {
-        std::vector<long long> ahead, mine, behind;
-        int aheadNum = -1, mineNum = -1, behindNum = -1;
+    // lap, or each sector with Sector points in a race) of the riders
+    // GapChartPicks picks -- the leader, the displayed rider and the riders
+    // nearest them -- in the classification order now. Collects the whole field,
+    // so it is called on a rebuild, never per frame.
+    struct GapChartLine {
+        std::vector<long long> gaps;
+        int raceNum = -1;
+        GapChartPicks::Role role = GapChartPicks::Role::MINE;
+    };
+    struct GapChartLines {
+        GapChartLine lines[GapChartPicks::MAX_LINES];   // [0, count): leader first
+        int count = 0;
         int pointsPerLap = 1;   // the resolution: GAME_SECTOR_COUNT with Sector points
     };
-    void neighbourGaps(NeighbourGaps& out) const;
+    void gapChartLines(GapChartLines& out) const;
     // Right margin reserved for the "#999" line tag (Line labels), here and on the
     // Dash's Gap chart page.
     static constexpr int TAG_WIDTH_CHARS = 5;

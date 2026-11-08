@@ -17,6 +17,7 @@
 #include "doctest.h"
 
 #include "core/spotter_cue_pack.h"
+#include "core/spotter_position_rows.h"
 
 using namespace SpotterCuePack;
 
@@ -95,6 +96,87 @@ TEST_CASE("parse: mix sequences tokenize; one unsafe token rejects whole") {
     CHECK(p.phrases.count("fastest_lap_other_mix") == 0);  // suffix stripped
 }
 
+// A recorded pack's only variety is its alternates, so they go past nine.
+// The suffix must stay unambiguous both ways: every real alternate strips,
+// and nothing that is not one does.
+TEST_CASE("stripVariantSuffix: _2 up to _99, and nothing else") {
+    CHECK(stripVariantSuffix("rider_behind_2") == "rider_behind");
+    CHECK(stripVariantSuffix("trick_landed_9") == "trick_landed");
+    CHECK(stripVariantSuffix("trick_landed_10") == "trick_landed");
+    CHECK(stripVariantSuffix("trick_landed_99") == "trick_landed");
+    for (const char* k : {"trick_landed", "trick_landed_1", "trick_landed_0",
+                          "trick_landed_07", "trick_landed_100", "x_1a",
+                          "_5", "trick_landed_"}) {
+        CHECK_MESSAGE(stripVariantSuffix(k) == k, k);
+    }
+    // Base keys never end in a variant-shaped suffix, or their own name
+    // would be read as an alternate of some shorter cue.
+    for (const CueKeyInfo& info : allCueKeys()) {
+        CHECK_MESSAGE(stripVariantSuffix(info.key) == info.key, info.key);
+    }
+}
+
+// POSITION ROWS (spotter_position_rows.h): `_p1`..`_p99` and `_last` name
+// a cue's line for a place. The grammar is the pack API, so it is pinned
+// exactly, along with the one thing that would make it ambiguous: a real cue
+// whose own name already ends in that shape.
+TEST_CASE("position rows: _p1 up to _p99 and _last, and nothing else") {
+    CHECK(stripPositionSuffix("lap_completed_p1") == "lap_completed");
+    CHECK(stripPositionSuffix("lap_completed_p10") == "lap_completed");
+    CHECK(stripPositionSuffix("lap_completed_p99") == "lap_completed");
+    CHECK(stripPositionSuffix("lap_completed_last") == "lap_completed");
+    for (const char* k : {"lap_completed", "lap_completed_p0", "lap_completed_p07",
+                          "lap_completed_p100", "lap_completed_p", "lap_completed_px",
+                          "_p3", "_last", "lap_completed_2"}) {
+        CHECK_MESSAGE(stripPositionSuffix(k) == k, k);
+    }
+    // Alternates of a position row resolve to the cue too.
+    CHECK(cueRoot("lap_completed_p3_2") == "lap_completed");
+    CHECK(cueRoot("lap_completed_last_12") == "lap_completed");
+    CHECK(cueRoot("lap_completed_7") == "lap_completed");
+    for (const CueKeyInfo& info : allCueKeys()) {
+        CHECK_MESSAGE(cueRoot(info.key) == info.key, info.key);
+    }
+}
+
+TEST_CASE("position rows: last place, then the place's row, then the cue's own") {
+    const Pack p = parse(
+        "[Cues]\n"
+        "lap_completed = Lap done.\n"
+        "lap_completed_p1 = Lap done, you lead.\n"
+        "lap_completed_p2 = Lap done, P two.\n"
+        "lap_completed_p3_wav = p3.wav\n"        // wav-only row counts
+        "lap_completed_last = Lap done, last place.\n");
+    CHECK(anyPositionRows(p));
+    CHECK(positionRowKey(p, "lap_completed", 1, false) == "lap_completed_p1");
+    CHECK(positionRowKey(p, "lap_completed", 2, false) == "lap_completed_p2");
+    CHECK(positionRowKey(p, "lap_completed", 3, false) == "lap_completed_p3");
+    // Last outranks the place's own row: P2 of two is "last place".
+    CHECK(positionRowKey(p, "lap_completed", 2, true) == "lap_completed_last");
+    CHECK(positionRowKey(p, "lap_completed", 40, true) == "lap_completed_last");
+    // No row for the place: the generic line.
+    CHECK(positionRowKey(p, "lap_completed", 11, false) == "lap_completed");
+    CHECK(positionRowKey(p, "lap_completed", 0, false) == "lap_completed");
+    // Rows belong to their cue only.
+    CHECK(positionRowKey(p, "hotkey_triggered", 1, true) == "hotkey_triggered");
+
+    const Pack none = parse("[Cues]\nlap_completed = Lap done.\nlap_completed_2 = Lap.\n");
+    CHECK_FALSE(anyPositionRows(none));
+    CHECK(positionRowKey(none, "lap_completed", 1, true) == "lap_completed");
+}
+
+TEST_CASE("variantKeys: alternates past nine are reached in order") {
+    std::string ini = "[Cues]\n";
+    for (int n = 2; n <= 30; ++n) {
+        ini += "trick_landed_" + std::to_string(n) + " = line " +
+               std::to_string(n) + "\n";
+    }
+    const auto keys = variantKeys(parse(ini), "trick_landed");
+    REQUIRE(keys.size() == 30);
+    CHECK(keys[9] == "trick_landed_10");
+    CHECK(keys[29] == "trick_landed_30");
+}
+
 TEST_CASE("variantKeys: base always present, contiguous scan, any map counts") {
     const Pack p = parse(
         "[Cues]\n"
@@ -149,6 +231,50 @@ TEST_CASE("parse: [Mix] gap_ms is optional, signed, and separate from absent") {
     // sections stay separate namespaces.
     CHECK(parse("[Mix]\nfinal_lap = nope\n").phrases.empty());
     CHECK_FALSE(parse("[Cues]\ngap_ms = -40\n").hasGapMs);
+}
+
+// [Mix] interrupt - the stumble a recorded pack plays before an urgent call
+// that cuts a clip off. Decoration, so a bad entry costs only itself.
+TEST_CASE("parse: [Mix] interrupt lists fillers, unsafe names skipped alone") {
+    const Pack p = parse("[Mix]\ninterrupt = uh.wav  err.wav\t../x.wav a\\b.wav um.wav ; note\n"
+                         "gap_ms = -20\n[Cues]\nrider_left = Left.\n");
+    CHECK(p.interruptFillers == std::vector<std::string>{"uh.wav", "err.wav", "um.wav"});
+    CHECK(p.gapMs == -20);                  // the rest of [Mix] still reads
+    CHECK(p.phrases.at("rider_left") == "Left.");
+    CHECK(parse("[Mix]\ninterrupt =\n").interruptFillers.empty());
+    CHECK(parse("[Mix]\ngap_ms = 0\n").interruptFillers.empty());
+    // Not a cue: from [Cues] it is an ordinary (unknown) row, never a filler.
+    CHECK(parse("[Cues]\ninterrupt = uh.wav\n").interruptFillers.empty());
+}
+
+// [Mix] lead_in / lead_in_chance - a soft sound some lines open with. The
+// chance is a percent clamped to 0-100; junk or absent means never.
+TEST_CASE("parse: [Mix] lead_in lists sounds, lead_in_chance is a clamped percent") {
+    const Pack p = parse("[Mix]\nlead_in = ahem.wav ../x.wav uh.wav\nlead_in_chance = 15 ; note\n"
+                         "interrupt = oh.wav\n");
+    CHECK(p.leadIns == std::vector<std::string>{"ahem.wav", "uh.wav"});
+    CHECK(p.leadInChance == 15);
+    CHECK(p.interruptFillers == std::vector<std::string>{"oh.wav"});   // separate lists
+    CHECK(parse("[Mix]\nlead_in_chance = 250\n").leadInChance == 100);
+    CHECK(parse("[Mix]\nlead_in_chance = -5\n").leadInChance == 0);
+    CHECK(parse("[Mix]\nlead_in_chance = lots\n").leadInChance == 0);
+    CHECK(parse("[Mix]\nlead_in = uh.wav\n").leadInChance == 0);
+    CHECK_FALSE(parse("[Mix]\nlead_in_chance = 15\n").hasGapMs);    // not a gap
+}
+
+// Which calls may cut a clip off. Pinned as a list because the cost of a
+// wrong entry is invisible headless: one too many and the spotter stumbles
+// over itself on a full grid; one too few and "left" arrives a sentence late.
+TEST_CASE("cutsInCue: only where a rider is now, and a crash ahead") {
+    for (const char* k : {"rider_left", "rider_right", "riders_both_sides",
+                          "rider_behind", "hazard_ahead", "wrong_way_ahead"}) {
+        CHECK_MESSAGE(cutsInCue(k), k);
+        CHECK_MESSAGE(isCueKey(k), k);   // a rename must not orphan the list
+    }
+    for (const char* k : {"rider_behind_clear", "lapping_traffic", "blue_flag",
+                          "trick_landed", "lap_completed", "rider_left_2"}) {
+        CHECK_FALSE_MESSAGE(cutsInCue(k), k);
+    }
 }
 
 TEST_CASE("parse: never throws on hostile input") {
@@ -272,45 +398,70 @@ TEST_CASE("fallbackCueKey: refinements resolve to the key they refine") {
     }
 }
 
-// A mix recipe is resolved by SpotterMix, not by the variable expander, and
-// the two have different vocabularies. A placeholder the mixer does not know
-// used to fall through as a wav FILENAME: the file never exists, the whole
-// recipe is dropped at playback and the cue lands on TTS — inaudible under
-// Wine, where TTS does not exist, and with nothing anywhere to say why.
+// A mix recipe is resolved by SpotterMix, not by the variable expander. A
+// placeholder the mixer does not know used to fall through as a wav FILENAME:
+// the file never exists, the whole recipe is dropped at playback and the cue
+// lands on TTS — inaudible under Wine, where TTS does not exist, and with
+// nothing anywhere to say why.
 //
 // It shipped that way. The pack generator baked `{gap_to_behind}` into the
-// three gap recipes, which is the right name for the phrase and a name the
-// mixer has never had, so every gap callout on a recorded pack was silent.
+// three gap recipes when the mixer knew only five placeholders, so every gap
+// callout on a recorded pack was silent. The mixer now speaks every variable,
+// so a TYPO is what is left for this to catch.
 TEST_CASE("mix recipes: an unknown placeholder is rejected, not filed as a wav") {
     const SpotterCuePack::Pack p = SpotterCuePack::parse(
         "[Cues]\n"
-        "gap_behind_mix = seg_behind.wav {gap_to_behind}\n"
+        "gap_behind_mix = seg_behind.wav {gap_to_behnd}\n"
         "fastest_lap_other_mix = fl.wav {event_rider} {event_time}\n");
     // The bad one is gone, and named — a dropped recipe with no diagnostic is
     // the failure this exists to end.
     CHECK(p.mixes.count("gap_behind") == 0);
     REQUIRE(p.rejectedMixes.size() == 1);
     CHECK(p.rejectedMixes[0].find("gap_behind") != std::string::npos);
-    CHECK(p.rejectedMixes[0].find("{gap_to_behind}") != std::string::npos);
+    CHECK(p.rejectedMixes[0].find("{gap_to_behnd}") != std::string::npos);
     // ...and a recipe naming only real placeholders is untouched.
     REQUIRE(p.mixes.count("fastest_lap_other") == 1);
     CHECK(p.mixes.at("fastest_lap_other").size() == 3);
 }
 
 // Every placeholder the mixer resolves must also pass the parser, or a recipe
-// the plugin can play is thrown away at load. The two lists are one list now
-// (SpotterMix::isMixToken); this is the check that says so.
-TEST_CASE("mix recipes: every placeholder the mixer knows survives parsing") {
-    for (const char* tok : { "{event_rider}", "{event_time}",
-                             "{penalty_seconds}", "{overtime_laps}",
-                             "{position}" }) {
+// the plugin can play is thrown away at load. The two lists are one list
+// (SpotterMix::isMixToken), and since recorded packs can say every variable,
+// that list is the whole variable table.
+TEST_CASE("mix recipes: every variable survives parsing") {
+    REQUIRE(SpotterVars::bindings().size() > 40);
+    for (const SpotterVars::Binding& b : SpotterVars::bindings()) {
+        const std::string tok = std::string("{") + b.name + "}";
         CAPTURE(tok);
         CHECK(SpotterMix::isMixToken(tok));
         const SpotterCuePack::Pack p = SpotterCuePack::parse(
-            std::string("[Cues]\nrider_behind_mix = a.wav ") + tok + "\n");
+            "[Cues]\nrider_behind_mix = a.wav " + tok + "\n");
         CHECK(p.rejectedMixes.empty());
         CHECK(p.mixes.count("rider_behind") == 1);
     }
+}
+
+// Optional groups in a mix: the brackets may touch their neighbours or stand
+// alone, and parse to their own "[" / "]" tokens. A nested, unclosed, stray
+// or empty group rejects the row - resolveTokens never has to guess.
+TEST_CASE("mix recipes: optional groups parse to bracket tokens") {
+    const SpotterCuePack::Pack p = SpotterCuePack::parse(
+        "[Cues]\n"
+        "lap_completed_mix = p.wav {position} [to.wav {rider_ahead}] [ x.wav ]\n"
+        "gap_behind_mix = a.wav [b.wav [c.wav]]\n"
+        "gap_ahead_mix = a.wav [b.wav\n"
+        "rider_left_mix = a.wav b.wav]\n"
+        "rider_right_mix = a.wav [] b.wav\n");
+    REQUIRE(p.mixes.count("lap_completed") == 1);
+    const std::vector<std::string> want = {
+        "p.wav", "{position}", "[", "to.wav", "{rider_ahead}", "]",
+        "[", "x.wav", "]" };
+    CHECK(p.mixes.at("lap_completed") == want);
+    for (const char* bad : { "gap_behind", "gap_ahead", "rider_left", "rider_right" }) {
+        CAPTURE(bad);
+        CHECK(p.mixes.count(bad) == 0);
+    }
+    CHECK(p.rejectedMixes.size() == 4);
 }
 
 // ============================================================================

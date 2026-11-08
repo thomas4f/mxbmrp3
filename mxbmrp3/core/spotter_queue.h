@@ -13,6 +13,11 @@
 // is the same as wrong, and are dropped at pop rather than spoken. See the
 // flag's comment below for which cues qualify and why.
 //
+// TURN POLICY (next()): while a recorded clip is still sounding, the queue
+// waits for it - winmm has one channel, so starting the next clip cuts the
+// one playing off mid-word. Only a `cutsIn` cue may jump the wait, and it
+// jumps the queue too: it is the call that cannot afford to be late.
+//
 // Thread safety: none here by design. SpotterManager owns the instance and
 // guards it with its mutex (MXB_GUARDED_BY); keeping this class lock-free is
 // what lets the unit test exercise the policy directly.
@@ -55,6 +60,19 @@ struct SpotterCue {
     // those are facts about something that happened, and they stay true.
     bool perishable = false;
     uint64_t enqueuedMs = 0;   // steady tick at push; 0 when not perishable
+
+    // CUTS IN: the calls worth cutting a clip off for - a rider alongside or
+    // on your tail, a crash ahead (SpotterCuePack::cutsInCue). Everything else
+    // waits for the clip in progress to finish.
+    bool cutsIn = false;
+    // A recorded pack's filler ("uh", "err") played before this cue when it
+    // DOES cut a clip off, so the voice stumbles rather than glitches. A path
+    // like `payload`; empty when the pack has none. Picked at enqueue, on the
+    // game thread, where the pack and its RNG live.
+    std::string fillerPath{};
+    // ...or, set, a LEAD-IN: fillerPath plays first whether or not anything
+    // is cut off (spotter_cue_pack.h, TAKING TURNS).
+    bool leadIn = false;
 };
 
 class SpotterCueQueue {
@@ -89,10 +107,7 @@ public:
     bool pop(SpotterCue& out, uint64_t nowMs) {
         while (!m_cues.empty()) {
             SpotterCue& front = m_cues.front();
-            const bool stale = front.perishable &&
-                               nowMs >= front.enqueuedMs &&
-                               (nowMs - front.enqueuedMs) > kPerishMs;
-            if (!stale) {
+            if (!isStale(front, nowMs)) {
                 out = std::move(front);
                 m_cues.pop_front();
                 return true;
@@ -102,10 +117,50 @@ public:
         return false;
     }
 
+    // What the worker should do now, given that a recorded clip it started
+    // sounds until `busyUntilMs` (0, or a past tick, when nothing is).
+    enum class Next {
+        Idle,   // nothing pending: park
+        Wait,   // a clip is sounding and nothing pending may cut it off
+        Play,   // the line is free: pop() the oldest
+        CutIn   // a clip is sounding but a cue cuts in: popCutIn()
+    };
+    Next next(uint64_t nowMs, uint64_t busyUntilMs) const {
+        if (m_cues.empty()) return Next::Idle;
+        if (nowMs >= busyUntilMs) return Next::Play;
+        for (const SpotterCue& c : m_cues) {
+            if (c.cutsIn && !isStale(c, nowMs)) return Next::CutIn;
+        }
+        return Next::Wait;
+    }
+
+    // Dequeue the OLDEST live cue that cuts in, out of turn, leaving the rest
+    // in order behind it. Stale ones it passes are discarded as pop() would.
+    bool popCutIn(SpotterCue& out, uint64_t nowMs) {
+        for (auto it = m_cues.begin(); it != m_cues.end();) {
+            if (isStale(*it, nowMs)) {
+                it = m_cues.erase(it);
+                continue;
+            }
+            if (it->cutsIn) {
+                out = std::move(*it);
+                m_cues.erase(it);
+                return true;
+            }
+            ++it;
+        }
+        return false;
+    }
+
     void clear() { m_cues.clear(); }
     bool empty() const { return m_cues.empty(); }
     size_t size() const { return m_cues.size(); }
 
 private:
+    static bool isStale(const SpotterCue& c, uint64_t nowMs) {
+        return c.perishable && nowMs >= c.enqueuedMs &&
+               (nowMs - c.enqueuedMs) > kPerishMs;
+    }
+
     std::deque<SpotterCue> m_cues;
 };

@@ -9,6 +9,7 @@
 #include "completion_floor.h"
 #include "exploration_stats.h"
 #include "settings_manager.h"
+#include "spotter_manager.h"
 #include "stats_manager.h"
 #include "../game/game_config.h"
 #include "../diagnostics/logger.h"
@@ -280,6 +281,11 @@ void AchievementManager::evaluateRow(int idx, bool toastEach, Granted& granted) 
     m_dirty = true;
     if (toastEach) {
         queueTierToast(e, reached);
+        // The spotter's achievement_<id> cue, at the same live-only point as the
+        // toast and NOT behind the toast toggle: the two are separate outputs,
+        // and the spotter's own Achievements switch is the one that mutes it.
+        SpotterManager::getInstance().onAchievement(
+            e.id, e.title, isOneShot(e) ? nullptr : tierName(reached));
     }
     DEBUG_INFO_F("[Achievements] %s reached %s", e.id, tierName(reached));
 }

@@ -342,6 +342,52 @@ This license is available with a FAQ at: https://scripts.sil.org/OFL
 
 ---
 
+## Theme UI fonts (Geist, Geist Mono, Inter, Manrope, Open Sans, Outfit, Sora, Space Grotesk)
+
+**Projects:**
+- Geist: https://fonts.google.com/specimen/Geist
+- Geist Mono: https://fonts.google.com/specimen/Geist+Mono
+- Inter: https://fonts.google.com/specimen/Inter
+- Manrope: https://fonts.google.com/specimen/Manrope
+- Open Sans: https://fonts.google.com/specimen/Open+Sans
+- Outfit: https://fonts.google.com/specimen/Outfit
+- Sora: https://fonts.google.com/specimen/Sora
+- Space Grotesk: https://fonts.google.com/specimen/Space+Grotesk
+
+**Used for:** UI fonts (static Regular/SemiBold instances of the variable fonts)
+
+All eight are under the one SIL Open Font License below; their copyright
+notices:
+
+```
+Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font.git)
+Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
+Copyright 2019 The Manrope Project Authors (https://github.com/googlefonts/manrope)
+Copyright 2020 The Open Sans Project Authors (https://github.com/googlefonts/opensans)
+Copyright 2021 The Outfit Project Authors (https://github.com/Outfitio/Outfit-Fonts)
+Copyright 2019 The Sora Project Authors (https://github.com/sora-xor/sora-font)
+Copyright 2020 The Space Grotesk Project Authors (https://github.com/floriankarsten/space-grotesk)
+```
+
+---
+
+## VT323
+
+**Project:** https://fonts.google.com/specimen/VT323
+**Designer:** Peter Hull
+**Used for:** UI font (Retro themes)
+
+```
+SIL Open Font License, Version 1.1
+
+Copyright 2011, The VT323 Project Authors (peter.hull@oikoi.com)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is available with a FAQ at: https://scripts.sil.org/OFL
+```
+
+---
+
 ## DSEG
 
 **Project:** https://github.com/keshikan/DSEG
@@ -596,7 +642,8 @@ installer, into `mxbmrp3_data\`.
 
 Applies to: Font Awesome (font builds), IBM Plex Sans, IBM Plex Mono, Roboto
 Mono, Fuzzy Bubbles, Tiny5, DSEG, Doto, Chakra Petch, Quantico, Tomorrow,
-Audiowide, Caveat Brush, Reenie Beanie, Gloria Hallelujah. Each font's own
+Audiowide, Caveat Brush, Reenie Beanie, Gloria Hallelujah, Geist, Geist Mono,
+Inter, Manrope, Open Sans, Outfit, Sora, Space Grotesk, VT323. Each font's own
 copyright notice is in its entry above.
 
 ```

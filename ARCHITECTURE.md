@@ -1116,6 +1116,9 @@ Three slice SETS, each with its own `border` in GRID CELLS: `[frame]` (the panel
 `[card]` (title bands, settings section cards, HUD body cards) and `[button]`. `[card]`
 also takes `title border`, sizing the TITLE BAND's border alone on those same sprites;
 absent it *follows* `border` (`ThemeAsset::titleBorderOverride`).
+An optional fourth set, `title_*.tga`, is the band's own art (else it draws the card
+set), and `[title] placement = frame` makes the band the frame's top, a title bar
+(`PanelBox::Spec::titleInFrame`); Modern and Retro ship both.
 
 NINE files per set (center + four corners + four edges); `ThemeAsset` says why.
 

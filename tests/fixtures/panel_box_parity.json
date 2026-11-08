@@ -238,6 +238,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 33,
     "cardLeft": 4.5,
@@ -408,6 +409,7 @@
     "titleBot": null,
     "titleSlack": 0,
     "bandDrawnBot": null,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 33,
     "cardLeft": 4.5,
@@ -570,6 +572,7 @@
     "titleBot": 4.204485732,
     "titleSlack": 0.462157261,
     "bandDrawnBot": 4.204485732,
+    "frameTop": 0,
     "titleLeft": 2,
     "titleW": 31,
     "cardLeft": 2.5,
@@ -747,6 +750,7 @@
     "titleBot": 4.204485732,
     "titleSlack": 0.462157261,
     "bandDrawnBot": 4.204485732,
+    "frameTop": 0,
     "titleLeft": 2,
     "titleW": 31,
     "cardLeft": 2.5,
@@ -924,6 +928,7 @@
     "titleBot": 6.166607482,
     "titleSlack": 0.166678504,
     "bandDrawnBot": 6.166607482,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 33,
     "cardLeft": 4.5,
@@ -1086,6 +1091,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 31,
     "cardLeft": 4.5,
@@ -1261,6 +1267,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 33,
     "cardLeft": 4.5,
@@ -1447,6 +1454,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 32,
     "cardLeft": 4,
@@ -1624,6 +1632,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 36,
     "cardLeft": 4.5,
@@ -1805,6 +1814,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 75,
     "cardLeft": 4.5,
@@ -1991,6 +2001,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 33,
     "cardLeft": 4.5,
@@ -2158,6 +2169,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 43,
     "cardLeft": 4.5,
@@ -2319,6 +2331,7 @@
     "titleBot": 5.871128724,
     "titleSlack": 0.628835765,
     "bandDrawnBot": 6.499964489,
+    "frameTop": 0,
     "titleLeft": 5,
     "titleW": 33.5,
     "cardLeft": 5.5,
@@ -2480,6 +2493,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 6,
     "titleW": 34,
     "cardLeft": 7,
@@ -2641,6 +2655,7 @@
     "titleBot": 8.371093214,
     "titleSlack": 0.128871276,
     "bandDrawnBot": 8.499964489,
+    "frameTop": 0,
     "titleLeft": 5,
     "titleW": 31,
     "cardLeft": 4.5,
@@ -2802,6 +2817,7 @@
     "titleBot": 7.954432465,
     "titleSlack": 0.962192772,
     "bandDrawnBot": 8.916625237,
+    "frameTop": 0,
     "titleLeft": 6,
     "titleW": 30,
     "cardLeft": 4.5,
@@ -2963,6 +2979,7 @@
     "titleBot": 9.20441471,
     "titleSlack": 0.128871276,
     "bandDrawnBot": 9.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 33,
     "cardLeft": 4.5,
@@ -3124,6 +3141,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.128871276,
     "bandDrawnBot": 7.666642993,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 33,
     "cardLeft": 4.5,
@@ -3285,6 +3303,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 6,
     "titleW": 31,
     "cardLeft": 4.5,
@@ -3446,6 +3465,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 12,
     "cardLeft": 4.5,
@@ -3608,6 +3628,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 32,
     "cardLeft": 4,
@@ -3782,6 +3803,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 32,
     "cardLeft": 4,
@@ -3955,6 +3977,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 33,
     "cardLeft": 4.5,
@@ -4116,6 +4139,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 33,
     "cardLeft": 4.5,
@@ -4281,6 +4305,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 33,
     "cardLeft": 4.5,
@@ -4457,6 +4482,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 33,
     "cardLeft": 4.5,
@@ -4629,6 +4655,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 35,
     "cardLeft": 4.5,
@@ -4790,6 +4817,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 37,
     "cardLeft": 4.5,
@@ -4948,6 +4976,7 @@
     "titleBot": null,
     "titleSlack": 0,
     "bandDrawnBot": null,
+    "frameTop": 0,
     "titleLeft": 0,
     "titleW": 30,
     "cardLeft": 0,
@@ -5109,6 +5138,7 @@
     "titleBot": 6.704450221,
     "titleSlack": 0.212175016,
     "bandDrawnBot": 6.916625237,
+    "frameTop": 0,
     "titleLeft": 3.5,
     "titleW": 33.5,
     "cardLeft": 4.25,
@@ -5270,6 +5300,7 @@
     "titleBot": 10.871057703,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 11.666571971,
+    "frameTop": 0,
     "titleLeft": 8,
     "titleW": 13,
     "cardLeft": 8.5,
@@ -5432,6 +5463,7 @@
     "titleBot": 5.896296296,
     "titleSlack": 0.711111111,
     "bandDrawnBot": 6.607407407,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 33,
     "cardLeft": 4.5,
@@ -5609,6 +5641,7 @@
     "titleBot": 5.896296296,
     "titleSlack": 0.711111111,
     "bandDrawnBot": 6.607407407,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 33,
     "cardLeft": 4.5,
@@ -5781,6 +5814,7 @@
     "titleBot": 5.896296296,
     "titleSlack": 0.407407407,
     "bandDrawnBot": 6.303703704,
+    "frameTop": 0,
     "titleLeft": 7,
     "titleW": 32,
     "cardLeft": 7,
@@ -5942,6 +5976,7 @@
     "titleBot": 3.288888889,
     "titleSlack": 0.014814815,
     "bandDrawnBot": 3.288888889,
+    "frameTop": 0,
     "titleLeft": 2,
     "titleW": 31,
     "cardLeft": 2.5,
@@ -6104,6 +6139,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 32,
     "cardLeft": 4.5,
@@ -6266,6 +6302,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 33,
     "cardLeft": 4.5,
@@ -6432,6 +6469,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.128871276,
     "bandDrawnBot": 7.666642993,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 33,
     "cardLeft": 4.5,
@@ -6621,6 +6659,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.962192772,
     "bandDrawnBot": 8.499964489,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 32,
     "cardLeft": 4,
@@ -6806,6 +6845,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.212189221,
     "bandDrawnBot": 7.749960938,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 33,
     "cardLeft": 4.5,
@@ -6977,6 +7017,7 @@
     "titleBot": null,
     "titleSlack": 0,
     "bandDrawnBot": null,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 33,
     "cardLeft": 4.5,
@@ -7155,6 +7196,7 @@
     "titleBot": 4.204485732,
     "titleSlack": 0.628835765,
     "bandDrawnBot": 4.204485732,
+    "frameTop": 0,
     "titleLeft": 2,
     "titleW": 31,
     "cardLeft": 2.5,
@@ -7350,6 +7392,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 53,
     "cardLeft": 4.5,
@@ -7546,6 +7589,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.962192772,
     "bandDrawnBot": 8.499964489,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 48,
     "cardLeft": 4.5,
@@ -7768,6 +7812,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 35,
     "cardLeft": 4.5,
@@ -7980,6 +8025,7 @@
     "titleBot": 4.204485732,
     "titleSlack": 0.462157261,
     "bandDrawnBot": 4.204485732,
+    "frameTop": 0,
     "titleLeft": 2,
     "titleW": 39,
     "cardLeft": 2.5,
@@ -8169,6 +8215,7 @@
     "titleBot": 7.537771717,
     "titleSlack": 0.795514268,
     "bandDrawnBot": 8.333285986,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 53,
     "cardLeft": 4.5,
@@ -8364,6 +8411,7 @@
     "titleBot": 8.04040404,
     "titleSlack": 0.515151515,
     "bandDrawnBot": 8.555555556,
+    "frameTop": 0,
     "titleLeft": 4,
     "titleW": 53,
     "cardLeft": 4.5,
@@ -8430,6 +8478,846 @@
     "cardTop": 9,
     "cardBot": 12.777777778,
     "captionY": 4.888888889,
+    "squareBorders": true,
+    "overTopY": false,
+    "overX": false
+   }
+  },
+  {
+   "name": "title-bar",
+   "spec": {
+    "unit": 0.833321496,
+    "panel": {
+     "border": {
+      "t": 2,
+      "r": 2,
+      "b": 2,
+      "l": 2
+     },
+     "padding": {
+      "t": 2,
+      "r": 2,
+      "b": 2,
+      "l": 2
+     }
+    },
+    "title": {
+     "margin": {
+      "t": 0,
+      "r": 0,
+      "b": 0,
+      "l": 0
+     },
+     "border": {
+      "t": 1,
+      "r": 1,
+      "b": 1,
+      "l": 1
+     },
+     "padding": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     }
+    },
+    "content": {
+     "margin": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     },
+     "border": {
+      "t": 1,
+      "r": 1,
+      "b": 1,
+      "l": 1
+     },
+     "padding": {
+      "t": 0,
+      "r": 0,
+      "b": 0,
+      "l": 0
+     }
+    },
+    "button": {
+     "margin": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     },
+     "border": {
+      "t": 1,
+      "r": 1,
+      "b": 1,
+      "l": 1
+     },
+     "padding": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     }
+    },
+    "themed": true,
+    "band": true,
+    "card": true,
+    "caption": {
+     "w": 9,
+     "h": 1.704521243
+    },
+    "sections": [
+     2,
+     4
+    ],
+    "cols": 30,
+    "bands": [],
+    "buttons": null,
+    "gap": 1,
+    "titleInFrame": true
+   },
+   "out": {
+    "hasTitle": true,
+    "hasCard": true,
+    "nBtn": 0,
+    "widthSetBy": "rows",
+    "columnSplit": 4,
+    "artBot": 23.499822446,
+    "panelInner": 8.333285986,
+    "panelInnerLeft": 4,
+    "innerW": 33,
+    "titleTop": 0,
+    "titleH": 4.204485732,
+    "titleBot": 4.204485732,
+    "titleSlack": 0.795514268,
+    "bandDrawnBot": 5,
+    "frameTop": 5,
+    "titleLeft": 0,
+    "titleW": 41,
+    "cardLeft": 4.5,
+    "cardW": 32,
+    "sections": [
+     {
+      "top": 8.749946734,
+      "bot": 12.416589726,
+      "rowsTop": 9.58326823,
+      "h": 2
+     },
+     {
+      "top": 14.083232719,
+      "bot": 20.250053266,
+      "rowsTop": 14.916554216,
+      "h": 4.500177554
+     }
+    ],
+    "bands": [
+     {
+      "top": 8.333285986,
+      "bot": 20.16653646,
+      "columns": [
+       {
+        "left": 4,
+        "w": 33,
+        "sections": [
+         {
+          "top": 8.749946734,
+          "bot": 12.416589726,
+          "rowsTop": 9.58326823,
+          "h": 2
+         },
+         {
+          "top": 14.083232719,
+          "bot": 20.250053266,
+          "rowsTop": 14.916554216,
+          "h": 4.500177554
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "seam": 1.666642993,
+    "btnTop": null,
+    "btnH": 0,
+    "btnW": 0,
+    "btns": [],
+    "panelH": 24,
+    "slackY": 0.500177554,
+    "panelCols": 41,
+    "captionX": 1.5,
+    "rowsX": 5.5,
+    "buttonX": 4,
+    "rowsTop": 9.58326823,
+    "contentH": 2,
+    "cardTop": 8.749946734,
+    "cardBot": 20.250053266,
+    "captionY": 1.249982245,
+    "squareBorders": true,
+    "overTopY": false,
+    "overX": false
+   }
+  },
+  {
+   "name": "title-bar-margins",
+   "spec": {
+    "unit": 0.833321496,
+    "panel": {
+     "border": {
+      "t": 1,
+      "r": 2,
+      "b": 3,
+      "l": 4
+     },
+     "padding": {
+      "t": 2,
+      "r": 2,
+      "b": 2,
+      "l": 2
+     }
+    },
+    "title": {
+     "margin": {
+      "t": 0,
+      "r": 1,
+      "b": 0.5,
+      "l": 2
+     },
+     "border": {
+      "t": 1,
+      "r": 1,
+      "b": 1,
+      "l": 1
+     },
+     "padding": {
+      "t": 0.5,
+      "r": 1,
+      "b": 0.5,
+      "l": 1
+     }
+    },
+    "content": {
+     "margin": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     },
+     "border": {
+      "t": 1,
+      "r": 1,
+      "b": 1,
+      "l": 1
+     },
+     "padding": {
+      "t": 0,
+      "r": 0,
+      "b": 0,
+      "l": 0
+     }
+    },
+    "button": {
+     "margin": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     },
+     "border": {
+      "t": 1,
+      "r": 1,
+      "b": 1,
+      "l": 1
+     },
+     "padding": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     }
+    },
+    "themed": true,
+    "band": true,
+    "card": true,
+    "caption": {
+     "w": 9,
+     "h": 1.704521243
+    },
+    "sections": [
+     6
+    ],
+    "cols": 30,
+    "bands": [],
+    "buttons": null,
+    "gap": 0,
+    "titleInFrame": true
+   },
+   "out": {
+    "hasTitle": true,
+    "hasCard": true,
+    "nBtn": 0,
+    "widthSetBy": "rows",
+    "columnSplit": 3.5,
+    "artBot": 20.16653646,
+    "panelInner": 7.499964489,
+    "panelInnerLeft": 6,
+    "innerW": 33,
+    "titleTop": 0,
+    "titleH": 4.204485732,
+    "titleBot": 4.204485732,
+    "titleSlack": 0.37885352,
+    "bandDrawnBot": 4.583339252,
+    "frameTop": 5,
+    "titleLeft": 2,
+    "titleW": 40,
+    "cardLeft": 6.5,
+    "cardW": 32,
+    "sections": [
+     {
+      "top": 7.916625237,
+      "bot": 16.41673177,
+      "rowsTop": 8.749946734,
+      "h": 6.83346354
+     }
+    ],
+    "bands": [
+     {
+      "top": 7.499964489,
+      "bot": 15.999928978,
+      "columns": [
+       {
+        "left": 6,
+        "w": 33,
+        "sections": [
+         {
+          "top": 7.916625237,
+          "bot": 16.41673177,
+          "rowsTop": 8.749946734,
+          "h": 6.83346354
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "seam": 0,
+    "btnTop": null,
+    "btnH": 0,
+    "btnW": 0,
+    "btns": [],
+    "panelH": 21,
+    "slackY": 0.83346354,
+    "panelCols": 43,
+    "captionX": 4,
+    "rowsX": 7.5,
+    "buttonX": 6,
+    "rowsTop": 8.749946734,
+    "contentH": 6.83346354,
+    "cardTop": 7.916625237,
+    "cardBot": 16.41673177,
+    "captionY": 1.249982245,
+    "squareBorders": false,
+    "overTopY": false,
+    "overX": false
+   }
+  },
+  {
+   "name": "title-bar-no-band",
+   "spec": {
+    "unit": 0.833321496,
+    "panel": {
+     "border": {
+      "t": 2,
+      "r": 2,
+      "b": 2,
+      "l": 2
+     },
+     "padding": {
+      "t": 2,
+      "r": 2,
+      "b": 2,
+      "l": 2
+     }
+    },
+    "title": {
+     "margin": {
+      "t": 0,
+      "r": 0,
+      "b": 0,
+      "l": 0
+     },
+     "border": {
+      "t": 1,
+      "r": 1,
+      "b": 1,
+      "l": 1
+     },
+     "padding": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     }
+    },
+    "content": {
+     "margin": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     },
+     "border": {
+      "t": 1,
+      "r": 1,
+      "b": 1,
+      "l": 1
+     },
+     "padding": {
+      "t": 0,
+      "r": 0,
+      "b": 0,
+      "l": 0
+     }
+    },
+    "button": {
+     "margin": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     },
+     "border": {
+      "t": 1,
+      "r": 1,
+      "b": 1,
+      "l": 1
+     },
+     "padding": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     }
+    },
+    "themed": true,
+    "band": false,
+    "card": true,
+    "caption": {
+     "w": 9,
+     "h": 1.704521243
+    },
+    "sections": [
+     6
+    ],
+    "cols": 30,
+    "bands": [],
+    "buttons": null,
+    "gap": 0,
+    "titleInFrame": true
+   },
+   "out": {
+    "hasTitle": false,
+    "hasCard": true,
+    "nBtn": 0,
+    "widthSetBy": "rows",
+    "columnSplit": 1,
+    "artBot": 18.16653646,
+    "panelInner": 3.333285986,
+    "panelInnerLeft": 4,
+    "innerW": 33,
+    "titleTop": 3.333285986,
+    "titleH": 2.537842739,
+    "titleBot": 5.871128724,
+    "titleSlack": 0.462157261,
+    "bandDrawnBot": 5.871128724,
+    "frameTop": 0,
+    "titleLeft": 4,
+    "titleW": 33,
+    "cardLeft": 4.5,
+    "cardW": 32,
+    "sections": [
+     {
+      "top": 6.749946734,
+      "bot": 15.250053266,
+      "rowsTop": 7.58326823,
+      "h": 6.83346354
+     }
+    ],
+    "bands": [
+     {
+      "top": 6.333285986,
+      "bot": 14.833250475,
+      "columns": [
+       {
+        "left": 4,
+        "w": 33,
+        "sections": [
+         {
+          "top": 6.749946734,
+          "bot": 15.250053266,
+          "rowsTop": 7.58326823,
+          "h": 6.83346354
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "seam": 0,
+    "btnTop": null,
+    "btnH": 0,
+    "btnW": 0,
+    "btns": [],
+    "panelH": 19,
+    "slackY": 0.83346354,
+    "panelCols": 41,
+    "captionX": 4.5,
+    "rowsX": 5.5,
+    "buttonX": 4,
+    "rowsTop": 7.58326823,
+    "contentH": 6.83346354,
+    "cardTop": 6.749946734,
+    "cardBot": 15.250053266,
+    "captionY": 3.749946734,
+    "squareBorders": true,
+    "overTopY": false,
+    "overX": false
+   }
+  },
+  {
+   "name": "title-bar-no-caption",
+   "spec": {
+    "unit": 0.833321496,
+    "panel": {
+     "border": {
+      "t": 2,
+      "r": 2,
+      "b": 2,
+      "l": 2
+     },
+     "padding": {
+      "t": 2,
+      "r": 2,
+      "b": 2,
+      "l": 2
+     }
+    },
+    "title": {
+     "margin": {
+      "t": 0,
+      "r": 0,
+      "b": 0,
+      "l": 0
+     },
+     "border": {
+      "t": 1,
+      "r": 1,
+      "b": 1,
+      "l": 1
+     },
+     "padding": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     }
+    },
+    "content": {
+     "margin": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     },
+     "border": {
+      "t": 1,
+      "r": 1,
+      "b": 1,
+      "l": 1
+     },
+     "padding": {
+      "t": 0,
+      "r": 0,
+      "b": 0,
+      "l": 0
+     }
+    },
+    "button": {
+     "margin": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     },
+     "border": {
+      "t": 1,
+      "r": 1,
+      "b": 1,
+      "l": 1
+     },
+     "padding": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     }
+    },
+    "themed": true,
+    "band": true,
+    "card": true,
+    "caption": null,
+    "sections": [
+     6
+    ],
+    "cols": 30,
+    "bands": [],
+    "buttons": null,
+    "gap": 0,
+    "titleInFrame": true
+   },
+   "out": {
+    "hasTitle": false,
+    "hasCard": true,
+    "nBtn": 0,
+    "widthSetBy": "rows",
+    "columnSplit": 0,
+    "artBot": 15.16653646,
+    "panelInner": 3.333285986,
+    "panelInnerLeft": 4,
+    "innerW": 33,
+    "titleTop": null,
+    "titleH": 0,
+    "titleBot": null,
+    "titleSlack": 0,
+    "bandDrawnBot": null,
+    "frameTop": 0,
+    "titleLeft": 4,
+    "titleW": 33,
+    "cardLeft": 4.5,
+    "cardW": 32,
+    "sections": [
+     {
+      "top": 3.749946734,
+      "bot": 12.250053266,
+      "rowsTop": 4.58326823,
+      "h": 6.83346354
+     }
+    ],
+    "bands": [
+     {
+      "top": 3.333285986,
+      "bot": 11.833250475,
+      "columns": [
+       {
+        "left": 4,
+        "w": 33,
+        "sections": [
+         {
+          "top": 3.749946734,
+          "bot": 12.250053266,
+          "rowsTop": 4.58326823,
+          "h": 6.83346354
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "seam": 0,
+    "btnTop": null,
+    "btnH": 0,
+    "btnW": 0,
+    "btns": [],
+    "panelH": 16,
+    "slackY": 0.83346354,
+    "panelCols": 41,
+    "captionX": 4,
+    "rowsX": 5.5,
+    "buttonX": 4,
+    "rowsTop": 4.58326823,
+    "contentH": 6.83346354,
+    "cardTop": 3.749946734,
+    "cardBot": 12.250053266,
+    "captionY": 0,
+    "squareBorders": true,
+    "overTopY": false,
+    "overX": false
+   }
+  },
+  {
+   "name": "title-bar-buttons",
+   "spec": {
+    "unit": 0.651851852,
+    "panel": {
+     "border": {
+      "t": 2,
+      "r": 2,
+      "b": 2,
+      "l": 2
+     },
+     "padding": {
+      "t": 2,
+      "r": 2,
+      "b": 2,
+      "l": 2
+     }
+    },
+    "title": {
+     "margin": {
+      "t": 0,
+      "r": 0,
+      "b": 0,
+      "l": 0
+     },
+     "border": {
+      "t": 1,
+      "r": 1,
+      "b": 1,
+      "l": 1
+     },
+     "padding": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     }
+    },
+    "content": {
+     "margin": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     },
+     "border": {
+      "t": 1,
+      "r": 1,
+      "b": 1,
+      "l": 1
+     },
+     "padding": {
+      "t": 0,
+      "r": 0,
+      "b": 0,
+      "l": 0
+     }
+    },
+    "button": {
+     "margin": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     },
+     "border": {
+      "t": 1,
+      "r": 1,
+      "b": 1,
+      "l": 1
+     },
+     "padding": {
+      "t": 0.5,
+      "r": 0.5,
+      "b": 0.5,
+      "l": 0.5
+     }
+    },
+    "themed": true,
+    "band": true,
+    "card": true,
+    "caption": {
+     "w": 9,
+     "h": 1.333333333
+    },
+    "sections": [
+     6
+    ],
+    "cols": 30,
+    "bands": [],
+    "buttons": {
+     "n": 2,
+     "w": 7,
+     "h": 2
+    },
+    "gap": 0,
+    "titleInFrame": true
+   },
+   "out": {
+    "hasTitle": true,
+    "hasCard": true,
+    "nBtn": 2,
+    "widthSetBy": "rows",
+    "columnSplit": 4,
+    "artBot": 21.777777778,
+    "panelInner": 6.607407407,
+    "panelInnerLeft": 4,
+    "innerW": 33,
+    "titleTop": 0,
+    "titleH": 3.288888889,
+    "titleBot": 3.288888889,
+    "titleSlack": 0.711111111,
+    "bandDrawnBot": 4,
+    "frameTop": 4,
+    "titleLeft": 0,
+    "titleW": 41,
+    "cardLeft": 4.5,
+    "cardW": 32,
+    "sections": [
+     {
+      "top": 6.933333333,
+      "bot": 14.459259259,
+      "rowsTop": 7.585185185,
+      "h": 6.222222222
+     }
+    ],
+    "bands": [
+     {
+      "top": 6.607407407,
+      "bot": 14.562962963,
+      "columns": [
+       {
+        "left": 4,
+        "w": 33,
+        "sections": [
+         {
+          "top": 6.933333333,
+          "bot": 14.459259259,
+          "rowsTop": 7.585185185,
+          "h": 6.222222222
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "seam": 0,
+    "btnTop": 15.111111111,
+    "btnH": 3.955555556,
+    "btnW": 10,
+    "btns": [
+     {
+      "x": 4.5,
+      "w": 10,
+      "labelX": 6
+     },
+     {
+      "x": 15.5,
+      "w": 10,
+      "labelX": 17
+     }
+    ],
+    "panelH": 22,
+    "slackY": 0.222222222,
+    "panelCols": 41,
+    "captionX": 1.5,
+    "rowsX": 5.5,
+    "buttonX": 6,
+    "rowsTop": 7.585185185,
+    "contentH": 6.222222222,
+    "cardTop": 6.933333333,
+    "cardBot": 14.459259259,
+    "captionY": 0.977777778,
     "squareBorders": true,
     "overTopY": false,
     "overX": false

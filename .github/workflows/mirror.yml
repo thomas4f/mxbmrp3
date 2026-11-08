@@ -34,6 +34,14 @@
 # shipped, and the private tag stays where it is — a later mirror (a doc fix,
 # say) is still published, it just does not drag the tag off what shipped.
 #
+# THE COMMIT TITLE SAYS WHAT THE COMMIT IS. The squash is the only history
+# public readers get, so it never quotes the private log (no PR titles or
+# numbers - those name private PRs, and a public #N is an unrelated issue).
+# While vX.Y.Z is unreleased the commit is "Release vX.Y.Z"; once the public
+# repo has that tag, a later mirror (docs, the usage survey, work for the next
+# version before its bump) is "Changes since vX.Y.Z" - before this, every one
+# of those was titled as a second copy of a release that had already shipped.
+#
 # SETUP: add a fine-grained PAT with `contents: write` on the target repo as
 # the secret PUBLIC_REPO_TOKEN. See DEVELOPMENT.md -> Releases for the full flow.
 # ============================================================================
@@ -114,7 +122,6 @@ jobs:
             echo "::error::could not read VER_MAJOR/MINOR/PATCH from $h"; exit 1
           fi
           echo "version=$maj.$min.$pat" >> "$GITHUB_OUTPUT"
-          echo "Mirroring as: Release v$maj.$min.$pat"
 
       - name: Add public remote + fetch its main
         env:
@@ -127,9 +134,32 @@ jobs:
           git remote add public "https://x-access-token:${TOKEN}@github.com/${PUBLIC_REPO}.git"
           git fetch public "$PUBLIC_BRANCH"
 
+      # The public tag is the authority on "shipped" (release.yml creates it
+      # when the Release is cut). Decided once, here, because both the commit
+      # title and the tag step below need it. See the header for the titles.
+      - name: Decide commit title (is vX.Y.Z already public?)
+        id: title
+        env:
+          TAG: v${{ steps.ver.outputs.version }}
+        run: |
+          # Assigned first, not tested inline: `[ -n "$(...)" ]` swallows a failed
+          # ls-remote, and a network or auth hiccup would then read as "not
+          # released" - a wrong title AND the private tag moved off what shipped.
+          # The bare assignment exits non-zero under bash -e, before any push.
+          PUBLIC_TAG=$(git ls-remote --tags public "refs/tags/${TAG}")
+          if [ -n "$PUBLIC_TAG" ]; then
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "message=Changes since ${TAG}" >> "$GITHUB_OUTPUT"
+            echo "Mirroring as: Changes since ${TAG} (${TAG} is already released)"
+          else
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            echo "message=Release ${TAG}" >> "$GITHUB_OUTPUT"
+            echo "Mirroring as: Release ${TAG}"
+          fi
+
       - name: Preview changes (tree vs public/main)
         run: |
-          echo "## Mirror preview: v${{ steps.ver.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Mirror preview: ${{ steps.title.outputs.message }}" >> "$GITHUB_STEP_SUMMARY"
           if git diff --quiet "public/${PUBLIC_BRANCH}" HEAD; then
             echo "This tree and public/${PUBLIC_BRANCH} already have identical trees — nothing to mirror."
             echo "_Trees are identical — nothing to mirror._" >> "$GITHUB_STEP_SUMMARY"
@@ -145,6 +175,7 @@ jobs:
         if: ${{ inputs.push && env.identical != 'true' }}
         env:
           ACTOR: ${{ github.actor }}
+          MESSAGE: ${{ steps.title.outputs.message }}
         run: |
           # One commit whose tree = HEAD's tree, parented on public/main.
           # No working-tree mutation, so the squash can never be half-applied.
@@ -152,13 +183,13 @@ jobs:
           git config user.email "${ACTOR}@users.noreply.github.com"
           TREE=$(git rev-parse "HEAD^{tree}")
           PARENT=$(git rev-parse "public/${PUBLIC_BRANCH}")
-          COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "Release v${{ steps.ver.outputs.version }}")
+          COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "$MESSAGE")
           echo "Created squashed commit $COMMIT (tree $TREE on top of $PARENT)"
           echo "public_commit=$COMMIT" >> "$GITHUB_ENV"
           # Parented on public/main, so this is always a fast-forward. If someone
           # pushed to public between fetch and now it will be rejected — re-run.
           git push public "${COMMIT}:refs/heads/${PUBLIC_BRANCH}"
-          echo "Pushed Release v${{ steps.ver.outputs.version }} to ${PUBLIC_REPO}@${PUBLIC_BRANCH}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Pushed \"${MESSAGE}\" to ${PUBLIC_REPO}@${PUBLIC_BRANCH}" >> "$GITHUB_STEP_SUMMARY"
 
       # Cut vX.Y.Z HERE, at the private commit whose tree was just published, so
       # the two repos name the same release. See the header for why this side and
@@ -173,13 +204,13 @@ jobs:
         env:
           TAG: v${{ steps.ver.outputs.version }}
           GH_TOKEN: ${{ github.token }}
+          RELEASED: ${{ steps.title.outputs.released }}
         run: |
           PRIVATE_URL="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
-          # Shipped already? The PUBLIC tag is the authority: release.yml creates
-          # it when the Release is cut, so its existence means users have that
-          # version and the private tag must keep pointing at what they got.
-          if [ -n "$(git ls-remote --tags public "refs/tags/${TAG}")" ]; then
+          # Shipped already (decided above, from the PUBLIC tag)? Then users have
+          # that version and the private tag must keep pointing at what they got.
+          if [ "$RELEASED" = "true" ]; then
             echo "::notice::${TAG} is already released publicly - leaving this repo's ${TAG} where it is. Bump VER_* in mxbmrp3/resource.h before the next release."
             echo "_Tag \`${TAG}\` untouched — that version is already released publicly._" >> "$GITHUB_STEP_SUMMARY"
             exit 0
