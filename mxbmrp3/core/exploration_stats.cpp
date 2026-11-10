@@ -760,6 +760,11 @@ void ExplorationStats::onDiggingTime(double seconds) {
     if (raise(Signal::DiggingSec, seconds)) changed();
 }
 
+void ExplorationStats::onGhostRide(double seconds) {
+    if (!(seconds > 0.0)) return;
+    if (raise(Signal::GhostRideSec, seconds)) changed();
+}
+
 void ExplorationStats::onGForce(float g) {
     // A lifetime PEAK is exactly the number a single glitch would ruin
     // permanently: core/plausible_g.h.

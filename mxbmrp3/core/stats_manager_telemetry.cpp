@@ -381,3 +381,40 @@ void StatsManager::updateTelemetry(float speedMs, bool isCrashed, int currentGea
         }
     }
 }
+
+void StatsManager::updateGhostRide(bool crashed, bool rolling) {
+    // Nothing to time while the rider is on the bike, which is nearly always:
+    // one compare on the 100Hz path.
+    if (!crashed) {
+        if (m_hasLastGhostTime) {
+            m_ghostRun.reset();
+            m_ghostReportedSec = 0.0;
+            m_hasLastGhostTime = false;
+        }
+        return;
+    }
+    const auto now = odometerNow();
+    double dt = 0.0;
+    if (m_hasLastGhostTime) {
+        dt = std::chrono::duration_cast<std::chrono::microseconds>(
+                 now - m_lastGhostTime).count() / 1000000.0;
+        if (dt < 0.0 || dt > 0.5) {          // a stall or a menu, not seconds of it
+            m_ghostRun.reset();
+            m_ghostReportedSec = 0.0;
+            dt = 0.0;
+        }
+    }
+    m_lastGhostTime = now;
+    m_hasLastGhostTime = true;
+    // Reported in whole TENTHS - the row reads tenths - so the catalogue is
+    // evaluated at most ten times a second, and only while a bike is actually
+    // riding on without its rider. The nudge keeps fifteen frame-tenths summed
+    // in floating point from flooring to 1.4.
+    const double tenths = std::floor(m_ghostRun.step(true, rolling, dt) * 10.0 + 1e-6) / 10.0;
+    if (tenths > m_ghostReportedSec) {
+        m_ghostReportedSec = tenths;
+        m_exploration.onGhostRide(tenths);
+    } else if (tenths <= 0.0) {
+        m_ghostReportedSec = 0.0;
+    }
+}

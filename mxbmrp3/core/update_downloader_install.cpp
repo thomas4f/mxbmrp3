@@ -280,6 +280,7 @@ void UpdateDownloader::cleanupExtractedFiles(const std::string& pluginDir, const
 
 bool UpdateDownloader::verifyExtractedFiles(const std::string& pluginDir,
                                             const std::vector<std::pair<std::string, size_t>>& expectedFiles) {
+    size_t checked = 0;
     for (const auto& [relativePath, expectedSize] : expectedFiles) {
         std::string filePath = pluginDir + relativePath;
 
@@ -305,6 +306,7 @@ bool UpdateDownloader::verifyExtractedFiles(const std::string& pluginDir,
                         relativePath.c_str(), expectedSize, fileSize.QuadPart);
             return false;
         }
+        setStepProgress(++checked, expectedFiles.size());
     }
 
     DEBUG_INFO_F("UpdateDownloader: Verified %zu files successfully", expectedFiles.size());
@@ -377,6 +379,7 @@ bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::
     // First pass: collect all files we'll extract and their expected sizes
     std::vector<std::string> filesToBackup;
     std::vector<std::pair<std::string, size_t>> expectedFiles;  // relative path -> expected size
+    size_t totalExtractBytes = 0;  // Extract step's 100%
 
     for (int i = 0; i < numFiles; i++) {
         mz_zip_archive_file_stat fileStat;
@@ -424,6 +427,7 @@ bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::
 
         filesToBackup.push_back(installPath);
         expectedFiles.push_back({installPath, static_cast<size_t>(fileStat.m_uncomp_size)});
+        totalExtractBytes += static_cast<size_t>(fileStat.m_uncomp_size);
     }
 
     if (filesToBackup.empty()) {
@@ -486,6 +490,7 @@ bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::
 
     // Track what we've extracted for potential rollback
     std::vector<std::string> extractedFiles;
+    size_t extractedBytes = 0;
     bool extractionFailed = false;
     std::string extractError;
 
@@ -556,6 +561,8 @@ bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::
 
         extractedFiles.push_back(installPath);
         DEBUG_INFO_F("UpdateDownloader: Extracted %s", installPath.c_str());
+        extractedBytes += static_cast<size_t>(fileStat.m_uncomp_size);
+        setStepProgress(extractedBytes, totalExtractBytes);
     }
 
     mz_zip_reader_end(&zip);
@@ -593,6 +600,9 @@ bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::
         outError = "File verification failed";
         return false;
     }
+    // Debug mode skips the verify that counts this step, so it would read 0% then
+    // OK; land on 100% first like a verified install (a no-op when verified).
+    setStepProgress(1, 1);
 
     // Install complete!
     setStepStatus(Step::INSTALL, StepStatus::COMPLETE);

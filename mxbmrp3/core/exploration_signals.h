@@ -100,6 +100,7 @@ enum class Signal : uint8_t {
     PeaceOut,             // max-ever: riders down around you while you rode PAST, upright (three is the row)
     FavoriteSpot,         // max-ever: crashes in a row at the same place on track (three is the row)
     DiggingSec,           // max-ever: seconds of unbroken rear wheelspin standing still
+    GhostRideSec,         // max-ever: seconds the bike rode on, upright, after the rider came off
     COUNT
 };
 
@@ -182,6 +183,7 @@ constexpr SignalInfo kSignals[] = {
     { Signal::PeaceOut,           "peaceOut" },
     { Signal::FavoriteSpot,       "favoriteSpot" },
     { Signal::DiggingSec,         "diggingSec" },
+    { Signal::GhostRideSec,       "ghostRideSec" },
 };
 
 constexpr int SIGNAL_COUNT = static_cast<int>(Signal::COUNT);

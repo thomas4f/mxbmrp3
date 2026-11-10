@@ -87,6 +87,10 @@
     static void app_GamepadWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_LeanWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_LeanWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
+    static void cap_SlideWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
+    static void app_SlideWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
+    static void cap_WheelieWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
+    static void app_WheelieWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_GForceWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_GForceWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_CompassWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);

@@ -8,6 +8,8 @@
 #include <chrono>
 #include <algorithm>
 
+#include "wheelie_angle.h"
+
 namespace Fmx {
 
 // ============================================================================
@@ -596,6 +598,11 @@ struct GroundContactState {
     bool isWheeliePosition() const { return !frontWheelContact && rearWheelContact; }
     bool isEndoPosition() const { return frontWheelContact && !rearWheelContact; }
     bool isGrounded() const { return frontWheelContact || rearWheelContact; }
+    // Nose-up degrees while on the back wheel, else 0: the one wheelie rule the
+    // rumble and the Wheelie widget read too (core/wheelie_angle.h).
+    float wheelieAngle(float pitch) const {
+        return WheelieAngle::of(frontWheelContact, rearWheelContact, pitch);
+    }
 
     // Wheel slip detection
     float getRearWheelSlip() const {

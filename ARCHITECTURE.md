@@ -605,6 +605,8 @@ Abstract base class that all HUDs inherit from. Provides:
 - `SpeedoWidget`, `TachoWidget` - Analog dials. They ship as one **pack** (`gauges/<name>/` = `tacho.tga` + `speedo.tga` + `gauge.ini`), selected by name; `hud/gauge_geometry.h` has the format and why a dial's range lives in the pack
 - `BarsWidget` - Visual telemetry bars (throttle, brake, etc.)
 - `LeanWidget` - Bike lean/roll angle display with arc gauge and steering bar
+- `SlideWidget` - Slide (slip) angle on the Lean arc turned upside down: heading against velocity, rear-out side filled
+- `WheelieWidget` - Wheelie angle on a quarter-arc protractor that fills its box (`hud/wheelie_arc.h`), read through the shared rule in `core/wheelie_angle.h`
 - `GForceWidget` - Lateral/longitudinal G-force gauge with peak marker
 - `FuelWidget` - Fuel calculator with consumption tracking
 - `TyreTempWidget` - Front and rear tyre tread temperatures (GP Bikes only)

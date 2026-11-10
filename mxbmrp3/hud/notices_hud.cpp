@@ -222,7 +222,7 @@ void NoticesHud::rebuildRenderData() {
     // word: this slot carries WRONG WAY and HAZARD AHEAD at a glance, so a sentence
     // here reads as a notice rather than as the absence of one.
     unsigned long fill = 0, ink = 0;
-    slabColors(notice.kind, m_fBackgroundOpacity, fill, ink);
+    slabColors(notice.kind, m_fBackgroundOpacity, m_fBackgroundOpacity, fill, ink);
     if (glows(notice.kind)) addGlow(slabX, slabY, slabW, slabH, slabH * GLOW_SPREAD, fill, glowOpacity(notice.kind));
     addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(fill, m_fBackgroundOpacity));
     addString(notice.kind == Kind::None ? TR("PREVIEW") : NoticeTracker::caption(notice, slabW, dim.fontSizeLarge, this->getFont(FontCategory::TITLE)),
@@ -249,8 +249,8 @@ bool NoticesHud::glows(NoticeTracker::Kind kind) {
 // The slab's colour is the message (red = wrong way, blue = blue flag). The caption
 // takes captionOnSlabColor where the slab is a strong colour, and plain PRIMARY over
 // the neutral BACKGROUND slab.
-void NoticesHud::slabColors(NoticeTracker::Kind kind, float opacity, unsigned long& fill,
-                            unsigned long& ink) const {
+void NoticesHud::slabColors(NoticeTracker::Kind kind, float opacity, float panelOpacity,
+                            unsigned long& fill, unsigned long& ink) const {
     using Kind = NoticeTracker::Kind;
     switch (kind) {
         case Kind::WrongWay:      fill = getColor(ColorSlot::NEGATIVE); break;
@@ -286,7 +286,7 @@ void NoticesHud::slabColors(NoticeTracker::Kind kind, float opacity, unsigned lo
             fill = getColor(ColorSlot::ACCENT);
             break;
     }
-    ink = captionOnSlabColor(fill, opacity);
+    ink = captionOnSlabColor(fill, opacity, panelOpacity);
 }
 
 void NoticesHud::resetToDefaults() {

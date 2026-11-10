@@ -819,7 +819,8 @@ TEST_CASE("dash: a fresh install's Gap Bar sits under the Dash, clear of every H
         "lap_widget", "position_widget", "time_widget", "session_widget", "speed_widget",
         "gear_widget", "crash_widget", "rpm_widget", "speedo_widget", "tacho_widget",
         "timing_hud", "bars_widget", "notices_hud", "spotter_widget",
-        "fuel_widget", "dash_hud", "achievement_widget", "gamepad_widget", "lean_widget",
+        "fuel_widget", "dash_hud", "achievement_widget", "gamepad_widget", "lean_widget", "slide_widget",
+        "wheelie_widget",
         "gforce_widget", "compass_widget", "clock_widget", "prestige_widget",
         "tyre_temp_widget", "ecu_widget", "toggle_strip_widget", "now_playing_widget",
     };

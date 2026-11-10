@@ -109,6 +109,16 @@ TEST_CASE("http: the server serves /api/state and it matches the direct snapshot
     CHECK(host.rawGetFull("/index.html.").find("mount-marker") == std::string::npos);
     CHECK(host.rawGetFull("/index.html%20").find("mount-marker") == std::string::npos);
 
+    // Since cpp-httplib 0.65 a Range in a unit other than bytes is ignored
+    // (RFC 9110 14.2) and the whole file is served; on 0.64 it closed the
+    // connection with 416. A bytes range still gets its 206 slice.
+    const std::string itemsRange = host.rawGetFull("/index.html", "Range: items=0-5\r\n");
+    CHECK(itemsRange.rfind("HTTP/1.1 200", 0) == 0);
+    CHECK(itemsRange.find("mount-marker") != std::string::npos);
+    const std::string bytesRange = host.rawGetFull("/index.html", "Range: bytes=0-4\r\n");
+    CHECK(bytesRange.rfind("HTTP/1.1 206", 0) == 0);
+    CHECK(bytesRange.find("mount-marker") == std::string::npos);
+
     host.shutdown();
 }
 

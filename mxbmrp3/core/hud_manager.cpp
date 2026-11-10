@@ -61,6 +61,8 @@
 #include "../hud/achievement_widget.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
+#include "../hud/slide_widget.h"
+#include "../hud/wheelie_widget.h"
 #include "../hud/gforce_widget.h"
 #include "../hud/compass_widget.h"
 #include "../hud/clock_widget.h"
@@ -214,6 +216,8 @@ void HudManager::initialize() {
     createHud(m_pAchievement, "achievement_widget");
     createHud(m_pGamepad, "gamepad_widget");
     createHud(m_pLean, "lean_widget");
+    createHud(m_pSlide, "slide_widget");
+    createHud(m_pWheelie, "wheelie_widget");
     createHud(m_pGforce, "gforce_widget");
     createHud(m_pCompass, "compass_widget");
     createHud(m_pClock, "clock_widget");

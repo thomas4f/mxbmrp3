@@ -223,7 +223,7 @@ DashHud::SessionClock DashHud::readSessionClock() {
     clock.lapsToGo = pd.getLeaderLapsToGo();
     clock.lapsAfterClock = pd.getSessionData().lapsAfterClock();
     // In overtime the label ("2 TO GO") shows no seconds, so they don't count.
-    clock.seconds = clock.lapsToGo >= 0 ? 0 : pd.getSessionTime() / PluginConstants::TimeConversion::MS_PER_SECOND;
+    clock.seconds = clock.lapsToGo >= 0 ? 0 : pd.getSessionClockTime() / PluginConstants::TimeConversion::MS_PER_SECOND;
     return clock;
 }
 

@@ -2,7 +2,7 @@
 // hud/settings_hud.h
 // Settings interface for configuring which columns/rows are visible in HUDs
 // ============================================================================
-// file-budget: 1500 one class definition; its implementation is already split across settings_hud_*.cpp
+// file-budget: 1504 one class definition; its implementation is already split across settings_hud_*.cpp
 #pragma once
 
 #include "base_hud.h"
@@ -355,6 +355,7 @@ public:
             OPEN_LINK_RELEASES,        // Open the GitHub releases page (Updates tab release notes)
             NOW_PLAYING_TOGGLE,        // Toggle the Now playing integration
             FIND_FIELD, FIND_RESULT, FIND_PAGE_PREV, FIND_PAGE_NEXT,   // the title band's Find box + its page
+            WIDGETS_PAGE_PREV, WIDGETS_PAGE_NEXT,   // the Widgets tab's pager
 
             // Sentinel, always last. settings_layout_test.cpp's golden encodes
             // region types as raw ORDINALS, and this enum is unnumbered and
@@ -641,6 +642,8 @@ public:
     bool handleClickTabSpotter(const ClickRegion& region);
     bool handleClickTabFmx(const ClickRegion& region);
     bool handleClickTabAchievements(const ClickRegion& region);
+    bool handleClickTabWidgets(const ClickRegion& region);
+    void landWidgetsPage(int tabId);   // the page a Find result or a "New" row is on
     bool handleClickTabStreamChat(const ClickRegion& region);
     bool handleClickTabFind(const ClickRegion& region);
     bool handleClickTabStats(const ClickRegion& region);
@@ -1374,6 +1377,7 @@ private:
     int m_achievementsPage = 0;        // Current page of the achievements list (0-based)
     int m_achievementsJumpTo = -1;     // A row to open the page of at the next layout (-1: none)
     const char* m_achievementsPageGroup = "";   // The drawn page's group name (for the tests)
+    int m_widgetsPage = 0;             // Current page of the Widgets tab (0-based)
 
     // Tooltip support (Phase 2 description system)
     std::string m_hoveredTooltipId;    // Current tooltip ID from hovered region (empty = none)

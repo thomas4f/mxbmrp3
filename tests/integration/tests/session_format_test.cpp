@@ -48,6 +48,18 @@
 //      finish lap, which the game counts as run before expiry: that crossing
 //      is not the white flag.
 //
+// And one about the grid (third TEST_CASE), from the same recording's races:
+//
+//   7. Before the gate drops, a timed session's game clock is not the race
+//      clock: it counts down the 30 s pre-start (state 256), then the gate
+//      hold (the classification reports Complete, 32, for ~10 s), and only at
+//      the drop jumps to the full length. An 8:00 + 2L race read "00:29 +
+//      2 laps" on the grid; it states the full "08:00 + 2 laps" until the
+//      race clock starts (PluginData::getSessionClockTime), in the web
+//      clock, Standings and the Pitboard alike. A lap race keeps its
+//      pre-race countdown, and so does the Time widget, deliberately: it is
+//      the game's raw clock.
+//
 // One lifecycle (singletons persist across TEST_CASEs). The non-arming formats run
 // first; overtime (a sticky flag) is driven last. Self-contained doctest.
 // ============================================================================
@@ -55,6 +67,9 @@
 #include "integration_main.h"
 #include "plugin_host.h"
 #include "assertions.h"
+
+#include <filesystem>
+#include <fstream>
 
 // PiBoSo session enum: 0=Waiting, 1=Practice, 6=Race1. state 16 = running.
 static constexpr int WAITING = 0, PRACTICE = 1, RACE1 = 6, RACE2 = 7;
@@ -367,6 +382,70 @@ TEST_CASE("race finish: the game's time-up callback and the Race Over clock") {
     REQUIRE(host.finishLap() == 2);
     host.raceLap(RACE1, 10, 2, 45000);     // now the last lap starts
     CHECK(finalLaps() == whiteFlags + 1);
+
+    host.shutdown();
+}
+
+TEST_CASE("grid: a timed race states its full length until the gate drops") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    const std::string saveWin = "Z:\\tmp\\mxbmrp3-tests\\session_format_grid\\";
+    host.startup(saveWin.c_str());
+    {
+        // The two plain clocks outside formatSessionClock: the Time widget (the
+        // game's raw clock, on purpose) and the Pitboard's time row (board up
+        // all the time, not only at splits).
+        std::filesystem::create_directories(saveWin + "mxbmrp3");
+        std::ofstream ini(saveWin + "mxbmrp3\\mxbmrp3_settings.ini", std::ios::trunc);
+        REQUIRE(ini.is_open());
+        ini << "[Settings]\nversion=6\n\n[TimeWidget]\nvisible=1\n\n"
+               "[PitboardHud]\nvisible=1\ndisplayMode=ALWAYS\n";
+    }
+    host.loadSettings(saveWin.c_str());
+    auto says = [&host](const char* hud, const std::string& text) {
+        host.draw();
+        for (const auto& r : host.hudStringRows(hud)) if (r.text == text) return true;
+        return false;
+    };
+
+    host.eventInit("TestTrack", "Alice");
+    host.raceEvent("TestTrack");
+    host.addEntry(10, "Alice");
+    host.addEntry(22, "Bob");
+    const std::vector<ClassRow> grid = {
+        { .num = 10, .laps = 0, .gap = 0 },
+        { .num = 22, .laps = 0, .gap = 0 },
+    };
+
+    // The recorded sequence: pre-start counting down its own 30 s...
+    static constexpr int PRE_START = 256, GATE_HOLD = 32;
+    host.session(RACE2, /*numLaps=*/2, /*lengthMs=*/480000, PRE_START);
+    host.raceSessionState(RACE2, PRE_START, 30000);
+    host.classify(RACE2, 29970, grid, PRE_START);
+    CHECK(sessTime(host.snapshot()) == "08:00 + 2 laps");
+    CHECK(sessionInfoRow(host, "Race 2") == "Race 2: 08:00 + 2 laps");
+    CHECK(says("time_widget", "00:29"));   // raw countdown, on purpose
+    CHECK(says("pitboard_hud", "8m+2L"));
+
+    // ...the green-flag state flip, then the gate hold's own countdown...
+    host.raceSessionState(RACE2, IN_PROGRESS, 5);
+    CHECK(sessTime(host.snapshot()) == "08:00 + 2 laps");
+    host.classify(RACE2, 9970, grid, GATE_HOLD);
+    CHECK(sessTime(host.snapshot()) == "08:00 + 2 laps");
+    CHECK(sessionInfoRow(host, "Race 2") == "Race 2: 08:00 + 2 laps");
+    CHECK(says("pitboard_hud", "8m+2L"));
+
+    // ...and the gate drops: the race clock runs from the full length.
+    host.classify(RACE2, 478996, grid, IN_PROGRESS);
+    CHECK(sessTime(host.snapshot()) == "07:58 + 2 laps");
+    CHECK(sessionInfoRow(host, "Race 2") == "Race 2: 07:58 + 2 laps");
+    CHECK(says("pitboard_hud", "7m+2L"));
+
+    // A lap race keeps its pre-race countdown: there is no length to state.
+    host.session(RACE1, /*numLaps=*/5, /*lengthMs=*/0, PRE_START);
+    host.raceSessionState(RACE1, PRE_START, 30000);
+    host.classify(RACE1, 29970, grid, PRE_START);
+    CHECK(sessionInfoRow(host, "Race 1") == "Race 1: 00:29");
 
     host.shutdown();
 }

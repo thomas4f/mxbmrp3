@@ -43,9 +43,15 @@ namespace {
 // The rotor accumulates in double so the drift over an arc is far below a pixel;
 // recomputing from scratch would defeat the point, and float would visibly wander
 // on a long arc.
+//
+// stretchX widens the ring sideways by a constant (in the same units as the radii,
+// i.e. screen height): both edges' horizontal radii grow by it, so the ring keeps
+// its thickness everywhere instead of thickening at its sides the way a scaled
+// circle would. 0 is a circle. WheelieWidget uses it to fill a box that is wider
+// than it is tall; nothing else does.
 void BaseHud::addArcSegment(float centerX, float centerY, float innerRadius, float outerRadius,
                             float startAngleRad, float endAngleRad, unsigned long color,
-                            int numSegments) {
+                            int numSegments, float stretchX) {
     using namespace PluginConstants;
     if (numSegments < 1) numSegments = 1;
 
@@ -66,9 +72,9 @@ void BaseHud::addArcSegment(float centerX, float centerY, float innerRadius, flo
         const float sa = static_cast<float>(sinA);
         const float ca = static_cast<float>(cosA);
 
-        const float innerX = centerX + sa * innerRadius / UI_ASPECT_RATIO;
+        const float innerX = centerX + sa * (innerRadius + stretchX) / UI_ASPECT_RATIO;
         const float innerY = centerY - ca * innerRadius;
-        const float outerX = centerX + sa * outerRadius / UI_ASPECT_RATIO;
+        const float outerX = centerX + sa * (outerRadius + stretchX) / UI_ASPECT_RATIO;
         const float outerY = centerY - ca * outerRadius;
 
         if (hasPrevPoint) {

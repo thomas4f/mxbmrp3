@@ -806,7 +806,7 @@ void DashHud::drawGapBar(float rowL, float rowR, float contentY, float pageCente
     } else {
         // The fill is live and the text may be frozen, so their signs can
         // differ: lift the ink off the slab actually under it.
-        if (slab != 0) ink = inkOnSlabColor(ink, slab, barOpacity);
+        if (slab != 0) ink = inkOnSlabColor(ink, slab, barOpacity, m_fBackgroundOpacity);
         addString(text, pageCenterX, inkCenteredY(contentY, bandH, dim.fontSizeLarge), Justify::CENTER,
                   digits, ink, dim.fontSizeLarge);
     }

@@ -90,6 +90,8 @@ void TimeWidget::rebuildRenderData() {
     // Deliberately NOT the shared formatSessionClock() overtime labels ("N TO GO" /
     // "FINAL LAP" / "CHECKERED") - this widget shows just the time; the StandingsHud
     // title and web overlay still carry the leader-relative overtime label.
+    // And the game's raw clock, so on the grid it counts down the pre-start
+    // (the other clocks hold the race length there: getSessionClockTime).
     char timeBuffer[16];
     PluginUtils::formatTimeMinutesSeconds(sessionTime, timeBuffer, sizeof(timeBuffer));
 

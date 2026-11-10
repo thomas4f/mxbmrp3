@@ -1,5 +1,6 @@
 // ============================================================================
 // core/achievements.h
+// file-budget: 1010 the catalogue is one table by design; split the tier arithmetic out when it next grows
 // The achievement CATALOGUE and the pure tier arithmetic over it. Header-only
 // and dependency-free (no PluginData, no StatsManager, no game API), so the
 // unit suite compiles the real table and pins every rule below
@@ -925,6 +926,13 @@ inline constexpr Entry kCatalogue[] = {
       N_("Spin the rear wheel in place for %s"),    "person-digging",
       Metric::Exploration, Unit::Seconds, { 10, 0, 0, 0 }, false, false,
       Exploration::Signal::DiggingSec, 1, true },
+    // The bike rides on without you: off it, and it stays upright on both
+    // wheels and keeps going (core/ghost_ride.h has the rule and the tape it
+    // was cut from). Endo's three seconds, and as rare as that sounds.
+    { "ghost_ride",     N_("Ghost Ride"),       Group::Hidden, nullptr,
+      N_("Let the bike ride alone for %s"),       "ghost",
+      Metric::Exploration, Unit::SecondsTenths, { 3, 0, 0, 0 }, true, false,
+      Exploration::Signal::GhostRideSec, 1, true },
     // A QUARTER OF FLIPPER'S LADDER at every step (1 / 10 / 50 / 100 -> 1 / 3 /
     // 13 / 25, halves rounded up), because a frontflip is the harder way round
     // and nobody lands them at backflip rates. Tied to that row rather than

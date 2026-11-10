@@ -11,6 +11,7 @@
 #include "fmx_manager_internal.h"
 #include "plugin_data.h"
 #include "plugin_constants.h"
+#include "slip_angle.h"
 #include "spotter_manager.h"
 #include "spotter_tricks.h"
 #include "../diagnostics/logger.h"
@@ -142,16 +143,11 @@ void FmxManager::updateGroundContact(const Unified::TelemetryData& telemetry) {
     m_groundState.vehicleSpeed = telemetry.speedometer;
 
     // Calculate lateral slip angle (angle between heading and velocity vector)
-    float yawRad = telemetry.yaw * DEG_TO_RAD;
-    float sinYaw = std::sin(yawRad);
-    float cosYaw = std::cos(yawRad);
+    const SlipAngle::Components slip = SlipAngle::resolve(telemetry.velocityX, telemetry.velocityZ, telemetry.yaw);
 
-    float forwardVel = telemetry.velocityX * sinYaw + telemetry.velocityZ * cosYaw;
-    float lateralVel = telemetry.velocityX * cosYaw - telemetry.velocityZ * sinYaw;
-
-    m_groundState.lateralVelocity = lateralVel;
-    if (std::abs(forwardVel) > 1.0f || std::abs(lateralVel) > 1.0f) {
-        m_groundState.lateralSlipAngle = std::atan2(std::abs(lateralVel), std::abs(forwardVel)) * RAD_TO_DEG;
+    m_groundState.lateralVelocity = slip.lateral;
+    if (std::abs(slip.forward) > 1.0f || std::abs(slip.lateral) > 1.0f) {
+        m_groundState.lateralSlipAngle = SlipAngle::magnitudeDeg(slip);
     } else {
         m_groundState.lateralSlipAngle = 0.0f;
     }
@@ -315,8 +311,8 @@ void FmxManager::updateTrickDetection(const Unified::TelemetryData& telemetry, f
             // landings (nose near level) don't qualify either.
             // =========================================================
             if (Fmx::isAirTrick(m_activeTrick.type)) {
-                bool inWheelieLanding = m_groundState.isWheeliePosition() &&
-                                        telemetry.pitch <= -m_config.wheelieAngleThreshold;
+                bool inWheelieLanding = m_groundState.wheelieAngle(telemetry.pitch) >=
+                                        m_config.wheelieAngleThreshold;
                 bool inEndoLanding = m_groundState.isEndoPosition() &&
                                      telemetry.pitch >= -m_config.endoAngleThreshold;
                 if (inWheelieLanding || inEndoLanding) {
@@ -789,7 +785,7 @@ Fmx::TrickType FmxManager::classifyCurrentTrick(const Unified::TelemetryData& te
     // during this trick. Releasing the clutch invalidates the coaster for the
     // remainder of this trick — the type downgrades back to Wheelie and the
     // coaster score bonus is dropped.
-    if (wheeliePos && telemetry.pitch <= -m_config.wheelieAngleThreshold) {
+    if (m_groundState.wheelieAngle(telemetry.pitch) >= m_config.wheelieAngleThreshold) {
         if (!m_activeTrick.coasterInvalidated &&
             m_activeTrick.clutchHeldTime >= COASTER_PROMOTION_TIME) {
             return TrickType::COASTER_WHEELIE;

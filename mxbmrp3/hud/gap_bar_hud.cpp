@@ -431,7 +431,7 @@ void GapBarHud::rebuildRenderData() {
     // of the number being printed. A no-op when no fill was drawn, and a no-op when
     // the ink already clears the slab (legibleOnFill keeps the hue whenever it can).
     if (gapTextSlab != 0) {
-        gapColor = inkOnSlabColor(gapColor, gapTextSlab, m_fBackgroundOpacity);
+        gapColor = inkOnSlabColor(gapColor, gapTextSlab, m_fBackgroundOpacity, m_fBackgroundOpacity);
     }
 
     // Gap text (monospace font, large size to match Timing, centered)

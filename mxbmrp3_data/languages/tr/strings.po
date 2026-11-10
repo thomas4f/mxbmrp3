@@ -574,6 +574,7 @@ msgstr "Beta"
 msgid "Big Hit"
 msgstr "Sert Darbe"
 
+#. max 11 characters
 msgid "Bike"
 msgstr "Motor"
 
@@ -1253,6 +1254,10 @@ msgctxt "tooltip"
 msgid "Dial faces and the ranges that place the needles on them."
 msgstr "Kadranlar ve ibreleri üzerlerine yerleştiren aralıklar."
 
+#. max 60 characters
+msgid "Dials"
+msgstr "Göstergeler"
+
 msgid "Digging a Hole"
 msgstr "Çukur Kazmak"
 
@@ -1465,6 +1470,10 @@ msgstr "Karşılaştırmaların altında ek satırlar: sıra, tur, kalan süre, 
 
 msgid "Extract"
 msgstr "Çıkar"
+
+#. max 11 characters
+msgid "Extras"
+msgstr "Ekstralar"
 
 msgid "FASTEST LAP"
 msgstr "EN HIZLI TUR"
@@ -1841,10 +1850,6 @@ msgstr "Lidere Fark"
 msgid "Gaps"
 msgstr "Farklar"
 
-#. max 60 characters
-msgid "Gauges"
-msgstr "Göstergeler"
-
 msgid "Gea"
 msgstr "Vts"
 
@@ -1862,6 +1867,9 @@ msgstr "Genel"
 
 msgid "Ghost"
 msgstr "Hayalet"
+
+msgid "Ghost Ride"
+msgstr "Hayalet Sürüş"
 
 msgctxt "tooltip"
 msgid "Ghost: your best lap marker. Opponents: other riders. Both: all of them. Off: no markers at all."
@@ -2188,6 +2196,10 @@ msgstr "Pit alanında veya zamanlama noktalarında bilgi tabelası. Sıra, tur s
 msgid "Input"
 msgstr "Girdi"
 
+#. max 60 characters
+msgid "Inputs"
+msgstr "Girdiler"
+
 msgid "Install"
 msgstr "Kur"
 
@@ -2207,6 +2219,10 @@ msgstr "Entegrasyonlar"
 msgctxt "tooltip"
 msgid "Interactive elements, hover highlights, and the player/spectated rider's name in standings."
 msgstr "Etkileşimli öğeler, üzerine gelme vurguları ve sıralamada oyuncu/izlenen sürücü adı."
+
+#. max 60 characters
+msgid "Interface"
+msgstr "Arayüz"
 
 msgid "Interior Decorator"
 msgstr "İç Mimar"
@@ -2498,6 +2514,10 @@ msgctxt "tooltip"
 msgid "Let close battles steer the camera. Off holds the leader/solo baseline."
 msgstr "Yakın düellolar kamerayı yönlendirsin. Kapalı: lider/tek sürücü temelinde kalır."
 
+#, c-format
+msgid "Let the bike ride alone for %s"
+msgstr "Motor %s tek başına gitsin"
+
 msgctxt "tooltip"
 msgid "Lifetime milestones as Bronze-to-Platinum progress bars, plus a toast when a tier is earned."
 msgstr "Bronzdan Platine ilerleme çubukları olarak ömür boyu hedefler; seviye kazanılınca bildirim."
@@ -2763,10 +2783,6 @@ msgstr "Min"
 msgid "Min shot"
 msgstr "Min. çekim"
 
-#. max 60 characters
-msgid "Misc"
-msgstr "Diğer"
-
 #. max 15 characters
 msgid "Mode"
 msgstr "Mod"
@@ -2777,6 +2793,10 @@ msgstr "Diğer"
 
 #. max 13 characters
 msgid "Motion"
+msgstr "Hareket"
+
+#. max 60 characters
+msgid "Movement"
 msgstr "Hareket"
 
 msgid "Mudder"
@@ -3449,6 +3469,7 @@ msgstr "KARŞIDAN SÜRÜCÜ"
 msgid "RPM"
 msgstr "RPM"
 
+#. max 60 characters
 msgid "Race"
 msgstr "Yarış"
 
@@ -3519,7 +3540,7 @@ msgstr "AFr"
 msgid "Reach %s above takeoff and land it"
 msgstr "Kalkışın %s üstüne çık ve yere in"
 
-#. max 11 characters
+#. max 60 characters
 msgid "Readouts"
 msgstr "Göstergeler"
 
@@ -3831,6 +3852,7 @@ msgstr "."
 msgid "Sandbagger"
 msgstr "Sinsi Yavaş"
 
+#. max 34 characters
 msgid "Save"
 msgstr "Kaydet"
 
@@ -4433,6 +4455,10 @@ msgid "Shows front and rear tyre temperatures."
 msgstr "Ön ve arka lastik sıcaklıklarını gösterir."
 
 msgctxt "tooltip"
+msgid "Shows how far the bike slides sideways, in degrees."
+msgstr "Motosikletin yana ne kadar kaydığını derece olarak gösterir."
+
+msgctxt "tooltip"
 msgid "Shows nearby riders relative to your position. Useful for close racing awareness."
 msgstr "Yakındaki sürücüleri konumuna göre gösterir. Yakın yarışta farkındalık için kullanışlı."
 
@@ -4443,6 +4469,10 @@ msgstr "Kalan yakıtı ve tahmini turu gösterir."
 msgctxt "tooltip"
 msgid "Shows rider lean angle in degrees with arc gauge."
 msgstr "Sürücünün yatma açısını derece olarak yay göstergesiyle gösterir."
+
+msgctxt "tooltip"
+msgid "Shows how far you are up on the back wheel, in degrees."
+msgstr "Arka teker üzerinde ne kadar kalktığını derece olarak gösterir."
 
 msgctxt "tooltip"
 msgid "Shows your current race position (P1, P2, etc.)."

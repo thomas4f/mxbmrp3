@@ -674,7 +674,7 @@ int TimingHud::buildReadouts(Readout* readouts) const {
         if (m_enabledReadouts & READOUT_TIME) {
             Readout& r = readouts[readoutCount++];
             r.name = readoutLabel(readoutIndexOf(READOUT_TIME));
-            PluginUtils::formatSessionClock(pd.getLeaderLapsToGo(), pd.getSessionTime(),
+            PluginUtils::formatSessionClock(pd.getLeaderLapsToGo(), pd.getSessionClockTime(),
                                             sd.lapsAfterClock(), r.value, sizeof(r.value), /*shown=*/true);
         }
 

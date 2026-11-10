@@ -271,7 +271,8 @@ void SettingsHud::resetTabWidgets() {
     std::vector<std::string> widgets = {
         "LapWidget", "PositionWidget", "TimeWidget", "SpeedWidget", "GearWidget",
         "SpeedoWidget", "TachoWidget", "BarsWidget", "FuelWidget",
-        "GamepadWidget", "LeanWidget", "GForceWidget", "CompassWidget", "ClockWidget",
+        "GamepadWidget", "LeanWidget", "SlideWidget", "WheelieWidget", "GForceWidget", "CompassWidget",
+        "ClockWidget",
         "PointerWidget", "CrashWidget", "PrestigeWidget", "RpmWidget",
         "ToggleStripWidget", "NowPlayingWidget"
     };

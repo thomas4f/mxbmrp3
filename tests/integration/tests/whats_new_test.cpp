@@ -24,6 +24,7 @@
 #include "integration_main.h"
 #include "plugin_host.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -130,6 +131,60 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // ...and opening it clears that tag like any other.
         REQUIRE(host.openSettingsTab("Widgets"));
         CHECK_FALSE(host.whatsNewTabTagged("Widgets"));
+    }
+
+    SUBCASE("a row a patch release adds tags its tab again for a player who opened it earlier in the line") {
+        // A 1.35.0 player who opened the Widgets tab dismissed "T<tab>:1.35". The
+        // Slide and Wheelie rows came in 1.35.1, and that old dismissal said
+        // nothing about them: keyed on the line alone, the tab stayed untagged
+        // and the new rows banded on a tab nothing pointed at. A tab with no
+        // patch marker must keep its old dismissal, or every patch re-tags it.
+        REQUIRE(host.hasWhatsNewDeserialize());
+        std::string patchTab;   // a tab carrying a "MAJOR.MINOR.PATCH" marker
+        for (int i = 0; i < host.whatsNewMarkerCount() && patchTab.empty(); ++i) {
+            const std::string name = host.whatsNewMarkerName(i);   // "Tab / row / version"
+            const std::string version = name.substr(name.rfind(" / ") + 3);
+            if (std::count(version.begin(), version.end(), '.') == 2) {
+                patchTab = name.substr(0, name.find(" / "));
+            }
+        }
+        if (patchTab.empty()) {
+            MESSAGE("no marker names a patch this release: the patch re-tag is unpinned "
+                    "until one does");
+            return;
+        }
+        REQUIRE(patchTab != "Timing");   // Timing is the line-only control below
+        REQUIRE(host.openSettingsTab(patchTab.c_str()));
+        REQUIRE(host.openSettingsTab("Timing"));
+        const std::string now = host.whatsNewSerialize();
+
+        // The same dismissals as the previous patch of this line wrote them: every
+        // tab key's version cut back to MAJOR.MINOR.
+        std::string older;
+        size_t start = 0;
+        while (start < now.size()) {
+            size_t comma = now.find(',', start);
+            if (comma == std::string::npos) comma = now.size();
+            std::string key = now.substr(start, comma - start);
+            const size_t colon = key.find(':');
+            if (!key.empty() && key[0] == 'T' && colon != std::string::npos) {
+                const size_t dot1 = key.find('.', colon);
+                const size_t dot2 = dot1 == std::string::npos ? dot1 : key.find('.', dot1 + 1);
+                if (dot2 != std::string::npos) key.erase(dot2);
+            }
+            if (!older.empty()) older += ',';
+            older += key;
+            start = comma + 1;
+        }
+        REQUIRE_MESSAGE(older != now, "opening the tab stored no patch-scoped key: " << now);
+        host.whatsNewDeserialize(older.c_str());
+        CHECK(host.whatsNewTabTagged(patchTab.c_str()));   // the patch's rows tag it again
+        CHECK_FALSE(host.whatsNewTabTagged("Timing"));     // the line's dismissal still holds
+
+        // ...and opening it clears the patch's tag like any other.
+        REQUIRE(host.openSettingsTab(patchTab.c_str()));
+        CHECK_FALSE(host.whatsNewTabTagged(patchTab.c_str()));
+        host.whatsNewReset();
     }
 
     SUBCASE("a tab whose name fills the sidebar bands its sidebar row instead of the tag, and its rows band") {

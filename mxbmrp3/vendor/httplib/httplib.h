@@ -8,8 +8,8 @@
 #ifndef CPPHTTPLIB_HTTPLIB_H
 #define CPPHTTPLIB_HTTPLIB_H
 
-#define CPPHTTPLIB_VERSION "0.64.0"
-#define CPPHTTPLIB_VERSION_NUM "0x004000"
+#define CPPHTTPLIB_VERSION "0.65.0"
+#define CPPHTTPLIB_VERSION_NUM "0x004100"
 
 #ifdef _WIN32
 #if defined(_WIN32_WINNT) && _WIN32_WINNT < 0x0A00
@@ -1029,18 +1029,27 @@ inline std::string resolve_relative_location(const std::string &location,
   // A ':' in the first segment means the value has a scheme.
   if (location.find(':') < location.find_first_of("/?#")) { return location; }
 
-  if (location[0] == '#') { return base.substr(0, base.find('#')) + location; }
+  // A path starting with "//" would be re-parsed as an authority. Prefix "/."
+  // (as the URL Standard does); remove_dot_segments strips it later.
+  auto on_this_host = [](std::string path) -> std::string {
+    if (path.compare(0, 2, "//") == 0) { path.insert(0, "/."); }
+    return path;
+  };
+
+  if (location[0] == '#') {
+    return on_this_host(base.substr(0, base.find('#')) + location);
+  }
 
   auto base_path = base.substr(0, base.find_first_of("?#"));
-  if (location[0] == '?') { return base_path + location; }
+  if (location[0] == '?') { return on_this_host(base_path + location); }
 
   if (base_path.empty() || base_path[0] != '/') { base_path = "/"; }
   auto merged = base_path.substr(0, base_path.rfind('/') + 1) + location;
 
   // Remove "." and ".." segments from the merged path.
   auto path_end = (std::min)(merged.find_first_of("?#"), merged.size());
-  return remove_dot_segments(merged.substr(0, path_end)) +
-         merged.substr(path_end);
+  return on_this_host(remove_dot_segments(merged.substr(0, path_end)) +
+                      merged.substr(path_end));
 }
 
 } // namespace detail
@@ -3057,6 +3066,10 @@ protected:
   std::thread::id socket_requests_are_from_thread_ = std::thread::id();
   bool socket_should_be_closed_when_request_is_done_ = false;
   size_t socket_tls_settings_version_ = 0;
+
+  // Set by stop() while a request is in flight. The request's reads poll it,
+  // because shutting the socket down does not wake a read on Windows.
+  std::atomic<bool> stop_requested_{false};
 
   std::atomic<size_t> tls_settings_version_{0};
 
@@ -6840,10 +6853,14 @@ select_read_interruptible(socket_t sock, time_t sec, time_t usec,
   while (!interrupted()) {
     auto left = std::chrono::duration_cast<std::chrono::microseconds>(
         deadline - std::chrono::steady_clock::now());
-    auto wait =
-        (std::max)((std::min)(left, slice), std::chrono::microseconds(0));
-    auto ret = select_impl(sock, POLLIN, 0, static_cast<time_t>(wait.count()));
-    if (ret != 0 || wait < slice) { return ret; }
+    auto last = left < slice;
+    // poll() takes whole milliseconds, so round the last wait up to keep it
+    // from ending before the deadline.
+    auto wait_usec = last ? (std::max)((left.count() + 999) / 1000 * 1000,
+                                       static_cast<decltype(left.count())>(0))
+                          : slice.count();
+    auto ret = select_impl(sock, POLLIN, 0, static_cast<time_t>(wait_usec));
+    if (ret != 0 || last) { return ret; }
   }
   return 0;
 }
@@ -9335,6 +9352,7 @@ inline bool redirect(T &cli, Request &req, Response &res,
                      Error &error) {
   Request new_req = req;
   new_req.path = path;
+  new_req.params.clear();
   new_req.redirect_count_ -= 1;
 
   if (res.status == StatusCode::SeeOther_303 &&
@@ -12859,7 +12877,8 @@ inline ssize_t SocketStream::read(char *ptr, size_t size) {
 inline ssize_t SocketStream::write(const char *ptr, size_t size) {
   if (!wait_writable()) { return -1; }
 
-#if defined(_WIN32) && !defined(_WIN64)
+  // Winsock's send() takes an int length, even on 64-bit Windows
+#ifdef _WIN32
   size =
       (std::min)(size, static_cast<size_t>((std::numeric_limits<int>::max)()));
 #endif
@@ -15274,7 +15293,10 @@ Server::process_request(Stream &strm, const std::string &remote_addr,
   if ((req.method == "GET" || req.method == "HEAD") &&
       req.has_header("Range")) {
     const auto &range_header_value = req.get_header_value("Range");
-    if (!detail::parse_range_header(range_header_value, req.ranges)) {
+    // RFC 9110 14.2: a range unit other than bytes must be ignored
+    auto unit = range_header_value.substr(0, range_header_value.find('='));
+    if (detail::case_ignore::equal(unit, "bytes") &&
+        !detail::parse_range_header(range_header_value, req.ranges)) {
       connection_closed = true;
       res.status = StatusCode::RangeNotSatisfiable_416;
       output_error_log(Error::InvalidRangeHeader, &req);
@@ -15803,6 +15825,9 @@ inline bool ClientImpl::send_(Request &req, Response &res, Error &error) {
     // socket.
     socket_should_be_closed_when_request_is_done_ = false;
 
+    // A redirect or a retry sent inside a request keeps its stop()
+    if (socket_requests_in_flight_ == 0) { stop_requested_ = false; }
+
     if (!socket_reusable()) {
       if (!ensure_socket_connection(socket_, error)) { return false; }
 
@@ -15850,6 +15875,7 @@ inline bool ClientImpl::send_(Request &req, Response &res, Error &error) {
   });
 
   ret = process_socket(socket_, req.start_time_, [&](Stream &strm) {
+    strm.set_read_interrupt([this] { return stop_requested_.load(); });
     return handle_request(strm, req, res, close_connection, error);
   });
 
@@ -18068,6 +18094,9 @@ inline void ClientImpl::stop() {
   // are not thread-safe.
   if (socket_requests_in_flight_ > 0) {
     shutdown_socket(socket_);
+    // shutdown() does not wake a read waiting in WSAPoll on Windows, so the
+    // request's reads also give up once they see this flag.
+    stop_requested_ = true;
 
     // Aside from that, we set a flag for the socket to be closed when we're
     // done.
@@ -23030,6 +23059,9 @@ inline ssize_t read(session_t session, void *buf, size_t len, TlsError &err) {
   }
 
   auto wsession = static_cast<impl::WolfSSLSession *>(session);
+  constexpr auto max_len =
+      static_cast<size_t>((std::numeric_limits<int>::max)());
+  if (len > max_len) { len = max_len; }
   int ret = wolfSSL_read(wsession->ssl, buf, static_cast<int>(len));
 
   if (ret > 0) {

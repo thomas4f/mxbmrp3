@@ -1,8 +1,8 @@
 // ============================================================================
 // core/test_hooks_whats_new.cpp
-// The MXBMRP3_Test_* export that counts the "New" row bands a marker's tab
-// draws (whats_new_test), split out of core/test_hooks.cpp, which is at its
-// file budget.
+// The MXBMRP3_Test_* exports that count the "New" row bands a marker's tab
+// draws and load a dismissed set as an INI would (whats_new_test), split out
+// of core/test_hooks.cpp, which is at its file budget.
 //
 // Same rules as its parent: the whole file is gated on MXBMRP3_TEST_BUILD and
 // mxbmrp3/CMakeLists.txt removes it from every shipping target's source list,
@@ -33,6 +33,12 @@ __declspec(dllexport) int MXBMRP3_Test_WhatsNewBandsMatch(int index) {
         if (WhatsNew::MARKERS[i].tabId == tab && WhatsNew::isLive(WhatsNew::MARKERS[i])) ++live;
     }
     return sh.testWhatsNewBands() == live ? 1 : 0;
+}
+
+// Replace the dismissed set with `csv`, the whatsNewSeen value a settings file
+// carries: how a test stands in for a player who dismissed under an older build.
+__declspec(dllexport) void MXBMRP3_Test_WhatsNewDeserialize(const char* csv) {
+    WhatsNew::deserialize(csv ? csv : "");
 }
 
 }  // extern "C"

@@ -301,10 +301,11 @@ a rule about it.
 | `achievement_solo_race` | Just Me Then. A race nobody else started. You won. Congratulations, I suppose. | Just Me Then. A race nobody else started. You won. Congratulations, I suppose. |
 | `achievement_peace_out` | Peace Out. Three riders down and you rode straight through. Bye! | Peace Out. Three riders down and you rode straight through. Bye! |
 | `achievement_digging` | Digging a Hole. Spinning in place. Keep going, you'll reach Australia. | Digging a Hole. Spinning in place. Keep going, you'll reach Australia. |
+| `achievement_ghost_ride` | Ghost Ride. You came off and the bike carried on without you. It doesn't need you. | Ghost Ride. You came off and the bike carried on without you. It doesn't need you. |
 | `achievement_sandbagger` | Sandbagger. A PB on the last lap. Where was that all race? | Sandbagger. A PB on the last lap. Where was that all race? |
 | `achievement_palindrome` | Palindrome. Same lap time backwards. Weird flex, but okay. | Palindrome. Same lap time backwards. Weird flex, but okay. |
 | `achievement_deja_vu` | Deja Vu. Two identical lap times. Have we met before? | Deja Vu. Two identical lap times. Have we met before? |
 | `achievement_photo_finish` | Photo Finish. Under a tenth! Too close. My heart. | Photo Finish. Under a tenth! Too close. My heart. |
 | `achievement_fumes` | Running on Fumes. One percent of a tank. Living dangerously. | Running on Fumes. One percent of a tank. Living dangerously. |
 
-288 rows.
+289 rows.

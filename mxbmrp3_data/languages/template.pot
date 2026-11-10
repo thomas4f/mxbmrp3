@@ -562,6 +562,7 @@ msgstr ""
 msgid "Big Hit"
 msgstr ""
 
+#. max 11 characters
 msgid "Bike"
 msgstr ""
 
@@ -1241,6 +1242,10 @@ msgctxt "tooltip"
 msgid "Dial faces and the ranges that place the needles on them."
 msgstr ""
 
+#. max 60 characters
+msgid "Dials"
+msgstr ""
+
 msgid "Digging a Hole"
 msgstr ""
 
@@ -1452,6 +1457,10 @@ msgid "Extra rows below the comparisons: position, lap, time left, session forma
 msgstr ""
 
 msgid "Extract"
+msgstr ""
+
+#. max 11 characters
+msgid "Extras"
 msgstr ""
 
 msgid "FASTEST LAP"
@@ -1829,10 +1838,6 @@ msgstr ""
 msgid "Gaps"
 msgstr ""
 
-#. max 60 characters
-msgid "Gauges"
-msgstr ""
-
 msgid "Gea"
 msgstr ""
 
@@ -1849,6 +1854,9 @@ msgid "General"
 msgstr ""
 
 msgid "Ghost"
+msgstr ""
+
+msgid "Ghost Ride"
 msgstr ""
 
 msgctxt "tooltip"
@@ -2176,6 +2184,10 @@ msgstr ""
 msgid "Input"
 msgstr ""
 
+#. max 60 characters
+msgid "Inputs"
+msgstr ""
+
 msgid "Install"
 msgstr ""
 
@@ -2194,6 +2206,10 @@ msgstr ""
 
 msgctxt "tooltip"
 msgid "Interactive elements, hover highlights, and the player/spectated rider's name in standings."
+msgstr ""
+
+#. max 60 characters
+msgid "Interface"
 msgstr ""
 
 msgid "Interior Decorator"
@@ -2486,6 +2502,10 @@ msgctxt "tooltip"
 msgid "Let close battles steer the camera. Off holds the leader/solo baseline."
 msgstr ""
 
+#, c-format
+msgid "Let the bike ride alone for %s"
+msgstr ""
+
 msgctxt "tooltip"
 msgid "Lifetime milestones as Bronze-to-Platinum progress bars, plus a toast when a tier is earned."
 msgstr ""
@@ -2751,10 +2771,6 @@ msgstr ""
 msgid "Min shot"
 msgstr ""
 
-#. max 60 characters
-msgid "Misc"
-msgstr ""
-
 #. max 15 characters
 msgid "Mode"
 msgstr ""
@@ -2765,6 +2781,10 @@ msgstr ""
 
 #. max 13 characters
 msgid "Motion"
+msgstr ""
+
+#. max 60 characters
+msgid "Movement"
 msgstr ""
 
 msgid "Mudder"
@@ -3437,6 +3457,7 @@ msgstr ""
 msgid "RPM"
 msgstr ""
 
+#. max 60 characters
 msgid "Race"
 msgstr ""
 
@@ -3507,7 +3528,7 @@ msgstr ""
 msgid "Reach %s above takeoff and land it"
 msgstr ""
 
-#. max 11 characters
+#. max 60 characters
 msgid "Readouts"
 msgstr ""
 
@@ -3819,6 +3840,7 @@ msgstr ""
 msgid "Sandbagger"
 msgstr ""
 
+#. max 34 characters
 msgid "Save"
 msgstr ""
 
@@ -4418,6 +4440,14 @@ msgstr ""
 
 msgctxt "tooltip"
 msgid "Shows front and rear tyre temperatures."
+msgstr ""
+
+msgctxt "tooltip"
+msgid "Shows how far the bike slides sideways, in degrees."
+msgstr ""
+
+msgctxt "tooltip"
+msgid "Shows how far you are up on the back wheel, in degrees."
 msgstr ""
 
 msgctxt "tooltip"

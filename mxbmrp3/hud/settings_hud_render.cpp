@@ -153,7 +153,7 @@ const SettingsHud::TabDescriptor SettingsHud::s_tabRegistry[] = {
     { TAB_MORE,         N_("More"),   "more",          nullptr,                                                              false, &SettingsHud::renderTabMore,            nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr, true },
     { TAB_FIND,         N_("Find"),   "find",          nullptr,                                                              false, &SettingsHud::renderTabFind,            &SettingsHud::handleClickTabFind,         nullptr,            nullptr,                                nullptr, nullptr, true },
     { TAB_SECTION_PROFILE,  nullptr,  nullptr,         nullptr,                                                              false, nullptr,                                nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr },
-    { TAB_WIDGETS,      N_("Widgets"), "widgets",       nullptr,                                                              false, &SettingsHud::renderTabWidgets,         nullptr,                                  nullptr,            &SettingsHud::resetTabWidgets,          nullptr, nullptr },
+    { TAB_WIDGETS,      N_("Widgets"), "widgets",       nullptr,                                                              false, &SettingsHud::renderTabWidgets,         &SettingsHud::handleClickTabWidgets,      nullptr,            &SettingsHud::resetTabWidgets,          nullptr, nullptr },
     { TAB_DASH,         N_("Dash"),   "dash",          [](const SettingsHud&) -> BaseHud* { return &HudManager::getInstance().getDashHud(); },
                                                                                                                                       false, &SettingsHud::renderTabDash,            nullptr,                                  "DashHud",          nullptr,                                nullptr, nullptr },
     { TAB_MAP,          N_("Map"),    "map",           [](const SettingsHud& s) -> BaseHud* { return s.m_mapHud; },          false, &SettingsHud::renderTabMap,             &SettingsHud::handleClickTabMap,          "MapHud",           nullptr,                                nullptr, nullptr },
@@ -1039,10 +1039,10 @@ void SettingsHud::rebuildRenderData() {
     const float startY = snapEdgeY((1.0f - backgroundHeight) / 2.0f);
 
     // The frame, the caption's band and one card per section of BOTH columns --
-    // except the Back row's (addBackButton): its section keeps its box, so the
-    // button sits where it always did, but on the panel's own background.
+    // except a footer's (addBackButton, the Widgets pager): its section keeps its
+    // box, so the buttons sit under the content, on the panel's own background.
     const PanelBox::SectionGeom* backSection =
-        (groupRowOf(m_activeTab) >= 0 && !mainCol.sections.empty())
+        ((groupRowOf(m_activeTab) >= 0 || m_activeTab == TAB_WIDGETS) && !mainCol.sections.empty())
             ? &mainCol.sections.back() : nullptr;
     addPlanBackground(plan, startX, startY, backSection);
     // UNTHEMED SECTIONS. A theme paints a card per section; without one the

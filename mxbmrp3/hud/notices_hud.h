@@ -57,7 +57,8 @@ public:
     // A notice's slab in this HUD's colours: the fill whose colour is the message
     // (still to take the slab's opacity) and the caption ink on it at `opacity`.
     // The Dash's Notices page draws its slab from this, so the two never disagree.
-    void slabColors(NoticeTracker::Kind kind, float opacity, unsigned long& fill, unsigned long& ink) const;
+    void slabColors(NoticeTracker::Kind kind, float opacity, float panelOpacity, unsigned long& fill,
+                    unsigned long& ink) const;
     // The notices that call for action now (wrong way, hazard, rider oncoming, blue
     // flag) glow behind their slab (BaseHud::addGlow), here and on the Dash; the
     // informational ones (PBs, lapper ahead, last lap...) do not. Reach is a share

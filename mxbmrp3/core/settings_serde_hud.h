@@ -26,6 +26,7 @@
 #include "../hud/fuel_widget.h"
 #include "../hud/session_hud.h"
 #include "../hud/lean_widget.h"
+#include "../hud/slide_widget.h"
 #include "../hud/bars_widget.h"
 #include "../hud/event_log_hud.h"
 #include "../hud/notices_hud.h"
@@ -690,6 +691,20 @@ namespace Settings {
         loadBitFromKey(settings, LEAN_VALUE, rows, LeanWidget::ROW_LEAN_VALUE);
         loadBitFromKey(settings, STEER_BAR, rows, LeanWidget::ROW_STEER_BAR);
         loadBitFromKey(settings, STEER_VALUE, rows, LeanWidget::ROW_STEER_VALUE);
+    }
+
+    // SlideWidget: save rows as named keys
+    inline void saveSlideRows(SettingsManager::HudSettings& settings, uint32_t rows) {
+        using namespace Keys::SlideRows;
+        saveBitAsKey(settings, ARC, rows, SlideWidget::ROW_ARC);
+        saveBitAsKey(settings, VALUE, rows, SlideWidget::ROW_VALUE);
+    }
+
+    // SlideWidget: load rows from named keys
+    inline void loadSlideRows(const SettingsManager::HudSettings& settings, uint32_t& rows) {
+        using namespace Keys::SlideRows;
+        loadBitFromKey(settings, ARC, rows, SlideWidget::ROW_ARC);
+        loadBitFromKey(settings, VALUE, rows, SlideWidget::ROW_VALUE);
     }
 
 #if GAME_HAS_TYRE_TEMP

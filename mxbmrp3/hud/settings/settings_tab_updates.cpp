@@ -219,7 +219,6 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
         // Show step-by-step progress
         ctx.addSectionHeading(TR("Progress"));
         auto steps = downloader.getSteps();
-        int stepIndex = 0;
         for (const auto& step : steps) {
             // Status indicator
             char indicatorBuf[16] = "";
@@ -232,12 +231,11 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
                     indicatorColor = colorConfig.getPositive();
                     break;
                 case UpdateDownloader::StepStatus::IN_PROGRESS:
-                    // Show percentage for download step only
-                    if (stepIndex == 0 && downloaderState == UpdateDownloader::State::DOWNLOADING) {
-                        float progress = downloader.getProgress();
-                        snprintf(indicatorBuf, sizeof(indicatorBuf), "%.0f%%", progress * 100.0f);
+                    // Steps that count show 0-100% (formatted here, on the rebuild a
+                    // percentage change triggers); the rest rely on the label color
+                    if (step.percent >= 0) {
+                        snprintf(indicatorBuf, sizeof(indicatorBuf), "%d%%", step.percent);
                     }
-                    // Other in-progress steps: label color indicates activity, no indicator needed
                     indicatorColor = colorConfig.getAccent();
                     break;
                 case UpdateDownloader::StepStatus::SKIPPED:
@@ -255,7 +253,6 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
                 ? colorConfig.getAccent()
                 : colorConfig.getSecondary();
             ctx.addLabelValueRow(I18n::tr(step.label), labelColor, indicator, indicatorColor, STEP_COLUMN);
-            stepIndex++;
         }
 
     } else if (isReady) {

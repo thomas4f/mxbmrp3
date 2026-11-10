@@ -49,6 +49,19 @@ int main(int argc, char** argv) {
     int rpmDemo = -1;
     for (int a = 1; a + 1 < argc; ++a)
         if (std::string(argv[a]) == "rpm") rpmDemo = std::atoi(argv[a + 1]);
+    // "slide N": the gear scene riding at 15 m/s with the path N degrees clockwise
+    // of the nose (rear out to the right for N > 0) -- for eyeballing the Slide
+    // widget (turn it on with EXTRA_INI=$'[SlideWidget]\nvisible=1').
+    bool slideDemo = false;
+    float slideDeg = 0.0f;
+    for (int a = 1; a + 1 < argc; ++a)
+        if (std::string(argv[a]) == "slide") { slideDemo = true; slideDeg = static_cast<float>(std::atof(argv[a + 1])); }
+    // "wheelie N": the gear scene up on the back wheel at N degrees, having peaked
+    // 15 higher a moment ago so the Wheelie widget's peak marker shows (turn it on
+    // with EXTRA_INI=$'[WheelieWidget]\nvisible=1').
+    int wheelieDemo = -1;
+    for (int a = 1; a + 1 < argc; ++a)
+        if (std::string(argv[a]) == "wheelie") wheelieDemo = std::atoi(argv[a + 1]);
     if (rpmDemo >= 0)
         host.eventInit("Southwick", "Thomas", 1600.0f, 2, "Test 450", "MX1", "", 0, "", 0.0f, 10500, 12000);
     else
@@ -71,6 +84,9 @@ int main(int argc, char** argv) {
     // reload) -- for eyeballing the card's default place among the widgets. Pair it
     // with EXTRA_INI=$'[Achievements]\ntoastMs=30000' so the card outlives the hold.
     bool toastMode = false;
+    // "ghosttoast": the same, earned the real way - 3.5 s of the bike riding on
+    // upright with the rider off, through the telemetry handler (Ghost Ride).
+    bool ghostToastMode = false;
     // "records": the Records HUD with server records loaded AND the player's own PB
     // row highlighted -- the row whose last column runs closest to the panel edge, and
     // the only way to look at that edge without the live provider. Implies the timing
@@ -138,7 +154,10 @@ int main(int argc, char** argv) {
         if (std::string(argv[a]) == "gamepad") gamepadMode = true;
         if (std::string(argv[a]) == "gear") gearMode = true;
         if (std::string(argv[a]) == "rpm") gearMode = true;
+        if (std::string(argv[a]) == "slide") gearMode = true;
+        if (std::string(argv[a]) == "wheelie") gearMode = true;
         if (std::string(argv[a]) == "toast") { gearMode = true; toastMode = true; }
+        if (std::string(argv[a]) == "ghosttoast") { gearMode = true; ghostToastMode = true; }
         if (std::string(argv[a]) == "timing") timingMode = true;
         if (std::string(argv[a]) == "pitlap") { timingMode = true; pitlapMode = true; }
         // "gapbar": the timing scene plus the Gap Bar (off by default) with a live gap
@@ -596,6 +615,16 @@ int main(int argc, char** argv) {
     } else if (gearMode) {
         // nothing: the HUD renders its default-visible widgets over the empty scene
         if (toastMode) host.configReloaded();   // Tinkerer - Bronze, taken on the next draw
+        if (ghostToastMode) {
+            long long t = 1'000'000;
+            for (int i = 0; i < 36; ++i) {
+                t += 100'000;
+                host.statsSetNowUs(t);
+                TelemetryRow r;
+                r.crashed = 1; r.speed = 6.0f; r.roll = 10.0f; r.trackPos = 0.30f;
+                host.telemetryFrame(r);
+            }
+        }
         if (rpmDemo >= 0) {
             // The limiter flash's lit phase, or its dark one with "rpmdark".
             bool dark = false;
@@ -607,6 +636,34 @@ int main(int argc, char** argv) {
             r.rpm = rpmDemo;
             r.trackPos = 0.30f;
             host.telemetryFrame(r);
+        }
+        if (slideDemo) {
+            // On track FIRST: the view-state change clears the telemetry.
+            host.drawWithState(0);
+            TelemetryRow r;
+            r.speed = 15.0f;
+            r.gear = 3;
+            r.trackPos = 0.30f;
+            const float rad = slideDeg * 3.14159265f / 180.0f;
+            r.velX = 15.0f * std::sin(rad);
+            r.velZ = 15.0f * std::cos(rad);
+            host.telemetryFrame(r);
+        }
+        if (wheelieDemo >= 0) {
+            // Up past the peak, then settled back at the angle: the widget smooths,
+            // so each posture is held for long enough to arrive.
+            for (int peak = 1; peak >= 0; --peak) {
+                for (int i = 0; i < 80; ++i) {
+                    TelemetryRow r;
+                    r.speed = 12.0f;
+                    r.gear = 2;
+                    r.trackPos = 0.30f;
+                    r.frontMaterial = wheelieDemo > 0 ? 0 : 1;
+                    r.pitch = -static_cast<float>(wheelieDemo + (peak && wheelieDemo > 0 ? 15 : 0));
+                    host.telemetryFrame(r);
+                    host.drawWithState(0);   // on track: the telemetry is the player's
+                }
+            }
         }
     } else {
         // Default (or a specific tab named on the command line, e.g. "Timing").
@@ -653,7 +710,7 @@ int main(int argc, char** argv) {
     // menu, the pointer) renders on the companion window we screenshot — it never
     // takes focus, so it's never the foreground-derived active surface under Wine.
     host.forceActiveSurface(1);
-    const int drawState = (dashMode || dashTimeMode) ? 0 : 1;   // ON_TRACK for the Dash's Fuel rows
+    const int drawState = (dashMode || dashTimeMode || slideDemo || wheelieDemo >= 0) ? 0 : 1;   // ON_TRACK: Dash Fuel rows, Slide, Wheelie
     host.drawWithState(drawState);
 
     // "toggles N": the mouse stand-in over the Toggles strip's row N, so the capture

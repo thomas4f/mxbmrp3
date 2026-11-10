@@ -103,10 +103,13 @@ set(MXB_UNIT_SOURCES
     test_radar_fade.cpp
     test_motion.cpp
     test_impact_vignette.cpp
+    test_ghost_ride.cpp
     test_digit_roll.cpp
     test_severity_ramp.cpp
     test_icon_resolve.cpp
     test_peak_marker.cpp
+    test_slip_angle.cpp
+    test_wheelie_arc.cpp
     test_standings_gap_plan.cpp
     test_standings_live_order.cpp
     test_text_wrap.cpp

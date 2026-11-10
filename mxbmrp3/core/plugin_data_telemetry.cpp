@@ -72,15 +72,13 @@ void PluginData::invalidateSpeedometer() {
     notifyHudManager(DataChangeType::InputTelemetry);
 }
 
-void PluginData::updateRoll(float roll) {
+void PluginData::updateAttitude(float roll, float pitch, float slideAngle, float wheelieAngle) {
     m_bikeTelemetry.roll = roll;
-    // No separate notification - roll updates at same frequency as speedometer
-    // which already notifies with InputTelemetry
-}
-
-void PluginData::updatePitch(float pitch) {
     m_bikeTelemetry.pitch = pitch;
-    // Same as updateRoll — updates at telemetry rate, no separate notification.
+    m_bikeTelemetry.slideAngle = slideAngle;
+    m_bikeTelemetry.wheelieAngle = wheelieAngle;
+    // No separate notification - these update at the same frequency as the
+    // speedometer, which already notifies with InputTelemetry
 }
 
 void PluginData::updateAcceleration(float accelX, float accelY, float accelZ) {

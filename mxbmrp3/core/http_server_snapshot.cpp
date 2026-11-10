@@ -300,7 +300,7 @@ void appendSession(std::string& out, const SnapshotCtx& ctx) {
         // ("N TO GO" / "FINAL LAP" / "CHECKERED") so the web header matches the
         // in-game StandingsHud / TimeWidget. The overlay renders this string
         // directly, so the label needs no client-side logic.
-        int sessionTime = ctx.pd.getSessionTime();
+        int sessionTime = ctx.pd.getSessionClockTime();
         char timeBuf[PluginUtils::SESSION_CLOCK_CHARS];
         PluginUtils::formatSessionClock(ctx.pd.getLeaderLapsToGo(), sessionTime, ctx.session.lapsAfterClock(),
                                         timeBuf, sizeof(timeBuf));

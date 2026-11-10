@@ -31,6 +31,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -58,6 +59,25 @@ std::map<std::string, int> templateIds(const std::string& potPath) {
     return ids;
 }
 
+// Every text the tab draws, on EVERY page of the Widgets tab: a label on a page
+// a sweep never turned to would get no limit and no overlap check. Its pages
+// are settings; the other paged tabs page lists (riders, achievements, Find
+// results), not labels.
+std::vector<PluginHost::TextRoom> tabTextRooms(PluginHost& host, const std::string& tab) {
+    host.setActiveTab(tab.c_str());
+    host.draw();
+    float nx = 0.0f, ny = 0.0f;
+    // From the first page: the tab can open on another (a "New" row's page).
+    while (tab == "Widgets" && host.settingsRegionCenter("pager.prev", &nx, &ny)) host.clickAt(nx, ny);
+    std::vector<PluginHost::TextRoom> rooms = host.settingsTextRoom();
+    while (tab == "Widgets" && host.settingsRegionCenter("pager.next", &nx, &ny)) {
+        host.clickAt(nx, ny);
+        const std::vector<PluginHost::TextRoom> page = host.settingsTextRoom();
+        rooms.insert(rooms.end(), page.begin(), page.end());
+    }
+    return rooms;
+}
+
 }  // namespace
 
 TEST_CASE("i18n limits: every settings label's room, measured in English, matches the fixture") {
@@ -72,9 +92,7 @@ TEST_CASE("i18n limits: every settings label's room, measured in English, matche
     REQUIRE(ids.size() > 1000);
     std::map<std::string, int> limits;
     for (const std::string& tab : host.settingsAllTabNames()) {
-        host.setActiveTab(tab.c_str());
-        host.draw();
-        for (const PluginHost::TextRoom& r : host.settingsTextRoom()) {
+        for (const PluginHost::TextRoom& r : tabTextRooms(host, tab)) {
             if (r.overlap) s_englishOverlaps.insert(tab + "@" + r.where);
             if (!ids.count(r.text)) continue;
             // One character of air before the control; English that already
@@ -137,9 +155,7 @@ std::string overlapsUnder(const std::string& save, const char* language, int& ro
     rows = 0;
     std::string overlaps;
     for (const std::string& tab : host.settingsAllTabNames()) {
-        host.setActiveTab(tab.c_str());
-        host.draw();
-        for (const PluginHost::TextRoom& r : host.settingsTextRoom()) {
+        for (const PluginHost::TextRoom& r : tabTextRooms(host, tab)) {
             ++rows;
             seen.insert(r.text);
             if (s_englishOverlaps.count(tab + "@" + r.where)) continue;

@@ -577,7 +577,7 @@ void DiscordManager::updateSnapshot() {
     next.eventType      = session.eventType;
     next.serverType     = session.serverType;
     next.riderCount     = static_cast<int>(pd.getRaceEntries().size());
-    next.sessionTimeMs  = pd.getSessionTime();
+    next.sessionTimeMs  = pd.getSessionClockTime();
     // Absolute countdown end (wall-clock) captured here, so the Discord thread can
     // drop the timer once real time passes it - robust even if this snapshot then
     // goes stale (overtime can stop producing data-change updates).

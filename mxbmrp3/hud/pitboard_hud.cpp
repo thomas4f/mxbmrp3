@@ -212,7 +212,7 @@ void PitboardHud::update() {
     // Real-time updates: check if session time changed (like TimeWidget)
     // Only update when visible to avoid unnecessary rebuilds
     if (shouldBeVisible() && (m_enabledRows & ROW_TIME)) {
-        int currentTime = pluginData.getSessionTime();
+        int currentTime = pluginData.getSessionClockTime();
         int currentSeconds = currentTime / 1000;
         int lastSeconds = m_cachedRenderedTime / 1000;
 
@@ -365,7 +365,7 @@ void PitboardHud::rebuildRenderData() {
         char timeStr[24];
         bool isTimedRace = sessionData.sessionLength > 0;
         bool isLapsRace = sessionData.sessionNumLaps > 0;
-        int sessionTime = data.getSessionTime();
+        int sessionTime = data.getSessionClockTime();
         if (sessionTime > 0) {
             int minutes = sessionTime / 60000;
             if (isTimedRace && isLapsRace) {

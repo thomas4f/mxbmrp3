@@ -145,6 +145,14 @@ void PluginData::setSessionTime(int sessionTime) {
     }
 }
 
+// Before the gate drops, a timed session's game clock counts down the pre-start, sighting lap
+// and gate hold (the gate-drop watch), not the race: "00:35 + 2 laps" on the grid of an 8:00 + 2.
+int PluginData::getSessionClockTime() const {
+    using namespace PluginConstants::SessionState;
+    const bool preRace = (m_sessionData.sessionState & (PRE_START | SIGHTING_LAP)) || m_awaitingGateDrop;
+    return (preRace && m_sessionData.sessionLength > 0) ? m_sessionData.sessionLength : m_currentSessionTime;
+}
+
 void PluginData::setSession(int session) {
     if (setValue(m_sessionData.session, session)) {
         notifyHudManager(DataChangeType::SessionData);

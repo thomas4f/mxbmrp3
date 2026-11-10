@@ -462,6 +462,7 @@ void SettingsHud::handleTabClick(const ClickRegion& region) {
         m_activeTab = region.tabIndex;
     }
     recordTabOpened(m_activeTab);   // Grand Tour
+    landWidgetsPage(m_activeTab);
     // OPENING a marked tab clears its "New" tag -- the tag's only claim is that
     // there is something here you have not looked at, and now you have. The rows
     // keep their bands until hovered; finding the row is a separate thing from

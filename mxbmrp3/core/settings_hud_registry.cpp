@@ -70,6 +70,8 @@
 #include "../hud/benchmark_widget.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
+#include "../hud/slide_widget.h"
+#include "../hud/wheelie_widget.h"
 #include "../hud/gforce_widget.h"
 #include "../hud/compass_widget.h"
 #if GAME_HAS_TYRE_TEMP
@@ -1027,6 +1029,8 @@ const std::vector<HudSectionSerializer>& hudSectionRegistry() {
         { "FuelWidget", &SettingsManager::cap_FuelWidget, &SettingsManager::app_FuelWidget },
         { "GamepadWidget", &SettingsManager::cap_GamepadWidget, &SettingsManager::app_GamepadWidget },
         { "LeanWidget", &SettingsManager::cap_LeanWidget, &SettingsManager::app_LeanWidget },
+        { "SlideWidget", &SettingsManager::cap_SlideWidget, &SettingsManager::app_SlideWidget },
+        { "WheelieWidget", &SettingsManager::cap_WheelieWidget, &SettingsManager::app_WheelieWidget },
         { "GForceWidget", &SettingsManager::cap_GForceWidget, &SettingsManager::app_GForceWidget },
         { "CompassWidget", &SettingsManager::cap_CompassWidget, &SettingsManager::app_CompassWidget },
 #if GAME_HAS_TYRE_TEMP

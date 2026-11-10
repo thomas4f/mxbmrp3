@@ -246,6 +246,7 @@ shipped ini - the three deliberately agree.
 | `achievement_peace_out` | on | you earned Peace Out - Ride through three riders down |
 | `achievement_favorite_spot` | on | you earned Favorite Spot - Crash three times in a row in one place |
 | `achievement_digging` | on | you earned Digging a Hole - Spin the rear wheel in place for ... |
+| `achievement_ghost_ride` | on | you earned Ghost Ride - Let the bike ride alone for ... |
 | `achievement_fmx_frontflips` | on | you earned Somersault - Land ... frontflips (every tier; {tier} says which) |
 
 ## Variables

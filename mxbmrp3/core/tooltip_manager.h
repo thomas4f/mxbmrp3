@@ -409,6 +409,8 @@ private:
             {"widgets.toggles", NC_("tooltip", "Settings and every switch in one strip; drag it to an edge to turn it. Rest on one that is off to preview it.")},
             {"widgets.clock", NC_("tooltip", "Shows current local time. Supports 12h/24h format and optional UTC display.")},
             {"widgets.lean", NC_("tooltip", "Shows rider lean angle in degrees with arc gauge.")},
+            {"widgets.slide", NC_("tooltip", "Shows how far the bike slides sideways, in degrees.")},
+            {"widgets.wheelie", NC_("tooltip", "Shows how far you are up on the back wheel, in degrees.")},
             {"widgets.gforce", NC_("tooltip", "G-G diagram plotting lateral vs longitudinal G-force with a peak marker.")},
             {"widgets.compass", NC_("tooltip", "Bike heading dial with N/E/S/W labels (classic needle or modern rotating-card style).")},
             {"widgets.pointer", NC_("tooltip", "On = shown while racing; Off = only in the settings menu (helps controllers seen as a mouse).")},

@@ -572,6 +572,7 @@ msgstr "Beta"
 msgid "Big Hit"
 msgstr "Pancada"
 
+#. max 11 characters
 msgid "Bike"
 msgstr "Moto"
 
@@ -1251,6 +1252,10 @@ msgctxt "tooltip"
 msgid "Dial faces and the ranges that place the needles on them."
 msgstr "Mostradores e as faixas que posicionam os ponteiros neles."
 
+#. max 60 characters
+msgid "Dials"
+msgstr "Mostradores"
+
 msgid "Digging a Hole"
 msgstr "Cavando um Buraco"
 
@@ -1463,6 +1468,10 @@ msgstr "Linhas extras abaixo das comparações: posição, volta, tempo restante
 
 msgid "Extract"
 msgstr "Extrair"
+
+#. max 11 characters
+msgid "Extras"
+msgstr "Extras"
 
 msgid "FASTEST LAP"
 msgstr "VOLTA MAIS RÁPIDA"
@@ -1839,10 +1848,6 @@ msgstr "Dif. p/ líder"
 msgid "Gaps"
 msgstr "Difs."
 
-#. max 60 characters
-msgid "Gauges"
-msgstr "Mostradores"
-
 msgid "Gea"
 msgstr "Mar"
 
@@ -1860,6 +1865,9 @@ msgstr "Geral"
 
 msgid "Ghost"
 msgstr "Fantasma"
+
+msgid "Ghost Ride"
+msgstr "Moto Fantasma"
 
 msgctxt "tooltip"
 msgid "Ghost: your best lap marker. Opponents: other riders. Both: all of them. Off: no markers at all."
@@ -2186,6 +2194,10 @@ msgstr "Placa de info na área de box ou pontos de tempo. Mostra posição, volt
 msgid "Input"
 msgstr "Entrada"
 
+#. max 60 characters
+msgid "Inputs"
+msgstr "Comandos"
+
 msgid "Install"
 msgstr "Instalar"
 
@@ -2205,6 +2217,10 @@ msgstr "Integrações"
 msgctxt "tooltip"
 msgid "Interactive elements, hover highlights, and the player/spectated rider's name in standings."
 msgstr "Elementos interativos, destaques ao passar o mouse e o nome do piloto/assistido na classificação."
+
+#. max 60 characters
+msgid "Interface"
+msgstr "Interface"
 
 msgid "Interior Decorator"
 msgstr "Decorador de Interiores"
@@ -2496,6 +2512,10 @@ msgctxt "tooltip"
 msgid "Let close battles steer the camera. Off holds the leader/solo baseline."
 msgstr "Deixa disputas próximas guiarem a câmera. Off fica no líder/padrão solo."
 
+#, c-format
+msgid "Let the bike ride alone for %s"
+msgstr "Deixe a moto andar sozinha por %s"
+
 msgctxt "tooltip"
 msgid "Lifetime milestones as Bronze-to-Platinum progress bars, plus a toast when a tier is earned."
 msgstr "Marcos de carreira como barras de Bronze a Platina, mais um aviso ao obter um nível."
@@ -2761,10 +2781,6 @@ msgstr "Mín"
 msgid "Min shot"
 msgstr "Cena mín."
 
-#. max 60 characters
-msgid "Misc"
-msgstr "Diversos"
-
 #. max 15 characters
 msgid "Mode"
 msgstr "Modo"
@@ -2775,6 +2791,10 @@ msgstr "Mais"
 
 #. max 13 characters
 msgid "Motion"
+msgstr "Movimento"
+
+#. max 60 characters
+msgid "Movement"
 msgstr "Movimento"
 
 msgid "Mudder"
@@ -3447,6 +3467,7 @@ msgstr "PILOTO NA CONTRAMÃO"
 msgid "RPM"
 msgstr ""
 
+#. max 60 characters
 msgid "Race"
 msgstr "Corrida"
 
@@ -3517,7 +3538,7 @@ msgstr "FrT"
 msgid "Reach %s above takeoff and land it"
 msgstr "Suba %s acima da decolagem e aterrisse"
 
-#. max 11 characters
+#. max 60 characters
 msgid "Readouts"
 msgstr "Leituras"
 
@@ -3829,6 +3850,7 @@ msgstr "º"
 msgid "Sandbagger"
 msgstr "Sandbagger"
 
+#. max 34 characters
 msgid "Save"
 msgstr "Salvar"
 
@@ -4431,6 +4453,10 @@ msgid "Shows front and rear tyre temperatures."
 msgstr "Mostra a temperatura dos pneus dianteiro e traseiro."
 
 msgctxt "tooltip"
+msgid "Shows how far the bike slides sideways, in degrees."
+msgstr "Mostra quanto a mota desliza de lado, em graus."
+
+msgctxt "tooltip"
 msgid "Shows nearby riders relative to your position. Useful for close racing awareness."
 msgstr "Mostra pilotos próximos em relação a você. Útil em disputas acirradas."
 
@@ -4441,6 +4467,10 @@ msgstr "Mostra o combustível restante e as voltas estimadas."
 msgctxt "tooltip"
 msgid "Shows rider lean angle in degrees with arc gauge."
 msgstr "Mostra o ângulo de inclinação do piloto em graus com um medidor em arco."
+
+msgctxt "tooltip"
+msgid "Shows how far you are up on the back wheel, in degrees."
+msgstr "Mostra o quanto você está empinado na roda traseira, em graus."
 
 msgctxt "tooltip"
 msgid "Shows your current race position (P1, P2, etc.)."

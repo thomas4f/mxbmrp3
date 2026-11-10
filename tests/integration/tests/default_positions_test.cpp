@@ -46,7 +46,7 @@ const char* const kShippedOff[] = {
     "event_log_hud", "stream_chat_hud", "rumble_hud", "time_widget", "clock_widget",
     "session_widget", "crash_widget", "speedo_widget", "tacho_widget", "timing_hud",
     "gap_bar_hud", "bars_widget", "notices_hud", "fuel_widget",
-    "gamepad_widget", "lean_widget", "gforce_widget", "compass_widget",
+    "gamepad_widget", "lean_widget", "slide_widget", "wheelie_widget", "gforce_widget", "compass_widget",
     "tyre_temp_widget", "ecu_widget", "prestige_widget", "pitboard_hud", "now_playing_widget",
 };
 

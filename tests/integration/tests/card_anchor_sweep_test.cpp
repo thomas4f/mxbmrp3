@@ -119,6 +119,8 @@ TEST_CASE("right-only [content]/[title] margins: content keeps its own box") {
         {PluginHost::HUD_GL_CONFIRM, "glconfirm"},
         {PluginHost::HUD_COMPASS, "compass"},
         {PluginHost::HUD_LEAN, "lean"},
+        {PluginHost::HUD_SLIDE, "slide"},
+        {PluginHost::HUD_WHEELIE, "wheelie"},
         {PluginHost::HUD_PRESTIGE, "prestige"},
         {PluginHost::HUD_DASH, "dash"},
         {PluginHost::HUD_TOGGLES, "toggle_strip"},

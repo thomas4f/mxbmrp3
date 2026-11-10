@@ -92,7 +92,9 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #   again to 45.4 KB when single-subsystem invariants moved next to their code.
 DOC_BUDGETS = {
     "AGENTS.md": 46_300,
-    "TESTING.md": 79_000,
+    # +500 for the Slide and Wheelie widgets' two catalogue rows each (1.35.1),
+    # +100 for Ghost Ride's (1.36).
+    "TESTING.md": 79_600,
     "ARCHITECTURE.md": 91_500,
 }
 
@@ -1167,10 +1169,11 @@ def check_readme_menu_tables(failures):
 
     widgets_src = open(os.path.join(
         REPO, "mxbmrp3/hud/settings/settings_tab_widgets.cpp"), encoding="utf-8").read()
-    widgets = re.findall(r'addWidgetRow\((?:TR\()?"([^"]+)"', widgets_src)
+    # kRows, in menu order: `{ GROUP, N_("Name"), ...`.
+    widgets = re.findall(r'\{\s*[A-Z]+,\s*N_\("([^"]+)"', widgets_src)
     if not widgets:
         failures.append(
-            "check_readme_menu_tables: found no addWidgetRow calls in "
+            "check_readme_menu_tables: found no kRows entries in "
             "settings_tab_widgets.cpp -- renamed? The Widgets table is no "
             "longer being checked.")
         return
@@ -1183,7 +1186,7 @@ def check_readme_menu_tables(failures):
             ("HUDs", prof, documented("### HUDs", "## More Features"),
              "s_tabRegistry (settings_hud_render.cpp)"),
             ("Widgets", widgets, documented("### Widgets", "### HUDs"),
-             "addWidgetRow calls (settings_tab_widgets.cpp)")):
+             "kRows (settings_tab_widgets.cpp)")):
         if doc is None:
             continue          # documented() already reported the bad anchor
         if code == doc:

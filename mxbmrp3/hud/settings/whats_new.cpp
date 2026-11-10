@@ -9,6 +9,8 @@
 #include "../../game/game_config.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <cstring>
 #include <set>
 
 namespace WhatsNew {
@@ -33,6 +35,10 @@ namespace {
 // Prestige is the table's one Gate::Unlocked row: it is not new in a release,
 // it is new the moment a player trades their ladder for it, and the row it
 // bands does not exist on the Widgets tab until then.
+//
+// 1.35.1 adds the Slide and Wheelie widgets. Their rows name the PATCH, so the
+// Widgets tab tags again for a 1.35.0 player who has already opened it (tabKey);
+// the 1.35 rows keep their tabs' 1.35.0 dismissals.
 const Marker kMarkers[] = {
     { SettingsHud::TAB_TIMING,       "timing.target",            "1.35" },
 #if GAME_HAS_FMX
@@ -41,6 +47,8 @@ const Marker kMarkers[] = {
 #if GAME_HAS_ACHIEVEMENTS
     { SettingsHud::TAB_SPOTTER,      "spotter.cat_achievements", "1.35" },
 #endif
+    { SettingsHud::TAB_WIDGETS,      "widgets.slide",            "1.35.1" },
+    { SettingsHud::TAB_WIDGETS,      "widgets.wheelie",          "1.35.1" },
     { SettingsHud::TAB_WIDGETS,      "widgets.prestige",         nullptr, Gate::Unlocked },
 };
 
@@ -54,6 +62,29 @@ bool g_unlocked = false;
 std::set<std::string>& dismissed() {
     static std::set<std::string> s;
     return s;
+}
+
+// Whether a marker's version ("1.35", or "1.35.1" for a row added in a patch
+// release) is on the running line.
+bool inCurrentLine(const char* version) {
+    const char* line = currentLine();
+    const size_t n = std::strlen(line);
+    return std::strncmp(version, line, n) == 0 && (version[n] == '\0' || version[n] == '.');
+}
+
+// The version a tab's tag answers to: the newest of its release markers on the
+// running line ("1.35.1" over "1.35"), else the line itself.
+std::string tabVersion(int tabId) {
+    const char* line = currentLine();
+    const size_t n = std::strlen(line);
+    const char* newest = line;
+    int newestPatch = 0;
+    for (const Marker& m : kMarkers) {
+        if (m.tabId != tabId || m.gate != Gate::Release || !inCurrentLine(m.sinceVersion)) continue;
+        const int patch = (m.sinceVersion[n] == '.') ? std::atoi(m.sinceVersion + n + 1) : 0;
+        if (patch > newestPatch) { newestPatch = patch; newest = m.sinceVersion; }
+    }
+    return newest;
 }
 
 std::string rowKey(int tabId, const char* rowTooltipId) {
@@ -72,11 +103,16 @@ std::string tabKey(int tabId) {
     // genuinely new marker from anyone who last opened that tab a line ago. A
     // dot shown twice is the cheaper mistake.
     //
+    // A PATCH that marks a row keys its tab on that patch ("T<tab>:1.35.1",
+    // tabVersion): a player who opened the tab in 1.35.0 dismissed "T<tab>:1.35",
+    // which said nothing about rows that did not exist yet. Tabs without a patch
+    // marker keep the line's key, so their dismissals carry over.
+    //
     // A tab carrying a Gate::Unlocked marker gets a SECOND key once that gate
     // opens: the unlock is news whenever it happens, and a player who opened
     // the Widgets tab earlier in the release line would otherwise prestige to
     // a row band with no tag pointing at the tab it is on.
-    std::string key = "T" + std::to_string(tabId) + ":" + currentLine();
+    std::string key = "T" + std::to_string(tabId) + ":" + tabVersion(tabId);
     if (g_unlocked) {
         for (const Marker& m : kMarkers) {
             if (m.tabId == tabId && m.gate == Gate::Unlocked) return key + ":unlocked";
@@ -110,12 +146,12 @@ bool isLive(const Marker& m) {
         // No version to compare: the unlock is the event. Dismissal is still
         // for good -- a second prestige does not make the row new again.
         if (!g_unlocked) return false;
-    } else if (std::strcmp(m.sinceVersion, currentLine()) != 0) {
+    } else if (!inCurrentLine(m.sinceVersion)) {
         // BELONGS TO THIS RELEASE. The comparison is on MAJOR.MINOR, not the
         // full version, so a patch release (1.29.1 -> 1.29.2) does not re-arm
         // markers the player already dismissed, and does not need the table
         // touched either. (The sidebar DOT is keyed separately - see tabKey,
-        // which names the one upgrade that shows it again.)
+        // which names the upgrades that show it again.)
         return false;
     }
     const auto& d = dismissed();

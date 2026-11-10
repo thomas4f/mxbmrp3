@@ -43,6 +43,7 @@ public:
     struct StepInfo {
         const char* label;
         StepStatus status;
+        int percent;    // 0-100 while IN_PROGRESS on a step that counts; else -1
     };
 
     // Singleton access
@@ -59,9 +60,6 @@ public:
 
     // Get current state
     State getState() const { return m_state; }
-
-    // Get download progress (0.0 - 1.0)
-    float getProgress() const;
 
     // Get human-readable status text
     std::string getStatusText() const;
@@ -103,10 +101,12 @@ public:
     // Test-only: run the extract/install pipeline (backup → extract → verify →
     // rollback-on-failure) against a chosen directory with an in-memory ZIP,
     // bypassing the network download. Uses the real, non-debug path so the backup
-    // and locked-file handling are exercised. Returns extractAndInstall()'s result.
+    // and locked-file handling are exercised, unless debugMode asks for the
+    // Updates tab's debug path. Returns extractAndInstall()'s result.
     bool testExtractAndInstall(const std::string& destDir,
-                               const std::vector<char>& zipBytes, std::string& err) {
-        setDebugMode(false);
+                               const std::vector<char>& zipBytes, std::string& err,
+                               bool debugMode = false) {
+        setDebugMode(debugMode);
         { MutexLock lock(m_mutex); m_pluginPath = destDir; }
         return extractAndInstall(zipBytes, err);
     }
@@ -153,6 +153,14 @@ private:
     // Step tracking helpers
     void resetSteps();
     void setStepStatus(Step step, StepStatus status);
+    // Report how far the in-progress step is. Notifies (UI redraw) only when the
+    // whole percentage changes, so a step costs at most ~100 redraws.
+    void setStepProgress(size_t done, size_t total);
+    // Steps slow enough to count 0-100% (Download, Extract, Install); the rest
+    // are near-instant and just go from highlighted to OK.
+    static bool stepCountsPercent(Step step) {
+        return step == Step::DOWNLOAD || step == Step::EXTRACT || step == Step::INSTALL;
+    }
 
     // Safely close all active HTTP handles (called from both shutdown and worker thread).
     // The mutex ensures exactly one caller closes the handles; the other gets nulls.
@@ -174,6 +182,9 @@ private:
 
     // Step-by-step progress tracking
     StepStatus m_stepStatus[static_cast<int>(Step::STEP_COUNT)] MXB_GUARDED_BY(m_mutex);
+    // Percentage of the step currently IN_PROGRESS (-1 = that step doesn't count).
+    // Only one step runs at a time, so one value serves them all.
+    std::atomic<int> m_stepPercent;
 
     // Error message
     std::string m_errorMessage MXB_GUARDED_BY(m_mutex);

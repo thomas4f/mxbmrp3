@@ -8,6 +8,9 @@
 #include "../core/xinput_reader.h"
 #include "../core/stats_manager.h"
 #include "../core/fmx_manager.h"
+#include "../core/slip_angle.h"
+#include "../core/wheelie_angle.h"
+#include "../core/ghost_ride.h"
 #include "../diagnostics/logger.h"
 #include <algorithm>
 #include <cmath>
@@ -51,6 +54,18 @@ void Handlers::handleRunTelemetry(Unified::TelemetryData* psTelemetryData) {
             StatsManager::getInstance().updateTelemetry(psTelemetryData->speedometer, isCrashed,
                                                        psTelemetryData->gear, psTelemetryData->fuel,
                                                        rearWheelMs, psTelemetryData->trackPos);
+            // Ghost Ride reads the TELEMETRY crash flag: it arrives in the same
+            // frame as the roll, pitch and contact it is judged with, where the
+            // track-position flag above comes in on its own batch.
+            if (psTelemetryData->vehicleType == Unified::VehicleType::Bike) {
+                const bool crashed = psTelemetryData->crashed != 0;
+                StatsManager::getInstance().updateGhostRide(
+                    crashed, GhostRide::rolling(crashed,
+                                                psTelemetryData->wheelMaterial[0] != 0,
+                                                psTelemetryData->wheelMaterial[1] != 0,
+                                                psTelemetryData->roll, psTelemetryData->pitch,
+                                                psTelemetryData->speedometer));
+            }
         }
 
         // Update input telemetry data (bike-specific uses front/rear brake)
@@ -76,9 +91,27 @@ void Handlers::handleRunTelemetry(Unified::TelemetryData* psTelemetryData) {
             );
         }
 
-        // Update roll/pitch (lean + nose-up/down angle)
-        PluginData::getInstance().updateRoll(psTelemetryData->roll);
-        PluginData::getInstance().updatePitch(psTelemetryData->pitch);
+        // How far up on the back wheel (core/wheelie_angle.h). The rumble's wheelie
+        // effect below reads the same value; the Wheelie widget reads it for bikes
+        // only, since a kart's wheels 0/1 are not a front and a rear.
+        const float wheelieAngle = WheelieAngle::of(psTelemetryData->wheelMaterial[0] != 0,
+                                                    psTelemetryData->wheelMaterial[1] != 0,
+                                                    psTelemetryData->pitch);
+
+        // Update roll/pitch (lean + nose-up/down angle) and how sideways the bike
+        // is travelling (the Slide widget): heading against the CG's world
+        // velocity, while a wheel is on the ground (core/slip_angle.h).
+        {
+            bool anyWheelOnGround = false;
+            const int wheels = std::min(psTelemetryData->wheelCount, Unified::MAX_WHEELS);
+            for (int w = 0; w < wheels; ++w) {
+                if (psTelemetryData->wheelMaterial[w] != 0) { anyWheelOnGround = true; break; }
+            }
+            PluginData::getInstance().updateAttitude(psTelemetryData->roll, psTelemetryData->pitch,
+                SlipAngle::slideDeg(psTelemetryData->velocityX, psTelemetryData->velocityZ,
+                                    psTelemetryData->yaw, anyWheelOnGround),
+                psTelemetryData->vehicleType == Unified::VehicleType::Bike ? wheelieAngle : 0.0f);
+        }
 
         // Update G-forces (chassis-local, already in g units, averaged over 10ms by the engine)
         PluginData::getInstance().updateAcceleration(
@@ -189,19 +222,9 @@ void Handlers::handleRunTelemetry(Unified::TelemetryData* psTelemetryData) {
         float lateralG = 0.0f;
         float speed = psTelemetryData->speedometer;
         if (speed > 2.0f) {
-            using namespace PluginConstants::Math;
-            float yawRad = psTelemetryData->yaw * DEG_TO_RAD;
-            float sinYaw = std::sin(yawRad);
-            float cosYaw = std::cos(yawRad);
-
-            // Project horizontal velocity onto forward and lateral directions
-            float vx = psTelemetryData->velocityX;
-            float vz = psTelemetryData->velocityZ;
-            float forwardVel = vx * sinYaw + vz * cosYaw;
-            float lateralVel = vx * cosYaw - vz * sinYaw;
-
-            // Slip angle in degrees
-            lateralG = std::atan2(std::abs(lateralVel), std::abs(forwardVel)) * RAD_TO_DEG;
+            // Slip angle in degrees (core/slip_angle.h)
+            lateralG = SlipAngle::magnitudeDeg(SlipAngle::resolve(
+                psTelemetryData->velocityX, psTelemetryData->velocityZ, psTelemetryData->yaw));
         }
 
         // Airborne detection: both wheels off the ground
@@ -224,13 +247,9 @@ void Handlers::handleRunTelemetry(Unified::TelemetryData* psTelemetryData) {
             steerTorque = psTelemetryData->bike.steerTorque;
         }
 
-        // Wheelie detection: front wheel off ground, rear wheel on ground, bike tilted back
-        // Pitch is negative when tilted back (wheelie direction)
-        float wheelieIntensity = 0.0f;
-        if (!frontWheelContact && rearWheelContact && psTelemetryData->pitch < 0.0f) {
-            // Use absolute pitch angle as intensity (in degrees)
-            wheelieIntensity = std::abs(psTelemetryData->pitch);
-        }
+        // Wheelie: the nose-up angle in degrees while on the back wheel, 0 otherwise
+        // (computed above, with the shared rule in core/wheelie_angle.h).
+        const float wheelieIntensity = wheelieAngle;
 
         // Rev limiter: RPM as a percentage of the bike's real limiter RPM (auto per-bike).
         // Throttle-gated so engine-braking / downshift blips near redline don't false-fire.

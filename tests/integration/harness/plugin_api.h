@@ -193,6 +193,9 @@ struct TelemetryRow {
     float posX = 0.0f, posY = 0.0f, posZ = 0.0f;  // meters (teleport/trick-distance)
     float pitch = 0.0f, yaw = 0.0f, roll = 0.0f;              // degrees
     float pitchVel = 0.0f, yawVel = 0.0f, rollVel = 0.0f;     // degrees/second
+    // World velocity of the CG (X east, Z north), m/s. Zero by default, which reads
+    // as no slide whatever the speedometer says (core/slip_angle.h's speed floor).
+    float velX = 0.0f, velZ = 0.0f;
     int   frontMaterial = 1, rearMaterial = 1;    // wheel contact; 0 = off the ground
     int   crashed = 0;
     float clutch = 0.0f;

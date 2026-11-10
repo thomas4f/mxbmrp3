@@ -262,6 +262,12 @@ namespace Settings {
             constexpr const char* STEER_VALUE = "row_steer_value";
         }
 
+        // SlideWidget rows
+        namespace SlideRows {
+            constexpr const char* ARC = "row_arc";
+            constexpr const char* VALUE = "row_slide_value";
+        }
+
     #if GAME_HAS_TYRE_TEMP
         // TyreTempWidget rows
         namespace TyreTempRows {
@@ -433,6 +439,21 @@ namespace Settings {
             constexpr Setting ROW_STEER_VALUE = {"row_steer_value", "Show steering value (1 = on; 0 = off, default)"};
             constexpr Setting SHOW_MAX_MARKERS = {"showMaxMarkers", "Show max lean markers (1 = on, default; 0 = off)"};
             constexpr Setting MAX_MARKER_LINGER_FRAMES = {"maxMarkerLingerFrames", "Frames to show max markers (default 60, ~1s at 60fps)"};
+        }
+
+        // SlideWidget settings
+        namespace Slide {
+            constexpr Setting ROW_ARC = {"row_arc", "Show slide angle arc (1 = on, default; 0 = off)"};
+            constexpr Setting ROW_VALUE = {"row_slide_value", "Show slide angle value (1 = on, default; 0 = off)"};
+            constexpr Setting SHOW_MAX_MARKERS = {"showMaxMarkers", "Show max slide markers (1 = on, default; 0 = off)"};
+            constexpr Setting MAX_MARKER_LINGER_FRAMES = {"maxMarkerLingerFrames", "Frames to show max markers (default 60, ~1s at 60fps)"};
+        }
+
+        // WheelieWidget settings
+        namespace Wheelie {
+            constexpr Setting SHOW_VALUE = {"showValue", "Show the wheelie angle in degrees (1 = on, default; 0 = off)"};
+            constexpr Setting SHOW_MAX_MARKER = {"showMaxMarker", "Show the lingering peak marker on the arc (1 = on, default; 0 = off)"};
+            constexpr Setting MAX_MARKER_LINGER_FRAMES = {"maxMarkerLingerFrames", "Frames to show the peak marker (default 60, ~1s at 60fps)"};
         }
 
         // GForceWidget settings

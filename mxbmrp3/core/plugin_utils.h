@@ -46,7 +46,8 @@ public:
     // ">1" -> "N TO GO", 1 -> "FINAL LAP", 0 -> "CHECKERED". lapsAfterClock > 0
     // (SessionData::lapsAfterClock) appends the laps still to come to the
     // countdown: "12:34 + 2 laps", "00:00 + 1 lap". Every session clock the
-    // plugin shows goes through here, in-game and on the web, so all match.
+    // plugin shows goes through here, in-game and on the web, so all match;
+    // each feeds it PluginData::getSessionClockTime() (full length on the grid).
     // SESSION_CLOCK_CHARS sizes the buffer for the longest result.
     // `shown`: the HUDs' copy, its labels in the language shown (the web JSON
     // and Steam status keep English).

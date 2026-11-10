@@ -41,6 +41,7 @@ UpdateDownloader::UpdateDownloader()
     , m_expectedSize(0)
     , m_bytesDownloaded(0)
     , m_totalBytes(0)
+    , m_stepPercent(-1)
     , m_debugMode(false)
 {
     // Initialize step status
@@ -101,6 +102,7 @@ void UpdateDownloader::reset() {
     m_state = State::IDLE;
     m_bytesDownloaded = 0;
     m_totalBytes = 0;
+    m_stepPercent = -1;
     {
         MutexLock lock(m_mutex);
         m_errorMessage.clear();
@@ -141,6 +143,7 @@ void UpdateDownloader::startDownload(const std::string& url, size_t expectedSize
 
     m_bytesDownloaded = 0;
     m_totalBytes = expectedSize;
+    m_stepPercent = 0;  // Download counts from 0%
     m_cancelRequested = false;
     m_shutdownRequested = false;
     m_state = State::DOWNLOADING;
@@ -151,13 +154,6 @@ void UpdateDownloader::startDownload(const std::string& url, size_t expectedSize
 
 void UpdateDownloader::cancelDownload() {
     m_cancelRequested = true;
-}
-
-float UpdateDownloader::getProgress() const {
-    size_t total = m_totalBytes.load();
-    if (total == 0) return 0.0f;
-    size_t downloaded = m_bytesDownloaded.load();
-    return static_cast<float>(downloaded) / static_cast<float>(total);
 }
 
 std::string UpdateDownloader::getStatusText() const {
@@ -225,11 +221,24 @@ void UpdateDownloader::resetSteps() {
 }
 
 void UpdateDownloader::setStepStatus(Step step, StepStatus status) {
+    // Set before the status so the redraw that shows the step starting reads 0%
+    if (status == StepStatus::IN_PROGRESS) {
+        m_stepPercent = stepCountsPercent(step) ? 0 : -1;
+    }
     {
         MutexLock lock(m_mutex);
         m_stepStatus[static_cast<int>(step)] = status;
     }
     notifyStateChange();  // Trigger UI refresh
+}
+
+void UpdateDownloader::setStepProgress(size_t done, size_t total) {
+    if (total == 0) return;  // Unknown size: stay on the last shown value
+    const int percent = (done >= total) ? 100
+        : static_cast<int>((static_cast<unsigned long long>(done) * 100ULL) / total);
+    if (m_stepPercent.exchange(percent) != percent) {
+        notifyStateChange();  // Trigger UI refresh
+    }
 }
 
 std::vector<UpdateDownloader::StepInfo> UpdateDownloader::getSteps() const {
@@ -244,9 +253,12 @@ std::vector<UpdateDownloader::StepInfo> UpdateDownloader::getSteps() const {
         N_("Install")
     };
 
+    const int percent = m_stepPercent.load();
     std::vector<StepInfo> steps;
+    steps.reserve(static_cast<size_t>(Step::STEP_COUNT));
     for (int i = 0; i < static_cast<int>(Step::STEP_COUNT); i++) {
-        steps.push_back({labels[i], m_stepStatus[i]});
+        const bool running = (m_stepStatus[i] == StepStatus::IN_PROGRESS);
+        steps.push_back({labels[i], m_stepStatus[i], running ? percent : -1});
     }
     return steps;
 }
@@ -843,6 +855,7 @@ bool UpdateDownloader::downloadFile(std::vector<char>& outData, std::string& out
         if (WinHttpReadData(hRequest, buffer.data(), dwSize, &dwDownloaded)) {
             outData.insert(outData.end(), buffer.begin(), buffer.begin() + dwDownloaded);
             m_bytesDownloaded = outData.size();
+            setStepProgress(outData.size(), m_totalBytes);
         } else {
             readError = true;
             break;

@@ -69,6 +69,8 @@
 #include "../hud/rumble_hud.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
+#include "../hud/slide_widget.h"
+#include "../hud/wheelie_widget.h"
 #include "../hud/gforce_widget.h"
 #include "../hud/compass_widget.h"
 #include "../hud/clock_widget.h"
@@ -168,7 +170,8 @@ bool HudManager::isWidgetHud(const BaseHud* hud) const {
     return hud == m_pLap || hud == m_pPosition || hud == m_pTime ||
            hud == m_pSpeed || hud == m_pGear || hud == m_pSpeedo || hud == m_pTacho ||
            hud == m_pBars || hud == m_pFuel ||
-           hud == m_pGamepad || hud == m_pLean || hud == m_pGforce || hud == m_pCompass ||
+           hud == m_pGamepad || hud == m_pLean || hud == m_pSlide || hud == m_pWheelie ||
+           hud == m_pGforce || hud == m_pCompass ||
            hud == m_pClock || hud == m_pCrash || hud == m_pPrestige || hud == m_pRpm ||
            hud == m_pNowPlaying;
 }

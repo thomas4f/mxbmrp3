@@ -681,6 +681,72 @@ TEST_CASE("exploration: Back Marker is finishing a race one lap down") {
     host.shutdown();
 }
 
+TEST_CASE("exploration: Sandbagger in a time + laps race waits for the real last lap") {
+    // "8:00 + 2L": sessionNumLaps is the BONUS count, not the distance. Counted
+    // as the distance, a PB on lap two earned the row with minutes still on the
+    // clock (an in-game report against 1.35.0). The last lap is only known once
+    // the clock runs out: two laps done at expiry, the third run out, then two.
+    cleanSaveDir();
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSaveWin);
+
+    host.eventInit("TestTrack", "Alice", 1600.0f, 2, "Test 450", "MX1", "TestTrack");
+    host.raceEvent("TestTrack");
+    host.session(RACE1, /*numLaps=*/2, /*lengthMs=*/480000);
+    host.addEntry(10, "Alice");
+    host.addEntry(21, "Bob");
+    host.runInit(RACE1);
+    host.runStart();
+    host.classify(RACE1, 470000, { { .num = 10, .laps = 0 }, { .num = 21, .laps = 0, .gap = 2000 } });
+    host.raceLap(RACE1, 10, 1, 95000, /*best=*/1);
+    host.raceLap(RACE1, 10, 2, 94000, /*best=*/1);
+    host.classify(RACE1, 280000, { { .num = 10, .laps = 2 }, { .num = 21, .laps = 2, .gap = 2000 } });
+    CHECK(host.achievementTier("sandbagger") == 0);   // the report: lap two of a timed race
+
+    // The clock runs out with the leader on lap three: the finish is lap five.
+    host.classify(RACE1, -1000, { { .num = 10, .laps = 2 }, { .num = 21, .laps = 2, .gap = 2000 } });
+    host.raceSessionState(RACE1, 16, 480000);
+    host.raceLap(RACE1, 10, 3, 93000, /*best=*/1);
+    host.raceLap(RACE1, 10, 4, 92000, /*best=*/1);    // the white flag, not the last lap
+    host.classify(RACE1, -190000, { { .num = 10, .laps = 4 }, { .num = 21, .laps = 4, .gap = 2000 } });
+    CHECK(host.achievementTier("sandbagger") == 0);
+    host.raceLap(RACE1, 10, 5, 91000, /*best=*/1);
+    CHECK(host.achievementTier("sandbagger") == 1);
+    host.runDeinit();
+    host.shutdown();
+}
+
+TEST_CASE("exploration: Sandbagger counts a lapped rider's last lap, which ends short of the distance") {
+    // A rider a lap down finishes at their first crossing after the leader's
+    // flag, so their last lap is never lap N of an N-lap race.
+    cleanSaveDir();
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSaveWin);
+
+    host.eventInit("TestTrack", "Alice", 1600.0f, 2, "Test 450", "MX1", "TestTrack");
+    host.raceEvent("TestTrack");
+    host.session(RACE1, 3, 0);
+    host.addEntry(10, "Alice");
+    host.addEntry(21, "Leader");
+    host.runInit(RACE1);
+    host.runStart();
+    host.classify(RACE1, 1000, { { .num = 21, .laps = 0 }, { .num = 10, .laps = 0 } });
+    host.raceLap(RACE1, 10, 1, 99000, /*best=*/1);
+    // The leader takes the flag with the player a lap down...
+    host.classify(RACE1, 200000, {
+        { .num = 21, .best = 60000, .laps = 3, .gap = 0 },
+        { .num = 10, .best = 99000, .laps = 1, .gap = 8000, .gapLaps = 1 },
+    });
+    CHECK(host.achievementTier("sandbagger") == 0);
+    // ...and the player's next crossing is their last: a PB on it is the row.
+    host.raceLap(RACE1, 10, 2, 98000, /*best=*/1);
+    CHECK(host.achievementTier("sandbagger") == 1);
+    host.runDeinit();
+    host.shutdown();
+}
+
 TEST_CASE("exploration: the holeshot, a last-lap pass, a race of attrition and a clean run") {
     cleanSaveDir();
     PluginHost host(dllPath());
@@ -2283,6 +2349,62 @@ TEST_CASE("exploration: Digging a Hole is ten UNBROKEN seconds, and traction end
     dig(105);
     CHECK(host.achievementValue("digging") == doctest::Approx(10.0));
     CHECK(host.achievementTier("digging") == 1);
+
+    host.runStop();
+    host.runDeinit();
+    host.shutdown();
+}
+
+// GHOST RIDE: off the bike, and the bike rides on upright without you. The
+// telemetry crash flag and the bike's own roll, contact and speed drive it end
+// to end through the real handler; the rule's edges are core/ghost_ride.h's,
+// pinned in tests/unit/test_ghost_ride.cpp.
+TEST_CASE("exploration: Ghost Ride is three seconds of the bike riding on upright") {
+    cleanSaveDir();
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSaveWin);
+    enterPractice(host);
+
+    long long t = 1'000'000;
+    auto frame = [&](int crashed, float speed, float roll, int rearMaterial) {
+        t += 100'000;
+        host.statsSetNowUs(t);
+        TelemetryRow r;
+        r.crashed = crashed;
+        r.speed = speed;
+        r.roll = roll;
+        r.rearMaterial = rearMaterial;
+        host.telemetryFrame(r);
+    };
+    auto ghost = [&](int tenths) { for (int i = 0; i < tenths; ++i) frame(1, 6.0f, 10.0f, 1); };
+    auto putBack = [&]() { frame(0, 0.0f, 0.0f, 1); };
+
+    // An ordinary crash: the bike slides on its side, both tyres touching,
+    // for far longer than the row asks. Nothing.
+    for (int i = 0; i < 50; ++i) frame(1, 6.0f, 85.0f, 1);
+    putBack();
+    CHECK(host.achievementValue("ghost_ride") == doctest::Approx(0.0));
+
+    // Riding along upright with the rider ON is not one either.
+    for (int i = 0; i < 50; ++i) frame(0, 6.0f, 10.0f, 1);
+    CHECK(host.achievementValue("ghost_ride") == doctest::Approx(0.0));
+
+    // The recorded one: a second and a half, then over on its side. The value
+    // is the best run, and it falls short.
+    ghost(16);
+    for (int i = 0; i < 5; ++i) frame(1, 3.5f, 80.0f, 1);
+    putBack();
+    CHECK(host.achievementValue("ghost_ride") == doctest::Approx(1.5));
+    CHECK(host.achievementTier("ghost_ride") == 0);
+
+    // A tenth with the rear wheel off a bump holds the run (and is not
+    // counted); then past three seconds.
+    ghost(20);
+    frame(1, 6.0f, 10.0f, 0);
+    ghost(15);
+    CHECK(host.achievementValue("ghost_ride") >= 3.0);
+    CHECK(host.achievementTier("ghost_ride") == 1);
 
     host.runStop();
     host.runDeinit();

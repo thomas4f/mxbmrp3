@@ -344,11 +344,18 @@ void MediaManager::workerLoop() {
                         auto propsOp = session.TryGetMediaPropertiesAsync();
                         if (finished(propsOp)) {
                             auto props = propsOp.GetResults();
-                            wideToCp1252(props.Title(), next.title, sizeof(next.title));
-                            wideToCp1252(props.Artist(), next.artist, sizeof(next.artist));
+                            if (props) {
+                                wideToCp1252(props.Title(), next.title, sizeof(next.title));
+                                wideToCp1252(props.Artist(), next.artist, sizeof(next.artist));
+                            }
                         }
 
-                        const bool playing = session.GetPlaybackInfo().PlaybackStatus()
+                        // A player can hand back a null playback info, properties or
+                        // timeline with S_OK: calling through one read address 0 and
+                        // took the game down (1.34.x crash reports). Show what the
+                        // player does report: with no timeline, no time is shown.
+                        const auto playback = session.GetPlaybackInfo();
+                        const bool playing = playback && playback.PlaybackStatus()
                             == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
                         next.state = playing ? State::PLAYING : State::PAUSED;
 
@@ -356,24 +363,26 @@ void MediaManager::workerLoop() {
                         // a seek or a track change), so carry the position forward
                         // from when it was reported while playing.
                         auto timeline = session.GetTimelineProperties();
-                        const auto end = timeline.EndTime() - timeline.StartTime();
-                        auto pos = timeline.Position() - timeline.StartTime();
-                        if (playing) {
-                            const auto since = winrt::clock::now() - timeline.LastUpdatedTime();
-                            // A player that never stamps the timeline reports the epoch.
-                            if (since.count() > 0 && since < end) pos += since;
-                        }
-                        if (pos > end) pos = end;
-                        if (pos.count() < 0) pos = {};
-                        next.durationMs = static_cast<int>(
-                            std::chrono::duration_cast<std::chrono::milliseconds>(end).count());
-                        next.positionMs = static_cast<int>(
-                            std::chrono::duration_cast<std::chrono::milliseconds>(pos).count());
-                        if (next.durationMs > 0) {
-                            char p[12], d[12];
-                            formatClock(p, sizeof(p), next.positionMs);
-                            formatClock(d, sizeof(d), next.durationMs);
-                            snprintf(next.time, sizeof(next.time), "%s / %s", p, d);
+                        if (timeline) {
+                            const auto end = timeline.EndTime() - timeline.StartTime();
+                            auto pos = timeline.Position() - timeline.StartTime();
+                            if (playing) {
+                                const auto since = winrt::clock::now() - timeline.LastUpdatedTime();
+                                // A player that never stamps the timeline reports the epoch.
+                                if (since.count() > 0 && since < end) pos += since;
+                            }
+                            if (pos > end) pos = end;
+                            if (pos.count() < 0) pos = {};
+                            next.durationMs = static_cast<int>(
+                                std::chrono::duration_cast<std::chrono::milliseconds>(end).count());
+                            next.positionMs = static_cast<int>(
+                                std::chrono::duration_cast<std::chrono::milliseconds>(pos).count());
+                            if (next.durationMs > 0) {
+                                char p[12], d[12];
+                                formatClock(p, sizeof(p), next.positionMs);
+                                formatClock(d, sizeof(d), next.durationMs);
+                                snprintf(next.time, sizeof(next.time), "%s / %s", p, d);
+                            }
                         }
                     } else {
                         // Nothing to send a command to; don't fire it at the next player.

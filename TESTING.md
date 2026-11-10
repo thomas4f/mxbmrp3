@@ -325,7 +325,10 @@ game API is an integration test instead. The authoritative TU list is
 - `test_digit_roll.cpp` - Motion's digit roll (`hud/digit_roll.h`).
 - `test_motion.cpp` - Motion's timing (`core/motion.h`): fades start settled, turn round mid-way, and step at most 50 ms a frame.
 - `test_impact_vignette.cpp` - the vignette's envelope (`core/impact_vignette.h`).
+- `test_ghost_ride.cpp` - when a riderless bike counts as a ghost ride (`core/ghost_ride.h`).
 - `test_peak_marker.cpp` - the shared "max marker" state machine (`hud/peak_marker.h`).
+- `test_slip_angle.cpp` - the slip angle's sign and gates (`core/slip_angle.h`).
+- `test_wheelie_arc.cpp` - the shared wheelie rule and the Wheelie widget's protractor arithmetic.
 - `test_standings_gap_plan.cpp` - the standings gap-column decision (`hud/standings_gap_plan.h`): value, style and tint per cell.
 - `test_standings_live_order.cpp` - Standings' live order: pass hold, stale riders.
 - `test_thread_detach_grace.cpp` - the spin-then-detach teardown policy (`core/thread_detach_grace.h`).
@@ -461,7 +464,9 @@ The runner auto-discovers them; this table is a full census, enforced by
 | `asym_border_test.cpp` | a lone value is centred in **the card it is drawn on**, not in the content band inside it. |
 | `card_anchor_sweep_test.cpp` | every HUD's content anchors to **the box that owns it** - the card for body content, the title band for the caption - never to the outer panel. |
 | `crash_widget_test.cpp` | the crash widget's **streaming tally outlives every boundary that scopes the ordinary crash count**. |
+| `wheelie_widget_test.cpp` | the Wheelie widget **reads only on the back wheel** and fills its box at Lean's size. |
 | `rpm_widget_test.cpp` | the RPM strip **spans Gear + Speed, turns red exactly at the shift point** and flashes its red ones on the limiter. |
+| `slide_widget_test.cpp` | Slide is **Lean's size** and fills the side the rear steps out to; none airborne or spectating. |
 | `toggle_strip_test.cpp` | the Toggles strip mirrors the sidebar's switches, folds, previews and docks. |
 | `render_probe_test.cpp` | the **render probe emits the primitive it claims to**, and an out-of-range pin falls back to cycling. |
 | `about_tab_test.cpp` | **About opens from the footer, not a tab**; **Updates tag follows the available version**; **5 clicks: Breakout** |
@@ -487,6 +492,7 @@ The runner auto-discovers them; this table is a full census, enforced by
 | `messages_test.cpp` | **System messages**: hotkey toasts, the hide-all card, startup messages on the Dash, Reset's Confirm |
 | `tooltip_coverage_test.cpp` | every settings row on every tab has a **tooltip with text** |
 | `settings_find_test.cpp` | settings **Find**: the index, every page fits, a result opens its row |
+| `widgets_tab_test.cpp` | **Widgets tab pages**: every widget on one |
 | `i18n_test.cpp` | a language pack from Documents translates the drawn rows |
 | `i18n_limits_test.cpp` | each settings label's **room**, measured; Pseudo fits every tab |
 | `ui_icons_off_test.cpp` | **UI icons off** draws text |

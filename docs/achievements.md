@@ -179,5 +179,6 @@ A **Hidden** row does not appear in Settings > Achievements until it is earned, 
 | 14 | `solo_race` | <img src="../assets/icons/heart-crack.svg" width="28" height="28" alt="" title="heart-crack"> | Just Me Then | Finish a race nobody else started | - | - | - |
 | 15 | `peace_out` | <img src="../assets/icons/hand-peace.svg" width="28" height="28" alt="" title="hand-peace"> | Peace Out | Ride through three riders down | - | - | - |
 | 16 | `digging` | <img src="../assets/icons/person-digging.svg" width="28" height="28" alt="" title="person-digging"> | Digging a Hole | Spin the rear wheel in place for 10s | - | - | - |
+| 17 | `ghost_ride` | <img src="../assets/icons/ghost.svg" width="28" height="28" alt="" title="ghost"> | Ghost Ride | Let the bike ride alone for 3.0s | - | - | - |
 
-114 achievements, 264 tiers.
+115 achievements, 265 tiers.

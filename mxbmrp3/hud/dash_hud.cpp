@@ -596,7 +596,7 @@ void DashHud::rebuildRenderData() {
                 const NoticesHud& notices = HudManager::getInstance().getNoticesHud();
                 const float slabOpacity = notices.getBackgroundOpacity();
                 unsigned long fill = 0, ink = 0;
-                notices.slabColors(notice.kind, slabOpacity, fill, ink);
+                notices.slabColors(notice.kind, slabOpacity, m_fBackgroundOpacity, fill, ink);
                 // Its glow reaches as far as the Notices HUD's (whose slab is one
                 // large row), not a share of this taller box.
                 if (NoticesHud::glows(notice.kind))
@@ -670,7 +670,7 @@ void DashHud::rebuildRenderData() {
                 // Time readout and the Standings title, so all three agree.
                 m_shownSession = readSessionClock();
                 char text[PluginUtils::SESSION_CLOCK_CHARS];
-                PluginUtils::formatSessionClock(m_shownSession.lapsToGo, PluginData::getInstance().getSessionTime(),
+                PluginUtils::formatSessionClock(m_shownSession.lapsToGo, PluginData::getInstance().getSessionClockTime(),
                                                 m_shownSession.lapsAfterClock, text, sizeof(text), true);
                 addString(text, pageCenterX, largeY, Justify::CENTER, digits, primary, dim.fontSizeLarge);
                 break;

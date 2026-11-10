@@ -360,6 +360,9 @@ public:
     // Notifies SessionData on whole-second boundaries (drives 1Hz HUD/SSE refresh).
     void setSessionTime(int sessionTime);
     int getSessionTime() const { return m_currentSessionTime; }
+    // The clock to SHOW (every session clock the plugin draws): a timed session's full length until
+    // its race clock starts (pre-start, sighting lap, gate hold); otherwise getSessionTime().
+    int getSessionClockTime() const;
     // ELAPSED ms since the session clock started — monotonic ascending in
     // BOTH session kinds, unlike getSessionTime(), which is the raw game
     // clock and counts DOWN (to zero, then negative in overtime) in timed
@@ -552,8 +555,7 @@ public:
 
     // Bike telemetry update
     void updateSpeedometer(float speedometer, int gear, int rpm, float fuel);
-    void updateRoll(float roll);
-    void updatePitch(float pitch);
+    void updateAttitude(float roll, float pitch, float slideAngle, float wheelieAngle);  // lean, nose, slide, wheelie (deg)
     void updateAcceleration(float accelX, float accelY, float accelZ);
     void updateTemperatures(float engineTemp, float waterTemp);
     void updateTreadTemperatures(const float temps[2][3]);

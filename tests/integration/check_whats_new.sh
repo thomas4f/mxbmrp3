@@ -52,7 +52,8 @@ mapfile -t versions < <(grep -oP '\{\s*SettingsHud::TAB_\w+\s*,\s*"[^"]*"\s*,\s*
 fail=0
 for v in "${versions[@]:-}"; do
     [ -z "$v" ] && continue
-    if [ "$v" != "${current}" ]; then
+    # A row a patch release adds names that patch ("1.35.1"): same line.
+    if [ "$v" != "${current}" ] && [[ ! "$v" =~ ^${current//./\\.}\.[0-9]+$ ]]; then
         echo "check_whats_new: FAIL: marker version '${v}' is not the current release line '${current}'" >&2
         fail=1
     fi

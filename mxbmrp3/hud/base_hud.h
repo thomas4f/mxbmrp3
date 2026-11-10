@@ -1179,21 +1179,21 @@ public:
 
     // Legible ink for `ink` drawn on `fill`: keeps the hue while it clears
     // MIN_GLYPH_LUMA_GAP, lifts it toward the palette end away from the fill when it
-    // does not, and only falls to a punched glyph as the floor. Shared by the button
-    // labels and by any caption drawn on a coloured slab.
+    // does not, and only falls to a punched glyph as the floor. The Across form asks
+    // the same of every fill between `fillA` and `fillB` (a slab over the unknown track).
     unsigned long legibleOnFill(unsigned long ink, unsigned long fill) const;
+    unsigned long legibleAcrossFills(unsigned long ink, unsigned long fillA, unsigned long fillB) const;
     // The ink for a caption on a slab of its OWN slot colour, drawn at `fillOpacity`
-    // -- the Notices slabs. See the definition for why "NEGATIVE on NEGATIVE"
-    // survived this long and what it looks like on an opaque theme.
-    unsigned long captionOnSlabColor(unsigned long slot, float fillOpacity) const;
+    // over a panel at `panelOpacity` -- the Notices slabs. See the definitions.
+    unsigned long captionOnSlabColor(unsigned long slot, float fillOpacity, float panelOpacity) const;
     // The same, where the ink and the SLAB are not the same slot -- the Gap Bar, whose
     // fill tracks the LIVE gap while its text may be showing a FROZEN one, so the two
     // can legitimately disagree in sign (red text over a green fill) and correcting
-    // against the ink's own colour would answer the wrong question. Both forms flatten
-    // the slab the same way, because the pixel the caption competes with is the slab
-    // after its alpha is spent, not the slot colour.
+    // against the ink's own colour would answer the wrong question. Both judge the slab
+    // after its alpha is spent, over the theme background AND over the track seen
+    // through a translucent panel -- see the definition for the light-theme case.
     unsigned long inkOnSlabColor(unsigned long ink, unsigned long slot,
-                                 float fillOpacity) const;
+                                 float fillOpacity, float panelOpacity) const;
 
     // A ROW BAND: the strip behind a selected or hovered row, for every HUD that
     // draws one -- standings (player row and spectator hover), records, event log,
@@ -1598,7 +1598,7 @@ protected:
     // see the definition for why the angles are rotated rather than recomputed.
     void addArcSegment(float centerX, float centerY, float innerRadius, float outerRadius,
                        float startAngleRad, float endAngleRad, unsigned long color,
-                       int numSegments);
+                       int numSegments, float stretchX = 0.0f);
 
     void addDot(float x, float y, unsigned long color, float size);
     // Centered, aspect-corrected icon sprite (like addDot, but textured). size is

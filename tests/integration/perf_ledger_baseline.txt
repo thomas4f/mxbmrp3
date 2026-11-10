@@ -60,29 +60,29 @@ defaults cb.RunStop.alloc_bytes 65180
 defaults cb.RunTelemetry.calls 29600
 defaults cb.RunTelemetry.allocs 0
 defaults cb.RunTelemetry.alloc_bytes 0
-defaults heap.net_live_bytes 773672
+defaults heap.net_live_bytes 775688
 defaults http.snapshot_builds 0
-defaults frame_hash 3ff415b9d189b8e9
+defaults frame_hash ed9b090e6fae64e9
 all replay.frames 35519
-all replay.quads 58393774
-all replay.quads_max 2829
-all replay.strings 55354449
-all replay.strings_max 1660
-all replay.glyphs 241152411
-all replay.sprite_switches 1180466
-all replay.engine_us_per_frame 2866.3
+all replay.quads 61803598
+all replay.quads_max 2925
+all replay.strings 55496525
+all replay.strings_max 1664
+all replay.glyphs 241294487
+all replay.sprite_switches 1322542
+all replay.engine_us_per_frame 2965.5
 all replay.draw_allocs 190522
-all replay.draw_alloc_bytes 86618324
+all replay.draw_alloc_bytes 86646100
 all replay.draw_alloc_frames 2761
 all replay.draw_allocs_max 618
 all idle.frames 1201
-all idle.quads 1540553
-all idle.quads_max 1287
-all idle.strings 1918285
-all idle.strings_max 1599
-all idle.glyphs 9864950
-all idle.sprite_switches 38432
-all idle.engine_us_per_frame 2756.4
+all idle.quads 1655849
+all idle.quads_max 1383
+all idle.strings 1923089
+all idle.strings_max 1603
+all idle.glyphs 9879362
+all idle.sprite_switches 43236
+all idle.engine_us_per_frame 2857.0
 all idle.draw_allocs 662
 all idle.draw_alloc_bytes 81470
 all idle.draw_alloc_frames 11
@@ -120,9 +120,9 @@ all cb.RunStop.alloc_bytes 65180
 all cb.RunTelemetry.calls 29600
 all cb.RunTelemetry.allocs 25212
 all cb.RunTelemetry.alloc_bytes 14002974
-all heap.net_live_bytes 2996869
+all heap.net_live_bytes 3012877
 all http.snapshot_builds 2160
-all frame_hash df996c5001080617
+all frame_hash 3cf0d9f8b1aaece3
 all HUD helmet_overlay rebuilds=37322 quads=0 strings=0
 all HUD impact_vignette rebuilds=0 quads=0 strings=0
 all HUD standings_hud rebuilds=9692 quads=150 strings=452
@@ -164,6 +164,8 @@ all HUD rumble_hud rebuilds=29206 quads=41 strings=3
 all HUD achievement_widget rebuilds=2 quads=0 strings=0
 all HUD gamepad_widget rebuilds=29206 quads=17 strings=0
 all HUD lean_widget rebuilds=37322 quads=59 strings=2
+all HUD slide_widget rebuilds=37322 quads=57 strings=2
+all HUD wheelie_widget rebuilds=37322 quads=51 strings=2
 all HUD gforce_widget rebuilds=37322 quads=57 strings=3
 all HUD compass_widget rebuilds=37322 quads=29 strings=5
 all HUD clock_widget rebuilds=6 quads=18 strings=2

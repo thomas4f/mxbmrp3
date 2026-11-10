@@ -381,6 +381,8 @@ public:
     class AchievementWidget* getAchievementWidget() const { return m_pAchievement; }  // nullable; callers null-check
     class GamepadWidget& getGamepadWidget() const { assert(m_pGamepad && "HudManager not initialized"); return *m_pGamepad; }
     class LeanWidget& getLeanWidget() const { assert(m_pLean && "HudManager not initialized"); return *m_pLean; }
+    class SlideWidget& getSlideWidget() const { assert(m_pSlide && "HudManager not initialized"); return *m_pSlide; }
+    class WheelieWidget& getWheelieWidget() const { assert(m_pWheelie && "HudManager not initialized"); return *m_pWheelie; }
     class GForceWidget& getGForceWidget() const { assert(m_pGforce && "HudManager not initialized"); return *m_pGforce; }
     class CompassWidget& getCompassWidget() const { assert(m_pCompass && "HudManager not initialized"); return *m_pCompass; }
     class ClockWidget& getClockWidget() const { assert(m_pClock && "HudManager not initialized"); return *m_pClock; }
@@ -603,6 +605,8 @@ private:
     class AchievementWidget* m_pAchievement = nullptr;
     class GamepadWidget* m_pGamepad;
     class LeanWidget* m_pLean;
+    class SlideWidget* m_pSlide = nullptr;
+    class WheelieWidget* m_pWheelie = nullptr;
     class GForceWidget* m_pGforce;
     class CompassWidget* m_pCompass;
     class ClockWidget* m_pClock;

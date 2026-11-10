@@ -381,6 +381,7 @@ void SettingsHud::showTab(int tabId) {
     if (tabId >= 0 && tabId < TAB_COUNT && isTabAvailable(tabId) && tabId != m_activeTab) {
         m_activeTab = tabId;
         recordTabOpened(tabId);
+        landWidgetsPage(tabId);
         disarmResets();
     }
     setDataDirty();
@@ -782,6 +783,7 @@ void SettingsHud::setActiveTabByName(const char* name) {
                 m_activeTab = t;
                 // Grand Tour, LISTED tabs only: About is restored through here too.
                 recordTabOpened(t);   // Grand Tour; a hidden tab is not one of them
+                landWidgetsPage(t);
                 disarmResets();
                 rebuildRenderData();
             }

@@ -588,6 +588,15 @@ namespace Settings {
             if (key == Lean::ROW_STEER_VALUE.key) return Lean::ROW_STEER_VALUE.description;
             if (key == Lean::SHOW_MAX_MARKERS.key) return Lean::SHOW_MAX_MARKERS.description;
             if (key == Lean::MAX_MARKER_LINGER_FRAMES.key) return Lean::MAX_MARKER_LINGER_FRAMES.description;
+        } else if (hudName == "SlideWidget") {
+            if (key == Slide::ROW_ARC.key) return Slide::ROW_ARC.description;
+            if (key == Slide::ROW_VALUE.key) return Slide::ROW_VALUE.description;
+            if (key == Slide::SHOW_MAX_MARKERS.key) return Slide::SHOW_MAX_MARKERS.description;
+            if (key == Slide::MAX_MARKER_LINGER_FRAMES.key) return Slide::MAX_MARKER_LINGER_FRAMES.description;
+        } else if (hudName == "WheelieWidget") {
+            if (key == Wheelie::SHOW_VALUE.key) return Wheelie::SHOW_VALUE.description;
+            if (key == Wheelie::SHOW_MAX_MARKER.key) return Wheelie::SHOW_MAX_MARKER.description;
+            if (key == Wheelie::MAX_MARKER_LINGER_FRAMES.key) return Wheelie::MAX_MARKER_LINGER_FRAMES.description;
         } else if (hudName == "GForceWidget") {
             if (key == GForce::MAX_SCALE.key) return GForce::MAX_SCALE.description;
             if (key == GForce::SHOW_MAX_TEXT.key) return GForce::SHOW_MAX_TEXT.description;

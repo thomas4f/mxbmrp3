@@ -60,7 +60,7 @@ enum class Gate {
 struct Marker {
     int tabId;                  // SettingsHud::Tab value
     const char* rowTooltipId;   // the row's own tooltip id
-    const char* sinceVersion;   // "MAJOR.MINOR", or nullptr for Gate::Unlocked
+    const char* sinceVersion;   // "MAJOR.MINOR" ("MAJOR.MINOR.PATCH" when a patch adds it: its tab tags again), or nullptr for Gate::Unlocked
     Gate gate = Gate::Release;
 };
 

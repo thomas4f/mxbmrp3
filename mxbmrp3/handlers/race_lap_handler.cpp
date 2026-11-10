@@ -308,9 +308,16 @@ void Handlers::handleRaceLap(Unified::RaceLapData* psRaceLap) {
                 sessionData.trackId, sessionData.bikeName, pbEntry);
             isAllTimePB = pbUpdate.beatsScopedBest;
             bikePbStored = pbUpdate.stored;
-            // Sandbagger: a PB stored on the last lap of a race.
-            if (pbUpdate.stored && data.isRaceSession() && sessionData.sessionNumLaps > 0 &&
-                completedLapNumZeroIndexed + 1 == sessionData.sessionNumLaps) {
+            // Sandbagger: a PB stored on the last lap of a race. Asked of the
+            // race-finish helper, never of sessionNumLaps: in a time + laps
+            // race that is the BONUS lap count, and lap two of "8:00 + 2L"
+            // earned the row minutes before the clock ran out. The helper
+            // reads the lap the rider was ON, so it gets the count before
+            // this crossing - and it covers a lapped rider's last lap too.
+            const StandingsData* pbStanding = data.getStanding(raceNum);
+            const int lapsAtLeaderFinish = pbStanding ? pbStanding->numLapsAtLeaderFinish : -1;
+            if (pbUpdate.stored && data.isRaceSession() &&
+                sessionData.isRiderOnLastLap(completedLapNumZeroIndexed, lapsAtLeaderFinish)) {
                 StatsManager::getInstance().exploration().onSandbag();
             }
             if (isAllTimePB) {

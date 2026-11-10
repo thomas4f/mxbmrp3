@@ -131,3 +131,95 @@ TEST_CASE("a caption on a coloured slab clears the plugin's own luma threshold")
 
     host.shutdown();
 }
+
+// A TRANSLUCENT LIGHT THEME OVER A DARK TRACK. The case above drives every panel
+// opaque, which is where the slab and the theme background are one pixel. At the
+// shipped 33% they are not: the track shows through, and a light panel over a dark
+// track reads mid-grey. The ALL-TIME PB caption was judged against the slab over the
+// theme's WHITE, kept its green, and drew green on a dark-green slab (1.2:1 measured
+// off a companion capture of Carbon Light). The fix judges the ink across the whole
+// range from "over a black track" to "over the theme background"; this composites the
+// quads actually drawn under each string, in emission order, onto both ends and a
+// mid-grey track between them (two clean ends do not prove the range) and holds
+// the ink to the threshold against each -- the plugin's model of the backdrop is not
+// trusted, only the quads it emitted. Reverting inkOnSlabColor to the theme-only
+// flatten fails the black-track check here.
+TEST_CASE("a caption on a translucent light theme stays readable over a dark track") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\ink_legibility_light\\");
+    REQUIRE_MESSAGE(host.hasInkHooks(), "MXBMRP3_Test_HudStringColor not exported (test build?)");
+    REQUIRE(host.hasPaletteHooks());
+    // Carbon Light's palette (ABGR): the text, the field, the green and red.
+    enum { SLOT_PRIMARY = 0, SLOT_BACKGROUND = 4, SLOT_POSITIVE = 5, SLOT_NEGATIVE = 8 };
+    constexpr unsigned long LIGHT_BG = 0xFFF4F4F4ul;
+    host.installTheme("light", 1.0f, 1.0f, /*titleBand=*/0, /*card=*/1);
+    host.setThemeColor(SLOT_PRIMARY, 0xFF161616u);
+    host.setThemeColor(SLOT_BACKGROUND, LIGHT_BG);
+    host.setThemeColor(SLOT_NEGATIVE, 0xFF1C1ADAu);   // #da1e28
+    host.setHudVisible("notices_hud", true);   // off by default
+    host.showAllHuds(true);
+    host.eventInit("TestTrack", "Thomas", 1600.0f, 2, "Bike A", "MX1", /*trackId=*/"TestTrack");
+    host.raceEvent("TestTrack");
+    host.session(1, 0, 0);
+    host.addEntry(4, "Thomas");
+    host.runInit(1);
+    const int threshold = host.minGlyphLumaGap();
+    REQUIRE(threshold > 0);
+
+    // Each string's backdrop: every quad under it, composited in emission order onto
+    // the track colour. Alpha 0 quads are skipped by the composite itself.
+    auto composite = [&](const char* panel, const std::vector<int>& under, unsigned long track) {
+        double rgb[3] = { double(track & 0xFF), double((track >> 8) & 0xFF), double((track >> 16) & 0xFF) };
+        for (int qi : under) {
+            const unsigned long c = host.quadColor(panel, qi);
+            const double a = double((c >> 24) & 0xFF) / 255.0;
+            for (int ch = 0; ch < 3; ++ch) rgb[ch] = rgb[ch] * (1.0 - a) + double((c >> (8 * ch)) & 0xFF) * a;
+        }
+        return 0xFF000000u | (static_cast<unsigned long>(rgb[2] + 0.5) << 16) |
+               (static_cast<unsigned long>(rgb[1] + 0.5) << 8) | static_cast<unsigned long>(rgb[0] + 0.5);
+    };
+    auto inkClearsTheTrack = [&](const char* panel, const char* text, const std::string& what) {
+        const auto rows = host.hudStringRows(panel);
+        int checked = 0;
+        for (size_t i = 0; i < rows.size(); ++i) {
+            if (rows[i].text != text) continue;
+            const auto under = quadsUnder(host, panel, rows[i].x, rows[i].y);
+            REQUIRE_MESSAGE(under.size() >= 2, what << ": \"" << text << "\" is not on a slab over a panel");
+            const unsigned long ink = host.stringColor(panel, static_cast<int>(i));
+            for (unsigned long track : { 0xFF000000ul, 0xFF808080ul, LIGHT_BG }) {
+                const unsigned long back = composite(panel, under, track);
+                const int d = std::abs(host.luma601(ink) - host.luma601(back));
+                INFO(what << " over track " << track << ": ink " << ink << " on " << back
+                          << ", " << d << " luma (threshold " << threshold << ")");
+                CHECK(d >= threshold);
+                ++checked;
+            }
+        }
+        REQUIRE_MESSAGE(checked > 0, what << ": \"" << text << "\" not drawn -- the check would be vacuous");
+    };
+
+    SUBCASE("the ALL-TIME PB notice at Carbon Light's green and #691's darker one") {
+        const unsigned long greens[] = { 0xFF48A124u /* #24a148 */, 0xFF388019u /* #198038 */ };
+        int lap = 1;
+        for (unsigned long green : greens) {
+            host.setThemeColor(SLOT_POSITIVE, green);
+            host.raceLap(1, 4, lap, 90000 - lap * 1000, /*best=*/1);
+            ++lap;
+            host.draw();
+            host.draw();
+            inkClearsTheTrack("notices_hud", "ALL-TIME PB", "notices");
+        }
+    }
+
+    SUBCASE("the gap bar's figure over its fill") {
+        host.raceLap(1, 4, 1, 95000, /*best=*/1);
+        REQUIRE(host.gapBarForceGap(4000, true));
+        host.draw();
+        const auto rows = host.hudStringRows("gap_bar_hud");
+        REQUIRE(!rows.empty());
+        inkClearsTheTrack("gap_bar_hud", "+4.000", "gap bar");
+    }
+
+    host.shutdown();
+}

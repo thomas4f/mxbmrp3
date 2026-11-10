@@ -824,7 +824,7 @@ TEST_CASE("an unknown panel name measures nothing, and every named id resolves")
         PluginHost::HUD_MAP, PluginHost::HUD_SESSION,
         PluginHost::HUD_RADAR, PluginHost::HUD_SPEED, PluginHost::HUD_GEAR,
         PluginHost::HUD_CRASH, PluginHost::HUD_BARS, PluginHost::HUD_COMPASS,
-        PluginHost::HUD_LEAN,
+        PluginHost::HUD_LEAN, PluginHost::HUD_SLIDE,
     };
     for (PluginHost::HudId id : ids) {
         const std::string nm = PluginHost::hudName(id);

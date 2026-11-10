@@ -611,7 +611,7 @@ void StandingsHud::formatSessionInfo(char* buf, size_t bufSize, const std::vecto
     if (sessionData.sessionLength > 0) {
         // Timed (or timed+lap) session: live countdown, or the overtime label.
         PluginUtils::formatSessionClock(pluginData.getLeaderLapsToGo(),
-            pluginData.getSessionTime(), sessionData.lapsAfterClock(), value, sizeof(value), /*shown=*/true);
+            pluginData.getSessionClockTime(), sessionData.lapsAfterClock(), value, sizeof(value), /*shown=*/true);
     } else if (sessionData.sessionNumLaps > 0) {
         // Pure lap race: "CHECKERED" once the leader crosses the line on the final
         // lap; the session clock (a count-up elapsed timer for lap races) before the
@@ -631,7 +631,7 @@ void StandingsHud::formatSessionInfo(char* buf, size_t bufSize, const std::vecto
             // Pre-race (not yet green): show the session clock like timed races do,
             // instead of a static "Lap 1/N" before anyone has turned a lap.
             PluginUtils::formatSessionClock(pluginData.getLeaderLapsToGo(),
-                pluginData.getSessionTime(), sessionData.lapsAfterClock(), value, sizeof(value), /*shown=*/true);
+                pluginData.getSessionClockTime(), sessionData.lapsAfterClock(), value, sizeof(value), /*shown=*/true);
         } else {
             int leaderLap = leaderStanding ? leaderStanding->numLaps + 1 : 1;  // numLaps = completed → 1-based current
             if (leaderLap < 1) leaderLap = 1;

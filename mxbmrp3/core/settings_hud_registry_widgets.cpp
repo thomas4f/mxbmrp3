@@ -54,6 +54,8 @@
 #include "../hud/benchmark_widget.h"
 #include "../hud/gamepad_widget.h"
 #include "../hud/lean_widget.h"
+#include "../hud/slide_widget.h"
+#include "../hud/wheelie_widget.h"
 #include "../hud/gforce_widget.h"
 #include "../hud/compass_widget.h"
 #if GAME_HAS_TYRE_TEMP
@@ -668,6 +670,66 @@ void SettingsManager::app_LeanWidget(HudManager& hudManager, const SettingsManag
                 }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("LeanWidget: Failed to parse settings: %s", e.what());
+            }
+            hud.setDataDirty();
+        }
+}
+
+void SettingsManager::cap_SlideWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
+        HudSettings settings;
+        const auto& hud = hudManager.getSlideWidget();
+        captureBaseHudSettings(settings, hud);
+        saveSlideRows(settings, hud.m_enabledRows);  // Named keys instead of bitmask
+        settings[IniOnly::Slide::SHOW_MAX_MARKERS.key] = hud.m_bShowMaxMarkers ? "1" : "0";
+        settings[IniOnly::Slide::MAX_MARKER_LINGER_FRAMES.key] = std::to_string(hud.m_maxMarkerLingerFrames);
+        cache[name] = std::move(settings);
+}
+
+void SettingsManager::app_SlideWidget(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
+        auto it = cache.find(name);
+        if (it != cache.end()) {
+            auto& hud = hudManager.getSlideWidget();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                loadSlideRows(settings, hud.m_enabledRows);  // Named keys instead of bitmask
+                if (auto v = readBool(settings, IniOnly::Slide::SHOW_MAX_MARKERS.key)) hud.m_bShowMaxMarkers = *v;
+                if (auto v = readInt(settings, IniOnly::Slide::MAX_MARKER_LINGER_FRAMES.key)) {
+                    hud.m_maxMarkerLingerFrames = std::max(0, *v);
+                }
+            } catch (const std::exception& e) {
+                DEBUG_WARN_F("SlideWidget: Failed to parse settings: %s", e.what());
+            }
+            hud.setDataDirty();
+        }
+}
+
+void SettingsManager::cap_WheelieWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
+        HudSettings settings;
+        const auto& hud = hudManager.getWheelieWidget();
+        captureBaseHudSettings(settings, hud);
+        settings[IniOnly::Wheelie::SHOW_VALUE.key] = hud.m_bShowValue ? "1" : "0";
+        settings[IniOnly::Wheelie::SHOW_MAX_MARKER.key] = hud.m_bShowMaxMarker ? "1" : "0";
+        settings[IniOnly::Wheelie::MAX_MARKER_LINGER_FRAMES.key] = std::to_string(hud.m_maxMarkerLingerFrames);
+        cache[name] = std::move(settings);
+}
+
+void SettingsManager::app_WheelieWidget(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
+        auto it = cache.find(name);
+        if (it != cache.end()) {
+            auto& hud = hudManager.getWheelieWidget();
+            applyBaseHudSettings(hud, it->second);
+
+            const auto& settings = it->second;
+            try {
+                if (auto v = readBool(settings, IniOnly::Wheelie::SHOW_VALUE.key)) hud.m_bShowValue = *v;
+                if (auto v = readBool(settings, IniOnly::Wheelie::SHOW_MAX_MARKER.key)) hud.m_bShowMaxMarker = *v;
+                if (auto v = readInt(settings, IniOnly::Wheelie::MAX_MARKER_LINGER_FRAMES.key)) {
+                    hud.m_maxMarkerLingerFrames = std::max(0, *v);
+                }
+            } catch (const std::exception& e) {
+                DEBUG_WARN_F("WheelieWidget: Failed to parse settings: %s", e.what());
             }
             hud.setDataDirty();
         }

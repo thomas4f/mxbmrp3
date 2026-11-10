@@ -181,7 +181,10 @@ int countTooltipRows(const std::vector<std::string>& regions, const char* toolti
 //
 // The Find box appended FIND_FIELD, FIND_RESULT, FIND_PAGE_PREV and
 // FIND_PAGE_NEXT: four more types, no ordinal moved.
-constexpr int kClickRegionTypeCount = 123;
+//
+// The Widgets tab's pager appended WIDGETS_PAGE_PREV and WIDGETS_PAGE_NEXT:
+// two more types, no ordinal moved.
+constexpr int kClickRegionTypeCount = 125;
 
 }  // namespace
 
@@ -401,6 +404,8 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
     // strings 127 -> 128.
     // 1.35 prunes the 1.34 markers, and with them four sidebar "New" tags:
     // strings 128 -> 124.
+    // 1.35.1 marks the Slide and Wheelie rows, which tags the Widgets sidebar
+    // row: strings 124 -> 125.
     static const char* kGolden =
         "52:general;52:appearance;52:hotkeys;52:riders;54:-;52:rumble;61:-;52:helmet;77:-;52:director;10:-;52"
         ":stream_chat;78:-;52:spotter;93:-;52:achievements;40:-;52:updates;47:-;48:-;51:-;52:widgets;10:-;52:"
@@ -412,7 +417,7 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
         "controller;3:general.controller;114:general.controller;72:general.steam_friends;72:general.now_playi"
         "ng;72:general.web_server;44:-;44:-;72:general.web_port;45:-;46:-;72:general.auto_switch;49:-;49:-;72"
         ":general.copy_profile;4:general.copy_profile;3:general.copy_profile;114:general.copy_profile;8:gener"
-        "al.reset_profile;9:general.reset_all;53:-;6:-;71:-;119:find.field;typecount=123;strings=124";
+        "al.reset_profile;9:general.reset_all;53:-;6:-;71:-;119:find.field;typecount=125;strings=125";
 
     MESSAGE("General tab signature: " << sig);
     CHECK(sig == kGolden);

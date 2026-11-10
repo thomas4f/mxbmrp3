@@ -168,26 +168,28 @@ Four separate profiles store complete HUD layout configurations:
 |--------|-------------|
 | **Speed** | Current speed |
 | **Gear** | Current gear |
+| **RPM** | Shift lights that turn red at the shift point, the red ones flashing on the limiter |
+| **Fuel** | Fuel calculator with consumption tracking |
+| **Tyre Temp** | Front and rear tyre temperatures (GP Bikes only) |
+| **ECU** | Engine map, traction control, engine braking, anti-wheeling (GP Bikes only) |
 | **Lap** | Current lap number |
 | **Position** | Race position |
 | **Time** | Session time/countdown |
 | **Crashes** | Resettable crash tally |
-| **Fuel** | Fuel calculator with consumption tracking |
-| **Bars** | Vertical telemetry bars (throttle, brake, suspension, etc.) |
-| **Tacho** | Analog tachometer |
-| **RPM** | Shift lights that turn red at the shift point, the red ones flashing on the limiter |
-| **Lean** | Bike lean angle with arc gauge |
-| **Speedo** | Analog speedometer with odometer and trip meter |
-| **G-Force** | Lateral/longitudinal G-force gauge with peak marker |
-| **Compass** | Heading dial (classic needle or modern rotating card) |
-| **Tyre Temp** | Front and rear tyre temperatures (GP Bikes only) |
-| **ECU** | Engine map, traction control, engine braking, anti-wheeling (GP Bikes only) |
 | **Toggles** | Settings button and every on/off switch, shown while the mouse moves |
+| **Pointer** | Mouse cursor; Off = settings menu only (helps if a pad reads as a mouse) |
 | **Gamepad** | Controller visualization |
+| **Bars** | Vertical telemetry bars (throttle, brake, suspension, etc.) |
 | **Clock** | Real-time clock |
 | **Now Playing** | Windows media (Spotify, a browser, ...): previous, play/pause, next, volume |
-| **Pointer** | Mouse cursor; Off = settings menu only (helps if a pad reads as a mouse) |
 | **Prestige** | A badge for trading in a completed achievement ladder (MX Bikes only) |
+| **Tacho** | Analog tachometer |
+| **Speedo** | Analog speedometer with odometer and trip meter |
+| **Lean** | Bike lean angle with arc gauge |
+| **Slide** | How far the bike slides sideways, on an upside-down arc |
+| **Wheelie** | How far up on the back wheel, on a quarter arc |
+| **G-Force** | Lateral/longitudinal G-force gauge with peak marker |
+| **Compass** | Heading dial (classic needle or modern rotating card) |
 
 Drag the **Toggles** strip to a side edge for a column or to the top or bottom edge for a row; the arrow after the settings button folds the switches away, and resting the mouse on a switch that is off shows a dimmed preview of it. **Now Playing** needs Now playing turned on in General; `nowPlayingApps=spotify` under `[General]` in the settings file follows only the players named.
 

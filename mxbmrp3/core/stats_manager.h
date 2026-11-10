@@ -6,6 +6,7 @@
 #pragma once
 
 #include "exploration_stats.h"
+#include "ghost_ride.h"
 #include "roost_detect.h"
 
 #include <set>
@@ -218,6 +219,13 @@ public:
     // centreline, 0-1, which Favorite Spot reads at the crash edge.
     void updateTelemetry(float speedMs, bool isCrashed, int currentGear, float fuelLitres,
                          float rearWheelSpeedMs, float trackPos);
+
+    // Ghost Ride, once per telemetry frame: the game's own crashed flag for
+    // this frame, and whether the bike is riding on without its rider
+    // (GhostRide::rolling, which the caller evaluates - it knows the wheel
+    // layout). Its own call rather than two more updateTelemetry arguments,
+    // because it reads the TELEMETRY crash flag, not the track-position one.
+    void updateGhostRide(bool crashed, bool rolling);
 
     // The bike's tank capacity, from EventInit (event_handler) — what "almost
     // empty" is measured against. 0 while unknown, which reads as "cannot be
@@ -566,6 +574,13 @@ private:
     bool m_hasLastDigTime = false;
     double m_digSec = 0.0;
     double m_digReportedSec = 0.0;
+
+    // Ghost Ride: the run (core/ghost_ride.h), the tenths of it already
+    // reported, and the run's own clock - Digging a Hole's shape.
+    GhostRide::Run m_ghostRun;
+    double m_ghostReportedSec = 0.0;
+    std::chrono::steady_clock::time_point m_lastGhostTime{};
+    bool m_hasLastGhostTime = false;
 
     // Favorite Spot: where on the centreline the last crash happened, and how
     // many in a ROW have now happened there. Dropped at every session start,

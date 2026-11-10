@@ -430,19 +430,67 @@ unsigned long BaseHud::legibleOnFill(unsigned long ink, unsigned long fill) cons
     return chipGlyphColor(fill);
 }
 
-// The ink for a caption drawn on a slab of its OWN slot colour, at `fillOpacity`.
-// Flattens the slab onto the panel background first, because that is the pixel the
-// caption actually competes with -- the slot colour alone says nothing about how the
-// slab will read once its alpha is spent.
-unsigned long BaseHud::captionOnSlabColor(unsigned long slot, float fillOpacity) const {
-    return inkOnSlabColor(slot, slot, fillOpacity);
+// THE SAME QUESTION ACROSS A RANGE: ink that clears every fill whose luma lies between
+// `fillA` and `fillB`, i.e. sits below the darker by MIN_GLYPH_LUMA_GAP or above the
+// lighter by it. Clearing the two ends separately is not enough: a mid-tone ink can sit
+// 45 off each end while vanishing into every backdrop in between. Lifts toward the
+// palette end with more room beyond the range, which on a light theme is the DARK end
+// (its PRIMARY) -- legibleOnFill's "PRIMARY when the fill is dark" assumes a dark theme.
+// Identical fills are legibleOnFill's question, answered by it unchanged.
+unsigned long BaseHud::legibleAcrossFills(unsigned long ink, unsigned long fillA,
+                                          unsigned long fillB) const {
+    if (fillA == fillB) return legibleOnFill(ink, fillA);
+    const int gap = static_cast<int>(MIN_GLYPH_LUMA_GAP);
+    const int la = static_cast<int>(PluginUtils::luma601(fillA));
+    const int lb = static_cast<int>(PluginUtils::luma601(fillB));
+    const int lo = std::min(la, lb), hi = std::max(la, lb);
+    auto clears = [&](unsigned long c) {
+        const int l = static_cast<int>(PluginUtils::luma601(c));
+        return l + gap <= lo || l >= hi + gap;
+    };
+    if (clears(ink)) return ink;
+    const unsigned long primary = this->getColor(ColorSlot::PRIMARY);
+    const unsigned long background = this->getColor(ColorSlot::BACKGROUND);
+    const bool primaryDarker = PluginUtils::luma601(primary) <= PluginUtils::luma601(background);
+    const unsigned long darkEnd = primaryDarker ? primary : background;
+    const unsigned long lightEnd = primaryDarker ? background : primary;
+    const int darkRoom = lo - static_cast<int>(PluginUtils::luma601(darkEnd));
+    const int lightRoom = static_cast<int>(PluginUtils::luma601(lightEnd)) - hi;
+    const unsigned long toward = darkRoom >= lightRoom ? darkEnd : lightEnd;
+    for (int step = 1; step <= 8; step++) {
+        const unsigned long lifted = PluginUtils::flattenOnto(
+            PluginUtils::applyOpacity(toward, static_cast<float>(step) / 8.0f), ink);
+        if (clears(lifted)) return lifted;
+    }
+    return toward;   // the floor: no ink clears the whole range, so the end with most room
 }
 
+// The ink for a caption drawn on a slab of its OWN slot colour, at `fillOpacity`.
+// Flattens the slab first, because that is the pixel the caption actually competes
+// with -- the slot colour alone says nothing about how the slab will read once its
+// alpha is spent.
+unsigned long BaseHud::captionOnSlabColor(unsigned long slot, float fillOpacity,
+                                          float panelOpacity) const {
+    return inkOnSlabColor(slot, slot, fillOpacity, panelOpacity);
+}
+
+// WHAT IS UNDER THE SLAB. Over the theme background only while the panel is opaque.
+// Below that the track shows through, and the plugin cannot know what the track
+// looks like -- so the ink has to clear the whole range from the panel over a black
+// track to the panel as the theme paints it. On a dark theme the two are near
+// enough the same pixel. On a LIGHT theme at the shipped 33% they are not: the
+// light panel over the track reads mid-grey, a green slab on it reads dark green,
+// and the green ALL-TIME PB caption judged against the theme's white alone kept its
+// hue and vanished into it (1.2:1 measured off a capture). An opaque panel makes
+// both ends one pixel, which is the old answer exactly.
 unsigned long BaseHud::inkOnSlabColor(unsigned long ink, unsigned long slot,
-                                      float fillOpacity) const {
-    const unsigned long fill = PluginUtils::flattenOnto(
-        PluginUtils::applyOpacity(slot, fillOpacity), this->getColor(ColorSlot::BACKGROUND));
-    return legibleOnFill(ink, fill);
+                                      float fillOpacity, float panelOpacity) const {
+    const unsigned long background = this->getColor(ColorSlot::BACKGROUND);
+    const unsigned long slab = PluginUtils::applyOpacity(slot, fillOpacity);
+    const unsigned long overTrack = PluginUtils::flattenOnto(
+        PluginUtils::applyOpacity(background, panelOpacity), PluginUtils::makeColor(0, 0, 0));
+    return legibleAcrossFills(ink, PluginUtils::flattenOnto(slab, background),
+                              PluginUtils::flattenOnto(slab, overTrack));
 }
 
 unsigned long BaseHud::buttonGlyphColor(unsigned long stateColor) const {

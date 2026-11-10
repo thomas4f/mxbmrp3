@@ -190,6 +190,9 @@ public:
     // at most once a SECOND - the caller crosses whole seconds - so the
     // evaluation never lands on the telemetry path it is measured from.
     void onDiggingTime(double seconds);
+    // Seconds of one ghost ride, in tenths (Ghost Ride). Fed at most ten
+    // times a second, and only while the bike rides on without its rider.
+    void onGhostRide(double seconds);
     void onSandbag();
     // FMX (StatsManager::recordFmxTrick / FmxManager::failTrick).
     void onTrickTime(bool shred, float seconds);

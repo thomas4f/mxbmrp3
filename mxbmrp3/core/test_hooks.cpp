@@ -1732,8 +1732,8 @@ __declspec(dllexport) void MXBMRP3_Test_WhatsNewMarkerName(int index, char* out,
     if (index < 0 || index >= WhatsNew::MARKER_COUNT) return;
     const WhatsNew::Marker& m = WhatsNew::MARKERS[index];
     const SettingsHud& sh = HudManager::getInstance().getSettingsHud();
-    snprintf(out, static_cast<size_t>(cap), "%s / %s",
-             sh.testTabNameForIndex(m.tabId), m.rowTooltipId);
+    snprintf(out, static_cast<size_t>(cap), "%s / %s / %s", sh.testTabNameForIndex(m.tabId),
+             m.rowTooltipId, m.sinceVersion ? m.sinceVersion : "unlocked");
 }
 
 // The footer's About button: one click. Five in a row still start the easter egg,

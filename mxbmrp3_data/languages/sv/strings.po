@@ -569,6 +569,7 @@ msgstr "Beta"
 msgid "Big Hit"
 msgstr "Storsmäll"
 
+#. max 11 characters
 msgid "Bike"
 msgstr "Hoj"
 
@@ -1248,6 +1249,10 @@ msgctxt "tooltip"
 msgid "Dial faces and the ranges that place the needles on them."
 msgstr "Mätartavlor och de intervall som placerar visarna på dem."
 
+#. max 60 characters
+msgid "Dials"
+msgstr "Mätare"
+
 msgid "Digging a Hole"
 msgstr "Gräva ett hål"
 
@@ -1460,6 +1465,10 @@ msgstr "Extra rader under jämförelserna: position, varv, tid kvar, sessionsfor
 
 msgid "Extract"
 msgstr "Packa upp"
+
+#. max 11 characters
+msgid "Extras"
+msgstr "Extra"
 
 msgid "FASTEST LAP"
 msgstr "SNABBASTE VARV"
@@ -1836,10 +1845,6 @@ msgstr "Gap till ledaren"
 msgid "Gaps"
 msgstr "Gap"
 
-#. max 60 characters
-msgid "Gauges"
-msgstr "Mätare"
-
 msgid "Gea"
 msgstr "Väx"
 
@@ -1857,6 +1862,9 @@ msgstr "Allmänt"
 
 msgid "Ghost"
 msgstr "Spöke"
+
+msgid "Ghost Ride"
+msgstr "Förarlös"
 
 msgctxt "tooltip"
 msgid "Ghost: your best lap marker. Opponents: other riders. Both: all of them. Off: no markers at all."
@@ -2183,6 +2191,10 @@ msgstr "Infotavla vid depån eller tidpunkter. Visar position, varvtider och gap
 msgid "Input"
 msgstr "Indata"
 
+#. max 60 characters
+msgid "Inputs"
+msgstr "Indata"
+
 msgid "Install"
 msgstr "Installera"
 
@@ -2202,6 +2214,10 @@ msgstr "Integrationer"
 msgctxt "tooltip"
 msgid "Interactive elements, hover highlights, and the player/spectated rider's name in standings."
 msgstr "Interaktiva element, markering vid hovring och spelarens/den följdes namn i ställningen."
+
+#. max 60 characters
+msgid "Interface"
+msgstr "Gränssnitt"
 
 msgid "Interior Decorator"
 msgstr "Inredare"
@@ -2493,6 +2509,10 @@ msgctxt "tooltip"
 msgid "Let close battles steer the camera. Off holds the leader/solo baseline."
 msgstr "Låt täta dueller styra kameran. Av håller ledaren/ensam som grund."
 
+#, c-format
+msgid "Let the bike ride alone for %s"
+msgstr "Låt hojen rulla ensam i %s"
+
 msgctxt "tooltip"
 msgid "Lifetime milestones as Bronze-to-Platinum progress bars, plus a toast when a tier is earned."
 msgstr "Livstidsmilstolpar som framstegsstaplar från brons till platina, plus en notis när en nivå tas."
@@ -2758,10 +2778,6 @@ msgstr "Min"
 msgid "Min shot"
 msgstr "Min bild"
 
-#. max 60 characters
-msgid "Misc"
-msgstr "Övrigt"
-
 #. max 15 characters
 msgid "Mode"
 msgstr "Läge"
@@ -2772,6 +2788,10 @@ msgstr "Mer"
 
 #. max 13 characters
 msgid "Motion"
+msgstr "Rörelse"
+
+#. max 60 characters
+msgid "Movement"
 msgstr "Rörelse"
 
 msgid "Mudder"
@@ -3444,6 +3464,7 @@ msgstr "FÖRARE MÖTER"
 msgid "RPM"
 msgstr ""
 
+#. max 60 characters
 msgid "Race"
 msgstr "Lopp"
 
@@ -3514,7 +3535,7 @@ msgstr "Bbr"
 msgid "Reach %s above takeoff and land it"
 msgstr "Nå %s över avstampet och landa"
 
-#. max 11 characters
+#. max 60 characters
 msgid "Readouts"
 msgstr "Värden"
 
@@ -3826,6 +3847,7 @@ msgstr ":A"
 msgid "Sandbagger"
 msgstr "Sandsäck"
 
+#. max 34 characters
 msgid "Save"
 msgstr "Spara"
 
@@ -4428,6 +4450,10 @@ msgid "Shows front and rear tyre temperatures."
 msgstr "Visar temperatur på fram- och bakdäck."
 
 msgctxt "tooltip"
+msgid "Shows how far the bike slides sideways, in degrees."
+msgstr "Visar hur mycket hojen sladdar i sidled, i grader."
+
+msgctxt "tooltip"
 msgid "Shows nearby riders relative to your position. Useful for close racing awareness."
 msgstr "Visar förare i närheten relativt din position. Bra för medvetenhet i täta lopp."
 
@@ -4438,6 +4464,10 @@ msgstr "Visar bränslenivå och beräknat antal varv."
 msgctxt "tooltip"
 msgid "Shows rider lean angle in degrees with arc gauge."
 msgstr "Visar förarens lutningsvinkel i grader med bågmätare."
+
+msgctxt "tooltip"
+msgid "Shows how far you are up on the back wheel, in degrees."
+msgstr "Visar hur högt upp på bakhjulet du är, i grader."
 
 msgctxt "tooltip"
 msgid "Shows your current race position (P1, P2, etc.)."

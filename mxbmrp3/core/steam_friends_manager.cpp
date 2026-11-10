@@ -517,7 +517,7 @@ void SteamFriendsManager::updateLocalPresence() {
     const int riderCount = static_cast<int>(pd.getRaceEntries().size());
     inputs.multiRider = (riderCount > 1);
     inputs.lapsToGo = pd.getLeaderLapsToGo();
-    inputs.timeSeconds = pd.getSessionTime() / 1000;
+    inputs.timeSeconds = pd.getSessionClockTime() / 1000;
     if (m_hasPresenceInputs && inputs == m_lastPresenceInputs) {
         return;
     }
@@ -572,10 +572,10 @@ void SteamFriendsManager::updateLocalPresence() {
             // per-second write path.
             lapsToGo = pd.getLeaderLapsToGo();
             char clockBuf[PluginUtils::SESSION_CLOCK_CHARS];
-            PluginUtils::formatSessionClock(lapsToGo, pd.getSessionTime(), /*lapsAfterClock=*/0,
+            PluginUtils::formatSessionClock(lapsToGo, pd.getSessionClockTime(), /*lapsAfterClock=*/0,
                                             clockBuf, sizeof(clockBuf));
             progress = clockBuf;
-            timeBucket = pd.getSessionTime() / 10000;
+            timeBucket = pd.getSessionClockTime() / 10000;
 
             // Mirror the Friends HUD layout (Server | Track | Info) as one
             // "\xC2\xB7"-joined line - the native Steam UI renders the middle dot fine

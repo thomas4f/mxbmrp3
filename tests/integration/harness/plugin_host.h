@@ -212,6 +212,7 @@ public:
         m_wnMarkerName     = sym<void(*)(int, char*, int)>("MXBMRP3_Test_WhatsNewMarkerName");
         m_wnMarkerInGroup  = sym<int(*)(int)>("MXBMRP3_Test_WhatsNewMarkerInGroup");
         m_wnSerialize      = sym<void(*)(char*, int)>("MXBMRP3_Test_WhatsNewSerialize");
+        m_wnDeserialize    = sym<void(*)(const char*)>("MXBMRP3_Test_WhatsNewDeserialize");
         m_clickAbout       = sym<void(*)()>("MXBMRP3_Test_ClickAbout");
         m_updateTagLive    = sym<int(*)()>("MXBMRP3_Test_UpdateTagLive");
         m_updateTagReset   = sym<void(*)()>("MXBMRP3_Test_UpdateTagReset");
@@ -286,6 +287,7 @@ public:
         m_anDrainErrors = sym<int(*)(char*, int)>("MXBMRP3_Test_AnalyticsDrainErrors");
         m_resolveFrame = sym<void(*)(unsigned long long, char*, int)>("MXBMRP3_Test_ResolveFrame");
         m_extractInstall = sym<int(*)(const char*, const char*, int, char*, int)>("MXBMRP3_Test_ExtractAndInstall");
+        m_updaterStepTrace = sym<int(*)(const char*, const char*, int, int, int*, int, int*, int)>("MXBMRP3_Test_UpdaterStepTrace");
         m_stSetVisible      = sym<void(*)(int)>("MXBMRP3_Test_StandingsSetVisible");
         m_installTheme      = sym<void(*)(const char*,float,float,int,int,int,int)>("MXBMRP3_Test_InstallTheme");
         m_setThemeTitleBorder  = sym<int(*)(float)>("MXBMRP3_Test_SetThemeTitleBorder");
@@ -1024,6 +1026,7 @@ public:
         d.m_fPosX = r.posX; d.m_fPosY = r.posY; d.m_fPosZ = r.posZ;
         d.m_fYaw = r.yaw; d.m_fPitch = r.pitch; d.m_fRoll = r.roll;
         d.m_fYawVelocity = r.yawVel; d.m_fPitchVelocity = r.pitchVel; d.m_fRollVelocity = r.rollVel;
+        d.m_fVelocityX = r.velX; d.m_fVelocityZ = r.velZ;
         d.m_aiWheelMaterial[0] = r.frontMaterial;
         d.m_aiWheelMaterial[1] = r.rearMaterial;
         d.m_afWheelSpeed[0] = std::isnan(r.wheelSpeedFront) ? r.speed : r.wheelSpeedFront;
@@ -1605,6 +1608,9 @@ public:
         if (m_wnSerialize) m_wnSerialize(buf, static_cast<int>(sizeof(buf)));
         return std::string(buf);
     }
+    // Replace the dismissed set, as a settings file's whatsNewSeen would.
+    bool hasWhatsNewDeserialize() const { return m_wnDeserialize != nullptr; }
+    void whatsNewDeserialize(const char* csv) { if (m_wnDeserialize) m_wnDeserialize(csv); }
     // The footer's About button, one click, through the real dispatch path.
     bool hasAbout() const { return m_clickAbout && m_updateTagLive; }
     void clickAbout() { if (m_clickAbout) m_clickAbout(); }
@@ -2691,7 +2697,11 @@ public:
                  // The Toggles strip. Centres its icons on the card box, and like
                  // the prestige badge draws nothing until a condition holds: the
                  // cursor shown (injectMouse), else the sweep looks at no plan.
-                 HUD_TOGGLES = 24 };
+                 HUD_TOGGLES = 24,
+                 // The Slide gauge: the Lean arc upside down, centred on its card.
+                 HUD_SLIDE = 25,
+                 // The Wheelie widget: its quarter ring centres on the card box.
+                 HUD_WHEELIE = 26 };
 
     // THE ONE TRANSLATION. Strings are HudManager::initialize()'s registration names;
     // an id outside the enum yields "", which resolves to no panel rather than to
@@ -2722,6 +2732,8 @@ public:
             case HUD_PRESTIGE:       return "prestige_widget";
             case HUD_DASH:           return "dash_hud";
             case HUD_TOGGLES:        return "toggle_strip_widget";
+            case HUD_SLIDE:          return "slide_widget";
+            case HUD_WHEELIE:        return "wheelie_widget";
         }
         return "";
     }
@@ -3335,6 +3347,21 @@ public:
         err = buf;
         return r;
     }
+    // Run the install like extractAndInstall() and return what step `step`'s
+    // row showed at each UI refresh: its percent while running (-1 = none),
+    // 101 once OK. Empty with ok == -1 when the hook isn't exported.
+    // debugMode: as the Updates tab's debug mode runs it (verify skipped).
+    std::vector<int> updaterStepTrace(const char* destDir, const std::string& zip,
+                                      int step, int& ok, bool debugMode = false) {
+        ok = -1;
+        if (!m_updaterStepTrace) return {};
+        int buf[256] = {0};
+        int n = m_updaterStepTrace(destDir, zip.data(), (int)zip.size(), step,
+                                   buf, (int)(sizeof(buf) / sizeof(buf[0])), &ok, debugMode ? 1 : 0);
+        if (n < 0) return {};
+        if (n > 256) n = 256;
+        return std::vector<int>(buf, buf + n);
+    }
     // (Re)load settings from savePath into live state (reads <savePath>mxbmrp3\...ini).
     void loadSettings(const char* savePath) { if (m_loadSettings) m_loadSettings(savePath); }
 
@@ -3467,7 +3494,9 @@ public:
     // full variant exists for header assertions (e.g. Cache-Control on the
     // custom-served /sw.js and /custom.css).
     std::string rawGet(const char* path) { return httpGet("127.0.0.1", 8080, path); }
-    std::string rawGetFull(const char* path) { return httpGetFull("127.0.0.1", 8080, path); }
+    std::string rawGetFull(const char* path, const char* extraHeaders = "") {
+        return httpGetFull("127.0.0.1", 8080, path, extraHeaders);
+    }
     json state() {
         std::string body = rawState();
         return body.empty() ? json() : json::parse(body, nullptr, /*allow_exceptions=*/false);
@@ -3610,16 +3639,20 @@ private:
     }
 
     // Minimal blocking HTTP GET; returns the FULL response (status line +
-    // headers + body), or "".
-    static std::string httpGetFull(const char* host, int port, const char* path) {
+    // headers + body), or "". extraHeaders is spliced in verbatim, each line
+    // ending in \r\n.
+    static std::string httpGetFull(const char* host, int port, const char* path,
+                                   const char* extraHeaders = "") {
         WSADATA w; if (WSAStartup(MAKEWORD(2, 2), &w) != 0) return "";
         SOCKET s = socket(AF_INET, SOCK_STREAM, 0);
         sockaddr_in a{}; a.sin_family = AF_INET; a.sin_port = htons((u_short)port);
         inet_pton(AF_INET, host, &a.sin_addr);
         if (connect(s, (sockaddr*)&a, sizeof(a)) != 0) { closesocket(s); WSACleanup(); return ""; }
-        char req[256];
+        char req[512];
         int n = snprintf(req, sizeof(req),
-                         "GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n", path, host);
+                         "GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n%s\r\n",
+                         path, host, extraHeaders);
+        if (n < 0 || n >= (int)sizeof(req)) { closesocket(s); WSACleanup(); return ""; }
         send(s, req, n, 0);
         std::string resp; char buf[8192]; int r;
         while ((r = recv(s, buf, sizeof(buf), 0)) > 0) resp.append(buf, r);
@@ -3805,6 +3838,7 @@ private:
     void (*m_wnMarkerName)(int, char*, int) = nullptr;
     int  (*m_wnMarkerInGroup)(int) = nullptr;
     void (*m_wnSerialize)(char*, int) = nullptr;
+    void (*m_wnDeserialize)(const char*) = nullptr;
     void (*m_clickAbout)() = nullptr;
     int  (*m_updateTagLive)() = nullptr;
     void (*m_updateTagReset)() = nullptr;
@@ -4091,4 +4125,5 @@ private:
     int         (*m_anDrainErrors)(char*,int) = nullptr;
     void        (*m_resolveFrame)(unsigned long long, char*, int) = nullptr;
     int         (*m_extractInstall)(const char*, const char*, int, char*, int) = nullptr;
+    int         (*m_updaterStepTrace)(const char*, const char*, int, int, int*, int, int*, int) = nullptr;
 };

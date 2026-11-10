@@ -18,6 +18,39 @@ file; their wording is preserved too.
 
 ## [Unreleased]
 
+## [1.35.1] - 2026-11-10
+
+Slide and Wheelie widgets and a regrouped Widgets tab, plus fixes for
+the timed race clock, Now Playing and the light themes.
+
+### Added
+- **Slide** widget (Settings > Widgets > Slide): an upside-down arc
+  showing how far the bike slides sideways, filling toward the side the
+  rear steps out.
+- **Wheelie** widget (Settings > Widgets > Wheelie): a quarter arc
+  showing how far up on the back wheel you are, in degrees, with a peak
+  marker.
+
+### Changed
+- Updated vendored cpp-httplib to 0.65.0
+- While an update installs, the Download, Extract and Install steps
+  count from 0 to 100% before they turn to OK.
+- The Widgets tab groups its widgets by what they show (Bike, Race,
+  Movement, ...) over two pages, the most-used first.
+
+### Fixed
+- The Sandbagger achievement no longer unlocks early in time + laps
+  races: it waits for your real last lap, and a lapped rider's last lap
+  counts too.
+- In a timed race the session clock no longer counts down the pre-start:
+  it shows the full race time until the gate drops.
+- Now Playing no longer crashes the game when a media player reports a
+  track without a timeline; it shows the track without the time.
+- The Carbon Light and Modern Light themes draw green figures darker, so
+  small green text such as a gap or a delta reads on their light panels.
+- On a see-through light theme over a dark track, the PB notices and the
+  Gap Bar's gap are readable: no more green text on a green fill.
+
 ## [1.35.0] - 2026-11-08
 
 Menus, HUDs and the spotter in your language, new themes and fonts, and
