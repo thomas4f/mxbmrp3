@@ -251,11 +251,12 @@ private:
     // it matters most. See loadSettings().
     void loadSettingsImpl(HudManager& hudManager, const char* savePath);
 
-    // Honour Setup's analytics opt-out, if it left one and it has not been honoured
-    // yet. Called at the END of loadSettings(), so installPrefsSeen has been read and
-    // the in-game value it may override is already applied. See core/install_prefs.h
-    // for why this is a stamped marker rather than a consumed sentinel.
-    void applyInstallPrefs();
+    // Honour Setup's choices (core/install_prefs.h): its analytics opt-out, if it
+    // left one that has not been honoured yet, and on a fresh install the language
+    // the player picked for Setup. Called at the END of loadSettings(), so
+    // installPrefsSeen has been read, the in-game values it may override are
+    // already applied, and the language has resolved to what Windows selects.
+    void applyInstallPrefs(bool freshInstall);
 
     // Capture HUD state to a specific profile's cache
     void captureToProfile(const HudManager& hudManager, ProfileType profile);

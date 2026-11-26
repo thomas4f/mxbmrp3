@@ -9,7 +9,8 @@
 //      framing, per-type counts, payload sizes, the compound RaceClassification /
 //      RaceTrackPosition packings, and RaceHoleshot).
 //   3. REPLAY: replaying that tape dispatches every event (including RaceHoleshot)
-//      and reconstructs the standings.
+//      and reconstructs the standings, and the rider-stance int a RunTelemetry
+//      frame carried reaches the plugin again.
 //
 // IMPORTANT — this test uses exactly ONE PluginHost and calls shutdown() before it
 // unloads. Do NOT add a second host or drop the shutdown():
@@ -145,6 +146,8 @@ TEST_CASE("recorder: off writes nothing; on writes a well-formed tape that repla
     });
     h.raceTrackPosition({ {10, 0.9f}, {22, 0.6f}, {7, 0.3f} });  // 1x RaceTrackPosition (3)
     h.raceHoleshot(/*raceNum=*/10, /*timeMs=*/4200);   // 1x RaceHoleshot (recorded, no plugin action)
+    h.telemetry(12.0f, 3, /*time=*/1.5f, /*pos=*/0.25f);           // 2x RunTelemetry: older build
+    h.telemetryWithStance(1, 14.0f, /*time=*/1.6f, /*pos=*/0.26f);  //   and one carrying the stance
     h.stopRecording();
 
     // (3) FORMAT: parse the raw bytes and assert the on-disk framing is exactly right.
@@ -199,6 +202,38 @@ TEST_CASE("recorder: off writes nothing; on writes a well-formed tape that repla
         CHECK(hs.m_iTime == 4200);
     }
 
+    // RunTelemetry: the game's bytes, then [time][pos]. A public-build frame is
+    // byte-for-byte the original format; a frame carrying the rider stance keeps
+    // the int right after the struct, so every reader splits the payload at
+    // size - 8 (tape::splitTelemetry) and old tapes replay unchanged.
+    CHECK(t.count(tape::EventType::RunTelemetry) == 2);
+    {
+        std::vector<int> idx;
+        for (size_t k = 0; k < t.events.size(); ++k)
+            if (t.events[k].eventType == (uint32_t)tape::EventType::RunTelemetry) idx.push_back((int)k);
+        REQUIRE(idx.size() == 2);
+        const auto& plain = t.payloads[idx[0]];
+        const auto& stance = t.payloads[idx[1]];
+        CHECK(plain.size() == sizeof(SPluginsBikeData_t) + 2 * sizeof(float));
+        CHECK(stance.size() == sizeof(SPluginsBikeData_t) + sizeof(int) + 2 * sizeof(float));
+        tape::TelemetryPayload tp{};
+        REQUIRE(tape::splitTelemetry(plain.data(), plain.size(), tp));
+        CHECK(tp.bikeBytes == (int)sizeof(SPluginsBikeData_t));
+        CHECK(tp.time == doctest::Approx(1.5f));
+        CHECK(tp.pos == doctest::Approx(0.25f));
+        REQUIRE(tape::splitTelemetry(stance.data(), stance.size(), tp));
+        CHECK(tp.bikeBytes == (int)(sizeof(SPluginsBikeData_t) + sizeof(int)));
+        CHECK(tp.time == doctest::Approx(1.6f));
+        CHECK(tp.pos == doctest::Approx(0.26f));
+        int raw = 0;
+        std::memcpy(&raw, stance.data() + sizeof(SPluginsBikeData_t), sizeof(int));
+        CHECK(raw == 1);
+    }
+
+    // Knock the stance back to unknown so the replay below has to restore it.
+    h.telemetry(5.0f);
+    REQUIRE(h.bikeTelemetry().riderStance == -1);
+
     // (4) REPLAY: feed the recorded tape back through the real exports. The replayer
     // must dispatch EVERY event — including RaceHoleshot (it would be skipped, and
     // applied < total, if replay didn't handle it) — and the grid still holds.
@@ -209,6 +244,9 @@ TEST_CASE("recorder: off writes nothing; on writes a well-formed tape that repla
         REQUIRE(d.is_object());
         checkStandings(d, kExpected);
     }
+    // The last replayed telemetry frame carried "standing": the replayer passed
+    // the int on, at the size the game sent it.
+    CHECK(h.bikeTelemetry().riderStance == 1);
 
     // Clean teardown BEFORE the host unloads: tears the plugin down while every
     // singleton is alive, so the FreeLibrary in ~PluginHost runs inert static

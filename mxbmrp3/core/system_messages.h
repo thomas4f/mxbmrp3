@@ -3,15 +3,15 @@
 // What the plugin says to the player outside the settings menu, in two shapes:
 //
 //   TOASTS -- short confirmations that expire on their own ("Standings hidden",
-//   "Race profile", "Settings not saved"). Drawn by AchievementWidget, on the
-//   same card and in the same corner as an achievement, which is why the queue
-//   is a sibling of AchievementManager's rather than a new widget: one card,
-//   two feeds.
+//   "Race profile", "Settings not saved"). Shown where an achievement is
+//   (ToastFeed picks the one up: the toast card, or the Notice deck), which is
+//   why the queue is a sibling of AchievementManager's rather than a new
+//   widget: one place, two feeds.
 //
 //   STARTUP MESSAGES -- the ones that wait for the player: a broken install,
 //   an update available, "Updated to 1.33" and the welcome on a fresh install.
 //   Shown by the Dash as a notice on its card (DashHud::followNotices), even
-//   switched off for all but the welcome; this class only decides WHICH are
+//   switched off (DashHud::borrows); this class only decides WHICH are
 //   owed and remembers which were answered, in the [Messages] INI section.
 //
 // THE RULE FOR A TOAST: post one only when the result is not already visible.
@@ -87,6 +87,7 @@ public:
     void cancel(int key);
 
     bool hasPending() const { return !m_toasts.empty(); }
+    size_t pendingCount() const { return m_toasts.size(); }
     // The next toast is one the hide-all hotkey must not hide.
     bool nextIsThroughHideAll() const { return !m_toasts.empty() && m_toasts.front().throughHideAll; }
     // Pop the oldest queued toast into `out`; false when empty.

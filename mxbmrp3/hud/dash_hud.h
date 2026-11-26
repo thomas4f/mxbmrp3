@@ -53,6 +53,7 @@
 #include "gap_auto_range.h"
 #include "hold_timer.h"
 #include "official_gap_freeze.h"
+#include "page_flip.h"
 #include "rpm_widget.h"
 #include "session_charts_hud.h"
 #include "split_crossing.h"
@@ -575,18 +576,10 @@ private:
     // Down a side, the page showing's icon fills this share of its third.
     static constexpr float SIDE_ACTIVE_SHARE = 0.8f;
 
-    // PAGE NAMES (OPT_PAGE_NAMES). A step by the rider shows the page's name in
-    // its place for NAME_HOLD_MS, then the name crossfades into the content over
-    // the Motion fade (a cut with Motion off). Only the rider's steps: a notice
-    // taking over, or the rider's page coming back after one, goes straight to
-    // the content. A step while a name shows fades that name out as the page it
-    // belongs to leaves (m_fromName), so nothing pops.
-    bool m_nameUp = false;               // m_page's name is showing or fading
-    long long m_nameStartUs = 0;         // when it went up, on Motion's clock
-    float m_fromName = 0.0f;             // the name's share of the page fading out
-    // m_page's name's share of the card now: 1 while held, falling to 0.
-    float nameShare() const;
-    void clearName() { m_nameUp = false; m_fromName = 0.0f; }
+    // PAGE NAMES (OPT_PAGE_NAMES): a step by the rider shows the page's name
+    // (PageFlip, page_flip.h). Only the rider's steps: a notice taking over, or
+    // the rider's page coming back after one, goes straight to the content.
+    void clearName() { m_flip.clearName(); }
 
     // NOTICE TAKEOVER (OPT_NOTICE_TAKEOVER). A new notice (a NoticeTracker
     // revision not yet seen, other than "none") takes the card over; when no
@@ -601,8 +594,8 @@ private:
     // "Updated to", the welcome) hold the card the same way, under any race
     // notice the Dash takes over for (a broken install over those too) and
     // whatever Notice focus says: the Dash is where they are told. Switched off,
-    // the Dash is still shown (BORROWED) for all but the welcome -- "Updated to"
-    // only with the update check on -- and only the message shows, without the
+    // as a new install ships it, the Dash is still shown (BORROWED) for each --
+    // "Updated to" only with the update check on -- and only the message shows, without the
     // strip, until it is done; a broken install drops the strip too (its icons
     // may be what is missing). A step while one shows answers it for this
     // launch; the update and "Updated to" also go after MESSAGE_SHOWN_MS on screen, the
@@ -638,25 +631,17 @@ private:
     static uint64_t hintKeys();          // those bindings, packed
 
     // MOTION (Settings > Appearance > Motion; Off = a cut). A step crossfades the
-    // card -- the game draws every quad before every string and clips nothing,
-    // so sliding text would run past the card's edges -- and slides the strip so
-    // the page showing sits under the card's centre, on the same clock. The
-    // fade starts from what was on screen: a step mid-fade fades out the page
-    // coming in from the alpha it had reached (never popping it to full), and the
-    // strip slides on from where it was.
-    Page m_fromPage = DEFAULT_PAGE;   // the page fading out
-    float m_fromAlpha = 0.0f;          // its alpha when the fade started
-    float m_inFrom = 0.0f;             // the incoming page's alpha when the fade started
-                                       // (above 0 when stepping back to the page fading out)
+    // card (PageFlip, page_flip.h) -- the game draws every quad before every
+    // string and clips nothing, so sliding text would run past the card's edges
+    // -- and slides the strip so the page showing sits under the card's centre,
+    // on the same clock, on from where it was.
+    PageFlip m_flip;                   // m_flip.from: the page fading out
+    Page fromPage() const { return static_cast<Page>(m_flip.from); }
     float m_stripFrom = 0.0f;          // the strip's offset from m_page, in icons, at the start
-    float m_fadeMs = 0.0f;             // this fade's length; 0 = none running
-    long long m_fadeStartUs = 0;       // on Motion's clock (DigitRoll::nowUs)
     // The strip's icon sprites, looked up once per theme (a lookup builds a
     // std::string, and the Timing page rebuilds every frame): a theme's icons
     // change only with AssetManager::themeGeneration(), which keys them.
     int m_iconSprite[static_cast<int>(Page::COUNT)] = {};
     unsigned int m_iconSpriteGen = 0xFFFFFFFFu;
     int m_firstIconQuad = 0;
-    // 0..1 eased progress of the current fade (1 when none is running).
-    float fadeProgress() const;
 };

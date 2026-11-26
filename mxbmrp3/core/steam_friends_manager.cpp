@@ -200,7 +200,7 @@ SteamFriendsManager& SteamFriendsManager::getInstance() {
 
 SteamFriendsManager::SteamFriendsManager()
     : m_status(Status::NOT_INITIALIZED)
-    , m_enabled(true)
+    , m_enabled(false)
     , m_friends(nullptr)
     , m_utils(nullptr)
     , m_appId(0)

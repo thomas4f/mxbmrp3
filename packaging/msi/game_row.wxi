@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- packaging/msi/game_row.wxi - one game's row on GamesDlg (ui.wxs): the box,
+     its plugins folder and Browse, like the NSIS game page. Included once per
+     game with G, GameName, RowY and PathY defined. The folder cannot be
+     changed for a game that is already installed (Change mode): MSI removes
+     a game from where it put it. -->
+<Include xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <!-- One box (MSI keys check boxes by property): "(detected)" or "(not
+       detected)" comes in through G_FOUNDTEXT, set in game.wxi. -->
+  <Control Id="$(var.G)Check" Type="CheckBox" X="20" Y="$(var.RowY)" Width="330" Height="14"
+           Property="$(var.G)_SEL" CheckBoxValue="1" Text="$(var.GameName) [$(var.G)_FOUNDTEXT]" />
+  <Control Id="$(var.G)Path" Type="PathEdit" X="36" Y="$(var.PathY)" Width="250" Height="17"
+           Property="$(var.G)PLUGINS"
+           DisableCondition="$(var.G)_SEL&lt;&gt;&quot;1&quot; OR (Installed AND $(var.G)_MSI)"
+           EnableCondition="$(var.G)_SEL=&quot;1&quot; AND NOT (Installed AND $(var.G)_MSI)" />
+  <Control Id="$(var.G)Browse" Type="PushButton" X="290" Y="$(var.PathY)" Width="60" Height="17" Text="!(loc.CustomizeDlgBrowse)"
+           DisableCondition="$(var.G)_SEL&lt;&gt;&quot;1&quot; OR (Installed AND $(var.G)_MSI)"
+           EnableCondition="$(var.G)_SEL=&quot;1&quot; AND NOT (Installed AND $(var.G)_MSI)">
+    <Publish Property="_BrowseProperty" Value="$(var.G)PLUGINS" Order="1" />
+    <Publish Event="SpawnDialog" Value="BrowseDlg" Order="2" />
+  </Control>
+</Include>

@@ -43,7 +43,9 @@ namespace {
 constexpr size_t MAX_QUERY = 24;      // typed characters
 constexpr int FIELD_TEXT_CHARS = 9;   // visible characters of the query
 constexpr int FIELD_CHARS = 2 + FIELD_TEXT_CHARS + 4;   // icon, text, the hit count
-constexpr int ROWS_PER_PAGE = 18;     // results per page; settings_find_test holds the fit
+// The list is as tall as the old pager page with one card: 18 rows, the junction
+// and the pager row. settings_find_test holds the fit.
+constexpr int VIEW_ROWS = 18 + 1;
 constexpr int VALUE_CHARS = 20;       // a long value ("Default (Session PB)") is cut here
 }  // namespace
 
@@ -68,7 +70,7 @@ void SettingsHud::openFind() {
 
 void SettingsHud::closeFind() {
     m_find.query.clear();
-    m_find.page = 0;
+    m_scrolls[ScrollView::FIND_RESULTS] = ScrollView::State();
     if (m_activeTab == TAB_FIND) {
         m_activeTab = isTabAvailable(m_find.returnTab) ? m_find.returnTab : TAB_GENERAL;
     }
@@ -200,7 +202,8 @@ BaseHud* SettingsHud::renderTabFind(SettingsLayoutContext& ctx) {
         f.query = hk.getCaptureText();
     }
     ctx.addTabTooltip("find");
-    // Never the tab that sets the panel's height: its pages are cut to fit the others.
+    f.listed = false;
+    // Never the tab that sets the panel's height: its list is cut to fit the others.
     if (self.m_measuringTallest) return nullptr;
 
     if (f.query.find_first_not_of(' ') == std::string::npos) {
@@ -215,27 +218,37 @@ BaseHud* SettingsHud::renderTabFind(SettingsLayoutContext& ctx) {
         ctx.addNote(TR("No setting is called that or mentions it. Try a shorter word."));
         return nullptr;
     }
-    const int pageCount = (total + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE;
-    f.page = std::clamp(f.page, 0, pageCount - 1);
+    if (f.newQuery) {
+        f.newQuery = false;
+        self.m_scrolls[ScrollView::FIND_RESULTS] = ScrollView::State();
+    }
 
     ColorConfig& cc = ColorConfig::getInstance();
     const float cw = PluginUtils::calculateMonospaceTextWidth(1, ctx.fontSize);
-    const int first = f.page * ROWS_PER_PAGE;
-    const int last = std::min(first + ROWS_PER_PAGE, total);
-    for (int i = first; i < last; ++i) {
-        // Each group's heading where the group starts (or where a page does).
-        struct Group { const char* title; int count; };
-        const Group groups[] = {
-            { TR("Tabs"), f.counts.tabs }, { TR("Widgets"), f.counts.widgets }, { TR("Names"), f.counts.names },
-            { TR("By tab or section"), f.counts.places }, { TR("Descriptions"), f.counts.descriptions },
-        };
+    // One scrolling list, a card per group (Tabs, Widgets, ...), its name heading
+    // the card in its first result's row, like Widgets and Achievements. The
+    // groups name the list, so it needs no heading: the view takes the heading's row.
+    f.listed = true;
+    ctx.beginUntitledSection();
+    ctx.beginScroll(ScrollView::FIND_RESULTS,
+                    static_cast<float>(VIEW_ROWS + 1) + ctx.spacingHeight() / ctx.lineHeightNormal);
+    struct Group { const char* title; int count; };
+    const Group groups[] = {
+        { TR("Tabs"), f.counts.tabs }, { TR("Widgets"), f.counts.widgets }, { TR("Names"), f.counts.names },
+        { TR("By tab or section"), f.counts.places }, { TR("Descriptions"), f.counts.descriptions },
+    };
+    for (int i = 0; i < total; ++i) {
+        // Each group's name where the group starts, in its first result's row.
+        int startsGroup = -1;
         for (int g = 0, start = 0; g < 5; start += groups[g].count, ++g) {
-            if (groups[g].count == 0 || i < start || i >= start + groups[g].count) continue;
-            if (i == first || i == start) {
-                char heading[32];
-                snprintf(heading, sizeof(heading), "%s (%d)", groups[g].title, groups[g].count);
-                ctx.addSectionHeading(heading);
-            }
+            if (groups[g].count > 0 && i == start) startsGroup = g;
+        }
+        if (startsGroup >= 0) ctx.scrollGroup();
+        if (!ctx.scrollRow(startsGroup >= 0 ? 2.0f : 1.0f)) continue;
+        if (startsGroup >= 0) {
+            char heading[32];
+            snprintf(heading, sizeof(heading), "%s (%d)", groups[startsGroup].title, groups[startsGroup].count);
+            ctx.addListHeading(heading);
         }
         const SettingsFind::Entry& e = f.index[static_cast<size_t>(f.hits[static_cast<size_t>(i)])];
         const float x = ctx.labelX;
@@ -296,16 +309,11 @@ BaseHud* SettingsHud::renderTabFind(SettingsLayoutContext& ctx) {
         }
         ctx.currentY += ctx.lineHeightNormal;
     }
-    ctx.addPager(f.page, pageCount, ClickRegion::FIND_PAGE_PREV, ClickRegion::FIND_PAGE_NEXT);
+    ctx.endScroll();
     return nullptr;
 }
 
 bool SettingsHud::handleClickTabFind(const ClickRegion& region) {
-    if (region.type == ClickRegion::FIND_PAGE_PREV || region.type == ClickRegion::FIND_PAGE_NEXT) {
-        m_find.page += region.type == ClickRegion::FIND_PAGE_NEXT ? 1 : -1;
-        rebuildRenderData();
-        return true;
-    }
     if (region.type != ClickRegion::FIND_RESULT) return false;
     // Copied: opening the tab rebuilds the regions `region` lives in.
     ClickRegion tab(region.x, region.y, region.width, region.height, ClickRegion::TAB);

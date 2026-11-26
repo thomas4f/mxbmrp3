@@ -83,7 +83,7 @@
 ; all valid in each. $userDocuments must have been resolved (RESOLVE_USER_DOCUMENTS) first.
 !macro REMOVE_USER_DATA DocsFolder
   IfFileExists "$userDocuments\PiBoSo\${DocsFolder}\${PLUGIN_NAME_LC}\*.*" 0 +3
-    DetailPrint "Removing settings and data: $userDocuments\PiBoSo\${DocsFolder}\${PLUGIN_NAME_LC}"
+    DetailPrint "$(MXB_DP_REMOVING_DATA) $userDocuments\PiBoSo\${DocsFolder}\${PLUGIN_NAME_LC}"
     RMDir /r "$userDocuments\PiBoSo\${DocsFolder}\${PLUGIN_NAME_LC}"
 !macroend
 
@@ -104,7 +104,8 @@
 ; silent without anything having to remove it.
 
 !macro INSTALL_GAME_FILES InstallPath DloFile GameName
-  DetailPrint "Installing ${PLUGIN_NAME} for ${GameName}..."
+  StrCpy $gameLabel "${GameName}"
+  DetailPrint "$(MXB_DP_INSTALLING)"
 
   ; Plugin DLO
   SetOutPath "${InstallPath}"
@@ -123,32 +124,54 @@
   ; `RMDir /r mxbmrp3_data` takes it away again -- a file next to the DLO would
   ; need its own Delete in all three per-game blocks, which is exactly the kind of
   ; hand-duplicated list this macro exists to remove.
-  ; Setup's analytics choice, for a plugin whose settings file does not exist yet.
-  ; WRITTEN ONLY ON OPT-OUT, and deleted otherwise: the file can say "off" or say
+  ; Setup's choices, for a plugin whose settings file does not exist yet: the
+  ; language the player picked for Setup, and the Privacy page's opt-out. See
+  ; core/install_prefs.h for how the plugin honours each, and why each is safe on
+  ; an upgrade.
+  ;
+  ; The language is always written; the plugin applies it only on its first
+  ; launch, and keeps "follow Windows" when it is the language Windows selects.
+  ; The opt-out line is written ONLY ON OPT-OUT: the file can say "off" or say
   ; nothing, never "on". Setup cannot read the per-game settings (their location
   ; depends on the game's configurable save path), so it must not be able to
-  ; overrule an in-game opt-out on upgrade. See core/install_prefs.h.
+  ; overrule an in-game opt-out on upgrade. Rewriting the whole file each time is
+  ; also what clears an older Setup's opt-out once the box is left ticked, so a
+  ; stale line cannot re-apply against a newer version's stamp.
   SetOutPath "${InstallPath}\mxbmrp3_data"
-  ${If} $analyticsOptOut == "1"
-    ; The error flag is GLOBAL and STICKY -- a failed RMDir /r in the fresh-install
-    ; wipe above leaves it set, and the IfNot below would then read that instead of
-    ; this FileOpen and skip the write in silence. Every other ${Errors} site in
-    ; this script clears first; this one did not.
-    ClearErrors
-    FileOpen $9 "${InstallPath}\mxbmrp3_data\install_prefs.ini" w
-    ${IfNot} ${Errors}
-      FileWrite $9 "; Written by ${PLUGIN_NAME} Setup from the choice made on its Privacy page.$\r$\n"
-      FileWrite $9 "; Honoured ONCE by the plugin, then ignored - the in-game toggle$\r$\n"
-      FileWrite $9 "; (Settings > General > Integrations) is authoritative afterwards.$\r$\n"
-      FileWrite $9 "[Install]$\r$\n"
+  ; When the player did not see the Privacy page (an upgrade, or a silent run),
+  ; an opt-out an earlier Setup wrote is carried over with its OLD stamp: one the
+  ; plugin has honoured stays ignored, one it has not yet seen (game never
+  ; launched) still applies. A Fresh install resets settings, so it starts over.
+  StrCpy $carriedOptOut ""
+  StrCpy $carriedStamp ""
+  ${If} $analyticsOptOut != "1"
+  ${AndIf} $privacyAsked != "1"
+  ${AndIf} $freshInstallSelected != "1"
+    ReadINIStr $carriedOptOut "${InstallPath}\mxbmrp3_data\install_prefs.ini" "Install" "analyticsOptOut"
+    ReadINIStr $carriedStamp "${InstallPath}\mxbmrp3_data\install_prefs.ini" "Install" "stamp"
+  ${EndIf}
+  ; The error flag is GLOBAL and STICKY -- a failed RMDir /r in the fresh-install
+  ; wipe above leaves it set, and the IfNot below would then read that instead of
+  ; this FileOpen and skip the write in silence. Every other ${Errors} site in
+  ; this script clears first; this one did not.
+  ClearErrors
+  FileOpen $9 "${InstallPath}\mxbmrp3_data\install_prefs.ini" w
+  ${IfNot} ${Errors}
+    FileWrite $9 "; Written by ${PLUGIN_NAME} Setup. Read by the plugin: the language on its$\r$\n"
+    FileWrite $9 "; first launch only, an opt-out ONCE - the in-game settings are$\r$\n"
+    FileWrite $9 "; authoritative afterwards.$\r$\n"
+    FileWrite $9 "[Install]$\r$\n"
+    FileWrite $9 "language=$(MXB_PLUGIN_LANG)$\r$\n"
+    ${If} $analyticsOptOut == "1"
       FileWrite $9 "analyticsOptOut=1$\r$\n"
       FileWrite $9 "stamp=${PLUGIN_VERSION}$\r$\n"
-      FileClose $9
+    ${ElseIf} $carriedOptOut == "1"
+      FileWrite $9 "analyticsOptOut=1$\r$\n"
+      FileWrite $9 "stamp=$carriedStamp$\r$\n"
+    ${Else}
+      FileWrite $9 "stamp=${PLUGIN_VERSION}$\r$\n"
     ${EndIf}
-  ${Else}
-    ; Left ticked: clear any marker a previous Setup wrote, so a stale file cannot
-    ; re-apply against a newer version's stamp.
-    Delete "${InstallPath}\mxbmrp3_data\install_prefs.ini"
+    FileClose $9
   ${EndIf}
   File "${PLUGIN_SOURCE_PATH}\LICENSE"
   File "${PLUGIN_SOURCE_PATH}\THIRD_PARTY_LICENSES.md"
@@ -223,7 +246,7 @@
   SetOutPath "${InstallPath}\mxbmrp3_data\web\logos"
   File /nonfatal "${PLUGIN_SOURCE_PATH}\mxbmrp3_data\web\logos\*.*"
 
-  DetailPrint "${GameName} installation complete."
+  DetailPrint "$(MXB_DP_GAME_DONE)"
 !macroend
 
 ; ---------------------------------------------------------------------------
@@ -278,6 +301,8 @@
   WriteRegStr ${ROOT} "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "DisplayVersion" "${PLUGIN_VERSION}"
   WriteRegDWORD ${ROOT} "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "NoModify" 1
   WriteRegDWORD ${ROOT} "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "NoRepair" 1
+  ; The language Setup ran in, so the uninstaller speaks it too (un.onInit).
+  WriteRegStr ${ROOT} "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "Language" "$LANGUAGE"
   ${If} $isMXBikesSelected == "1"
     WriteRegStr ${ROOT} "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "MXBikesPath" "$MXBikesInstallPath"
   ${EndIf}
@@ -300,7 +325,7 @@
   ${AndIf} $R1 == ""
   ${AndIf} $R2 == ""
     DeleteRegKey ${ROOT} "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}"
-    DetailPrint "All installations removed."
+    DetailPrint "$(MXB_DP_ALL_REMOVED)"
   ${Else}
     ${If} $R0 != ""
       WriteRegStr ${ROOT} "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "InstallLocation" "$R0"
@@ -312,7 +337,7 @@
       WriteRegStr ${ROOT} "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "InstallLocation" "$R2"
       WriteRegStr ${ROOT} "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "UninstallString" "$R2\${PLUGIN_NAME_LC}_uninstall.exe"
     ${EndIf}
-    DetailPrint "Partial uninstall complete. Some installations remain."
+    DetailPrint "$(MXB_DP_PARTIAL)"
   ${EndIf}
 !macroend
 
@@ -331,11 +356,15 @@ Var pluginInstallActionChoice   ; "0" = install/upgrade path, "1" = run uninstal
 Var freshInstallSelected        ; "1" = wipe savepath data before installing
 Var removeUserDataSelected      ; uninstaller: "1" = also delete savepath data
 Var analyticsOptOut             ; "1" = user unticked usage statistics on the Privacy page
+Var privacyAsked                ; "1" = the Privacy page was shown and answered
+Var carriedOptOut               ; upgrade: "1" = the old install_prefs.ini carried an opt-out
+Var carriedStamp                ; upgrade: that opt-out's stamp, written back unchanged
 Var userDocuments               ; Documents folder of the user who launched Setup
 Var isElevatedRun               ; "1" = this process is the relaunched elevated child
 Var useMachineReg               ; "1" = write uninstall keys to HKLM (we have admin), else HKCU
 Var unKeysInMachine             ; uninstaller: "1" = uninstall keys live in HKLM, else HKCU
 Var isPluginAlreadyInstalled
+Var gameLabel                   ; the game a translated message names (see packaging\lang\)
 
 ; MX Bikes variables
 Var MXBikesInstallPath
@@ -371,7 +400,7 @@ Var analyticsCheckbox
 ; Welcome to MXBMRP3 Setup (skipped in the relaunched elevated child — the user already
 ; made every choice in the original, un-elevated window)
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipPageIfElevatedChild
-!define MUI_WELCOMEPAGE_TEXT "Setup will guide you through the installation of ${PLUGIN_NAME} for PiBoSo racing games.$\n$\n${PLUGIN_NAME} is free and open source.$\n$\nSupported games:$\n  • MX Bikes$\n  • GP Bikes$\n  • Kart Racing Pro$\n$\nSetup will try to find your game installations automatically.$\n$\nClick Next to continue."
+!define MUI_WELCOMEPAGE_TEXT "$(MXB_WELCOME)"
 !insertmacro MUI_PAGE_WELCOME
 
 ; Existing MXBMRP3 Installation Detected
@@ -394,7 +423,7 @@ Page Custom ShowGameSelectionPage LeaveGameSelectionPage
 !insertmacro MUI_PAGE_INSTFILES
 
 ; Completing MXBMRP3 Setup
-!define MUI_FINISHPAGE_TEXT "${PLUGIN_NAME} has been installed on your computer.$\n$\nYour settings and data are stored per-game in:$\n  Documents\PiBoSo\[Game]\${PLUGIN_NAME_LC}\$\n$\nClick Finish to close Setup."
+!define MUI_FINISHPAGE_TEXT "$(MXB_FINISH)"
 !insertmacro MUI_PAGE_FINISH
 
 ; Uninstalling - select what to remove
@@ -409,11 +438,39 @@ UninstPage Custom un.ShowUninstallSelectionPage un.LeaveUninstallSelectionPage
 ; data" on the selection page, un.FinishPageShow rewrites it — telling someone to
 ; manually delete a folder the uninstaller just deleted reads as "the wipe didn't
 ; work", which is the opposite of what a final screen should convey.
-!define MUI_FINISHPAGE_TEXT "${PLUGIN_NAME} has been uninstalled from your computer.$\n$\nTo remove all settings and data, manually delete:$\n  Documents\PiBoSo\[Game]\${PLUGIN_NAME_LC}\$\n$\nClick Finish to close Setup."
+!define MUI_FINISHPAGE_TEXT "$(MXB_UN_FINISH)"
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW un.FinishPageShow
 !insertmacro MUI_UNPAGE_FINISH
 
+; Setup speaks the languages the plugin ships a pack for (mxbmrp3_data\languages\),
+; so whatever a player picks here the plugin can show too -- install_prefs.ini
+; hands the choice over (core/install_prefs.h). English first: it is the fallback
+; for a Windows language with no translation. The language dialog in .onInit opens
+; on the Windows language. Every string Setup shows is a LangString in one file
+; per language under packaging\lang\; a key missing from any of them fails the
+; build (the !pragma below), so a new string cannot ship untranslated by accident.
+!pragma warning error 6040   ; LangString not set in some language
 !insertmacro MUI_LANGUAGE "English"
+!insertmacro MUI_LANGUAGE "German"
+!insertmacro MUI_LANGUAGE "Spanish"
+!insertmacro MUI_LANGUAGE "French"
+!insertmacro MUI_LANGUAGE "Italian"
+!insertmacro MUI_LANGUAGE "Dutch"
+!insertmacro MUI_LANGUAGE "Norwegian"
+!insertmacro MUI_LANGUAGE "PortugueseBR"
+!insertmacro MUI_LANGUAGE "Swedish"
+!insertmacro MUI_LANGUAGE "Turkish"
+!include "lang\English.nsh"
+!include "lang\German.nsh"
+!include "lang\Spanish.nsh"
+!include "lang\French.nsh"
+!include "lang\Italian.nsh"
+!include "lang\Dutch.nsh"
+!include "lang\Norwegian.nsh"
+!include "lang\PortugueseBR.nsh"
+!include "lang\Swedish.nsh"
+!include "lang\Turkish.nsh"
+!insertmacro MUI_RESERVEFILE_LANGDLL
 ShowInstDetails show
 ShowUninstDetails show
 
@@ -462,6 +519,7 @@ Function .onInit
   StrCpy $pluginInstallActionChoice "0"
   StrCpy $freshInstallSelected "0"
   StrCpy $analyticsOptOut "0"      ; analytics ships ON; the Privacy page can only turn it off
+  StrCpy $privacyAsked "0"
   StrCpy $isMXBikesSelected "0"
   StrCpy $isGPBikesSelected "0"
   StrCpy $isKRPSelected "0"
@@ -486,6 +544,11 @@ Function .onInit
     Call LoadInstallStateFromCmdline
     Return
   ${EndIf}
+
+  ; The language dialog, opening on the Windows language (NSIS has already set
+  ; $LANGUAGE to it when Setup carries that language, else English). Not in the
+  ; elevated child -- its language arrives as /LANG -- and never in a silent run.
+  !insertmacro MUI_LANGDLL_DISPLAY
 
   ; Check for existing MXBMRP3 install in registry (HKLM first, then per-user HKCU)
   ReadRegStr $0 HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "UninstallString"
@@ -579,6 +642,14 @@ FunctionEnd
 Function LoadInstallStateFromCmdline
   ${GetParameters} $9
 
+  ; The language picked in the original window: the child shows the progress and
+  ; finish pages, and writes it into install_prefs.ini and the uninstall key.
+  ClearErrors
+  ${GetOptions} $9 "/LANG=" $0
+  ${IfNot} ${Errors}
+    StrCpy $LANGUAGE $0
+  ${EndIf}
+
   StrCpy $isMXBikesSelected "0"
   ClearErrors
   ${GetOptions} $9 "/MXB=" $MXBikesInstallPath
@@ -613,6 +684,11 @@ Function LoadInstallStateFromCmdline
   ${GetOptions} $9 "/NOSTATS=" $analyticsOptOut
   ${If} ${Errors}
     StrCpy $analyticsOptOut "0"
+  ${EndIf}
+  ClearErrors
+  ${GetOptions} $9 "/ASKED=" $privacyAsked
+  ${If} ${Errors}
+    StrCpy $privacyAsked "0"
   ${EndIf}
 
   ; INSTDIR (uninstaller lands here) = first selected game's plugins folder
@@ -711,8 +787,7 @@ Function ShowExistingPluginInstallPage
   ${If} $R0 == error
     Abort
   ${EndIf}
-  !insertmacro MUI_HEADER_TEXT "Existing ${PLUGIN_NAME} Installation Detected" \
-      "An existing version was found. Choose how you'd like to proceed."
+  !insertmacro MUI_HEADER_TEXT "$(MXB_EXIST_TITLE)" "$(MXB_EXIST_SUB)"
 
   ; Build game list text dynamically from installed paths
   StrCpy $R1 ""
@@ -734,27 +809,27 @@ Function ShowExistingPluginInstallPage
     ${EndIf}
   ${EndIf}
   ${If} $R1 == ""
-    StrCpy $R1 "Unknown"
+    StrCpy $R1 "$(MXB_UNKNOWN)"
   ${EndIf}
 
-  ${NSD_CreateLabel} 0 0 300u 10u "Existing ${PLUGIN_NAME} installation found for: $R1"
+  ${NSD_CreateLabel} 0 0 300u 10u "$(MXB_EXIST_FOUND)"
   Pop $R2
-  ${NSD_CreateLabel} 0 18u 300u 10u "Choose your action."
+  ${NSD_CreateLabel} 0 18u 300u 10u "$(MXB_EXIST_CHOOSE)"
   Pop $R4
-  ${NSD_CreateGroupBox} 0 34u 300u 56u "Action"
+  ${NSD_CreateGroupBox} 0 34u 300u 56u "$(MXB_EXIST_ACTION)"
   Pop $R1
-  ${NSD_CreateRadioButton} 8u 46u 280u 10u "Upgrade — overwrite plugin files, keep settings and data"
+  ${NSD_CreateRadioButton} 8u 46u 280u 10u "$(MXB_EXIST_UPGRADE)"
   Pop $0
   ${NSD_AddStyle} $0 ${WS_GROUP}
   ${NSD_SetState} $0 1
   ${NSD_OnClick} $0 SetPluginUpgradeActionChoice
-  ${NSD_CreateRadioButton} 8u 60u 280u 10u "Fresh install — overwrite plugin files and reset settings and data"
+  ${NSD_CreateRadioButton} 8u 60u 280u 10u "$(MXB_EXIST_FRESH)"
   Pop $1
   ${NSD_OnClick} $1 SetPluginFreshInstallActionChoice
-  ${NSD_CreateRadioButton} 8u 74u 280u 10u "Remove (uninstall) ${PLUGIN_NAME}"
+  ${NSD_CreateRadioButton} 8u 74u 280u 10u "$(MXB_EXIST_REMOVE)"
   Pop $2
   ${NSD_OnClick} $2 SetPluginUninstallActionChoice
-  ${NSD_CreateLabel} 0 96u 300u 20u "Your settings and data (Documents\PiBoSo\[Game]\${PLUGIN_NAME_LC}) will be preserved."
+  ${NSD_CreateLabel} 0 96u 300u 20u "$(MXB_NOTE_KEEP)"
   Pop $existingPluginNoteLabel
   nsDialogs::Show
 FunctionEnd
@@ -762,19 +837,19 @@ FunctionEnd
 Function SetPluginUpgradeActionChoice
   StrCpy $pluginInstallActionChoice "0"
   StrCpy $freshInstallSelected "0"
-  ${NSD_SetText} $existingPluginNoteLabel "Your settings and data (Documents\PiBoSo\[Game]\${PLUGIN_NAME_LC}) will be preserved."
+  ${NSD_SetText} $existingPluginNoteLabel "$(MXB_NOTE_KEEP)"
 FunctionEnd
 
 Function SetPluginFreshInstallActionChoice
   StrCpy $pluginInstallActionChoice "0"
   StrCpy $freshInstallSelected "1"
-  ${NSD_SetText} $existingPluginNoteLabel "Warning: existing settings and data (Documents\PiBoSo\[Game]\${PLUGIN_NAME_LC}) will be deleted for each selected game."
+  ${NSD_SetText} $existingPluginNoteLabel "$(MXB_NOTE_WIPE)"
 FunctionEnd
 
 Function SetPluginUninstallActionChoice
   StrCpy $pluginInstallActionChoice "1"
   StrCpy $freshInstallSelected "0"
-  ${NSD_SetText} $existingPluginNoteLabel "The uninstaller will let you choose whether to also remove settings and data."
+  ${NSD_SetText} $existingPluginNoteLabel "$(MXB_NOTE_UNINSTALL)"
 FunctionEnd
 
 Function RunUninstaller
@@ -822,14 +897,19 @@ Function ShowPrivacyPage
   ${If} $isElevatedRun == "1"
     Abort
   ${EndIf}
+  ; An upgrade keeps the player's choice (a ticked box writes nothing), so the
+  ; page is shown only on a first install or when Fresh resets the settings.
+  ${If} $isPluginAlreadyInstalled == "1"
+  ${AndIf} $freshInstallSelected != "1"
+    Abort
+  ${EndIf}
   nsDialogs::Create 1018
   Pop $R0
   ${If} $R0 == error
     Abort
   ${EndIf}
 
-  !insertmacro MUI_HEADER_TEXT "Privacy" \
-      "Choose whether to take part in the anonymous usage survey."
+  !insertmacro MUI_HEADER_TEXT "$(MXB_PRIV_TITLE)" "$(MXB_PRIV_SUB)"
 
   ; LAYOUT BUDGET, measured from a real render rather than estimated: the usable
   ; client area is about 115u tall and 300u wide -- roughly 75 characters and 8u
@@ -848,7 +928,7 @@ Function ShowPrivacyPage
   ; almost never on the stack (zero across the 1.29.1 reports). Mentioned three
   ; times and never attributed, it read as "this plugin is unstable" -- both
   ; discouraging and untrue.
-  ${NSD_CreateLabel} 0 0 300u 48u "${PLUGIN_NAME} can send a small anonymous ping each game launch, so the developer can see how many people use it, which features are worth keeping, and what needs fixing.$\n$\nIt sends a random install ID, the plugin version and which game, your enabled features, which achievements you have unlocked, operating system and language, session length, and where the game faulted if it crashed."
+  ${NSD_CreateLabel} 0 0 300u 48u "$(MXB_PRIV_BODY)"
   Pop $R1
 
   ; "Content you added" rather than the old "a theme or spotter voice": those
@@ -856,7 +936,7 @@ Function ShowPrivacyPage
   ; "custom" labels; pit boards, gauges, pads and fonts are never reported),
   ; but the reader should not have to know that taxonomy for the promise to
   ; cover everything they might make. Broader wording, same truth.
-  ${NSD_CreateLabel} 0 52u 300u 22u "It never sends your name, lap times, online activity, server or rider data, or any crash dump. Content you added yourself is never reported by name - at most it counts as $\"custom$\"."
+  ${NSD_CreateLabel} 0 52u 300u 22u "$(MXB_PRIV_NEVER)"
   Pop $R1
 
   ; Phrasing borrowed from Debian's popularity-contest ("Participate in the
@@ -871,7 +951,7 @@ Function ShowPrivacyPage
   ; go on the first distribution CD") rather than a promise to improve. The
   ; label above -- which features are worth keeping -- is the same move, and
   ; the link at the bottom is this page's popcon.debian.org.
-  ${NSD_CreateCheckbox} 0 78u 300u 12u "Participate in the anonymous usage survey"
+  ${NSD_CreateCheckbox} 0 78u 300u 12u "$(MXB_PRIV_CHECK)"
   Pop $analyticsCheckbox
   ${If} $analyticsOptOut != "1"
     ${NSD_Check} $analyticsCheckbox
@@ -882,7 +962,7 @@ Function ShowPrivacyPage
   ; nagging prompt, and neither is true. The one real consequence -- the game
   ; crashes you hit stop being reported -- is deliberately NOT here: beside the
   ; checkbox it reads as leverage, so it lives in the README's Privacy section.
-  ${NSD_CreateLabel} 0 94u 300u 16u "Turning this off doesn't disable anything else; the plugin works exactly the same. You can change it any time in Settings > General > Integrations."
+  ${NSD_CreateLabel} 0 94u 300u 16u "$(MXB_PRIV_FOOT)"
   Pop $R1
 
   ; Each link control is sized to ITS OWN text, not padded out: a link is
@@ -899,11 +979,11 @@ Function ShowPrivacyPage
   ; it. The report answers the one thing the page cannot: what does any of this
   ; actually amount to? That one is the more persuasive, and checkable, so it
   ; gets the wider and more inviting label.
-  ${NSD_CreateLink} 0 116u 54u 10u "Privacy policy"
+  ${NSD_CreateLink} 0 116u 54u 10u "$(MXB_PRIV_POLICY)"
   Pop $R2
   ${NSD_OnClick} $R2 OnPrivacyLinkClick
 
-  ${NSD_CreateLink} 58u 116u 160u 10u "See the published usage report"
+  ${NSD_CreateLink} 58u 116u 160u 10u "$(MXB_PRIV_REPORT)"
   Pop $R3
   ${NSD_OnClick} $R3 OnReportLinkClick
 
@@ -911,6 +991,7 @@ Function ShowPrivacyPage
 FunctionEnd
 
 Function LeavePrivacyPage
+  StrCpy $privacyAsked "1"
   ${NSD_GetState} $analyticsCheckbox $R0
   ${If} $R0 == ${BST_CHECKED}
     StrCpy $analyticsOptOut "0"
@@ -929,14 +1010,13 @@ Function ShowGameSelectionPage
     Abort
   ${EndIf}
 
-  !insertmacro MUI_HEADER_TEXT "Select Games" \
-      "Choose which games to install ${PLUGIN_NAME} for."
+  !insertmacro MUI_HEADER_TEXT "$(MXB_GAMES_TITLE)" "$(MXB_GAMES_SUB)"
 
   ; MX Bikes section
   ${If} $isMXBikesPathAutoDetected == "1"
-    ${NSD_CreateCheckbox} 0 0 300u 12u "MX Bikes (Detected)"
+    ${NSD_CreateCheckbox} 0 0 300u 12u "MX Bikes $(MXB_DETECTED)"
   ${Else}
-    ${NSD_CreateCheckbox} 0 0 300u 12u "MX Bikes (Not detected)"
+    ${NSD_CreateCheckbox} 0 0 300u 12u "MX Bikes $(MXB_NOT_DETECTED)"
   ${EndIf}
   Pop $MXBikesCheckbox
   ${If} $isMXBikesSelected == "1"
@@ -947,15 +1027,15 @@ Function ShowGameSelectionPage
   ; MX Bikes path
   ${NSD_CreateText} 16u 16u 230u 12u "$MXBikesInstallPath"
   Pop $MXBikesPathCtrl
-  ${NSD_CreateBrowseButton} 250u 15u 50u 14u "Browse..."
+  ${NSD_CreateBrowseButton} 250u 15u 50u 14u "$(^BrowseBtn)"
   Pop $MXBikesBrowseBtn
   ${NSD_OnClick} $MXBikesBrowseBtn OnMXBikesBrowse
 
   ; GP Bikes section
   ${If} $isGPBikesPathAutoDetected == "1"
-    ${NSD_CreateCheckbox} 0 40u 300u 12u "GP Bikes (Detected)"
+    ${NSD_CreateCheckbox} 0 40u 300u 12u "GP Bikes $(MXB_DETECTED)"
   ${Else}
-    ${NSD_CreateCheckbox} 0 40u 300u 12u "GP Bikes (Not detected)"
+    ${NSD_CreateCheckbox} 0 40u 300u 12u "GP Bikes $(MXB_NOT_DETECTED)"
   ${EndIf}
   Pop $GPBikesCheckbox
   ${If} $isGPBikesSelected == "1"
@@ -966,15 +1046,15 @@ Function ShowGameSelectionPage
   ; GP Bikes path
   ${NSD_CreateText} 16u 56u 230u 12u "$GPBikesInstallPath"
   Pop $GPBikesPathCtrl
-  ${NSD_CreateBrowseButton} 250u 55u 50u 14u "Browse..."
+  ${NSD_CreateBrowseButton} 250u 55u 50u 14u "$(^BrowseBtn)"
   Pop $GPBikesBrowseBtn
   ${NSD_OnClick} $GPBikesBrowseBtn OnGPBikesBrowse
 
   ; Kart Racing Pro section
   ${If} $isKRPPathAutoDetected == "1"
-    ${NSD_CreateCheckbox} 0 80u 300u 12u "Kart Racing Pro (Detected)"
+    ${NSD_CreateCheckbox} 0 80u 300u 12u "Kart Racing Pro $(MXB_DETECTED)"
   ${Else}
-    ${NSD_CreateCheckbox} 0 80u 300u 12u "Kart Racing Pro (Not detected)"
+    ${NSD_CreateCheckbox} 0 80u 300u 12u "Kart Racing Pro $(MXB_NOT_DETECTED)"
   ${EndIf}
   Pop $KRPCheckbox
   ${If} $isKRPSelected == "1"
@@ -985,12 +1065,12 @@ Function ShowGameSelectionPage
   ; Kart Racing Pro path
   ${NSD_CreateText} 16u 96u 230u 12u "$KRPInstallPath"
   Pop $KRPPathCtrl
-  ${NSD_CreateBrowseButton} 250u 95u 50u 14u "Browse..."
+  ${NSD_CreateBrowseButton} 250u 95u 50u 14u "$(^BrowseBtn)"
   Pop $KRPBrowseBtn
   ${NSD_OnClick} $KRPBrowseBtn OnKRPBrowse
 
   ; Info text
-  ${NSD_CreateLabel} 0 120u 300u 12u "Select at least one game to install."
+  ${NSD_CreateLabel} 0 120u 300u 12u "$(MXB_SELECT_ONE)"
   Pop $R2
 
   ; Set initial state
@@ -1064,7 +1144,8 @@ Function OnMXBikesBrowse
   ${Else}
     ${GetParent} "$MXBikesInstallPath" $R1
   ${EndIf}
-  nsDialogs::SelectFolderDialog "Select MX Bikes installation folder" "$R1"
+  StrCpy $gameLabel "MX Bikes"
+  nsDialogs::SelectFolderDialog "$(MXB_SELECT_FOLDER)" "$R1"
   Pop $R0
   ${If} $R0 != "error"
     ; Check if selected folder already ends with \plugins
@@ -1090,7 +1171,8 @@ Function OnGPBikesBrowse
   ${Else}
     ${GetParent} "$GPBikesInstallPath" $R1
   ${EndIf}
-  nsDialogs::SelectFolderDialog "Select GP Bikes installation folder" "$R1"
+  StrCpy $gameLabel "GP Bikes"
+  nsDialogs::SelectFolderDialog "$(MXB_SELECT_FOLDER)" "$R1"
   Pop $R0
   ${If} $R0 != "error"
     ; Check if selected folder already ends with \plugins
@@ -1116,7 +1198,8 @@ Function OnKRPBrowse
   ${Else}
     ${GetParent} "$KRPInstallPath" $R1
   ${EndIf}
-  nsDialogs::SelectFolderDialog "Select Kart Racing Pro installation folder" "$R1"
+  StrCpy $gameLabel "Kart Racing Pro"
+  nsDialogs::SelectFolderDialog "$(MXB_SELECT_FOLDER)" "$R1"
   Pop $R0
   ${If} $R0 != "error"
     ; Check if selected folder already ends with \plugins
@@ -1143,8 +1226,9 @@ Function LeaveGameSelectionPage
 
   ; Validate MX Bikes path if selected
   ${If} $isMXBikesSelected == "1"
+    StrCpy $gameLabel "MX Bikes"   ; named by the messages below
     ${If} $MXBikesInstallPath == ""
-      MessageBox MB_OK|MB_ICONEXCLAMATION "Please specify the MX Bikes plugins folder."
+      MessageBox MB_OK|MB_ICONEXCLAMATION "$(MXB_SPECIFY_FOLDER)"
       Abort
     ${EndIf}
     ; Validate path looks correct (folder named "plugins" with game exe in parent)
@@ -1153,15 +1237,16 @@ Function LeaveGameSelectionPage
     ${If} $R1 != "plugins"
     ${OrIfNot} ${FileExists} "$R0\${MXBIKES_EXE}"
       MessageBox MB_ICONQUESTION|MB_YESNO|MB_DEFBUTTON2 \
-        "This does not appear to be the MX Bikes plugins folder. Continue anyway?" \
+        "$(MXB_NOT_PLUGINS_FOLDER)" \
         IDNO abort_validation
     ${EndIf}
   ${EndIf}
 
   ; Validate GP Bikes path if selected
   ${If} $isGPBikesSelected == "1"
+    StrCpy $gameLabel "GP Bikes"   ; named by the messages below
     ${If} $GPBikesInstallPath == ""
-      MessageBox MB_OK|MB_ICONEXCLAMATION "Please specify the GP Bikes plugins folder."
+      MessageBox MB_OK|MB_ICONEXCLAMATION "$(MXB_SPECIFY_FOLDER)"
       Abort
     ${EndIf}
     ; Validate path looks correct (folder named "plugins" with game exe in parent)
@@ -1170,15 +1255,16 @@ Function LeaveGameSelectionPage
     ${If} $R1 != "plugins"
     ${OrIfNot} ${FileExists} "$R0\${GPBIKES_EXE}"
       MessageBox MB_ICONQUESTION|MB_YESNO|MB_DEFBUTTON2 \
-        "This does not appear to be the GP Bikes plugins folder. Continue anyway?" \
+        "$(MXB_NOT_PLUGINS_FOLDER)" \
         IDNO abort_validation
     ${EndIf}
   ${EndIf}
 
   ; Validate Kart Racing Pro path if selected
   ${If} $isKRPSelected == "1"
+    StrCpy $gameLabel "Kart Racing Pro"   ; named by the messages below
     ${If} $KRPInstallPath == ""
-      MessageBox MB_OK|MB_ICONEXCLAMATION "Please specify the Kart Racing Pro plugins folder."
+      MessageBox MB_OK|MB_ICONEXCLAMATION "$(MXB_SPECIFY_FOLDER)"
       Abort
     ${EndIf}
     ; Validate path looks correct (folder named "plugins" with game exe in parent)
@@ -1187,7 +1273,7 @@ Function LeaveGameSelectionPage
     ${If} $R1 != "plugins"
     ${OrIfNot} ${FileExists} "$R0\${KRP_EXE}"
       MessageBox MB_ICONQUESTION|MB_YESNO|MB_DEFBUTTON2 \
-        "This does not appear to be the Kart Racing Pro plugins folder. Continue anyway?" \
+        "$(MXB_NOT_PLUGINS_FOLDER)" \
         IDNO abort_validation
     ${EndIf}
   ${EndIf}
@@ -1195,7 +1281,7 @@ Function LeaveGameSelectionPage
   ; Confirm the destructive fresh-install data wipe (irreversible)
   ${If} $freshInstallSelected == "1"
     MessageBox MB_ICONEXCLAMATION|MB_YESNO|MB_DEFBUTTON2 \
-      "Fresh install will permanently delete all existing ${PLUGIN_NAME} settings and data (profiles, stats, benchmarks, logs, crash dumps) for the selected games before reinstalling.$\n$\nThis cannot be undone. Continue?" \
+      "$(MXB_FRESH_CONFIRM)" \
       IDYES +2
     Abort
   ${EndIf}
@@ -1236,7 +1322,7 @@ Function LeaveGameSelectionPage
 
     ${If} $R2 == "1"
       ; Build the relaunch command line (presence of /XXX implies that game is selected)
-      StrCpy $R4 "/ELEVATED"
+      StrCpy $R4 "/ELEVATED /LANG=$LANGUAGE"
       ${If} $isMXBikesSelected == "1"
         StrCpy $R4 '$R4 /MXB="$MXBikesInstallPath"'
       ${EndIf}
@@ -1252,6 +1338,9 @@ Function LeaveGameSelectionPage
       ${If} $analyticsOptOut == "1"
         StrCpy $R4 '$R4 /NOSTATS=1'
       ${EndIf}
+      ${If} $privacyAsked == "1"
+        StrCpy $R4 '$R4 /ASKED=1'
+      ${EndIf}
 
       ClearErrors
       ExecShellWait "runas" "$EXEPATH" '$R4'
@@ -1262,7 +1351,7 @@ Function LeaveGameSelectionPage
       ; Elevation declined/unavailable: stay on this page so the user can pick a folder
       ; they can write to, go Back, or Cancel — don't tear down the whole wizard.
       MessageBox MB_ICONEXCLAMATION \
-        "Administrator rights are required to install into the selected folder.$\n$\nChoose a folder you can write to, or close Setup and re-run it as administrator."
+        "$(MXB_ADMIN_INSTALL)"
       Abort
     ${EndIf}
   ${EndIf}
@@ -1279,7 +1368,7 @@ Section "Install ${PLUGIN_NAME}" Section_InstallPlugin
 
   ; Fresh install: wipe existing settings/data for each selected game before copying files
   ${If} $freshInstallSelected == "1"
-    DetailPrint "Fresh install requested - clearing existing settings and data..."
+    DetailPrint "$(MXB_DP_FRESH)"
     ${If} $isMXBikesSelected == "1"
       !insertmacro REMOVE_USER_DATA "${MXBIKES_DOCS_FOLDER}"
     ${EndIf}
@@ -1330,7 +1419,7 @@ Section "Install ${PLUGIN_NAME}" Section_InstallPlugin
     !insertmacro WRITE_UNINSTALL_REG HKCU64
   ${EndIf}
 
-  DetailPrint "Installation complete."
+  DetailPrint "$(MXB_DP_INSTALL_DONE)"
 SectionEnd
 
 ; ============================================================================
@@ -1357,6 +1446,18 @@ Function un.onInit
     StrCpy $unKeysInMachine "1"
   ${Else}
     StrCpy $unKeysInMachine "0"
+  ${EndIf}
+
+  ; Speak the language Setup ran in (WRITE_UNINSTALL_REG stored it); no dialog.
+  ; Missing (an install from before Setup was translated): stay on the Windows
+  ; language NSIS picked. The elevated child's /LANG below wins over both.
+  ${If} $unKeysInMachine == "1"
+    ReadRegStr $0 HKLM64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "Language"
+  ${Else}
+    ReadRegStr $0 HKCU64 "${REG_UNINSTALL_KEY_PATH}\${PLUGIN_NAME}" "Language"
+  ${EndIf}
+  ${If} $0 != ""
+    StrCpy $LANGUAGE $0
   ${EndIf}
 
   ; Elevated child? The parent already collected the selection + paths and passed them on
@@ -1398,6 +1499,12 @@ FunctionEnd
 Function un.LoadUninstallStateFromCmdline
   ${GetParameters} $9
 
+  ClearErrors
+  ${GetOptions} $9 "/LANG=" $0
+  ${IfNot} ${Errors}
+    StrCpy $LANGUAGE $0
+  ${EndIf}
+
   StrCpy $isMXBikesSelected "0"
   ClearErrors
   ${GetOptions} $9 "/UMXB=" $MXBikesInstallPath
@@ -1436,8 +1543,7 @@ Function un.ShowUninstallSelectionPage
     Abort
   ${EndIf}
 
-  !insertmacro MUI_HEADER_TEXT "Select Components to Remove" \
-      "Choose which game installations to remove."
+  !insertmacro MUI_HEADER_TEXT "$(MXB_UN_TITLE)" "$(MXB_UN_SUB)"
 
   ; Track vertical position for dynamic layout
   StrCpy $R9 "0"  ; Current Y position in dialog units
@@ -1511,7 +1617,7 @@ Function un.ShowUninstallSelectionPage
 
   ${If} $R8 == "1"
     IntOp $R9 $R9 + 4
-    ${NSD_CreateCheckbox} 0 $R9u 300u 20u "Also delete settings and data (Documents\PiBoSo\[Game]\${PLUGIN_NAME_LC})"
+    ${NSD_CreateCheckbox} 0 $R9u 300u 20u "$(MXB_UN_DATA_CHECK)"
     Pop $removeUserDataCheckbox
     ${If} $removeUserDataSelected == "1"
       ${NSD_SetState} $removeUserDataCheckbox ${BST_CHECKED}
@@ -1521,7 +1627,7 @@ Function un.ShowUninstallSelectionPage
   ${EndIf}
 
   ; Info text (no extra padding - matches install page)
-  ${NSD_CreateLabel} 0 $R9u 300u 12u "Select at least one game to uninstall."
+  ${NSD_CreateLabel} 0 $R9u 300u 12u "$(MXB_UN_SELECT_ONE)"
   Pop $R2
 
   ; Set initial button state
@@ -1549,7 +1655,7 @@ FunctionEnd
 Function un.FinishPageShow
   ${If} $removeUserDataSelected == "1"
     SendMessage $mui.FinishPage.Text ${WM_SETTEXT} 0 \
-      "STR:${PLUGIN_NAME} has been uninstalled from your computer.$\n$\nSettings and data for the games you uninstalled have also been removed.$\n$\nClick Finish to close Setup."
+      "STR:$(MXB_UN_FINISH_WIPED)"
   ${EndIf}
 FunctionEnd
 
@@ -1585,14 +1691,14 @@ Function un.LeaveUninstallSelectionPage
   ${If} $isMXBikesSelected != "1"
   ${AndIf} $isGPBikesSelected != "1"
   ${AndIf} $isKRPSelected != "1"
-    MessageBox MB_OK|MB_ICONEXCLAMATION "Please select at least one game to uninstall from."
+    MessageBox MB_OK|MB_ICONEXCLAMATION "$(MXB_UN_SELECT_ONE_MSG)"
     Abort
   ${EndIf}
 
   ; Confirm the destructive data removal (irreversible)
   ${If} $removeUserDataSelected == "1"
     MessageBox MB_ICONEXCLAMATION|MB_YESNO|MB_DEFBUTTON2 \
-      "This will permanently delete all ${PLUGIN_NAME} settings and data (profiles, stats, benchmarks, logs, crash dumps) for the selected games.$\n$\nThis cannot be undone. Continue?" \
+      "$(MXB_UN_DATA_CONFIRM)" \
       IDYES +2
     Abort
   ${EndIf}
@@ -1621,7 +1727,7 @@ Function un.LeaveUninstallSelectionPage
     ${EndIf}
 
     ${If} $R2 == "1"
-      StrCpy $R4 "/ELEVATED /UDATA=$removeUserDataSelected"
+      StrCpy $R4 "/ELEVATED /LANG=$LANGUAGE /UDATA=$removeUserDataSelected"
       ${If} $isMXBikesSelected == "1"
         StrCpy $R4 '$R4 /UMXB="$MXBikesInstallPath"'
       ${EndIf}
@@ -1641,7 +1747,7 @@ Function un.LeaveUninstallSelectionPage
       ; Elevation declined/unavailable: stay on this page so the user can adjust the
       ; selection or Cancel, rather than tearing down the uninstaller.
       MessageBox MB_ICONEXCLAMATION \
-        "Administrator rights are required to remove ${PLUGIN_NAME} from the selected folder.$\n$\nClose this and re-run the uninstaller as administrator, or cancel."
+        "$(MXB_UN_ADMIN)"
       Abort
     ${EndIf}
   ${EndIf}
@@ -1652,12 +1758,13 @@ Section "Uninstall"
   SetAutoClose false
   SetRegView 64
 
-  DetailPrint "Removing ${PLUGIN_NAME} files..."
+  DetailPrint "$(MXB_DP_UN_FILES)"
 
   ; Remove from MX Bikes if selected
   ${If} $isMXBikesSelected == "1"
   ${AndIf} $MXBikesInstallPath != ""
-    DetailPrint "Removing from MX Bikes..."
+    StrCpy $gameLabel "MX Bikes"
+    DetailPrint "$(MXB_DP_UN_FROM)"
     Delete "$MXBikesInstallPath\${MXBIKES_DLO}"
     RMDir /r "$MXBikesInstallPath\mxbmrp3_data"
     ; /REBOOTOK on the SELF-delete only. The uninstaller runs as NSIS's temp copy
@@ -1675,7 +1782,8 @@ Section "Uninstall"
   ; Remove from GP Bikes if selected
   ${If} $isGPBikesSelected == "1"
   ${AndIf} $GPBikesInstallPath != ""
-    DetailPrint "Removing from GP Bikes..."
+    StrCpy $gameLabel "GP Bikes"
+    DetailPrint "$(MXB_DP_UN_FROM)"
     Delete "$GPBikesInstallPath\${GPBIKES_DLO}"
     RMDir /r "$GPBikesInstallPath\mxbmrp3_data"
     Delete /REBOOTOK "$GPBikesInstallPath\${PLUGIN_NAME_LC}_uninstall.exe"  ; see the MX Bikes note
@@ -1687,7 +1795,8 @@ Section "Uninstall"
   ; Remove from Kart Racing Pro if selected
   ${If} $isKRPSelected == "1"
   ${AndIf} $KRPInstallPath != ""
-    DetailPrint "Removing from Kart Racing Pro..."
+    StrCpy $gameLabel "Kart Racing Pro"
+    DetailPrint "$(MXB_DP_UN_FROM)"
     Delete "$KRPInstallPath\${KRP_DLO}"
     RMDir /r "$KRPInstallPath\mxbmrp3_data"
     Delete /REBOOTOK "$KRPInstallPath\${PLUGIN_NAME_LC}_uninstall.exe"  ; see the MX Bikes note
@@ -1699,7 +1808,7 @@ Section "Uninstall"
   ; Optionally remove settings and data (Documents\PiBoSo\[Game]\mxbmrp3) for each
   ; uninstalled game, if the user opted in on the selection page.
   ${If} $removeUserDataSelected == "1"
-    DetailPrint "Removing ${PLUGIN_NAME} settings and data..."
+    DetailPrint "$(MXB_DP_UN_DATA)"
     ${If} $isMXBikesSelected == "1"
       !insertmacro REMOVE_USER_DATA "${MXBIKES_DOCS_FOLDER}"
     ${EndIf}
@@ -1718,5 +1827,5 @@ Section "Uninstall"
     !insertmacro UN_FINALIZE_REG HKCU64
   ${EndIf}
 
-  DetailPrint "Uninstallation complete."
+  DetailPrint "$(MXB_DP_UN_DONE)"
 SectionEnd

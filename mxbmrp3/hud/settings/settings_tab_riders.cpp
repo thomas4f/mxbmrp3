@@ -38,30 +38,6 @@ bool SettingsHud::handleClickTabRiders(const ClickRegion& region) {
             }
             return true;
 
-        case ClickRegion::SERVER_PAGE_PREV:
-            if (m_serverPlayersPage > 0) {
-                m_serverPlayersPage--;
-                rebuildRenderData();
-            }
-            return true;
-
-        case ClickRegion::SERVER_PAGE_NEXT:
-            m_serverPlayersPage++;
-            rebuildRenderData();
-            return true;
-
-        case ClickRegion::TRACKED_PAGE_PREV:
-            if (m_trackedRidersPage > 0) {
-                m_trackedRidersPage--;
-                rebuildRenderData();
-            }
-            return true;
-
-        case ClickRegion::TRACKED_PAGE_NEXT:
-            m_trackedRidersPage++;
-            rebuildRenderData();
-            return true;
-
         default:
             return false;
     }
@@ -84,20 +60,18 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
     float gridFontSize = ctx.fontSize;
     float gridCharWidth = charWidth;
 
-    // Grid layout constants - 3 columns with pagination.
-    // Row counts keep this tab under the panel height the other tabs set (the
-    // Widgets table binds it): a full page of either list used to make Riders the
-    // tallest tab.
+    // Grid layout - two scrolling lists (scroll_view.h), each a fixed number of
+    // rows tall. The row counts keep this tab under the panel height the other
+    // tabs set (the Widgets table binds it).
     constexpr int SERVER_PLAYERS_PER_ROW = 3;
     constexpr int SERVER_PLAYERS_ROWS = 8;
-    constexpr int SERVER_PLAYERS_PER_PAGE = SERVER_PLAYERS_PER_ROW * SERVER_PLAYERS_ROWS;  // 24 per page
     constexpr int TRACKED_PER_ROW = 2;   // two: room for a whole name after the dropdowns
     constexpr int TRACKED_ROWS = 13;
-    constexpr int TRACKED_PER_PAGE = TRACKED_PER_ROW * TRACKED_ROWS;  // 26 per page
 
-    // Calculate available content width (same method as version number)
-    float rightEdgeX = ctx.contentAreaStartX + ctx.panelWidth - ctx.paddingH - ctx.paddingH;
-    float availableGridWidth = rightEdgeX - ctx.labelX;
+    // Cell widths share the row span (the scrollbars sit in the panel's padding).
+    ctx.addSectionHeading(TR("Server Players"), TR("(click to track/untrack)"));
+    ctx.beginScroll(ScrollView::SERVER_PLAYERS, static_cast<float>(SERVER_PLAYERS_ROWS));
+    float availableGridWidth = ctx.rowSpanWidth();
 
     // Calculate cell dimensions based on available width
     float serverCellWidth = availableGridWidth / SERVER_PLAYERS_PER_ROW;
@@ -120,10 +94,8 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
     float cellHeight = gridLineHeight;
 
     // =====================================================
-    // SECTION 1: Server Players Grid
+    // SECTION 1: Server Players Grid (its heading and list opened above)
     // =====================================================
-    ctx.addSectionHeading(TR("Server Players"), TR("(click to track/untrack)"));
-
     // Get all race entries and build display list
     const auto& raceEntries = pluginData.getRaceEntries();
     std::vector<const RaceEntryData*> serverPlayers;
@@ -137,20 +109,14 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
             return a->raceNum < b->raceNum;
         });
 
-    // Calculate total server players and pagination
+    // Every player, a row of three at a time; the list draws the rows in view.
     int totalServerPlayers = static_cast<int>(serverPlayers.size());
-    int serverTotalPages = (totalServerPlayers + SERVER_PLAYERS_PER_PAGE - 1) / SERVER_PLAYERS_PER_PAGE;
-    if (serverTotalPages < 1) serverTotalPages = 1;
-    if (ctx.parent->m_serverPlayersPage >= serverTotalPages) ctx.parent->m_serverPlayersPage = serverTotalPages - 1;
-    if (ctx.parent->m_serverPlayersPage < 0) ctx.parent->m_serverPlayersPage = 0;
-    int serverStartIndex = ctx.parent->m_serverPlayersPage * SERVER_PLAYERS_PER_PAGE;
-
-    // Render server players grid (current page only)
-    float serverGridStartY = ctx.currentY;
-    for (int row = 0; row < SERVER_PLAYERS_ROWS; row++) {
-        float rowY = serverGridStartY + row * cellHeight;
+    const int serverRows = (totalServerPlayers + SERVER_PLAYERS_PER_ROW - 1) / SERVER_PLAYERS_PER_ROW;
+    for (int row = 0; row < serverRows; row++) {
+        if (!ctx.scrollRow(1.0f)) continue;
+        const float rowY = ctx.currentY;
         for (int col = 0; col < SERVER_PLAYERS_PER_ROW; col++) {
-            int playerIndex = serverStartIndex + row * SERVER_PLAYERS_PER_ROW + col;
+            int playerIndex = row * SERVER_PLAYERS_PER_ROW + col;
             if (playerIndex >= totalServerPlayers) break;
 
             float cellX = ctx.labelX + col * serverCellWidth;
@@ -178,13 +144,9 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
                 ));
             }
         }
+        ctx.currentY += cellHeight;
     }
-    ctx.currentY = serverGridStartY + SERVER_PLAYERS_ROWS * cellHeight;
-
-    // Server pagination
-    if (serverTotalPages > 1) ctx.addSpacing();   // the junction above a button row
-    ctx.addPager(ctx.parent->m_serverPlayersPage, serverTotalPages,
-                 SettingsHud::ClickRegion::SERVER_PAGE_PREV, SettingsHud::ClickRegion::SERVER_PAGE_NEXT);
+    ctx.endScroll();
 
 
     // =====================================================
@@ -205,16 +167,13 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
             return a->name < b->name;
         });
 
-    // Calculate total tracked riders and pagination
     int totalTrackedRiders = static_cast<int>(trackedList.size());
-    int trackedTotalPages = (totalTrackedRiders + TRACKED_PER_PAGE - 1) / TRACKED_PER_PAGE;
-    if (trackedTotalPages < 1) trackedTotalPages = 1;
-    if (ctx.parent->m_trackedRidersPage >= trackedTotalPages) ctx.parent->m_trackedRidersPage = trackedTotalPages - 1;
-    if (ctx.parent->m_trackedRidersPage < 0) ctx.parent->m_trackedRidersPage = 0;
-    int trackedStartIndex = ctx.parent->m_trackedRidersPage * TRACKED_PER_PAGE;
+    ctx.beginScroll(ScrollView::TRACKED_RIDERS, static_cast<float>(TRACKED_ROWS));
 
-    // Store layout info for hover tracking
-    ctx.parent->m_trackedRidersStartY = ctx.currentY;
+    // Store layout info for hover tracking: where row 0 is DRAWN, so the
+    // hovered cell is a list index wherever the list stands.
+    ctx.parent->m_trackedRidersStartY =
+        ctx.currentY - ctx.parent->m_scrolls[ScrollView::TRACKED_RIDERS].shown * ctx.lineHeightNormal;
     ctx.parent->m_trackedRidersStartX = ctx.labelX;
     ctx.parent->m_trackedRidersCellHeight = cellHeight;
     ctx.parent->m_trackedRidersCellWidth = trackedCellWidth;
@@ -224,12 +183,13 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
     constexpr float baseConeSize = 0.006f;
     float baseHalfSize = baseConeSize;  // Same as StandingsHud
 
-    // Render tracked riders grid (current page only)
-    float trackedGridStartY = ctx.currentY;
-    for (int row = 0; row < TRACKED_ROWS; row++) {
-        float rowY = trackedGridStartY + row * cellHeight;
+    // Every tracked rider, two to a row; the list draws the rows in view.
+    const int trackedRows = (totalTrackedRiders + TRACKED_PER_ROW - 1) / TRACKED_PER_ROW;
+    for (int row = 0; row < trackedRows; row++) {
+        if (!ctx.scrollRow(1.0f)) continue;
+        const float rowY = ctx.currentY;
         for (int col = 0; col < TRACKED_PER_ROW; col++) {
-            int trackedIndex = trackedStartIndex + row * TRACKED_PER_ROW + col;
+            int trackedIndex = row * TRACKED_PER_ROW + col;
             if (trackedIndex >= totalTrackedRiders) break;
 
             float cellX = ctx.labelX + col * trackedCellWidth;
@@ -238,9 +198,7 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
             unsigned long riderColor = config->color;
             int shapeIndex = config->shapeIndex;
 
-            // Adjust hover index for pagination
-            int displayIndex = trackedIndex - trackedStartIndex;
-            bool isHovered = (displayIndex == ctx.parent->m_hoveredTrackedRiderIndex);
+            bool isHovered = (trackedIndex == ctx.parent->m_hoveredTrackedRiderIndex);
 
             float x = cellX;
 
@@ -311,13 +269,9 @@ BaseHud* SettingsHud::renderTabRiders(SettingsLayoutContext& ctx) {
                 ));
             }
         }
+        ctx.currentY += cellHeight;
     }
-    ctx.currentY = trackedGridStartY + TRACKED_ROWS * cellHeight;
-
-    // Tracked pagination
-    if (trackedTotalPages > 1) ctx.addSpacing();
-    ctx.addPager(ctx.parent->m_trackedRidersPage, trackedTotalPages,
-                 SettingsHud::ClickRegion::TRACKED_PAGE_PREV, SettingsHud::ClickRegion::TRACKED_PAGE_NEXT);
+    ctx.endScroll();
 
     // No active HUD for riders settings
     return nullptr;

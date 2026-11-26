@@ -18,6 +18,12 @@
 // ride in that tape rolled upright for about 1.5 s - so the three seconds
 // the row asks for, Endo's bar, is a rare one by design.
 //
+// UPRIGHT IS 45 DEGREES, not less. A riderless bike still steers: it leans
+// into whatever turn it drifts into, and the longest ghost ride on record
+// (a second tape, 87 crashes) leaned to 43 degrees mid-turn - a 35 limit
+// cut its 2.7 s to 1.4. At 45 the worst ordinary crash across both tapes
+// and two older ones (133 in all) still stops at 1.7 s.
+//
 // A RUN, with a short grace: a bike rolling over rough ground skips a wheel
 // off a bump without having stopped doing the thing, so a break of up to
 // GRACE_SEC holds the run (the break itself is not counted); a longer one,
@@ -30,7 +36,7 @@
 namespace GhostRide {
 
 constexpr float MIN_SPEED_MS = 3.0f;    // ~11 km/h: still going, not settling
-constexpr float MAX_ROLL_DEG = 35.0f;   // upright; a bike on its side reads ~70-140
+constexpr float MAX_ROLL_DEG = 45.0f;   // upright, turning allowed; a bike on its side reads ~70-140
 constexpr float MAX_PITCH_DEG = 45.0f;  // not mid-loop-out
 constexpr double GRACE_SEC = 0.25;
 

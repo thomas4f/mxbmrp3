@@ -80,8 +80,11 @@ __declspec(dllexport) int MXBMRP3_Test_SettingsTextRoom(char* out, int cap) {
     const float sidebarEdge = sidebarRight - (labelX - contentLeft);
     std::string joined;
     int lines = 0;
+    // A text the game is not drawing (a list's part row at rest, hidden whole:
+    // hud/clip_marks.h) takes no room and runs into nothing.
+    auto drawn = [](const auto& s) { return s.m_szString[0] && (s.m_ulColor >> 24) != 0; };
     for (const auto& s : strings) {
-        if (!s.m_szString[0]) continue;
+        if (!drawn(s)) continue;
         const int len = static_cast<int>(std::strlen(s.m_szString));
         const int keyX = static_cast<int>(std::lround(leftOf(s) * 10000.0f));
         const int keyY = static_cast<int>(std::lround(s.m_afPos[1] * 10000.0f));
@@ -106,7 +109,7 @@ __declspec(dllexport) int MXBMRP3_Test_SettingsTextRoom(char* out, int cap) {
         } else {
             float next = edge;
             for (const auto& o : strings) {
-                if (&o == &s || !o.m_szString[0] || std::fabs(o.m_afPos[1] - s.m_afPos[1]) > s.m_fSize * 0.25f) continue;
+                if (&o == &s || !drawn(o) || std::fabs(o.m_afPos[1] - s.m_afPos[1]) > s.m_fSize * 0.25f) continue;
                 const float l = leftOf(o);
                 if (l > s.m_afPos[0] + cell * 0.5f && l < next) { next = l; nextText = o.m_szString; }
             }

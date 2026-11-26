@@ -59,8 +59,9 @@
 #endif
 #if GAME_HAS_ANALYTICS
 #include "analytics_manager.h"
-#include "install_prefs.h"
 #endif
+#include "install_prefs.h"
+#include "i18n.h"
 #include "xinput_reader.h"
 #include "hotkey_manager.h"
 #include "director_manager.h"
@@ -789,7 +790,7 @@ void SettingsManager::loadSettings(HudManager& hudManager, const char* savePath)
         GetFileAttributesA(getSettingsFilePath(savePath).c_str()) == INVALID_FILE_ATTRIBUTES;
     loadSettingsImpl(hudManager, savePath);
     I18n::ensureLoaded();   // no language key: follow Windows (core/i18n.h)
-    applyInstallPrefs();
+    applyInstallPrefs(freshInstall);
     if (!reload) {
         // The startup messages (welcome, "Updated to") are decided once per
         // launch, from what the file says was already told.
@@ -920,18 +921,28 @@ void SettingsManager::migrateSettingsButton() {
     }
 }
 
-// See the declaration and core/install_prefs.h. Reads the marker Setup may have
-// left beside the plugin and honours it once.
+// See the declaration and core/install_prefs.h. Reads the file Setup may have
+// left beside the plugin and honours what it still has a say in.
 //
-// Marks the settings dirty rather than writing immediately: the choice then
-// persists through the SAME deferred save every other setting uses, so a fresh
+// Marks the settings dirty rather than writing immediately: the choices then
+// persist through the SAME deferred save every other setting uses, so a fresh
 // install does not write the settings file from inside loadSettings().
-void SettingsManager::applyInstallPrefs() {
-#if GAME_HAS_ANALYTICS
+void SettingsManager::applyInstallPrefs(bool freshInstall) {
     std::string text;
     try {
         std::ifstream f(InstallPrefs::kPath, std::ios::binary);
-        if (!f.is_open()) return;   // the overwhelmingly common case
+        if (!f.is_open()) {
+            // No Setup ran: on the first launch that is the zip, whose player
+            // was never asked (core/install_prefs.h, NO FILE AT ALL)
+#if GAME_HAS_ANALYTICS
+            if (InstallPrefs::optOutWithoutSetup(f.is_open(), freshInstall)) {
+                AnalyticsManager::getInstance().setEnabled(false);
+                markDirty();
+                DEBUG_INFO("Install prefs: no Setup file on a first launch, usage survey starts off");
+            }
+#endif
+            return;
+        }
         std::ostringstream buf;
         buf << f.rdbuf();
         text = buf.str();
@@ -941,6 +952,18 @@ void SettingsManager::applyInstallPrefs() {
     }
 
     const InstallPrefs::Prefs prefs = InstallPrefs::parse(text);
+
+    bool packInstalled = false;
+    for (const I18n::LanguageInfo& pack : I18n::languages()) {
+        if (!pack.pseudo && pack.folder == prefs.language) { packInstalled = true; break; }
+    }
+    if (InstallPrefs::shouldApplyLanguage(prefs, freshInstall, I18n::activeFolder(), packInstalled)) {
+        I18n::setLanguage(prefs.language);
+        markDirty();
+        DEBUG_INFO_F("Install prefs: language '%s' selected by Setup", prefs.language.c_str());
+    }
+
+#if GAME_HAS_ANALYTICS
     if (!InstallPrefs::shouldApply(prefs, m_installPrefsSeen)) return;
 
     AnalyticsManager::getInstance().setEnabled(false);

@@ -53,12 +53,20 @@ msgid "%d laps"
 msgstr "%d varv"
 
 #, c-format
+msgid "%d new"
+msgstr "%d nya"
+
+#, c-format
 msgid "%s + %d lap"
 msgstr "%s + %d varv"
 
 #, c-format
 msgid "%s + %d laps"
 msgstr "%s + %d varv"
+
+#, c-format
+msgid "%s + %dL"
+msgstr "%s + %dV"
 
 #, c-format
 msgid "%s - halfway to %s"
@@ -181,6 +189,9 @@ msgstr "- Fram"
 msgid "- Rear"
 msgstr "- Bak"
 
+msgid "2ND CHANCE"
+msgstr "2:A CHANS"
+
 msgid "99 Problems"
 msgstr "99 problem"
 
@@ -188,9 +199,67 @@ msgctxt "tooltip"
 msgid "A Twitch or YouTube icon on each line. Auto shows it while both are switched on."
 msgstr "En Twitch- eller YouTube-ikon på varje rad. Auto visar den när båda är påslagna."
 
+#, c-format
+msgid "GAINED %s"
+msgstr "VANN %s"
+
+#, c-format
+msgid "LOST %s"
+msgstr "TAPPADE %s"
+
+#, c-format
+msgid "BEST S%d"
+msgstr "BÄSTA S%d"
+
+msgid "CURRENT"
+msgstr "AKTUELL"
+
+msgid "FINAL"
+msgstr "FINAL"
+
+msgctxt "tooltip"
+msgid "Gear, speed and revs, and whether you sit or stand."
+msgstr "Växel, fart och varvtal, och om du sitter eller står."
+
+msgid "HEAT"
+msgstr "HEAT"
+
+msgid "IDEAL"
+msgstr "IDEAL"
+
+msgid "INPUTS"
+msgstr "INDATA"
+
+msgid "PRACTICE"
+msgstr "TRÄNING"
+
+msgid "PRE-FINAL"
+msgstr "FÖRFINAL"
+
+msgid "PRE-QUAL"
+msgstr "FÖRKVAL"
+
+msgid "Q-PRAC"
+msgstr "KVALTRÄN."
+
+msgid "QUALIFY"
+msgstr "KVAL"
+
+msgid "QUARTER"
+msgstr "KVARTSFIN."
+
+msgid "RACE 1"
+msgstr "LOPP 1"
+
+msgid "RACE 2"
+msgstr "LOPP 2"
+
+msgid "ROUND"
+msgstr "OMGÅNG"
+
 #. max 38 characters
-msgid "A comment or rating, a star or a"
-msgstr "En kommentar, ett betyg, en stjärna"
+msgid "Rate or recommend it on mxb-mods,"
+msgstr "Betygsätt, rekommendera på mxb-mods,"
 
 msgctxt "tooltip"
 msgid "A crash tally for streaming - counts across sessions and restarts until you reset it."
@@ -208,11 +277,20 @@ msgctxt "tooltip"
 msgid "A soft halo behind the lights that call for action: RPM, gear at shift, warnings, Dash RPM and fuel."
 msgstr "Mjukt sken bakom lampor som kräver åtgärd: varvtal, växling, varningar, Dash-RPM, bränsle."
 
+msgid "ACHIEVEMENT"
+msgstr "UTMÄRKELSE"
+
+msgid "ALERT"
+msgstr "VARNING"
+
 msgid "ALL-TIME PB"
 msgstr "PB TOTALT"
 
 msgid "AM"
 msgstr "FM"
+
+msgid "AVG"
+msgstr "MED"
 
 #. max 6 characters
 msgid "About"
@@ -341,14 +419,6 @@ msgctxt "tooltip"
 msgid "Analog speedometer gauge showing current speed, with odometer and trip meter."
 msgstr "Analog hastighetsmätare som visar aktuell fart, med vägmätare och trippmätare."
 
-msgctxt "tooltip"
-msgid "Animate position changes. Off: none; Basic: slide rows; Colored: slide + green/red tint."
-msgstr "Animera positionsändringar. Av: ingen; Enkel: glid rader; Färgad: glid + grön/röd ton."
-
-#. max 15 characters
-msgid "Animation"
-msgstr "Animering"
-
 msgid "Anniversary"
 msgstr "Årsdag"
 
@@ -362,6 +432,13 @@ msgstr "Utseende"
 
 msgid "Aqua"
 msgstr "Akva"
+
+msgid "Decks"
+msgstr "Decks"
+
+msgctxt "tooltip"
+msgid "Decks: small arcade-style readouts for racing and riding, drawn as one set."
+msgstr "Decks: små mätare i arkadstil för racing och åkning, ritade som ett set."
 
 msgid "Armchair Marshal"
 msgstr "Fåtöljfunktionär"
@@ -467,6 +544,12 @@ msgstr "Snittfart"
 msgid "Axis labels"
 msgstr "Axeletiketter"
 
+msgid "BAILED"
+msgstr "MISSLYCKAT"
+
+msgid "BEST"
+msgstr "BÄST"
+
 msgid "BLUE FLAG"
 msgstr "BLÅ FLAGG"
 
@@ -509,9 +592,6 @@ msgstr "Bagarens dussin"
 #. max 11 characters
 msgid "Bars"
 msgstr "Staplar"
-
-msgid "Basic"
-msgstr "Enkel"
 
 #, c-format
 msgid "Battle %s"
@@ -636,8 +716,8 @@ msgid "Broadcast"
 msgstr "Sändning"
 
 msgctxt "tooltip"
-msgid "Broadcast your status and see friends running the plugin. Needs the Steam build; on by default."
-msgstr "Sänd din status och se vänner som kör pluginet. Kräver Steam-versionen; på som standard."
+msgid "Broadcast your status and see friends running the plugin. Needs the Steam build; off by default."
+msgstr "Sänd din status och se vänner som kör pluginet. Kräver Steam-versionen; av som standard."
 
 msgid "Bronze"
 msgstr "Brons"
@@ -661,6 +741,10 @@ msgstr "Flik eller sektion"
 
 msgid "CBR"
 msgstr "CBR"
+
+msgid "CHASING"
+msgstr "JAGAR"
+
 
 msgid "CHECKERED"
 msgstr "MÅLFLAGGA"
@@ -870,8 +954,9 @@ msgctxt "tooltip"
 msgid "Color of the tint."
 msgstr "Tonens färg."
 
-msgid "Colored"
-msgstr "Färgad"
+#. max 15 characters
+msgid "Colored moves"
+msgstr "Färgade byten"
 
 #. max 15 characters
 msgid "Colors"
@@ -940,8 +1025,67 @@ msgid "Complete %s laps at one track"
 msgstr "Kör %s varv på en bana"
 
 #, c-format
-msgid "Complete %s laps in one session"
-msgstr "Kör %s varv i en session"
+msgid "Ride %s in a session"
+msgstr "Kör %s i en session"
+
+#, c-format
+msgid "S%d"
+msgstr "S%d"
+
+msgid "SEMI"
+msgstr "SEMI"
+
+msgid "TESTING"
+msgstr "TEST"
+
+msgid "TIMING"
+msgstr "TIDTAGNING"
+
+msgctxt "tooltip"
+msgid "The gap to your reference lap, sectors and ideal lap."
+msgstr "Gapet till referensvarvet, sektorer och idealvarvet."
+
+msgctxt "tooltip"
+msgid "The lap, its delta held at each split, last and best."
+msgstr "Varvet, delta fryst vid varje mellantid, senaste, bäst."
+
+msgctxt "tooltip"
+msgid "The rider you fight, ahead or behind: gap and their laps."
+msgstr "Din rival, före eller bakom: gap och varvtider."
+
+msgid "VS ALL-TIME"
+msgstr "VS TOTALT"
+
+msgid "VS LAST"
+msgstr "VS SENASTE"
+
+msgid "VS PB"
+msgstr "VS PB"
+
+msgid "VS SERVER"
+msgstr "VS SERVER"
+
+msgid "WAITING"
+msgstr "VÄNTAR"
+
+msgid "WARMUP"
+msgstr "UPPVÄRMNING"
+
+msgctxt "tooltip"
+msgid "Your place, the lap and the session clock."
+msgstr "Din placering, varvet och passets klocka."
+
+msgid "a 10K"
+msgstr "en mil"
+
+msgid "a half marathon"
+msgstr "ett halvmaraton"
+
+msgid "a marathon"
+msgstr "ett maraton"
+
+msgid "an ultramarathon"
+msgstr "ett ultramaraton"
 
 msgctxt "tooltip"
 msgid "Configure controller vibration for racing events like bumps, wheelspin, and impacts."
@@ -1099,6 +1243,9 @@ msgstr "Cyan"
 
 msgid "DEFAULT SETUP"
 msgstr "STANDARDINSTÄLLNING"
+
+msgid "DEFENDING"
+msgstr "FÖRSVARAR"
 
 msgctxt "tooltip"
 msgid "Dangers: blue flag, rider down ahead, wrong-way rider."
@@ -1487,8 +1634,14 @@ msgstr "I MÅL %d%s"
 msgid "FMX"
 msgstr "FMX"
 
+msgid "FORMAT"
+msgstr "FORMAT"
+
 msgid "FPS"
 msgstr "FPS"
+
+msgid "FUEL"
+msgstr "BRÄNSLE"
 
 msgid "Factory Fresh"
 msgstr "Fabriksny"
@@ -1771,9 +1924,6 @@ msgstr "Bränsleenhet"
 msgid "Full lap"
 msgstr "Helt varv"
 
-msgid "Full release notes are on GitHub."
-msgstr "Fullständiga versionsnoteringar finns på GitHub."
-
 #. max 11 characters
 msgid "G-Force"
 msgstr "G-kraft"
@@ -1784,6 +1934,9 @@ msgstr "G-G-diagram med sidled mot längsled G-kraft och en toppmarkör."
 
 msgid "GAME OVER - Click to exit"
 msgstr "GAME OVER - Klicka för att avsluta"
+
+msgid "GAP"
+msgstr "GAP"
 
 #. max 15 characters
 msgid "Gained/lost"
@@ -1870,9 +2023,6 @@ msgctxt "tooltip"
 msgid "Ghost: your best lap marker. Opponents: other riders. Both: all of them. Off: no markers at all."
 msgstr "Spöke: markör för ditt bästa varv. Motståndare: andra förare. Båda: alla. Av: inga markörer alls."
 
-msgid "GitHub Releases"
-msgstr "GitHub Releases"
-
 #. max 16 characters
 msgid "Global"
 msgstr "Globalt"
@@ -1936,6 +2086,7 @@ msgstr "Rutnätslås"
 
 msgid "HAZARD AHEAD"
 msgstr "FARA FRAMÖVER"
+
 
 #. max 13 characters
 msgid "HUD display"
@@ -2029,6 +2180,10 @@ msgstr "Historik över dina senaste varvtider med sektorer. Visar prestandan var
 #, c-format
 msgid "Hit %sFPS"
 msgstr "Nå %sFPS"
+
+msgctxt "tooltip"
+msgid "Hold timer, with a balance zone learned from your holds."
+msgstr "Hålltid, med en balanszon inlärd från dina egna wheelies."
 
 msgid "Holeshot, every lap led, fastest lap, win"
 msgstr "Holeshot, ledde varje varv, snabbaste varv, vinst"
@@ -2274,8 +2429,20 @@ msgstr "Nyckelmästare"
 msgid "L%d  SCORE: %d"
 msgstr "N%d  POÄNG: %d"
 
+msgid "LAP"
+msgstr "VARV"
+
+msgid "LAP LOG"
+msgstr "VARVLOGG"
+
 msgid "LAPPER AHEAD"
 msgstr "VARVARE FRAMFÖR"
+
+msgid "LAPS LEFT"
+msgstr "VARV KVAR"
+
+msgid "LAST"
+msgstr "SENASTE"
 
 msgid "LEADER"
 msgstr "LEDARE"
@@ -2432,6 +2599,10 @@ msgstr "Varv"
 msgid "Laps left"
 msgstr "Varv kvar"
 
+msgctxt "tooltip"
+msgid "Laps of fuel left, the fuel and the average a lap."
+msgstr "Varv bränsle kvar, bränslet och snittet per varv."
+
 #. max 23 characters
 msgid "Laps to show"
 msgstr "Varv att visa"
@@ -2513,6 +2684,73 @@ msgstr "Låt täta dueller styra kameran. Av håller ledaren/ensam som grund."
 msgid "Let the bike ride alone for %s"
 msgstr "Låt hojen rulla ensam i %s"
 
+msgid "Slalom"
+msgstr "Slalom"
+
+#, c-format
+msgid "Ride past %s fallen riders"
+msgstr "Kör förbi %s omkullkörda förare"
+
+msgid "Rush Hour"
+msgstr "Rusningstrafik"
+
+#, c-format
+msgid "Lap other riders %s times"
+msgstr "Varva andra förare %s gånger"
+
+msgid "Leapfrog"
+msgstr "Bockhoppning"
+
+msgid "Jump over a rider"
+msgstr "Hoppa över en förare"
+
+#, c-format
+msgid "Jump over %s riders"
+msgstr "Hoppa över %s förare"
+
+msgid "Grounded"
+msgstr "Markbunden"
+
+msgid "A clean lap without leaving the ground"
+msgstr "Ett rent varv utan att lämna marken"
+
+msgid "Flat Out"
+msgstr "Gasen i botten"
+
+msgid "A clean lap without touching the brakes"
+msgstr "Ett rent varv utan att röra bromsarna"
+
+msgid "Back From the Dead"
+msgstr "Tillbaka från de döda"
+
+msgid "Win a race after two or more crashes"
+msgstr "Vinn ett lopp efter två vurpor eller fler"
+
+msgid "Fall From Grace"
+msgstr "Från topp till botten"
+
+msgid "Lead at the first split, then finish last"
+msgstr "Led vid första mellantiden, sist i mål"
+
+msgid "Photocopy"
+msgstr "Fotokopia"
+
+msgid "Your best lap equals a rival's, to the ms"
+msgstr "Samma bästa varv som en rival, på ms:en"
+
+msgid "Feather Touch"
+msgstr "Fjäderlätt"
+
+#, c-format
+msgid "Land %s jumps of 25m under 10G"
+msgstr "Landa %s hopp på 25m under 10G"
+
+msgid "Nemesis"
+msgstr "Ärkefiende"
+
+msgid "Finish beside a rival thrice in a sitting"
+msgstr "Tre målgångar bredvid en rival, ett pass"
+
 msgctxt "tooltip"
 msgid "Lifetime milestones as Bronze-to-Platinum progress bars, plus a toast when a tier is earned."
 msgstr "Livstidsmilstolpar som framstegsstaplar från brons till platina, plus en notis när en nivå tas."
@@ -2551,9 +2789,9 @@ msgctxt "tooltip"
 msgid "Live race standings showing position, gaps, and rider information for all competitors."
 msgstr "Liveställning med position, gap och förarinformation för alla deltagare."
 
-#. max 15 characters
+#. max 12 characters
 msgid "Live updates"
-msgstr "Liveuppdatering"
+msgstr "Livedata"
 
 msgid "Local"
 msgstr "Lokal"
@@ -2629,6 +2867,10 @@ msgctxt "tooltip"
 msgid "Log your lap when it sets a new all-time PB."
 msgstr "Logga ditt varv när det sätter ett nytt PB genom tiderna."
 
+msgctxt "tooltip"
+msgid "Log each achievement you earn."
+msgstr "Logga varje utmärkelse du får."
+
 msgid "Long"
 msgstr "Lång"
 
@@ -2664,6 +2906,15 @@ msgstr "Undre textur"
 
 msgid "Loyal"
 msgstr "Trogen"
+
+msgid "MAX"
+msgstr "MAX"
+
+msgid "MESSAGE"
+msgstr "MEDDELANDE"
+
+msgid "MUSIC"
+msgstr "MUSIK"
 
 msgid "MXB Ranked"
 msgstr "MXB Ranked"
@@ -2811,6 +3062,9 @@ msgstr "N/C"
 msgid "ND"
 msgstr "ND"
 
+msgid "NEW BEST"
+msgstr "NYTT BÄSTA"
+
 msgid "Name"
 msgstr "Namn"
 
@@ -2838,10 +3092,6 @@ msgstr "Ny"
 
 msgid "Newest"
 msgstr "Nyast"
-
-msgctxt "tooltip"
-msgid "Next page."
-msgstr "Nästa sida."
 
 msgid "Night Owl"
 msgstr "Nattuggla"
@@ -2908,8 +3158,14 @@ msgstr "Notisfokus"
 msgid "Notices"
 msgstr "Notiser"
 
+msgid "Notices and messages appear here"
+msgstr "Notiser och meddelanden visas här"
+
 msgid "Now"
 msgstr "Nu"
+
+msgid "NOW PLAYING"
+msgstr "SPELAS NU"
 
 #. max 11 characters
 msgid "Now Playing"
@@ -2978,8 +3234,8 @@ msgid "On"
 msgstr "På"
 
 msgctxt "tooltip"
-msgid "On = shown while racing; Off = only in the settings menu (helps controllers seen as a mouse)."
-msgstr "På = visas under körning; Av = bara i inställningsmenyn (hjälper handkontroller som ses som mus)."
+msgid "Off = only in the settings menu, opened by its hotkey. Helps controllers seen as a mouse."
+msgstr "Av = bara i inställningsmenyn, som öppnas med genvägen. Hjälper handkontroller som ses som mus."
 
 msgid "On Air"
 msgstr "Sänder"
@@ -3036,10 +3292,6 @@ msgstr "Öppen träning"
 msgid "Open every settings tab"
 msgstr "Öppna varje inställningsflik"
 
-msgctxt "tooltip"
-msgid "Open the full release notes on GitHub."
-msgstr "Öppna de fullständiga versionsnoteringarna på GitHub."
-
 msgid "Oppo"
 msgstr "Oppo"
 
@@ -3095,12 +3347,18 @@ msgctxt "tooltip"
 msgid "Overwrite the selected profile with this profile's settings."
 msgstr "Skriv över den valda profilen med denna profils inställningar."
 
+msgid "PAUSED"
+msgstr "PAUSAD"
+
 #. max 12 characters
 msgid "PB scope"
 msgstr "PB-omfång"
 
 msgid "PM"
 msgstr "EM"
+
+msgid "POS"
+msgstr "POS"
 
 msgid "PREVIEW"
 msgstr "FÖRHANDSVY"
@@ -3120,9 +3378,6 @@ msgstr "Tempodiagram: dölj första varvet, ogiltiga varv och långsamma avvikar
 #. max 15 characters
 msgid "Pad takeover"
 msgstr "Kontrollövertag"
-
-msgid "Page"
-msgstr "Sida"
 
 #. max 60 characters
 msgid "Page Settings"
@@ -3306,6 +3561,10 @@ msgid "Pointer"
 msgstr "Visare"
 
 msgctxt "tooltip"
+msgid "Slide angle live: how far, how long, the longest."
+msgstr "Sladdvinkel live: hur mycket, hur länge, den längsta."
+
+msgctxt "tooltip"
 msgid "Popup cards when a hotkey hides a HUD, a profile switches, a report is saved, or a file or the web overlay fails."
 msgstr "Kort som dyker upp när en genväg döljer en HUD, en profil byts, en rapport sparas eller något fallerar."
 
@@ -3374,10 +3633,6 @@ msgstr "Prestige"
 
 msgid "Preview"
 msgstr "Förhandsvy"
-
-msgctxt "tooltip"
-msgid "Previous page."
-msgstr "Föregående sida."
 
 #. max 11 characters
 msgid "Primary"
@@ -3450,15 +3705,26 @@ msgstr "Kvalträning"
 msgid "Quarter-Finals"
 msgstr "Kvartsfinaler"
 
+msgid "RACE"
+msgstr "LOPP"
+
 msgid "RD"
 msgstr "RD"
+
+#, c-format
+msgid "REACT %.2f"
+msgstr "REAKT %.2f"
 
 #. max 15 characters
 msgid "RET/DSQ/DNS"
 msgstr "BRÖT/DSQ/DNS"
 
+
 msgid "RIDER ONCOMING"
 msgstr "FÖRARE MÖTER"
+
+msgid "RIVAL"
+msgstr "RIVAL"
 
 #. max 11 characters
 msgid "RPM"
@@ -3483,6 +3749,10 @@ msgstr "Lopp slut"
 
 msgid "Race Trace"
 msgstr "Loppspår"
+
+msgctxt "tooltip"
+msgid "Race notices, achievements and messages, one by one."
+msgstr "Racenotiser, utmärkelser och meddelanden, en i taget."
 
 #. max 11 characters
 msgid "Race number"
@@ -3553,6 +3823,10 @@ msgstr "Bakbroms"
 #. max 23 characters
 msgid "Rear suspension"
 msgstr "Bakfjädring"
+
+msgctxt "tooltip"
+msgid "Rear wheel spin live: how much, how long, the longest."
+msgstr "Bakhjulsspinn live: hur mycket, hur länge, det längsta."
 
 msgid "Rebind in Settings > Hotkeys"
 msgstr "Bind om i Inställningar > Genvägar"
@@ -3661,6 +3935,7 @@ msgstr ""
 msgid "Rev limiter"
 msgstr "Varvspärr"
 
+
 #, c-format
 msgid "Ride %s different bikes"
 msgstr "Kör %s olika hojar"
@@ -3747,6 +4022,10 @@ msgstr "Förare runt dig just nu: bakom, bredvid, inklämd, varvade."
 msgid "Right"
 msgstr "Höger"
 
+#. max 11 characters
+msgid "Rival"
+msgstr "Rival"
+
 #. max 15 characters
 msgid "Role icons"
 msgstr "Rollikoner"
@@ -3815,6 +4094,9 @@ msgstr "Översikt"
 msgid "Running on Fumes"
 msgstr "På ångorna"
 
+msgid "SECTOR"
+msgstr "SEKTOR"
+
 #, c-format
 msgid "SEG %d ADDED"
 msgstr "SEK %d TILLAGD"
@@ -3832,8 +4114,14 @@ msgstr "SEK BORTTAGEN"
 msgid "SEGMENT"
 msgstr "SEKTION"
 
+msgid "SESSION"
+msgstr "SESSION"
+
 msgid "SESSION PB"
 msgstr "SESSIONS-PB"
+
+msgid "SETUP"
+msgstr "INSTÄLLNING"
 
 msgid "SHA256 checksum mismatch"
 msgstr "SHA256-kontrollsumman stämmer inte"
@@ -3841,8 +4129,23 @@ msgstr "SHA256-kontrollsumman stämmer inte"
 msgid "SHA256 verification failed (could not compute hash)"
 msgstr "SHA256-kontrollen misslyckades (kunde inte räkna hash)"
 
+msgid "SHA256 verification failed (no checksum published)"
+msgstr "SHA256-kontrollen misslyckades (ingen kontrollsumma publicerad)"
+
+msgid "SLIDE"
+msgstr "SLADD"
+
+msgid "SPEED"
+msgstr "FART"
+
+msgid "SPIN"
+msgstr "SPINN"
+
 msgid "ST"
 msgstr ":A"
+
+msgid "STANDINGS"
+msgstr "STÄLLNING"
 
 msgid "Sandbagger"
 msgstr "Sandsäck"
@@ -4470,6 +4773,10 @@ msgid "Shows how far you are up on the back wheel, in degrees."
 msgstr "Visar hur högt upp på bakhjulet du är, i grader."
 
 msgctxt "tooltip"
+msgid "Shows whether you are standing or seated: up or down."
+msgstr "Visar om du står eller sitter: upp eller ned."
+
+msgctxt "tooltip"
 msgid "Shows your current race position (P1, P2, etc.)."
 msgstr "Visar din aktuella placering (P1, P2 osv.)."
 
@@ -4568,6 +4875,10 @@ msgstr "Tillbringa %s i luften"
 #, c-format
 msgid "Spend %s on track"
 msgstr "Tillbringa %s på banan"
+
+#. max 11 characters
+msgid "Spin"
+msgstr "Spinn"
 
 #, c-format
 msgid "Spin the rear wheel in place for %s"
@@ -4787,6 +5098,9 @@ msgstr "Systemprestanda, bland annat bildfrekvens och pluginets körtid."
 msgid "TH"
 msgstr ":E"
 
+msgid "TRACK"
+msgstr "BANA"
+
 #. max 23 characters
 msgid "TTS voice"
 msgstr "TTS-röst"
@@ -4884,6 +5198,10 @@ msgid "The Telemetry HUD's inputs as traces across the card."
 msgstr "Telemetri-HUD:ens indata som spår över kortet."
 
 msgctxt "tooltip"
+msgid "The bar along each deck's foot. Speed keeps its revs."
+msgstr "Stapeln längst ned på varje deck. Speed behåller varvtalet."
+
+msgctxt "tooltip"
 msgid "The field's race news: others' laps, penalties, pit stops, retirements."
 msgstr "Fältets loppnyheter: andras varv, straff, depåstopp, avbrott."
 
@@ -4907,8 +5225,16 @@ msgid "The lap Gap Bar, Lap Log, Delta Trace, Timing and the map's Lap delta com
 msgstr "Varvet som Gapstapel, Varvlogg, Deltaspår, Tider och kartans Varvdelta jämför mot på Standard."
 
 msgctxt "tooltip"
+msgid "The leader, then the riders around you: gaps to you."
+msgstr "Ledaren, sedan förarna runt dig: avstånd till dig."
+
+msgctxt "tooltip"
 msgid "The less-used HUDs and tools. Click a name to open its settings."
 msgstr "Mindre använda HUD:ar och verktyg. Klicka på ett namn för att öppna dess inställningar."
+
+msgctxt "tooltip"
+msgid "Leans every deck, in your theme's own slanted layout."
+msgstr "Lutar alla Decks, i ditt temas egen lutande layout."
 
 msgctxt "tooltip"
 msgid "The rider's color on standings, map, and radar."
@@ -4923,6 +5249,10 @@ msgid "The screen edges darken when you take a hard hit, further the harder it i
 msgstr "Skärmkanterna mörknar vid en hård smäll, mer ju hårdare den är, och klarnar sedan."
 
 msgctxt "tooltip"
+msgid "The server, the track and the session's format."
+msgstr "Servern, banan och sessionens format."
+
+msgctxt "tooltip"
 msgid "The session and your own status: flags, your penalty, your pit lane."
 msgstr "Sessionen och din egen status: flaggor, ditt straff, din depåfil."
 
@@ -4931,8 +5261,28 @@ msgid "The session clock: counts down in a timed session, up otherwise, then the
 msgstr "Sessionsklockan: räknar ned i en tidssession, annars upp, sedan varven kvar."
 
 msgctxt "tooltip"
+msgid "The tag a deck raises at its top right, like NEW BEST."
+msgstr "Märket ett deck visar uppe till höger, som NEW BEST."
+
+msgctxt "tooltip"
+msgid "Each deck's name, and the box that holds it."
+msgstr "Varje decks namn, och rutan som håller det."
+
+msgctxt "tooltip"
+msgid "Every deck's background, from clear to solid."
+msgstr "Varje decks bakgrund, från genomskinlig till täckande."
+
+msgctxt "tooltip"
+msgid "Every deck's size, so a set still lines up."
+msgstr "Varje decks storlek, så att en uppsättning ligger i linje."
+
+msgctxt "tooltip"
 msgid "The toast card shown when a tier is earned. Off still tracks."
 msgstr "Notiskortet som visas när en nivå tas. Av räknar ändå."
+
+msgctxt "tooltip"
+msgid "The track playing, its controls and the volume to drag."
+msgstr "Låten som spelas, dess knappar och volymen att dra."
 
 msgid "Theme"
 msgstr "Tema"
@@ -4951,6 +5301,10 @@ msgstr "Gas"
 #. max 23 characters
 msgid "Throttle"
 msgstr "Gas"
+
+msgctxt "tooltip"
+msgid "Throttle and front brake: the last 2 s and now."
+msgstr "Gas och frambroms: de senaste 2 s och nu."
 
 #. max 43 characters
 msgid "Throttle, brake, suspension"
@@ -5021,6 +5375,10 @@ msgstr "Tonfärg"
 msgid "Tint opacity"
 msgstr "Tonopacitet"
 
+msgctxt "tooltip"
+msgid "Tint rows green or red as they slide to a new place."
+msgstr "Färgar rader gröna eller röda medan de glider till sin nya plats."
+
 #. max 66 characters
 msgid "Tip: lower Detail or Track outline to gain FPS."
 msgstr "Tips: sänk Detalj eller Banans kontur för att få mer FPS."
@@ -5051,6 +5409,10 @@ msgstr "Slå på/av alla HUD:ar."
 msgctxt "tooltip"
 msgid "Toggle all widgets on/off."
 msgstr "Slå på/av alla widgetar."
+
+msgctxt "tooltip"
+msgid "Toggle all decks on/off."
+msgstr "Slå på/av alla decks."
 
 msgctxt "tooltip"
 msgid "Toggle the Charts HUD on/off."
@@ -5493,6 +5855,9 @@ msgstr "Volym"
 msgid "WELCOME"
 msgstr "VÄLKOMMEN"
 
+msgid "WHEELIE"
+msgstr "WHEELIE"
+
 msgid "WRONG WAY"
 msgstr "FEL HÅLL"
 
@@ -5566,6 +5931,12 @@ msgstr "Vad detta plugin är, var det kommer ifrån och vem som står bakom det.
 #. max 11 characters
 msgid "Wheelie"
 msgstr "Wheelie"
+
+msgid "Stamps"
+msgstr "Stämplar"
+
+msgid "Stance"
+msgstr "Stå/sitt"
 
 msgid "Wheelie King"
 msgstr "Wheeliekung"
@@ -5645,6 +6016,9 @@ msgstr "Widgetar"
 
 msgid "Widgets hidden"
 msgstr "Widgetar dolda"
+
+msgid "Decks hidden"
+msgstr "Decks dolda"
 
 #. max 15 characters
 msgid "Width"
@@ -5746,6 +6120,10 @@ msgid "Your last and best lap with their gap to your ideal lap, and the ideal it
 msgstr "Ditt senaste och bästa varv med gap till ditt idealvarv, och själva idealvarvet."
 
 msgctxt "tooltip"
+msgid "Your last laps by sector, and the lap running below."
+msgstr "Dina senaste varv per sektor, och varvet som pågår under."
+
+msgctxt "tooltip"
 msgid "Your last three laps with their gap to your best, in the Lap Log's order."
 msgstr "Dina tre senaste varv med gap till ditt bästa, i Varvloggens ordning."
 
@@ -5778,8 +6156,8 @@ msgid "and the web overlay."
 msgstr "val och webböverlägg."
 
 #. max 38 characters
-msgid "coffee helps. All optional."
-msgstr "eller kaffe hjälper. Helt frivilligt."
+msgid "star it on GitHub, or buy a coffee."
+msgstr "en stjärna på GitHub eller en kaffe."
 
 #. max 60 characters
 msgid "community's long-standing HUD, came to an end. The first"
@@ -5826,3 +6204,85 @@ msgstr "det - förarna som rapporterar problem, föreslår funktioner,"
 #. max 60 characters
 msgid "work, and much of what it has become comes from the people"
 msgstr "och mycket av vad det blivit kommer från dem som använder"
+
+msgid "COMBO"
+msgstr "KOMBO"
+
+#. max 11 characters
+msgid "Combo"
+msgstr "Kombo"
+
+msgctxt "tooltip"
+msgid "FMX combos: points, multiplier, tricks and the score."
+msgstr "FMX-kombos: poäng, multiplikator, trick och totalen."
+
+msgid "LANDED"
+msgstr "LANDAD"
+
+msgid "POINTS"
+msgstr "POÄNG"
+
+msgid "TIME"
+msgstr "TID"
+
+msgid "DIST"
+msgstr "LÄNGD"
+
+msgid "HIGH"
+msgstr "HÖJD"
+
+msgid "ROT"
+msgstr "ROT"
+
+msgid "SCORE"
+msgstr "TOTALT"
+
+msgctxt "deck style"
+msgid "Slanted"
+msgstr "Lutad"
+
+msgctxt "tooltip"
+msgid "A new notice takes the carousel over for 4 s."
+msgstr "En ny notis tar över karusellen i 4 s."
+
+msgctxt "tooltip"
+msgid "Your own step shows the deck's name, then its readouts."
+msgstr "Ditt eget steg visar deckets namn, sedan dess värden."
+
+msgid "Carousel"
+msgstr "Karusell"
+
+msgid "Count"
+msgstr "Antal"
+
+msgid "Deck +"
+msgstr "Deck +"
+
+msgid "Deck -"
+msgstr "Deck -"
+
+msgid "Deck names"
+msgstr "Decknamn"
+
+msgid "Dots"
+msgstr "Prickar"
+
+msgctxt "tooltip"
+msgid "One deck at a time, in turn: step it with Deck + / Deck -."
+msgstr "Ett deck i taget, i tur och ordning: stega med Deck + / Deck -."
+
+msgctxt "tooltip"
+msgid "Show the Carousel deck's next deck."
+msgstr "Visa karusellens nästa deck."
+
+msgctxt "tooltip"
+msgid "Show the Carousel deck's previous deck."
+msgstr "Visa karusellens föregående deck."
+
+msgctxt "tooltip"
+msgid "Steps to the next deck on its own this often."
+msgstr "Stegar till nästa deck av sig själv så här ofta."
+
+msgctxt "tooltip"
+msgid "Which deck of the turn shows, in its title tab."
+msgstr "Vilket deck i turen som visas, i dess titelflik."

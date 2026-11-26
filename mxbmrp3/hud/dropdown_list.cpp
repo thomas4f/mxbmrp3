@@ -30,21 +30,32 @@ DropdownList::Style DropdownList::globalStyle() {
     return style;
 }
 
+// An INSET card (coversFill = false), as the Find box is: it sits on a section
+// card, so it cuts no fill and adds no section span. A disabled box keeps the
+// card; its dimmed text says it is off, as the Find box's does.
+void DropdownList::drawField(BaseHud& hud, float x, float y, float w, float h, unsigned long tint) {
+    if (w <= 0.0f || h <= 0.0f) return;
+    if (hud.hasThemedCard()) {
+        hud.addThemedCard(x, y, w, h, /*reserveOnly=*/false, /*coversFill=*/false);
+        return;
+    }
+    SPluginQuad_t q;
+    hud.applyOffset(x, y);
+    BaseHud::setQuadPositions(q, x, y, w, h);
+    q.m_iSprite = SpriteIndex::SOLID_COLOR;   // solid-quad-exempt: the unthemed field is a flat tint
+    q.m_ulColor = tint;
+    hud.m_quads.push_back(q);
+}
+
 void DropdownList::drawBox(BaseHud& hud, float x, float rowY, float width, float rowH,
                            float fontSize, bool enabled, bool open, const Style& style) {
     const float cw = PluginUtils::calculateMonospaceTextWidth(1, fontSize);
-    float boxX = x - cw * 0.3f;
-    float boxY = rowY + rowH * 0.06f;
+    const float boxX = x - cw * 0.3f;
+    const float boxY = rowY + rowH * 0.06f;
     const float boxW = width + cw * 0.3f;
     const float boxH = rowH * 0.88f;
-    if (boxW > 0.0f && boxH > 0.0f) {
-        SPluginQuad_t q;
-        hud.applyOffset(boxX, boxY);
-        BaseHud::setQuadPositions(q, boxX, boxY, boxW, boxH);
-        q.m_iSprite = SpriteIndex::SOLID_COLOR;   // solid-quad-exempt: the field is a flat tint, drawn the same with or without a theme
-        q.m_ulColor = PluginUtils::applyOpacity(style.primary, enabled ? 0.10f : 0.05f);
-        hud.m_quads.push_back(q);
-    }
+    drawField(hud, boxX, boxY, boxW, boxH,
+              PluginUtils::applyOpacity(style.primary, enabled ? 0.10f : 0.05f));
     // Down while closed, up while open: the caret Rumble's split effects use,
     // in the cell after the value (unturned, the sprite points up), centred on
     // the box's height and kept off its right edge by the air the text has on
@@ -55,7 +66,7 @@ void DropdownList::drawBox(BaseHud& hud, float x, float rowY, float width, float
     const unsigned long caretColor = enabled ? style.accent : style.muted;
     // Unturned (up) while open, turned 180 (down) while closed; "^"/"v" with UI icons off.
     const bool useIcons = UiConfig::getInstance().getTitleIcons();
-    const int caret = useIcons ? AssetManager::getInstance().getIconSpriteIndex("caret-up") : 0;
+    const int caret = useIcons ? AssetManager::getInstance().getIconSpriteIndex("hud-caret-up") : 0;
     if (caret > 0) hud.addRotatedSpriteQuad(caretX, caretY, caretHalf, open ? 1.0f : -1.0f, 0.0f, caret, caretColor);
     else if (!useIcons) hud.addString(open ? "^" : "v", caretX, rowY, Justify::CENTER,
                                       style.font, caretColor, fontSize);

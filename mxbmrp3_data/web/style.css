@@ -225,6 +225,16 @@
     src: url('fonts/VT323-Regular.ttf') format('truetype');
     font-display: swap;
 }
+@font-face {
+    font-family: 'PressStart2P-Regular';
+    src: url('fonts/PressStart2P-Regular.ttf') format('truetype');
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Silkscreen-Regular';
+    src: url('fonts/Silkscreen-Regular.ttf') format('truetype');
+    font-display: swap;
+}
 
 html {
     font-size: 28px;  /* Fallback — overridden by CONFIG.fontSize in overlay-shell.js */

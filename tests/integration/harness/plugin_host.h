@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 #include <fstream>
 #include <sstream>
@@ -122,9 +123,8 @@ public:
         m_spotParked = sym<int(*)()>("MXBMRP3_Test_SpotterWorkerParked");
         m_stTheme   = sym<void(*)(char*,int)>("MXBMRP3_Test_StandingsTheme");
         m_mapZoom   = sym<int(*)()>("MXBMRP3_Test_MapZoomEnabled");
-        m_stSetTheme = sym<void(*)(const char*)>("MXBMRP3_Test_StandingsSetTheme");
         m_rdTheme   = sym<void(*)(char*,int)>("MXBMRP3_Test_RadarTheme");
-        m_rdSetTheme = sym<void(*)(const char*)>("MXBMRP3_Test_RadarSetTheme");
+        m_setHudTheme = sym<int(*)(const char*,const char*)>("MXBMRP3_Test_SetHudTheme");
         m_resetActiveProfile = sym<void(*)()>("MXBMRP3_Test_ResetActiveProfile");
         m_resetHud  = sym<void(*)(const char*, int)>("MXBMRP3_Test_ResetHud");
         m_copyProfileToAll = sym<void(*)()>("MXBMRP3_Test_CopyProfileToAll");
@@ -220,6 +220,7 @@ public:
         m_settingsTabName = sym<int(*)(int,char*,int)>("MXBMRP3_Test_SettingsTabName");
         m_settingsAnyTabName = sym<int(*)(int,char*,int)>("MXBMRP3_Test_SettingsAnyTabName");
         m_settingsOverflow = sym<int(*)()>("MXBMRP3_Test_SettingsOverflowRows");
+        m_settingsColumnMiscounts = sym<int(*)()>("MXBMRP3_Test_SettingsColumnMiscounts");
         m_standingsRowBand = sym<int(*)(int*,int*)>("MXBMRP3_Test_StandingsRowBand");
         m_showSettings = sym<void(*)(int)>("MXBMRP3_Test_ShowSettings");
         m_settingsVisible = sym<int(*)()>("MXBMRP3_Test_SettingsVisible");
@@ -248,7 +249,10 @@ public:
         m_settingsTextRoom = sym<int(*)(char*,int)>("MXBMRP3_Test_SettingsTextRoom");
         m_settingsFindLanding = sym<int(*)(char*,int)>("MXBMRP3_Test_SettingsFindLanding");
         m_settingsControlSpan = sym<int(*)(const char*,int,float*,float*,float*)>("MXBMRP3_Test_SettingsControlSpan");
-        m_achievementsPage = sym<int(*)(char*,int)>("MXBMRP3_Test_AchievementsPage");
+        m_settingsScroll = sym<int(*)(int,float*,char*,int)>("MXBMRP3_Test_SettingsScroll");
+        m_stepScroll = sym<void(*)(int, int)>("MXBMRP3_Test_StepScroll");
+        m_wheelWindow = sym<void(*)(void*)>("MXBMRP3_Test_WheelWindow");
+        m_wheelState = sym<int(*)()>("MXBMRP3_Test_WheelState");
         m_glInGameGet = sym<int(*)()>("MXBMRP3_Test_GlInGameGet");
         m_glConfirmActive = sym<int(*)()>("MXBMRP3_Test_GlConfirmActive");
         m_glConfirmPct = sym<int(*)()>("MXBMRP3_Test_GlConfirmRemainingPct");
@@ -261,6 +265,10 @@ public:
         m_hudDrawPosition = sym<int(*)(const char*)>("MXBMRP3_Test_HudDrawPosition");
         m_hudStackRank = sym<int(*)(const char*)>("MXBMRP3_Test_HudStackRank");
         m_companionHudLayer = sym<int(*)(const char*)>("MXBMRP3_Test_CompanionFrameHudLayer");
+        m_frameClip = sym<int(*)(int, int, unsigned*, float*)>("MXBMRP3_Test_FrameClip");
+        m_frameString = sym<int(*)(int, int, char*, int, float*, float*, unsigned*)>("MXBMRP3_Test_FrameString");
+        m_frameQuadColor = sym<int(*)(int, int, unsigned*)>("MXBMRP3_Test_FrameQuadColor");
+        m_frameQuadY = sym<int(*)(int, int, float*, float*)>("MXBMRP3_Test_FrameQuadY");
         m_glHasTexture = sym<int(*)(const char*)>("MXBMRP3_Test_GlHasTexture");
         m_glFrameAssetName = sym<int(*)(int,int,char*,int)>("MXBMRP3_Test_GlFrameAssetName");
         m_glFrameAssetCount = sym<int(*)(int)>("MXBMRP3_Test_GlFrameAssetCount");
@@ -288,12 +296,14 @@ public:
         m_resolveFrame = sym<void(*)(unsigned long long, char*, int)>("MXBMRP3_Test_ResolveFrame");
         m_extractInstall = sym<int(*)(const char*, const char*, int, char*, int)>("MXBMRP3_Test_ExtractAndInstall");
         m_updaterStepTrace = sym<int(*)(const char*, const char*, int, int, int*, int, int*, int)>("MXBMRP3_Test_UpdaterStepTrace");
+        m_updaterChecksum = sym<int(*)(const char*, int, const char*, char*, int)>("MXBMRP3_Test_UpdaterChecksum");
         m_stSetVisible      = sym<void(*)(int)>("MXBMRP3_Test_StandingsSetVisible");
         m_installTheme      = sym<void(*)(const char*,float,float,int,int,int,int)>("MXBMRP3_Test_InstallTheme");
         m_setThemeTitleBorder  = sym<int(*)(float)>("MXBMRP3_Test_SetThemeTitleBorder");
         m_setThemeTitleInFrame = sym<int(*)(int)>("MXBMRP3_Test_SetThemeTitleInFrame");
         m_setThemeTitleArt  = sym<int(*)(int)>("MXBMRP3_Test_SetThemeTitleArt");
         m_quadSprite        = sym<int(*)(const char*,int)>("MXBMRP3_Test_HudQuadSprite");
+        m_quadVertex        = sym<int(*)(const char*,int,int,float*)>("MXBMRP3_Test_HudQuadVertex");
         m_setThemePanelPad  = sym<int(*)(float,float)>("MXBMRP3_Test_SetThemePanelPadding");
         m_layoutCells       = sym<void(*)(double*)>("MXBMRP3_Test_LayoutCells");
         m_setHudScale       = sym<int(*)(const char*, float)>("MXBMRP3_Test_SetHudScale");
@@ -312,7 +322,7 @@ public:
         m_finishLap = sym<int(*)()>("MXBMRP3_Test_FinishLap");
         m_riderFinishTime = sym<int(*)(int)>("MXBMRP3_Test_RiderFinishTime");
         m_dashFirstIcon = sym<int(*)()>("MXBMRP3_Test_DashFirstIcon");
-        m_mediaPublish = sym<void(*)(const char*,const char*,int,int,int,int)>("MXBMRP3_Test_MediaPublish");
+        m_mediaPublish = sym<void(*)(const char*,const char*,int,int,int,int,int)>("MXBMRP3_Test_MediaPublish");
         m_mediaPending = sym<int(*)(int)>("MXBMRP3_Test_MediaPending");
         m_liveGapToPb = sym<int(*)(int*)>("MXBMRP3_Test_LiveGapToPb");
         m_liveGapRef = sym<int(*)(int,int*)>("MXBMRP3_Test_LiveGapRef");
@@ -330,6 +340,7 @@ public:
         m_stringColor       = sym<unsigned long(*)(const char*,int)>("MXBMRP3_Test_HudStringColor");
         m_quadColor         = sym<unsigned long(*)(const char*,int)>("MXBMRP3_Test_HudQuadColor");
         m_stringFont        = sym<int(*)(const char*,int)>("MXBMRP3_Test_HudStringFont");
+        m_stringSize        = sym<int(*)(const char*,int)>("MXBMRP3_Test_HudStringSize");
         m_minLumaGap        = sym<int(*)()>("MXBMRP3_Test_MinGlyphLumaGap");
         m_luma601           = sym<int(*)(unsigned long)>("MXBMRP3_Test_Luma601");
         m_stringRows        = sym<int(*)(const char*,int,int*,int*,char*,int)>("MXBMRP3_Test_HudStringRows");
@@ -398,6 +409,7 @@ public:
         m_padStemCount      = sym<int(*)()>("MXBMRP3_Test_GamepadStemCount");
         m_padStemName       = sym<void(*)(int, char*, int)>("MXBMRP3_Test_GamepadStemName");
         m_spriteOrderMism   = sym<int(*)()>("MXBMRP3_Test_SpriteOrderMismatches");
+        m_deckImageDups     = sym<int(*)()>("MXBMRP3_Test_DeckImageDuplicates");
         m_spriteOrderSwap   = sym<int(*)(int, int)>("MXBMRP3_Test_SpriteOrderWithSwap");
         m_installWarning    = sym<int(*)(int, int, int, int)>("MXBMRP3_Test_InstallWarning");
         m_setPackShowBg     = sym<void(*)(int, int)>("MXBMRP3_Test_SetPackShowBg");
@@ -425,6 +437,7 @@ public:
         m_achValue          = sym<double(*)(const char*)>("MXBMRP3_Test_AchievementValue");
         m_achToastsQueued   = sym<unsigned int(*)()>("MXBMRP3_Test_AchievementToastsQueued");
         m_achLastToast      = sym<void(*)(char*,int)>("MXBMRP3_Test_AchievementLastToast");
+        m_achLogIcon        = sym<int(*)(const char*,int*,int*)>("MXBMRP3_Test_EventLogAchievementIcon");
         m_configReloaded    = sym<void(*)()>("MXBMRP3_Test_ConfigReloaded");
         m_achLeader         = sym<void(*)(const char*,char*,int)>("MXBMRP3_Test_AchievementLeader");
         m_prestige          = sym<int(*)()>("MXBMRP3_Test_Prestige");
@@ -441,6 +454,10 @@ public:
         m_achBonus          = sym<int(*)()>("MXBMRP3_Test_AchievementBonus");
         m_hkInject          = sym<int(*)(const char*)>("MXBMRP3_Test_HotkeyInject");
         m_setSettingsKey    = sym<void(*)(int, int)>("MXBMRP3_Test_SetSettingsKey");
+        m_forceFocus        = sym<void(*)(int)>("MXBMRP3_Test_ForceFocus");
+        m_keyReads          = sym<int(*)(int)>("MXBMRP3_Test_KeyReads");
+        m_injectKeys        = sym<void(*)(int)>("MXBMRP3_Test_InjectKeys");
+        m_holdKey           = sym<void(*)(int, int)>("MXBMRP3_Test_HoldKey");
         m_msgPosted         = sym<unsigned int(*)()>("MXBMRP3_Test_MessagesPosted");
         m_msgLast           = sym<void(*)(char*,int)>("MXBMRP3_Test_MessageLast");
         m_msgShowing        = sym<int(*)(char*,int)>("MXBMRP3_Test_MessageShowing");
@@ -487,7 +504,7 @@ public:
         m_chatPlatformSprite = sym<int(*)(int)>("MXBMRP3_Test_ChatPlatformSprite");
         m_chatRowSprites = sym<int(*)(int,int*,int*)>("MXBMRP3_Test_ChatRowSprites");
         m_texSprite = sym<int(*)(const char*)>("MXBMRP3_Test_TextureSprite");
-        m_setWidgetsEnabled = sym<void(*)(int)>("MXBMRP3_Test_SetWidgetsEnabled");
+        m_setMasterEnabled  = sym<void(*)(int, int)>("MXBMRP3_Test_SetMasterEnabled");
         m_crashTally        = sym<int(*)(int)>("MXBMRP3_Test_CrashTally");
         m_recParse          = sym<int(*)(int, const char*)>("MXBMRP3_Test_RecordsParse");
         m_recCount          = sym<int(*)()>("MXBMRP3_Test_RecordsCount");
@@ -503,7 +520,7 @@ public:
         m_raceVehicleData = sym<PFN_Void_DS>("RaceVehicleData");
         m_runSplit     = sym<PFN_Void_DS>("RunSplit");
         m_cameras      = sym<PFN_Cameras>("SpectateCameras");
-        m_bikeTelemetry = sym<void(*)(float*,int*,int*,float*,float*,float*,int*)>("MXBMRP3_Test_BikeTelemetry");
+        m_bikeTelemetry = sym<void(*)(float*,int*,int*,float*,float*,float*,int*,int*)>("MXBMRP3_Test_BikeTelemetry");
         m_curSplits    = sym<int(*)(int,int*,int*,int*,int*)>("MXBMRP3_Test_CurrentLapSplits");
         m_anStartWorker = sym<int(*)()>("MXBMRP3_Test_AnalyticsStartEventWorker");
         m_anWorkerAlive = sym<int(*)()>("MXBMRP3_Test_AnalyticsEventWorkerRunning");
@@ -927,13 +944,14 @@ public:
         float frontBrake = 0.0f;
         float roll = 0.0f;
         bool valid = false;
+        int riderStance = -1;   // -1 unknown, 0 seated, 1 standing
     };
     BikeTelemetry bikeTelemetry() {
         BikeTelemetry t;
         int valid = 0;
         if (m_bikeTelemetry) {
             m_bikeTelemetry(&t.speedometer, &t.gear, &t.rpm, &t.throttle,
-                            &t.frontBrake, &t.roll, &valid);
+                            &t.frontBrake, &t.roll, &valid, &t.riderStance);
         }
         t.valid = (valid != 0);
         return t;
@@ -978,6 +996,25 @@ public:
         int nq = 0, ns = 0; void* q = nullptr; void* s = nullptr;
         m_draw(state, &nq, &q, &ns, &s);
         m_lastGameQuads = nq; m_lastGameStrings = ns;   // what draw() EMITTED to the game
+        m_lastStringsPtr = s;
+    }
+    // The strings the last draw() handed the game: text, top-left y, alpha (0..255), ABGR colour.
+    struct DrawnText { std::string text; float x, y; int alpha; int justify; float size; unsigned long color; };   // justify: 0 left, 1 centre, 2 right
+    std::vector<DrawnText> lastStrings() const {
+        // The game's SPluginString_t (mxb_api.h), mirrored like perf_ledger_driver.cpp's.
+        struct GameString {
+            char m_szString[100]; float m_afPos[2]; int m_iFont; float m_fSize;
+            int m_iJustify; unsigned long m_ulColor;
+        };
+        std::vector<DrawnText> out;
+        static_assert(sizeof(GameString) == 124, "Draw string layout differs from mxb_api.h");
+        const GameString* p = static_cast<const GameString*>(m_lastStringsPtr);
+        for (int i = 0; p && i < m_lastGameStrings; ++i) {
+            out.push_back({ p[i].m_szString, p[i].m_afPos[0], p[i].m_afPos[1],
+                            static_cast<int>((p[i].m_ulColor >> 24) & 0xFF), p[i].m_iJustify, p[i].m_fSize,
+                            p[i].m_ulColor });
+        }
+        return out;
     }
     // Quad/string counts the last draw() emitted to the game surface (0 when the
     // in-game HUD is suppressed in COMPANION mode), after the handoff drops what
@@ -1014,6 +1051,17 @@ public:
         d.m_fSpeedometer = speedMs;
         d.m_iGear = gear;
         if (m_telemetry) m_telemetry(&d, (int)sizeof(d), time, pos);
+    }
+    // RunTelemetry as a game build that sends the rider stance does: the struct
+    // followed by one int (Adapter::readRiderStance), 4 bytes longer than
+    // sizeof(SPluginsBikeData_t). `raw` is the int as the game writes it.
+    void telemetryWithStance(int raw, float speedMs = 10.0f, float time = 0.0f, float pos = 0.0f) {
+        struct { SPluginsBikeData_t d; int stance; } f{};
+        static_assert(sizeof(f) == sizeof(SPluginsBikeData_t) + sizeof(int), "stance trails the struct");
+        f.d.m_fSpeedometer = speedMs;
+        f.d.m_iGear = 3;
+        f.stance = raw;
+        if (m_telemetry) m_telemetry(&f, (int)sizeof(f), time, pos);
     }
     // RunTelemetry with the orientation/contact/rumble fields the FMX trick
     // detection and the rumble effect engine read (see TelemetryRow). Wheel
@@ -1314,7 +1362,9 @@ public:
         if (m_stTheme) m_stTheme(buf, static_cast<int>(sizeof(buf)));
         return std::string(buf);
     }
-    void setStandingsTheme(const char* v) { if (m_stSetTheme) m_stSetTheme(v); }
+    void setStandingsTheme(const char* v) { setHudTheme("standings_hud", v); }
+    // Any HUD's own Theme, by harness id (its tab's Texture column)
+    bool setHudTheme(const char* hud, const char* v) { return m_setHudTheme && m_setHudTheme(hud, v) == 1; }
     // MapHud zoom toggle, read back after a settings load; see MXBMRP3_Test_MapZoomEnabled.
     bool mapZoomEnabled() { return m_mapZoom && m_mapZoom() != 0; }
     // The flat Overview map the map tests measure against: Mode Overview, no
@@ -1337,7 +1387,7 @@ public:
         if (m_rdTheme) m_rdTheme(buf, static_cast<int>(sizeof(buf)));
         return buf;
     }
-    void setRadarTheme(const char* v) { if (m_rdSetTheme) m_rdSetTheme(v); }
+    void setRadarTheme(const char* v) { setHudTheme("radar_hud", v); }
     // Reset the ACTIVE profile / one HUD to factory defaults (do NOT persist on
     // their own — follow with save()). switchProfile/copyProfileToAll persist.
     void resetActiveProfile() { if (m_resetActiveProfile) m_resetActiveProfile(); }
@@ -1655,6 +1705,11 @@ public:
     bool hasSettingsOverflow() const { return m_settingsOverflow != nullptr; }
     double settingsOverflowRows() {
         return m_settingsOverflow ? m_settingsOverflow() / 1000.0 : 0.0;
+    }
+    // Settings column runs that emitted more or fewer rows than they declared,
+    // since the last call (which clears it). -1: hook missing.
+    int settingsColumnMiscounts() {
+        return m_settingsColumnMiscounts ? m_settingsColumnMiscounts() : -1;
     }
     std::vector<std::string> settingsTabNames() {
         std::vector<std::string> out;
@@ -2045,14 +2100,55 @@ public:
     bool settingsRegionCenter(const char* tooltipId, float* x, float* y) {
         return m_settingsRegionCenter && m_settingsRegionCenter(tooltipId, x, y) == 1;
     }
-    // The achievements list's page (0-based) and the group of the page as last drawn.
-    int achievementsPage(std::string* group = nullptr) {
-        if (!m_achievementsPage) return -1;
-        char buf[32] = {0};
-        const int page = m_achievementsPage(buf, static_cast<int>(sizeof(buf)));
-        if (group) *group = buf;
-        return page;
+    // A settings list (ScrollView::Id: 0 server players, 1 tracked riders,
+    // 2 achievements, 3 Find results, 4 widgets) as the last real build left it.
+    struct ScrollView {
+        bool laidOut = false;
+        float shown = 0, target = 0, maxRest = 0, contentLines = 0, viewLines = 0;
+        float x = 0, y = 0, w = 0, h = 0, thumbH = 0;
+        std::string topGroup;   // achievements only: the group at the list's top
+    };
+    ScrollView settingsScroll(int id) {
+        ScrollView v;
+        if (!m_settingsScroll) return v;
+        float o[10] = {};
+        char buf[48] = {0};
+        v.laidOut = m_settingsScroll(id, o, buf, static_cast<int>(sizeof(buf))) == 1;
+        v.shown = o[0]; v.target = o[1]; v.maxRest = o[2]; v.contentLines = o[3]; v.viewLines = o[4];
+        v.x = o[5]; v.y = o[6]; v.w = o[7]; v.h = o[8]; v.thumbH = o[9];
+        v.topGroup = buf;
+        return v;
     }
+    // Move list `id` (ScrollView::Id) `steps` steps down (negative = up), as the
+    // scrollbar track's shortest move does, then draw.
+    void stepScroll(int id, int steps) {
+        if (!m_stepScroll) return;
+        m_stepScroll(id, steps);
+        draw();
+    }
+    // THE MOUSE WHEEL (core/mouse_wheel.h), on a hidden window standing in for
+    // the game's. The stand-in and its procedure -- the game's, which counts
+    // the wheel messages it sees -- live HERE, not in the DLL, so an unload of
+    // the DLL can be watched from outside it. useWheelStandIn() makes it (once
+    // per process) and points the plugin's wheel at it; wheelSend() sends it
+    // one WM_MOUSEWHEEL as Windows would (WHEEL_DELTA a notch, positive = away
+    // from the player) and returns the game's count after it; gameOwnsWheelWindow()
+    // is true while the stand-in has its own procedure (ours is not in front).
+    // wheelState(): bit 0 attached, bit 1 the module would be pinned.
+    bool useWheelStandIn() {
+        if (!m_wheelWindow || !m_wheelState || !wheelStandIn()) return false;
+        m_wheelWindow(wheelStandIn());
+        return true;
+    }
+    static int wheelSend(int delta) {
+        SendMessageW(wheelStandIn(), WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<short>(delta)), 0);
+        return wheelGameCount();
+    }
+    static int wheelGameCount() { return wheelGameCountRef(); }
+    static bool gameOwnsWheelWindow() {
+        return reinterpret_cast<WNDPROC>(GetWindowLongPtrW(wheelStandIn(), GWLP_WNDPROC)) == &wheelGameProc;
+    }
+    int wheelState() { return m_wheelState ? m_wheelState() : -1; }
     void clickAt(float x, float y) {
         injectMouse(true, x, y, 0); draw();
         injectMouse(true, x, y, 1); draw();
@@ -2104,6 +2200,54 @@ public:
     // glFrameHudLayer's companion-window twin; -1 = none or no hook.
     int companionFrameHudLayer(const char* name) const {
         return m_companionHudLayer ? m_companionHudLayer(name) : -1;
+    }
+    // CLIPPING (core/render_clip.h): a surface's last frame as its renderer got
+    // it - the cut ranges, and the strings (the engine's frame when !companion).
+    struct FrameClip { unsigned q0 = 0, q1 = 0, s0 = 0, s1 = 0; float l = 0, t = 0, r = 0, b = 0; };
+    struct FrameString { std::string text; float y = 0.0f, size = 0.0f; unsigned color = 0; };
+    bool hasFrameClips() const { return m_frameClip && m_frameString; }
+    std::vector<FrameClip> frameClips(bool companion) const {
+        std::vector<FrameClip> out;
+        if (!m_frameClip) return out;
+        const int n = m_frameClip(companion ? 1 : 0, -1, nullptr, nullptr);
+        for (int i = 0; i < n; ++i) {
+            unsigned r[4] = {}; float f[4] = {};
+            m_frameClip(companion ? 1 : 0, i, r, f);
+            out.push_back(FrameClip{ r[0], r[1], r[2], r[3], f[0], f[1], f[2], f[3] });
+        }
+        return out;
+    }
+    // Each quad's vertical extent (top, bottom) in a surface's last frame.
+    std::vector<std::pair<float, float>> frameQuadYs(bool companion) const {
+        std::vector<std::pair<float, float>> out;
+        if (!m_frameQuadY) return out;
+        const int n = m_frameQuadY(companion ? 1 : 0, -1, nullptr, nullptr);
+        out.resize(static_cast<size_t>(n > 0 ? n : 0));
+        for (int i = 0; i < n; ++i)
+            m_frameQuadY(companion ? 1 : 0, i, &out[static_cast<size_t>(i)].first, &out[static_cast<size_t>(i)].second);
+        return out;
+    }
+    std::vector<FrameString> frameStrings(bool companion) const {
+        std::vector<FrameString> out;
+        if (!m_frameString) return out;
+        const int n = m_frameString(companion ? 1 : 0, -1, nullptr, 0, nullptr, nullptr, nullptr);
+        for (int i = 0; i < n; ++i) {
+            char text[128] = {};
+            FrameString s;
+            m_frameString(companion ? 1 : 0, i, text, sizeof(text), &s.y, &s.size, &s.color);
+            s.text = text;
+            out.push_back(s);
+        }
+        return out;
+    }
+    // The colours of a surface's last frame's quads, in frame order.
+    std::vector<unsigned> frameQuadColors(bool companion) const {
+        std::vector<unsigned> out;
+        if (!m_frameQuadColor) return out;
+        const int n = m_frameQuadColor(companion ? 1 : 0, -1, nullptr);
+        out.resize(static_cast<size_t>(n > 0 ? n : 0));
+        for (int i = 0; i < n; ++i) m_frameQuadColor(companion ? 1 : 0, i, &out[static_cast<size_t>(i)]);
+        return out;
     }
     // 1 = the live GL backend has loaded this sprite (render name), 0 = not,
     // -1 = no backend (or a build without the hook).
@@ -2261,6 +2405,8 @@ public:
     // registered sprite table agree; -1 = hook missing). Meaningful after
     // Startup+DrawInit have run setupDefaultResources.
     int spriteOrderMismatches() { return m_spriteOrderMism ? m_spriteOrderMism() : -1; }
+    // Deck pictures registered twice within one layout (-1 = hook missing)
+    int deckImageDuplicates() { return m_deckImageDups ? m_deckImageDups() : -1; }
     // Re-run the checker with sprite table entries a and b (1-based) swapped,
     // restoring the table; non-zero = the checker catches skew (-1 = unavailable).
     int spriteOrderWithSwap(int a, int b) {
@@ -2372,6 +2518,12 @@ public:
         if (m_achLastToast) m_achLastToast(buf, sizeof(buf));
         return buf;
     }
+    // The newest Achievement Event Log row with exactly this English text: its
+    // icon shape and tier. False if there is none (or the hook is missing).
+    bool eventLogAchievementIcon(const char* message, int& shape, int& tier) {
+        shape = 0; tier = -1;
+        return m_achLogIcon && m_achLogIcon(message, &shape, &tier) != 0;
+    }
     // The RELOAD_CONFIG hotkey's achievement half (Tinkerer + the dev toast).
     void configReloaded() { if (m_configReloaded) m_configReloaded(); }
     // The track or bike name a per-maximum row names beside its title; "" for
@@ -2438,6 +2590,13 @@ public:
     // Rebind the settings menu's keyboard key (vk 0 = none; mods = ModifierFlags bits).
     bool hasSetSettingsKey() const { return m_setSettingsKey != nullptr; }
     void setSettingsKey(int vk, int mods) { if (m_setSettingsKey) m_setSettingsKey(vk, mods); }
+    // Window focus and a stand-in keyboard (see MXBMRP3_Test_ForceFocus and
+    // friends in core/test_hooks_messages.cpp).
+    bool hasKeyHooks() const { return m_forceFocus && m_keyReads && m_injectKeys && m_holdKey; }
+    void forceFocus(int focused) { if (m_forceFocus) m_forceFocus(focused); }
+    int keyReads(bool reset) { return m_keyReads ? m_keyReads(reset ? 1 : 0) : -1; }
+    void injectKeys(bool on) { if (m_injectKeys) m_injectKeys(on ? 1 : 0); }
+    void holdKey(int vk, bool down) { if (m_holdKey) m_holdKey(vk, down ? 1 : 0); }
     unsigned int messagesPosted() { return m_msgPosted ? m_msgPosted() : 0u; }
     // "title|detail|icon|tab|severity" of the last toast posted.
     std::string lastMessage() {
@@ -2452,10 +2611,11 @@ public:
         return buf;
     }
     // formatSessionClock as the web JSON (shown false) or a HUD (shown true) reads it.
-    // lapsAfterClock: a time+laps race's laps after the clock (0 otherwise).
-    std::string formatSessionClock(int lapsToGo, int ms, bool shown, int lapsAfterClock = 0) {
+    // lapsAfterClock: a time+laps race's laps after the clock (0 otherwise);
+    // compact: the decks' "+ 2L".
+    std::string formatSessionClock(int lapsToGo, int ms, bool shown, int lapsAfterClock = 0, bool compact = false) {
         char buf[64] = {0};
-        if (m_fmtClock) m_fmtClock(lapsToGo, ms, lapsAfterClock, shown ? 1 : 0, buf, static_cast<int>(sizeof(buf)));
+        if (m_fmtClock) m_fmtClock(lapsToGo, ms, lapsAfterClock, (shown ? 1 : 0) | (compact ? 2 : 0), buf, static_cast<int>(sizeof(buf)));
         return buf;
     }
     // formatSessionFormatWords as the Event Log (shown false) or a HUD (shown true) reads it.
@@ -2577,8 +2737,11 @@ public:
     }
     // Sprite of a texture by its file base name (variant 1); -1 = no hook.
     int textureSprite(const char* baseName) { return m_texSprite ? m_texSprite(baseName) : -1; }
-    // The Widgets master toggle (see MXBMRP3_Test_SetWidgetsEnabled).
-    void setWidgetsEnabled(bool on) { if (m_setWidgetsEnabled) m_setWidgetsEnabled(on ? 1 : 0); }
+    // A master switch (HudManager::MasterGroup, see MXBMRP3_Test_SetMasterEnabled).
+    enum class Master : int { Widgets = 0, Decks = 1 };
+    void setMasterEnabled(Master group, bool on) {
+        if (m_setMasterEnabled) m_setMasterEnabled(static_cast<int>(group), on ? 1 : 0);
+    }
 
     // The crash widget's streaming tally. crashTallyReset() goes through the
     // widget's own resetCounter(), the entry point the button and hotkey share.
@@ -2701,7 +2864,15 @@ public:
                  // The Slide gauge: the Lean arc upside down, centred on its card.
                  HUD_SLIDE = 25,
                  // The Wheelie widget: its quarter ring centres on the card box.
-                 HUD_WHEELIE = 26 };
+                 HUD_WHEELIE = 26,
+                 // The scrolling lists (hud_scroll.h): each lays its scrollbar
+                 // against the card box's right edge, so the anchor sweep has to
+                 // see them; and the scrollback test drives them by id.
+                 HUD_EVENT_LOG = 27, HUD_LAP_LOG = 28, HUD_STREAM_CHAT = 29, HUD_FRIENDS = 30,
+                 // The Stance widget: its triangle pair centres on the card box, and
+                 // like the prestige badge it draws nothing until a condition holds
+                 // (a telemetry frame carrying a stance, telemetryWithStance).
+                 HUD_STANCE = 31 };
 
     // THE ONE TRANSLATION. Strings are HudManager::initialize()'s registration names;
     // an id outside the enum yields "", which resolves to no panel rather than to
@@ -2734,6 +2905,11 @@ public:
             case HUD_TOGGLES:        return "toggle_strip_widget";
             case HUD_SLIDE:          return "slide_widget";
             case HUD_WHEELIE:        return "wheelie_widget";
+            case HUD_EVENT_LOG:      return "event_log_hud";
+            case HUD_LAP_LOG:        return "lap_log_hud";
+            case HUD_STREAM_CHAT:    return "stream_chat_hud";
+            case HUD_FRIENDS:        return "friends_hud";
+            case HUD_STANCE:         return "stance_widget";
         }
         return "";
     }
@@ -2778,8 +2954,18 @@ public:
     }
     // The sprite a HUD quad draws (0 = untextured; -1 = no such quad, or no hook).
     bool hasQuadSprite() const { return m_quadSprite != nullptr; }
-    int quadSprite(HudId which, int i) {
-        return m_quadSprite ? m_quadSprite(hudName(which), i) : -1;
+    int quadSprite(HudId which, int i) { return quadSprite(hudName(which), i); }
+    int quadSprite(const char* name, int i) { return m_quadSprite ? m_quadSprite(name, i) : -1; }
+    // One corner of a HUD quad in vertex order (0 = the sprite's top-left, then
+    // BL, BR, TR): tells a sprite turned in place from an upright one.
+    bool quadVertex(HudId which, int i, int vertex, float* x, float* y) {
+        return quadVertex(hudName(which), i, vertex, x, y);
+    }
+    bool quadVertex(const char* name, int i, int vertex, float* x, float* y) {
+        float xy[2] = {};
+        if (!m_quadVertex || !m_quadVertex(name, i, vertex, xy)) return false;
+        *x = xy[0]; *y = xy[1];
+        return true;
     }
 
     // The plugin's LIVE lattice (MXBMRP3_Test_LayoutCells): cellW/cellH are the
@@ -2956,12 +3142,14 @@ public:
     int dashFirstIcon() { return m_dashFirstIcon ? m_dashFirstIcon() : -1; }
     // Now playing: publish a player as MediaManager's worker would (state is
     // MediaManager::State: 2 no player, 3 paused, 4 playing), and read what the
-    // controls queued (0 = the command: 1 previous, 2 play/pause, 3 next; 1 = the
-    // volume, -1 = none). See core/test_hooks_media.cpp.
+    // controls queued (0 = the command: 1 previous, 2 play/pause, 3 next,
+    // 4 shuffle, 5 loop; 1 = the volume; 2 = the seek in ms; -1 = none).
+    // controls = what the player takes and its shuffle/loop state, bits as in
+    // core/test_hooks_media.cpp.
     bool hasMediaHooks() const { return m_mediaPublish && m_mediaPending; }
     void mediaPublish(const char* title, const char* artist, int state, int positionMs = 0,
-                      int durationMs = 0, int volume = -1) {
-        if (m_mediaPublish) m_mediaPublish(title, artist, state, positionMs, durationMs, volume);
+                      int durationMs = 0, int volume = -1, int controls = 0) {
+        if (m_mediaPublish) m_mediaPublish(title, artist, state, positionMs, durationMs, volume, controls);
     }
     int mediaPending(int which) { return m_mediaPending ? m_mediaPending(which) : -2; }
     // Plant a live gap in the Gap Bar so its fill draws (see the hook).
@@ -3039,6 +3227,9 @@ public:
     // The font a drawn string uses (engine index; 0 = unknown panel/index or no hook).
     bool hasStringFont() const { return m_stringFont != nullptr; }
     int stringFont(const char* name, int i) { return m_stringFont ? m_stringFont(name, i) : 0; }
+    // The size a drawn string is set at, x 1e6 (0 = unknown panel/index or no hook).
+    bool hasStringSize() const { return m_stringSize != nullptr; }
+    int stringSize(const char* name, int i) { return m_stringSize ? m_stringSize(name, i) : 0; }
     // The plugin's own threshold and its own luma formula, read live rather than
     // re-spelled here -- a second copy of either is a test that can agree with itself
     // while disagreeing with the code.
@@ -3351,6 +3542,15 @@ public:
     // row showed at each UI refresh: its percent while running (-1 = none),
     // 101 once OK. Empty with ok == -1 when the hook isn't exported.
     // debugMode: as the Updates tab's debug mode runs it (verify skipped).
+    // The updater's checksum gate (UpdateDownloader::checksumError): 1 = passes,
+    // 0 = refused with the reason in err, -1 = hook not exported.
+    int updaterChecksum(const std::string& data, const char* expectedHash, std::string& err) {
+        if (!m_updaterChecksum) return -1;
+        char buf[256] = {0};
+        const int r = m_updaterChecksum(data.data(), (int)data.size(), expectedHash, buf, (int)sizeof(buf));
+        err = buf;
+        return r;
+    }
     std::vector<int> updaterStepTrace(const char* destDir, const std::string& zip,
                                       int step, int& ok, bool debugMode = false) {
         ok = -1;
@@ -3617,14 +3817,13 @@ private:
                 m_trackCenter(numSegments, segs, nullptr);
                 return true;
             }
-            // Recorder format: [SPluginsBikeData_t][float time][float pos]. Feeds the
-            // telemetry-driven HUDs (speedo/tacho/gear/lean/g-force/fuel/stats).
+            // Recorder format: [game telemetry bytes][float time][float pos] (see
+            // tape::splitTelemetry). Feeds the telemetry-driven HUDs
+            // (speedo/tacho/gear/lean/g-force/fuel/stats).
             case ET::RunTelemetry: {
-                const size_t need = sizeof(SPluginsBikeData_t) + 2 * sizeof(float);
-                if (!m_telemetry || buf.size() < need) break;
-                float time = *reinterpret_cast<float*>(buf.data() + sizeof(SPluginsBikeData_t));
-                float pos  = *reinterpret_cast<float*>(buf.data() + sizeof(SPluginsBikeData_t) + sizeof(float));
-                m_telemetry(p, (int)sizeof(SPluginsBikeData_t), time, pos);
+                tape::TelemetryPayload tp{};
+                if (!m_telemetry || !tape::splitTelemetry(buf.data(), buf.size(), tp)) break;
+                m_telemetry(p, tp.bikeBytes, tp.time, tp.pos);
                 return true;
             }
             default: break;   // Startup/Shutdown/RunLap/RunSplit/vehicle data — skipped
@@ -3681,7 +3880,7 @@ private:
     PFN_Cameras  m_cameras = nullptr;
     PFN_Shutdown m_eventDeinit = nullptr, m_raceDeinit = nullptr;
     PFN_Void_DS  m_raceVehicleData = nullptr, m_runSplit = nullptr;
-    void (*m_bikeTelemetry)(float*,int*,int*,float*,float*,float*,int*) = nullptr;
+    void (*m_bikeTelemetry)(float*,int*,int*,float*,float*,float*,int*,int*) = nullptr;
     int  (*m_curSplits)(int,int*,int*,int*,int*) = nullptr;
     int  (*m_anStartWorker)() = nullptr;
     int  (*m_anWorkerAlive)() = nullptr;
@@ -3746,9 +3945,8 @@ private:
     int         (*m_spotParked)() = nullptr;
     void        (*m_stTheme)(char*, int) = nullptr;
     int         (*m_mapZoom)() = nullptr;
-    void        (*m_stSetTheme)(const char*) = nullptr;
     void        (*m_rdTheme)(char*, int) = nullptr;
-    void        (*m_rdSetTheme)(const char*) = nullptr;
+    int         (*m_setHudTheme)(const char*,const char*) = nullptr;
     void        (*m_resetActiveProfile)() = nullptr;
     void        (*m_resetHud)(const char*, int) = nullptr;
     void        (*m_copyProfileToAll)() = nullptr;
@@ -3847,6 +4045,7 @@ private:
     int         (*m_settingsTextRoom)(char*,int) = nullptr;
     int         (*m_settingsAnyTabName)(int,char*,int) = nullptr;
     int         (*m_settingsOverflow)() = nullptr;
+    int         (*m_settingsColumnMiscounts)() = nullptr;
     int         (*m_standingsRowBand)(int*,int*) = nullptr;
     int         (*m_stepCount)(int) = nullptr;
     int         (*m_stepClick)(int,int,int) = nullptr;
@@ -3878,7 +4077,31 @@ private:
     int         (*m_settingsListNames)(char*,int) = nullptr;
     int         (*m_settingsFindLanding)(char*,int) = nullptr;
     int         (*m_settingsControlSpan)(const char*,int,float*,float*,float*) = nullptr;
-    int         (*m_achievementsPage)(char*,int) = nullptr;
+    int         (*m_settingsScroll)(int,float*,char*,int) = nullptr;
+    void        (*m_stepScroll)(int, int) = nullptr;
+    void        (*m_wheelWindow)(void*) = nullptr;
+    int         (*m_wheelState)() = nullptr;
+    static int& wheelGameCountRef() { static int n = 0; return n; }
+    static LRESULT CALLBACK wheelGameProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+        if (msg == WM_MOUSEWHEEL) ++wheelGameCountRef();
+        return DefWindowProcW(hwnd, msg, wp, lp);
+    }
+    // Needs an X server under Wine (DISPLAY), like the GL tests' window.
+    static HWND wheelStandIn() {
+        static HWND w = nullptr;
+        if (!w) {
+            WNDCLASSW wc = {};
+            wc.lpfnWndProc = DefWindowProcW;
+            wc.hInstance = GetModuleHandleW(nullptr);
+            wc.lpszClassName = L"MXBMRP3TestGameWindow";
+            if (!RegisterClassW(&wc)) return nullptr;
+            w = CreateWindowExW(0, wc.lpszClassName, L"game", WS_POPUP, 0, 0, 64, 64, nullptr, nullptr,
+                                wc.hInstance, nullptr);
+            // The game's own procedure: what ours must forward to.
+            if (w) SetWindowLongPtrW(w, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&wheelGameProc));
+        }
+        return w;
+    }
     int         (*m_glInGameGet)() = nullptr;
     int         (*m_glConfirmActive)() = nullptr;
     int         (*m_glConfirmPct)() = nullptr;
@@ -3891,6 +4114,10 @@ private:
     int         (*m_hudDrawPosition)(const char*) = nullptr;
     int         (*m_hudStackRank)(const char*) = nullptr;
     int         (*m_companionHudLayer)(const char*) = nullptr;
+    int         (*m_frameClip)(int, int, unsigned*, float*) = nullptr;
+    int         (*m_frameString)(int, int, char*, int, float*, float*, unsigned*) = nullptr;
+    int         (*m_frameQuadColor)(int, int, unsigned*) = nullptr;
+    int         (*m_frameQuadY)(int, int, float*, float*) = nullptr;
     int         (*m_glHasTexture)(const char*) = nullptr;
     int         (*m_glFrameAssetName)(int,int,char*,int) = nullptr;
     int         (*m_glFrameAssetCount)(int) = nullptr;
@@ -3903,6 +4130,7 @@ private:
     int         (*m_setThemeTitleInFrame)(int) = nullptr;
     int         (*m_setThemeTitleArt)(int) = nullptr;
     int         (*m_quadSprite)(const char*, int) = nullptr;
+    int         (*m_quadVertex)(const char*, int, int, float*) = nullptr;
     int         (*m_setThemePanelPad)(float,float) = nullptr;
     void        (*m_layoutCells)(double*) = nullptr;
     int         (*m_setHudScale)(const char*, float) = nullptr;
@@ -3923,6 +4151,7 @@ private:
     unsigned long (*m_stringColor)(const char*,int) = nullptr;
     unsigned long (*m_quadColor)(const char*,int) = nullptr;
     int         (*m_stringFont)(const char*,int) = nullptr;
+    int         (*m_stringSize)(const char*,int) = nullptr;
     int         (*m_minLumaGap)() = nullptr;
     int         (*m_luma601)(unsigned long) = nullptr;
     int         (*m_stringRows)(const char*,int,int*,int*,char*,int) = nullptr;
@@ -3943,7 +4172,7 @@ private:
     int         (*m_finishLap)() = nullptr;
     int         (*m_riderFinishTime)(int) = nullptr;
     int         (*m_dashFirstIcon)() = nullptr;
-    void        (*m_mediaPublish)(const char*,const char*,int,int,int,int) = nullptr;
+    void        (*m_mediaPublish)(const char*,const char*,int,int,int,int,int) = nullptr;
     int         (*m_mediaPending)(int) = nullptr;
     int         (*m_liveGapToPb)(int*) = nullptr;
     int         (*m_liveGapRef)(int,int*) = nullptr;
@@ -4005,6 +4234,7 @@ private:
     int         (*m_padStemCount)() = nullptr;
     void        (*m_padStemName)(int, char*, int) = nullptr;
     int         (*m_spriteOrderMism)() = nullptr;
+    int         (*m_deckImageDups)() = nullptr;
     int         (*m_spriteOrderSwap)(int, int) = nullptr;
     int         (*m_installWarning)(int, int, int, int) = nullptr;
     void        (*m_setPackShowBg)(int, int) = nullptr;
@@ -4029,11 +4259,16 @@ private:
     double      (*m_achValue)(const char*) = nullptr;
     unsigned int(*m_achToastsQueued)() = nullptr;
     void        (*m_achLastToast)(char*, int) = nullptr;
+    int         (*m_achLogIcon)(const char*, int*, int*) = nullptr;
     void        (*m_configReloaded)() = nullptr;
     void        (*m_achLeader)(const char*,char*,int) = nullptr;
     int         (*m_prestige)() = nullptr;
     void        (*m_setPrestige)(int) = nullptr;
     void        (*m_setSettingsKey)(int, int) = nullptr;
+    void        (*m_forceFocus)(int) = nullptr;
+    int         (*m_keyReads)(int) = nullptr;
+    void        (*m_injectKeys)(int) = nullptr;
+    void        (*m_holdKey)(int, int) = nullptr;
     void        (*m_setStatsUnreadable)(int) = nullptr;
     int         (*m_takePrestige)() = nullptr;
     void        (*m_explorationSet)(const char*, double) = nullptr;
@@ -4093,7 +4328,7 @@ private:
     int         (*m_chatPlatformSprite)(int) = nullptr;
     int         (*m_chatRowSprites)(int, int*, int*) = nullptr;
     int         (*m_texSprite)(const char*) = nullptr;
-    void        (*m_setWidgetsEnabled)(int) = nullptr;
+    void        (*m_setMasterEnabled)(int, int) = nullptr;
     int         (*m_crashTally)(int) = nullptr;
     int         (*m_steamStartWorker)() = nullptr;
     void        (*m_steamSetEnabled)(int) = nullptr;
@@ -4106,6 +4341,7 @@ private:
     int         (*m_recFetchState)() = nullptr;
     int         m_lastGameQuads = 0;
     int         m_lastGameStrings = 0;
+    void*       m_lastStringsPtr = nullptr;
     void        (*m_getActiveTab)(char*, int) = nullptr;
     void        (*m_capturedSections)(char*, int) = nullptr;
     void        (*m_anPrime)() = nullptr;
@@ -4126,4 +4362,5 @@ private:
     void        (*m_resolveFrame)(unsigned long long, char*, int) = nullptr;
     int         (*m_extractInstall)(const char*, const char*, int, char*, int) = nullptr;
     int         (*m_updaterStepTrace)(const char*, const char*, int, int, int*, int, int*, int) = nullptr;
+    int         (*m_updaterChecksum)(const char*, int, const char*, char*, int) = nullptr;
 };

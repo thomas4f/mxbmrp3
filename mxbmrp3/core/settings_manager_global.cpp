@@ -130,6 +130,7 @@ std::string sectionToFlagKey(const std::string& section) {
     std::string prefix, core;
     if (endsWith(section, "Widget")) { prefix = "widget_"; core = section.substr(0, section.size() - 6); }
     else if (endsWith(section, "Hud")) { prefix = "hud_"; core = section.substr(0, section.size() - 3); }
+    else if (endsWith(section, "Deck")) { prefix = "deck_"; core = section.substr(0, section.size() - 4); }
     else { return ""; }  // not a HUD/widget (e.g. the "Global" pseudo-entry) — skip
 
     std::string out;
@@ -225,6 +226,7 @@ void SettingsManager::writeGeneralSettings(std::ostream& out, [[maybe_unused]] c
     out << "pbScope=" << pbScopeToString(UiConfig::getInstance().getPBScope()) << "\n";
     out << "defaultReference=" << UiConfig::getInstance().getDefaultReference() << "\n";
     out << "defaultFreeze=" << UiConfig::getInstance().getDefaultFreezeMs() << "\n";
+    out << "liveUpdates=" << static_cast<int>(UiConfig::getInstance().getLiveUpdates()) << "\n";
 #if GAME_HAS_RECORDS_PROVIDER
     out << "recordsAutoFetch=" << (hudManager.getRecordsHud().m_bAutoFetch ? 1 : 0) << "\n";
     out << "recordsProvider=" << dataProviderToString(hudManager.getRecordsHud().m_provider) << "\n";
@@ -311,6 +313,10 @@ void SettingsManager::applyGeneralLine(const std::string& key, const std::string
             UiConfig::getInstance().setDefaultReference(std::stoi(value));
         } else if (key == "defaultFreeze") {
             UiConfig::getInstance().setDefaultFreezeMs(std::stoi(value));
+        } else if (key == "liveUpdates") {
+            const int v = std::stoi(value);
+            UiConfig::getInstance().setLiveUpdates(v >= 0 && v < static_cast<int>(LiveUpdates::COUNT)
+                                                       ? static_cast<LiveUpdates>(v) : LiveUpdates::OFF);
         }
 #if GAME_HAS_RECORDS_PROVIDER
         else if (key == "recordsAutoFetch") {

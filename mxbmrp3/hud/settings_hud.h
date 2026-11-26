@@ -2,13 +2,14 @@
 // hud/settings_hud.h
 // Settings interface for configuring which columns/rows are visible in HUDs
 // ============================================================================
-// file-budget: 1504 one class definition; its implementation is already split across settings_hud_*.cpp
+// file-budget: 1499 one class definition; its implementation is already split across settings_hud_*.cpp
 #pragma once
 
 #include "base_hud.h"
 #include "../core/layout_metrics.h"
 #include "settings/settings_controls.h"
 #include "settings/settings_find.h"
+#include "settings/scroll_view.h"
 #include <variant>
 #include <string>
 #include <cmath>
@@ -72,7 +73,7 @@ public:
     // THE TAB LIST'S ON/OFF SWITCHES, for the Toggles widget (toggle_strip_widget.h):
     // one entry per tab with a toggle, Global section then Profile, in sidebar
     // order, the More groups' tabs included. A click goes through toggleTab(),
-    // which is the sidebar checkbox's own click (tabToggleType -> dispatchRegion),
+    // which is the sidebar checkbox's own click (tabToggleRegion -> dispatchRegion),
     // so the strip and the sidebar cannot disagree about what a switch does or
     // whether it saves.
     struct TabToggle {
@@ -163,6 +164,7 @@ public:
     void showWhatsNew();
     // A tab's sidebar name, for a system toast about it ("Standings hidden").
     const char* tabTitle(int tabId) const { return getTabLabel(tabId); }
+    int activeTab() const { return m_activeTab; }   // the tab it opens on (TAB_*), shown or not
 
     // Persisted active-tab restore. The last-focused tab is saved to the INI
     // ([Profiles] activeTab) and restored on load, so reopening the settings menu lands on
@@ -262,7 +264,7 @@ public:
             PROFILE_CYCLE_UP,          // Cycle to next profile
             AUTO_SWITCH_TOGGLE,        // Toggle auto-switch for profiles
             SHORT_TIME_FORMAT_TOGGLE,  // Toggle compact time format
-            WIDGETS_TOGGLE,            // Toggle all widgets visibility (master switch)
+            MASTER_TOGGLE,             // A master switch (HudManager::MasterGroup); tabIndex = its tab
             TAB,                       // Select tab
             CLOSE_BUTTON,              // Close the settings menu
             // Controller/Rumble settings
@@ -285,11 +287,6 @@ public:
             // Tracked Riders settings
             RIDER_ADD,                 // Add rider to tracking list
             RIDER_REMOVE,              // Remove rider from tracking list
-            // Pagination for Riders tab
-            SERVER_PAGE_PREV,          // Previous page of server players
-            SERVER_PAGE_NEXT,          // Next page of server players
-            TRACKED_PAGE_PREV,         // Previous page of tracked riders
-            TRACKED_PAGE_NEXT,         // Next page of tracked riders
             VERSION_CLICK,             // Easter egg trigger (version string click)
             TOOLTIP_ROW,               // Hover-only region for row tooltips (no click action)
             // Update settings
@@ -320,8 +317,6 @@ public:
             STATS_SHOW_SESSION_TOGGLE, // Toggle session column
             STATS_SHOW_ALLTIME_TOGGLE, // Toggle all-time column
             ACHIEVEMENTS_TOASTS_TOGGLE,// Achievement toasts on/off (global master; also the tab-list checkbox)
-            ACHIEVEMENTS_PAGE_PREV,    // Previous page of the achievements list
-            ACHIEVEMENTS_PAGE_NEXT,    // Next page of the achievements list
             ACHIEVEMENTS_PRESTIGE,     // Trade the ladder for a prestige level (arms, then performs)
             // Clock Widget
             CLOCK_FORMAT_TOGGLE,       // Toggle 12h/24h format (ClockWidget)
@@ -352,10 +347,9 @@ public:
             DROPDOWN_OPTION,           // One entry of the open list (cycleIndex, flagBit = entry)
             // Appended, not grouped with the Map's other toggles: see COUNT.
             MAP_RANGE_ADAPTIVE_TOGGLE, // Toggle Follow's range growing with speed (MapHud)
-            OPEN_LINK_RELEASES,        // Open the GitHub releases page (Updates tab release notes)
             NOW_PLAYING_TOGGLE,        // Toggle the Now playing integration
-            FIND_FIELD, FIND_RESULT, FIND_PAGE_PREV, FIND_PAGE_NEXT,   // the title band's Find box + its page
-            WIDGETS_PAGE_PREV, WIDGETS_PAGE_NEXT,   // the Widgets tab's pager
+            FIND_FIELD, FIND_RESULT,   // the title band's Find box and a result row
+            SCROLL_BAR,                // a list's scrollbar; steppedIndex = its ScrollView::Id
 
             // Sentinel, always last. settings_layout_test.cpp's golden encodes
             // region types as raw ORDINALS, and this enum is unnumbered and
@@ -534,8 +528,7 @@ public:
         BaseHud* dirtyHud = nullptr;     // HUD to mark dirty after the change
         // Optional extra work, run after set() and before the dirty calls (e.g.
         // Stats resetting its auto-show latches, Friends clearing its transient
-        // ON_JOIN state, Standings stopping in-flight animations on OFF). Same
-        // lifetime rules as the get/set captures.
+        // ON_JOIN state). Same lifetime rules as the get/set captures.
         std::function<void()> postStep;
         std::function<std::string(int)> nameOf;  // a state's name; with 3+ states it draws as a dropdown
         std::function<int(int)> spriteOf;        // a state's icon sprite (0 = none): the list opens as a grid of icons
@@ -584,6 +577,7 @@ public:
     static BaseHud* renderTabMap(SettingsLayoutContext& ctx);
     static BaseHud* renderTabRadar(SettingsLayoutContext& ctx);
     static BaseHud* renderTabWidgets(SettingsLayoutContext& ctx);
+    static BaseHud* renderTabDecks(SettingsLayoutContext& ctx);
     static BaseHud* renderTabNotices(SettingsLayoutContext& ctx);
     static BaseHud* renderTabRumble(SettingsLayoutContext& ctx);
     static BaseHud* renderTabHelmet(SettingsLayoutContext& ctx);
@@ -642,8 +636,7 @@ public:
     bool handleClickTabSpotter(const ClickRegion& region);
     bool handleClickTabFmx(const ClickRegion& region);
     bool handleClickTabAchievements(const ClickRegion& region);
-    bool handleClickTabWidgets(const ClickRegion& region);
-    void landWidgetsPage(int tabId);   // the page a Find result or a "New" row is on
+    void landListRow(int tabId);   // Widgets, Decks: scroll a Find result's or a "New" row into view
     bool handleClickTabStreamChat(const ClickRegion& region);
     bool handleClickTabFind(const ClickRegion& region);
     bool handleClickTabStats(const ClickRegion& region);
@@ -720,9 +713,8 @@ public:
     // Regions are counted in layout order on the ACTIVE tab. Returns false when
     // no such region exists (e.g. wrong tab, index out of range).
     int testSteppedRegionCount(bool up) const;
-    // The open tab, a NAME -> index lookup and whether a tab sits in a More group,
-    // for the what's-new hooks: a test naming "Widgets" should not have to know it is tab 14.
-    int testActiveTab() const { return m_activeTab; }
+    // A NAME -> index lookup and whether a tab sits in a More group, for the
+    // what's-new hooks: a test naming "Widgets" should not have to know it is tab 14.
     const char* testTabNameForIndex(int t) const { return getTabName(t); }
     bool testTabInGroup(int t) const { return groupRowOf(t) >= 0; }
     // Does the LAST-BUILT tab carry a row registering this tooltip id? The
@@ -738,19 +730,18 @@ public:
         }
         return false;
     }
+    // A list's scroll state (ScrollView::Id), achievements' top group, a move of `steps` steps.
+    const ScrollView::State& testScroll(int id) const { return m_scrolls[id]; }
+    const char* testAchievementsTopGroup() const { return m_achievementsTopGroup; }
+    void testStepScroll(int id, int steps);
     // The centre of the LAST-BUILT region carrying this tooltip id, in the
     // panel's build space (the cursor space in-game), so a test can put the
     // injected mouse on a control. False when no region carries it.
-    // The achievements list's current page and the group it shows.
-    int testAchievementsPage(const char** group) const {
-        if (group) *group = m_achievementsPageGroup;
-        return m_achievementsPage;
-    }
     bool testRegionCenter(const char* tooltipId, float* x, float* y,   // `only`: one type (a slider)
                           ClickRegion::Type only = ClickRegion::COUNT, float* width = nullptr) const {
         if (!tooltipId || !x || !y) return false;
         for (const ClickRegion& r : m_clickRegions) {
-            if (r.tooltipId != tooltipId || (only != ClickRegion::COUNT && r.type != only)) continue;
+            if (r.tooltipId != tooltipId || r.width <= 0.0f || (only != ClickRegion::COUNT && r.type != only)) continue;
             if (width) *width = r.width;
             *x = r.x + r.width * 0.5f;
             *y = r.y + r.height * 0.5f;
@@ -916,7 +907,7 @@ private:
     // adding the per-card terms here: a hand-summed `nSections * (pad+border+margin)
     // + (n-1) * gap` is a second spelling of something PanelBox already computes,
     // and second spellings are where this panel's geometry faults come from. The
-    // layout is cached behind TallestKey, so the cost is a dozen layouts when the
+    // layout is cached behind MetricsKey, so the cost is a dozen layouts when the
     // metrics move, never per frame -- and it already runs a full tab RENDER per tab
     // to get here.
     float measureTallestBodyH(const ScaledDimensions& dim,
@@ -935,6 +926,7 @@ private:
     struct TabMeasure {
         float endY = 0.0f;
         std::vector<float> sections;
+        int endList = -1;   // the list the tab ends with (ScrollView::Id), or -1
     };
     // The sidebar's sections: one content height per tab-list group, in registry
     // order. The seam between groups is the engine's, not stated here.
@@ -954,17 +946,17 @@ private:
     // a question whose inputs have not moved -- roughly 29x the cost of the one
     // rebuild the drag actually needs. The key names the real triggers and nothing
     // else.
-    struct TallestKey {
-        float lineHeight = 0.0f;
-        float fontSize = 0.0f;
-        float cellW = 0.0f;
+    struct MetricsKey {
+        float lineHeight = 0.0f, fontSize = 0.0f, cellW = 0.0f, cellH = 0.0f;
         unsigned int themeGen = 0;   // 0 is never a live generation
-        bool operator==(const TallestKey& o) const {
-            return lineHeight == o.lineHeight && fontSize == o.fontSize
-                && cellW == o.cellW && themeGen == o.themeGen;
-        }
+        static MetricsKey of(const ScaledDimensions& d) { return { d.lineHeightNormal, d.fontSize, d.cellW, d.cellH, mxbThemeGeneration() }; }
+        bool operator==(const MetricsKey& o) const { return lineHeight == o.lineHeight && fontSize == o.fontSize && cellW == o.cellW && cellH == o.cellH && themeGen == o.themeGen; }
     };
-    TallestKey m_tallestKey;
+    MetricsKey m_tallestKey;
+    // The tab-ending list's fill (SettingsLayoutContext::planFilled): the content column's own height, on
+    // the same key plus what that measure reads. A glide rebuilds per frame; a body plan allocates.
+    struct FillMemo { MetricsKey key; float contentW = 0.0f, captionW = 0.0f, height = 0.0f; std::vector<float> sections; };
+    FillMemo m_fillMemo;
     // The tab the overflow warning last fired for, so a tab that overruns warns once
     // instead of on every rebuild (the panel rebuilds per frame while open). -1 = none.
     int m_overflowWarnedTab = -1;
@@ -1039,7 +1031,7 @@ private:
                      const PanelBox::ColumnGeom& col, float tabStartX,
                      float tabWidth, float checkboxWidth);
     // rebuildRenderData() sections; the footer row is settings_hud_footer.cpp.
-    PanelPlan& planSettingsPanel(const ScaledDimensions& dim, float& sidebarAsk, float& contentAsk, float& labelToControl, float& labelToRight);
+    PanelPlan& planSettingsPanel(const ScaledDimensions& dim, float& sidebarAsk, float& contentAsk, float& labelToControl, float& labelToRight, ScrollView::Fill& fill);
     float renderActiveTab(SettingsLayoutContext& layoutCtx, const PanelPlan& plan, const PanelBox::ColumnGeom& mainCol, const ScaledDimensions& dim, float currentY);
     void addWhatsNewRowBands(const PanelPlan& plan, const PanelBox::ColumnGeom& mainCol);
     void checkTabOverflow(const PanelPlan& plan, const PanelBox::ColumnGeom& mainCol, const ScaledDimensions& dim, float currentY);
@@ -1161,7 +1153,7 @@ private:
     int moreGroupTabs(int* tabs, int cap, int* groupRow) const;   // what the More page lists
     // Whether the tab's row has an on/off toggle; its state goes to *enabled.
     bool tabToggleState(int tabId, BaseHud* tabHud, bool* enabled) const;
-    ClickRegion::Type tabToggleType(int tabId, BaseHud* tabHud, BaseHud** target) const;  // its region
+    ClickRegion tabToggleRegion(int tabId, BaseHud* tabHud, float x, float y, float w, float h) const;  // its region
     const char* tabIconName(int tabId, BaseHud* tabHud) const;                             // identity icon
 
     // Per-tab custom reset bodies (referenced by s_tabRegistry rows; the simple
@@ -1172,6 +1164,7 @@ private:
     void resetTabStandingsExtra();   // DNS filter (global, outside the HUD snapshot)
     void resetTabRecordsExtra();     // provider + auto-fetch (global [General] keys)
     void resetTabWidgets();
+    void resetTabDecks();
     void resetTabRumble();
     void resetTabHelmet();
     void resetTabHotkeys();
@@ -1334,7 +1327,8 @@ public:
         TAB_MORE = 32,         // A section's More page (hidden; its sidebar row opens it)
         TAB_DASH = 33,         // Dash (one card stepping through pages)
         TAB_FIND = 34,         // Find results (hidden; the title band's Find box opens it)
-        TAB_COUNT = 35
+        TAB_DECKS = 35,       // Decks (a row per deck, and their Style)
+        TAB_COUNT = 36
     };
 private:
     int m_activeTab;
@@ -1371,13 +1365,11 @@ private:
     float m_trackedRidersStartX;       // X position where tracked riders section starts
     int m_trackedRidersPerRow;         // Number of tracked riders per row
 
-    // Pagination for Riders tab
-    int m_serverPlayersPage;           // Current page of server players (0-based)
-    int m_trackedRidersPage;           // Current page of tracked riders (0-based)
-    int m_achievementsPage = 0;        // Current page of the achievements list (0-based)
-    int m_achievementsJumpTo = -1;     // A row to open the page of at the next layout (-1: none)
-    const char* m_achievementsPageGroup = "";   // The drawn page's group name (for the tests)
-    int m_widgetsPage = 0;             // Current page of the Widgets tab (0-based)
+    // The scrolling lists (settings/scroll_view.h), one State per ScrollView::Id.
+    ScrollView::State m_scrolls[ScrollView::COUNT];
+    int m_achievementsJumpTo = -1;     // A row to scroll to at the next layout (-1: none)
+    const char* m_listJumpTo = nullptr;   // A grouped list's row to scroll to (landListRow)
+    const char* m_achievementsTopGroup = "";   // The group at the list's top (for the tests)
 
     // Tooltip support (Phase 2 description system)
     std::string m_hoveredTooltipId;    // Current tooltip ID from hovered region (empty = none)
@@ -1497,6 +1489,8 @@ private:
     SliderDrag m_sliderDrag;
     DropdownState m_dropdown;
     bool handleControlPress(int regionIndex, float cursorX);  // settings_controls.cpp, all four
+    bool pressScrollBar(int regionIndex, float cursorY);      // settings_scroll_view.cpp, both
+    void updateScrolls(float cursorX, float cursorY, bool cursorValid, bool leftHeld);
     void updateSliderDrag(float cursorX, bool pressed); void endSliderDrag(); void handleControlRegion(const ClickRegion& region); void buildDropdownPopup(float l, float t, float r, float b);
 
     // Tooltip ID for a click region type on the active tab ("" when none)

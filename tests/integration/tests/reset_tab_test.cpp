@@ -86,6 +86,7 @@ bool preservedByDesign(const std::string& tab, const ini::Key& k) {
     if (tab == "Stream Chat" && (section == "Twitch" || section == "YouTube") &&
         (key == "channel" || key == "enabled")) return true;
     if (tab == "Widgets"  && key == "widgetsEnabled") return true;
+    if (tab == "Decks"    && key == "decksEnabled") return true;
     // Consent, not tuning: replaying the factory value would turn a player's
     // opt-out back ON from a button that says "Reset General". See resetTabGeneral.
     if (tab == "General"  && section == "General"  && key == "analytics") return true;

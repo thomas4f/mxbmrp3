@@ -17,6 +17,7 @@
 #include "../hud/gamepad_geometry.h"    // GamepadLayout::PadGeometry (header-only, no deps)
 #include "../hud/pitboard_geometry.h"   // PitboardLayout::BoardGeometry (ditto)
 #include "../hud/gauge_geometry.h"      // GaugeLayout::GaugeGeometry (ditto)
+#include "../hud/deck_layout.h"         // DeckLayout::DeckGeometry (ditto)
 
 #include <string>
 #include <vector>
@@ -50,7 +51,7 @@ struct FontAsset {
     // Each codepoint's advance as a share of the font size, in build-space x,
     // read from the .fnt's glyph table at discovery (see fitChars). False when
     // the file could not be read: the font then measures as the grid's cells.
-    bool measured = false;
+    bool measured = false; mutable float digitInk = -1.0f;   // -1: not read yet (AssetManager::digitInk)
     std::array<float, 256> advance{};
 };
 
@@ -316,6 +317,9 @@ struct ThemeAsset {
     int titleCornerSprites[4] = {0, 0, 0, 0};
     int titleEdgeSprites[4]   = {0, 0, 0, 0};
     bool hasTitleArt() const { return titleCenterSprite > 0; }
+    // frame_slant_left/right.tga, both or neither: a deck `caps` box's ends (DeckHud::addSlantFrame)
+    int slantLeftSprite = 0, slantRightSprite = 0; float slantLeftAspect = 0.0f, slantRightAspect = 0.0f;
+    bool hasSlantCaps() const { return slantLeftSprite > 0 && slantRightSprite > 0; }
 
     // ICON OVERRIDES: themes/<name>/icons/<icon>.tga, keyed by the icon's filename
     // stem, valued with the sprite index the override was registered at.
@@ -561,6 +565,32 @@ struct GaugesAsset {
     int sprites[GaugeSprite::COUNT] = {};
 };
 
+// A THEME'S DECK LAYOUT -- themes/<name>/decks.ini (Regular) or decks-slanted.ini
+// (Slanted): the decks' look (hud/deck_hud.h), drawn from flat quads, strings,
+// the active theme's slices and deck_<stem>.tga pictures (deck_layout.h). `base`
+// names another theme whose layout of the same style it builds on (`regular`, in
+// decks-slanted.ini: this theme's own Regular); a skin states only what it changes.
+struct DeckAsset {
+    std::string name;          // the theme folder, e.g. "cabinet-dark"
+    bool slanted = false;      // decks-slanted.ini
+    std::string displayName;   // [pack] name (unused by the UI: Style is Regular/Slanted)
+    std::string baseName;      // [pack] base: a theme, or "regular"
+    DeckLayout::DeckGeometry geometry;
+    // The pictures its boxes, pills and wells name (`art = image`), each the
+    // first deck_<stem>.tga down its theme's base chain. imagePaths[k] is sprite
+    // firstImage + k, registered after the gauges: first the imageStems, then
+    // each theme's own copies (below).
+    std::vector<std::string> imageStems, imagePaths; std::vector<char> imageBlank;   // blank = 1x1, hidden unless themed
+    int firstImage = 0;
+    int imageSprite(const char* stem) const;   // 0 = none
+    // THE DRAWING THEME'S PICTURES WIN: a theme drawn in a layout it inherits
+    // (Carbon Light in Carbon Dark's) still shows its own deck_<stem>.tga (or its
+    // base theme's). themedImages[theme * imageStems.size() + k] is theme's
+    // sprite for stem k: 0 = the layout's, -1 = a 1x1 that hides it.
+    std::vector<int> themedImages;
+    int themedSprite(int themeIndex, int sprite) const;   // -1 = draw nothing
+};
+
 struct GamepadAsset {
     std::string name;          // directory name, e.g. "xbox"
     std::string displayName;   // [pad] name, else generated from the directory name
@@ -634,6 +664,9 @@ public:
     // A font not measured counts a grid cell a character. On a rebuild, not per
     // frame: one add per character.
     int fitChars(int fontIndex, const char* text, float width, float fontSize) const;
+    // The drawn width of `text`'s first `count` characters (all when count < 0)
+    float textWidth(int fontIndex, const char* text, float fontSize, int count = -1) const;
+    float digitInk(int fontIndex) const;   // measureFntDigitInk, read once per font; 0 = unknown
 
     // ========================================================================
     // Texture Access
@@ -965,7 +998,7 @@ public:
     // Look up a pad pack by directory name; nullptr if absent. Nullable for the
     // same reason getThemeByName() is: the setting names a pack the user may have
     // deleted, and the caller falls back to the shipped default rather than to
-    // "no pad at all" (see GamepadWidget::activePack).
+    // "no pad at all" (see GamepadWidget::activeLayout).
     const GamepadAsset* getGamepadByName(const std::string& name) const;
 
     // The pack a setting should fall back TO: the shipped default if present, else
@@ -1009,6 +1042,25 @@ public:
     std::string getGaugesPath(const std::string& packName, const char* stem) const;
 
     static constexpr const char* DEFAULT_GAUGES = "classic";
+
+    // ========================================================================
+    // Deck Layouts -- each theme's decks.ini / decks-slanted.ini (DeckAsset).
+    // ========================================================================
+
+    const std::vector<DeckAsset>& getDecks() const { return m_decks; }
+    size_t getDeckImageCount() const {
+        size_t n = 0;
+        for (const DeckAsset& d : m_decks) n += d.imagePaths.size();
+        return n;
+    }
+    const DeckAsset* findDeck(const std::string& theme, bool slanted) const;   // that theme's own, else null
+    static const char* deckIniName(bool slanted);
+    // The theme that ships both layouts: what a theme without one falls back to.
+    static constexpr const char* DEFAULT_DECK_THEME = "cabinet-dark";
+    static constexpr const char* DECK_BASE_REGULAR = "regular";   // decks-slanted.ini: base = this theme's Regular
+    // The theme's layout, else its base theme's, else DEFAULT_DECK_THEME's, else
+    // any of that style. Never null while any layout exists.
+    const DeckAsset* getThemeDeck(const ThemeAsset& theme, bool slanted) const;
     // The pack migrateLegacyGaugeArt() writes, and the one getDefaultGauges()
     // prefers when it exists. Named here so the writer and the reader cannot
     // disagree about the folder.
@@ -1107,6 +1159,7 @@ private:
     void discoverGamepads();
     void discoverPitboards();
     void discoverGauges();
+    void discoverDecks();   // asset_manager_decks.cpp
 
     // ONE-TIME UPGRADE PATH for gauge art that predates gauges/<name>/ packs.
     //
@@ -1158,6 +1211,10 @@ private:
     // 1024x1024 board comes back 16:9-stretched until a restart.
     // `dir` must end with a separator.
     static void seedPitboardArt(const std::string& dir, PitboardAsset& board);
+    // A deck layout's ini into its geometry, then finalize() -- the reader the
+    // discovery and the RELOAD_CONFIG pass share (asset_manager_decks.cpp).
+    static void readDeckIni(const std::string& iniPath, DeckAsset& deck);
+    void reloadDeckLayouts();
 public:
     // Re-read the defaults file and every theme's own ini, WITHOUT
     // re-discovering sprites. Backs the RELOAD_CONFIG hotkey.
@@ -1213,6 +1270,7 @@ private:
     std::vector<GamepadAsset> m_gamepads;
     std::vector<PitboardAsset> m_pitboards;
     std::vector<GaugesAsset> m_gauges;
+    std::vector<DeckAsset> m_decks;
 
     // savePath\mxbmrp3, remembered from syncUserAssets so the RELOAD_CONFIG hotkey
     // can re-copy every pack type from the folder the user actually edits. Empty

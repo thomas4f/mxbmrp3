@@ -174,6 +174,7 @@ private:
     std::vector<SPluginString_t> m_strings MXB_GUARDED_BY(m_mutex);
     std::vector<hudlayers::Span> m_spans MXB_GUARDED_BY(m_mutex);
     int m_layerCount MXB_GUARDED_BY(m_mutex) = 0;
+    std::vector<hudclip::Clip> m_clips MXB_GUARDED_BY(m_mutex);   // core/render_clip.h
     // These five ride the same lock as m_quads/m_strings above — submit() writes
     // them under m_mutex on the game thread, the window thread copies them under
     // m_mutex before rendering — but they had no MXB_GUARDED_BY, so the

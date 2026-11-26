@@ -19,7 +19,6 @@
 #include "notices_hud.h"
 #include "rider_flag_icons.h"
 #include "fuel_widget.h"
-#include "telemetry_hud.h"
 #include "timing_hud.h"
 #include "../core/asset_manager.h"
 #include "../core/motion.h"
@@ -40,8 +39,6 @@ constexpr float ICON_PITCH = 1.6f;
 constexpr float ACTIVE_ICON_SCALE = 1.35f;
 // The other pages' icons, muted and at this opacity, so the one showing stands out.
 constexpr float INACTIVE_ICON_OPACITY = 0.5f;
-// Page names: how long a stepped-to page's name holds before its content.
-constexpr float NAME_HOLD_MS = 600.0f;
 
 // Indexed by DashHud::Page.
 // The name is the one the page's row has in Settings > Dash > Pages; `mark` is
@@ -145,7 +142,7 @@ DashHud::DashHud() {
 
 void DashHud::updateRiderPositions(int numVehicles, const Unified::TrackPositionData* positions) {
     if (numVehicles <= 0 || !positions || !isVisibleAnySurface() ||
-        (m_page != Page::FLAT_MAP && !(m_fromPage == Page::FLAT_MAP && m_fadeMs > 0.0f))) {
+        (m_page != Page::FLAT_MAP && !(fromPage() == Page::FLAT_MAP && m_flip.fading()))) {
         m_riderPositions.clear();
         return;
     }
@@ -175,18 +172,8 @@ uint64_t DashHud::hintKeys() {
 void DashHud::goTo(Page next) {
     if (next == m_page) return;
     // Start from what is on screen now (see the header's MOTION note).
-    const float e = fadeProgress();
-    const float stripNow = m_stripFrom * (1.0f - e);   // offset from the current page
-    const float inNow = m_inFrom + (1.0f - m_inFrom) * e;
-    const float outNow = m_fromAlpha * (1.0f - e);
-    // Back to the page fading out: it comes in again from where it had got to.
-    m_inFrom = next == m_fromPage ? outNow : 0.0f;
-    m_fromPage = m_page;
-    m_fromAlpha = inNow;
-    // The name showing leaves with its page; the new page opens on its content
-    // unless the step that brought it puts its name up (step()).
-    m_fromName = m_nameUp ? nameShare() : 0.0f;
-    m_nameUp = false;
+    const float stripNow = m_stripFrom * (1.0f - m_flip.progress());   // offset from the current page
+    m_flip.go(static_cast<int>(m_page), static_cast<int>(next));
     // Round the ring the short way, so a wrap (last to first) slides on by one
     // like any other step. The strip follows the rider's page, not a notice
     // taking the card over: with a hold on, before and after, it stays put
@@ -195,76 +182,15 @@ void DashHud::goTo(Page next) {
     const Page stripNew = m_noticeHold ? m_returnPage : next;
     m_stripFrom = ringOffset(static_cast<float>(slotOf(stripOld)) + stripNow - static_cast<float>(slotOf(stripNew)));
     m_page = next;
-    m_fadeMs = Motion::profileFor(UiConfig::getInstance().getMotion()).inMs;
-    m_fadeStartUs = DigitRoll::nowUs();
-    if (m_fadeMs <= 0.0f) stopFade();
+    if (!m_flip.fading()) stopFade();
     setDataDirty();
-}
-
-int DashHud::enabledCount() const {
-    int n = 0;
-    for (int i = 0; i < CYCLE_PAGES; ++i)
-        if (pageEnabled(static_cast<Page>(i))) ++n;
-    return n;
-}
-
-float DashHud::ringOffset(float d) const {
-    // Two pages or fewer: a ring and a line are the same strip.
-    const int n = enabledCount();
-    if (n < 3) return d;
-    const float count = static_cast<float>(n);
-    const float half = count * 0.5f;
-    while (d >= half) d -= count;
-    while (d < -half) d += count;
-    return d;
-}
-
-int DashHud::slotOf(Page page) const {
-    int slot = 0;
-    for (int i = 0; i < static_cast<int>(page); ++i)
-        if (pageEnabled(static_cast<Page>(i))) ++slot;
-    return slot;
-}
-
-DashHud::Page DashHud::firstEnabledFrom(Page from) const {
-    const int count = CYCLE_PAGES;
-    for (int i = 0; i < count; ++i) {
-        const Page p = static_cast<Page>((static_cast<int>(from) + i) % count);
-        if (pageEnabled(p)) return p;
-    }
-    return from;
-}
-
-void DashHud::stopFade() {
-    m_fadeMs = 0.0f;
-    m_fromAlpha = 0.0f;
-    m_inFrom = 0.0f;
-    m_stripFrom = 0.0f;
-}
-
-float DashHud::nameShare() const {
-    if (!m_nameUp) return 0.0f;
-    const float ms = static_cast<float>(DigitRoll::nowUs() - m_nameStartUs) * 0.001f - NAME_HOLD_MS;
-    if (ms < 0.0f) return 1.0f;
-    const float fadeMs = Motion::profileFor(UiConfig::getInstance().getMotion()).inMs;
-    if (fadeMs <= 0.0f || ms >= fadeMs) return 0.0f;
-    return 1.0f - Motion::smooth(ms / fadeMs);
-}
-
-float DashHud::fadeProgress() const {
-    if (m_fadeMs <= 0.0f) return 1.0f;
-    const float ms = static_cast<float>(DigitRoll::nowUs() - m_fadeStartUs) * 0.001f;
-    return ms >= m_fadeMs ? 1.0f : Motion::smooth(ms / m_fadeMs);
 }
 
 void DashHud::update() {
     // The history buffers start fresh when the Dash starts drawing them, as on
-    // the Telemetry HUD's show edge, unless that HUD is still drawing them.
+    // the Telemetry HUD's show edge, unless another user is still drawing them.
     const bool historyUser = wantsTelemetryHistory();
-    if (historyUser && !m_wasHistoryUser &&
-        !HudManager::getInstance().getTelemetryHud().isVisibleAnySurface()) {
-        PluginData::getInstance().clearHistoryBuffers();
-    }
+    if (historyUser && !m_wasHistoryUser) HudManager::getInstance().startTelemetryHistory(this);
     m_wasHistoryUser = historyUser;
 
     // The page set changed (Settings > Dash > Pages): off a page that left, with
@@ -276,7 +202,7 @@ void DashHud::update() {
         // A notice holding the card stays up; the page it returns to moves.
         if (m_noticeHold) m_returnPage = firstEnabledFrom(m_returnPage);
         else m_page = firstEnabledFrom(m_page);
-        m_fromPage = m_page;
+        m_flip.from = static_cast<int>(m_page);
         m_shownPages = m_enabledPages;
         setDataDirty();
     }
@@ -381,7 +307,7 @@ void DashHud::update() {
         changed = m_deltaPlot.due(HudManager::getInstance().getDeltaTraceHud().getReference(), false) || changed;
         // Between rebuilds the rider's marker moves in place, as on the Delta
         // Trace HUD (not mid-fade or under a page name, which rebuild anyway).
-        if (!changed && m_fadeMs <= 0.0f && !m_nameUp) {
+        if (!changed && !m_flip.fading() && !m_flip.nameUp) {
             m_deltaPlot.moveMarker(*this, HudManager::getInstance().getDeltaTraceHud().getReference());
         }
     } else if (m_page == Page::GAP_CHART) {
@@ -393,22 +319,10 @@ void DashHud::update() {
     } else if (m_page == Page::SESSION) {
         changed = changed || sessionInfoChanged();
     }
-    // A fade redraws every frame until it ends, then stops.
-    if (m_fadeMs > 0.0f) {
-        changed = true;
-        if (fadeProgress() >= 1.0f) stopFade();
-    }
-    // A page name redraws every frame while it fades; held, or with Motion off,
-    // only once more when it is done.
-    if (m_nameUp) {
-        const float share = nameShare();
-        if (share <= 0.0f) {
-            m_nameUp = false;
-            changed = true;
-        } else if (share < 1.0f) {
-            changed = true;
-        }
-    }
+    // A fade or a page name fading redraws every frame until it ends (PageFlip),
+    // the strip's slide with the fade
+    changed = m_flip.tick() || changed;
+    if (!m_flip.fading()) m_stripFrom = 0.0f;
     if (changed) setDataDirty();
 
     processDirtyFlags();
@@ -564,16 +478,14 @@ void DashHud::rebuildRenderData() {
     // its alpha after they are laid out (the panel's quads are shared and stay).
     // One large line sits in the middle of the card.
     const float largeY = inkCenteredY(boxY, boxH, dim.fontSizeLarge);
-    const float fade = fadeProgress();
     for (int pass = 0; pass < 2; ++pass) {
-        const Page page = pass == 0 ? m_fromPage : m_page;
-        const float alpha = pass == 0 ? m_fromAlpha * (1.0f - fade)
-                                      : m_inFrom + (1.0f - m_inFrom) * fade;
+        const Page page = pass == 0 ? fromPage() : m_page;
+        const float alpha = pass == 0 ? m_flip.outAlpha() : m_flip.inAlpha();
         if (pass == 0 && (page == m_page || alpha <= 0.0f)) continue;
         // The page's name's share of it (PAGE NAMES in the header); the content
         // takes the rest. The hint stands in the name's place, held.
         const bool hint = pass == 1 && !m_stepTried && page != Page::NOTICES;
-        const float nameAlpha = hint ? 1.0f : pass == 0 ? m_fromName : nameShare();
+        const float nameAlpha = hint ? 1.0f : pass == 0 ? m_flip.fromName : m_flip.nameShare();
         const size_t firstString = m_strings.size();
         const size_t firstQuad = m_quads.size();
         switch (page) {
@@ -596,7 +508,7 @@ void DashHud::rebuildRenderData() {
                 const NoticesHud& notices = HudManager::getInstance().getNoticesHud();
                 const float slabOpacity = notices.getBackgroundOpacity();
                 unsigned long fill = 0, ink = 0;
-                notices.slabColors(notice.kind, slabOpacity, m_fBackgroundOpacity, fill, ink);
+                NoticesHud::slabColors(notices, notice.kind, slabOpacity, m_fBackgroundOpacity, fill, ink);
                 // Its glow reaches as far as the Notices HUD's (whose slab is one
                 // large row), not a share of this taller box.
                 if (NoticesHud::glows(notice.kind))
@@ -764,7 +676,7 @@ void DashHud::rebuildRenderData() {
                 const char* const kLabels[FUEL_ROWS] = { TR("Fuel"), TR("Used"), TR("Per lap"), TR("Laps left") };
                 static constexpr uint32_t kBits[FUEL_ROWS] = {
                     FuelWidget::ROW_FUEL, FuelWidget::ROW_USED, FuelWidget::ROW_AVG, FuelWidget::ROW_EST };
-                const char* unit = m_shownFuel.unit == static_cast<int>(FuelWidget::FuelUnit::GALLONS) ? "g" : "L";
+                const char* unit = UnitConversion::fuelLabel(m_shownFuel.unit == static_cast<int>(FuelWidget::FuelUnit::GALLONS));
                 // The card holds three rows: with all four on (Used is INI-only on
                 // the widget), Used gives way so laps left, the reading that
                 // matters, stays.
@@ -901,44 +813,43 @@ void DashHud::rebuildRenderData() {
         // the last page slides on to the first rather than back across the strip.
         // The icon opposite the page showing sits on the ring's seam, where it
         // fades out over half an icon and back in on the other side (so with an
-        // even page count that one is hidden at rest). Should the pages outgrow
-        // the strip, the outermost also fade out over their last icon.
-        const float shown = static_cast<float>(slotOf(getPage())) + m_stripFrom * (1.0f - fade);
-        // Down a side the icons fade by how close they come to the card's edge
-        // instead (the renderer cannot clip), the page showing's always whole.
-        const float room = stripSide ? static_cast<float>(pages) : std::max(1.0f, stripW * 0.5f / pitch - 0.5f);
-        // Never larger than the strip: the renderer cannot clip, and a theme
-        // with no panel padding leaves the strip about one row tall (or one
-        // icon wide).
+        // even page count that one is hidden at rest).
+        const float shown = static_cast<float>(slotOf(getPage())) + m_stripFrom * (1.0f - m_flip.progress());
+        // Never larger than the strip: a theme with no panel padding leaves the
+        // strip about one row tall (or one icon wide).
         const float maxSize = stripSide ? stripW * UI_ASPECT_RATIO : stripH;
         const int ring = enabledCount();
+        // Every icon is laid out where it slides and handed to the strip's edge
+        // (hud/clip_marks.h): our renderers cut it there; the game has it gone
+        // before it reaches it. Across a row, faded over its last slot, gone
+        // with its centre half a slot inside; down a side, over the last fifth
+        // of a slot before its edge would cross.
+        // Only the strip's two ends ever cut: across it, an icon is never
+        // larger than the strip (maxSize), so the box reaches well past it.
+        const ClipMarks::Rect strip =
+            stripSide ? ClipMarks::rows(stripY, stripY + stripH) : ClipMarks::columns(stripX, stripX + stripW);
+        const float rowHalfW = baseSize / UI_ASPECT_RATIO * 0.5f;
+        const Edge rule = stripSide ? Edge{ -pitch * 0.2f, pitch * 0.2f, false }
+                                    : Edge{ rowHalfW - 1.5f * pitch, pitch, false };
         int slot = 0;
         for (int i = 0; i < pages; ++i) {
             if (!pageEnabled(static_cast<Page>(i))) continue;
-            const float d = ringOffset(static_cast<float>(slot++) - shown);
+            const float at = static_cast<float>(slot++);
+            const float d = ringOffset(at - shown);
             const float ad = d < 0.0f ? -d : d;
-            float edge = room - ad;
-            if (ring >= 3) {
-                const float seam = (static_cast<float>(ring) * 0.5f - ad) * 2.0f;
-                if (seam < edge) edge = seam;
-            }
+            const float seam = ring >= 3 ? Motion::fadePast(ad - (static_cast<float>(ring) * 0.5f - 0.5f), 0.5f) : 1.0f;
+            if (seam <= 0.0f) continue;
             // How much this icon is the page showing: 1 at the centre, 0 one icon out.
             const float focus = ad < 1.0f ? 1.0f - ad : 0.0f;
-            float size = baseSize * (1.0f + (ACTIVE_ICON_SCALE - 1.0f) * focus);
-            if (size > maxSize) size = maxSize;
-            if (stripSide) {
-                // Gone by the time its edge would cross the card's, over its
-                // last fifth of a slot.
-                const float clear = stripH * 0.5f - pitch * ad - size * 0.5f;
-                const float fit = clear / (pitch * 0.2f);
-                if (fit < edge) edge = fit;
-            }
-            edge = edge < 0.0f ? 0.0f : (edge > 1.0f ? 1.0f : edge);
-            if (edge <= 0.0f) continue;
-            const float opacity = edge * (INACTIVE_ICON_OPACITY + (1.0f - INACTIVE_ICON_OPACITY) * focus);
-            const unsigned long ink = Motion::scaleAlpha(focus >= 0.5f ? primary : muted, opacity);
+            const float size = std::min(baseSize * (1.0f + (ACTIVE_ICON_SCALE - 1.0f) * focus), maxSize);
             const float x = stripSide ? stripCX : stripCX + pitch * d;
             const float y = stripSide ? stripCY + pitch * d : stripCY;
+            const float halfW = size / UI_ASPECT_RATIO * 0.5f, halfH = size * 0.5f;
+            const ClipMarks::Rect icon{ x - halfW, y - halfH, x + halfW, y + halfH };
+            if (ClipMarks::outside(icon, strip)) continue;
+            const size_t iconQuad = m_quads.size(), iconString = m_strings.size();
+            const float share = INACTIVE_ICON_OPACITY + (1.0f - INACTIVE_ICON_OPACITY) * focus;
+            const unsigned long ink = Motion::scaleAlpha(focus >= 0.5f ? primary : muted, seam * share);
             if (useIcons && m_iconSprite[i] > 0) {
                 // Drop shadow on, it takes one like the title icon; marks are
                 // strings and take the strings' own.
@@ -951,6 +862,8 @@ void DashHud::rebuildRenderData() {
                 addString(kPages[i].mark, x, inkCenteredY(y - stripH * 0.5f, stripH, textSize),
                           Justify::CENTER, getFont(FontCategory::STRONG), ink, textSize);
             }
+            m_clip.edge(m_quads, m_strings, iconQuad, m_quads.size(), iconString, m_strings.size(), icon, strip,
+                        rule);
         }
     }
 
@@ -960,7 +873,7 @@ void DashHud::rebuildRenderData() {
 }
 
 void DashHud::resetToDefaults() {
-    m_bVisible = true;
+    m_bVisible = false;   // a new install opens on the Map and the Toggles strip alone
     m_bShowTitle = false;
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
     setScale(1.0f);
@@ -972,7 +885,7 @@ void DashHud::resetToDefaults() {
     m_shownPages = DEFAULT_PAGES;
     m_options = DEFAULT_OPTIONS;
     m_stripPlace = DEFAULT_STRIP_PLACE;
-    m_fromPage = DEFAULT_PAGE;
+    m_flip.from = static_cast<int>(DEFAULT_PAGE);
     stopFade();
     clearName();
     m_noticeHold = false;

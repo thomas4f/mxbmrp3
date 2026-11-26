@@ -225,7 +225,7 @@ void EventRecorder::recordRunInit(const SPluginsBikeSession_t* data) {
     writeEvent(Recording::EventType::RunInit, data, sizeof(SPluginsBikeSession_t));
 }
 
-void EventRecorder::recordRunTelemetry(const SPluginsBikeData_t* data, float fTime, float fPos) {
+void EventRecorder::recordRunTelemetry(const SPluginsBikeData_t* data, int dataSize, float fTime, float fPos) {
     // Fast-path guard: the mxb_api.cpp taps call every record* unconditionally, so
     // methods that pack a struct or allocate BEFORE writeEvent()'s gate must bail
     // here first — otherwise a disabled recorder (the default for every user) pays
@@ -233,18 +233,17 @@ void EventRecorder::recordRunTelemetry(const SPluginsBikeData_t* data, float fTi
     // the "zero cost when disabled" contract true.
     if (!m_recording || !data) return;
 
-    // Pack telemetry data (bike data + time + pos)
-    struct TelemetryData {
-        SPluginsBikeData_t bikeData;
-        float time;
-        float pos;
-    } telemetryData;
+    // Pack [game bytes][float time][float pos]. The game bytes carry the trailing
+    // rider-stance int only when the game sent it (see the header), so a tape from
+    // a build without it is byte-identical to the original format.
+    constexpr size_t kBike = sizeof(SPluginsBikeData_t);
+    unsigned char packed[kBike + sizeof(int) + 2 * sizeof(float)];
+    const size_t bikeBytes = (dataSize >= static_cast<int>(kBike + sizeof(int))) ? kBike + sizeof(int) : kBike;
+    memcpy(packed, data, bikeBytes);
+    memcpy(packed + bikeBytes, &fTime, sizeof(float));
+    memcpy(packed + bikeBytes + sizeof(float), &fPos, sizeof(float));
 
-    memcpy(&telemetryData.bikeData, data, sizeof(SPluginsBikeData_t));
-    telemetryData.time = fTime;
-    telemetryData.pos = fPos;
-
-    writeEvent(Recording::EventType::RunTelemetry, &telemetryData, sizeof(telemetryData));
+    writeEvent(Recording::EventType::RunTelemetry, packed, static_cast<uint32_t>(bikeBytes + 2 * sizeof(float)));
 }
 
 void EventRecorder::recordRaceEvent(const SPluginsRaceEvent_t* data) {

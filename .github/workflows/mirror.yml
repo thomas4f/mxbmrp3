@@ -1,11 +1,18 @@
 # ============================================================================
 # Publish the current default-branch tree to the release repo as ONE commit.
 #
-# Creates a single commit whose tree IS this branch's tree, parented on the
-# target's main (`git commit-tree`), then fast-forwards the target by that one
-# commit — the whole tree in one squash, with no half-applied working-tree
-# copy. .gitignored files (build output, the stamped version_build.g.h) are
-# not in the tree, so they are never included.
+# Creates a single commit whose tree IS this branch's tree, minus the paths
+# in PRIVATE_ONLY, parented on the target's main (`git commit-tree`), then
+# fast-forwards the target by that one commit — the whole tree in one squash,
+# with no half-applied working-tree copy. .gitignored files (build output, the
+# stamped version_build.g.h) are not in the tree, so they are never included.
+#
+# PRIVATE_ONLY is data that stays in this repo. The usage-survey rollup holds
+# one row per install and per launch hour; the public page and REPORT.md are
+# built from it here and carry only the aggregates, so the rows themselves
+# are left out. A path listed there is removed from the public tree on the
+# next push, and the push step
+# refuses a tree that still contains one.
 #
 # TWO MODES (dry-run by default, like release.yml):
 #   • DRY RUN — "Run workflow" with "Push" OFF: fetch the target's main and
@@ -73,6 +80,8 @@ concurrency:
 env:
   PUBLIC_REPO: thomas4f/mxbmrp3
   PUBLIC_BRANCH: main
+  # Space-separated paths kept out of the public tree (see the header).
+  PRIVATE_ONLY: usage_survey/rollup
 
 jobs:
   mirror:
@@ -157,10 +166,31 @@ jobs:
             echo "Mirroring as: Release ${TAG}"
           fi
 
+      # The tree to publish: HEAD's, with PRIVATE_ONLY dropped. Built in a
+      # throwaway index, so the checkout and HEAD are untouched.
+      - name: Build the public tree
+        id: tree
+        run: |
+          export GIT_INDEX_FILE="$RUNNER_TEMP/mirror.index"
+          git read-tree HEAD
+          for p in $PRIVATE_ONLY; do
+            git rm -r --cached --quiet --ignore-unmatch -- "$p"
+          done
+          TREE=$(git write-tree)
+          for p in $PRIVATE_ONLY; do
+            if [ -n "$(git ls-tree -r --name-only "$TREE" -- "$p")" ]; then
+              echo "::error::$p is still in the public tree"; exit 1
+            fi
+          done
+          echo "tree=$TREE" >> "$GITHUB_OUTPUT"
+          echo "Public tree $TREE (HEAD minus: $PRIVATE_ONLY)"
+
       - name: Preview changes (tree vs public/main)
+        env:
+          TREE: ${{ steps.tree.outputs.tree }}
         run: |
           echo "## Mirror preview: ${{ steps.title.outputs.message }}" >> "$GITHUB_STEP_SUMMARY"
-          if git diff --quiet "public/${PUBLIC_BRANCH}" HEAD; then
+          if git diff --quiet "public/${PUBLIC_BRANCH}" "$TREE"; then
             echo "This tree and public/${PUBLIC_BRANCH} already have identical trees — nothing to mirror."
             echo "_Trees are identical — nothing to mirror._" >> "$GITHUB_STEP_SUMMARY"
             echo "identical=true" >> "$GITHUB_ENV"
@@ -168,7 +198,7 @@ jobs:
           fi
           echo "identical=false" >> "$GITHUB_ENV"
           echo "Files that would change on public/${PUBLIC_BRANCH}:"
-          git --no-pager diff --stat "public/${PUBLIC_BRANCH}" HEAD | tee /tmp/mirror_diff.txt
+          git --no-pager diff --stat "public/${PUBLIC_BRANCH}" "$TREE" | tee /tmp/mirror_diff.txt
           { echo '```'; cat /tmp/mirror_diff.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Push squashed commit to public
@@ -176,12 +206,12 @@ jobs:
         env:
           ACTOR: ${{ github.actor }}
           MESSAGE: ${{ steps.title.outputs.message }}
+          TREE: ${{ steps.tree.outputs.tree }}
         run: |
-          # One commit whose tree = HEAD's tree, parented on public/main.
+          # One commit whose tree = the public tree built above, parented on public/main.
           # No working-tree mutation, so the squash can never be half-applied.
           git config user.name  "$ACTOR"
           git config user.email "${ACTOR}@users.noreply.github.com"
-          TREE=$(git rev-parse "HEAD^{tree}")
           PARENT=$(git rev-parse "public/${PUBLIC_BRANCH}")
           COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "$MESSAGE")
           echo "Created squashed commit $COMMIT (tree $TREE on top of $PARENT)"

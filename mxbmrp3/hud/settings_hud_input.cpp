@@ -137,12 +137,15 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
             UiConfig::getInstance().setMenuOnlyCursor(!UiConfig::getInstance().getMenuOnlyCursor());
             rebuildRenderData();
             break;
-        case ClickRegion::WIDGETS_TOGGLE:
+        case ClickRegion::MASTER_TOGGLE:
             {
                 HudManager& hudManager = HudManager::getInstance();
-                hudManager.setWidgetsEnabled(!hudManager.areWidgetsEnabled());
+                const HudManager::MasterGroup group = HudManager::groupForTab(region.tabIndex);
+                if (group == HudManager::MasterGroup::Count) break;
+                hudManager.setGroupEnabled(group, !hudManager.isGroupEnabled(group));
                 rebuildRenderData();
-                DEBUG_INFO_F("Widgets master toggle: %s", hudManager.areWidgetsEnabled() ? "enabled" : "disabled");
+                DEBUG_INFO_F("Master toggle for tab %d: %s", region.tabIndex,
+                             hudManager.isGroupEnabled(group) ? "enabled" : "disabled");
             }
             break;
         case ClickRegion::UPDATE_CHECK_TOGGLE:
@@ -234,7 +237,7 @@ void SettingsHud::dispatchRegion(const ClickRegion& region, bool skipSave) {
         case ClickRegion::HELMET_OVERLAY_TOGGLE:
             if (m_helmetOverlay) {
                 // Visibility gate only — doesn't touch individual enable flags
-                // (same pattern as WIDGETS_TOGGLE).
+                // (same pattern as MASTER_TOGGLE).
                 //
                 // setVisible(), NOT toggleHudOnActiveSurface(): the helmet never
                 // renders on the companion (BaseHud::rendersOnCompanion), so the game
@@ -462,7 +465,7 @@ void SettingsHud::handleTabClick(const ClickRegion& region) {
         m_activeTab = region.tabIndex;
     }
     recordTabOpened(m_activeTab);   // Grand Tour
-    landWidgetsPage(m_activeTab);
+    landListRow(m_activeTab);
     // OPENING a marked tab clears its "New" tag -- the tag's only claim is that
     // there is something here you have not looked at, and now you have. The rows
     // keep their bands until hovered; finding the row is a separate thing from
@@ -607,8 +610,8 @@ static bool isPerturbSafe(SettingsHud::ClickRegion::Type t) {
         // open other tabs -- navigation, no setting.
         case CR::FIND_FIELD:
         case CR::FIND_RESULT:
-        case CR::FIND_PAGE_PREV:
-        case CR::FIND_PAGE_NEXT:
+        // A list's scrollbar moves the view, never a setting.
+        case CR::SCROLL_BAR:
         // Writes to ANOTHER profile, which no per-tab reset claims to undo.
         case CR::COPY_BUTTON:
         // Leaves the menu waiting for a keypress that never comes.
@@ -621,7 +624,6 @@ static bool isPerturbSafe(SettingsHud::ClickRegion::Type t) {
         case CR::OPEN_LINK_KOFI:
         case CR::OPEN_LINK_GITHUB:
         case CR::OPEN_LINK_OVERLAY:
-        case CR::OPEN_LINK_RELEASES:
         case CR::UPDATE_CHECK_NOW:
         case CR::UPDATE_INSTALL:
         case CR::PROBE_SWEEP:

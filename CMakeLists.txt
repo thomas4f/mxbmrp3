@@ -181,9 +181,15 @@ mxb_gate(vendored-manifest fast 120 "python3" "python3 tools/check_vendored_mani
 # The translation template is current with every TR() in the source, and every
 # shipped language pack passes msgfmt --check (core/i18n.h, tools/i18n/pot.sh).
 mxb_gate(i18n-template fast 120 "xgettext msgfmt" "./tools/i18n/pot.sh")
-# Guarded with the subdirectory that defines them: $<TARGET_FILE:unit_tests> is
-# a generate-time error when the target does not exist, so an MSVC configure
-# would fail outright rather than just skipping these.
+# Guarded with the subdirectory that defines them, so an MSVC configure skips
+# these rather than registering gates for targets it never defines.
+#
+# The binary is named by PATH, not $<TARGET_FILE:...>. On the GitHub runner's
+# newer CTest (4.5 brought test-preparation targets) a command naming a target
+# made the test Not Run ("Unable to find build dependency") on a fresh tree,
+# before the gate's own `cmake --build` could build it: the bare-box job runs
+# ctest straight after configure. A path names no target. It is the target's
+# default output dir, which tests/unit/CMakeLists.txt leaves unset.
 #
 # -j$(nproc), never a bare -j: with Makefiles a bare -j starts EVERY compile at
 # once - 6.7 GB peak for the unit suite alone (1.7 GB at -j4) and no faster -
@@ -194,9 +200,9 @@ mxb_gate(i18n-template fast 120 "xgettext msgfmt" "./tools/i18n/pot.sh")
 # third compile of the suite (~50s cold) that could catch nothing the sanitized
 # one misses. It stays the quickest single check: `ctest -R '^unit$'`.
 if(TARGET unit_tests)
-    mxb_gate(unit quick 600 "g++" "cmake --build '${CMAKE_BINARY_DIR}' --target unit_tests -j$(nproc) && '$<TARGET_FILE:unit_tests>'")
+    mxb_gate(unit quick 600 "g++" "cmake --build '${CMAKE_BINARY_DIR}' --target unit_tests -j$(nproc) && '${CMAKE_BINARY_DIR}/tests/unit/unit_tests'")
     mxb_gate(unit-coverage fast 900 "g++ python3 gcovr" "./tests/unit/coverage.sh 95 '${CMAKE_BINARY_DIR}'")
-    mxb_gate(unit-asan fast 900 "g++" "cmake --build '${CMAKE_BINARY_DIR}' --target unit_tests_asan -j$(nproc) && '$<TARGET_FILE:unit_tests_asan>'")
+    mxb_gate(unit-asan fast 900 "g++" "cmake --build '${CMAKE_BINARY_DIR}' --target unit_tests_asan -j$(nproc) && '${CMAKE_BINARY_DIR}/tests/unit/unit_tests_asan'")
 endif()
 mxb_gate(asan-harness fast 600 "g++" "./tests/asan/run.sh")
 

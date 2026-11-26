@@ -16,6 +16,7 @@
 #include "../core/tracked_riders_manager.h"
 #include "../core/asset_manager.h"
 #include "../core/director_manager.h"
+#include "digit_roll.h"
 #include <algorithm>
 #include <cstring>
 #include <cstdio>
@@ -122,6 +123,7 @@ void StandingsHud::update() {
 
     // Capture frame time once for consistent timing across all animation logic
     m_frameTime = std::chrono::steady_clock::now();
+    m_slideNowUs = DigitRoll::nowUs();
 
     // Alternating gap reference: toggle between Leader and Player on interval
     if (m_gapReferenceMode == GapReferenceMode::ALTERNATING) {
@@ -141,21 +143,14 @@ void StandingsHud::update() {
     // leaving Both (a loaded profile, the race ending) has to put the official
     // order back. Never polled while the order is the official one and Both is
     // off, so Off and Gaps rebuild exactly as before.
-    if (runningOrderRevision() != m_builtOrderRevision) {
+    if (PluginData::getInstance().getRunningOrder().revision() != m_builtOrderRevision) {
         setDataDirty();
     }
 
-    // Clean up finished animations before rebuilds so we don't do wasteful lookups
-    if (hasActiveAnimations()) {
-        for (auto it = m_activeAnimations.begin(); it != m_activeAnimations.end(); ) {
-            float elapsedMs = std::chrono::duration<float, std::milli>(m_frameTime - it->second.startTime).count();
-            if (elapsedMs >= m_animationDurationMs) {
-                it = m_activeAnimations.erase(it);
-            } else {
-                ++it;
-            }
-        }
-    }
+    // Clean up finished animations before rebuilds so we don't do wasteful lookups.
+    // The last slide over: rebuild once, dropping the cut our own renderers
+    // drew the sliding rows with (standings_hud_build.cpp).
+    if (m_slide.prune(m_slideNowUs)) setDataDirty();
 
     // Keep updating layout during active animations (smooth per-frame interpolation).
     // Slide-highlight quads (COLORED mode) are emitted on the data-change rebuild that
@@ -419,7 +414,7 @@ void StandingsHud::handleClick(float mouseX, float mouseY) {
 }
 
 void StandingsHud::resetToDefaults() {
-    m_bVisible = true;
+    m_bVisible = false;   // a new install opens on the Map and the Toggles strip alone
     m_bShowTitle = true;
     setTextureVariant(0);  // No texture by default
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;
@@ -437,17 +432,13 @@ void StandingsHud::resetToDefaults() {
     m_bPlayerRowHighlight = true;
     m_bPlayerRowHighlightBrand = false;
     m_bClassicLayout = false;
-    m_animationMode = AnimationMode::BASIC;
-    m_animationDurationMs = 500.0f;
+    m_bColoredMoves = false;
     m_bShowHeaders = false;
     m_bShowSessionInfo = true;
-    m_liveMode = LiveMode::OFF;
     m_showMode = SHOW_ALWAYS;
     m_freezeDurationMs = FreezeDuration::PITBOARD_DEFAULT_MS;
     m_showHold.stop();
-    m_activeAnimations.clear();
-    m_previousPositions.clear();
-    m_previousSlots.clear();
+    m_slide.forget();
     m_cachedIconStates.clear();
     setDataDirty();
 }

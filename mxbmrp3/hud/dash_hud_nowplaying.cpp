@@ -26,7 +26,8 @@ void DashHud::drawNowPlaying(float rowL, float rowR, float contentY, const Scale
                 addHorizontalGridLine(p.x, p.y + p.h * 0.5f, p.w, p.color, p.h);
                 break;
             case NowPlayingCard::Prim::Kind::TEXT:
-                addString(p.text, p.x, p.y, p.center ? Justify::CENTER : Justify::LEFT, font, p.color, dim.fontSize);
+                addString(p.text, p.x, p.y, p.center ? Justify::CENTER : Justify::LEFT, font, p.color,
+                          p.smallText ? dim.fontSizeSmall : dim.fontSize);
                 break;
             case NowPlayingCard::Prim::Kind::ICON:
                 addIcon(p.x, p.y, p.sprite, p.color, p.h);
@@ -40,7 +41,7 @@ void DashHud::followMediaInput() {
     // pointer showing, as the card's message click; a press starts a control
     // only when the click is the Dash's own (ownsClick).
     const InputManager& input = InputManager::getInstance();
-    const bool live = isVisibleAnySurface() && m_page == Page::NOW_PLAYING && m_fadeMs <= 0.0f && !m_nameUp && m_stepTried &&
+    const bool live = isVisibleAnySurface() && m_page == Page::NOW_PLAYING && !m_flip.fading() && !m_flip.nameUp && m_stepTried &&
                       !isHeldBack() && input.shouldShowCursor();
     CursorPosition cursor = input.getCursorPosition();
     mapCursorToHudSpace(cursor.x, cursor.y);

@@ -65,6 +65,10 @@ public:
 
     // Get release notes (markdown, only valid when UPDATE_AVAILABLE)
     std::string getReleaseNotes() const;
+    bool hasReleaseNotes() const;
+    // Moves each time new notes are stored, so the Updates tab lays them out
+    // once per release instead of copying and parsing them on every rebuild.
+    uint32_t getReleaseNotesGeneration() const { return m_notesGeneration.load(); }
 
     // Get download URL for the release asset (only valid when UPDATE_AVAILABLE)
     std::string getDownloadUrl() const;
@@ -125,8 +129,9 @@ public:
             if (!latest.empty()) {
                 m_releaseNotes = "## [" + latest + "]\n\n### Added\n";
                 for (int i = 1; i <= 20; ++i)
-                    m_releaseNotes += "- A release note line long enough to be cut " + std::to_string(i) + "\n";
+                    m_releaseNotes += "- A release note line long enough to wrap onto a second line in the Updates tab " + std::to_string(i) + "\n";
             }
+            m_notesGeneration.fetch_add(1);
         }
         m_status = latest.empty() ? Status::IDLE : Status::UPDATE_AVAILABLE;
     }
@@ -245,6 +250,7 @@ private:
     std::atomic<UpdateChannel> m_channel;  // Persisted setting: Stable or Prerelease
     std::string m_latestVersion MXB_GUARDED_BY(m_mutex);
     std::string m_releaseNotes MXB_GUARDED_BY(m_mutex);   // GitHub release body (markdown)
+    std::atomic<uint32_t> m_notesGeneration{0};   // bumped with every m_releaseNotes store
     std::string m_downloadUrl MXB_GUARDED_BY(m_mutex);    // Asset browser_download_url
     std::string m_assetName MXB_GUARDED_BY(m_mutex);      // Asset filename (e.g., "mxbmrp3-v1.10.3.0.zip")
     size_t m_downloadSize MXB_GUARDED_BY(m_mutex);        // Asset size in bytes

@@ -9,6 +9,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "../core/fmx_trick_stats.h"
 #include "../core/fmx_types.h"
 
 class FmxManager;
@@ -117,27 +118,12 @@ private:
     ArcSnapshot m_arcSnapshot;
 
     // Trick stats snapshot (frozen during grace/chain like arcs)
-    struct StatsSnapshot {
-        float duration = 0.0f;
-        float distance = 0.0f;
-        float height = 0.0f;    // Peak metres above take-off (0 for a ground trick)
-        float rotation = 0.0f;  // Peak rotation in degrees (max of |pitch|, |yaw|, |roll|)
-        bool hasData = false;
-    };
-    StatsSnapshot m_statsSnapshot;
+    Fmx::TrickStats m_statsSnapshot;   // shared with the Combo deck (fmx_trick_stats.h)
 
     // The ended chain, held past FmxManager's linger while the rider is down
-    // (rebuildRenderData). POD only: the trick stack keeps the entries it built
-    // on the last animated frame rather than a copy of the chain.
-    struct ComboHold {
-        bool held = false;
-        bool success = false;
-        bool hasTricks = false;
-        float multiplier = 1.0f;
-        int trickScore = 0;
-        int chainScore = 0;
-    };
-    ComboHold m_comboHold;
+    // (rebuildRenderData; shared with the Combo deck, fmx_trick_stats.h). The
+    // trick stack keeps the entries it built on the last animated frame.
+    Fmx::ChainHold m_comboHold;
 
     // Combo arc animated fill (fills during grace period, retreats during chain)
     float m_comboArcFill = 0.0f;

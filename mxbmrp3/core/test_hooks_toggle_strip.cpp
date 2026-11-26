@@ -20,7 +20,6 @@
 #include "../hud/helmet_overlay_hud.h"
 #include "companion_window.h"
 #include "steam_friends_manager.h"
-#include "xinput_reader.h"
 #include "director_manager.h"
 #include "input_manager.h"
 #include <cstdio>
@@ -124,17 +123,6 @@ __declspec(dllexport) void MXBMRP3_Test_FriendsInject(const char* name, const ch
     f.progress = progress; f.hasData = true; f.sameServer = sameServer == 1;
     f.status = *track ? std::string(track) + " - " + session : SteamFriendsManager::LABEL_IN_MENUS;
     SteamFriendsManager::getInstance().testInjectFriend(f, sameServer == 2);   // 2 = our own row
-}
-
-// Demo reels: a connected pad with these sticks and triggers and no buttons held
-// (a tape carries the rider's inputs, not the controller). Unlike FakeGamepad this
-// leaves the widget's visibility alone: the reel switches it on from Settings.
-__declspec(dllexport) void MXBMRP3_Test_FakeGamepadInput(float lx, float ly, float lt, float rt) {
-    XInputData d;
-    d.isConnected = true;
-    d.leftStickX = lx; d.leftStickY = ly;
-    d.leftTrigger = lt; d.rightTrigger = rt;
-    XInputReader::getInstance().testForceData(d);
 }
 
 // Let the helmet draw on the companion window, which the demo reels record (the

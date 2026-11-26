@@ -50,10 +50,11 @@ public:
     // each feeds it PluginData::getSessionClockTime() (full length on the grid).
     // SESSION_CLOCK_CHARS sizes the buffer for the longest result.
     // `shown`: the HUDs' copy, its labels in the language shown (the web JSON
-    // and Steam status keep English).
+    // and Steam status keep English). `compact`: a time+laps race's laps as
+    // "+ 2L", for a deck's narrow line.
     static constexpr size_t SESSION_CLOCK_CHARS = 24;
     static void formatSessionClock(int lapsToGo, int sessionTimeMs, int lapsAfterClock,
-                                   char* buffer, size_t bufferSize, bool shown = false);
+                                   char* buffer, size_t bufferSize, bool shown = false, bool compact = false);
 
     // Session length/format string: "8:00" (time only), "6L" (laps only),
     // "8:00 + 6L" (both), or "" (neither). The compact code for what is read
@@ -91,7 +92,7 @@ public:
     static void formatDistance(double meters, char* buffer, size_t bufferSize);
 
     static const char* getEventTypeString(int eventType);
-    static const char* getSessionString(int eventType, int session);
+    static const char* getSessionString(int eventType, int session, bool brief = false);
     // Server "where you are" label shared by the SessionHud server row, Discord and
     // Steam presence: the reported name; "Testing" for a known-offline/solo session
     // (serverType == 0). When serverType is unknown (< 0: GP Bikes / KRP don't expose
@@ -144,6 +145,22 @@ public:
     // works until someone names a folder "Cafe" with the accent on.
     static void toLowerAscii(std::string& s) {
         for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+
+    // ASCII case-insensitive compare, the one the name lookups share (camera
+    // names, a deck pack's names). Deliberately not _stricmp: that is an
+    // MSVC/mingw extension and the Linux unit build compiles the callers too.
+    // Bytes outside A-Z compare as they are, so an accented letter matches only
+    // itself. False when either is null.
+    static bool iequals(const char* a, const char* b) {
+        if (a == nullptr || b == nullptr) return false;
+        for (;; ++a, ++b) {
+            char ca = *a, cb = *b;
+            if (ca >= 'A' && ca <= 'Z') ca = static_cast<char>(ca - 'A' + 'a');
+            if (cb >= 'A' && cb <= 'Z') cb = static_cast<char>(cb - 'A' + 'a');
+            if (ca != cb) return false;
+            if (ca == '\0') return true;
+        }
     }
 
     // Truncate a display string to maxChars visible code points -- a plain cut,

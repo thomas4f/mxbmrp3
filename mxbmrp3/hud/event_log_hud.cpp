@@ -16,6 +16,7 @@
 #include "../core/input_manager.h"
 #include "../core/plugin_manager.h"
 #include "../diagnostics/logger.h"
+#include <algorithm>
 #include <ctime>
 
 EventLogHud::EventLogHud() {
@@ -73,6 +74,9 @@ void EventLogHud::update() {
         return;
     }
 
+    // The scrollbar first: a press on it is not a row's.
+    if (m_scroll.poll(*this)) setDataDirty();
+
     // Click-to-spectate + hover, in spectate/replay only — the same gate MapHud uses. On
     // track the camera is your own bike, so a click here would do nothing.
     {
@@ -95,7 +99,7 @@ void EventLogHud::update() {
                         break;
                     }
                 }
-                if (input.getLeftButton().isClicked() && ownsClick()) {
+                if (input.getLeftButton().isClicked() && ownsClick() && !m_scroll.tookClick()) {
                     handleClick(cursor.x, cursor.y);
                 }
             }
@@ -132,7 +136,8 @@ void EventLogHud::update() {
 
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastEventTime).count();
-        if (elapsed >= m_autoHideDurationMs) {
+        // Not while the player is scrolling back through it.
+        if (elapsed >= m_autoHideDurationMs && !m_scroll.shown()) {
             clearRendered();
             m_hasEvents = false;  // Stop checking timer until next event arrives
             clearDataDirty();
@@ -159,13 +164,18 @@ void EventLogHud::CachedIcons::ensureInitialized() {
     wrench        = assets.getIconSpriteIndex("wrench");
     video         = assets.getIconSpriteIndex("video");
     award         = assets.getIconSpriteIndex("award");
+    trophy        = assets.getIconSpriteIndex("trophy");
     initialized = true;
 }
 
-int EventLogHud::getIconForEvent(EventLogType type) const {
+int EventLogHud::getIconForEvent(const EventLogEntry& entry) const {
     if (!m_showIcons) return 0;
+    if (entry.icon.shape > 0) {   // an achievement's own icon, in the active icon theme
+        const int sprite = AssetManager::getInstance().iconSpriteForShape(entry.icon.shape);
+        if (sprite > 0) return sprite;
+    }
     m_iconCache.ensureInitialized();
-    switch (type) {
+    switch (entry.type) {
     case EventLogType::SessionStarted:    return m_iconCache.flag;
     case EventLogType::SessionStateChange:return m_iconCache.flag;
     case EventLogType::SessionComplete:   return m_iconCache.flagCheckered;
@@ -187,12 +197,17 @@ int EventLogHud::getIconForEvent(EventLogType type) const {
     case EventLogType::Director:           return m_iconCache.video;
     case EventLogType::SessionPB:         return m_iconCache.stopwatch;
     case EventLogType::AllTimePB:         return m_iconCache.award;
+    case EventLogType::Achievement:       return m_iconCache.trophy;   // its own icon missing from the set
     default: return 0;
     }
 }
 
-unsigned long EventLogHud::getIconColorForEvent(EventLogType type) const {
+unsigned long EventLogHud::getIconColorForEvent(const EventLogEntry& entry) const {
     using namespace PluginConstants;
+    // A per-entry ColorSlot override (e.g. director state-transition entries tinted
+    // with a director state color) wins over the per-type default.
+    if (entry.iconColorSlot >= 0) return getColor(static_cast<ColorSlot>(entry.iconColorSlot));
+    const EventLogType type = entry.type;
     // Flag icons keep their real-world colours (FlagColors, rider_flag_icons.h)
     // whatever the palette. Everything else follows the palette slots.
     switch (type) {
@@ -207,6 +222,9 @@ unsigned long EventLogHud::getIconColorForEvent(EventLogType type) const {
     case EventLogType::FinalLap:          return FlagColors::LAST_LAP;
     case EventLogType::RiderFinished:     return FlagColors::CHECKERED;
     case EventLogType::LeaderChange:      return PodiumColors::GOLD;
+    // The toast's colours: the tier's metal, a one-shot in the primary colour.
+    case EventLogType::Achievement:
+        return PodiumColors::tierColor(entry.icon.tier, getColor(ColorSlot::PRIMARY));
     case EventLogType::SessionComplete:   return FlagColors::CHECKERED;
     case EventLogType::RiderRetired:
     case EventLogType::RiderDNS:          return getColor(ColorSlot::MUTED);
@@ -256,10 +274,18 @@ void EventLogHud::rebuildRenderData() {
         }
     }
 
-    // Determine which entries to show (last N based on m_maxDisplayEvents)
+    // Which entries to show: m_maxDisplayEvents of them from where the scrollback
+    // stands (the newest, unless the player scrolled back). `first` counts in
+    // display order, so newest-first reads it from the other end.
     int totalVisible = static_cast<int>(visibleEntries.size());
-    int startIdx = (totalVisible > m_maxDisplayEvents) ? totalVisible - m_maxDisplayEvents : 0;
-    int numRows = totalVisible - startIdx;
+    const bool newestFirst = m_displayOrder == DisplayOrder::NEWEST_FIRST;
+    m_scroll.setEdge(newestFirst ? HudScroll::Edge::START : HudScroll::Edge::END);
+    int arrived = 0;
+    for (int i = totalVisible - 1; i >= 0 && visibleEntries[i]->steadyTime > m_scrollSeen; --i) ++arrived;
+    if (totalVisible > 0) m_scrollSeen = visibleEntries[totalVisible - 1]->steadyTime;
+    const int first = m_scroll.layout(totalVisible, m_maxDisplayEvents, arrived);
+    int numRows = m_scroll.drawRows();
+    int startIdx = newestFirst ? totalVisible - first - numRows : first;
 
     // Always size the background for m_maxDisplayEvents so the HUD shows its
     // full configured size even when empty or partially filled
@@ -314,7 +340,9 @@ void EventLogHud::rebuildRenderData() {
         }
     }
 
-    // Build entries in correct order
+    // Build entries in correct order; from here to the scrollbar are the
+    // list's rows (HudScroll::clipRows).
+    const size_t rowsQuad = m_quads.size(), rowsString = m_strings.size();
     // currentRow tracks absolute row index from first data row (for icon repositioning)
     int currentRow = (m_displayOrder == DisplayOrder::OLDEST_FIRST) ? emptyRows : 0;
     auto renderEntry = [&](const EventLogEntry* entry) {
@@ -353,7 +381,7 @@ void EventLogHud::rebuildRenderData() {
         }
 
         // Icon (leftmost, visual anchor for scanning)
-        int spriteIndex = getIconForEvent(entry->type);
+        int spriteIndex = getIconForEvent(*entry);
         if (spriteIndex > 0) {
             float cx = iconX + iconColWidth * 0.25f;
             float cy = currentY + dim.lineHeightNormal * 0.5f;
@@ -366,11 +394,7 @@ void EventLogHud::rebuildRenderData() {
             quad.m_aafPos[2][0] = ox + iconHalfWidth; quad.m_aafPos[2][1] = oy + iconHalfSize;
             quad.m_aafPos[3][0] = ox + iconHalfWidth; quad.m_aafPos[3][1] = oy - iconHalfSize;
             quad.m_iSprite = spriteIndex;
-            // A per-entry ColorSlot override (e.g. director state-transition entries tinted
-            // with a director state color) wins over the per-type default.
-            quad.m_ulColor = (entry->iconColorSlot >= 0)
-                ? getColor(static_cast<ColorSlot>(entry->iconColorSlot))
-                : getIconColorForEvent(entry->type);
+            quad.m_ulColor = getIconColorForEvent(*entry);
             m_iconQuads.push_back({m_quads.size(), currentRow});
             m_quads.push_back(quad);
             shadowLastIcon();
@@ -438,7 +462,7 @@ void EventLogHud::rebuildRenderData() {
 
     if (m_displayOrder == DisplayOrder::NEWEST_FIRST) {
         // Newest first: real events at top, placeholders fill the bottom
-        for (int i = totalVisible - 1; i >= startIdx; --i) {
+        for (int i = startIdx + numRows - 1; i >= startIdx; --i) {
             renderEntry(visibleEntries[i]);
         }
         for (int i = 0; i < emptyRows; ++i) {
@@ -455,10 +479,19 @@ void EventLogHud::rebuildRenderData() {
         }
     } else {
         // Oldest first: placeholders already rendered above, then real events
-        for (int i = startIdx; i < totalVisible; ++i) {
+        for (int i = startIdx; i < startIdx + numRows; ++i) {
             renderEntry(visibleEntries[i]);
         }
     }
+
+    // The scrollbar in the panel's right padding, the rows' height, and how
+    // many events wait beyond the live edge on the caption row.
+    m_scroll.clipRows(*this, rowsQuad, m_quads.size(), rowsString, m_strings.size(), plan.contentY(),
+                      dim.lineHeightNormal);
+    m_scroll.draw(*this, plan.sectionBoxX() + plan.sectionBoxW(), plan.x0 + plan.width(),
+                  plan.contentY(), m_maxDisplayEvents * dim.lineHeightNormal, dim.lineHeightNormal,
+                  dim.fontSize);
+    addPlanTitleNote(plan, dim, m_scroll.note());
 
     // Update bounds (unoffset — isPointInBounds applies offset at test time)
     setBounds(startX, startY, startX + plan.width(), startY + plan.height());
@@ -477,6 +510,12 @@ void EventLogHud::handleClick(float mouseX, float mouseY) {
 void EventLogHud::rebuildLayout() {
     if (m_quads.empty()) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
+        return;
+    }
+    // The scrollbar and its note are not in this fast path's index walk: while
+    // they show, lay everything out again.
+    if (m_scroll.shown()) {
+        rebuildRenderData();
         return;
     }
 

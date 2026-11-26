@@ -33,7 +33,7 @@ public:
 
     // The pack actually in use once the name has been resolved; nullptr only when
     // no packs are installed at all.
-    const GamepadAsset* activePack() const;
+    const GamepadAsset* activeLayout() const;
 
     // Trigger display: 0 = fade (texture brightness), 1 = fill (quad from bottom).
     // A viewing preference, not pad art -- it stays a widget setting rather than
@@ -101,7 +101,7 @@ private:
     static constexpr unsigned long COLOR_MENUBTN = PluginUtils::makeColor(140, 140, 140);   // Gray
     static constexpr unsigned long COLOR_INACTIVE = PluginUtils::makeColor(60, 60, 60);     // Dark gray
 
-    // Selected pack, by directory name. Resolved through activePack() at every use
+    // Selected pack, by directory name. Resolved through activeLayout() at every use
     // so a pack removed between sessions degrades rather than dangling.
     std::string m_gamepadPack;
 

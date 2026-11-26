@@ -14,6 +14,10 @@
 #      wcscpy, wcscat, gets. Use snprintf / strncpy_s / the *_s family.
 #   3. No printf / vprintf. Logging goes through DEBUG_INFO_F (the log file);
 #      stdout goes nowhere inside the game.
+#   4. No direct key reads: GetAsyncKeyState, GetKeyState, GetKeyboardState.
+#      Every key and mouse-button read goes through InputManager::isKeyDown,
+#      which reads nothing while the game isn't focused. Its one call carries
+#      the escape hatch below.
 #
 # SCOPE. mxbmrp3/** (.cpp/.h/.inc) minus third-party vendor/ - vendor/piboso is
 # ours and stays in. Comments and string/char literals (raw strings included)
@@ -119,6 +123,8 @@ scan() {
                 printf "  %s:%d: [unbounded C string call] %s\n", FILENAME, FNR, raw
             if (code ~ /(^|[^A-Za-z0-9_.>])v?printf[ \t]*\(/)
                 printf "  %s:%d: [printf] %s\n", FILENAME, FNR, raw
+            if (code ~ /(^|[^A-Za-z0-9_.>])(GetAsyncKeyState|GetKeyState|GetKeyboardState)[ \t]*\(/)
+                printf "  %s:%d: [direct key read] %s\n", FILENAME, FNR, raw
         }
 
         function recount(    k) {
@@ -165,6 +171,10 @@ if [[ "${1:-}" == "--self-test" ]]; then
     expect yes "or'd test guard"     '#if defined(MXBMRP3_TEST_BUILD) || defined(X)' '    throw 1;' '#endif'
     expect yes "after nested endif"  '#ifdef MXBMRP3_TEST_BUILD' '#if X' '#endif' '#endif' '    throw 1;'
     expect yes "after raw string"    '    const char* s = R"(throw()";' '    throw 1;'
+    expect yes "GetAsyncKeyState"    '    bool d = (GetAsyncKeyState(VK_F1) & 0x8000) != 0;'
+    expect yes "::GetKeyState"       '    SHORT k = ::GetKeyState(VK_SHIFT);'
+    expect yes "GetKeyboardState"    '    GetKeyboardState(keys);'
+    expect no  "isKeyDown"           '    bool d = input.isKeyDown(VK_F1);'
     expect no  "rethrow"             '    throw;'
     expect no  "rethrow spaced"      '    } catch (...) { cleanup(); throw ; }'
     expect no  "snprintf"            '    snprintf(buf, sizeof(buf), "%d", n);'
@@ -214,9 +224,12 @@ BANNED-CONSTRUCT LINT FAILED.
                 as errors and rejects most of these anyway; the cross-build
                 does not).
   [printf]      Use DEBUG_INFO_F - stdout goes nowhere inside the game.
+  [direct key read]
+                Use InputManager::isKeyDown - it reads nothing while the game
+                isn't focused.
 Test-build-only code (#if defined(MXBMRP3_TEST_BUILD)) is exempt. A genuine
 exception elsewhere carries `// banned-ok: <reason>` on the line.
 EOF
     exit 1
 fi
-echo "Banned constructs clean (${#FILES[@]} sources: no own throw, no unbounded C string calls, no printf)."
+echo "Banned constructs clean (${#FILES[@]} sources: no own throw, no unbounded C string calls, no printf, no direct key reads)."

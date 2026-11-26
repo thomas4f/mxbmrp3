@@ -103,7 +103,7 @@ TEST_CASE("gamepad pack: no packs installed resolves to nothing, and does not cr
     // rather than inheriting whatever an earlier case installed.
     host.clearGamepads();
 
-    // A stripped install. The widget must cope: activePack() is null, every sprite
+    // A stripped install. The widget must cope: activeLayout() is null, every sprite
     // lookup returns 0, and the draw helpers fall back to their solid-colour shapes.
     host.setGamepadPack("xbox");
     CHECK(host.gamepadPackActive().empty());

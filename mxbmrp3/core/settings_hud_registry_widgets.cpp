@@ -1,6 +1,6 @@
 // ============================================================================
 // mxbmrp3/core/settings_hud_registry_widgets.cpp
-// Per-HUD settings serializers (cap_*/app_*), group 2: widgets, simpler HUDs, and Global. The registry TABLE and group-1 (full-HUD) serializers stay in settings_hud_registry.cpp; the riding readouts (Speed, Gear, Crashes, RPM) are in settings_hud_registry_readouts.cpp.
+// Per-HUD settings serializers (cap_*/app_*), group 2: widgets, simpler HUDs, and Global. The registry TABLE and group-1 (full-HUD) serializers stay in settings_hud_registry.cpp; the riding readouts (Speed, Gear, Crashes, RPM) are in settings_hud_registry_readouts.cpp, and the movement widgets (Lean, Slide, Wheelie, Stance, G-Force, Compass) in settings_hud_registry_movement.cpp.
 // ============================================================================
 
 #include "settings_hud_registry.h"
@@ -53,11 +53,6 @@
 #include "../hud/helmet_overlay_hud.h"
 #include "../hud/benchmark_widget.h"
 #include "../hud/gamepad_widget.h"
-#include "../hud/lean_widget.h"
-#include "../hud/slide_widget.h"
-#include "../hud/wheelie_widget.h"
-#include "../hud/gforce_widget.h"
-#include "../hud/compass_widget.h"
 #if GAME_HAS_TYRE_TEMP
 #include "../hud/tyre_temp_widget.h"
 #endif
@@ -610,7 +605,7 @@ void SettingsManager::cap_GamepadWidget(const HudManager& hudManager, SettingsMa
         captureBaseHudSettings(settings, hud);
         // The pad by NAME. Written verbatim even when this install has no such pack,
         // so a user who removes a pack folder and puts it back gets their pad back
-        // (activePack() degrades for the render, it does not rewrite the setting).
+        // (activeLayout() degrades for the render, it does not rewrite the setting).
         settings[Keys::Gamepad::PACK] = hud.getGamepadPack();
         settings[IniOnly::Gamepad::TRIGGER_FILL_MODE.key] = std::to_string(hud.getTriggerFillMode());
         cache[name] = std::move(settings);
@@ -633,161 +628,6 @@ void SettingsManager::app_GamepadWidget(HudManager& hudManager, const SettingsMa
                 }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("GamepadWidget: Failed to parse settings: %s", e.what());
-            }
-            hud.setDataDirty();
-        }
-}
-
-void SettingsManager::cap_LeanWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
-        HudSettings settings;
-        const auto& hud = hudManager.getLeanWidget();
-        captureBaseHudSettings(settings, hud);
-        saveLeanRows(settings, hud.m_enabledRows);  // Named keys instead of bitmask
-        settings["showMaxMarkers"] = hud.m_bShowMaxMarkers ? "1" : "0";
-        settings["maxMarkerLingerFrames"] = std::to_string(hud.m_maxMarkerLingerFrames);
-        settings[IniOnly::Lean::FILL_COLOR_MODE.key] = std::to_string(static_cast<int>(hud.getFillColorMode()));
-        settings[IniOnly::Lean::ARC_FILL_COLOR.key] = PluginUtils::formatColorHex(hud.getArcFillColor());
-        cache[name] = std::move(settings);
-}
-
-void SettingsManager::app_LeanWidget(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
-        auto it = cache.find(name);
-        if (it != cache.end()) {
-            auto& hud = hudManager.getLeanWidget();
-            applyBaseHudSettings(hud, it->second);
-
-            const auto& settings = it->second;
-            try {
-                loadLeanRows(settings, hud.m_enabledRows);  // Named keys instead of bitmask
-                if (auto v = readBool(settings, "showMaxMarkers")) hud.m_bShowMaxMarkers = *v;
-                if (auto v = readInt(settings, "maxMarkerLingerFrames")) hud.m_maxMarkerLingerFrames = *v;
-                if (auto v = readInt(settings, IniOnly::Lean::FILL_COLOR_MODE.key)) {
-                    hud.setFillColorMode(*v == 1 ? LeanWidget::FillColorMode::FIXED
-                                                 : LeanWidget::FillColorMode::RAMP);
-                }
-                if (settings.count(IniOnly::Lean::ARC_FILL_COLOR.key)) {
-                    hud.setArcFillColor(PluginUtils::parseColorHex(settings.at(IniOnly::Lean::ARC_FILL_COLOR.key), hud.getArcFillColor()));
-                }
-            } catch (const std::exception& e) {
-                DEBUG_WARN_F("LeanWidget: Failed to parse settings: %s", e.what());
-            }
-            hud.setDataDirty();
-        }
-}
-
-void SettingsManager::cap_SlideWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
-        HudSettings settings;
-        const auto& hud = hudManager.getSlideWidget();
-        captureBaseHudSettings(settings, hud);
-        saveSlideRows(settings, hud.m_enabledRows);  // Named keys instead of bitmask
-        settings[IniOnly::Slide::SHOW_MAX_MARKERS.key] = hud.m_bShowMaxMarkers ? "1" : "0";
-        settings[IniOnly::Slide::MAX_MARKER_LINGER_FRAMES.key] = std::to_string(hud.m_maxMarkerLingerFrames);
-        cache[name] = std::move(settings);
-}
-
-void SettingsManager::app_SlideWidget(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
-        auto it = cache.find(name);
-        if (it != cache.end()) {
-            auto& hud = hudManager.getSlideWidget();
-            applyBaseHudSettings(hud, it->second);
-
-            const auto& settings = it->second;
-            try {
-                loadSlideRows(settings, hud.m_enabledRows);  // Named keys instead of bitmask
-                if (auto v = readBool(settings, IniOnly::Slide::SHOW_MAX_MARKERS.key)) hud.m_bShowMaxMarkers = *v;
-                if (auto v = readInt(settings, IniOnly::Slide::MAX_MARKER_LINGER_FRAMES.key)) {
-                    hud.m_maxMarkerLingerFrames = std::max(0, *v);
-                }
-            } catch (const std::exception& e) {
-                DEBUG_WARN_F("SlideWidget: Failed to parse settings: %s", e.what());
-            }
-            hud.setDataDirty();
-        }
-}
-
-void SettingsManager::cap_WheelieWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
-        HudSettings settings;
-        const auto& hud = hudManager.getWheelieWidget();
-        captureBaseHudSettings(settings, hud);
-        settings[IniOnly::Wheelie::SHOW_VALUE.key] = hud.m_bShowValue ? "1" : "0";
-        settings[IniOnly::Wheelie::SHOW_MAX_MARKER.key] = hud.m_bShowMaxMarker ? "1" : "0";
-        settings[IniOnly::Wheelie::MAX_MARKER_LINGER_FRAMES.key] = std::to_string(hud.m_maxMarkerLingerFrames);
-        cache[name] = std::move(settings);
-}
-
-void SettingsManager::app_WheelieWidget(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
-        auto it = cache.find(name);
-        if (it != cache.end()) {
-            auto& hud = hudManager.getWheelieWidget();
-            applyBaseHudSettings(hud, it->second);
-
-            const auto& settings = it->second;
-            try {
-                if (auto v = readBool(settings, IniOnly::Wheelie::SHOW_VALUE.key)) hud.m_bShowValue = *v;
-                if (auto v = readBool(settings, IniOnly::Wheelie::SHOW_MAX_MARKER.key)) hud.m_bShowMaxMarker = *v;
-                if (auto v = readInt(settings, IniOnly::Wheelie::MAX_MARKER_LINGER_FRAMES.key)) {
-                    hud.m_maxMarkerLingerFrames = std::max(0, *v);
-                }
-            } catch (const std::exception& e) {
-                DEBUG_WARN_F("WheelieWidget: Failed to parse settings: %s", e.what());
-            }
-            hud.setDataDirty();
-        }
-}
-
-void SettingsManager::cap_GForceWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
-        HudSettings settings;
-        const auto& hud = hudManager.getGForceWidget();
-        captureBaseHudSettings(settings, hud);
-        settings[IniOnly::GForce::MAX_SCALE.key] = std::to_string(hud.m_maxScale);
-        settings[IniOnly::GForce::SHOW_MAX_TEXT.key] = hud.m_bShowMaxText ? "1" : "0";
-        settings[IniOnly::GForce::SHOW_MAX_MARKER.key] = hud.m_bShowMaxMarker ? "1" : "0";
-        settings[IniOnly::GForce::MAX_MARKER_LINGER_FRAMES.key] = std::to_string(hud.m_maxMarkerLingerFrames);
-        cache[name] = std::move(settings);
-}
-
-void SettingsManager::app_GForceWidget(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
-        auto it = cache.find(name);
-        if (it != cache.end()) {
-            auto& hud = hudManager.getGForceWidget();
-            applyBaseHudSettings(hud, it->second);
-
-            const auto& settings = it->second;
-            try {
-                if (auto v = readFloat(settings, IniOnly::GForce::MAX_SCALE.key)) {
-                    if (*v > 0.1f) hud.m_maxScale = *v;
-                }
-                if (auto v = readBool(settings, IniOnly::GForce::SHOW_MAX_TEXT.key)) hud.m_bShowMaxText = *v;
-                if (auto v = readBool(settings, IniOnly::GForce::SHOW_MAX_MARKER.key)) hud.m_bShowMaxMarker = *v;
-                if (auto v = readInt(settings, IniOnly::GForce::MAX_MARKER_LINGER_FRAMES.key)) hud.m_maxMarkerLingerFrames = *v;
-            } catch (const std::exception& e) {
-                DEBUG_WARN_F("GForceWidget: Failed to parse settings: %s", e.what());
-            }
-            hud.setDataDirty();
-        }
-}
-
-void SettingsManager::cap_CompassWidget(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
-        HudSettings settings;
-        const auto& hud = hudManager.getCompassWidget();
-        captureBaseHudSettings(settings, hud);
-        settings[IniOnly::Compass::STYLE.key] = compassStyleToString(hud.m_style);
-        cache[name] = std::move(settings);
-}
-
-void SettingsManager::app_CompassWidget(HudManager& hudManager, const SettingsManager::ProfileCache& cache, const char* name) {
-        auto it = cache.find(name);
-        if (it != cache.end()) {
-            auto& hud = hudManager.getCompassWidget();
-            applyBaseHudSettings(hud, it->second);
-
-            const auto& settings = it->second;
-            try {
-                if (settings.count(IniOnly::Compass::STYLE.key)) {
-                    hud.m_style = stringToCompassStyle(settings.at(IniOnly::Compass::STYLE.key), hud.m_style);
-                }
-            } catch (const std::exception& e) {
-                DEBUG_WARN_F("CompassWidget: Failed to parse settings: %s", e.what());
             }
             hud.setDataDirty();
         }
@@ -942,7 +782,10 @@ void SettingsManager::app_BenchmarkWidget(HudManager& hudManager, const Settings
 
 void SettingsManager::cap_Global(const HudManager& hudManager, SettingsManager::ProfileCache& cache, const char* name) {
         HudSettings settings;
-        settings["widgetsEnabled"] = hudManager.areWidgetsEnabled() ? "1" : "0";
+        for (int g = 0; g < HudManager::MASTER_GROUP_COUNT; ++g) {
+            const auto group = static_cast<HudManager::MasterGroup>(g);
+            settings[HudManager::masterGroupInfo(group).savedKey] = hudManager.isGroupEnabled(group) ? "1" : "0";
+        }
         cache[name] = std::move(settings);
 }
 
@@ -951,7 +794,11 @@ void SettingsManager::app_Global(HudManager& hudManager, const SettingsManager::
         if (it != cache.end()) {
             const auto& settings = it->second;
             try {
-                if (auto v = readBool(settings, "widgetsEnabled")) hudManager.setWidgetsEnabled(*v);
+                for (int g = 0; g < HudManager::MASTER_GROUP_COUNT; ++g) {
+                    const auto group = static_cast<HudManager::MasterGroup>(g);
+                    if (auto v = readBool(settings, HudManager::masterGroupInfo(group).savedKey))
+                        hudManager.setGroupEnabled(group, *v);
+                }
             } catch (const std::exception& e) {
                 DEBUG_WARN_F("Global: Failed to parse settings: %s", e.what());
             }

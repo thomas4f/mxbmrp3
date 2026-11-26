@@ -93,8 +93,12 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOC_BUDGETS = {
     "AGENTS.md": 46_300,
     # +500 for the Slide and Wheelie widgets' two catalogue rows each (1.35.1),
-    # +100 for Ghost Ride's (1.36).
-    "TESTING.md": 79_600,
+    # +100 for Ghost Ride's (1.36), +120 for the ten new achievements' rules,
+    # +95 for the reset-to-marker detector's row,
+    # +170 for the settings lists' scrolling (a unit and an integration row),
+    # +210 for the rider sit/stand reader's (a unit and an integration row),
+    # +400 for the decks' three (two unit tests and one integration).
+    "TESTING.md": 80_595,
     "ARCHITECTURE.md": 91_500,
 }
 
@@ -113,6 +117,9 @@ DOCS_EXCLUDED = {
     # GENERATED wholesale from data the repo does not keep (Aptabase exports,
     # known_game_crashes.json). Their generators own what goes in them.
     "usage_survey/REPORT.md", "crash_analysis/KNOWN_GAME_CRASHES.md",
+    # MXB Facts' author check, copied verbatim from its "For authors" page: its
+    # paths name files in the mxb-facts checkout it clones, not in this repo.
+    ".claude/skills/mxb-facts-check/SKILL.md",
 }
 
 
@@ -946,6 +953,35 @@ def check_generated_doc_notes(failures):
                     f"on GitHub, is the one reader who cannot see it. Use the <sub> line.")
 
 
+def check_known_crashes_fresh(failures):
+    """KNOWN_GAME_CRASHES.md is what gen_known_crashes.py makes of the JSON today.
+
+    A line hand-added to the page passes every other check and is silently
+    dropped by the next regeneration - the dump privacy warning was, once.
+    Regenerated into a temp file and compared; the generator is stdlib-only
+    and deterministic, unlike the other GENERATED_DOCS, which need data or
+    tools this gate does not have.
+    """
+    import tempfile
+    rel = "crash_analysis/KNOWN_GAME_CRASHES.md"
+    with tempfile.TemporaryDirectory() as tmp:
+        out = os.path.join(tmp, "out.md")
+        r = subprocess.run(
+            [sys.executable, os.path.join(REPO, "tools", "gen_known_crashes.py"),
+             os.path.join(REPO, "crash_analysis", "known_game_crashes.json"), out],
+            capture_output=True, text=True)
+        if r.returncode != 0:
+            failures.append(f"check_known_crashes_fresh: gen_known_crashes.py failed: "
+                            f"{r.stderr.strip()}")
+            return
+        fresh = open(out, encoding="utf-8").read()
+    if fresh != open(os.path.join(REPO, rel), encoding="utf-8").read():
+        failures.append(
+            f"{rel}: differs from what tools/gen_known_crashes.py makes of the JSON. "
+            f"Put the change in the generator or the JSON, then run "
+            f"python3 tools/gen_known_crashes.py.")
+
+
 def check_no_legacy_data_filenames(failures):
     """No user-visible text may name a data file the plugin migrated away from.
 
@@ -1130,7 +1166,7 @@ def check_anchor_links(failures):
 
 
 def check_readme_menu_tables(failures):
-    """README's three settings tables must match the code, names and order.
+    """README's four settings tables must match the code, names and order.
 
     They are what a user compares against the menu in front of them, so a
     stale one is worse than none: it sends them looking for a row that moved
@@ -1159,7 +1195,7 @@ def check_readme_menu_tables(failures):
     if registry is None:
         return
     glob, prof = registry
-    prof = [t for t in prof if t != "Widgets"]   # its own table, below
+    prof = [t for t in prof if t not in ("Widgets", "Decks")]   # their own tables, below
     # The About screen is deliberately NOT in the tabs table: it is absent from
     # the menu's tab list (it opens from the About button, bottom right), so a
     # row for it sends readers hunting for a tab that does not exist. Filtered
@@ -1167,15 +1203,20 @@ def check_readme_menu_tables(failures):
     # About row into an "extra: About" failure -- the row cannot quietly return.
     glob = [t for t in glob if t != "About"]
 
-    widgets_src = open(os.path.join(
-        REPO, "mxbmrp3/hud/settings/settings_tab_widgets.cpp"), encoding="utf-8").read()
-    # kRows, in menu order: `{ GROUP, N_("Name"), ...`.
-    widgets = re.findall(r'\{\s*[A-Z]+,\s*N_\("([^"]+)"', widgets_src)
-    if not widgets:
-        failures.append(
-            "check_readme_menu_tables: found no kRows entries in "
-            "settings_tab_widgets.cpp -- renamed? The Widgets table is no "
-            "longer being checked.")
+    # kRows, in menu order: `{ GROUP, N_("Name"), ...` -- the Widgets and the
+    # Decks tab share the row shape (HudGroupList).
+    def menu_rows(tab):
+        src = open(os.path.join(
+            REPO, f"mxbmrp3/hud/settings/settings_tab_{tab}.cpp"), encoding="utf-8").read()
+        rows = re.findall(r'\{\s*[A-Z]+,\s*N_\("([^"]+)"', src)
+        if not rows:
+            failures.append(
+                "check_readme_menu_tables: found no kRows entries in "
+                f"settings_tab_{tab}.cpp -- renamed? Its README table is no "
+                "longer being checked.")
+        return rows
+    widgets, decks = menu_rows("widgets"), menu_rows("decks")
+    if not widgets or not decks:
         return
 
     for label, code, doc, where in (
@@ -1185,8 +1226,10 @@ def check_readme_menu_tables(failures):
             # Widgets come first, as the Widgets tab heads the Profile section.
             ("HUDs", prof, documented("### HUDs", "## More Features"),
              "s_tabRegistry (settings_hud_render.cpp)"),
-            ("Widgets", widgets, documented("### Widgets", "### HUDs"),
-             "kRows (settings_tab_widgets.cpp)")):
+            ("Widgets", widgets, documented("### Widgets", "### Decks"),
+             "kRows (settings_tab_widgets.cpp)"),
+            ("Decks", decks, documented("### Decks", "### HUDs"),
+             "kRows (settings_tab_decks.cpp)")):
         if doc is None:
             continue          # documented() already reported the bad anchor
         if code == doc:
@@ -1402,7 +1445,8 @@ def check_shipped_theme_keys(failures):
         if not os.path.isdir(d):
             continue
         for name in sorted(os.listdir(d)):
-            if name.endswith(".ini"):
+            # decks*.ini beside it is the theme's deck layout, read by another applier
+            if name.endswith(".ini") and not name.startswith("decks"):
                 ini_paths.append(os.path.join(d, name))
     # assets/themes too. That is where debug's ini lives (its slices are not built,
     # so it has no folder under mxbmrp3_data), and the walk covers it.
@@ -1636,6 +1680,7 @@ def main():
     check_legacy_redirect_stubs(failures)
     check_icon_svgs_carry_the_fill(failures)
     check_generated_doc_notes(failures)
+    check_known_crashes_fresh(failures)
     check_tooltip_ids_resolve(failures)
     check_documented_settings_paths(failures)
     check_anchor_links(failures)
@@ -1658,7 +1703,7 @@ def main():
           f"named singletons exist, every HUD in the component list, "
           f"symbols where docs say, build-sharing gates locked, gate tools installable, "
           f"shipped themes share one geometry, legacy redirects intact, "
-          f"icon SVGs tinted, generated docs noted alike, zip readme copies the README, "
+          f"icon SVGs tinted, generated docs noted alike, crash page fresh, zip readme copies the README, "
           f"CI and the gate list agree both "
           f"ways, CLAUDE.md imports AGENTS.md, {sizes} bytes.")
     return 0

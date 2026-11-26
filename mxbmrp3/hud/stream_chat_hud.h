@@ -32,6 +32,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "hud_scroll.h"
 #include "../core/chat_event.h"
 #include <chrono>
 #include <deque>
@@ -175,6 +176,12 @@ private:
     // Data
     std::deque<StreamChatEntry> m_entries;
     std::vector<Chat::Event> m_drainBuffer;  // reused, reserved once
+    // Scrollback through the kept messages (hud_scroll.h), in rows; its live edge
+    // follows m_displayOrder. m_ingested counts every message taken in, so the
+    // ones that arrived since the last rebuild are the newest m_ingested - m_scrollSeen.
+    HudScroll m_scroll{HudScroll::Edge::END};
+    unsigned m_ingested = 0;
+    unsigned m_scrollSeen = 0;
 
     // Auto-hide
     std::chrono::steady_clock::time_point m_lastMessageTime;

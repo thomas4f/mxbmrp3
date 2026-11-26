@@ -14,6 +14,7 @@
 #include "slip_angle.h"
 #include "spotter_manager.h"
 #include "spotter_tricks.h"
+#include "wheelie_angle.h"
 #include "../diagnostics/logger.h"
 #include <algorithm>
 
@@ -311,8 +312,8 @@ void FmxManager::updateTrickDetection(const Unified::TelemetryData& telemetry, f
             // landings (nose near level) don't qualify either.
             // =========================================================
             if (Fmx::isAirTrick(m_activeTrick.type)) {
-                bool inWheelieLanding = m_groundState.wheelieAngle(telemetry.pitch) >=
-                                        m_config.wheelieAngleThreshold;
+                bool inWheelieLanding = WheelieAngle::starts(m_groundState.wheelieAngle(telemetry.pitch, telemetry.roll),
+                                                             m_config.wheelieAngleThreshold);
                 bool inEndoLanding = m_groundState.isEndoPosition() &&
                                      telemetry.pitch >= -m_config.endoAngleThreshold;
                 if (inWheelieLanding || inEndoLanding) {
@@ -785,7 +786,7 @@ Fmx::TrickType FmxManager::classifyCurrentTrick(const Unified::TelemetryData& te
     // during this trick. Releasing the clutch invalidates the coaster for the
     // remainder of this trick — the type downgrades back to Wheelie and the
     // coaster score bonus is dropped.
-    if (m_groundState.wheelieAngle(telemetry.pitch) >= m_config.wheelieAngleThreshold) {
+    if (WheelieAngle::starts(m_groundState.wheelieAngle(telemetry.pitch, telemetry.roll), m_config.wheelieAngleThreshold)) {
         if (!m_activeTrick.coasterInvalidated &&
             m_activeTrick.clutchHeldTime >= COASTER_PROMOTION_TIME) {
             return TrickType::COASTER_WHEELIE;
@@ -941,10 +942,10 @@ bool FmxManager::shouldEndTrick(const Unified::TelemetryData& telemetry) const {
     switch (type) {
         case Fmx::TrickType::WHEELIE:
         case Fmx::TrickType::COASTER_WHEELIE:
-            // End when front wheel touches or nose drops
-            // Pitch is negative during wheelie (nose up), so end when it rises above half the entry threshold
-            if (m_groundState.frontWheelContact) return true;
-            if (telemetry.pitch > -m_config.wheelieAngleThreshold * 0.5f) return true;
+            // End when the front wheel touches or the nose drops (core/wheelie_angle.h:
+            // the one rule the Wheelie deck reads too)
+            if (WheelieAngle::ends(m_groundState.frontWheelContact, telemetry.pitch,
+                                   m_config.wheelieAngleThreshold)) return true;
             break;
 
         case Fmx::TrickType::ENDO:

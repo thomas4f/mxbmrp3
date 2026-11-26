@@ -47,16 +47,32 @@ void BaseHud::addString(const char* text, float x, float y, int justify, int fon
     m_stringSkipShadow.push_back(skipShadow);  // Track shadow flag (shadow generated at collection time)
 }
 
+namespace {
+// The game has a text gone once this share of its box is past it: half, so
+// the old text is gone just as the new one starts to show.
+constexpr float ROLL_GAME_RAMP = 0.5f;
+}  // namespace
+
 // Settled, exactly the addString the readout always made; rolling, up to
-// DigitRoll::MAX_PIECES of them.
+// DigitRoll::MAX_PIECES of them, each the drum's (digit_roll.h) handed to the
+// shared edge rule with the readout's box (hud/clip_marks.h).
 void BaseHud::addRolledString(const DigitRoll::Roller& roll, float x, float y, int justify, int fontIndex,
-                              float fontSize, bool skipShadow) {
+                              float fontSize, float boxTop, float boxBottom, bool skipShadow) {
+    const bool boxed = boxBottom > boxTop && fontSize > 0.0f;
+    const ClipMarks::Rect box = ClipMarks::rows(boxTop, boxBottom);   // only its top and bottom cut
     DigitRoll::Piece pieces[DigitRoll::MAX_PIECES];
-    const int count = roll.pieces(DigitRoll::nowUs(), pieces);
+    const int count = roll.pieces(DigitRoll::nowUs(), pieces, boxed ? (boxBottom - boxTop) / fontSize : 1.0f);
     for (int i = 0; i < count; ++i) {
         const DigitRoll::Piece& pc = pieces[i];
-        addString(pc.text, x, y + pc.dy * fontSize, justify, fontIndex,
+        const float dy = pc.dy * fontSize;
+        const size_t s0 = m_strings.size(), q = m_quads.size();
+        addString(pc.text, x, y + dy, justify, fontIndex,
                   pc.alpha < 1.0f ? Motion::scaleAlpha(pc.color, pc.alpha) : pc.color, fontSize, skipShadow);
+        // The text fills its box at rest, so how far it is past is how far it moved.
+        if (boxed && dy != 0.0f)
+            m_clip.edge(m_quads, m_strings, q, q, s0, m_strings.size(),
+                        ClipMarks::rows(boxTop + dy, boxBottom + dy), box,
+                        Edge{ 0.0f, ROLL_GAME_RAMP * (boxBottom - boxTop), false });
     }
 }
 

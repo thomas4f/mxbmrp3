@@ -6,7 +6,8 @@
 // so they sample them one way.
 //
 // Read-only over PluginData's PbGapTracker. Two laps: the lap in progress, as
-// far as it has been ridden (while the gap is live), and the lap last completed
+// far as it has been ridden (while the gap is live, or up to a reset that put the
+// rider ahead - drawn, with no live gap after it), and the lap last completed
 // (PbGapTracker::lastLapGaps). The new lap draws over the old one like a sweep:
 // ahead of the rider, past a short gap, the previous lap is still there to
 // compare with; in the pits, or anywhere the gap is not live, all of it is.
@@ -37,6 +38,7 @@ struct LapDeltaProfile {
     bool anyPrev = false;
     int maxAbsMs = 0;        // largest |gap| sampled, either lap
     bool live = false;       // the gap is live (else only the previous lap shows)
+    bool current = false;    // the lap in progress is drawn: live, or abandoned by a reset ahead
 
     // Refill from the tracker against `ref`; returns whether anything is shown.
     bool sample(PbGapTracker::Ref ref);
@@ -111,18 +113,18 @@ struct LapDeltaRate {
     Series current;
     Series previous;
     float previousFrom = 0.0f;   // track position the previous lap shows from
-    float previousScale = 1.0f;  // PREVIOUS_STRENGTH while a lap is live, else 1
-    float currentTo = 2.0f;      // the lap in progress's furthest point while live (no fade otherwise)
-    bool fadeEdges = false;      // a lap is live: fade both edges of the gap
+    float previousScale = 1.0f;  // PREVIOUS_STRENGTH while a lap is drawn, else 1
+    float currentTo = 2.0f;      // the lap in progress's furthest point while drawn (no fade otherwise)
+    bool fadeEdges = false;      // a lap is drawn: fade both edges of the gap
     bool any = false;
 
     void build(const LapDeltaProfile& d) {
         current.build(d.gapMs, d.has, 0, d.last);
         previous.build(d.prevGapMs, d.prevHas, d.prevFrom, LapDeltaProfile::POINTS - 1);
         previousFrom = LapDeltaProfile::pointPos(d.prevFrom);
-        previousScale = d.live ? PREVIOUS_STRENGTH : 1.0f;
-        fadeEdges = d.live;
-        currentTo = d.live && d.last >= 0 ? LapDeltaProfile::pointPos(d.last) : 2.0f;
+        previousScale = d.current ? PREVIOUS_STRENGTH : 1.0f;
+        fadeEdges = d.current;
+        currentTo = d.current && d.last >= 0 ? LapDeltaProfile::pointPos(d.last) : 2.0f;
         any = current.any || previous.any;
     }
 

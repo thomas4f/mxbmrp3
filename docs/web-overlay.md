@@ -21,7 +21,12 @@ The server only answers this PC by default. To watch from another machine,
 set `webServerBindAddress=0.0.0.0` under `[Advanced]` in
 `mxbmrp3_settings.ini` (there is no menu control for it) and open
 `http://<your-ip>:8080` there - this exposes the overlay to everyone on your
-network.
+network. Use the IP address, not the PC's name: the server answers only
+`localhost` and IP addresses.
+
+Only the pages the server serves can read its data. Other websites open in
+the same browser cannot, and opening `index.html` as a file does not work:
+always use the `http://` address.
 
 ## Configuring the overlay
 

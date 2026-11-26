@@ -233,6 +233,8 @@ the index, not a second copy.
 | `core/battle_groups.h` | battle-group partitioning, shared by the director and the overlay panel | `test_battle_groups.cpp` |
 | `core/lap_timer.h` | the display rider's live lap-timer state machine | `test_lap_timer.cpp` |
 | `core/live_gap_engine.h` | the live leader-relative gap core | `test_live_gap_engine.cpp` |
+| `core/fuel_estimate.h` | per-lap fuel history, read by every fuel readout and the spotter | `test_fuel_estimate.cpp` |
+| `core/split_learner.h` | split positions learned at each crossing, for a centerline without markers | `test_split_crossing.cpp` |
 
 PluginData keeps the flattening, the caches, the eligibility filtering and the
 notification coalescing around each of them. The hazard **state machine** stays put on
@@ -367,9 +369,9 @@ Features:
 
 **Non-finite hardening.** The persisted floats (per-bike odometer, `totalDistanceM`, `topSpeedMs`) are integrated from `speed × dt`, so `updateTelemetry` sanitises at the sample and `finiteOrZero()` in `stats_manager_persistence.cpp` heals a corrupted file on load. Any new persisted float needs both guards (AGENTS.md *DO*; pinned by `stats_test.cpp` and `odometer_test.cpp`).
 
-### 8a. AchievementManager (`core/achievement_manager.*`, `core/achievements.h`)
+### 8a. AchievementManager (`core/achievement_manager.*`, `core/achievements.h`, `core/achievement_types.h`)
 
-Lifetime achievements over the numbers StatsManager keeps. `achievements.h` is the pure, header-only catalogue (id, title, templates, icon, metric, thresholds) plus the tier/progress arithmetic, unit-tested by `test_achievements.cpp`. `AchievementManager` holds the earned tier per row, evaluates on StatsManager's record points and on the RELOAD_CONFIG hotkey (the "Tinkerer" row, the on-demand way to see a toast), and queues toasts for `AchievementWidget`.
+Lifetime achievements over the numbers StatsManager keeps. `achievements.h` is the pure, header-only catalogue (id, title, templates, icon, metric, thresholds) plus the tier/progress arithmetic (the row types it is written in are `achievement_types.h`), unit-tested by `test_achievements.cpp`. `AchievementManager` holds the earned tier per row, evaluates on StatsManager's record points and on the RELOAD_CONFIG hotkey (the "Tinkerer" row, the on-demand way to see a toast), and queues toasts for `ToastFeed` (the toast card, or the Notice deck).
 
 - **Stored in the stats file**, under an `achievements` block keyed by row id (never index); the manager sees only `restore()`/`stateOf()`, never JSON.
 - **Upgrade rule**: on load, everything the numbers already satisfy is granted silently, then ONE summary toast. Pinned by `achievements_test.cpp`.
@@ -404,7 +406,7 @@ Embedded HTTP server streaming race data to browser overlays (an OBS browser sou
 
 **The snapshot is built on the game thread** and cached behind an annotated mutex for the SSE threads, because PluginData is not thread-safe. That, the connection limits, the throttle and the client-activity gating that keeps the build off the game thread when nobody is listening are all documented in `http_server.h` and at the code that enforces them; the gating asymmetry - frequent types gated, rare transition types never - is a Maintenance Invariant in AGENTS.md and is pinned by `http_gating_test.cpp`.
 
-**The snapshot is a contract between two languages**, which is the part no single file can state. Adding a field means extending `buildJsonSnapshot()`, consuming it in the client, and regenerating `tests/fixtures/overlay_snapshot.json` - a real captured snapshot read from *both* sides, so a rename cannot pass silently (`overlay_snapshot_test.cpp` checks the C++ side, `overlay_snapshot.spec.js` drives that same fixture through the real `render()`). AGENTS.md's *Working with the Web Overlay* holds the boundary rules themselves: that the plugin ships raw data and the overlay decides presentation, which helpers are mirrored, why colour *roles* are chosen per renderer, and why `liveGapValid` and `canUseLiveForRider` answer different questions.
+**The snapshot is a contract between two languages**, which is the part no single file can state. Adding a field means extending `buildJsonSnapshot()`, consuming it in the client, and regenerating `tests/fixtures/overlay_snapshot.json` - a real captured snapshot read from *both* sides, so a rename cannot pass silently (`overlay_snapshot_test.cpp` checks the C++ side, `overlay_snapshot.spec.js` drives that same fixture through the real `render()`). AGENTS.md's *Working with the Web Overlay* holds the boundary rules themselves: that the plugin ships raw data and the overlay decides presentation, which helpers are mirrored, why colour *roles* are chosen per renderer, and why `liveGapValid` and the rows' live-gap gate answer different questions.
 
 **The overlay's own structure** - the standings tower's cycling bottom slot (fastest-last-lap, fastest-laps, best-sectors, down-the-order, session-charts, battle), the `?demo` mode that replays a synthetic race with no plugin attached - lives in `mxbmrp3_data/web/js/overlay-*.js`, each file's header describing its own area.
 
@@ -607,6 +609,8 @@ Abstract base class that all HUDs inherit from. Provides:
 - `LeanWidget` - Bike lean/roll angle display with arc gauge and steering bar
 - `SlideWidget` - Slide (slip) angle on the Lean arc turned upside down: heading against velocity, rear-out side filled
 - `WheelieWidget` - Wheelie angle on a quarter-arc protractor that fills its box (`hud/wheelie_arc.h`), read through the shared rule in `core/wheelie_angle.h`
+- `DeckHud` - The decks (Speed, Race, Timing, Wheelie, Slide, Combo, Gap, Rival, Spin, Inputs, Standings, Session, Notice, Fuel, Now Playing, Lap Log): one class, one HUD per kind, plus a Carousel of the wide ones, each a small arcade-style group of readouts. What a deck shows is compiled (the `deck_hud_*.cpp` gathers, game rules in `hud/deck_coach.h` + `hud/deck_score.h`); how it looks is the **theme's layout** (`themes/<name>/decks.ini` or `decks-slanted.ini`, `hud/deck_layout.h`) drawn from the theme's slices and `deck_` pictures. A master switch (Toggles strip, Decks hotkey) hides them all; analytics report `deck_<name>`, `deck_count` and `feat_decks`
+- `StanceWidget` - Standing or seated as a lit up/down triangle; draws only once the game has sent a stance (`core/rider_stance.h`, MX Bikes)
 - `GForceWidget` - Lateral/longitudinal G-force gauge with peak marker
 - `FuelWidget` - Fuel calculator with consumption tracking
 - `TyreTempWidget` - Front and rear tyre tread temperatures (GP Bikes only)
@@ -614,7 +618,7 @@ Abstract base class that all HUDs inherit from. Provides:
 - `GamepadWidget` - Controller visualization with button/stick/trigger display. A pad ships as a **pack** (`gamepads/<name>/` = 17 `.tga` + `gamepad.ini`), selected by name; `hud/gamepad_geometry.h` covers its sizing
 - `CompassWidget` - Bike heading dial (classic north-up needle, or modern rotating card with numeric readout)
 - `SpotterWidget` - The latest spotter callout as on-screen text (subtitles)
-- `AchievementWidget` - Toasts for achievements earned, queued by `AchievementManager`
+- `AchievementWidget` - The toast card: achievements earned and the plugin's own messages, whichever `ToastFeed` has up; it stands down while the Notice deck carries them
 - `PrestigeWidget` - The prestige badge: artwork shown only once the player has a prestige level, otherwise drawing nothing
 - `ToggleStripWidget` - The Toggles strip: the settings menu button and every settings-tab on/off switch (Global, then Profile), shown with the cursor
 - `PointerWidget` - Customizable mouse pointer rendered with quads (internal; the on-screen cursor)
@@ -935,7 +939,7 @@ Checks GitHub releases API for newer versions:
 
 Downloads and installs plugin updates:
 - Downloads ZIP file from GitHub release assets
-- Verifies SHA256 checksum (if provided in release)
+- Verifies the release's SHA256 digest (none: no install)
 - Extracts using bundled miniz library
 - Creates backup before installation (atomic update)
 - Stages update for next game restart

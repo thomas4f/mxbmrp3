@@ -339,8 +339,7 @@ void HttpServer::serverThread() {
         // dispatching Get() handlers — a plain Get() registration for a mounted
         // file is dead code regardless of registration order. The pre-routing
         // handler is the one hook that runs before the mount, so these two
-        // paths are intercepted there. Default headers (CORS) are applied to
-        // the response before routing, so they are preserved.
+        // paths are intercepted there.
         //
         // GET /sw.js - service worker, with PLUGIN_VERSION substituted into the
         // cache name so a plugin update automatically invalidates cached overlay
@@ -352,8 +351,19 @@ void HttpServer::serverThread() {
         // show up on the next browser reload without waiting for HTTP cache
         // expiry (the static mount would serve it with heuristic freshness).
         // The service worker also bypasses caching for this path (see sw.js).
+        //
+        // Every request first passes the Host and Origin checks (see
+        // http_server_internal.h), before anything is served or an SSE slot
+        // is taken, and no CORS header is sent. The overlay is served from
+        // here and reads its API from the same origin, OBS included.
         m_server->set_pre_routing_handler(
             [this](const httplib::Request& req, httplib::Response& res) {
+            const std::string host = req.get_header_value("Host");
+            if (!http_server_detail::isAllowedHost(host)
+                || !http_server_detail::isSameOrigin(req.get_header_value("Origin"), host)) {
+                res.status = 403;
+                return httplib::Server::HandlerResponse::Handled;
+            }
             if (req.method != "GET" && req.method != "HEAD") {
                 return httplib::Server::HandlerResponse::Unhandled;
             }
@@ -412,21 +422,6 @@ void HttpServer::serverThread() {
                 DEBUG_INFO_F("HttpServer WARNING: web root not found: %s", m_webRoot.c_str());
             }
         }
-
-        // CORS headers for browser sources.
-        //
-        // Deliberate trade-off: the wildcard origin lets OBS browser sources and
-        // arbitrary local tooling read the overlay data without configuration.
-        // It also means any webpage open in a browser on this machine (or on the
-        // LAN when bound to 0.0.0.0) can read live session data and hold SSE
-        // slots. The data is low-sensitivity (public race state, rider names)
-        // and every endpoint is read-only, so convenience wins here; revisit if
-        // a write endpoint is ever added.
-        m_server->set_default_headers({
-            {"Access-Control-Allow-Origin", "*"},
-            {"Access-Control-Allow-Methods", "GET"},
-            {"Access-Control-Allow-Headers", "Content-Type"}
-        });
 
         // GET /api/logos - list PNG files in the logos/ subdirectory
         m_server->Get("/api/logos", [this](const httplib::Request&, httplib::Response& res) {

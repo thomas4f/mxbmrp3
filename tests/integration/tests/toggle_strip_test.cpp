@@ -12,7 +12,7 @@
 //    and switching it back restores it.
 //  - Its Widgets icon switches the widgets off, but not the strip itself -- it
 //    carries the way back, so it is exempt from the Widgets master like the
-//    settings button.
+//    settings button. Its Decks icon is the same switch for every deck.
 //  - It shows only while the cursor does: idle mouse, no strip -- except a
 //    reveal (entering the track), which shows the Settings icon alone.
 //  - The idle cursor does not hide while it rests on the strip: a player reading
@@ -107,8 +107,9 @@ TEST_CASE("toggle strip: mirrors the sidebar's switches, both sections, More inc
     CHECK(rumble > 0);                         // ...then the Global switches...
     CHECK(director > rumble);                  // (sidebar order)
     CHECK(widgets > director);                 // ...then the Profile section's
-    CHECK(rowNamed(host, "Dash") == widgets + 1);
-    CHECK(rowNamed(host, "Map") == widgets + 2);
+    CHECK(rowNamed(host, "Decks") == widgets + 1);   // the decks' master, like the widgets'
+    CHECK(rowNamed(host, "Dash") == widgets + 2);
+    CHECK(rowNamed(host, "Map") == widgets + 3);
     CHECK(last == "Charts");       // the More group's last tab: More is inline
     CHECK(rowNamed(host, "General") < 0);      // no toggle on the row: not in the strip
     CHECK(rowNamed(host, "Appearance") < 0);
@@ -142,7 +143,7 @@ TEST_CASE("toggle strip: its Widgets switch hides the widgets but not the strip"
     host.startup(kSave);
     REQUIRE_MESSAGE((host.hasInjectedMouse() && host.hasToggleStrip() && host.hasScreenEdges()),
                     "build without the hooks");
-    host.setWidgetsEnabled(true);
+    host.setMasterEnabled(PluginHost::Master::Widgets, true);
     wake(host);
     const int row = rowNamed(host, "Widgets");
     REQUIRE(row >= 0);
@@ -161,6 +162,34 @@ TEST_CASE("toggle strip: its Widgets switch hides the widgets but not the strip"
     clickRow(host, row);
     host.draw();
     CHECK(widgetsOn());
+    host.injectMouse(false);
+}
+
+TEST_CASE("toggle strip: its Decks switch turns every deck off and back on") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSave);
+    REQUIRE_MESSAGE((host.hasInjectedMouse() && host.hasToggleStrip()), "build without the hooks");
+    host.setMasterEnabled(PluginHost::Master::Decks, true);
+    wake(host);
+    const int row = rowNamed(host, "Decks");
+    REQUIRE(row >= 0);
+
+    auto decksOn = [&]() {
+        bool on = false;
+        host.toggleStripRow(row, nullptr, nullptr, nullptr, &on);
+        return on;
+    };
+    REQUIRE(decksOn());
+    clickRow(host, row);
+    host.draw();
+    CHECK_FALSE(decksOn());
+    clickRow(host, row);
+    host.draw();
+    CHECK(decksOn());
+    // Off again, as a new install has it: the cases after this one share the
+    // save, and the Notice deck, on, carries the achievement toasts
+    host.setMasterEnabled(PluginHost::Master::Decks, false);
     host.injectMouse(false);
 }
 

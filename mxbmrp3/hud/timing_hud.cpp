@@ -26,7 +26,6 @@
 #include "../core/color_config.h"
 #include "../core/stats_manager.h"
 #include "../core/hud_manager.h"
-#include "fuel_widget.h"       // the readout row reads its estimate rather than re-deriving one
 
 using namespace PluginConstants;
 
@@ -137,6 +136,17 @@ void TimingHud::update() {
         m_cachedPitState = -1;  // Reset pit state cache for new rider
 
         setDataDirty();
+    }
+
+    // The Position readout reads the running order, which moves on its own
+    // with Live updates on Both (no Standings change): redraw when it does,
+    // as the Position widget does
+    if (isReadoutEnabled(READOUT_POSITION)) {
+        const uint32_t orderRevision = PluginData::getInstance().getRunningOrder().revision();
+        if (orderRevision != m_shownOrderRevision) {
+            m_shownOrderRevision = orderRevision;
+            setDataDirty();
+        }
     }
 
     // Detect pit entry/exit (for cache tracking)
@@ -642,8 +652,8 @@ int TimingHud::buildReadouts(Readout* readouts) const {
     // Every value here is READ from the source that already owns it, never
     // re-derived: the session clock through formatSessionClock (the one source
     // in-game and the web overlay share, overtime labels and all), the fuel
-    // estimate through FuelWidget, which accumulates the per-lap history the
-    // estimate needs. A second accumulation would be a second answer.
+    // estimate through PluginData, which keeps the per-lap history every fuel
+    // readout shares. A second accumulation would be a second answer.
     int readoutCount = 0;
     if (m_enabledReadouts != READOUT_NONE) {
         const PluginData& pd = PluginData::getInstance();
@@ -656,7 +666,9 @@ int TimingHud::buildReadouts(Readout* readouts) const {
             snprintf(r.value, sizeof(r.value), fmt, args...);
         };
 
-        const int position = pd.getDisplayPositionForRaceNum(me);
+        // The running order's place, live with Live updates on Both, as the
+        // Position widget and Standings show it
+        const int position = PluginData::getInstance().getRunningOrder().positionOf(me);
         const int entries = static_cast<int>(pd.getDisplayClassificationOrder().size());
         if (position > 0 && entries > 0) add(READOUT_POSITION, "%d/%d", position, entries);
         else                             add(READOUT_POSITION, "%s", Placeholders::GENERIC);
@@ -695,7 +707,7 @@ int TimingHud::buildReadouts(Readout* readouts) const {
         if (m_enabledReadouts & READOUT_FUEL) {
             Readout& r = readouts[readoutCount++];
             r.name = readoutLabel(readoutIndexOf(READOUT_FUEL));
-            const float laps = HudManager::getInstance().getFuelWidget().getLapsRemaining();
+            const float laps = PluginData::getInstance().getFuelLapsRemaining();
             // THE UNIT IS IN THE VALUE, not the label. A bare "3.2" beside "Fuel"
             // reads as litres as easily as laps, and the label column is the one
             // that cannot grow -- it is sized by "Last Lap" above. The value column

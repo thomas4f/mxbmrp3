@@ -15,6 +15,14 @@
 
 using namespace PluginConstants;
 
+namespace {
+    // The units line sits this share of a normal line higher than the row below
+    // the value would put it, so its baseline meets the bottom of the gear digit
+    // beside it (and the Stance icons), 2 px at 1080p. A share, not pixels, so the
+    // three keep one bottom line at every size and scale.
+    constexpr float UNITS_RAISE_SHARE = 0.085f;
+}
+
 SpeedWidget::SpeedWidget()
 {
     m_panelKind = PanelKind::Widget;
@@ -100,13 +108,8 @@ void SpeedWidget::rebuildRenderData() {
     if (!bikeData.isValid) {
         snprintf(speedValueBuffer, sizeof(speedValueBuffer), "%s", Placeholders::GENERIC);
     } else {
-        int speed;
-        if (m_speedUnit == SpeedUnit::KMH) {
-            speed = static_cast<int>(bikeData.speedometer * UnitConversion::MS_TO_KMH + 0.5f);
-        } else {
-            speed = static_cast<int>(bikeData.speedometer * UnitConversion::MS_TO_MPH + 0.5f);
-        }
-        snprintf(speedValueBuffer, sizeof(speedValueBuffer), "%d", speed);
+        snprintf(speedValueBuffer, sizeof(speedValueBuffer), "%d",
+                 UnitConversion::shownSpeed(bikeData.speedometer, m_speedUnit == SpeedUnit::KMH));
     }
 
     // Value and units are centered on the CARD (PanelPlan::sectionBoxCenterX --
@@ -126,8 +129,8 @@ void SpeedWidget::rebuildRenderData() {
 
     // Add units label (title font at normal size) - centered
     if (m_enabledRows & ROW_UNITS) {
-        const char* unitsLabel = (m_speedUnit == SpeedUnit::KMH) ? "km/h" : "mph";
-        addString(unitsLabel, centerX, currentY, Justify::CENTER,
+        const char* unitsLabel = UnitConversion::speedLabel(m_speedUnit == SpeedUnit::KMH);
+        addString(unitsLabel, centerX, currentY - dim.lineHeightNormal * UNITS_RAISE_SHARE, Justify::CENTER,
             this->getFont(FontCategory::TITLE), textColor, dim.fontSize);
     }
 

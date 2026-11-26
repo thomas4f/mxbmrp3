@@ -432,7 +432,7 @@ struct BenchmarkMetrics {
     // in the report, so a cap that a new HUD can reach is a trap that re-arms itself.
     // Enforced by benchmark_registry_test, which fails if any registered panel is
     // left unprofiled -- that test, not this number, is what keeps it honest.
-    static constexpr int MAX_HUDS = 64;
+    static constexpr int MAX_HUDS = 96;
 
     // Per-callback timing (indexed by callback ID)
     std::array<CallbackTimingEntry, MAX_CALLBACKS> callbacks;
@@ -593,6 +593,9 @@ struct BikeTelemetryData {
     float pitch;        // Pitch angle in degrees (negative = nose up / wheelie, positive = nose down / endo)
     float slideAngle;   // Degrees the bike travels sideways of its nose (positive = rear out to the right; 0 airborne or slow, core/slip_angle.h)
     float wheelieAngle; // Degrees nose-up while on the back wheel only, else 0 (core/wheelie_angle.h)
+    bool frontWheelDown;   // Front wheel on the ground: ends a wheelie (WheelieAngle::ends)
+    float rearWheelSpeed;  // Driven wheel's surface speed in m/s while on the ground; -1 off it or unknown
+    int riderStance;    // -1 = unknown (game build without it, spectating, other games), 0 = seated, 1 = standing
     float accelX;       // Lateral G-force (chassis-local; positive = right)
     float accelY;       // Vertical G-force (chassis-local; positive = up, ~1g at rest)
     float accelZ;       // Longitudinal G-force (chassis-local; positive = forward / throttle, negative = brake)
@@ -612,7 +615,8 @@ struct BikeTelemetryData {
     BikeTelemetryData() : speedometer(0.0f), gear(0), numberOfGears(6), rpm(0), fuel(0.0f), maxFuel(0.0f),
                           frontSuspLength(0.0f), rearSuspLength(0.0f),
                           frontSuspMaxTravel(0.0f), rearSuspMaxTravel(0.0f),
-                          roll(0.0f), pitch(0.0f), slideAngle(0.0f), wheelieAngle(0.0f),
+                          roll(0.0f), pitch(0.0f), slideAngle(0.0f), wheelieAngle(0.0f), frontWheelDown(true), rearWheelSpeed(-1.0f),
+                          riderStance(-1),
                           accelX(0.0f), accelY(0.0f), accelZ(0.0f), impactPeakG(0.0f),
                           engineTemperature(0.0f), waterTemperature(0.0f),
                           treadTemperature{},

@@ -1,7 +1,7 @@
 // ============================================================================
 // hud/dropdown_list.h
 // The DROPDOWN's drawing, shared by every HUD that offers one: the closed box
-// (a tinted field with a caret) and the open list under or over it. The
+// (a field with a caret) and the open list under or over it. The
 // settings panel was its first host (settings_controls.h); the Records HUD's
 // category filter is the second. Each host keeps its own state and click
 // regions -- the two speak different region types -- and hands this the
@@ -26,6 +26,13 @@ public:
     };
     // The global palette and the normal face: the settings panel's style.
     static Style globalStyle();
+
+    // A FIELD's box at (x, y, w, h), pre-offset: the theme's section card art
+    // when it has one -- the settings Find box's look, sunken where the cards are
+    // sunken and rimmed where they are rimmed -- else a flat `tint`. The one place
+    // both the dropdown's box and the settings input fields draw their box, so
+    // the two stay one family.
+    static void drawField(BaseHud& hud, float x, float y, float w, float h, unsigned long tint);
 
     // The closed control: the box around a value field `width` wide at x (the
     // box takes a little air to the value's left) and the caret in its last

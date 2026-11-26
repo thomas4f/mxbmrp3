@@ -15,7 +15,7 @@
 // no font is staged and text measures a grid cell a character.
 //
 // The icons are not staged, so each button draws its mark ("|<", ">", "||",
-// ">|", "Vo"): that is where a test finds the buttons, and it pins the
+// ">|", "Vo", "Sh", "Lp"): that is where a test finds the buttons, and it pins the
 // missing-icon fallback with them.
 // ============================================================================
 #include "doctest.h"
@@ -30,16 +30,19 @@
 namespace {
 
 constexpr int NO_PLAYER = 2, PAUSED = 3, PLAYING = 4;   // MediaManager::State
-constexpr int CMD_PREVIOUS = 1, CMD_PLAY = 2, CMD_NEXT = 3;   // MediaManager::Command
+constexpr int CMD_PREVIOUS = 1, CMD_PLAY = 2, CMD_NEXT = 3, CMD_SHUFFLE = 4, CMD_LOOP = 5;   // MediaManager::Command
+// MXBMRP3_Test_MediaPublish's controls: what the player takes, and loop over one track.
+constexpr int TAKES_ALL = 1 | 2 | 4, LOOP_TRACK = 1 << 4;
 
-// Start with the integration on and `extra` sections laid over it; the
-// first-step hint dropped so the Dash's page is live.
+// Start with the integration and the Widgets switch on and `extra` sections
+// laid over it; the first-step hint dropped so the Dash's page is live.
 void start(PluginHost& host, const char* save, const std::string& extra) {
     REQUIRE(host.loaded());
     REQUIRE(host.startup(save) >= 0);
     host.writeSettingsFile(save, "[Settings]\nversion=6\n\n[Messages]\ndashTried=1\n\n[General]\nnowPlaying=1\n\n"
                                  "[NoticesHud]\nnotice_default_setup=0\n\n" + extra);
     host.loadSettings(save);
+    host.setMasterEnabled(PluginHost::Master::Widgets, true);   // ships off
     REQUIRE(host.hasMediaHooks());
     REQUIRE(host.hasStringRows());
     host.draw();
@@ -141,13 +144,103 @@ TEST_CASE("now playing: the buttons and the volume slider queue their commands")
     clickAt(host, static_cast<float>(next->x), rowY);
     CHECK(host.mediaPending(0) == CMD_NEXT);
 
-    // The slider: 9 characters from 1.5 right of its icon; the buttons are 3
+    // The slider: 7 characters from 1.5 right of its icon; the buttons are 3
     // characters apart. Its middle is about half volume.
     const double charW = (play->x - prev->x) / 3.0;
-    clickAt(host, static_cast<float>(vol->x + charW * 6.0), rowY);
+    clickAt(host, static_cast<float>(vol->x + charW * 5.0), rowY);
     const int volume = host.mediaPending(1);
     CHECK(volume >= 45);
     CHECK(volume <= 55);
+    host.shutdown();
+}
+
+TEST_CASE("now playing: shuffle, loop and seeking reach a player that takes them, and only one") {
+    PluginHost host(dllPath());
+    const char* save = "Z:\\tmp\\mxbmrp3-tests\\now_playing_toggles\\";
+    start(host, save, "[NowPlayingWidget]\nvisible=1\n");
+    REQUIRE(host.hasInjectedMouse());
+    REQUIRE(host.hasInkHooks());
+    host.mediaPublish("Song", "Artist", PLAYING, 1000, 200000, 20, TAKES_ALL);
+    host.draw();
+    auto rows = host.hudStringRows("now_playing_widget");
+    const auto* shuffle = rowOf(rows, "Sh");
+    const auto* prev = rowOf(rows, "|<");
+    const auto* play = rowOf(rows, "||");
+    const auto* next = rowOf(rows, ">|");
+    const auto* loop = rowOf(rows, "Lp");
+    const auto* vol = rowOf(rows, "Vo");
+    const auto* artist = rowOf(rows, "Artist");
+    REQUIRE(shuffle);
+    REQUIRE(prev);
+    REQUIRE(play);
+    REQUIRE(next);
+    REQUIRE(loop);
+    REQUIRE(vol);
+    REQUIRE(artist);
+    // One row, in order: shuffle, the transport, loop, then the volume.
+    CHECK(shuffle->x < prev->x);
+    CHECK(next->x < loop->x);
+    CHECK(loop->x < vol->x);
+    CHECK(rowOf(rows, "1") == nullptr);
+    const float rowY = static_cast<float>(prev->y) + 0.008f;
+    const double charW = (play->x - prev->x) / 3.0;
+
+    // The pointer over a control lights it, and leaving puts it back.
+    const auto inkOf = [&](const char* text) {
+        const auto now = host.hudStringRows("now_playing_widget");
+        for (size_t i = 0; i < now.size(); ++i)
+            if (now[i].text == text) return host.stringColor("now_playing_widget", static_cast<int>(i));
+        return 0ul;
+    };
+    const unsigned long nextInk = inkOf(">|");
+    host.injectMouse(true, static_cast<float>(next->x), rowY, 0); host.draw();
+    host.injectMouse(true, static_cast<float>(next->x) + 0.001f, rowY, 0); host.draw();
+    CHECK(inkOf(">|") != nextInk);
+    host.injectMouse(true, static_cast<float>(vol->x), rowY + 0.2f, 0); host.draw();
+    CHECK(inkOf(">|") == nextInk);
+
+    clickAt(host, static_cast<float>(shuffle->x), rowY);
+    CHECK(host.mediaPending(0) == CMD_SHUFFLE);
+    clickAt(host, static_cast<float>(loop->x), rowY);
+    CHECK(host.mediaPending(0) == CMD_LOOP);
+
+    // Loop over one track: a "1" beside the loop icon.
+    host.mediaPublish("Song", "Artist", PLAYING, 1000, 200000, 20, TAKES_ALL | LOOP_TRACK);
+    host.draw();
+    rows = host.hudStringRows("now_playing_widget");
+    const auto* one = rowOf(rows, "1");
+    REQUIRE(one);
+    CHECK(one->x > loop->x);
+    CHECK(one->x < vol->x);
+
+    // The progress line along the artist row's foot (a row below the title,
+    // as the buttons are a row below the artist): pressed at a quarter and let
+    // go at the middle, it sends the middle of the track, once, on release.
+    const double lh = prev->y - artist->y;
+    const float seekY = static_cast<float>(artist->y + lh * 0.8);
+    const double rowW = charW * 27.0;
+    const float x0 = static_cast<float>(artist->x + rowW * 0.25), x1 = static_cast<float>(artist->x + rowW * 0.5);
+    REQUIRE(host.mediaPending(2) == -1);
+    host.injectMouse(true, x0 - 0.01f, seekY, 0); host.draw();
+    host.injectMouse(true, x0, seekY, 0); host.draw();
+    host.injectMouse(true, x0, seekY, 1); host.draw();
+    host.injectMouse(true, x1, seekY, 1); host.draw();
+    CHECK(host.mediaPending(2) == -1);   // not while the drag lasts
+    host.injectMouse(true, x1, seekY, 0); host.draw();
+    const int seek = host.mediaPending(2);
+    CHECK(seek >= 96000);
+    CHECK(seek <= 104000);
+
+    // A player that takes none of them: the same presses send nothing.
+    host.mediaPublish("Other", "Artist", PLAYING, 1000, 200000, 20, 0);
+    host.draw();
+    clickAt(host, static_cast<float>(prev->x), rowY);
+    REQUIRE(host.mediaPending(0) == CMD_PREVIOUS);
+    clickAt(host, static_cast<float>(shuffle->x), rowY);
+    clickAt(host, static_cast<float>(loop->x), rowY);
+    CHECK(host.mediaPending(0) == CMD_PREVIOUS);
+    clickAt(host, x0, seekY);
+    CHECK(host.mediaPending(2) == seek);   // the earlier seek, untouched
     host.shutdown();
 }
 

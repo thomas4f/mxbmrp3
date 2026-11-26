@@ -7,6 +7,9 @@
 
 #include "exploration_stats.h"
 #include "ghost_ride.h"
+#include "lap_purity.h"
+#include "leapfrog.h"
+#include "slalom.h"
 #include "roost_detect.h"
 
 #include <set>
@@ -86,7 +89,7 @@ struct GlobalStats {
     int pbCount = 0;
     int rainRaceCount = 0;      // finished with the session's weather reported Rainy
     int bigGridRaceCount = 0;   // finished on a grid of BIG_GRID_ENTRIES or more
-    int maxSessionLaps = 0;     // most valid laps in one session
+    double maxSessionDistanceM = 0.0;   // the longest distance ridden in one session (Marathon)
     int penaltyFreeStreak = 0;      // races finished in a row without a penalty (resets)
     int bestPenaltyFreeStreak = 0;  // the longest such run ever
     int pbLeaps = 0;                // personal bests beaten by a full second or more
@@ -253,6 +256,25 @@ public:
     // paddling through a heap clears), and a spell after the player's own crash
     // ends, so climbing out of your own pile-up is not riding through one.
     void recordRodeThrough(int down);
+
+    // Slalom: the riders down near the player, each ridden past counted once
+    // per fall (core/slalom.h), under Peace Out's two guards. Called from the
+    // same position batch, only while somebody is down or a credit is held.
+    void recordSlalom(const Unified::TrackPositionData* positions, int count, int me);
+    bool slalomHolding() const { return m_slalom.holding(); }
+
+    // Leapfrog: riders cleared from the air (core/leapfrog.h). The ground
+    // state is FmxManager's, relayed every telemetry frame by setAirborne().
+    void recordLeapfrog(const Unified::TrackPositionData* positions, int count, int me);
+    bool isAirborne() const { return m_airborne; }
+    void setAirborne(bool airborne);
+
+    // Grounded and Flat Out (core/lap_purity.h): a flight that counted (the
+    // FMX flight path, at touchdown) and the brake levers, every frame.
+    void noteFlight();
+    void noteBrakes(float front, float rear) {
+        if (front > LapPurity::BRAKE_TOUCH || rear > LapPurity::BRAKE_TOUCH) m_lapPurity.braked = true;
+    }
 
     // ========================================================================
     // Context (set once per event, avoids lookups at telemetry rate)
@@ -595,6 +617,18 @@ private:
     // Pile-Up, which is the pair's whole distinction.
     std::chrono::steady_clock::time_point m_lastSeenDownTime{};
     bool m_hasSeenDownTime = false;
+
+    // The ten rows of November (stats_manager_feeds.cpp). Race numbers in the
+    // two trackers are rebuilt from each batch, so a reused number cannot
+    // inherit a departed rider's credit; the lap flags clear at each lap line
+    // and run start, the flight count at each session start.
+    Slalom::Tracker m_slalom;
+    Leapfrog::Tracker m_leapfrog;
+    bool m_airborne = false;
+    LapPurity::Lap m_lapPurity;
+    void checkPureLap(bool isValid);
+    bool ridingPastOthers() const;   // Peace Out's guards, shared with Slalom
+    void recordRaceFinishExtras(const class PluginData& pd, int playerRaceNum, int position, int starters);
 
     float m_tankCapacityL = 0.0f;
     float m_lastFuel = 0.0f;

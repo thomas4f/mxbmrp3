@@ -10,7 +10,9 @@
 #include "../core/fmx_manager.h"
 #include "../core/slip_angle.h"
 #include "../core/wheelie_angle.h"
+#include "../core/wheel_spin.h"
 #include "../core/ghost_ride.h"
+#include "../core/rider_stance.h"
 #include "../diagnostics/logger.h"
 #include <algorithm>
 #include <cmath>
@@ -25,32 +27,33 @@ void Handlers::handleRunTelemetry(Unified::TelemetryData* psTelemetryData) {
         // centerline position; crossing detection + a wall clock do the timing.
         PluginData::getInstance().updateSegmentTimer(psTelemetryData->trackPos);
 
+        // WHICH WHEEL IS THE REAR is this handler's knowledge, not the stats' or
+        // the Spin deck's: a bike reports two (0 front, 1 rear), a kart four (2
+        // and 3 driven). Anything else says "cannot be known" with a negative,
+        // and what reads it simply never fires rather than reading a front wheel.
+        //
+        // ONLY WHILE IT IS ON THE GROUND (wheelMaterial 0 = no contact). A
+        // wheel spinning in the air is not digging anything - hung up on an
+        // obstacle, nose-down on an endo, or on a stand - and the slip test
+        // downstream cannot tell that from a rear tyre buried in dirt. It is
+        // the same guard FmxManager puts on a burnout, which wants
+        // rearWheelContact, and on a drift, which wants both.
+        float rearWheelMs = -1.0f;
+        if (psTelemetryData->vehicleType == Unified::VehicleType::Bike) {
+            if (psTelemetryData->wheelMaterial[1] != 0) {
+                rearWheelMs = psTelemetryData->wheelSpeed[1];
+            }
+        } else if (psTelemetryData->wheelCount >= 4) {
+            for (int w = 2; w <= 3; ++w) {
+                if (psTelemetryData->wheelMaterial[w] == 0) continue;
+                rearWheelMs = std::max(rearWheelMs, psTelemetryData->wheelSpeed[w]);
+            }
+        }
+
         // Update stats: distance, top speed, crash detection
         {
             const RiderTrackState* playerPos = PluginData::getInstance().getPlayerTrackPosition();
             bool isCrashed = playerPos && playerPos->crashed;
-            // WHICH WHEEL IS THE REAR is the caller's knowledge, not the stats':
-            // a bike reports two (0 front, 1 rear), a kart four (2 and 3 driven).
-            // Anything else says "cannot be known" with a negative, and the row
-            // that reads it simply never fires rather than reading a front wheel.
-            //
-            // ONLY WHILE IT IS ON THE GROUND (wheelMaterial 0 = no contact). A
-            // wheel spinning in the air is not digging anything - hung up on an
-            // obstacle, nose-down on an endo, or on a stand - and the slip test
-            // downstream cannot tell that from a rear tyre buried in dirt. It is
-            // the same guard FmxManager puts on a burnout, which wants
-            // rearWheelContact, and on a drift, which wants both.
-            float rearWheelMs = -1.0f;
-            if (psTelemetryData->vehicleType == Unified::VehicleType::Bike) {
-                if (psTelemetryData->wheelMaterial[1] != 0) {
-                    rearWheelMs = psTelemetryData->wheelSpeed[1];
-                }
-            } else if (psTelemetryData->wheelCount >= 4) {
-                for (int w = 2; w <= 3; ++w) {
-                    if (psTelemetryData->wheelMaterial[w] == 0) continue;
-                    rearWheelMs = std::max(rearWheelMs, psTelemetryData->wheelSpeed[w]);
-                }
-            }
             StatsManager::getInstance().updateTelemetry(psTelemetryData->speedometer, isCrashed,
                                                        psTelemetryData->gear, psTelemetryData->fuel,
                                                        rearWheelMs, psTelemetryData->trackPos);
@@ -82,6 +85,7 @@ void Handlers::handleRunTelemetry(Unified::TelemetryData* psTelemetryData) {
             rearBrake,
             psTelemetryData->clutch
         );
+        StatsManager::getInstance().noteBrakes(frontBrake, rearBrake);   // Flat Out
 
         // Update suspension telemetry data (bike-specific)
         if (psTelemetryData->vehicleType == Unified::VehicleType::Bike) {
@@ -96,7 +100,8 @@ void Handlers::handleRunTelemetry(Unified::TelemetryData* psTelemetryData) {
         // only, since a kart's wheels 0/1 are not a front and a rear.
         const float wheelieAngle = WheelieAngle::of(psTelemetryData->wheelMaterial[0] != 0,
                                                     psTelemetryData->wheelMaterial[1] != 0,
-                                                    psTelemetryData->pitch);
+                                                    psTelemetryData->pitch,
+                                                    psTelemetryData->roll);
 
         // Update roll/pitch (lean + nose-up/down angle) and how sideways the bike
         // is travelling (the Slide widget): heading against the CG's world
@@ -110,7 +115,12 @@ void Handlers::handleRunTelemetry(Unified::TelemetryData* psTelemetryData) {
             PluginData::getInstance().updateAttitude(psTelemetryData->roll, psTelemetryData->pitch,
                 SlipAngle::slideDeg(psTelemetryData->velocityX, psTelemetryData->velocityZ,
                                     psTelemetryData->yaw, anyWheelOnGround),
-                psTelemetryData->vehicleType == Unified::VehicleType::Bike ? wheelieAngle : 0.0f);
+                psTelemetryData->vehicleType == Unified::VehicleType::Bike ? wheelieAngle : 0.0f,
+                psTelemetryData->vehicleType != Unified::VehicleType::Bike || psTelemetryData->wheelMaterial[0] != 0, rearWheelMs,
+                psTelemetryData->bike.riderStance);
+#if GAME_HAS_RIDER_STANCE
+            RiderStance::noteFrame(psTelemetryData->bike.riderStance);  // offers the Stance widget
+#endif
         }
 
         // Update G-forces (chassis-local, already in g units, averaged over 10ms by the engine)
@@ -184,21 +194,13 @@ void Handlers::handleRunTelemetry(Unified::TelemetryData* psTelemetryData) {
         float frontWheelSpeed = psTelemetryData->wheelSpeed[0];
         float rearWheelSpeed = psTelemetryData->wheelSpeed[1];
 
-        float wheelOverrun = 0.0f;
+        // Wheelspin: the rear wheel's overrun while it is on the ground; at any
+        // speed, so a burnout at a standstill rumbles hard (core/wheel_spin.h)
+        const float wheelOverrun = WheelSpin::overrun(rearWheelContact ? rearWheelSpeed : -1.0f, vehicleSpeed);
         // Front/rear underrun kept separate so the Lockup effect can be split; the
         // engine collapses them to max when the effect isn't split.
         float frontUnderrun = 0.0f;
         float rearUnderrun = 0.0f;
-
-        // Use minimum 1 m/s for ratio denominator to allow burnout detection at low speeds
-        // while preventing division by zero
-        float speedForRatio = std::max(1.0f, vehicleSpeed);
-
-        // Wheelspin: rear wheel overrun (only when rear wheel is in contact)
-        // Works at any speed - burnouts at standstill will trigger strong feedback
-        if (rearWheelContact && rearWheelSpeed > vehicleSpeed) {
-            wheelOverrun = (rearWheelSpeed - vehicleSpeed) / speedForRatio;
-        }
 
         // Brake lockup: wheel underrun (only for wheels in contact with ground)
         // Requires some vehicle speed - can't lock up wheels when stationary

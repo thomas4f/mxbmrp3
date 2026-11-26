@@ -66,10 +66,9 @@ namespace Settings {
             constexpr const char* GAP_MODE = "gapMode";
             constexpr const char* POSGAIN_MODE = "posGainMode";
             constexpr const char* GAP_REFERENCE_MODE = "gapReferenceMode";
-            constexpr const char* ANIMATION_MODE = "animationMode";
+            constexpr const char* COLORED_MOVES = "coloredMoves";
             constexpr const char* SHOW_HEADERS = "showHeaders";
             constexpr const char* SHOW_SESSION_INFO = "showSessionInfo";
-            constexpr const char* LIVE_GAPS = "liveGaps";
             constexpr const char* SHOW_MODE = "showMode";
             constexpr const char* FREEZE_DURATION = "freezeDuration";
         }
@@ -99,6 +98,27 @@ namespace Settings {
             // The selected board pack's DIRECTORY NAME under mxbmrp3_data/pitboards/.
             // A name, never an index -- same rule the gamepad pack follows.
             constexpr const char* PACK = "pitboardPack";
+        }
+
+        // The decks' keys ([Decks])
+        namespace Deck {
+            // 1: every deck draws its theme's Slanted layout (DeckHud::setSlanted)
+            constexpr const char* SLANTED = "slanted";
+            // 0: no deck draws its bar / its stamp (DeckHud::setBars, setStamps)
+            constexpr const char* BARS = "bars";
+            constexpr const char* STAMPS = "stamps";
+            // Every deck's Title (0/1), background Opacity (0-1) and Scale
+            // (DeckHud::setSharedTitle, setSharedOpacity, setSharedScale)
+            constexpr const char* TITLE = "title";
+            constexpr const char* OPACITY = "opacity";
+            constexpr const char* SCALE = "scale";
+            // [CarouselDeck] (DeckHud, THE CAROUSEL): each deck in the turn
+            // (deck<Name>=0/1, e.g. deckTiming), the Auto step in seconds (0 off), the marker by
+            // name, and the names and Notice focus switches
+            constexpr const char* CAROUSEL_AUTO = "auto";
+            constexpr const char* CAROUSEL_MARKER = "marker";
+            constexpr const char* CAROUSEL_NAMES = "names";
+            constexpr const char* CAROUSEL_NOTICES = "noticeFocus";
         }
 
         // MapHud-specific keys
@@ -317,6 +337,7 @@ namespace Settings {
             constexpr const char* DIRECTOR = "event_director";
             constexpr const char* SESSION_PB = "event_session_pb";
             constexpr const char* ALLTIME_PB = "event_alltime_pb";
+            constexpr const char* ACHIEVEMENT = "event_achievement";
         }
 
         // NoticesHud notices
@@ -464,6 +485,12 @@ namespace Settings {
             constexpr Setting MAX_MARKER_LINGER_FRAMES = {"maxMarkerLingerFrames", "Frames to show max marker after peak (default 60, ~1s at 60fps)"};
         }
 
+        // StanceWidget settings (no Settings row: a widget has no room for options)
+        namespace Stance {
+            constexpr Setting MODE = {"mode", "pair (both icons, the current one lit, default), flip (one icon, turned over while seated) or standing (one icon, shown only while standing)"};
+            constexpr Setting ICON = {"icon", "Icon file name from mxbmrp3_data/icons/ without .tga, drawn pointing up and turned over for seated (default: play)"};
+        }
+
         // CompassWidget settings
         namespace Compass {
             constexpr Setting STYLE = {"style", "Dial style: classic (fixed ring, red/white needle, default) or modern (rotating card with centered heading)"};
@@ -539,7 +566,6 @@ namespace Settings {
             constexpr Setting PLAYER_ROW_HIGHLIGHT = {"playerRowHighlight", "Full-row color background on the player/spectated rider's row (1 = on, default; 0 = off, falls back to accent-colored name marker)"};
             constexpr Setting PLAYER_ROW_HIGHLIGHT_BRAND = {"playerRowHighlightBrand", "When playerRowHighlight=1, use the bike brand color instead of the default accent color (1 = on; 0 = off, default)"};
             constexpr Setting LAST_LAP_COLOR = {"lastLapColorCode", "Color the Last Lap column vs your last lap (1 = on; default 0). Green = slower than you, red = faster"};
-            constexpr Setting ANIMATION_DURATION_MS = {"animationDurationMs", "Position animation duration in ms (50-1000, default 500)"};
             constexpr Setting CLASSIC_LAYOUT = {"classicLayout", "Classic layout: no number plates, no brand strip (1 = classic; 0 = modern, default)"};
             constexpr Setting NAME_MODE = {"nameMode", "Rider name display mode (0=Off, 1=Short, 2=Long; default 1)"};
             constexpr Setting SHORT_NAME_CHARS = {"shortNameChars", "Visible characters in Short name mode (1-31, default 3)"};

@@ -208,6 +208,18 @@ std::vector<PluginHost::QuadRect> stripIcons(PluginHost& host) {
     return std::vector<PluginHost::QuadRect>(quads.begin() + std::min<size_t>(first, quads.size()), quads.end());
 }
 
+// The strip's icons the GAME draws: those it has not faded out at the strip's
+// edge. Our renderers draw the rest whole too, cut at the strip (an icon
+// crossing it is in the arrays at alpha 0 for the game, hud/clip_marks.h).
+std::vector<PluginHost::QuadRect> shownIcons(PluginHost& host) {
+    const auto all = stripIcons(host);
+    const int first = host.dashFirstIcon();
+    std::vector<PluginHost::QuadRect> out;
+    for (size_t k = 0; k < all.size(); ++k)
+        if ((host.quadColor("dash_hud", first + static_cast<int>(k)) >> 24) != 0u) out.push_back(all[k]);
+    return out;
+}
+
 }  // namespace
 
 TEST_CASE("dash: the notice up, from the shared data") {
@@ -231,10 +243,10 @@ TEST_CASE("dash: the notice up, from the shared data") {
     CHECK(shows(host, "dash_hud", "DEFAULT SETUP"));
 
     // The panel (one quad unthemed), the notice's slab, and the three icons
-    // that fit down the strip at the right (the default) round the page
+    // the game shows down the strip at the right (the default) round the page
     // showing; the rest wait off its ends.
-    CHECK(host.hudQuadRects("dash_hud").size() == 5);
-    CHECK(stripIcons(host).size() == 3);
+    CHECK(host.hudQuadRects("dash_hud").size() == 2 + stripIcons(host).size());
+    CHECK(shownIcons(host).size() == 3);
 
     host.shutdown();
 }
@@ -724,7 +736,7 @@ TEST_CASE("dash: the panel takes the sizes of the HUDs around it") {
     // least as tall as the Speed widget's card, so its rows line up beside it,
     // and the strip's icons under it.
     CHECK(w(panel) == doctest::Approx(w(ideal)).epsilon(1e-4));
-    const auto icons = stripIcons(host);
+    const auto icons = shownIcons(host);
     REQUIRE(!icons.empty());
     for (const auto& icon : icons)
         CHECK(icon.t - quads[0].t >= card.t - panel.t + h(speedCard) - 1e-6);
@@ -820,7 +832,7 @@ TEST_CASE("dash: a fresh install's Gap Bar sits under the Dash, clear of every H
         "gear_widget", "crash_widget", "rpm_widget", "speedo_widget", "tacho_widget",
         "timing_hud", "bars_widget", "notices_hud", "spotter_widget",
         "fuel_widget", "dash_hud", "achievement_widget", "gamepad_widget", "lean_widget", "slide_widget",
-        "wheelie_widget",
+        "wheelie_widget", "stance_widget",
         "gforce_widget", "compass_widget", "clock_widget", "prestige_widget",
         "tyre_temp_widget", "ecu_widget", "toggle_strip_widget", "now_playing_widget",
     };
@@ -898,15 +910,16 @@ TEST_CASE("dash: with Motion on, a step crossfades the card and the strip follow
     {
         const int first = host.dashFirstIcon();
         const int icons = static_cast<int>(host.hudQuadRects("dash_hud").size()) - first;
-        REQUIRE(icons == 7);   // the ones that fit under the card
-        int full = 0, dim = 0;
+        int full = 0, dim = 0, gone = 0;
         for (int i = 0; i < icons; ++i) {
             const int a = static_cast<int>(host.quadColor("dash_hud", first + i) >> 24);
             if (a == 0xFF) ++full;
             else if (a > 0 && a < 0xA0) ++dim;   // the outermost fade further toward the ends
+            else if (a == 0) ++gone;             // crossing the strip's edge: ours alone, cut there
         }
         CHECK(full == 1);
-        CHECK(dim == 6);
+        CHECK(dim == 6);   // the ones the game shows under the card
+        CHECK(full + dim + gone == icons);
     }
 
     // A step back mid-fade: the page that had only started to come in fades out
@@ -1574,10 +1587,12 @@ TEST_CASE("dash: until the first step, the card shows the keys that step it") {
         std::remove((dir + "\\mxbmrp3_settings.ini").c_str());
     }
     {
-        // A fresh install: the Dash on, Page Up / Down bound, the hint over the page.
+        // A fresh install with the Dash switched on (it ships off), Page Up / Down
+        // bound, the hint over the page.
         PluginHost host(dllPath());
         REQUIRE(host.loaded());
         REQUIRE(startDash(host, saveWin) >= 0);
+        REQUIRE(host.setHudVisibleBoth("dash_hud", true));
         REQUIRE(host.hasStringRows());
         host.draw();
         host.draw();
@@ -2594,7 +2609,7 @@ TEST_CASE("dash: the page strip sits on any side of the page, or nowhere") {
     }
 }
 
-TEST_CASE("dash: down a side the strip's icons stay inside its card through a step") {
+TEST_CASE("dash: down a side the strip's icons stay inside its card through a step, cut there on our renderers") {
     constexpr long long T0 = 1000000000ll;   // Motion's clock, in microseconds
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
@@ -2603,23 +2618,61 @@ TEST_CASE("dash: down a side the strip's icons stay inside its card through a st
                  "[DashHud]\nvisible=1\nnotice_takeover=0\nstrip=left\n");
     host.setMotionNowUs(T0);
     host.setMotion(/*Normal: 240 ms*/ 2);
+    host.companionWindow(true);   // a surface our own renderers draw, for the cut
+    host.draw();
     host.draw();
     PluginHost::QuadRect card, panel;
     REQUIRE(host.hudCardRect("dash_hud", &card, &panel));
+    // Every icon crossing the strip's edge, our renderers cut there, drawn
+    // (ours has ink in the cut); the game, which cannot cut, has it gone
+    // before it reaches the edge (the loop below: what it draws is inside).
+    const auto check = [&](int& cut, int& fuller) {
+        CHECK(host.frameClips(false).empty());
+        const auto comp = host.frameQuadColors(true);
+        for (const auto& c : host.frameClips(true)) {
+            if (c.q1 <= c.q0) continue;
+            ++cut;
+            unsigned ink = 0;
+            for (unsigned q = c.q0; q < c.q1 && q < comp.size(); ++q) ink = std::max(ink, comp[q] >> 24);
+            if (ink > 0u) ++fuller;
+        }
+    };
+    int restCut = 0, restFuller = 0;
+    check(restCut, restFuller);
     REQUIRE(host.injectHotkey("dash_next"));
+    int hidden = 0, cut = 0, fuller = 0;
     for (long long ms = 0; ms <= 240; ms += 20) {
         CAPTURE(ms);
         host.setMotionNowUs(T0 + 1000000 + ms * 1000);
         host.draw();
         const auto quads = host.hudQuadRects("dash_hud");
         REQUIRE(!quads.empty());
+        check(cut, fuller);
         // The card is in the HUD's own space, its quads on screen.
         const double dy = quads[0].t - panel.t;
-        for (const auto& icon : stripIcons(host)) {
+        // What the game draws stays inside the strip's card.
+        const int first = host.dashFirstIcon();
+        const auto icons = stripIcons(host);
+        for (size_t k = 0; k < icons.size(); ++k) {
+            const PluginHost::QuadRect& icon = icons[k];
+            if (((host.quadColor("dash_hud", first + static_cast<int>(k)) >> 24) & 0xFFu) == 0u) {
+                ++hidden;
+                continue;
+            }
             CHECK(icon.t >= card.t + dy - 1e-6);
             CHECK(icon.b <= card.b + dy + 1e-6);
         }
     }
+    // Mid-step, our renderers had icons to slide under the edge, cut there,
+    // drawn where the game has them gone.
+    CHECK(hidden > 0);
+    CHECK(cut > 0);
+    CHECK(fuller > 0);
+    host.setMotionNowUs(T0 + 3000000);
+    host.draw();
+    host.draw();
+    int settledCut = 0, settledFuller = 0;
+    check(settledCut, settledFuller);
     host.shutdown();
 }
 
@@ -2654,7 +2707,7 @@ TEST_CASE("dash: down a side the strip's card is as tall as the page's") {
         CHECK(std::abs(cards[0].bottom - cards[1].bottom) < 1e-5);   // a hundredth of a pixel
     }
     // Three icons down the side.
-    CHECK(stripIcons(host).size() == 3);
+    CHECK(shownIcons(host).size() == 3);
     host.clearTheme();
     host.shutdown();
 }

@@ -35,6 +35,10 @@
 //   - a non-PB lap leaves the reference alone; forgetBestLap() drops the
 //     reference but keeps sampling; clearCurrentLap() (pit exit) drops the
 //     in-progress samples and keeps the reference; reset() drops everything
+//   - abandonCurrentLap() (a reset to a marker ahead): the lap in progress
+//     is void until the next line, keeps what it sampled but takes no more,
+//     and the next line starts a lap that reads and commits;
+//     a lap waiting at the line for its completion still commits whole
 //   - bestLapProgressAt(): the ghost's position, interpolated, -1 without a
 //     reference and clamped to the finish once the PB would be done
 //   - non-finite positions are ignored (a NaN in the slot math is UB)
@@ -519,6 +523,36 @@ TEST_CASE("THREE REFERENCES: last lap always, session PB when told, all-time PB 
         CHECK_FALSE(mid.hasBestLap(Ref::LAST_LAP));
         CHECK_FALSE(mid.hasBestLap(Ref::ALLTIME_PB));
     }
+}
+
+TEST_CASE("abandonCurrentLap: void until the next line, and the lap at the line keeps its table") {
+    PbGapTracker t = withReference(60000);
+    driveLap(t, 60000, 0, 400);
+    REQUIRE(t.currentLapObserved());
+    t.abandonCurrentLap();                       // put down far ahead at ~0.93
+    CHECK_FALSE(t.currentLapObserved());
+    CHECK(t.currentLapAbandoned());
+    driveLap(t, 60000, 930, PbGapTracker::NUM_POINTS);
+    // What the lap sampled up to the reset stays; nothing after it is taken.
+    CHECK(t.currentTable()[399].valid);
+    CHECK_FALSE(t.currentTable()[950].valid);
+    // The line: the void lap's completion commits nothing, the next lap reads.
+    t.onTrackPosition(slotPos(0), 0, /*reanchored=*/true);
+    CHECK_FALSE(t.onLapCompleted(25000, false));
+    CHECK(t.currentLapObserved());
+    CHECK_FALSE(t.currentLapAbandoned());
+    CHECK(t.bestLapTimeMs() == 60000);
+
+    // Wrap-first, then a reset before the RaceLap: the lap that wrapped is not
+    // the one abandoned, and its completion still commits it.
+    PbGapTracker u = withReference(60000);
+    driveLap(u, 58000);
+    u.onTrackPosition(slotPos(0), 0, /*reanchored=*/true);
+    u.abandonCurrentLap();
+    CHECK(u.atLine());
+    CHECK(u.onLapCompleted(58000, true));
+    CHECK(u.bestLapTimeMs() == 58000);
+    CHECK_FALSE(u.currentLapObserved());
 }
 
 TEST_CASE("bestLapProgressAt places the ghost where the PB lap was at that time") {

@@ -11,6 +11,7 @@
 #include <shlobj.h>
 #include "../core/atomic_file_writer.h"
 #include "../core/plugin_constants.h"
+#include "host_build_stamp.h"
 
 namespace {
     constexpr const char* LOG_SUBDIRECTORY = MXB_USER_DIR_NAME;
@@ -125,30 +126,16 @@ void Logger::initialize(const char* savePath) {
     info("========================================");
     info("Logger initialized");
 
-    // Host executable build fingerprint. The PiBoSo games ship no VERSIONINFO
-    // resource, so there is no FileVersion to read; instead we pull the PE
-    // TimeDateStamp straight from the loaded image headers. This is the same
-    // value the Windows Application event log reports as the faulting image's
-    // "time stamp" (e.g. 0x6a21833d), so it's the one field that ties a bare
-    // crash report (no minidump) back to a specific game build. Game-relative
-    // crash offsets are only valid for a given build, so recording it lets a
-    // crash log self-identify which build produced it.
+    // Host executable build fingerprint (diagnostics/host_build_stamp.h has
+    // why it is the PE TimeDateStamp, and why it is read from the file).
     {
         char exeName[MAX_PATH] = { 0 };
         GetModuleFileNameA(nullptr, exeName, MAX_PATH);
         const char* baseName = strrchr(exeName, '\\');
         baseName = baseName ? baseName + 1 : exeName;
-
-        HMODULE hHost = GetModuleHandleW(nullptr);
-        const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(hHost);
-        if (hHost && dos->e_magic == IMAGE_DOS_SIGNATURE) {
-            const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(
-                reinterpret_cast<const BYTE*>(hHost) + dos->e_lfanew);
-            if (nt->Signature == IMAGE_NT_SIGNATURE) {
-                info("Host build: %s TimeDateStamp=0x%08X",
-                     baseName[0] ? baseName : "(unknown)",
-                     nt->FileHeader.TimeDateStamp);
-            }
+        if (const unsigned long stamp = HostBuildStamp::get()) {
+            info("Host build: %s TimeDateStamp=0x%08lX",
+                 baseName[0] ? baseName : "(unknown)", stamp);
         }
     }
 

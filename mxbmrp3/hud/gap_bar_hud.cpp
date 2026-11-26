@@ -36,10 +36,6 @@ GapBarHud::GapBarHud()
     , m_barWidthPercent(DEFAULT_WIDTH_PERCENT)
     , m_fMarkerScale(DEFAULT_MARKER_SCALE)
 {
-    for (int i = 0; i < SPLIT_SLOTS; ++i) {
-        m_learnedSplitPos[i] = -1.0f;
-        m_learnSplitCache[i] = -1;
-    }
     // One-time setup
     // A themed body card behind the bar, like every other table HUD: without it the
     // bar sits straight on the frame while Standings and the rest give their content
@@ -78,33 +74,21 @@ void GapBarHud::update() {
     const PluginData& pluginData = PluginData::getInstance();
     const SessionData& sessionData = pluginData.getSessionData();
 
-    // Session change (new event/track/bike): restart the learned split positions.
-    // (The freeze sees the change itself.)
+    // Session change (new event/track/bike). (The freeze sees the change itself.)
     int currentGeneration = sessionData.sessionGeneration;
     if (currentGeneration != m_cachedSessionGeneration) {
         DEBUG_INFO_F("GapBarHud: Session reset detected (generation %d -> %d)",
             m_cachedSessionGeneration, currentGeneration);
-        for (int i = 0; i < SPLIT_SLOTS; ++i) {
-            m_learnedSplitPos[i] = -1.0f;
-            m_learnSplitCache[i] = -1;
-        }
         m_cachedSessionGeneration = currentGeneration;
         if (isVisibleAnySurface()) setDataDirty();
     }
 
-    // Spectate target change: adopt the new rider's splits so far, so they are
-    // not taken for fresh crossings.
+    // Spectate target change
     int currentDisplayRaceNum = pluginData.getDisplayRaceNum();
     if (currentDisplayRaceNum != m_cachedDisplayRaceNum) {
         DEBUG_INFO_F("GapBarHud: Spectate target changed from %d to %d",
             m_cachedDisplayRaceNum, currentDisplayRaceNum);
         m_cachedDisplayRaceNum = currentDisplayRaceNum;
-        const CurrentLapData* currentLap = pluginData.getCurrentLapData();
-        if (currentLap) {
-            m_learnSplitCache[0] = currentLap->split1;
-            m_learnSplitCache[1] = currentLap->split2;
-            m_learnSplitCache[2] = currentLap->split3;
-        }
         if (isVisibleAnySurface()) setDataDirty();
     }
 
@@ -117,9 +101,12 @@ void GapBarHud::update() {
     if (m_freeze.update(reference, HudDefaults::freezeMs(m_freezeDurationMs)) && isVisibleAnySurface()) {
         setDataDirty();
     }
-    // Always, not only while shown: switching the ticks on mid-lap must not take
-    // the split already behind the rider for one crossed right now.
-    learnSplitPositions();
+    // A split position learned (PluginData, core/split_learner.h): redraw the ticks
+    const uint32_t splitRevision = pluginData.getSplitLearnRevision();
+    if (splitRevision != m_shownSplitRevision) {
+        m_shownSplitRevision = splitRevision;
+        if (m_showSplits && isVisibleAnySurface()) setDataDirty();
+    }
 
     // The live gap moves with the clock: refresh at ~60Hz while shown
     auto now = std::chrono::steady_clock::now();

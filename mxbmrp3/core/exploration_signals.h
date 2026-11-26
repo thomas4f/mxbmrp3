@@ -101,6 +101,17 @@ enum class Signal : uint8_t {
     FavoriteSpot,         // max-ever: crashes in a row at the same place on track (three is the row)
     DiggingSec,           // max-ever: seconds of unbroken rear wheelspin standing still
     GhostRideSec,         // max-ever: seconds the bike rode on, upright, after the rider came off
+    // ---- Rows added together (Slalom ... Nemesis) ----------------------------
+    Slalom,               // count: riders down ridden past, once per rider per crash
+    RushHour,             // sum: laps put on other riders, at the finish
+    Leapfrog,             // count: riders jumped over, once per rider per flight
+    Grounded,             // flag: a fast lap without a flight
+    FlatOut,              // flag: a fast lap without touching the brakes
+    BackFromTheDead,      // flag: a win after crashing twice in the race
+    FallFromGrace,        // flag: the holeshot, then last at the flag
+    Photocopy,            // flag: a best lap equal to another rider's, to the millisecond
+    FeatherTouch,         // count: big jumps landed softly
+    Nemesis,              // flag: next to the same rider at the flag in three races of one launch
     COUNT
 };
 
@@ -184,6 +195,16 @@ constexpr SignalInfo kSignals[] = {
     { Signal::FavoriteSpot,       "favoriteSpot" },
     { Signal::DiggingSec,         "diggingSec" },
     { Signal::GhostRideSec,       "ghostRideSec" },
+    { Signal::Slalom,             "slalom" },
+    { Signal::RushHour,           "rushHour" },
+    { Signal::Leapfrog,           "leapfrog" },
+    { Signal::Grounded,           "grounded" },
+    { Signal::FlatOut,            "flatOut" },
+    { Signal::BackFromTheDead,    "backFromTheDead" },
+    { Signal::FallFromGrace,      "fallFromGrace" },
+    { Signal::Photocopy,          "photocopy" },
+    { Signal::FeatherTouch,       "featherTouch" },
+    { Signal::Nemesis,            "nemesis" },
 };
 
 constexpr int SIGNAL_COUNT = static_cast<int>(Signal::COUNT);

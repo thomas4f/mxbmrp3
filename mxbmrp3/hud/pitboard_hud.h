@@ -72,7 +72,7 @@ public:
 
     // The pack actually in use once the name is resolved; nullptr only when no
     // board packs are installed at all.
-    const PitboardAsset* activePack() const;
+    const PitboardAsset* activeLayout() const;
 
     // Allow SettingsHud and SettingsManager to access private members
     friend class SettingsHud;
@@ -133,7 +133,7 @@ private:
     // Cached session time for real-time updates (like TimeWidget)
     int m_cachedRenderedTime = -1;  // Last rendered session time (in ms)
 
-    // Selected pack, by directory name. Resolved through activePack() at every use
+    // Selected pack, by directory name. Resolved through activeLayout() at every use
     // so a pack removed between sessions degrades rather than dangling.
     std::string m_pitboardPack;
 

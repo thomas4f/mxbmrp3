@@ -121,9 +121,14 @@ TEST_CASE("right-only [content]/[title] margins: content keeps its own box") {
         {PluginHost::HUD_LEAN, "lean"},
         {PluginHost::HUD_SLIDE, "slide"},
         {PluginHost::HUD_WHEELIE, "wheelie"},
+        {PluginHost::HUD_STANCE, "stance"},
         {PluginHost::HUD_PRESTIGE, "prestige"},
         {PluginHost::HUD_DASH, "dash"},
         {PluginHost::HUD_TOGGLES, "toggle_strip"},
+        {PluginHost::HUD_EVENT_LOG, "event_log"},
+        {PluginHost::HUD_LAP_LOG, "lap_log"},
+        {PluginHost::HUD_STREAM_CHAT, "stream_chat"},
+        {PluginHost::HUD_FRIENDS, "friends"},
     };
 
     // The Direct GL prompt builds nothing unless it is armed, and `present`
@@ -141,6 +146,8 @@ TEST_CASE("right-only [content]/[title] margins: content keeps its own box") {
     // cursor sits in the screen's bottom-left, clear of the strip's hover name.
     REQUIRE(host.hasInjectedMouse());
     host.injectMouse(true, 0.02f, 0.98f, 0);
+    // The Stance widget is the fourth: it draws once the game has sent a stance.
+    host.telemetryWithStance(1);
     host.draw();
 
     std::vector<Snapshot> before(std::size(targets));

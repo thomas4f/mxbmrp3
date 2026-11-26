@@ -19,6 +19,14 @@ public:
     bool handlesDataType(DataChangeType dataType) const override;
     void resetToDefaults();
 
+    // What the gear reads, the one rule for every gear readout (this widget,
+    // the Speed deck): the placeholder, "D" on a gearless vehicle (e-bike,
+    // direct-drive kart; "N" would be misleading), "N", or the number.
+    static void formatGear(const BikeTelemetryData& bike, char* out, size_t size);
+    // At the recommended shift point: the player's own bike only (telemetry
+    // is the player's), never on a gearless one (nothing to shift to).
+    static bool atShiftPoint(const BikeTelemetryData& bike, const SessionData& session, bool own);
+
     // INI-only settings
     bool m_bShowShiftColor = true;     // Red gear text at shift RPM
     bool m_bShowLimiterCircle = true;  // Circle indicator at limiter RPM

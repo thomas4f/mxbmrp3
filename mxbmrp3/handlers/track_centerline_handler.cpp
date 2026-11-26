@@ -37,15 +37,21 @@ void Handlers::handleTrackCenterline(int iNumSegments, Unified::TrackSegment* pa
     // centerline (measured from the centerline's data start), but the player's
     // trackPos is 0 at start/finish (raceData[0] meters in). Convert each split to
     // the same S/F-relative 0-1 frame the player's trackPos uses, so snapping and
-    // crossing compare like for like. Use S/F, split 1, split 2 (indices 0-2).
+    // crossing compare like for like. Index 0 is S/F, then the game's splits.
     std::vector<float> splitPositions;
     if (raceData) {
         float totalLength = 0.0f;
         for (int i = 0; i < iNumSegments; ++i) totalLength += pasSegment[i].length;
-        float sfMeters = raceData[0];  // start/finish, centerline meters
-        if (totalLength > 0.0f && sfMeters > 0.0f) {
-            for (int i = 0; i < 3; ++i) {
-                float meters = raceData[i];
+        // As the map reads them (MapHud): a start/finish not above 0 m sits at
+        // the centerline's start, and each split above 0 m stands on its own.
+        // Requiring the S/F as well dropped every split on such tracks, so the
+        // Gap Bar and the Timing deck waited for a crossing to learn them.
+        const float sfMeters = raceData[0] > 0.0f ? raceData[0] : 0.0f;
+        if (totalLength > 0.0f) {
+            splitPositions.push_back(0.0f);   // entry 0: the start/finish line itself
+            // One split fewer than the game has sectors (GP Bikes 3, the rest 2).
+            for (int i = 1; i < GAME_SECTOR_COUNT; ++i) {
+                const float meters = raceData[i];
                 if (meters > 0.0f && meters <= totalLength) {
                     float tp = (meters - sfMeters) / totalLength;
                     tp -= std::floor(tp);  // wrap into [0,1)

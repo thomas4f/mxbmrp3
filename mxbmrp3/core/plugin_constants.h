@@ -197,6 +197,17 @@ namespace PluginConstants {
         constexpr unsigned long GOLD = PluginUtils::makeColor(255, 215, 0);      // #ffd700 - Gold
         constexpr unsigned long SILVER = PluginUtils::makeColor(192, 192, 192);  // #c0c0c0 - Silver
         constexpr unsigned long BRONZE = PluginUtils::makeColor(205, 127, 50);   // #cd7f32 - Bronze
+        // A cool near-white, so Platinum reads as a step above gold rather than
+        // as the plain primary text colour.
+        constexpr unsigned long PLATINUM = PluginUtils::makeColor(229, 228, 226); // #e5e4e2 - Platinum
+
+        // The metal an achievement tier (1..4) is drawn in, everywhere one is:
+        // the toast, the Achievements tab and the Event Log. `fallback` is the
+        // caller's colour for no tier (a one-shot, a locked row).
+        constexpr unsigned long tierColor(int tier, unsigned long fallback) {
+            return tier == 1 ? BRONZE : tier == 2 ? SILVER : tier == 3 ? GOLD
+                 : tier == 4 ? PLATINUM : fallback;
+        }
     }
 
     // Semantic color aliases for input controls (used in input visualizer)
@@ -233,6 +244,14 @@ namespace PluginConstants {
         // Temperature conversions
         constexpr float CELSIUS_TO_FAHRENHEIT_MULT = 9.0f / 5.0f;
         constexpr float CELSIUS_TO_FAHRENHEIT_OFFSET = 32.0f;
+
+        // A speed as every readout shows it: whole units, rounded
+        inline int shownSpeed(float ms, bool kmh) {
+            return static_cast<int>(ms * (kmh ? MS_TO_KMH : MS_TO_MPH) + 0.5f);
+        }
+        // The units' labels, as the Speed and Fuel widgets write them
+        inline const char* speedLabel(bool kmh) { return kmh ? "km/h" : "mph"; }
+        inline const char* fuelLabel(bool gallons) { return gallons ? "g" : "L"; }
     }
 
     // Time conversion constants
@@ -255,6 +274,12 @@ namespace PluginConstants {
         constexpr const char* INVALID_LAP = "INVALID";  // A lap struck out by the game (a cut)
         constexpr const char* GENERIC = "-";            // For simple missing data
         constexpr const char* NOT_AVAILABLE = "N/A";    // For structurally unavailable data (e.g., live gap in practice)
+
+        // What a completed lap with no time says in its time cell: why it has
+        // none. One rule for the Lap Log HUD and the Lap Log deck.
+        constexpr const char* untimedLap(bool viaPits, bool isValid) {
+            return viaPits ? PIT_LAP : !isValid ? INVALID_LAP : GENERIC;
+        }
     }
 
     // Text justification
@@ -439,6 +464,28 @@ namespace PluginConstants {
             constexpr const char* KRP_PRE_FINAL = N_("PreFinal");
             constexpr const char* KRP_FINAL = N_("Final");
             constexpr const char* UNKNOWN = N_("Unknown");
+            // The same sessions, short enough for a deck's column
+            // (PluginUtils::getSessionString's `brief`); an unknown one is blank
+            namespace Brief {
+                constexpr const char* WAITING = N_("WAITING");
+                constexpr const char* PRACTICE = N_("PRACTICE");
+                constexpr const char* TESTING = N_("TESTING");
+                constexpr const char* PRE_QUALIFY = N_("PRE-QUAL");
+                constexpr const char* QUALIFY_PRACTICE = N_("Q-PRAC");
+                constexpr const char* QUALIFY = N_("QUALIFY");
+                constexpr const char* WARMUP = N_("WARMUP");
+                constexpr const char* RACE_1 = N_("RACE 1");
+                constexpr const char* RACE_2 = N_("RACE 2");
+                constexpr const char* RACE = N_("RACE");
+                constexpr const char* SR_ROUND = N_("ROUND");
+                constexpr const char* SR_QUARTER_FINALS = N_("QUARTER");
+                constexpr const char* SR_SEMI_FINALS = N_("SEMI");
+                constexpr const char* SR_FINAL = N_("FINAL");
+                constexpr const char* KRP_QUALIFY_HEAT = N_("HEAT");
+                constexpr const char* KRP_SECOND_CHANCE_HEAT = N_("2ND CHANCE");
+                constexpr const char* KRP_PRE_FINAL = N_("PRE-FINAL");
+                constexpr const char* KRP_FINAL = N_("FINAL");
+            }
         }
 
         // "Where you are" labels shown in place of a server name across the

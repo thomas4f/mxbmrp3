@@ -15,6 +15,7 @@
 // window shell owns that (plain Win32 + GDI).
 // ============================================================================
 #pragma once
+#include <cmath>
 #include <cstdint>
 #include <map>
 #include <string>
@@ -70,6 +71,15 @@ struct Image {
     float mapX(float n) const { return ox + n * vpW(); }
     float mapY(float n) const { return oy + n * vpH(); }
     void setViewport(float x, float y, float wv, float hv) { ox = x; oy = y; ew = wv; eh = hv; }
+    // The pixels a primitive may touch (core/render_clip.h): [cx0,cx1) x
+    // [cy0,cy1), on top of the buffer's own bounds. A pixel is in when its
+    // centre is, the rule a GPU rasterizes a cut quad by.
+    int cx0 = 0, cy0 = 0, cx1 = 1 << 30, cy1 = 1 << 30;
+    void clipTo(float l, float t, float r, float b) {
+        cx0 = static_cast<int>(std::ceil(mapX(l) - 0.5f)); cx1 = static_cast<int>(std::ceil(mapX(r) - 0.5f));
+        cy0 = static_cast<int>(std::ceil(mapY(t) - 0.5f)); cy1 = static_cast<int>(std::ceil(mapY(b) - 0.5f));
+    }
+    void unclip() { cx0 = cy0 = 0; cx1 = cy1 = 1 << 30; }
     void resize(int W, int H) { w = W; h = H; px.assign(static_cast<size_t>(W) * H * 4, 0); }
     void fill(uint8_t r, uint8_t g, uint8_t b, uint8_t a);
 };

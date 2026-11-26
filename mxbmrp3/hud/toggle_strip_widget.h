@@ -35,7 +35,7 @@
 // menu can be found without moving the mouse. The camera button's job is the
 // Global section's Director switch.
 //
-// NOT A "WIDGET" TO THE WIDGETS MASTER (HudManager::isWidgetHud): the strip
+// NOT A "WIDGET" TO THE WIDGETS MASTER (HudManager::inGroup): the strip
 // carries that master's own switch, so it must not switch itself off with it.
 // ============================================================================
 #pragma once

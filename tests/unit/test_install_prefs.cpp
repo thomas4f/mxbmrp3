@@ -1,6 +1,7 @@
 // ============================================================================
 // tests/unit/test_install_prefs.cpp
-// The installer's analytics opt-out marker (core/install_prefs.h).
+// The installer's analytics opt-out marker and language preload
+// (core/install_prefs.h).
 //
 // WHY THIS EXISTS. Every branch here is a privacy outcome, and two of them are
 // the kind of bug nobody notices because it fails QUIETLY in the direction of
@@ -88,4 +89,64 @@ TEST_CASE("install_prefs: recorded stamp is never empty") {
         "analyticsOptOut=1\nstamp=1.29.2\n")).empty());
     CHECK_FALSE(InstallPrefs::stampToRecord(
         InstallPrefs::parse("analyticsOptOut=1\n")).empty());
+}
+
+// --- The language Setup was shown in ------------------------------------------
+// Setup opens in the Windows language and offers a picker on EVERY run, so the
+// language it writes is only a choice on the very first launch. Honoured on an
+// upgrade, it would silently undo an in-game language change for everybody whose
+// game language differs from Windows'.
+
+TEST_CASE("install_prefs: Setup's language is parsed, English included") {
+    const InstallPrefs::Prefs sv = InstallPrefs::parse("[Install]\nlanguage=sv\nstamp=1.36.0\n");
+    CHECK(sv.hasLanguage);
+    CHECK(sv.language == "sv");
+    CHECK_FALSE(sv.optOut);   // a language alone is never an opt-out
+
+    // English is an explicit choice, distinct from no line at all. Setup writes
+    // it as "en"; the plugin's name for English is "" (no pack).
+    const InstallPrefs::Prefs en = InstallPrefs::parse("language=en\n");
+    CHECK(en.hasLanguage);
+    CHECK(en.language.empty());
+    CHECK(InstallPrefs::parse("language=\n").language.empty());
+    CHECK_FALSE(InstallPrefs::parse("stamp=1.36.0\n").hasLanguage);
+}
+
+TEST_CASE("install_prefs: the language applies on the first launch only") {
+    const InstallPrefs::Prefs p = InstallPrefs::parse("language=de\n");
+    CHECK(InstallPrefs::shouldApplyLanguage(p, true, "", true));
+    CHECK_FALSE(InstallPrefs::shouldApplyLanguage(p, false, "", true));   // upgrade
+    CHECK_FALSE(InstallPrefs::shouldApplyLanguage(p, false, "sv", true));
+}
+
+TEST_CASE("install_prefs: the Windows language stays 'follow Windows'") {
+    // Picking the language Windows already selects stores nothing, so the
+    // plugin keeps following Windows rather than pinning today's answer.
+    CHECK_FALSE(InstallPrefs::shouldApplyLanguage(InstallPrefs::parse("language=sv\n"), true, "sv", true));
+    CHECK_FALSE(InstallPrefs::shouldApplyLanguage(InstallPrefs::parse("language=en\n"), true, "", true));
+}
+
+TEST_CASE("install_prefs: English on a translated Windows is applied") {
+    // The one case "" has to mean something: a Swedish Windows, Setup run in English.
+    CHECK(InstallPrefs::shouldApplyLanguage(InstallPrefs::parse("language=en\n"), true, "sv", false));
+}
+
+TEST_CASE("install_prefs: a language that is not installed is ignored") {
+    // Stored, it would show English for good and survive until changed by hand.
+    CHECK_FALSE(InstallPrefs::shouldApplyLanguage(InstallPrefs::parse("language=..\\x\n"), true, "", false));
+}
+
+TEST_CASE("install_prefs: no language line changes nothing") {
+    CHECK_FALSE(InstallPrefs::shouldApplyLanguage(InstallPrefs::parse("analyticsOptOut=1\n"), true, "sv", true));
+}
+
+// The zip. Both installers always write the file, so a first launch without it
+// is an install nobody asked about the survey: it starts off. Any other launch
+// leaves the stored choice alone, so an upgrade or a file deleted later never
+// switches it off behind the player's back.
+TEST_CASE("install_prefs: no Setup file on a first launch starts the survey off") {
+    CHECK(InstallPrefs::optOutWithoutSetup(false, true));
+    CHECK_FALSE(InstallPrefs::optOutWithoutSetup(false, false));   // upgrade, or file gone since
+    CHECK_FALSE(InstallPrefs::optOutWithoutSetup(true, true));     // Setup ran: its own answer stands
+    CHECK_FALSE(InstallPrefs::optOutWithoutSetup(true, false));
 }

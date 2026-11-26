@@ -95,7 +95,7 @@ void NowPlayingWidget::rebuildRenderData() {
                 break;
             case NowPlayingCard::Prim::Kind::TEXT:
                 addString(prim.text, prim.x, prim.y, prim.center ? Justify::CENTER : Justify::LEFT, font,
-                          prim.color, dim.fontSize);
+                          prim.color, prim.smallText ? dim.fontSizeSmall : dim.fontSize);
                 break;
             case NowPlayingCard::Prim::Kind::ICON:
                 addIcon(prim.x, prim.y, prim.sprite, prim.color, prim.h);

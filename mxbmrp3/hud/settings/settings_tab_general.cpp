@@ -264,7 +264,7 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
     // clear of the dropdown caret (a value filling its field runs under it); the
     // controller row stays full width below them, since its value is a device name.
     constexpr int PREFERENCE_LABEL_CHARS = 13;
-    ctx.beginColumns(2, 7, PREFERENCE_LABEL_CHARS);
+    ctx.beginColumns(2, 8, PREFERENCE_LABEL_CHARS);
 
     // PB scope. Both arrows drive the same 2-state toggle.
     {
@@ -302,6 +302,24 @@ BaseHud* SettingsHud::renderTabGeneral(SettingsLayoutContext& ctx) {
                 static_cast<float>(FreezeDuration::MAX_MS), nullptr);
         freeze.postStep = []() { HudManager::getInstance().markAllHudsDirty(); };
         ctx.addSteppedControl(TR("Freeze"), freezeValue, freeze, nullptr, true, freezeMs == 0, "general.freeze");
+    }
+
+    // Live updates in races (Off / Gaps / Both): one setting for every reader --
+    // the Standings HUD and deck, and with Both the Position widget and the
+    // Dash's Standings page.
+    {
+        static const char* const kLiveModes[] = { N_("Off"), N_("Gaps"), N_("Both") };
+        static_assert(sizeof(kLiveModes) / sizeof(kLiveModes[0]) ==
+                      static_cast<size_t>(LiveUpdates::COUNT), "one name per live mode");
+        const LiveUpdates live = UiConfig::getInstance().getLiveUpdates();
+        SettingsHud::CycleControl liveCycle;
+        liveCycle.count = static_cast<int>(LiveUpdates::COUNT);
+        liveCycle.get = []() { return static_cast<int>(UiConfig::getInstance().getLiveUpdates()); };
+        liveCycle.set = [](int v) { UiConfig::getInstance().setLiveUpdates(static_cast<LiveUpdates>(v)); };
+        liveCycle.nameOf = [](int v) { return std::string(I18n::tr(kLiveModes[v])); };
+        liveCycle.postStep = []() { HudManager::getInstance().markAllHudsDirty(); };
+        ctx.addCycleControl(TR("Live updates"), I18n::tr(kLiveModes[static_cast<int>(live)]), liveCycle,
+                            nullptr, true, live == LiveUpdates::OFF, "general.live_updates");
     }
 
     ctx.addToggleControl(TR("Auto-save"), UiConfig::getInstance().getAutoSave(),

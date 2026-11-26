@@ -6,7 +6,7 @@
 // buffers, ...) live in plugin_data_types.h, which this header includes — so
 // existing includers see no change. Include that header directly when you only
 // need the data and not the singleton.
-// file-budget: 1010 state store; the field lap traces' plumbing tipped it over
+// file-budget: 1027 state store; the field lap traces, the Speed deck's gate drop, and the fuel history, split positions and running order moved in from the HUDs
 // ============================================================================
 #pragma once
 
@@ -15,7 +15,11 @@
 #include "live_gap_engine.h"
 #include "lap_timer.h"
 #include "pb_gap_tracker.h"
+#include "warp_detect.h"
 #include "field_lap_traces.h"
+#include "fuel_estimate.h"
+#include "split_learner.h"
+#include "running_order.h"
 
 class PluginData {
 public:
@@ -128,9 +132,9 @@ public:
     // Tracks only the currently displayed rider (like GapBarHud pattern)
     // ========================================================================
 
-    // Update lap timer with track position for S/F crossing detection
-    // Returns true if S/F crossing was detected (anchor was set)
-    bool updateLapTimerTrackPosition(int raceNum, float trackPos, int lapNum);
+    // Update lap timer with the display rider's sample for S/F crossing detection
+    // and resets (core/warp_detect.h). Returns true if a crossing set the anchor
+    bool updateLapTimerTrackPosition(const Unified::TrackPositionData& position, int lapNum);
 
     // Set timer anchor when official split/lap event occurs
     // Called by handlers when splits are received
@@ -175,6 +179,7 @@ public:
     // classification state). If racing is reported immediately with no hold (no grid gate), it
     // never fires and the timer falls back to anchoring at the first S/F crossing, as before.
     void armGateDropDetect() { m_awaitingGateDrop = true; m_gateDropSawHold = false; }
+    bool isAwaitingGateDrop() const { return m_awaitingGateDrop; }  // the grid hold; its fall = the drop
     bool detectGateDrop(int classificationState) {
         if (!m_awaitingGateDrop) return false;
         const bool nowRacing = (classificationState & PluginConstants::SessionState::IN_PROGRESS) != 0;
@@ -544,6 +549,10 @@ public:
     BenchmarkMetrics& getBenchmarkMetrics() { return m_benchmarkMetrics; }
     const BenchmarkMetrics& getBenchmarkMetrics() const { return m_benchmarkMetrics; }
     const BikeTelemetryData& getBikeTelemetry() const { return m_bikeTelemetry; }
+    // The player's fuel history, every fuel reader's one source; laps left is -1 off the track
+    const FuelEstimate::Tracker& getFuel() const { return m_fuel; }
+    float getFuelLapsRemaining() const;
+    void resetFuelTracking() { m_fuel.reset(); }
     // The largest g sample since the last call, then cleared (the impact vignette's one reader).
     float takeImpactPeakG() { const float g = m_bikeTelemetry.impactPeakG; m_bikeTelemetry.impactPeakG = 0.0f; return g; }
     const InputTelemetryData& getInputTelemetry() const { return m_inputTelemetry; }
@@ -555,7 +564,7 @@ public:
 
     // Bike telemetry update
     void updateSpeedometer(float speedometer, int gear, int rpm, float fuel);
-    void updateAttitude(float roll, float pitch, float slideAngle, float wheelieAngle);  // lean, nose, slide, wheelie (deg)
+    void updateAttitude(float roll, float pitch, float slideAngle, float wheelieAngle, bool frontWheelDown, float rearWheelMs, int riderStance);  // deg; m/s; -1/0/1
     void updateAcceleration(float accelX, float accelY, float accelZ);
     void updateTemperatures(float engineTemp, float waterTemp);
     void updateTreadTemperatures(const float temps[2][3]);
@@ -738,6 +747,11 @@ public:
     // S/F first (0), then each split the game reported, in lap order. Empty when the
     // game sends no marker data (GP Bikes: see gpb_api.cpp TrackCenterline).
     const std::vector<float>& getSplitPositions() const { return m_splitPositions; }
+    // Where the splits are, the centerline's else learned (core/split_learner.h)
+    int collectSplitPositions(float (&out)[SplitLearner::SLOTS]) const { return m_splitLearner.collect(m_splitPositions, out); }
+    uint32_t getSplitLearnRevision() const { return m_splitLearner.revision(); }
+    // The running order every reader shows (core/running_order.h)
+    RunningOrder& getRunningOrder() { return m_runningOrder; }
 
     // Hotkeys: drop a boundary point at the player's current position / remove the last point.
     void addSegmentPoint();
@@ -767,7 +781,7 @@ public:
     // column the spotter would otherwise have to parse back. See EventNumbers.
     void addEventLogEntry(EventLogType type, const EventText& message, const char* detail = nullptr,
                           int iconColorSlot = -1, int raceNum = -1,
-                          const EventNumbers& nums = {});
+                          const EventNumbers& nums = {}, const EventIcon& icon = {});
     const std::deque<EventLogEntry>& getEventLog() const { return m_eventLog; }
 
 private:
@@ -859,6 +873,9 @@ private:
     DebugMetrics m_debugMetrics;
     BenchmarkMetrics m_benchmarkMetrics;
     BikeTelemetryData m_bikeTelemetry;
+    FuelEstimate::Tracker m_fuel;
+    SplitLearner m_splitLearner;
+    RunningOrder m_runningOrder;
     InputTelemetryData m_inputTelemetry;
     HistoryBuffers m_historyBuffers;
     std::unordered_map<int, RaceEntryData> m_raceEntries;
@@ -969,6 +986,7 @@ private:
 
     // Live gap to PB: the reference-lap engine, driven from the lap-timer transitions.
     PbGapTracker m_pbGap;
+    WarpDetector m_displayWarp;   // the display rider put down elsewhere (reset with the lap timer)
     // Plant the server best trace, then the player's persisted all-time PB table
     // (core/pb_trace_store.h) as the tracker's ALLTIME_PB reference, for the bike the
     // stats file's PB scope resolves to. Called wherever the tracker is (re)bound.

@@ -262,13 +262,7 @@ void BaseHud::addPlanBackground(PanelPlan& p, float x, float y,
         // Drawn height is bandDrawnBot, not titleH: the band absorbs the
         // caption block's quantization remainder (see Geom::bandDrawnBot).
         const float bw = p.W(p.g.titleW), bh = p.H(p.g.bandDrawnBot - p.g.titleTop);
-        if (bw > 0.0f && bh > 0.0f) {
-            const float bx = p.X(p.g.titleLeft), by = p.Y(p.g.titleTop);
-            recordCardCover(static_cast<int>(m_quads.size()), bx, by, bw, bh);
-            float ox = bx, oy = by;
-            applyOffset(ox, oy);
-            emitThemedSliceSet(*theme, ox, oy, bw, bh, -1, SliceSet::BAND, 0);
-        }
+        addThemedTitleBand(p.X(p.g.titleLeft), p.Y(p.g.titleTop), bw, bh);
     }
     // One card PER SECTION — siblings, never overlapping, their seam the sum of
     // the facing margins. addThemedCard records each as a fill cover itself.
@@ -413,14 +407,17 @@ float BaseHud::planTitleY(const PanelPlan& p) const {
     return inkCenteredY(p.Y(p.g.captionY), p.H(boxCells), fs);
 }
 
-// Right-aligned on the caption row, inset from the band's right edge by what
-// the caption is inset from its left, and ink-centred in the caption's box.
+// Right-aligned on the caption row, ending where the content's right-aligned
+// values end (PanelPlan::contentRight), and ink-centred in the caption's box.
+// Not the caption's LEFT inset mirrored onto the band's right edge: that is the
+// same x only while the [title] and [content] terms are symmetric, and with a
+// right-only margin it walked off with the panel's edge (card_anchor_sweep_test,
+// the Lap Log's reference note).
 void BaseHud::addPlanTitleNote(const PanelPlan& p, const ScaledDimensions& dim, const char* text) {
     if (!m_bShowTitle || !p.g.hasCaptionRow || !text || !text[0]) return;
-    const double right = p.g.titleLeft + p.g.titleW - (p.g.captionX - p.g.titleLeft);
     const double boxCells = (p.g.titleBot - (p.g.T.b.b + p.g.T.p.b))
                           - p.g.captionY;
-    addString(text, p.X(right), inkCenteredY(p.Y(p.g.captionY), p.H(boxCells), dim.fontSizeSmall),
+    addString(text, p.contentRight(), inkCenteredY(p.Y(p.g.captionY), p.H(boxCells), dim.fontSizeSmall),
               PluginConstants::Justify::RIGHT, getFont(FontCategory::STRONG),
               getColor(ColorSlot::TERTIARY), dim.fontSizeSmall);
 }

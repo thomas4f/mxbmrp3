@@ -55,8 +55,6 @@ bool notASetting(const std::string& id) {
     // Which profile "Copy to" targets: picked in the menu, used once by the Copy
     // button (which the sweep never presses - it writes another profile).
     if (id.rfind("general.copy_profile|", 0) == 0) return true;
-    // Paging through a list (achievements, server riders): navigation.
-    if (id.find("|pager.") != std::string::npos) return true;
     // The channel fields: a click starts typing; the channel is saved on commit.
     if (id.find("|twitch.channel") != std::string::npos ||
         id.find("|youtube.channel") != std::string::npos) return true;

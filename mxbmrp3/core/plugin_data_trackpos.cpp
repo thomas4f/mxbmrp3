@@ -298,6 +298,13 @@ void PluginData::updateProximity(int numVehicles, const Unified::TrackPositionDa
     if (myRaw >= 0 && othersDown > 0) {
         stats.recordRodeThrough(countRidersDownNear(numVehicles, positions, myRaw));
     }
+    // Slalom: the same heap, rider by rider, under the same pre-filter - plus
+    // while a credit is still held, so a rider getting up is seen to.
+    if (myRaw >= 0 && (othersDown > 0 || stats.slalomHolding())) {
+        stats.recordSlalom(positions, numVehicles, myRaw);
+    }
+    // Leapfrog: only while the player is in the air, which is rare.
+    if (myRaw >= 0 && stats.isAirborne()) stats.recordLeapfrog(positions, numVehicles, myRaw);
     // Fewer than two upright riders is nobody to be near, which is a gap in the
     // measurement rather than a stretch of clean air: the same call the
     // no-player and no-track-length cases make above.

@@ -161,6 +161,8 @@ void PluginData::setSession(int session) {
 
 void PluginData::incrementSessionGeneration() {
     ++m_sessionData.sessionGeneration;
+    m_fuel.reset();   // a new track, bike or session: its laps start over
+    m_splitLearner.reset();
     notifyHudManager(DataChangeType::SessionData);
 }
 
@@ -461,6 +463,11 @@ void PluginData::updateCurrentLapSplit(int raceNum, int lapNum, int splitIndex, 
     }
 
     if (updated) {
+        // The watched rider is standing on this split: where it is (split_learner.h)
+        if (raceNum == getDisplayRaceNum()) {
+            m_splitLearner.observe(raceNum, { currentLap.split1, currentLap.split2, currentLap.split3 },
+                                   getDisplayRiderTrackPos());
+        }
         notifyHudManager(DataChangeType::IdealLap);
     }
 }
@@ -471,97 +478,6 @@ void PluginData::setCurrentLapNumber(int raceNum, int lapNum) {
     CurrentLapData& currentLap = m_riderCurrentLap[raceNum];
     currentLap.clear();
     currentLap.lapNum = lapNum;
-}
-
-void PluginData::updateIdealLap(int raceNum, int completedLapNum, int lapTime, int sector1, int sector2, int sector3, int sector4, bool isValid) {
-    // Get or create ideal lap data for this rider
-    IdealLapData& idealLap = m_riderIdealLap[raceNum];
-
-    bool updated = false;
-    bool isFirstValidLap = isValid && (idealLap.bestSector1 < 0);
-
-    // Always update lap completion info (for TimingHud detection)
-    // This triggers even for invalid laps with no timing data
-    if (idealLap.lastCompletedLapNum != completedLapNum) {
-        idealLap.lastCompletedLapNum = completedLapNum;
-        updated = true;
-    }
-    if (idealLap.lastLapTime != lapTime) {
-        idealLap.lastLapTime = lapTime;
-        updated = true;
-    }
-    if (idealLap.lastLapSector1 != sector1) {
-        idealLap.lastLapSector1 = sector1;
-        updated = true;
-    }
-    if (idealLap.lastLapSector2 != sector2) {
-        idealLap.lastLapSector2 = sector2;
-        updated = true;
-    }
-    if (idealLap.lastLapSector3 != sector3) {
-        idealLap.lastLapSector3 = sector3;
-        updated = true;
-    }
-    if (idealLap.lastLapSector4 != sector4) {
-        idealLap.lastLapSector4 = sector4;
-        updated = true;
-    }
-
-    // Only update best sectors for valid laps (invalid laps don't count as PBs)
-    if (isValid) {
-        if (sector1 > 0 && (isFirstValidLap || sector1 < idealLap.bestSector1)) {
-            // Save previous best before updating
-            if (idealLap.bestSector1 > 0) {
-                idealLap.previousIdealSector1 = idealLap.bestSector1;
-            }
-            idealLap.bestSector1 = sector1;
-            updated = true;
-        }
-        if (sector2 > 0 && (isFirstValidLap || sector2 < idealLap.bestSector2)) {
-            // Save previous best before updating
-            if (idealLap.bestSector2 > 0) {
-                idealLap.previousIdealSector2 = idealLap.bestSector2;
-            }
-            idealLap.bestSector2 = sector2;
-            updated = true;
-        }
-        if (sector3 > 0 && (isFirstValidLap || sector3 < idealLap.bestSector3)) {
-            // Save previous best before updating
-            if (idealLap.bestSector3 > 0) {
-                idealLap.previousIdealSector3 = idealLap.bestSector3;
-            }
-            idealLap.bestSector3 = sector3;
-            updated = true;
-        }
-        // Sector4 only valid for 4-sector games (GP Bikes) - sector4 > 0 means it's present
-        if (sector4 > 0 && (isFirstValidLap || idealLap.bestSector4 < 0 || sector4 < idealLap.bestSector4)) {
-            // Save previous best before updating
-            if (idealLap.bestSector4 > 0) {
-                idealLap.previousIdealSector4 = idealLap.bestSector4;
-            }
-            idealLap.bestSector4 = sector4;
-            updated = true;
-        }
-    }
-
-    if (updated) {
-        notifyHudManager(DataChangeType::IdealLap);
-    }
-}
-
-void PluginData::clearIdealLap(int raceNum) {
-    auto itCurrent = m_riderCurrentLap.find(raceNum);
-    if (itCurrent != m_riderCurrentLap.end()) {
-        itCurrent->second.clear();
-    }
-
-    auto itBest = m_riderIdealLap.find(raceNum);
-    if (itBest != m_riderIdealLap.end()) {
-        itBest->second.clear();
-    }
-
-    DEBUG_INFO_F("Ideal lap data cleared for race #%d", raceNum);
-    notifyHudManager(DataChangeType::IdealLap);
 }
 
 void PluginData::clearAllIdealLap() {
@@ -800,6 +716,8 @@ void PluginData::clear() {
 
     // Clear telemetry data
     m_bikeTelemetry = BikeTelemetryData();
+    m_fuel.reset();
+    m_splitLearner.reset();
     m_inputTelemetry = InputTelemetryData();
     m_historyBuffers.clear();
 
@@ -868,7 +786,7 @@ void PluginData::clear() {
 // ========================================================================
 void PluginData::addEventLogEntry(EventLogType type, const EventText& message, const char* detail,
                                   int iconColorSlot, int raceNum,
-                                  const EventNumbers& nums) {
+                                  const EventNumbers& nums, const EventIcon& icon) {
     EventLogEntry entry;
     entry.type = type;
     entry.sessionTimeMs = m_currentSessionTime;
@@ -876,6 +794,7 @@ void PluginData::addEventLogEntry(EventLogType type, const EventText& message, c
     entry.systemTime = std::chrono::system_clock::now();
     entry.iconColorSlot = iconColorSlot;
     entry.raceNum = raceNum;
+    entry.icon = icon;
     strncpy_s(entry.message, sizeof(entry.message), message.english, _TRUNCATE);
     strncpy_s(entry.shown, sizeof(entry.shown), message.shown, _TRUNCATE);
     if (detail) {

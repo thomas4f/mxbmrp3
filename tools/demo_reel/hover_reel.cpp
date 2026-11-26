@@ -2,15 +2,15 @@
 // tools/demo_reel/hover_reel.cpp
 // The hover-preview reel: plays a Recorder tape (MXBHREC: a real one from the
 // game, or tapegen's) into the plugin while the companion window renders it,
-// and scripts only the mouse: unfold the Toggles strip, rest on every switch
-// that previews something (Session is clicked on), fold, step the Dash to its
-// Fuel page, then Settings > Appearance, each from its dropdown: the panel
-// theme REEL_KEEP_THEME (kept for the rest of the reel), French and back to
-// English, Tomorrow fonts; then the
-// Standings Last lap column and opacity 0, and the Gamepad switched on,
-// recoloured and shrunk; closed, the pad is dragged from its spot bottom left
-// to the bottom right. The pad's sticks and triggers follow the rider's inputs
-// on the tape. Each beat names itself with a caption: written
+// and scripts only the mouse. From a new install (the Map and the strip):
+// unfold the Toggles strip, rest on every switch that previews something,
+// then click Decks on (the starter set) and fold. Settings > Appearance, each
+// from its dropdown: the panel theme REEL_KEEP_THEME (kept for the rest of the
+// reel; the decks restyle with it), French and back to English, Tomorrow
+// fonts; then the Decks tab: Slanted on, the Standings and Notices decks
+// added. Closed, the Speed deck is dragged from the bottom right to the
+// bottom left, and the race runs on, its callouts on the Notice deck.
+// Each beat names itself with a caption: written
 // to captions.tsv (seconds, beat, detail, box as x0,y0,x1,y1; CP1252, as drawn)
 // for make_demo.sh to draw.
 // REEL_SHORT=1 skips the strip pass, for iterating on the rest; the strip pass
@@ -118,28 +118,6 @@ int main(int argc, char** argv) {
             if (!tapeDraws && e.type == tape::EventType::RunTelemetry) host.drawWithState(0);
         }
     };
-    // The Gamepad widget's controller, from the rider's inputs on the tape: throttle
-    // on the right trigger, front brake on the left, steering on the left stick
-    // (from the turn rate, which every tape carries, unlike m_fSteer).
-    auto fakePad = host.sym<void (*)(float, float, float, float)>("MXBMRP3_Test_FakeGamepadInput");
-    float padSteer = 0, padThrottle = 0, padBrake = 0, lastYaw = 0;
-    uint64_t lastYawUs = 0;
-    auto padFrom = [&](const TapeEvent& e) {
-        if (e.type != tape::EventType::RunTelemetry || e.data.size() < sizeof(SPluginsBikeData_t)) return;
-        SPluginsBikeData_t b;
-        std::memcpy(&b, e.data.data(), sizeof(b));
-        padThrottle = std::clamp(b.m_fThrottle, 0.0f, 1.0f);
-        padBrake = std::clamp(b.m_fFrontBrake, 0.0f, 1.0f);
-        if (lastYawUs && e.us > lastYawUs) {
-            float dy = b.m_fYaw - lastYaw;
-            if (dy > 180) dy -= 360;
-            if (dy < -180) dy += 360;
-            const float rate = dy / static_cast<float>((e.us - lastYawUs) / 1e6);   // degrees a second
-            padSteer += (std::clamp(rate / 70.0f, -1.0f, 1.0f) - padSteer) * 0.08f;
-        }
-        lastYaw = b.m_fYaw; lastYawUs = e.us;
-        if (fakePad) fakePad(padSteer, 0.0f, padBrake, padThrottle);
-    };
     // The window opens kLeadSecs of tape before filming: the tape plays on in real
     // time meanwhile, so notices from the history run out and nobody stands still.
     constexpr double kLeadSecs = 9.0;
@@ -181,7 +159,6 @@ int main(int argc, char** argv) {
                 if (ev.type == tape::EventType::Draw) continue;
                 setNowUs(kClockBaseUs + static_cast<long long>(ev.us));
                 host.dispatch(ev.type, ev.data);
-                padFrom(ev);
             }
             setNowUs(kClockBaseUs + static_cast<long long>(at));
             host.drawWithState(0);
@@ -201,7 +178,7 @@ int main(int argc, char** argv) {
     float mx = 0.62f, my = 0.55f;
     int buttons = 0;
     struct Step {
-        enum Kind { WAIT, MOVE, CLICK, RDRAG, ACTION, HOLD, REST, KEEP, PRESS } kind;
+        enum Kind { WAIT, MOVE, CLICK, RDRAG, ACTION, HOLD, REST, PRESS } kind;
         double dur;
         std::function<bool(float&, float&)> target;   // MOVE/RDRAG destination
         std::function<void()> action;
@@ -288,14 +265,13 @@ int main(int argc, char** argv) {
     };
     float gapX = 0.5f, gapY = 0.2f;
     bool mouseIdle = false;
-    float dashX = 0.5f, dashY = 0.05f;
     // Start folded: unfold with the caret, rest on each switch that shows
     // something, pass over the rest, fold again at the bottom.
     std::vector<Step> script;
     bool pastEnd = false;     // the strip has no row this far down
     int baseQuads = -1;       // companion frame quads with nothing previewed
     auto compQuads = [&host] { return host.surfaceFrameStats().companionQuads; };
-    script.push_back(say("Default HUDs", "Fresh install, live race"));
+    script.push_back(say("New install", "Just the Map, in a live race"));
     script.push_back({ Step::WAIT, 2.0, nullptr, nullptr, "default screen" });
     script.push_back(say("Toggles strip", "Hover to preview, click to keep"));
     script.push_back({ Step::MOVE, 1.0, stripRow("Settings"), nullptr, "wake the strip" });
@@ -312,31 +288,18 @@ int main(int argc, char** argv) {
         // Past the 250 ms rest and the fade-in, then hold longer if something shows.
         script.push_back({ Step::REST, 0.42, nullptr, nullptr, "" });
         script.push_back({ Step::HOLD, 1.5, nullptr, nullptr, "" });
-        script.push_back({ Step::KEEP, 0.25, nullptr, nullptr, "" });   // a click on Session only
     }
     script.push_back({ Step::ACTION, 0, nullptr, [&] { pastEnd = false; }, "bottom" });
+    // Back up to Decks: its preview (the starter set, dimmed), then a click keeps it.
+    script.push_back(say("Decks", "One click on the strip"));
+    script.push_back({ Step::MOVE, 1.0, stripRow("Decks"), nullptr, "to decks" });
+    script.push_back({ Step::WAIT, 1.6, nullptr, nullptr, "" });   // past the rest and the fade-in
+    script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "decks on" });
+    script.push_back({ Step::WAIT, 1.5, nullptr, nullptr, "" });
     script.push_back({ Step::MOVE, 0.9, stripRow("Collapse"), nullptr, "to the caret" });
     script.push_back({ Step::WAIT, 0.3, nullptr, nullptr, "" });
     script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "collapse" });
     script.push_back({ Step::WAIT, 0.6, nullptr, nullptr, "" });
-    // The Dash steps to its Fuel page (Page Down, as bound), a page at a time.
-    // The cursor waits just right of the card, beside what it steps through.
-    script.push_back(say("Dash pages", "Page Down to the Fuel page"));
-    script.push_back({ Step::MOVE, 0.8, [&host](float& x, float& y) {
-        double l = 9, t = 9, r = -9, b = -9;
-        for (const auto& q : host.hudQuadRects("dash_hud")) {
-            l = std::min(l, q.l); t = std::min(t, q.t); r = std::max(r, q.r); b = std::max(b, q.b);
-        }
-        if (r < l) return false;
-        x = static_cast<float>(r + 0.03); y = static_cast<float>((t + b) / 2); return true; },
-        nullptr, "dash pages" });
-    for (int k = 0; k < 6; ++k) {
-        script.push_back({ Step::ACTION, 0, nullptr, [&] {
-            if (host.dashPage() != 4) host.injectHotkey("dash_next"); }, "" });   // 4 = DashHud::Page::FUEL
-        script.push_back({ Step::WAIT, 0.9, nullptr, nullptr, "" });
-    }
-    script.push_back({ Step::ACTION, 0, nullptr, [&] { fprintf(stderr, "dash page %d\n", host.dashPage()); }, "" });
-    script.push_back({ Step::WAIT, 1.2, nullptr, nullptr, "" });
     // Settings, on the Appearance tab: themes, languages, then fonts.
     script.push_back({ Step::MOVE, 0.8, stripRow("Settings"), nullptr, "to settings" });
     script.push_back({ Step::WAIT, 0.2, nullptr, nullptr, "" });
@@ -466,105 +429,83 @@ int main(int argc, char** argv) {
         script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "" });
         script.push_back({ Step::WAIT, 0.9, nullptr, nullptr, "" });
     }
-    // Standings: the Last lap column on.
-    script.push_back(say("Columns, opacity", "Standings: Last lap on, opacity 0"));
-    script.push_back({ Step::MOVE, 0.8, region("standings"), nullptr, "standings tab" });
-    script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "" });
-    script.push_back({ Step::WAIT, 0.7, nullptr, nullptr, "" });
-    script.push_back({ Step::ACTION, 0, nullptr, [&] { rowDump("Last lap time"); }, "" });
-    script.push_back({ Step::MOVE, 0.8, rowCaret("standings.col_lastlap", "Last lap time", 0), nullptr, "last lap column" });
-    script.push_back({ Step::WAIT, 0.2, nullptr, nullptr, "" });
+    // The Decks tab: the Slanted layout for the whole set, then two more decks.
+    script.push_back(say("Your decks", "Slanted, for the whole set"));
+    script.push_back({ Step::MOVE, 0.8, region("decks"), nullptr, "decks tab" });
     script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "" });
     script.push_back({ Step::WAIT, 0.9, nullptr, nullptr, "" });
-    script.push_back({ Step::ACTION, 0, nullptr, [&] { rowDump("Last lap time"); }, "" });
-    // ...and its opacity down to 0, held.
-    script.push_back({ Step::MOVE, 0.8, rowCaret("common.opacity", "Opacity", 0, "<"), nullptr, "standings opacity" });
-    script.push_back({ Step::WAIT, 0.2, nullptr, nullptr, "" });
-    script.push_back({ Step::PRESS, 4.0, nullptr, nullptr, "", [&] { return pctOnRow("Opacity") == 0; } });
-    script.push_back({ Step::WAIT, 0.8, nullptr, nullptr, "" });
-    script.push_back({ Step::ACTION, 0, nullptr, [&] { rowDump("Opacity"); }, "" });
-    // Widgets: the Gamepad on, recoloured, shrunk, then dragged bottom right.
-    script.push_back(say("Gamepad widget", "Follows your inputs"));
-    script.push_back({ Step::MOVE, 0.8, region("widgets"), nullptr, "widgets tab" });
-    script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "" });
-    script.push_back({ Step::WAIT, 0.7, nullptr, nullptr, "" });
-    script.push_back({ Step::MOVE, 0.8, rowCaret("widgets.gamepad", "Gamepad", 0), nullptr, "gamepad on" });
+    script.push_back({ Step::MOVE, 0.8, caret("decks.slanted"), nullptr, "slanted" });
     script.push_back({ Step::WAIT, 0.2, nullptr, nullptr, "" });
     script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "" });
-    script.push_back({ Step::WAIT, 1.0, nullptr, nullptr, "" });
-    // Back from the shipped Xbox One through the DualShock to the orange Xbox.
-    script.push_back({ Step::MOVE, 0.6, rowCaret("widgets.gamepad", "Gamepad", 2, "<"), nullptr, "gamepad colour" });
-    for (int k = 0; k < 5; ++k) {
-        script.push_back({ Step::WAIT, 0.15, nullptr, nullptr, "" });
+    script.push_back({ Step::WAIT, 2.5, nullptr, nullptr, "" });
+    script.push_back(say("Your decks", "Standings and Notices added"));
+    for (const DdPick& row : { DdPick{ "decks.standings", "Standings" }, DdPick{ "decks.notice", "Notices" } }) {
+        script.push_back({ Step::MOVE, 0.8, rowCaret(row.row, row.item, 0), nullptr, row.item });
+        script.push_back({ Step::WAIT, 0.2, nullptr, nullptr, "" });
         script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "" });
-        script.push_back({ Step::WAIT, 0.35, nullptr, nullptr, "" });
+        script.push_back({ Step::WAIT, 1.2, nullptr, nullptr, "" });
+        script.push_back({ Step::ACTION, 0, nullptr, [&, row] { rowDump(row.item); }, "" });
     }
-    script.push_back({ Step::ACTION, 0, nullptr, [&] { rowDump("Gamepad"); }, "" });
-    script.push_back({ Step::WAIT, 0.5, nullptr, nullptr, "" });
-    // Smaller: the pad at 100% is a third of the screen wide.
-    script.push_back({ Step::MOVE, 0.6, rowCaret("widgets.gamepad", "Gamepad", 4, "<"), nullptr, "gamepad scale" });
-    // Held: the stepper repeats and speeds up, as for a player holding the button.
-    script.push_back({ Step::WAIT, 0.2, nullptr, nullptr, "" });
-    script.push_back({ Step::PRESS, 6.0, nullptr, nullptr, "", [&host] {
-        const auto rows = host.hudStringRows("settings_hud");
-        double ly = -1;
-        for (const auto& r : rows) if (r.text == "Gamepad") ly = r.y;
-        int pct = 0;   // the row's rightmost percentage: Scale
-        double px = -1;
-        for (const auto& r : rows)
-            if (std::fabs(r.y - ly) < 0.002 && r.x > px && r.text.find('%') != std::string::npos) {
-                px = r.x; pct = std::atoi(r.text.c_str());
-            }
-        return pct > 0 && pct <= 60; } });
-    script.push_back({ Step::ACTION, 0, nullptr, [&] { rowDump("Gamepad"); }, "" });
-    script.push_back({ Step::WAIT, 0.5, nullptr, nullptr, "" });
-    script.push_back(say("Gamepad widget", "Any colour, any size"));
+    script.push_back({ Step::WAIT, 1.5, nullptr, nullptr, "" });
     script.push_back({ Step::MOVE, 0.9, stripRow("Settings"), nullptr, "close settings" });
     script.push_back({ Step::WAIT, 0.2, nullptr, nullptr, "" });
     script.push_back({ Step::CLICK, 0.25, nullptr, nullptr, "" });
-    script.push_back({ Step::WAIT, 0.4, nullptr, nullptr, "" });
-    // Grab the pad from its spot bottom left and drop it bottom right, its bottom
-    // on the screen's last whole cell, two cells left of Gear and RPM.
-    auto padBox = [&host](double& l, double& t, double& r, double& b) {
+    script.push_back({ Step::WAIT, 0.8, nullptr, nullptr, "" });
+    // Grab the Speed deck at the bottom right and drop it in the empty bottom
+    // left corner, its bottom where it was, its left under the Timing deck's.
+    auto speedBox = [&host](double& l, double& t, double& r, double& b) {
         l = t = 9; r = b = -9;
-        for (const auto& q : host.hudQuadRects("gamepad_widget")) {
+        for (const auto& q : host.hudQuadRects("speed_deck")) {
             l = std::min(l, q.l); t = std::min(t, q.t); r = std::max(r, q.r); b = std::max(b, q.b);
         }
         return r > l;
     };
-    float padDx = 0, padDy = 0;
-    script.push_back(say("Move any HUD", "Right-drag it anywhere", 1));   // the pad crosses the bottom box
+    float dragDx = 0;
+    script.push_back(say("Move any HUD", "Right-drag it anywhere", 1));   // the deck crosses the bottom box
     script.push_back({ Step::MOVE, 0.8, [&](float& x, float& y) {
         double l, t, r, b;
-        if (!padBox(l, t, r, b)) { fprintf(stderr, "gamepad not drawn\n"); return false; }
-        fprintf(stderr, "pad box %.3f %.3f %.3f %.3f\n", l, t, r, b);
+        if (!speedBox(l, t, r, b)) { fprintf(stderr, "speed deck not drawn\n"); return false; }
+        fprintf(stderr, "speed deck %.3f %.3f %.3f %.3f\n", l, t, r, b);
         x = static_cast<float>((l + r) / 2); y = static_cast<float>((t + b) / 2);
-        double gl = 9;
-        for (const char* w : { "gear_widget", "rpm_widget", "speed_widget" })
-            for (const auto& q : host.hudQuadRects(w)) gl = std::min(gl, q.l);
-        if (gl > 1) gl = 0.88;
-        padDx = static_cast<float>(gl - 2 * 0.0055 - r); padDy = static_cast<float>(0.9899 - b);
-        return true; }, nullptr, "to the pad" });
+        double tl = 9;
+        for (const auto& q : host.hudQuadRects("timing_deck")) tl = std::min(tl, q.l);
+        if (tl > 1) tl = 0.0055;
+        dragDx = static_cast<float>(tl - l);
+        return true; }, nullptr, "to the speed deck" });
     script.push_back({ Step::WAIT, 0.3, nullptr, nullptr, "" });
-    script.push_back({ Step::RDRAG, 1.2, [&](float& x, float& y) { x += padDx; y += padDy; return true; },
-                       nullptr, "drag the pad" });
+    script.push_back({ Step::RDRAG, 1.2, [&](float& x, float& y) { x += dragDx; (void)y; return true; },
+                       nullptr, "drag the deck" });
     script.push_back({ Step::WAIT, 0.6, nullptr, nullptr, "" });
     script.push_back({ Step::ACTION, 0, nullptr, [&] {
         double l, t, r, b;
-        if (padBox(l, t, r, b)) fprintf(stderr, "pad box after %.3f %.3f %.3f %.3f\n", l, t, r, b); }, "" });
+        if (speedBox(l, t, r, b)) fprintf(stderr, "speed deck after %.3f %.3f %.3f %.3f\n", l, t, r, b); }, "" });
     script.push_back({ Step::MOVE, 0.8, at(0.80f, 0.55f), nullptr, "away" });
     script.push_back(say("Racing", "Positions, gaps, personal bests"));
     script.push_back({ Step::ACTION, 0, nullptr, [&] { mouseIdle = true; host.cursorIdle(); }, "idle" });
-    // What the Dash calls out while the race runs, timed from the reel's end:
+    // What the Notice deck calls out while the race runs, timed from the reel's end:
     // tapegen puts the catch, the crash and the PB lap that far from it.
-    struct Callout { double before; const char* detail; };
-    for (const Callout& c : { Callout{ 27.0, "Lapper ahead, on the Dash" }, Callout{ 16.0, "Hazard ahead: a rider down" },
-                              Callout{ 5.5, "Personal best, on the Dash" } }) {
-        script.push_back({ Step::WAIT, 60, nullptr, nullptr, "", [&nowT, demoSecs, c] { return nowT >= demoSecs - c.before; } });
+    // Each caption waits for its notice to show on the deck (a notice queues
+    // behind the one up, so the tape's timing alone runs ahead of the screen),
+    // or until a few seconds past its time on the tape, should it never come.
+    struct Callout { double before; const char* shows; const char* detail; };
+    for (const Callout& c : { Callout{ 27.0, "LAPPER", "Lapper ahead, on the Notice deck" },
+                              Callout{ 16.0, "HAZARD", "Hazard ahead: a rider down" },
+                              Callout{ 5.5, " PB", "Personal best, on Timing and Notices" } }) {
+        script.push_back({ Step::WAIT, 60, nullptr, nullptr, "", [&host, &nowT, demoSecs, c] {
+            for (const auto& r : host.hudStringRows("notice_deck"))
+                if (r.text.find(c.shows) != std::string::npos) return true;
+            return nowT >= demoSecs - c.before + 8; } });
         script.push_back({ Step::ACTION, 0, nullptr, [&, c] { caption("Racing", c.detail); }, "" });
     }
     script.push_back({ Step::WAIT, 60, nullptr, nullptr, "end" });
-    (void)region; (void)caret; (void)gapX; (void)gapY; (void)dashX; (void)dashY;
+    (void)region; (void)caret; (void)gapX; (void)gapY;
+    // REEL_STILL: no mouse at all, the race alone under the seeded settings
+    // (make_demo.sh's SEED_INI), for stills.
+    if (getenv("REEL_STILL") && *getenv("REEL_STILL")) {
+        script.clear();
+        script.push_back({ Step::ACTION, 0, nullptr, [&] { mouseIdle = true; host.cursorIdle(); }, "idle" });
+        script.push_back({ Step::WAIT, 600, nullptr, nullptr, "end" });
+    }
 
     // Transparent capture: the companion's frame on a clear backdrop, straight
     // it a FIFO that ffmpeg encodes as it arrives, so raw RGBA never lands on disk).
@@ -572,9 +513,9 @@ int main(int argc, char** argv) {
     const int CAP_W = getenv("REEL_W") ? atoi(getenv("REEL_W")) : 1920;
     const int CAP_H = getenv("REEL_H") ? atoi(getenv("REEL_H")) : 1080;
     // The caption layout's boxes (fractions of the frame): 0 bottom centre, below
-    // even a title-bar theme's taller Settings panel and clear of the pad, empty
-    // through the whole reel; 1 top, between Position and the Dash, for the drag
-    // (the pad crosses the bottom). make_demo.sh draws them from captions.tsv.
+    // even a title-bar theme's taller Settings panel, empty through the whole
+    // reel but for the drag; 1 top, for the drag (the Speed deck crosses the
+    // bottom). make_demo.sh draws them from captions.tsv.
     static constexpr float kCaptionBoxes[2][4] = { { 0.27f, 0.942f, 0.68f, 0.994f }, { 0.165f, 0.012f, 0.395f, 0.072f } };
     const bool captionCheck = getenv("REEL_CAPTION_CHECK") && *getenv("REEL_CAPTION_CHECK");
     int overlapFrames = 0, firstOverlap = -1;
@@ -656,7 +597,6 @@ int main(int argc, char** argv) {
             if (e.type == tape::EventType::Draw) continue;   // this loop draws per frame
             setNowUs(kClockBaseUs + static_cast<long long>(e.us));
             host.dispatch(e.type, e.data);
-            padFrom(e);
         }
         setNowUs(kClockBaseUs + static_cast<long long>(tapeNow));
 
@@ -671,7 +611,7 @@ int main(int argc, char** argv) {
                     "Notices", "Timing", "Lap Log", "Gap Bar", "Delta Trace", "Pitboard", "Radar",
                     "Ideal Lap", "Session", "Performance", "Stats", "Telemetry", "Records", "FMX",
                     "Event Log", "Charts", "Friends" };
-                // The short pass: the main ones, Session among them (it is kept on).
+                // The short pass: the main ones.
                 static const char* const kShowsMain[] = { "Timing", "Lap Log", "Gap Bar", "Pitboard", "Radar",
                     "Session", "Performance", "Records", "Delta Trace" };
                 static const bool fullStrip = !(getenv("REEL_STRIP") && std::string(getenv("REEL_STRIP")) == "main");
@@ -685,21 +625,8 @@ int main(int argc, char** argv) {
                 bool shows = false;
                 if (fullStrip) { for (const char* k : kShowsAll) shows |= nm == k; }
                 else { for (const char* k : kShowsMain) shows |= nm == k; }
-                if (!shows) { si += 3; continue; }   // skip the rest, its hold and the keep
+                if (!shows) { si += 2; continue; }   // skip the rest and its hold
                 st.kind = Step::WAIT;
-            }
-            // KEEP: switch Session on after its preview, so it stays for the rest.
-            if (!stepInit && st.kind == Step::KEEP) {
-                std::string nm;
-                float hx, hy;
-                for (int r = 0; r < host.toggleStripRow(0); ++r) {
-                    host.toggleStripRow(r, &hx, &hy, &nm);
-                    if (std::fabs(hx - mx) < 0.02f && std::fabs(hy - my) < 0.01f) break;
-                    nm.clear();
-                }
-                if (nm != "Session") { ++si; continue; }
-                fprintf(stderr, "%6.2f switch Session on\n", t);
-                st.kind = Step::CLICK;
             }
             // HOLD: every switch that previews something (REST let it through) holds
             // the same time, whatever the tape has for it right now.

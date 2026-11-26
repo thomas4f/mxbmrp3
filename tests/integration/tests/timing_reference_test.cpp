@@ -16,7 +16,10 @@
 #include "integration_main.h"
 #include "plugin_host.h"
 
+#include <chrono>
 #include <cstdlib>   // std::abs(int)
+#include <string>
+#include <thread>
 
 namespace {
 // GapTypeFlags (timing_hud.h): PB=1, IDEAL=2, OVERALL=4, ALLTIME=8, RECORD=16, LASTLAP=32.
@@ -1013,5 +1016,53 @@ TEST_CASE("timing: the lap readout shows a total only in a pure lap race") {
     host.draw();
     CHECK(lapValue() == "5/10");
 
+    host.shutdown();
+}
+
+// The Position readout follows Live updates on Both, as the Position widget
+// and Standings do: it reads the running order (RunningOrder::positionOf),
+// not the official classification, so a rider who goes by on track moves it
+// at once. It read the classification before, so Timing said 1/3 while the
+// widget beside it said 2/3. Fails if it goes back to the classification.
+TEST_CASE("timing: the Position readout follows the live order with Live updates on Both") {
+    constexpr int RACE = 6, PLAYER = 10;
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    REQUIRE(host.hasStringRows());
+    const char* save = "Z:\\tmp\\mxbmrp3-tests\\timing_live_position\\";
+    host.writeSettingsFile(save, "[Settings]\nversion=11\n[General]\nliveUpdates=2\n"
+                                 "[TimingHud]\nvisible=1\nreadout_position=1\n");
+    host.startup(save);
+    host.eventInit("TestTrack", "Alice");
+    host.raceEvent("TestTrack");
+    host.session(RACE, /*numLaps=*/10, /*lengthMs=*/0);
+    host.addEntry(PLAYER, "Alice");
+    host.addEntry(22, "Bob");
+    host.addEntry(33, "Carl");
+    host.classify(RACE, 1000, {
+        { .num = PLAYER, .laps = 1, .gap = 0 },
+        { .num = 22, .laps = 1, .gap = 400 },
+        { .num = 33, .laps = 1, .gap = 900 },
+    });
+    host.raceTrackPosition({ { PLAYER, 0.30f }, { 22, 0.29f }, { 33, 0.20f } });
+    host.draw();
+    host.draw();
+    const auto has = [&host](const char* text) {
+        for (const auto& r : host.hudStringRows(PluginHost::HUD_TIMING))
+            if (r.text == text) return true;
+        return false;
+    };
+    REQUIRE(has("1/3"));
+    // Bob goes by and stays ahead, past the live order's half-second hold;
+    // the classification still says P1
+    float pos = 0.40f;
+    for (int i = 0; i < 25; ++i) {
+        host.raceTrackPosition({ { PLAYER, pos }, { 22, pos + 0.01f }, { 33, pos - 0.1f } });
+        host.draw();
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        pos += 0.002f;
+    }
+    host.draw();
+    CHECK(has("2/3"));
     host.shutdown();
 }

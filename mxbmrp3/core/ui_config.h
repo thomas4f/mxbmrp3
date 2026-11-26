@@ -35,6 +35,17 @@ enum class TemperatureUnit : uint8_t {
     FAHRENHEIT = 1
 };
 
+// Live updates in races, between the game's own updates at the splits. No order
+// without gaps: a live order with official gaps would put a rider's gap out of
+// step with the row they sit on. Read by the Standings HUD and deck, and (Both)
+// by the Position widget and the Dash's Standings page.
+enum class LiveUpdates : uint8_t {
+    OFF = 0,   // Gaps and order update at the splits only
+    GAPS = 1,  // Live gaps
+    BOTH = 2,  // Live gaps and live order (standings_live_order.h)
+    COUNT
+};
+
 // Personal best scope (per-bike or per-category)
 enum class PBScope : uint8_t {
     BIKE = 0,
@@ -121,6 +132,8 @@ public:
     void setDefaultReference(int ref) { m_defaultReference = (ref < 0 || ref >= REFERENCE_COUNT) ? 0 : ref; }
     static constexpr int REFERENCE_COUNT = 4;   // PbGapTracker::REF_COUNT, static_asserted in hud_defaults.h
     int getDefaultFreezeMs() const { return m_defaultFreezeMs; }
+    LiveUpdates getLiveUpdates() const { return m_liveUpdates; }
+    void setLiveUpdates(LiveUpdates mode) { m_liveUpdates = mode < LiveUpdates::COUNT ? mode : LiveUpdates::OFF; }
     // Whole seconds, like the rows that show it: a hand-edited 2500 would read
     // "2s" and hold 2.5.
     void setDefaultFreezeMs(int ms) {
@@ -332,6 +345,7 @@ private:
     PBScope m_pbScope = PBScope::CATEGORY;  // Per-category PB tracking by default
     int m_defaultReference = 0;             // Session PB (PbGapTracker::Ref::SESSION_PB)
     int m_defaultFreezeMs = 5000;           // FreezeDuration::DEFAULT_MS
+    LiveUpdates m_liveUpdates = LiveUpdates::OFF;  // Official gaps and order by default
     float m_fUiScale = 1.0f;                // UI scale: 100%
     DisplayTarget m_displayTarget = DisplayTarget::IN_GAME;  // HUD in the game by default
     bool m_bSnapSegmentsToSplits = true;    // Snap segment boundaries to nearby splits by default

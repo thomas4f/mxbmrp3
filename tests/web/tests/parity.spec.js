@@ -100,3 +100,25 @@ test('every C++ overlayPanelName maps to a registered createSlotPanel name', asy
       .toContain(name);
   }
 });
+
+test('EVENT_TYPE_MAP indexes EventLogType in the same order', async () => {
+  // The server sends the raw EventLogType value as an event's `type`, and the
+  // overlay indexes EVENT_TYPE_MAP with it, so an enumerator inserted mid-list
+  // in C++ would shift every later event to the wrong filter. Each map row's
+  // comment names its enumerator; compare those to the enum, in order.
+  const cpp = fs.readFileSync(path.join(ROOT, 'mxbmrp3/core/event_log_types.h'), 'utf8');
+  const enumMatch = cpp.match(/enum class EventLogType[^{]*\{([\s\S]*?)\};/);
+  expect(enumMatch, 'enum class EventLogType found in event_log_types.h').toBeTruthy();
+  const cppNames = [...enumMatch[1].replace(/\/\/[^\n]*/g, '').matchAll(/([A-Za-z_]\w*)\s*(?:=[^,]*)?,/g)]
+    .map((m) => m[1]);
+
+  const js = fs.readFileSync(path.join(ROOT, 'mxbmrp3_data/web/js/overlay-render.js'), 'utf8');
+  const mapMatch = js.match(/var EVENT_TYPE_MAP = \[([\s\S]*?)\];/);
+  expect(mapMatch, 'EVENT_TYPE_MAP found in overlay-render.js').toBeTruthy();
+  const rows = [...mapMatch[1].matchAll(/"[^"]+"\s*,?\s*\/\/\s*(\d+)\s+(\w+)/g)]
+    .map((m) => ({ index: Number(m[1]), name: m[2] }));
+
+  expect(cppNames.length, 'EventLogType enumerators found').toBeGreaterThanOrEqual(20);
+  expect(rows.map((r) => r.index), 'map rows numbered 0..n-1').toEqual(rows.map((_, i) => i));
+  expect(rows.map((r) => r.name)).toEqual(cppNames);
+});

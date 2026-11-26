@@ -94,6 +94,20 @@ static_assert(sizeof(SPluginsRaceClassification_t) == 16 &&
               sizeof(SPluginsRaceTrackPosition_t) == 28,
               "tape contract: tape-embedded API struct layout differs from mxb_api.h — golden tapes need re-recording");
 
+// The RunTelemetry payload: the game's telemetry bytes, then [float time]
+// [float pos]. The game bytes are sizeof(SPluginsBikeData_t), plus the rider
+// stance int on game builds that send it (event_recorder.h, recordRunTelemetry),
+// so the struct size is always payload - 8 and the floats are the last 8 bytes.
+// Older tapes have no stance int and split the same way.
+struct TelemetryPayload { int bikeBytes; float time; float pos; };
+inline bool splitTelemetry(const uint8_t* data, size_t size, TelemetryPayload& out) {
+    if (!data || size < sizeof(SPluginsBikeData_t) + 2 * sizeof(float)) return false;
+    out.bikeBytes = static_cast<int>(size - 2 * sizeof(float));
+    std::memcpy(&out.time, data + out.bikeBytes, sizeof(float));
+    std::memcpy(&out.pos, data + out.bikeBytes + sizeof(float), sizeof(float));
+    return true;
+}
+
 // Minimal writer used to synthesize a tape in a test.
 class TapeWriter {
 public:

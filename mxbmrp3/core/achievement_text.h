@@ -163,8 +163,13 @@ inline void formatDescription(const Entry& e, int tier, char* buffer, size_t buf
         credit();
         return;
     }
-    char value[32];
-    formatValue(e.unit, threshold, value, sizeof(value));
+    char value[48];
+    if (e.tierPhrases) {
+        // Named tiers ("a half marathon") stand where the number would.
+        snprintf(value, sizeof(value), "%s", I18n::trCached(e.tierPhrases[tier - 1]));
+    } else {
+        formatValue(e.unit, threshold, value, sizeof(value));
+    }
     // The template's one %s, substituted by hand: a non-literal format string
     // is a warning on every compiler, and the bounded copy cannot overrun.
     const char* marker = std::strstr(descMany, "%s");

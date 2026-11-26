@@ -162,9 +162,14 @@ void trackPos(int n, void* a, int es) {
 void centerline(int n, void* segs, void*) {
     put(tape::EventType::TrackCenterline, &n, sizeof(n), segs, sizeof(TrackSegmentRow) * n);
 }
+// The rider's stance, sent as a game build that has it does: one int after
+// the struct (0 seated, 1 standing; Adapter::readRiderStance).
+int stance = 0;
 void telemetry(void* d, int n, float time, float pos) {
+    std::vector<uint8_t> frame(static_cast<const uint8_t*>(d), static_cast<const uint8_t*>(d) + n);
+    frame.insert(frame.end(), reinterpret_cast<const uint8_t*>(&stance), reinterpret_cast<const uint8_t*>(&stance) + sizeof(stance));
     float tail[2] = { time, pos };
-    put(tape::EventType::RunTelemetry, d, n, tail, sizeof(tail));
+    put(tape::EventType::RunTelemetry, frame.data(), frame.size(), tail, sizeof(tail));
 }
 void draw(int, int* nq, void**, int* ns, void**) { *nq = 0; *ns = 0; put(tape::EventType::Draw, nullptr, 0); }
 }  // namespace rec
@@ -366,6 +371,8 @@ int main(int argc, char** argv) {
                 r.throttle = 0.85f;
             }
         }
+        // Standing down the straights, seated to brake and turn.
+        rec::stance = (v > 15.0 && lastBrake < 0.05) ? 1 : 0;
         host.telemetryFrame(r);
     };
     // Per rider: distance last step, lap start, splits so far, best lap.

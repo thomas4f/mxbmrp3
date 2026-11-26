@@ -57,6 +57,11 @@ inline float averagePerLap(const std::vector<float>& perLap,
 inline constexpr float kWarnLaps = 4.0f;
 inline constexpr float kCriticalLaps = 2.0f;
 
+// An average worth dividing by: under this, a consumption too small to say
+// anything (an out-lap, a stand). Every reader shows "no average yet" below it.
+inline constexpr float kMinAverage = 0.001f;
+inline bool hasAverage(float avgPerLap) { return avgPerLap > kMinAverage; }
+
 // Laps left in the tank, or -1 when it cannot be known yet (no history, or a
 // consumption too small to divide by). Clamped at 99.9 so a near-zero average
 // on an out-lap cannot produce a number nobody would believe.
@@ -67,8 +72,70 @@ inline constexpr float kCriticalLaps = 2.0f;
 // tank", so fuel_critical fires) instead of the -1 "cannot be known".
 inline float lapsRemaining(float fuel, float avgPerLap) {
     if (!std::isfinite(fuel) || !std::isfinite(avgPerLap)) return -1.0f;
-    if (avgPerLap <= 0.001f || fuel < 0.0f) return -1.0f;
+    if (!hasAverage(avgPerLap) || fuel < 0.0f) return -1.0f;
     return std::min(fuel / avgPerLap, 99.9f);
 }
+
+// THE PLAYER'S FUEL HISTORY, one per session (PluginData owns it), so every
+// reader -- the Fuel widget, the Dash, the Timing HUD, the Fuel deck and the
+// spotter -- reads the same laps. Fed by two events: each fuel sample of the
+// player's own bike, and each lap the player completes.
+class Tracker {
+public:
+    Tracker() { m_perLap.reserve(kMaxHistory + 1); }
+
+    void reset() {
+        m_perLap.clear();
+        m_totalLaps = 0;
+        m_atRunStart = 0.0f;
+        m_atLapStart = 0.0f;
+        m_lastLap = -1;
+        m_active = false;
+    }
+
+    // A fuel sample. The first starts tracking (the fuel at the start); one
+    // above the run's start is a refuel, which restarts the run's reference
+    // and keeps the lap history.
+    void sample(float fuel) {
+        if (!m_active || fuel > m_atRunStart) {
+            m_atRunStart = fuel;
+            m_atLapStart = fuel;
+            m_active = true;
+        }
+    }
+
+    // A lap completed (its number, once), with the fuel now. Only a timed lap
+    // counts (a pit-in or a cut one would skew the average), and only a
+    // plausible use; either way the next lap measures from here. The fuel
+    // used, or -1 when nothing was recorded.
+    float lapCompleted(int lapNum, bool timed, float fuel, float maxFuel) {
+        if (!m_active || lapNum <= m_lastLap) return -1.0f;
+        float used = -1.0f;
+        const float u = m_atLapStart - fuel;
+        if (timed && u > 0.0f && u < maxFuel) {
+            m_perLap.push_back(u);
+            ++m_totalLaps;
+            if (m_perLap.size() > kMaxHistory) m_perLap.erase(m_perLap.begin());
+            used = u;
+        }
+        m_atLapStart = fuel;
+        m_lastLap = lapNum;
+        return used;
+    }
+
+    float averagePerLap() const { return FuelEstimate::averagePerLap(m_perLap, m_totalLaps); }
+    float lapsRemaining(float fuel) const { return FuelEstimate::lapsRemaining(fuel, averagePerLap()); }
+    // The fuel used this run (below 0 after a refuel), once there is a start
+    bool hasFuelUsed() const { return m_active && m_atRunStart > 0.0f; }
+    float fuelUsed(float fuel) const { return m_atRunStart - fuel; }
+
+private:
+    std::vector<float> m_perLap;   // fuel used per lap, newest last
+    size_t m_totalLaps = 0;        // every lap recorded (averagePerLap's first-lap rule)
+    float m_atRunStart = 0.0f;
+    float m_atLapStart = 0.0f;
+    int m_lastLap = -1;
+    bool m_active = false;
+};
 
 }  // namespace FuelEstimate

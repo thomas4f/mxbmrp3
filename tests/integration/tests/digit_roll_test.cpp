@@ -3,14 +3,17 @@
 // Motion's digit roll (hud/digit_roll.h), on the strings the widgets draw,
 // with Motion's clock driven by hand:
 //   - Gear: Motion Off draws one digit, the new one, at once; on, up a gear the
-//     old digit drops from its place and fades while the new one comes in from
-//     above (the opposite of the odometer's drum); at the end only the new one
-//     is left, back in place; down a gear the directions swap
+//     old digit drops from its place and fades out over the first half of the
+//     roll, the new one comes in from above over the last half (the opposite
+//     of the odometer's drum); at the end only the new one is left, back in
+//     place; down a gear the directions swap
 //   - Gear shifted on the red: the old digit rolls out in the colour it had,
 //     not the colour of the new gear (the RPM drops the moment you shift)
 //   - Speedo odometer / trip meter: a step of one rolls the last digit alone
 //     (the old one rises, the new comes from below), a carry rolls the white
 //     digits too, a jump of more than one switches, and so does Motion Off
+// These are the GAME's strings (the drum, faded by the shared edge rule,
+// hud/clip_marks.h); the companion window's cut drum is clip_marks_test.cpp's.
 // Self-contained doctest; see run_tests.sh / TESTING.md.
 // ============================================================================
 #include "doctest.h"
@@ -33,6 +36,8 @@ std::vector<Digit> digits(PluginHost& host) {
     for (size_t i = 0; i < rows.size(); ++i) {
         if (rows[i].text.empty()) continue;
         const unsigned long c = host.stringColor("gear_widget", static_cast<int>(i));
+        // A text the game has faded out entirely is not drawn there.
+        if (((c >> 24) & 0xFF) == 0) continue;
         out.push_back({ rows[i].text, rows[i].y, static_cast<unsigned>((c >> 24) & 0xFF), c });
     }
     return out;
@@ -62,23 +67,27 @@ TEST_CASE("digit roll: the gear switches with Motion off, rolls with it on") {
     CHECK(d[0].text == "2");
     CHECK(d[0].y == doctest::Approx(baseY));
 
-    // Motion on, up a gear: halfway, the 2 below its place and the 3 above, both partly faded.
+    // Motion on, up a gear: a quarter in, the 2 below its place, fading; three
+    // quarters in, the 3 above it, coming in.
     host.setMotion(1);
     host.setMotionNowUs(1000000);
     host.telemetry(10.0f, 3);
     d = digits(host);
     REQUIRE(d.size() == 1);
     CHECK(d[0].text == "2");          // the roll starts on the old digit
-    host.setMotionNowUs(1000000 + 100000);
+    host.setMotionNowUs(1000000 + 50000);
     d = digits(host);
-    INFO("halfway up: " << d.size() << " strings");
-    REQUIRE(d.size() == 2);
+    INFO("a quarter up: " << d.size() << " strings");
+    REQUIRE(d.size() == 1);
     CHECK(d[0].text == "2");
     CHECK(d[0].y > baseY);
     CHECK(d[0].alpha < 255u);
-    CHECK(d[1].text == "3");
-    CHECK(d[1].y < baseY);
-    CHECK(d[1].alpha < 255u);
+    host.setMotionNowUs(1000000 + 150000);
+    d = digits(host);
+    REQUIRE(d.size() == 1);
+    CHECK(d[0].text == "3");
+    CHECK(d[0].y < baseY);
+    CHECK(d[0].alpha < 255u);
     host.setMotionNowUs(1000000 + 400000);
     d = digits(host);
     REQUIRE(d.size() == 1);
@@ -89,13 +98,16 @@ TEST_CASE("digit roll: the gear switches with Motion off, rolls with it on") {
     host.setMotionNowUs(2000000);
     host.telemetry(10.0f, 2);
     digits(host);
-    host.setMotionNowUs(2000000 + 100000);
+    host.setMotionNowUs(2000000 + 50000);
     d = digits(host);
-    REQUIRE(d.size() == 2);
+    REQUIRE(d.size() == 1);
     CHECK(d[0].text == "3");
     CHECK(d[0].y < baseY);
-    CHECK(d[1].text == "2");
-    CHECK(d[1].y > baseY);
+    host.setMotionNowUs(2000000 + 150000);
+    d = digits(host);
+    REQUIRE(d.size() == 1);
+    CHECK(d[0].text == "2");
+    CHECK(d[0].y > baseY);
 
     host.setMotion(0);
     host.setMotionNowUs(-1);
@@ -115,6 +127,7 @@ TripRow tripRow(PluginHost& host, double odoY, double tripY) {
     for (size_t i = 0; i < rows.size(); ++i) {
         if (std::fabs(rows[i].y - tripY) >= std::fabs(rows[i].y - odoY)) continue;
         const unsigned long c = host.stringColor("speedo_widget", static_cast<int>(i));
+        if (((c >> 24) & 0xFF) == 0) continue;   // faded out in game, as digits() says
         Digit d{ rows[i].text, rows[i].y, static_cast<unsigned>((c >> 24) & 0xFF) };
         (rows[i].text.size() == 1 ? out.last : out.main).push_back(d);
     }
@@ -165,17 +178,20 @@ TEST_CASE("digit roll: the trip meter rolls its last digit, the rest on a carry,
     tripRow(host, odoY, tripY);
     ride(20);   // 100 m = 0.06 mi
     tripRow(host, odoY, tripY);   // the roll starts here
-    host.setMotionNowUs(10000000 + 100000);
+    host.setMotionNowUs(10000000 + 50000);
     TripRow r = tripRow(host, odoY, tripY);
     REQUIRE(r.main.size() == 1);
     CHECK(r.main[0].text == "000");
     CHECK(r.main[0].y == doctest::Approx(tripY));
-    REQUIRE(r.last.size() == 2);
+    REQUIRE(r.last.size() == 1);
     CHECK(r.last[0].text == "0");
     CHECK(r.last[0].y < tripY);       // rising out
-    CHECK(r.last[1].text == "1");
-    CHECK(r.last[1].y > tripY);       // coming from below
-    CHECK(r.last[1].alpha < 255u);
+    host.setMotionNowUs(10000000 + 150000);
+    r = tripRow(host, odoY, tripY);
+    REQUIRE(r.last.size() == 1);
+    CHECK(r.last[0].text == "1");
+    CHECK(r.last[0].y > tripY);       // coming from below
+    CHECK(r.last[0].alpha < 255u);
 
     // A jump (0.1 -> 0.9) switches.
     host.setMotionNowUs(20000000);
@@ -190,15 +206,20 @@ TEST_CASE("digit roll: the trip meter rolls its last digit, the rest on a carry,
     tripRow(host, odoY, tripY);
     ride(30);   // 1600 m = 0.99 mi
     tripRow(host, odoY, tripY);
-    host.setMotionNowUs(30000000 + 100000);
+    host.setMotionNowUs(30000000 + 50000);
     r = tripRow(host, odoY, tripY);
-    REQUIRE(r.main.size() == 2);
+    REQUIRE(r.main.size() == 1);
     CHECK(r.main[0].text == "000");
-    CHECK(r.main[1].text == "001");
-    CHECK(r.main[1].y > tripY);
-    REQUIRE(r.last.size() == 2);
+    CHECK(r.main[0].y < tripY);
+    REQUIRE(r.last.size() == 1);
     CHECK(r.last[0].text == "9");
-    CHECK(r.last[1].text == "0");
+    host.setMotionNowUs(30000000 + 150000);
+    r = tripRow(host, odoY, tripY);
+    REQUIRE(r.main.size() == 1);
+    CHECK(r.main[0].text == "001");
+    CHECK(r.main[0].y > tripY);
+    REQUIRE(r.last.size() == 1);
+    CHECK(r.last[0].text == "0");
 
     // Motion Off: a step switches.
     host.setMotion(0);
@@ -247,13 +268,16 @@ TEST_CASE("digit roll: a gear shifted on the red rolls out red") {
     row.rpm = 7000;
     host.telemetryFrame(row);
     digits(host);
-    host.setMotionNowUs(1000000 + 100000);
+    host.setMotionNowUs(1000000 + 50000);
     d = digits(host);
-    REQUIRE(d.size() == 2);
+    REQUIRE(d.size() == 1);
     CHECK(d[0].text == "3");
     CHECK((d[0].color & 0x00FFFFFFul) == red);     // leaves in the colour it had
-    CHECK(d[1].text == "4");
-    CHECK((d[1].color & 0x00FFFFFFul) == white);
+    host.setMotionNowUs(1000000 + 150000);
+    d = digits(host);
+    REQUIRE(d.size() == 1);
+    CHECK(d[0].text == "4");
+    CHECK((d[0].color & 0x00FFFFFFul) == white);
 
     host.setMotion(0);
     host.setMotionNowUs(-1);

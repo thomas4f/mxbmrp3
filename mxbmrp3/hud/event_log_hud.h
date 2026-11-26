@@ -6,6 +6,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "hud_scroll.h"
 #include "../core/plugin_constants.h"
 #include "../core/event_log_types.h"
 #include <chrono>
@@ -82,8 +83,8 @@ public:
     uint32_t getEnabledEvents() const { return m_enabledEvents; }
     DisplayOrder getDisplayOrder() const { return m_displayOrder; }
     bool showsIcons() const { return m_showIcons; }
-    int getIconForEvent(EventLogType type) const;
-    unsigned long getIconColorForEvent(EventLogType type) const;
+    int getIconForEvent(const EventLogEntry& entry) const;
+    unsigned long getIconColorForEvent(const EventLogEntry& entry) const;
     static constexpr int ICON_COL_WIDTH = 3;      // Icon column (matches StandingsHud COL_TRACKED_WIDTH)
     // Icon rendering (matches StandingsHud sizing: 0.006f * scale)
     static constexpr float ICON_BASE_SIZE = 0.006f;
@@ -108,7 +109,7 @@ private:
     static constexpr float START_X = 0.0f;
     static constexpr float START_Y = 0.0f;
     static constexpr int TIMESTAMP_WIDTH = 9;    // "05:00   " (session) or "14:32:01 " (clock) + gap
-    static constexpr int MESSAGE_WIDTH = 31;     // Event message text (total = icon 3 + timestamp 9 + message 31 = 43)
+    static constexpr int MESSAGE_WIDTH = EVENT_LOG_MESSAGE_CHARS;  // Event message text (total = icon 3 + timestamp 9 + message 31 = 43)
 
     // Settings
     DisplayMode m_displayMode = DisplayMode::ON;
@@ -137,6 +138,10 @@ private:
     };
     std::vector<RiderClickRegion> m_riderClickRegions;
     int m_hoveredRegionIndex = -1;          // index into m_riderClickRegions, -1 = none
+    // Scrollback through the kept events (hud_scroll.h); its live edge follows
+    // m_displayOrder. m_scrollSeen: the newest event it has counted.
+    HudScroll m_scroll{HudScroll::Edge::END};
+    std::chrono::steady_clock::time_point m_scrollSeen{};
     int m_hoverQuadIndex = -1;              // the hover highlight quad in m_quads, -1 = none
     // Matches StandingsHud's spectator hover so the two HUDs feel identical.
     // (hover alpha now comes from BaseHud::ROW_HOVER_ALPHA, shared with every other
@@ -164,6 +169,7 @@ private:
         int wrench = 0;
         int video = 0;
         int award = 0;
+        int trophy = 0;
         bool initialized = false;
 
         void ensureInitialized();

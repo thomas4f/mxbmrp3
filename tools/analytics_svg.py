@@ -63,6 +63,9 @@ _STYLE = """<style>
   .sub{fill:#808080;font-size:11px}
   .gap{fill:#808080;opacity:.12}
   .gaplbl{fill:#808080;font-size:10px;opacity:.85}
+  .mark{stroke:#808080;stroke-opacity:.7;stroke-width:1;stroke-dasharray:2 3}
+  .markbg{fill:#808080;fill-opacity:.22}
+  .marklbl{fill:#808080;font-size:9.5px;font-weight:600}
   .ico{fill:#808080}
   .t1{fill:#e3b341}
   .t2{fill:#d29922}
@@ -350,7 +353,7 @@ def _linear_ticks(vmax):
 
 
 def lines(title, x_labels, series, subtitle="", value_fmt=_fmt, width=760, height=320,
-          x_tick_every=None, log=False, gaps=(), annotate=True, end_room=0):
+          x_tick_every=None, log=False, gaps=(), annotate=True, end_room=0, marks=()):
     """Multi-series line chart.
 
     x_labels: list of tick labels (one per x index).
@@ -385,6 +388,13 @@ def lines(title, x_labels, series, subtitle="", value_fmt=_fmt, width=760, heigh
     keeps the peaks but puts each END value in the legend ("1.30.3 · 49%") instead
     of the margin: with many series ending near each other (the version chart) the
     margin became a column of small numbers matched to lines by colour alone.
+
+    marks: [(x index, label)] events on the day axis -- the report's releases.
+           Each is a dashed line through the plot, with its label in a grey chip
+           in a strip of its own just ABOVE the plot, the usual place for chart
+           annotations: inside, the chips covered the data and the peak values,
+           and the strip's reserved height keeps them clear of the legend too.
+           A chip that would overlap one already placed steps up a row.
 
     end_room reserves the end-label column for at least that many characters, so
     charts stacked on one day axis share one plot width and their days line up
@@ -432,6 +442,31 @@ def lines(title, x_labels, series, subtitle="", value_fmt=_fmt, width=760, heigh
     plot_w = width - pad_l - pad_r
     plot_h = height - pad_t - pad_b
     n = max((len(s[1]) for s in series), default=0)
+    def px(i):
+        return pad_l + (plot_w * (i / max(1, n - 1)) if n > 1 else plot_w / 2)
+
+    # RELEASE CHIPS, laid out before anything is drawn: their rows decide how tall
+    # the strip above the plot is. Row 0 sits on the plot; a chip that would
+    # overlap one in a row tries the next row up. Grow the canvas by the strip,
+    # like the legend, so the plot keeps its height.
+    chips = []  # (x of the line, chip x0, width, row, label)
+    if marks:
+        row_spans = []
+        for i, label in marks:
+            if not 0 <= i < n:
+                continue
+            x = px(i)
+            w = 6 * len(label) + 10
+            x0 = min(max(x - w / 2, pad_l), pad_l + plot_w - w)
+            row = next((k for k, spans in enumerate(row_spans)
+                        if all(x0 + w + 3 <= a or b + 3 <= x0 for a, b in spans)), len(row_spans))
+            if row == len(row_spans):
+                row_spans.append([])
+            row_spans[row].append((x0, x0 + w))
+            chips.append((x, x0, w, row, label))
+        strip = 16 * len(row_spans) + 4 if row_spans else 0
+        pad_t += strip
+        height += strip
     vmax = max((max(v for v in s[1] if v is not None) for s in series
                 if any(v is not None for v in s[1])), default=0) or 1
     if log:
@@ -444,9 +479,6 @@ def lines(title, x_labels, series, subtitle="", value_fmt=_fmt, width=760, heigh
     if subtitle:
         parts.append('<text x="12" y="37" class="sub">{}</text>'.format(escape(subtitle)))
     base = pad_t + plot_h
-
-    def px(i):
-        return pad_l + (plot_w * (i / max(1, n - 1)) if n > 1 else plot_w / 2)
 
     def py(v):
         if log:
@@ -465,6 +497,15 @@ def lines(title, x_labels, series, subtitle="", value_fmt=_fmt, width=760, heigh
         if x1 - x0 > 7 * len(label):
             parts.append('<text x="{x:.1f}" y="{y}" class="gaplbl" text-anchor="middle">{t}</text>'
                          .format(x=(x0 + x1) / 2, y=pad_t + 12, t=escape(label)))
+
+    # RELEASE LINES through the plot, behind the series; their chips above it.
+    for x, x0, w, row, label in chips:
+        parts.append('<line x1="{x:.1f}" y1="{t}" x2="{x:.1f}" y2="{b:.1f}" class="mark"/>'.format(
+            x=x, t=pad_t - 4 - 16 * row, b=base))
+        y0 = pad_t - 17 - 16 * row
+        parts.append('<rect x="{x:.1f}" y="{y}" width="{w}" height="13" rx="6" class="markbg"/>'
+                     '<text x="{c:.1f}" y="{ty}" text-anchor="middle" class="marklbl">{t}</text>'
+                     .format(x=x0, y=y0, w=w, c=x0 + w / 2, ty=y0 + 10, t=escape(label)))
 
     # horizontal gridlines + y labels
     if log:

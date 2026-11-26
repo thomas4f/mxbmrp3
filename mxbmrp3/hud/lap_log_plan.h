@@ -57,8 +57,8 @@ struct Input {
     int maxDisplayLaps = 5;
     // Lap numbers of the history entries, index 0 = most recent. May be null,
     // in which case no lap can match the best lap and it is always shown
-    // separately (when there is one). Only the first maxDisplayLaps entries are
-    // ever read.
+    // separately (when there is one). Only the first skip + maxDisplayLaps
+    // entries are ever read.
     const int* lapNums = nullptr;
     int lapNumCount = 0;
     // The best lap, when one exists. bestLapNum is its lap number, matched
@@ -72,6 +72,14 @@ struct Input {
     // Caller-resolved: the gap row is enabled AND live timing is on.
     bool showGapRow = false;
     Order order = Order::NEWEST_FIRST;
+    // Scrollback (hud_scroll.h): this many of the most recent laps are passed
+    // over, so the recent window shows older laps. The reserved rows (live,
+    // gap, best) stay where they are. lapNums must cover skip + the window.
+    int skip = 0;
+    // While the scrollback glides between rows, one lap more than the window
+    // (HudScroll::drawRows): it is cut at the window's edge, so it takes no
+    // slot -- recentRoom and the placeholders are as without it.
+    int extra = 0;
 };
 
 struct Plan {
@@ -82,6 +90,9 @@ struct Plan {
     // size as laps come in, and the gap row is extra on top of the configured
     // count.
     int dataRowCount = 0;
+    // How many history laps the recent window has room for (the scrollback's
+    // view; fewer may show near the oldest end).
+    int recentRoom = 0;
 };
 
 // Fills a CALLER-OWNED plan rather than returning one: the Lap Log rebuilds on a
@@ -95,13 +106,14 @@ inline void compute(const Input& in, Plan& plan) {
     // matters here — see the header comment.
     int recentBudget = in.maxDisplayLaps;
     if (in.showCurrentLap) recentBudget--;
+    const int skip = in.skip > 0 ? in.skip : 0;
 
     // Is the best lap already inside the window of recent laps we are about to
     // draw? Scanned against the budget as it stands NOW (after the current-lap
     // reservation), because that is the window the rider will actually see.
     bool bestLapInRecent = false;
     if (in.hasBestLap && in.lapNums != nullptr) {
-        for (int i = 0; i < recentBudget && i < in.lapNumCount; ++i) {
+        for (int i = skip; i < skip + recentBudget && i < in.lapNumCount; ++i) {
             if (in.lapNums[i] == in.bestLapNum) {
                 bestLapInRecent = true;
                 break;
@@ -114,27 +126,40 @@ inline void compute(const Input& in, Plan& plan) {
 
     // recentBudget can be negative here (maxDisplayLaps 1 with both reservations);
     // the loops below then simply emit no lap rows. Preserved deliberately.
-    const int numRecent = (recentBudget < in.lapLogSize) ? recentBudget : in.lapLogSize;
+    const int left = in.lapLogSize - skip > 0 ? in.lapLogSize - skip : 0;
+    const int windowRows = (recentBudget < left) ? recentBudget : left;
+    const int withExtra = recentBudget > 0 ? recentBudget + (in.extra > 0 ? in.extra : 0) : recentBudget;
+    const int numRecent = (withExtra < left) ? withExtra : left;
 
-    const int filled = numRecent + (in.showCurrentLap ? 1 : 0) + (showBestSeparately ? 1 : 0);
+    const int filled = windowRows + (in.showCurrentLap ? 1 : 0) + (showBestSeparately ? 1 : 0);
     int placeholders = in.maxDisplayLaps - filled;
     if (placeholders < 0) placeholders = 0;
 
     if (in.order == Order::OLDEST_FIRST) {
         if (showBestSeparately) plan.rows.push_back(kBestLap);
         for (int i = 0; i < placeholders; ++i) plan.rows.push_back(kPlaceholder);
-        for (int i = numRecent - 1; i >= 0; --i) plan.rows.push_back(i);
+        for (int i = numRecent - 1; i >= 0; --i) plan.rows.push_back(skip + i);
         if (in.showCurrentLap) plan.rows.push_back(kCurrentLap);
         if (in.showGapRow) plan.rows.push_back(kGap);
     } else {
         if (in.showGapRow) plan.rows.push_back(kGap);
         if (in.showCurrentLap) plan.rows.push_back(kCurrentLap);
-        for (int i = 0; i < numRecent; ++i) plan.rows.push_back(i);
+        for (int i = 0; i < numRecent; ++i) plan.rows.push_back(skip + i);
         for (int i = 0; i < placeholders; ++i) plan.rows.push_back(kPlaceholder);
         if (showBestSeparately) plan.rows.push_back(kBestLap);
     }
 
     plan.dataRowCount = in.maxDisplayLaps + (in.showGapRow ? 1 : 0);
+    plan.recentRoom = recentBudget > 0 ? recentBudget : 0;
+}
+
+// Whether the live "current lap" row shows: while the lap is timed, or once it
+// has been through the pits (PIT where the time would tick: the timer pauses at
+// pit entry and is dropped at pit exit, so without this the row froze and only
+// the line revealed a pit lap), never after the flag. One rule for the Lap Log
+// HUD and the Lap Log deck; pinned by test_lap_log_plan.cpp.
+inline bool runningLapShown(bool lapTimerValid, bool lapViaPits, bool riderFinished) {
+    return (lapTimerValid || lapViaPits) && !riderFinished;
 }
 
 // Convenience overload for tests and any caller not on the hot path.

@@ -14,7 +14,6 @@
 #include "../core/hud_manager.h"
 #include "../core/input_manager.h"
 #include "../core/ui_config.h"
-#include "settings_hud.h"
 #include "../core/plugin_constants.h"
 #include "../core/plugin_utils.h"
 #include "../diagnostics/logger.h"
@@ -24,20 +23,6 @@
 
 using namespace PluginConstants;
 
-namespace {
-// The metal each tier is drawn in. Platinum is a cool near-white so it reads as
-// a step above gold rather than as the plain primary text colour.
-unsigned long tierColor(int tier, unsigned long fallback) {
-    switch (tier) {
-        case 1: return PodiumColors::BRONZE;
-        case 2: return PodiumColors::SILVER;
-        case 3: return PodiumColors::GOLD;
-        case 4: return PluginUtils::makeColor(229, 228, 226);
-        default: return fallback;
-    }
-}
-}  // namespace
-
 AchievementWidget::AchievementWidget() {
     m_panelKind = PanelKind::Widget;
     m_bContentCard = true;
@@ -45,6 +30,8 @@ AchievementWidget::AchievementWidget() {
     m_strings.reserve(3);
     m_quads.reserve(8);
     setTextureBaseName("achievement_widget");
+    // A new card starts with nothing up, as the card did when it held the queue
+    ToastFeed::getInstance().reset();
     resetToDefaults();
     rebuildRenderData();
 }
@@ -55,95 +42,32 @@ bool AchievementWidget::handlesDataType(DataChangeType) const {
     return false;
 }
 
-void AchievementWidget::showSystem(const std::chrono::steady_clock::time_point& now) {
-    m_showing = true;
-    m_source = Source::System;
-    m_shownAt = now;
-    setDataDirty();
-}
-
 void AchievementWidget::update() {
-    AchievementManager& ach = AchievementManager::getInstance();
-    SystemMessages& sys = SystemMessages::getInstance();
-    const auto now = std::chrono::steady_clock::now();
-    const bool hudsOn = HudManager::getInstance().areHudsEnabled();
-
-    // END THE CARD SHOWING when its time is up, its feed was switched off (a
-    // settings load or the toggle -- the queue is cleared behind it, but a taken
-    // toast lives here, and its primitives would otherwise stay on screen until
-    // the clock ran out, or forever if nothing else dirtied the widget), or, for
-    // a system toast, when what it announced was undone (SystemMessages::cancel).
-    if (m_showing) {
-        bool end;
-        if (m_source == Source::Achievement) {
-            end = !ach.isToastsEnabled() ||
-                  now - m_shownAt >= std::chrono::milliseconds(ach.getToastDurationMs());
-        } else {
-            end = !sys.isEnabled() || sys.consumeCancel(m_system.key) ||
-                  now - m_shownAt >= std::chrono::milliseconds(m_system.durationMs);
-        }
-        if (end) {
-            m_showing = false;
-            setDataDirty();
-        }
-    }
-    // The same key again replaces the card in place and restarts its clock: a
-    // key mashed five times is one card with the latest text.
-    if (m_showing && m_source == Source::System && sys.takeReplacement(m_system.key, m_system)) {
-        showSystem(now);
-    }
-
-    // Take the next toast only when it can actually be seen: this widget on some
-    // surface, and the hide-all-HUDs hotkey not active (unless the toast is that
-    // hotkey's own message). Taken while hidden, a toast would run its clock
-    // unseen and be gone -- the same reason the clock starts at take time, not
-    // queue time (see the manager's header). The Widgets master toggle does not
-    // cover this widget: like the spotter's subtitles it is a notification, not
-    // a gauge.
-    const bool onSurface = isVisibleAnySurface();
-    const bool systemDrawable = onSurface && (hudsOn || sys.nextIsThroughHideAll());
-    // A system toast takes the card from an achievement; the achievement goes
-    // back to the front of its queue and is shown whole afterwards.
-    if (m_showing && m_source == Source::Achievement && systemDrawable && sys.hasPending()) {
-        ach.requeueFront(m_toast);
-        m_showing = false;
-    }
-    if (!m_showing && systemDrawable && sys.take(m_system)) {
-        showSystem(now);
-    } else if (!m_showing && onSurface && hudsOn && ach.takeToast(m_toast)) {
-        m_showing = true;
-        m_source = Source::Achievement;
-        m_shownAt = now;
-        setDataDirty();
-    }
-    const bool drawable = onSurface && (hudsOn || isShowingThroughHideAll());
-
-    if (!onSurface) {
+    const ToastFeed& feed = ToastFeed::getInstance();
+    if (!isVisibleAnySurface()) {
         clearDataDirty();
         clearLayoutDirty();
         return;
     }
+    // Which toast is up is ToastFeed's (stepped by HudManager before this);
+    // a new one, or none, rebuilds the card.
+    if (feed.revision() != m_renderedRevision) {
+        m_renderedRevision = feed.revision();
+        setDataDirty();
+    }
+    const bool drawable = HudManager::getInstance().areHudsEnabled() || feed.isThroughHideAll();
 
     // A click on the card opens the menu where it points -- an achievement's
     // page, or the tab a system toast names -- and ends the card: the player
     // has gone where it pointed. Gated like every self-hit-testing HUD on the
     // click being its own (ownsClick: on screen, the topmost under it), and on
     // the cursor: with the menu-only cursor there is no pointer on track.
-    if (m_showing && drawable && ownsClick()) {
+    if (feed.showing() && drawable && ownsClick()) {
         const InputManager& input = InputManager::getInstance();
         if (input.isCursorEnabled() && input.getLeftButton().isClicked()) {
             CursorPosition cursor = input.getCursorPosition();
             mapCursorToHudSpace(cursor.x, cursor.y);
-            if (cursor.isValid && isPointInBounds(cursor.x, cursor.y)) {
-                m_showing = false;
-                setDataDirty();
-                SettingsHud& settings = HudManager::getInstance().getSettingsHud();
-                if (m_source == Source::Achievement) {
-                    settings.showAchievementsTab(m_toast.catalogueIndex);
-                } else if (m_system.tab >= 0) {
-                    settings.showTab(m_system.tab);
-                }
-            }
+            if (cursor.isValid && isPointInBounds(cursor.x, cursor.y)) ToastFeed::getInstance().click();
         }
     }
 
@@ -174,8 +98,10 @@ void AchievementWidget::rebuildRenderData() {
     // saying they do not want these, and a preview would argue with it -- except
     // for the Toggles strip's hover sample, which shows what switching them on
     // would bring (BaseHud::isSampled).
+    const ToastFeed& feed = ToastFeed::getInstance();
+    const bool showing = feed.showing();
     const bool toastsOn = AchievementManager::getInstance().isToastsEnabled();
-    if (!m_showing && !(isPreviewing() && (toastsOn || isSampled()))) {
+    if (!showing && !(isPreviewing() && (toastsOn || isSampled()))) {
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
@@ -184,17 +110,18 @@ void AchievementWidget::rebuildRenderData() {
     // stays -1). Built per rebuild, not once: a static would keep the language
     // it was first drawn in (core/i18n.h, "never cache TR() in a static").
     AchievementManager::Toast sampleToast;
-    if (!m_showing) {
+    if (!showing) {
         std::snprintf(sampleToast.title, sizeof(sampleToast.title), "%s", TR("Preview"));
         std::snprintf(sampleToast.detail, sizeof(sampleToast.detail), "%s", TR("Achievement toasts appear here"));
         std::snprintf(sampleToast.icon, sizeof(sampleToast.icon), "%s", "trophy");
         sampleToast.tier = Achievements::TIER_COUNT;
     }
-    const bool system = m_showing && m_source == Source::System;
-    const AchievementManager::Toast& toast = m_showing ? m_toast : sampleToast;
-    const char* title = system ? m_system.title : toast.title;
-    const char* detail = system ? m_system.detail : toast.detail;
-    const char* icon = system ? m_system.icon : toast.icon;
+    const bool system = feed.source() == ToastFeed::Source::System;
+    const SystemMessages::Toast& message = feed.system();
+    const AchievementManager::Toast& toast = showing ? feed.achievement() : sampleToast;
+    const char* title = system ? message.title : toast.title;
+    const char* detail = system ? message.detail : toast.detail;
+    const char* icon = system ? message.icon : toast.icon;
     const char* caption = system ? TR("Message") : TR("Achievement");
 
     const auto dim = getScaledDimensions();
@@ -202,9 +129,9 @@ void AchievementWidget::rebuildRenderData() {
     const unsigned long secondary = getColor(ColorSlot::SECONDARY);
     // An achievement wears its tier's metal; a system toast the primary text
     // colour with an accent icon, or the negative colour when it is a warning.
-    const bool warning = system && m_system.severity == SystemMessages::Severity::Warning;
+    const bool warning = system && message.severity == SystemMessages::Severity::Warning;
     const unsigned long titleColor = system ? (warning ? getColor(ColorSlot::NEGATIVE) : primary)
-                                            : tierColor(toast.tier, primary);
+                                            : PodiumColors::tierColor(toast.tier, primary);
     const unsigned long iconColor = system ? (warning ? getColor(ColorSlot::NEGATIVE)
                                                      : getColor(ColorSlot::ACCENT))
                                            : titleColor;

@@ -14,8 +14,10 @@
 #include "plugin_constants.h"
 #include "plugin_manager.h"
 #include "update_checker.h"
+#include "update_link.h"
 #include "../game/game_config.h"
 #include "../diagnostics/logger.h"
+#include "i18n_mark.h"
 
 #include <windows.h>
 #include <winhttp.h>
@@ -121,8 +123,35 @@ static bool copyDirectoryRecursive(const std::string& srcDir, const std::string&
     return success;
 }
 
-// Recursively delete a directory and its contents
+// A junction or directory symbolic link: a name for another folder. The rule,
+// and why a cloud placeholder isn't one, is in update_link.h. For a reparse
+// point, dwReserved0 is its tag.
+static_assert(UpdateLink::ATTR_DIRECTORY == FILE_ATTRIBUTE_DIRECTORY, "update_link.h");
+static_assert(UpdateLink::ATTR_REPARSE_POINT == FILE_ATTRIBUTE_REPARSE_POINT, "update_link.h");
+static_assert(IsReparseTagNameSurrogate(UpdateLink::TAG_NAME_SURROGATE) &&
+              !IsReparseTagNameSurrogate(~UpdateLink::TAG_NAME_SURROGATE), "update_link.h");
+
+static bool isDirectoryLink(const WIN32_FIND_DATAA& fd) {
+    return UpdateLink::isDirectoryLink(fd.dwFileAttributes, fd.dwReserved0);
+}
+
+// Recursively delete a directory and its contents. A link is removed itself
+// and never entered, so only the plugin's own files are deleted. Pinned by
+// updater_test.cpp's "links are removed, never followed".
 static bool deleteDirectoryRecursive(const std::string& dir) {
+    {
+        const std::string self = dir.substr(0, dir.find_last_not_of('\\') + 1);
+        WIN32_FIND_DATAA selfData;
+        HANDLE hSelf = FindFirstFileA(self.c_str(), &selfData);
+        if (hSelf != INVALID_HANDLE_VALUE) {
+            FindClose(hSelf);
+            if (isDirectoryLink(selfData)) {
+                RemoveDirectoryA(self.c_str());
+                return true;
+            }
+        }
+    }
+
     WIN32_FIND_DATAA findData;
     std::string searchPath = dir + "*";
     HANDLE hFind = FindFirstFileA(searchPath.c_str(), &findData);
@@ -138,7 +167,9 @@ static bool deleteDirectoryRecursive(const std::string& dir) {
 
         std::string path = dir + findData.cFileName;
 
-        if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+        if (isDirectoryLink(findData)) {
+            RemoveDirectoryA(path.c_str());   // the link, not what it points to
+        } else if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
             deleteDirectoryRecursive(path + "\\");
         } else {
             DeleteFileA(path.c_str());
@@ -617,6 +648,32 @@ bool UpdateDownloader::extractAndInstall(const std::vector<char>& zipData, std::
         DEBUG_INFO_F("UpdateDownloader: DEBUG MODE - Extraction complete at: %s", pluginDir.c_str());
     }
     return true;
+}
+
+// The download's checksum gate. Returns nullptr when the data matches the
+// release's published SHA-256, else the (untranslated) reason to show. An
+// empty expected hash fails: GitHub's release API publishes a digest for every
+// asset, so only what can be checked is installed. Pinned by updater_test.cpp's
+// "the checksum gate" case.
+const char* UpdateDownloader::checksumError(const std::vector<char>& data,
+                                            const std::string& expectedHash) {
+    if (expectedHash.empty()) {
+        DEBUG_WARN("UpdateDownloader: release API provided no SHA256 digest - refusing to install unverified download");
+        return N_("SHA256 verification failed (no checksum published)");
+    }
+    DEBUG_INFO("UpdateDownloader: Verifying SHA256 checksum...");
+    const std::string actualHash = calculateSHA256(data);
+    if (actualHash.empty()) {
+        DEBUG_WARN("UpdateDownloader: SHA256 calculation failed - refusing to install unverified download");
+        return N_("SHA256 verification failed (could not compute hash)");
+    }
+    if (actualHash != expectedHash) {
+        DEBUG_WARN_F("UpdateDownloader: SHA256 mismatch! Expected: %s, Got: %s",
+                     expectedHash.c_str(), actualHash.c_str());
+        return N_("SHA256 checksum mismatch");
+    }
+    DEBUG_INFO_F("UpdateDownloader: SHA256 verified: %s", actualHash.c_str());
+    return nullptr;
 }
 
 std::string UpdateDownloader::calculateSHA256(const std::vector<char>& data) {

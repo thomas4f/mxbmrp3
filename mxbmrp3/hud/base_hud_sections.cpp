@@ -305,6 +305,21 @@ static inline bool buttonIsInvisible(unsigned long color) {
     return ((color >> 24) & 0xFFu) == 0u;
 }
 
+// The title band: the theme's title art at the band's scale, else its card's
+// (emitThemedSliceSet BAND). False where the theme has neither, so the caller
+// draws its plain fill. Recorded as a card COVER with its real rect, so the
+// fill under it is cut (finalizeThemedFill). The panel plan's band and a
+// deck's title box both draw it.
+bool BaseHud::addThemedTitleBand(float x, float y, float width, float height) {
+    const ThemeAsset* theme = activeTheme();
+    if (!theme->hasTitleArt() && !theme->hasCard()) return false;
+    if (width <= 0.0f || height <= 0.0f) return false;
+    recordCardCover(static_cast<int>(m_quads.size()), x, y, width, height);
+    applyOffset(x, y);
+    emitThemedSliceSet(*theme, x, y, width, height, -1, SliceSet::BAND, 0);
+    return true;
+}
+
 bool BaseHud::addThemedButton(float x, float y, float width, float height, unsigned long color,
                               bool opaque) {
     const ThemeAsset* theme = activeTheme();

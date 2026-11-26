@@ -186,7 +186,10 @@ namespace {
 //          language_system (1 = the System default, following Windows) to
 //          app_started. Aptabase's own `locale` is the Windows REGIONAL format,
 //          which says nothing about the language on screen.
-constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.32.0";
+// 2.33.0 = added deck_<name> (one 0/1 per deck, from the same settings capture
+//          as hud_*/widget_*: SpeedDeck -> deck_speed), deck_count and
+//          feat_decks (the Decks master, like feat_widgets).
+constexpr const char* ANALYTICS_SDK_VERSION = "mxbmrp3-analytics@2.33.0";
 
 // The two Aptabase ingest paths a queued POST can name.
 constexpr const wchar_t* PATH_EVENTS = L"/api/v0/events";
@@ -332,18 +335,20 @@ std::string AnalyticsManager::buildEventBody() const {
     props["steam_runtime"] = SteamFriendsManager::isSteamRuntimeAvailable() ? 1 : 0;
 #endif
 
-    // One 0/1 flag per HUD/widget (key "hud_<name>" / "widget_<name>"), derived
+    // One 0/1 flag per HUD/widget/deck (key "hud_<name>" / "widget_<name>" /
+    // "deck_<name>"), derived
     // from the canonical settings capture so new HUDs/widgets appear with no
     // hardcoded list. avg() of a 0/1 flag in Aptabase is the feature's adoption
     // rate. Counts are convenience aggregates.
     std::vector<std::pair<std::string, int>> flags;
     SettingsManager::getInstance().getHudWidgetFlags(HudManager::getInstance(), flags);
-    int hudCount = 0, widgetCount = 0;
+    int hudCount = 0, widgetCount = 0, deckCount = 0;
     for (const auto& f : flags) {
         props[f.first] = f.second;
         if (f.second) {
             if (f.first.rfind("hud_", 0) == 0) ++hudCount;
             else if (f.first.rfind("widget_", 0) == 0) ++widgetCount;
+            else if (f.first.rfind("deck_", 0) == 0) ++deckCount;
         }
     }
     // 2.27.0: the Stream Chat HUD is GLOBAL, so it is not in the per-profile
@@ -359,6 +364,7 @@ std::string AnalyticsManager::buildEventBody() const {
     }
     props["hud_count"] = hudCount;
     props["widget_count"] = widgetCount;
+    props["deck_count"] = deckCount;
 
     // feat_* : capabilities that aren't HUDs/widgets (managers / global toggles).
 #if GAME_HAS_DISCORD
@@ -387,8 +393,12 @@ std::string AnalyticsManager::buildEventBody() const {
     // Profile auto-switch: automatically swap the active HUD profile on context change.
     props["feat_autoswitch"] = ProfileManager::getInstance().isAutoSwitchEnabled() ? 1 : 0;
     props["feat_updates"] = UpdateChecker::getInstance().isEnabled() ? 1 : 0;
-    // Master widgets toggle: when off, no widget_* shows regardless of its flag.
-    props["feat_widgets"] = HudManager::getInstance().areWidgetsEnabled() ? 1 : 0;
+    // The master switches (feat_widgets; 2.33.0 feat_decks): when one is off,
+    // none of its widget_* / deck_* shows regardless of their own flags.
+    for (int g = 0; g < HudManager::MASTER_GROUP_COUNT; ++g) {
+        const auto group = static_cast<HudManager::MasterGroup>(g);
+        props[HudManager::masterGroupInfo(group).analyticsKey] = HudManager::getInstance().isGroupEnabled(group) ? 1 : 0;
+    }
     // 2.19.0: the achievement-toast master ([Achievements] visible). Tracking
     // is unconditional, so this is the DISPLAY choice, like feat_helmet.
     props["feat_achievements"] = AchievementManager::getInstance().isToastsEnabled() ? 1 : 0;

@@ -63,6 +63,8 @@
 #include "../hud/lean_widget.h"
 #include "../hud/slide_widget.h"
 #include "../hud/wheelie_widget.h"
+#include "../hud/deck_hud.h"
+#include "../hud/stance_widget.h"
 #include "../hud/gforce_widget.h"
 #include "../hud/compass_widget.h"
 #include "../hud/clock_widget.h"
@@ -217,7 +219,13 @@ void HudManager::initialize() {
     createHud(m_pGamepad, "gamepad_widget");
     createHud(m_pLean, "lean_widget");
     createHud(m_pSlide, "slide_widget");
+#if GAME_HAS_WHEELIE
     createHud(m_pWheelie, "wheelie_widget");
+#endif
+    // Draws nothing until the game sends a stance (stance_widget.h).
+#if GAME_HAS_RIDER_STANCE
+    createHud(m_pStance, "stance_widget");
+#endif
     createHud(m_pGforce, "gforce_widget");
     createHud(m_pCompass, "compass_widget");
     createHud(m_pClock, "clock_widget");
@@ -235,6 +243,25 @@ void HudManager::initialize() {
 #if GAME_HAS_ECU
     createHud(m_pEcu, "ecu_widget");
 #endif
+    static_assert(DECK_HUD_COUNT == DeckHud::SLOT_COUNT, "one slot per deck, and the carousel's");
+    // The decks (deck_hud.h): one class, one HUD per kind. Combo reads the
+    // FMX signals and Wheelie a bike's: a game without them has no slot.
+    for (int i = 0; i < static_cast<int>(DeckHud::Kind::COUNT); ++i) {
+        const auto kind = static_cast<DeckHud::Kind>(i);
+#if !GAME_HAS_FMX
+        if (kind == DeckHud::Kind::Combo) continue;
+#endif
+#if !GAME_HAS_WHEELIE
+        if (kind == DeckHud::Kind::Wheelie) continue;
+#endif
+        auto deck = std::make_unique<DeckHud>(kind);
+        m_pDecks[i] = deck.get();
+        bindHudSlot(m_pDecks[i]);
+        registerHud(std::move(deck), DeckHud::harnessId(i));
+    }
+    auto carousel = std::make_unique<DeckHud>(DeckHud::CarouselTag{});   // the wide decks in turn
+    bindHudSlot(m_pDecks[DeckHud::CAROUSEL_SLOT] = carousel.get());
+    registerHud(std::move(carousel), DeckHud::harnessId(DeckHud::CAROUSEL_SLOT));
     // Create PointerWidget early so it can be passed to SettingsHud
     // (will be registered last to render on top)
     auto pointerPtr = std::make_unique<PointerWidget>();
@@ -314,6 +341,7 @@ void HudManager::initialize() {
 
     // Load settings from disk (must happen after HUD registration)
     SettingsManager::getInstance().loadSettings(*this, PluginManager::getInstance().getSavePath());
+    DeckHud::warmFonts();
 
     // Load the spotter's cue pack for whatever name survived the settings
     // load. A `pack=` INI line already loaded it (this re-read is a cheap
@@ -414,6 +442,7 @@ void HudManager::clear(bool allowCrossSingleton) {
     m_hudSlotClearers.clear();
     m_pDraggingHud = nullptr;  // transient drag state, not a registered HUD slot
     m_pClickOwner = nullptr;   // transient too: this frame's left-click pick
+    m_pWheelOwner = nullptr;   // ...and its wheel pick
 
     // Now safe to destroy HUD objects
     m_huds.clear();
@@ -643,7 +672,8 @@ void HudManager::setupDefaultResources() {
                            + expectedThemeSprites
                            + assetMgr.getGamepadCount() * GamepadSprite::COUNT
                            + assetMgr.getPitboardCount() * PitboardSprite::COUNT
-                           + assetMgr.getGaugesCount() * GaugeSprite::COUNT;
+                           + assetMgr.getGaugesCount() * GaugeSprite::COUNT
+                           + assetMgr.getDeckImageCount();
     m_spriteNames.reserve(expectedSprites);
     m_fontNames.reserve(assetMgr.getFontCount());
 
@@ -726,6 +756,14 @@ void HudManager::setupDefaultResources() {
     DEBUG_INFO_F("Added %zu gauges sprites from %zu packs",
         assetMgr.getGaugesCount() * GaugeSprite::COUNT, assetMgr.getGaugesCount());
 
+    // Deck layout images after the gauges, each layout's list in the order
+    // discoverDecks() assigned indices in (DeckAsset::imagePaths).
+    for (const DeckAsset& deck : assetMgr.getDecks())
+        for (const std::string& path : deck.imagePaths) m_spriteNames.push_back(path);
+
+    DEBUG_INFO_F("Added %zu deck images from %zu layouts",
+        assetMgr.getDeckImageCount(), assetMgr.getDecks().size());
+
     // Add fonts from AssetManager (discovered dynamically)
     size_t fontCount = assetMgr.getFontCount();
     for (size_t i = 0; i < fontCount; ++i) {
@@ -762,7 +800,7 @@ void HudManager::setupDefaultResources() {
 
 // The blocks above and the discover*() walks in AssetManager hand out sprite
 // indices by mirroring each other's order (textures, icons, themes, pads,
-// boards, gauges) -- two files that must agree on arithmetic neither can see.
+// boards, gauges, deck images) -- two files that must agree on arithmetic neither can see.
 // This pass checks the whole agreement after the fact: every 1-based index an
 // asset recorded at discovery must point at that asset's OWN file in the table
 // just registered. A skew here is otherwise silent -- everything draws, just
@@ -820,6 +858,10 @@ int HudManager::verifySpriteRegistrationOrder(const AssetManager& assetMgr) cons
                    assetMgr.getGaugesPath(g.spriteFromBase[i] ? g.baseName : g.name,
                                           GaugeSprite::kStems[i]), "gauges", g.name);
 
+    for (const DeckAsset& d : assetMgr.getDecks())
+        for (size_t k = 0; k < d.imagePaths.size(); ++k)
+            expect(d.firstImage + static_cast<int>(k), d.imagePaths[k], "deck", d.name);
+
     return mismatches;
 }
 
@@ -836,7 +878,7 @@ int HudManager::testSpriteOrderWithSwap(int aOneBased, int bOneBased) {
 }
 #endif
 
-bool HudManager::isTelemetryHistoryNeeded() const {
+bool HudManager::isTelemetryHistoryNeeded(const BaseHud* except) const {
     // Lets PluginData skip history-buffer accumulation when nothing consumes it.
     // MUST use isVisibleAnySurface(), not isVisible(): TelemetryHud::update()
     // rebuilds whenever it is visible on EITHER surface, so gating production on
@@ -845,8 +887,19 @@ bool HudManager::isTelemetryHistoryNeeded() const {
     // applied to the DATA side: the consumer's gate and the producer's gate have
     // to ask the same question.
     // The Dash's Telemetry page draws the same buffers (DashHud::wantsTelemetryHistory).
-    return (m_pTelemetry && m_pTelemetry->isVisibleAnySurface()) ||
-           (m_pDash && m_pDash->wantsTelemetryHistory());
+    // So do the Inputs deck and the carousel showing it, unless the Decks master hides them.
+    const bool decks = isGroupEnabled(MasterGroup::Decks);
+    const DeckHud* inputs = decks ? m_pDecks[static_cast<int>(DeckHud::Kind::Inputs)] : nullptr;
+    const DeckHud* carousel = decks ? m_pDecks[DeckHud::CAROUSEL_SLOT] : nullptr;
+    const auto other = [except](const BaseHud* hud) { return hud && hud != except; };
+    return (other(m_pTelemetry) && m_pTelemetry->isVisibleAnySurface()) ||
+           (other(m_pDash) && m_pDash->wantsTelemetryHistory()) ||
+           (other(inputs) && inputs->isVisibleAnySurface()) ||
+           (other(carousel) && carousel->kind() == DeckHud::Kind::Inputs && carousel->isVisibleAnySurface());
+}
+
+void HudManager::startTelemetryHistory(const BaseHud* user) {
+    if (!isTelemetryHistoryNeeded(user)) PluginData::getInstance().clearHistoryBuffers();
 }
 
 
@@ -904,11 +957,7 @@ void HudManager::updateRiderPositions(int numVehicles, Unified::TrackPositionDat
 
             // Update the centralized lap timer, and with it the PB gap tracker read by
             // TimingHud, LapLogHud and GapBarHud
-            pluginData.updateLapTimerTrackPosition(
-                displayRaceNum,
-                positions[i].trackPos,
-                lapNum
-            );
+            pluginData.updateLapTimerTrackPosition(positions[i], lapNum);
 
             break;
         }

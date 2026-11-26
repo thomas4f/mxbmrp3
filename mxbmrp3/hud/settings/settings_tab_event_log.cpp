@@ -6,6 +6,7 @@
 #include "../settings_hud.h"
 #include "../radar_hud.h"
 #include "../event_log_hud.h"
+#include "../../game/game_config.h"
 
 // Static member function of SettingsHud - handles click events for Event Log tab
 bool SettingsHud::handleClickTabEventLog(const ClickRegion& region) {
@@ -100,7 +101,7 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
     ctx.endColumns();
 
     ctx.addSectionHeading(TR("Events"));
-    ctx.beginColumns(2, 12);
+    ctx.beginColumns(2, 12 + GAME_HAS_ACHIEVEMENTS);   // the Achievements row is MX Bikes only
 
     // Session: started + state changes
     constexpr uint32_t SESSION_GROUP = EVENT_SESSION_STARTED | EVENT_SESSION_STATE;
@@ -129,6 +130,15 @@ BaseHud* SettingsHud::renderTabEventLog(SettingsLayoutContext& ctx) {
         SettingsHud::ClickRegion::CHECKBOX, hud,
         &hud->m_enabledEvents, EVENT_ALLTIME_PB, true,
         "event_log.alltime_pb");
+
+#if GAME_HAS_ACHIEVEMENTS
+    // Your own achievements, as each tier is earned (MX Bikes only)
+    bool achievementOn = (hud->m_enabledEvents & EVENT_ACHIEVEMENT) != 0;
+    ctx.addToggleControl(TR("Achievements"), achievementOn,
+        SettingsHud::ClickRegion::CHECKBOX, hud,
+        &hud->m_enabledEvents, EVENT_ACHIEVEMENT, true,
+        "event_log.achievement");
+#endif
 
     // Penalties: penalty + penalty cleared
     constexpr uint32_t PENALTY_GROUP = EVENT_PENALTY | EVENT_PENALTY_CLEAR;

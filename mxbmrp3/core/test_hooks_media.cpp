@@ -20,8 +20,10 @@ extern "C" {
 
 // A player's snapshot (MediaManager::State as an int), published as the worker
 // publishes one: it bumps the revision the widget, the Dash and the notice follow.
+// controls: what the player takes, 1 seek | 2 shuffle | 4 loop; 8 = shuffle on;
+// bits 4-5 = the loop mode (MediaManager::Loop as an int).
 __declspec(dllexport) void MXBMRP3_Test_MediaPublish(const char* title, const char* artist, int state,
-                                                     int positionMs, int durationMs, int volume) {
+                                                     int positionMs, int durationMs, int volume, int controls) {
     MediaManager::Snapshot next;
     next.state = static_cast<MediaManager::State>(state);
     snprintf(next.title, sizeof(next.title), "%s", title ? title : "");
@@ -29,14 +31,20 @@ __declspec(dllexport) void MXBMRP3_Test_MediaPublish(const char* title, const ch
     next.positionMs = positionMs;
     next.durationMs = durationMs;
     next.volume = volume;
+    next.canSeek = (controls & 1) != 0;
+    next.canShuffle = (controls & 2) != 0;
+    next.canLoop = (controls & 4) != 0;
+    next.shuffle = (controls & 8) != 0;
+    next.loop = static_cast<MediaManager::Loop>((controls >> 4) & 3);
     MediaManager::getInstance().publishForTest(next);
 }
 
 // What the controls queued for the worker: 0 = the transport command
-// (MediaManager::Command as an int), 1 = the volume (-1 = none).
+// (MediaManager::Command as an int), 1 = the volume, 2 = the seek in ms (-1 = none).
 __declspec(dllexport) int MXBMRP3_Test_MediaPending(int which) {
     const MediaManager& media = MediaManager::getInstance();
-    return which == 0 ? media.pendingCommandForTest() : media.pendingVolumeForTest();
+    return which == 0 ? media.pendingCommandForTest()
+         : which == 1 ? media.pendingVolumeForTest() : media.pendingSeekForTest();
 }
 
 }  // extern "C"

@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  packaging/msi/mxbmrp3.wxs - the MSI installer (WiX 5). Built by build_msi.ps1;
+  packaging/msi/README.md says what it does differently from the NSIS Setup and
+  why.
+
+  THE RULE THIS FILE KEEPS: standard Windows Installer tables, plus ONE small
+  custom action of ours (ca/check_folders.cpp: the Games page's "not the
+  plugins folder?" check, UI only, reads properties and tests one file). No
+  script, no exe launched. Everything else is searches, property chains,
+  features, IniFile, RemoveFile and dialogs; the only other compiled code is
+  WiX's own RemoveFolderEx action (WixToolset.Util), used to delete a folder
+  tree, which plain MSI cannot. The point of an MSI over NSIS is its antivirus
+  record; anything that executes is what that record is made of, so add code
+  only for a guardrail plain MSI cannot hold, and scan it.
+
+  Build-time variables (-d): Version (MAJOR.MINOR.PATCH.BUILD), ProductCode
+  (one GUID shared by every language build of one release, so the language
+  transforms apply), Payload (payload.wxs from gen_payload.py, built alongside).
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <!-- UpgradeCode: FIXED FOREVER. Every MXBMRP3 MSI ever built carries this
+       value; it is how a newer one finds and replaces an older one. -->
+  <Package Name="MXBMRP3" Manufacturer="thomas4f" Version="$(var.Version)"
+           ProductCode="$(var.ProductCode)" UpgradeCode="F4C7CBAA-592D-4222-880C-05F05165661B"
+           Language="!(loc.MXB_LCID)" Codepage="!(loc.MXB_CODEPAGE)" Scope="perMachine" Compressed="yes">
+    <SummaryInformation Description="MXBMRP3 Setup - Plugin for PiBoSo Racing Simulators" Manufacturer="thomas4f" />
+
+    <!-- Any other version is replaced, older or newer, like re-running NSIS
+         Setup. The old one is removed BEFORE anything is installed
+         (afterInstallValidate): its uninstall deletes mxbmrp3_data whole, which
+         would take the new files with it if it ran after them. -->
+    <MajorUpgrade AllowDowngrades="yes" Schedule="afterInstallValidate" />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/thomas4f/MXBMRP3" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/thomas4f/MXBMRP3" />
+    <Property Id="ARPCOMMENTS" Value="Open source (MIT). Source: https://github.com/thomas4f/MXBMRP3" />
+    <!-- NSIS writes NoRepair; Repair would also put back files an in-plugin
+         update has since replaced. -->
+    <Property Id="ARPNOREPAIR" Value="1" />
+    <!-- Overwrite every file, whatever its version ("a"; the rest is the
+         default "omus"). The plugin's .dlo is versioned, and the file-version
+         rules would KEEP a newer one found in place (over an NSIS or zip
+         install of a later release) while mxbmrp3_data is replaced: a plugin
+         beside another release's data. Pinned by test_msi.ps1 case 4. -->
+    <Property Id="REINSTALLMODE" Value="amus" />
+
+    <!-- PUBLIC PROPERTIES (msiexec /i mxbmrp3-Setup.msi NAME=value):
+           ANALYTICS=0   opt out of the usage survey (the Privacy page's box)
+           FRESH=1       delete each selected game's settings and data first
+           WIPEDATA=1    on uninstall, also delete settings and data
+           PLUGINLANG=xx the plugin's first-launch language; defaults to the
+                         language Setup is shown in
+           MXB_DIR / GPB_DIR / KRP_DIR  a game's plugins folder
+           MXB_SEL / GPB_SEL / KRP_SEL  1 = install for it, 0 = skip it -->
+    <Property Id="ANALYTICS" Value="1" Secure="yes" />
+    <Property Id="FRESH" Value="0" Secure="yes" />
+    <Property Id="WIPEDATA" Secure="yes" />
+    <Property Id="PLUGINLANG" Value="!(loc.MXB_PLUGIN_LANG)" Secure="yes" />
+
+    <?define G = "MXB"?><?define GameName = "MX Bikes"?><?define SteamId = "655500"?><?define Exe = "mxbikes.exe"?>
+    <?define GameFolder = "MX Bikes"?><?define DocsFolder = "MX Bikes"?><?define NsisValue = "MXBikesPath"?>
+    <?include game.wxi?>
+    <?undef G?><?undef GameName?><?undef SteamId?><?undef Exe?><?undef GameFolder?><?undef DocsFolder?><?undef NsisValue?>
+
+    <?define G = "GPB"?><?define GameName = "GP Bikes"?><?define SteamId = "848050"?><?define Exe = "gpbikes.exe"?>
+    <?define GameFolder = "GP Bikes"?><?define DocsFolder = "GP Bikes"?><?define NsisValue = "GPBikesPath"?>
+    <?include game.wxi?>
+    <?undef G?><?undef GameName?><?undef SteamId?><?undef Exe?><?undef GameFolder?><?undef DocsFolder?><?undef NsisValue?>
+
+    <?define G = "KRP"?><?define GameName = "Kart Racing Pro"?><?define SteamId = "415600"?><?define Exe = "kart.exe"?>
+    <?define GameFolder = "Kart Racing Pro"?><?define DocsFolder = "Kart Racing Pro"?><?define NsisValue = "KRPPath"?>
+    <?include game.wxi?>
+    <?undef G?><?undef GameName?><?undef SteamId?><?undef Exe?><?undef GameFolder?><?undef DocsFolder?><?undef NsisValue?>
+
+    <!-- An NSIS install from before Setup was multi-game recorded only
+         InstallLocation, and it was always MX Bikes (NSIS .onInit does the same). -->
+    <Property Id="NSIS_LEGACY">
+      <RegistrySearch Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\MXBMRP3" Name="InstallLocation" Type="raw" Bitness="always64" />
+    </Property>
+    <SetProperty Id="MXB_NSISLM" Action="MXBNsisLegacy" Value="[NSIS_LEGACY]" Before="MXBPrevNsisLm" Sequence="first"
+                 Condition="NSIS_LEGACY AND NOT MXB_NSISLM AND NOT MXB_NSISCU AND NOT GPB_NSISLM AND NOT GPB_NSISCU AND NOT KRP_NSISLM AND NOT KRP_NSISCU" />
+
+    <!-- The games an earlier install covers, for the "existing installation"
+         page: "MX Bikes, GP Bikes". -->
+    <SetProperty Id="EXISTGAMES" Action="ExistMxb" Value="MX Bikes" After="KRPDirDefault" Sequence="ui" Condition="MXB_PREV" />
+    <SetProperty Id="EXISTGAMES" Action="ExistGpbAdd" Value="[EXISTGAMES], GP Bikes" After="ExistMxb" Sequence="ui" Condition="GPB_PREV AND EXISTGAMES" />
+    <SetProperty Id="EXISTGAMES" Action="ExistGpb" Value="GP Bikes" After="ExistGpbAdd" Sequence="ui" Condition="GPB_PREV AND NOT EXISTGAMES" />
+    <SetProperty Id="EXISTGAMES" Action="ExistKrpAdd" Value="[EXISTGAMES], Kart Racing Pro" After="ExistGpb" Sequence="ui" Condition="KRP_PREV AND EXISTGAMES" />
+    <SetProperty Id="EXISTGAMES" Action="ExistKrp" Value="Kart Racing Pro" After="ExistKrpAdd" Sequence="ui" Condition="KRP_PREV AND NOT EXISTGAMES" />
+
+    <!-- Nothing to install for: say so instead of registering an empty product.
+         An Error action is a message, not code. The UI cannot get here (its
+         Next button needs a game); a silent install with no game found can. -->
+    <CustomAction Id="NoGameSelected" Error="!(loc.MXB_SELECT_ONE)" />
+
+    <!-- The Games page's folder check (ca/check_folders.cpp): our only code in
+         the package. Immediate, UI only, reads properties and tests for one
+         file; called by the page's Next (ui.wxs). -->
+    <Binary Id="MxbCa" SourceFile="$(var.CaDll)" />
+    <!-- NSIS's "not the plugins folder?" sentence, in this package's language,
+         for the check to fill in per game ([GAMELABEL] stays literal here). -->
+    <Property Id="FOLDERWARN_TMPL" Value="!(loc.MXB_NOT_PLUGINS_FOLDER)" />
+    <CustomAction Id="CheckGameFolders" BinaryRef="MxbCa" DllEntry="CheckGameFolders" Execute="immediate" Return="ignore" />
+    <!-- An upgrade skips the Privacy page, so an earlier Setup's opt-out is
+         carried over (ca/check_folders.cpp, as the .exe Setup does). Not when
+         the player answered the page, nor on Fresh, which resets settings.
+         Before costing, as it decides the OptOut components (game.wxi). -->
+    <Property Id="PRIVACY_ASKED" Secure="yes" />
+    <CustomAction Id="ReadEarlierOptOut" BinaryRef="MxbCa" DllEntry="ReadEarlierOptOut" Execute="immediate" Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="ReadEarlierOptOut" Before="CostInitialize"
+              Condition="NOT Installed AND ANALYTICS=&quot;1&quot; AND PRIVACY_ASKED&lt;&gt;&quot;1&quot; AND FRESH&lt;&gt;&quot;1&quot;" />
+      <Custom Action="NoGameSelected" Before="InstallInitialize"
+              Condition="NOT Installed AND MXB_SEL&lt;&gt;&quot;1&quot; AND GPB_SEL&lt;&gt;&quot;1&quot; AND KRP_SEL&lt;&gt;&quot;1&quot;" />
+    </InstallExecuteSequence>
+
+    <!-- Always installed, never shown: the NSIS takeover. -->
+    <Feature Id="Common" Title="MXBMRP3" Level="1" Display="hidden" AllowAbsent="no" AllowAdvertise="no">
+      <!-- The NSIS Add/Remove Programs entry goes once every game it lists is
+           installed by this MSI (each game's own NSIS uninstaller is removed in
+           game.wxi). A game left out keeps its NSIS entry, so it can still be
+           uninstalled the NSIS way. Per-user (HKCU) entries are those of
+           whoever runs this MSI, as with NSIS. -->
+      <Component Id="Takeover" Directory="TARGETDIR" Bitness="always64"
+                 Condition="(NOT MXB_PREV OR MXB_SEL=&quot;1&quot;) AND (NOT GPB_PREV OR GPB_SEL=&quot;1&quot;) AND (NOT KRP_PREV OR KRP_SEL=&quot;1&quot;)">
+        <RegistryValue Root="HKLM" Key="Software\MXBMRP3" Name="Version" Type="string" Value="$(var.Version)" KeyPath="yes" />
+        <RemoveRegistryKey Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\MXBMRP3" Action="removeOnInstall" />
+        <RemoveRegistryKey Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\MXBMRP3" Action="removeOnInstall" />
+      </Component>
+    </Feature>
+
+    <!-- A PARTIAL takeover (the NSIS entry also covers a game this MSI skips)
+         keeps the NSIS entry, but its UninstallString and InstallLocation name
+         the first game's folder, whose NSIS uninstaller this MSI just removed.
+         Repoint both at the first game NSIS keeps, as NSIS's UN_FINALIZE_REG
+         does after a partial uninstall. Per root, because NSIS wrote one or the
+         other. Execute sequence (where SEL is final), before costing evaluates
+         the component conditions. -->
+    <?foreach R in LM;CU?>
+    <SetProperty Id="NSIS_KEEP_$(var.R)" Action="NsisKeepKrp$(var.R)" Value="[KRP_NSIS$(var.R)]" Before="CostInitialize" Sequence="execute"
+                 Condition="KRP_NSIS$(var.R) AND KRP_SEL&lt;&gt;&quot;1&quot;" />
+    <SetProperty Id="NSIS_KEEP_$(var.R)" Action="NsisKeepGpb$(var.R)" Value="[GPB_NSIS$(var.R)]" After="NsisKeepKrp$(var.R)" Sequence="execute"
+                 Condition="GPB_NSIS$(var.R) AND GPB_SEL&lt;&gt;&quot;1&quot;" />
+    <SetProperty Id="NSIS_KEEP_$(var.R)" Action="NsisKeepMxb$(var.R)" Value="[MXB_NSIS$(var.R)]" After="NsisKeepGpb$(var.R)" Sequence="execute"
+                 Condition="MXB_NSIS$(var.R) AND MXB_SEL&lt;&gt;&quot;1&quot;" />
+    <SetProperty Id="NSIS_TOOK_$(var.R)" Action="NsisTook$(var.R)" Value="1" After="NsisKeepMxb$(var.R)" Sequence="execute"
+                 Condition="(MXB_NSIS$(var.R) AND MXB_SEL=&quot;1&quot;) OR (GPB_NSIS$(var.R) AND GPB_SEL=&quot;1&quot;) OR (KRP_NSIS$(var.R) AND KRP_SEL=&quot;1&quot;)" />
+    <?endforeach?>
+    <Feature Id="NsisPartial" Title="MXBMRP3" Level="1" Display="hidden" AllowAbsent="no" AllowAdvertise="no">
+      <!-- Permanent: these are NSIS's values now, which uninstalling this MSI
+           must leave for the NSIS uninstaller that still owns them. -->
+      <Component Id="NsisRepointLM" Directory="TARGETDIR" Bitness="always64" Permanent="yes"
+                 Condition="NSIS_KEEP_LM AND NSIS_TOOK_LM">
+        <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\MXBMRP3" Name="InstallLocation" Type="string" Value="[NSIS_KEEP_LM]" KeyPath="yes" />
+        <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\MXBMRP3" Name="UninstallString" Type="string" Value="[NSIS_KEEP_LM]\mxbmrp3_uninstall.exe" />
+      </Component>
+      <Component Id="NsisRepointCU" Directory="TARGETDIR" Bitness="always64" Permanent="yes"
+                 Condition="NSIS_KEEP_CU AND NSIS_TOOK_CU">
+        <RegistryValue Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\MXBMRP3" Name="InstallLocation" Type="string" Value="[NSIS_KEEP_CU]" KeyPath="yes" />
+        <RegistryValue Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\MXBMRP3" Name="UninstallString" Type="string" Value="[NSIS_KEEP_CU]\mxbmrp3_uninstall.exe" />
+      </Component>
+    </Feature>
+
+    <UIRef Id="MxbUI" />
+  </Package>
+</Wix>

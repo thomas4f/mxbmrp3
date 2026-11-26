@@ -1,7 +1,7 @@
 // ============================================================================
 // tests/unit/test_fuel_estimate.cpp
-// Pins the fuel arithmetic (core/fuel_estimate.h), which two consumers now
-// share: the Fuel widget's readout and the spotter's warning. They must agree
+// Pins the fuel arithmetic (core/fuel_estimate.h), which every consumer now
+// shares: each fuel readout and the spotter's warning. They must agree
 // — a voice saying "two laps" while the number on screen says four reads as
 // one of them being broken, and there is no way to tell which.
 //
@@ -104,4 +104,35 @@ TEST_CASE("non-finite inputs refuse to guess, like every other guard") {
     CHECK(lapsRemaining(10.0f, nan) == -1.0f);
     CHECK(lapsRemaining(inf, 2.0f) == -1.0f);
     CHECK(lapsRemaining(nan, 2.0f) == -1.0f);
+}
+
+// The Tracker, one per session in PluginData: what the readers share.
+TEST_CASE("Tracker: laps are measured from the last line, a refuel keeps the history") {
+    Tracker t;
+    CHECK(t.lapCompleted(0, true, 9.0f, 10.0f) < 0.0f);   // nothing sampled yet: not tracking
+    t.sample(10.0f);
+    CHECK(t.hasFuelUsed());
+    CHECK(t.lapCompleted(0, true, 9.0f, 10.0f) == doctest::Approx(1.0f));
+    CHECK(t.lapCompleted(0, true, 8.0f, 10.0f) < 0.0f);   // the same lap again: once only
+    CHECK(t.lapCompleted(1, true, 8.5f, 10.0f) == doctest::Approx(0.5f));
+    // Two laps, the first skipped while in the window: the average is the second
+    CHECK(t.averagePerLap() == doctest::Approx(0.5f));
+    CHECK(t.lapsRemaining(8.5f) == doctest::Approx(17.0f));
+    // A refuel (above the run's start): the run starts over from the new
+    // fuel, the laps stay
+    t.sample(10.5f);
+    CHECK(t.fuelUsed(10.5f) == doctest::Approx(0.0f));
+    CHECK(t.lapCompleted(2, true, 10.0f, 12.0f) == doctest::Approx(0.5f));
+    CHECK(t.averagePerLap() == doctest::Approx(0.5f));
+}
+
+TEST_CASE("Tracker: an untimed or implausible lap is not recorded, but the next one measures from it") {
+    Tracker t;
+    t.sample(10.0f);
+    CHECK(t.lapCompleted(0, false, 9.0f, 10.0f) < 0.0f);   // pit-in, cut: no time
+    CHECK(t.lapCompleted(1, true, 8.0f, 10.0f) == doctest::Approx(1.0f));   // from 9, not 10
+    CHECK(t.lapCompleted(2, true, 8.0f, 10.0f) < 0.0f);    // nothing used
+    t.reset();
+    CHECK(!t.hasFuelUsed());
+    CHECK(t.averagePerLap() == 0.0f);
 }

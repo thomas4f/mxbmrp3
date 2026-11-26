@@ -13,8 +13,10 @@
 
 #include "core/achievement_text.h"
 #include "core/achievements.h"
+#include "core/event_log_types.h"
 #include "core/exploration_signals.h"
 
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <set>
@@ -219,6 +221,37 @@ TEST_CASE("achievements: a singular description is only there when tier one IS o
     }
 }
 
+TEST_CASE("achievements: named tiers stand in for the number in the sentence") {
+    // Entry::tierPhrases: one phrase per real tier, each a plain noun phrase
+    // with no %s (it IS the substitution), and the sentence must still have the
+    // %s the phrase goes into.
+    for (const Entry& e : kCatalogue) {
+        if (!e.tierPhrases) continue;
+        INFO("entry " << e.id);
+        REQUIRE(e.descMany != nullptr);
+        CHECK(std::strstr(e.descMany, "%s") != nullptr);
+        for (int t = 0; t < e.tierCount; ++t) {
+            REQUIRE(e.tierPhrases[t] != nullptr);
+            CHECK(std::strlen(e.tierPhrases[t]) > 0);
+            CHECK(std::strstr(e.tierPhrases[t], "%s") == nullptr);
+        }
+    }
+    // Marathon reads as the running distances, and its progress keeps the km.
+    const Entry& marathon = *findById("session_laps");
+    REQUIRE(marathon.tierPhrases != nullptr);
+    char buf[128];
+    formatDescription(marathon, 1, buf, sizeof(buf));
+    CHECK(std::string(buf) == "Ride a 10K in a session");
+    formatDescription(marathon, 2, buf, sizeof(buf));
+    CHECK(std::string(buf) == "Ride a half marathon in a session");
+    formatDescription(marathon, 3, buf, sizeof(buf));
+    CHECK(std::string(buf) == "Ride a marathon in a session");
+    formatDescription(marathon, 4, buf, sizeof(buf));
+    CHECK(std::string(buf) == "Ride an ultramarathon in a session");
+    formatProgress(marathon, 12.0, buf, sizeof(buf));
+    CHECK(std::string(buf).find("21km") != std::string::npos);   // the number lives here
+}
+
 TEST_CASE("achievements: findById is exact and null-safe") {
     CHECK(std::string(findById("races")->id) == "races");
     CHECK(findById("races")->group == Group::Racing);
@@ -399,10 +432,9 @@ std::string generateAchievementsDoc() {
     out << "Every achievement in the plugin, with its tiers worded the way the toast words them "
            "(a one-shot has one). **MX Bikes only.**\n\n";
     out << "A **Hidden** row does not appear in Settings > Achievements until it is earned, and the "
-           "pages marked *(does not count towards progress)* sit outside the Unlocked figure and the "
-           "Completion rows. The leading number is a row's place in its GROUP, "
-           "which the tab pages " << ENTRIES_PER_PAGE
-        << " at a time; a row switched off reads **off** instead.\n\n";
+           "groups marked *(does not count towards progress)* sit outside the Unlocked figure and the "
+           "Completion rows. The leading number is a row's place in its GROUP; "
+           "a row switched off reads **off** instead.\n\n";
     out << "<sub>Generated from `mxbmrp3/core/achievements.h` by `tests/unit/test_achievements.cpp` - "
            "do not edit. Run the unit gate and copy `/tmp/achievements.new.md` over this file.</sub>\n\n";
     int total = 0;
@@ -530,4 +562,26 @@ TEST_CASE("docs/achievements.md is current") {
     CHECK_MESSAGE(ss.str() == generated,
                   "docs/achievements.md is stale: the catalogue changed and the generated "
                   "overview no longer matches. Review the diff, then: cp " << fresh << " " << path);
+}
+
+// fitEventLogMessage (core/event_log_types.h): an achievement's Event Log row
+// (AchievementManager::logTierEvent) is cut to the log's message column, so a
+// long translation cannot draw past the panel. "Trick Collector - Platinum" ran
+// 32-35 characters in the fr/pt/es/it packs (review of #725).
+TEST_CASE("event log: a translated achievement row is cut to the message column") {
+    EventText text;
+    snprintf(text.shown, sizeof(text.shown), "%s - %s", "Collectionneur de figures", "Platine");
+    REQUIRE(std::strlen(text.shown) == 35);
+    fitEventLogMessage(text.shown, sizeof(text.shown));
+    CHECK(std::strlen(text.shown) == static_cast<size_t>(EVENT_LOG_MESSAGE_CHARS));
+    CHECK(std::strcmp(text.shown, "Collectionneur de figures - Pla") == 0);
+}
+
+TEST_CASE("event log: a row that fits is left whole") {
+    char shown[64] = "Case of the Mondays - Platinum";   // 30, the longest English
+    fitEventLogMessage(shown, sizeof(shown));
+    CHECK(std::strcmp(shown, "Case of the Mondays - Platinum") == 0);
+    char small[8] = "Racer";   // a buffer too small to need the cut is untouched
+    fitEventLogMessage(small, sizeof(small));
+    CHECK(std::strcmp(small, "Racer") == 0);
 }

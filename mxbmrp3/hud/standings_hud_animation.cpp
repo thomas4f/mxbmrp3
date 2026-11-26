@@ -1,7 +1,7 @@
 // ============================================================================
 // mxbmrp3/hud/standings_hud_animation.cpp
 // Position animation (row-slide offsets, fades, animation state)
-// (extracted verbatim from standings_hud.cpp; no behavior change)
+// (the slide itself is RowSlide, row_slide.h, shared with the Standings deck)
 // ============================================================================
 
 #include "standings_hud.h"
@@ -10,6 +10,7 @@
 #include "../core/plugin_utils.h"
 #include "../core/plugin_constants.h"
 #include "../core/color_config.h"
+#include "digit_roll.h"
 #include "../core/input_manager.h"
 #include "../core/plugin_manager.h"
 #include "../core/tracked_riders_manager.h"
@@ -26,98 +27,29 @@ using namespace PluginConstants;
 // ============================================================================
 
 float StandingsHud::getAnimatedRowOffset(int raceNum, float lineHeight) const {
-    auto it = m_activeAnimations.find(raceNum);
-    if (it == m_activeAnimations.end()) return 0.0f;
-
-    const auto& anim = it->second;
-    float elapsedMs = std::chrono::duration<float, std::milli>(m_frameTime - anim.startTime).count();
-    float t = elapsedMs / m_animationDurationMs;
-
-    if (t >= 1.0f) return 0.0f;  // Animation complete
-
-    float progress = easeOutCubic(t);
-    float slotDelta = static_cast<float>(anim.fromSlot - anim.toSlot);  // How many slots to travel
-    float remaining = slotDelta * (1.0f - progress);  // Remaining offset (shrinks to 0)
-    return remaining * lineHeight;
+    return m_slide.offset(raceNum, m_slideNowUs) * lineHeight;
 }
 
 float StandingsHud::getSlideFade(int raceNum) const {
-    auto it = m_activeAnimations.find(raceNum);
-    if (it == m_activeAnimations.end()) return 0.0f;
-    float elapsedMs = std::chrono::duration<float, std::milli>(m_frameTime - it->second.startTime).count();
-    float t = elapsedMs / m_animationDurationMs;
-    if (t >= 1.0f) return 0.0f;
-    return 1.0f - t;
+    return m_slide.fade(raceNum, m_slideNowUs);
 }
 
 void StandingsHud::updateAnimationState() {
-    if (m_animationMode == AnimationMode::OFF) {
-        m_previousPositions.clear();
-        m_previousSlots.clear();
-        m_activeAnimations.clear();
+    if (UiConfig::getInstance().getMotion() == Motion::Level::OFF) {
+        m_slide.forget();
         return;
     }
-
-    auto now = std::chrono::steady_clock::now();
-
-    // Build current maps: raceNum -> race position, raceNum -> display slot index.
-    // Reuse persistent scratch maps (flat: clear() keeps the buffer) instead of
-    // allocating two fresh maps every rebuild — this runs on every standings data
-    // rebuild, so on a full grid it was ~2 bucket arrays + up to ~100 node allocs/rebuild
-    // (an unordered_map's clear() still freed every node; the perf ledger counted them).
-    FlatIntMap<int>& currentPositions = m_scratchPositions;
-    FlatIntMap<int>& currentSlots = m_scratchSlots;
-    currentPositions.clear();
-    currentSlots.clear();
+    // Only the riders' rows: a placeholder has no rider to slide.
+    m_slide.begin();
     for (int i = 0; i < static_cast<int>(m_displayEntries.size()); ++i) {
         const auto& entry = m_displayEntries[i];
-        if (!entry.isPlaceholder && entry.raceNum >= 0) {
-            currentPositions[entry.raceNum] = entry.position;
-            currentSlots[entry.raceNum] = i;
-        }
+        if (!entry.isPlaceholder && entry.raceNum >= 0) m_slide.add(entry.raceNum, entry.position, i);
     }
-
-    // Detect race position changes (not display slot changes from window scrolling)
-    int maxSlot = static_cast<int>(m_displayEntries.size()) - 1;
-    for (const auto& [raceNum, currentPos] : currentPositions) {
-        auto prevIt = m_previousPositions.find(raceNum);
-        if (prevIt != m_previousPositions.end() && prevIt->second != currentPos) {
-            // Only animate riders that were also visible in the previous frame
-            auto prevSlotIt = m_previousSlots.find(raceNum);
-            if (prevSlotIt == m_previousSlots.end()) continue;
-
-            auto slotIt = currentSlots.find(raceNum);
-            if (slotIt != currentSlots.end()) {
-                int currentSlot = slotIt->second;
-                // Estimate the previous slot from the race-position delta instead of
-                // reading m_previousSlots directly. m_previousSlots tracks the actual
-                // slot occupied last frame, but the visible window can scroll
-                // independently (DNS filter changes, top-N pinning, spectator switch),
-                // and using the raw previous slot would inflate the slide distance
-                // when only the window moved. Posing the delta in race-position space
-                // produces the correct visual move for pure overtakes, and degrades
-                // gracefully when both an overtake and a window shift happen in the
-                // same frame.
-                int posDelta = prevIt->second - currentPos;  // positive = moved up
-                int estimatedPrevSlot = currentSlot + posDelta;
-                // Clamp to visible range so animations never start from far off-screen
-                estimatedPrevSlot = std::max(-1, std::min(estimatedPrevSlot, maxSlot + 1));
-                m_activeAnimations[raceNum] = { estimatedPrevSlot, currentSlot, now };
-            }
-        }
-    }
-
-    // Note: cleanup of finished animations happens in update(), not here.
-    // This method only runs on data change; cleanup must run every frame.
-
-    // Update previous positions/slots for next comparison. SWAP (not move) so the
-    // scratch maps keep their buffers: after the swap, m_previous* hold this
-    // frame's data and m_scratch* hold the old previous — which is clear()'d (not
-    // freed) at the top of the next call. Steady-state allocation -> 0.
-    m_previousPositions.swap(currentPositions);
-    m_previousSlots.swap(currentSlots);
+    // Finished slides are dropped in update(), every frame; this runs on a
+    // data change only.
+    m_slide.commit(static_cast<int>(m_displayEntries.size()) - 1, DigitRoll::nowUs());
 }
 
 bool StandingsHud::hasActiveAnimations() const {
-    return !m_activeAnimations.empty();
+    return m_slide.active();
 }

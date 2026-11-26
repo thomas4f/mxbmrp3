@@ -1,6 +1,6 @@
 # AI Development Context for MXBMRP3
 
-**Working on a fork? Read [*Building on MXBMRP3*](CONTRIBUTING.md#building-on-mxbmrp3) first.** MIT: fork freely and keep the license, but ship under your own name and on-disk identity, never "MXBMRP3" or a close variant. That name carries limits: plugin API only (no reading race data out of game memory or writing to it, no hooks, no game-file edits), and free (no paid tier, locked features or ads). A change that breaks them belongs in a fork under its own name, never in MXBMRP3.
+**Working on a fork? Read [*Building on MXBMRP3*](CONTRIBUTING.md#building-on-mxbmrp3) first.** MIT: fork freely and keep the license, but ship under your own name and on-disk identity, never "MXBMRP3" or a close variant. That name carries limits: plugin API only (no reading race data out of game memory or writing to it, no code patches, no game-file edits), and free (no paid tier, locked features or ads). A change that breaks them belongs in a fork under its own name, never in MXBMRP3.
 
 ## Read This First
 
@@ -217,7 +217,7 @@ Where the test goes (pick the fastest one that can exercise the change):
 | A new DLL-boundary callback or array-size/count handling | `tests/integration/callback_fuzzer.cpp` |
 | Config parsing / a new INI or JSON field | `tests/integration/run_fuzz.sh` corpus |
 | A hot-path change (Draw / telemetry / rebuild) | `tests/integration/run_perf.sh` (timings + the exact ledger; `run_perf_ledger.sh --update` when a counter moves) |
-| Installer / packaging (`packaging/mxbmrp3.nsi`) | `tests/integration/run_installer_test.sh` (makensis + Wine: asserts install/uninstall/registry/data-wipe outcomes) |
+| Installer (`packaging/mxbmrp3.nsi`, `packaging/msi/`) | `tests/integration/run_installer_test.sh` (makensis + Wine); MSI: `test_msi.ps1` (Windows, `release.yml`) |
 | Web overlay rendering (`mxbmrp3_data/web/` - js/overlay-*.js/style.css/index.html) | add/extend a Playwright test in `tests/web/tests/` driving `?demo` (asserts the rendered DOM) - see [`TESTING.md`](TESTING.md). `./tests/web/lint.sh` (the `eslint` gate) runs in a second and catches the dead-code class |
 | Anything that renames/moves a file the docs name, or adds a test | `python3 tools/check_docs.py` (paths resolve, invariants labelled, catalogue complete, doc budgets) |
 
@@ -416,7 +416,7 @@ The tree is the index - this is the map plus the parts that aren't guessable fro
 - **Settings** are spread deliberately: `settings_keys.h` (INI key constants), `settings_serde.h` (HUD-free serde helpers) + `settings_serde_hud.h` (the HUD-typed converters and per-HUD bitmask save/loads; include this one when serializing concrete HUD types), `settings_hud_registry.{h,cpp}` (the one ordered registry driving capture + apply + serialize), `settings_manager_global.cpp` (non-per-profile sections), `settings_hud_profiles.cpp` (profile orchestration).
 - **The callback-tape recorder** is in-plugin (`core/event_recorder.*`, MX Bikes only) and ships **dormant** - a developer opts in with the hidden `[Recorder] enabled=1` INI key. It replaced a standalone recorder plugin whose extra process caused a shutdown-teardown crash; don't reintroduce one.
 - **Dev tools** don't all build the same way. `tools/replay` and `mxbmrp3_fontgen` build from `tools/CMakeLists.txt` (Windows/MSVC); `fontgen` also builds cross-platform and its `test.sh` runs in CI. `tools/hud_window` is built by its own `companion_demo.sh` (mingw + Wine).
-- **Theme art is cut from a master, never generated.** `tools/themeslice` slices one image into a theme's 27 `.tga`; it draws nothing.
+- **Theme art is cut from a master, never generated.** `tools/themeslice` cuts each theme's one master into its `.tga`; it draws nothing.
 
 ### Regenerating a shipped font
 The shipped `.fnt` files are GENERATED from the `.ttf` in `mxbmrp3_data/web/fonts/`, normalized so every font renders numbers identically - so a font swap cannot reflow a HUD. Rebuild all: `tools/fontgen/regen_shipped.sh`, whose header documents the normalisation, the atlas-resolution rule and how to add just one.

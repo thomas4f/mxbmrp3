@@ -8,7 +8,8 @@ artifact, not a way to get the plugin, and counting it would inflate the total
 with tooling fetches.
 
 `tools/analytics_report.py` reads the file for the report's Downloads and
-Releases figures, and for the release-line table's dates and downloads. Kept as
+Releases figures, for the release-line table's dates and downloads, and for the
+release markers on its daily charts (stable releases only, hence `prerelease`). Kept as
 its own committed file, rather than fetched by the report, so the report stays a
 deterministic, offline render of committed inputs (its selftest needs no network).
 
@@ -78,6 +79,7 @@ def fetch(repo=REPO):
 def summarise(releases):
     rows = [{"tag": r["tag_name"],
              "published": (r.get("published_at") or "")[:10],
+             "prerelease": bool(r.get("prerelease")),
              "downloads": sum(a["download_count"] for a in r.get("assets", [])
                               if counted(a["name"]))}
             for r in releases if not r.get("draft")]

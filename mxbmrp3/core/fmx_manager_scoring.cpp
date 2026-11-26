@@ -157,6 +157,7 @@ void FmxManager::completeTrick() {
         ? Fmx::TrickType::NONE
         : m_chainTricks.back().type;
     m_chainEndAnimation.chainScore = m_score.chainScore;
+    m_chainEndAnimation.bankedScore = totalScore;
     m_chainEndAnimation.chainTricks = std::move(m_chainTricks);
 
     // Reset chain and trick state (re-reserve after move left m_chainTricks
@@ -202,6 +203,7 @@ void FmxManager::failTrick(bool crashed) {
         m_chainEndAnimation.duration = m_config.chainPeriod;  // Match chain cooldown
         m_chainEndAnimation.finalType = m_activeTrick.type;
         m_chainEndAnimation.chainScore = m_score.chainScore;
+        m_chainEndAnimation.bankedScore = 0;
 
         // Move chain tricks (m_chainTricks is about to be cleared anyway)
         m_chainEndAnimation.chainTricks = std::move(m_chainTricks);

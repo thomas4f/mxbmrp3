@@ -72,6 +72,9 @@
 #include "../hud/lean_widget.h"
 #include "../hud/slide_widget.h"
 #include "../hud/wheelie_widget.h"
+#if GAME_HAS_RIDER_STANCE
+#include "../hud/stance_widget.h"
+#endif
 #include "../hud/gforce_widget.h"
 #include "../hud/compass_widget.h"
 #if GAME_HAS_TYRE_TEMP
@@ -134,17 +137,15 @@ void SettingsManager::cap_StandingsHud(const HudManager& hudManager, SettingsMan
         settings[GAP_MODE] = gapModeToString(hud.m_gapMode);
         settings[POSGAIN_MODE] = posGainModeToString(hud.m_posGainMode);
         settings[GAP_REFERENCE_MODE] = gapReferenceModeToString(hud.m_gapReferenceMode);
-        settings[ANIMATION_MODE] = animationModeToString(hud.m_animationMode);
+        settings[COLORED_MOVES] = hud.m_bColoredMoves ? "1" : "0";
         settings[SHOW_HEADERS] = hud.m_bShowHeaders ? "1" : "0";
         settings[SHOW_SESSION_INFO] = hud.m_bShowSessionInfo ? "1" : "0";
-        settings[LIVE_GAPS] = std::to_string(static_cast<int>(hud.m_liveMode));
         settings[SHOW_MODE] = standingsShowModeToString(hud.m_showMode);
         settings[FREEZE_DURATION] = std::to_string(hud.m_freezeDurationMs);
         settings[IniOnly::Standings::TOP_POSITIONS.key] = std::to_string(hud.m_topPositionsCount);
         settings[IniOnly::Standings::PLAYER_ROW_HIGHLIGHT.key] = hud.m_bPlayerRowHighlight ? "1" : "0";
         settings[IniOnly::Standings::PLAYER_ROW_HIGHLIGHT_BRAND.key] = hud.m_bPlayerRowHighlightBrand ? "1" : "0";
         settings[IniOnly::Standings::LAST_LAP_COLOR.key] = hud.m_bLastLapColorCode ? "1" : "0";
-        settings[IniOnly::Standings::ANIMATION_DURATION_MS.key] = std::to_string(static_cast<int>(hud.m_animationDurationMs));
         settings[IniOnly::Standings::CLASSIC_LAYOUT.key] = hud.m_bClassicLayout ? "1" : "0";
         settings[IniOnly::Standings::NAME_MODE.key] = std::to_string(static_cast<int>(hud.m_nameMode));
         settings[IniOnly::Standings::SHORT_NAME_CHARS.key] = std::to_string(hud.m_shortNameChars);
@@ -222,15 +223,8 @@ void SettingsManager::app_StandingsHud(HudManager& hudManager, const SettingsMan
                 if (auto v = readBool(settings, IniOnly::Standings::LAST_LAP_COLOR.key)) {
                     hud.m_bLastLapColorCode = *v;
                 }
-                if (auto v = readStr(settings, ANIMATION_MODE)) {
-                    hud.m_animationMode = stringToAnimationMode(*v);
-                } else if (auto w = readBool(settings, "animatePositions")) {
-                    // Legacy: animatePositions=0/1 → OFF/BASIC. Read on load only; not
-                    // re-emitted on save, so the key drops out of the INI on first
-                    // re-save (intentional — replaced by animationMode).
-                    hud.m_animationMode = (*w)
-                        ? StandingsHud::AnimationMode::BASIC
-                        : StandingsHud::AnimationMode::OFF;
+                if (auto v = readBool(settings, COLORED_MOVES)) {
+                    hud.m_bColoredMoves = *v;
                 }
                 if (auto v = readBool(settings, SHOW_HEADERS)) {
                     hud.m_bShowHeaders = *v;
@@ -238,20 +232,11 @@ void SettingsManager::app_StandingsHud(HudManager& hudManager, const SettingsMan
                 if (auto v = readBool(settings, SHOW_SESSION_INFO)) {
                     hud.m_bShowSessionInfo = *v;
                 }
-                if (auto v = readInt(settings, LIVE_GAPS)) {
-                    if (*v >= 0 && *v < static_cast<int>(StandingsHud::LiveMode::COUNT)) {
-                        hud.m_liveMode = static_cast<StandingsHud::LiveMode>(*v);
-                    }
-                }
                 if (auto v = readStr(settings, SHOW_MODE)) hud.m_showMode = stringToStandingsShowMode(*v);
                 if (auto v = readInt(settings, FREEZE_DURATION)) {
                     if (*v >= FreezeDuration::PITBOARD_MIN_MS && *v <= FreezeDuration::MAX_MS) {
                         hud.m_freezeDurationMs = *v;
                     }
-                }
-                if (auto v = readInt(settings, IniOnly::Standings::ANIMATION_DURATION_MS.key)) {
-                    int durationMs = *v;
-                    hud.m_animationDurationMs = static_cast<float>(std::max(50, std::min(1000, durationMs)));
                 }
                 if (auto v = readBool(settings, IniOnly::Standings::CLASSIC_LAYOUT.key)) {
                     hud.m_bClassicLayout = *v;
@@ -1030,7 +1015,12 @@ const std::vector<HudSectionSerializer>& hudSectionRegistry() {
         { "GamepadWidget", &SettingsManager::cap_GamepadWidget, &SettingsManager::app_GamepadWidget },
         { "LeanWidget", &SettingsManager::cap_LeanWidget, &SettingsManager::app_LeanWidget },
         { "SlideWidget", &SettingsManager::cap_SlideWidget, &SettingsManager::app_SlideWidget },
+#if GAME_HAS_WHEELIE
         { "WheelieWidget", &SettingsManager::cap_WheelieWidget, &SettingsManager::app_WheelieWidget },
+#endif
+#if GAME_HAS_RIDER_STANCE
+        { "StanceWidget", &SettingsManager::cap_StanceWidget, &SettingsManager::app_StanceWidget },
+#endif
         { "GForceWidget", &SettingsManager::cap_GForceWidget, &SettingsManager::app_GForceWidget },
         { "CompassWidget", &SettingsManager::cap_CompassWidget, &SettingsManager::app_CompassWidget },
 #if GAME_HAS_TYRE_TEMP
@@ -1039,6 +1029,26 @@ const std::vector<HudSectionSerializer>& hudSectionRegistry() {
 #if GAME_HAS_ECU
         { "EcuWidget", &SettingsManager::cap_EcuWidget, &SettingsManager::app_EcuWidget },
 #endif
+        { "SpeedDeck", &SettingsManager::cap_DeckHud, &SettingsManager::app_DeckHud },
+        { "RaceDeck", &SettingsManager::cap_DeckHud, &SettingsManager::app_DeckHud },
+        { "TimingDeck", &SettingsManager::cap_DeckHud, &SettingsManager::app_DeckHud },
+        { "WheelieDeck", &SettingsManager::cap_DeckHud, &SettingsManager::app_DeckHud },
+        { "SlideDeck", &SettingsManager::cap_DeckHud, &SettingsManager::app_DeckHud },
+#if GAME_HAS_FMX
+        { "ComboDeck", &SettingsManager::cap_DeckHud, &SettingsManager::app_DeckHud },
+#endif
+        { "GapDeck", &SettingsManager::cap_DeckHud, &SettingsManager::app_DeckHud },
+        { "RivalDeck", &SettingsManager::cap_DeckHud, &SettingsManager::app_DeckHud },
+        { "SpinDeck", &SettingsManager::cap_DeckHud, &SettingsManager::app_DeckHud },
+        { "InputsDeck", &SettingsManager::cap_DeckHud, &SettingsManager::app_DeckHud },
+        { "StandingsDeck", &SettingsManager::cap_DeckHud, &SettingsManager::app_DeckHud },
+        { "SessionDeck", &SettingsManager::cap_DeckHud, &SettingsManager::app_DeckHud },
+        { "NoticeDeck", &SettingsManager::cap_DeckHud, &SettingsManager::app_DeckHud },
+        { "FuelDeck", &SettingsManager::cap_DeckHud, &SettingsManager::app_DeckHud },
+        { "MediaDeck", &SettingsManager::cap_DeckHud, &SettingsManager::app_DeckHud },
+        { "LapLogDeck", &SettingsManager::cap_DeckHud, &SettingsManager::app_DeckHud },
+        { "CarouselDeck", &SettingsManager::cap_DeckHud, &SettingsManager::app_DeckHud },
+        { "Decks", &SettingsManager::cap_Decks, &SettingsManager::app_Decks },
         { "ToggleStripWidget", &SettingsManager::cap_ToggleStripWidget, &SettingsManager::app_ToggleStripWidget },
         { "PointerWidget", &SettingsManager::cap_PointerWidget, &SettingsManager::app_PointerWidget },
         { "RumbleHud", &SettingsManager::cap_RumbleHud, &SettingsManager::app_RumbleHud },
@@ -1056,16 +1066,18 @@ const std::vector<HudSectionSerializer>& hudSectionRegistry() {
 // because this TU already includes every HUD header and SettingsManager is their
 // friend. Compiled out of shipping DLLs.
 void SettingsManager::testMaxAllHudSettings(HudManager& hudManager) {
-    {   // Standings: all 10 columns, max rows, long names, all gaps + posgain + colored anim, live order
+    {   // Standings: all 10 columns, max rows, long names, all gaps + posgain + colored moves, live order.
+        // Motion on (players' default; the test build defaults it off) so the rows slide.
         StandingsHud& h = hudManager.getStandingsHud();
-        h.m_liveMode = StandingsHud::LiveMode::BOTH;
+        UiConfig::getInstance().setLiveUpdates(LiveUpdates::BOTH);
+        UiConfig::getInstance().setMotion(Motion::Level::SUBTLE);
         h.m_enabledColumns = 0x3FF;
         h.m_displayRowCount = 50;
         h.m_nameMode = StandingsHud::NameMode::LONG;
         h.m_gapMode = StandingsHud::GapMode::ALL;
         h.m_gapReferenceMode = StandingsHud::GapReferenceMode::ALTERNATING;
         h.m_posGainMode = StandingsHud::PosGainMode::LAST_SPLIT;
-        h.m_animationMode = StandingsHud::AnimationMode::COLORED;
+        h.m_bColoredMoves = true;
         h.setVisible(true); h.setDataDirty();
     }
     {   // Lap log: all columns, many laps

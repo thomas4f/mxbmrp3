@@ -50,6 +50,25 @@ constexpr const ExtraSlot* slotForCodepoint(uint32_t cp) {
     return nullptr;
 }
 
+// A shown byte in upper case: ASCII, CP1252's accented letters (å -> Å,
+// ó -> Ó, š œ ž ÿ to their capitals) and the Turkish slots (ğ -> Ğ, ş -> Ş,
+// ı -> I). ß and every other byte stay as they are; Turkish i -> İ is
+// language-dependent and stays I, as std::toupper has it.
+constexpr unsigned char upper(unsigned char b) {
+    if (b >= 'a' && b <= 'z') return static_cast<unsigned char>(b - 0x20);
+    if (b >= 0xE0 && b <= 0xFE && b != 0xF7) return static_cast<unsigned char>(b - 0x20);   // not ÷
+    switch (b) {
+    case 0x9A: return 0x8A;   // š
+    case 0x9C: return 0x8C;   // œ
+    case 0x9E: return 0x8E;   // ž
+    case 0xFF: return 0x9F;   // ÿ
+    case 0x81: return 0x7F;   // ğ (slot)
+    case 0x9D: return 0x90;   // ş (slot)
+    case 0x8F: return 'I';    // ı (slot)
+    default:   return b;
+    }
+}
+
 // The slot at a byte, or nullptr.
 constexpr const ExtraSlot* slotForByte(unsigned char b) {
     for (const ExtraSlot& s : kExtraSlots) {

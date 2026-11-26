@@ -562,7 +562,8 @@ var EVENT_TYPE_MAP = [
     "pit",          // 17 PitExit
     "director",     // 18 Director
     "sessionPB",    // 19 SessionPB
-    "allTimePB"     // 20 AllTimePB
+    "allTimePB",    // 20 AllTimePB
+    "achievement"   // 21 Achievement
 ];
 
 function isEventEnabled(type) {

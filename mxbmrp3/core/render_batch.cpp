@@ -52,6 +52,13 @@ void build(const hudsw::Frame& frame, int w, int h,
         runs.back().count += 6;
     };
 
+    // Clipped ranges (core/render_clip.h): cut in pixels, after the mapping,
+    // so a quad and a glyph are cut at the same edge.
+    hudclip::Cursor clips(frame.layers.clips, frame.layers.clipCount);
+    auto clipPx = [&](const hudclip::Clip& c, float& l, float& t, float& r, float& b) {
+        l = mapX(c.l); r = mapX(c.r); t = mapY(c.t); b = mapY(c.b);
+    };
+
     // Quads in submission order (z-order) within a range.
     auto emitQuadRange = [&](int first, int last) {
         for (int i = first; i < last; ++i) {
@@ -59,6 +66,12 @@ void build(const hudsw::Frame& frame, int w, int h,
             float p[4][2];
             for (int c = 0; c < 4; ++c) { p[c][0] = mapX(q.m_aafPos[c][0]); p[c][1] = mapY(q.m_aafPos[c][1]); }
             const uint32_t rgba = static_cast<uint32_t>(q.m_ulColor);
+            float uv[4][2] = { {0,0}, {0,1}, {1,1}, {1,0} };
+            if (const hudclip::Clip* c = clips.quad(static_cast<uint32_t>(i))) {
+                float l, t, r, b;
+                clipPx(*c, l, t, r, b);
+                if (!hudclip::cutQuad(p, q.m_iSprite == 0 ? nullptr : uv, l, t, r, b)) continue;
+            }
             if (q.m_iSprite == 0) {
                 static const float uvZero[4][2] = { {0,0}, {0,0}, {0,0}, {0,0} };
                 beginRun(res.white(), Shader::Sprite);
@@ -78,10 +91,9 @@ void build(const hudsw::Frame& frame, int w, int h,
             }
             // U runs TL->TR, V runs TL->BL — the same basis the software affine
             // blit derives; the GPU interpolates it (and bilinear-samples, which
-            // the point-sampled software blit does not).
-            static const float uvFull[4][2] = { {0,0}, {0,1}, {1,1}, {1,0} };
+            // the point-sampled software blit does not). A cut quad's are cut too.
             beginRun(t, Shader::Sprite);
-            emitQuad(p, uvFull, rgba);
+            emitQuad(p, uv, rgba);
         }
     };
 
@@ -102,13 +114,22 @@ void build(const hudsw::Frame& frame, int w, int h,
             const float top = mapY(s.m_afPos[1]);
             const uint32_t rgba = static_cast<uint32_t>(s.m_ulColor);
             const float iw = 1.0f / f.aw, ih = 1.0f / f.ah;
+            const hudclip::Clip* clip = clips.string(static_cast<uint32_t>(i));
+            float cl = 0.0f, ct = 0.0f, cr = 0.0f, cb = 0.0f;
+            if (clip) {
+                clipPx(*clip, cl, ct, cr, cb);
+                // A line wholly past the edge opens no run.
+                const float bottom = top + static_cast<float>(f.cellH) * scale;
+                if (bottom <= ct || top >= cb || penX + total <= cl || penX >= cr) continue;
+            }
             beginRun(fh, Shader::Text);
             hudassets::layoutFnt(f, s.m_szString, penX, top, scale,
                                  [&](const hudassets::GlyphQuad& g) {
-                const float p[4][2] = { { g.dx0, g.dy0 }, { g.dx0, g.dy1 },
-                                        { g.dx1, g.dy1 }, { g.dx1, g.dy0 } };
-                const float uv[4][2] = { { g.ax0 * iw, g.ay0 * ih }, { g.ax0 * iw, g.ay1 * ih },
-                                         { g.ax1 * iw, g.ay1 * ih }, { g.ax1 * iw, g.ay0 * ih } };
+                float p[4][2] = { { g.dx0, g.dy0 }, { g.dx0, g.dy1 },
+                                  { g.dx1, g.dy1 }, { g.dx1, g.dy0 } };
+                float uv[4][2] = { { g.ax0 * iw, g.ay0 * ih }, { g.ax0 * iw, g.ay1 * ih },
+                                   { g.ax1 * iw, g.ay1 * ih }, { g.ax1 * iw, g.ay0 * ih } };
+                if (clip && !hudclip::cutQuad(p, uv, cl, ct, cr, cb)) return;
                 emitQuad(p, uv, rgba);
             });
         }

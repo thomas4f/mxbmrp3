@@ -123,7 +123,7 @@ TEST_CASE("live updates: Both moves a held pass up before the game does") {
     REQUIRE(host.loaded());
     REQUIRE(host.hasStringRows());
     REQUIRE(host.startup(save) >= 0);
-    host.writeSettingsFile(save, "[Settings]\nversion=10\n\n[StandingsHud]\nvisible=1\nliveGaps=2\n"
+    host.writeSettingsFile(save, "[Settings]\nversion=10\n\n[General]\nliveUpdates=2\n\n[StandingsHud]\nvisible=1\n"
                                  "posGainMode=RACE_START\n");
     host.loadSettings(save);
 
@@ -179,7 +179,7 @@ TEST_CASE("live updates: Both moves a held pass up before the game does") {
     }
 
     // Gaps: the official order again, at once
-    host.writeSettingsFile(save, "[Settings]\nversion=10\n\n[StandingsHud]\nvisible=1\nliveGaps=1\n");
+    host.writeSettingsFile(save, "[Settings]\nversion=10\n\n[General]\nliveUpdates=1\n\n[StandingsHud]\nvisible=1\n");
     host.loadSettings(save);
     std::this_thread::sleep_for(std::chrono::milliseconds(150));   // the 100 ms poll
     host.draw();
@@ -206,7 +206,7 @@ TEST_CASE("live updates: Both moves the Position widget and the Dash, with Stand
     REQUIRE(host.hasStringRows());
     REQUIRE(host.startup(save) >= 0);
     host.writeSettingsFile(save, "[Settings]\nversion=10\n\n[Messages]\ndashTried=1\n\n"
-                                 "[StandingsHud]\nvisible=0\nliveGaps=2\n\n"
+                                 "[General]\nliveUpdates=2\n\n[StandingsHud]\nvisible=0\n\n"
                                  "[DashHud]\nvisible=1\npage=standings\npage_standings=1\n"
                                  "page_names=0\nnotice_takeover=0\n");
     host.loadSettings(save);
@@ -257,7 +257,7 @@ TEST_CASE("live updates: Both moves the Position widget and the Dash, with Stand
 
     // Gaps: the official order again
     host.writeSettingsFile(save, "[Settings]\nversion=10\n\n[Messages]\ndashTried=1\n\n"
-                                 "[StandingsHud]\nvisible=0\nliveGaps=1\n\n"
+                                 "[General]\nliveUpdates=1\n\n[StandingsHud]\nvisible=0\n\n"
                                  "[DashHud]\nvisible=1\npage=standings\npage_standings=1\n"
                                  "page_names=0\nnotice_takeover=0\n");
     host.loadSettings(save);

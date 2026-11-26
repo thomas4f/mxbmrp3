@@ -94,7 +94,7 @@ public:
     // not ask for money (see the About page).
     bool checkAndClearUpdateInstalled();
 
-    // Cleanup old .dlo files from previous updates (call on startup)
+    // Delete this plugin's own <name>.dlo.old an old updater left (call on startup)
     void cleanupOldFiles();
 
 #if defined(MXBMRP3_TEST_BUILD)
@@ -109,6 +109,10 @@ public:
         setDebugMode(debugMode);
         { MutexLock lock(m_mutex); m_pluginPath = destDir; }
         return extractAndInstall(zipBytes, err);
+    }
+    // Test-only: the checksum gate the worker runs before extractAndInstall().
+    const char* testChecksumError(const std::vector<char>& data, const std::string& expectedHash) {
+        return checksumError(data, expectedHash);
     }
 #endif
 
@@ -149,6 +153,8 @@ private:
 
     // Calculate SHA256 hash of data
     std::string calculateSHA256(const std::vector<char>& data);
+    // The checksum gate before install: nullptr when verified, else the reason.
+    const char* checksumError(const std::vector<char>& data, const std::string& expectedHash);
 
     // Step tracking helpers
     void resetSteps();

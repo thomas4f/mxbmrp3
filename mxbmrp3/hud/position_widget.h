@@ -27,5 +27,5 @@ private:
     // Calculate player's current position (1-based)
     int calculatePlayerPosition();
 
-    uint32_t m_shownOrderRevision = 0;  // StandingsHud::runningOrderRevision() last drawn
+    uint32_t m_shownOrderRevision = 0;  // PluginData's RunningOrder::revision() last drawn
 };

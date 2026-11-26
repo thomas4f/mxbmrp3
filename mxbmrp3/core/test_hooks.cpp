@@ -499,9 +499,11 @@ __declspec(dllexport) void MXBMRP3_Test_GaugesInfo(const char* name, char* out, 
 
 __declspec(dllexport) void MXBMRP3_Test_CycleColor(int slot, int forward) {
     ColorConfig::getInstance().cycleColor(static_cast<ColorSlot>(slot), forward != 0);
+    HudManager::getInstance().markAllHudsDirty();   // as the Appearance tab's step does
 }
 __declspec(dllexport) void MXBMRP3_Test_ClearColorOverride(int slot) {
     ColorConfig::getInstance().clearOverride(static_cast<ColorSlot>(slot));
+    HudManager::getInstance().markAllHudsDirty();
 }
 // Give the ACTIVE synthetic theme an opinion about one colour slot, so a test can
 // tell "inherited from the theme" from "built-in default".
@@ -523,13 +525,15 @@ __declspec(dllexport) int MXBMRP3_Test_FontOverridden(int cat) {
 }
 __declspec(dllexport) void MXBMRP3_Test_CycleFont(int cat, int forward) {
     FontConfig::getInstance().cycleFont(static_cast<FontCategory>(cat), forward != 0);
+    HudManager::getInstance().markAllHudsDirty();
 }
 // Set a font by name, bypassing the asset list. cycleFont() cannot be exercised
-// headlessly -- it early-returns when AssetManager has discovered no fonts, and the
-// integration suite stages no .fnt files -- but the PRECEDENCE machinery it drives
+// headlessly -- it early-returns when AssetManager has discovered no fonts, and
+// only deck_hud_test stages .fnt files -- but the PRECEDENCE machinery it drives
 // is what these hooks pin, and setFont() reaches it without any assets.
 __declspec(dllexport) void MXBMRP3_Test_SetFont(int cat, const char* name) {
     FontConfig::getInstance().setFont(static_cast<FontCategory>(cat), name ? name : "");
+    HudManager::getInstance().markAllHudsDirty();
 }
 // How many fonts discovery found. 0 headlessly, which is why the test above exists.
 __declspec(dllexport) int MXBMRP3_Test_FontCount() {
@@ -538,6 +542,7 @@ __declspec(dllexport) int MXBMRP3_Test_FontCount() {
 
 __declspec(dllexport) void MXBMRP3_Test_ClearFontOverride(int cat) {
     FontConfig::getInstance().clearOverride(static_cast<FontCategory>(cat));
+    HudManager::getInstance().markAllHudsDirty();
 }
 
 // Defined below with the rest of the panel sweep; declared here so the name a test
@@ -841,6 +846,16 @@ __declspec(dllexport) int MXBMRP3_Test_HudStringFont(const char* name, int index
     return strings[static_cast<size_t>(index)].m_iFont;
 }
 
+// THE SIZE OF ONE DRAWN STRING, x 1e6, same addressing: lets a test hold a
+// row of figures to one size (a deck's `fit` shrinking a cell on its own).
+__declspec(dllexport) int MXBMRP3_Test_HudStringSize(const char* name, int index) {
+    const BaseHud* hud = testHudByName(name);
+    if (!hud) return 0;
+    const auto& strings = hud->getStrings();
+    if (index < 0 || index >= static_cast<int>(strings.size())) return 0;
+    return static_cast<int>(std::lround(strings[static_cast<size_t>(index)].m_fSize * 1.0e6f));
+}
+
 __declspec(dllexport) unsigned long MXBMRP3_Test_HudQuadColor(const char* name, int index) {
     const BaseHud* hud = testHudByName(name);
     if (!hud) return 0;
@@ -1117,14 +1132,15 @@ __declspec(dllexport) void MXBMRP3_Test_RadarTheme(char* out, int cap) {
     out[n] = '\0';
 }
 
-__declspec(dllexport) void MXBMRP3_Test_RadarSetTheme(const char* theme) {
-    HudManager::getInstance().getRadarHud().setThemeOverride(
-        theme ? std::string(theme) : std::string());
-}
-
-__declspec(dllexport) void MXBMRP3_Test_StandingsSetTheme(const char* theme) {
-    HudManager::getInstance().getStandingsHud().setThemeOverride(
-        theme ? std::string(theme) : std::string());
+// Any HUD's own Theme (its tab's Texture column), by harness id. 0 = no such HUD.
+__declspec(dllexport) int MXBMRP3_Test_SetHudTheme(const char* name, const char* theme) {
+    for (const auto& hud : HudManager::getInstance().getHuds()) {
+        if (hud && name && std::strcmp(hud->getHarnessId(), name) == 0) {
+            hud->setThemeOverride(theme ? std::string(theme) : std::string());
+            return 1;
+        }
+    }
+    return 0;
 }
 
 // Reset one named HUD (active profile) to defaults — models a per-tab "Reset".
@@ -1335,14 +1351,6 @@ __declspec(dllexport) void MXBMRP3_Test_InjectMouse(int on, float x, float y, in
     InputManager::getInstance().testInjectMouse(on != 0, x, y, buttons);
 }
 
-// The achievements list's current page (0-based) and, when asked, the group
-// name of the page as last drawn (a toast's click lands on its row's page).
-__declspec(dllexport) int MXBMRP3_Test_AchievementsPage(char* groupOut, int cap) {
-    const char* group = "";
-    const int page = HudManager::getInstance().getSettingsHud().testAchievementsPage(&group);
-    if (groupOut && cap > 0) snprintf(groupOut, static_cast<size_t>(cap), "%s", group);
-    return page;
-}
 // Where to put that mouse: the centre of the settings menu's region carrying a
 // tooltip id (a sidebar tab's is its tab id, "map"). 0 when none does.
 __declspec(dllexport) int MXBMRP3_Test_SettingsRegionCenter(const char* tooltipId, float* x, float* y) {
@@ -1403,7 +1411,7 @@ __declspec(dllexport) void MXBMRP3_Test_GetActiveTab(char* out, int cap) {
     // The tab ON SCREEN (getActiveTabName is the one that is saved, and names the
     // tab a Find page was opened from).
     const SettingsHud& settings = HudManager::getInstance().getSettingsHud();
-    const char* name = settings.testTabNameForIndex(settings.testActiveTab());
+    const char* name = settings.testTabNameForIndex(settings.activeTab());
     strncpy(out, name ? name : "", cap - 1);
     out[cap - 1] = '\0';
 }
@@ -2288,6 +2296,19 @@ __declspec(dllexport) int MXBMRP3_Test_SpriteOrderMismatches(void) {
     return HudManager::getInstance().spriteOrderMismatches();
 }
 
+// The deck pictures registered twice in one layout (DeckAsset::imagePaths):
+// a theme's own copy of a picture the layout already draws must reuse its
+// sprite, not register the same file again.
+__declspec(dllexport) int MXBMRP3_Test_DeckImageDuplicates(void) {
+    int dup = 0;
+    for (const DeckAsset& d : AssetManager::getInstance().getDecks()) {
+        std::vector<std::string> paths = d.imagePaths;
+        std::sort(paths.begin(), paths.end());
+        dup += static_cast<int>(paths.end() - std::unique(paths.begin(), paths.end()));
+    }
+    return dup;
+}
+
 // Build the broken-install warning as if discovery had found these counts (and,
 // with iconsComplete, every icon a button needs; with realText, in the real font
 // for comparison); returns 1 when the Dash has a warning to say, else 0. Test builds never
@@ -2372,7 +2393,7 @@ __declspec(dllexport) void MXBMRP3_Test_PitboardPackStored(char* out, int cap) {
 __declspec(dllexport) void MXBMRP3_Test_PitboardPackActive(char* out, int cap) {
     if (!out || cap <= 0) return;
     out[0] = '\0';
-    const PitboardAsset* pack = HudManager::getInstance().getPitboardHud().activePack();
+    const PitboardAsset* pack = HudManager::getInstance().getPitboardHud().activeLayout();
     if (!pack) return;
     const std::string& s = pack->name;
     const int n = (static_cast<int>(s.size()) < cap - 1) ? static_cast<int>(s.size()) : cap - 1;
@@ -2397,11 +2418,11 @@ __declspec(dllexport) void MXBMRP3_Test_ReloadAssetLayouts(void) {
 // built-in default -- which is the observable difference between "the loop ran" and
 // "the loop is missing", with no filesystem staging required.
 __declspec(dllexport) float MXBMRP3_Test_PitboardArtWidth(void) {
-    const PitboardAsset* pack = HudManager::getInstance().getPitboardHud().activePack();
+    const PitboardAsset* pack = HudManager::getInstance().getPitboardHud().activeLayout();
     return pack ? pack->geometry.artWidth : 0.0f;
 }
 __declspec(dllexport) float MXBMRP3_Test_GamepadArtWidth(void) {
-    const GamepadAsset* pack = HudManager::getInstance().getGamepadWidget().activePack();
+    const GamepadAsset* pack = HudManager::getInstance().getGamepadWidget().activeLayout();
     return pack ? pack->geometry.backgroundWidth : 0.0f;
 }
 
@@ -2422,7 +2443,7 @@ __declspec(dllexport) void MXBMRP3_Test_GamepadPackStored(char* out, int cap) {
 __declspec(dllexport) void MXBMRP3_Test_GamepadPackActive(char* out, int cap) {
     if (!out || cap <= 0) return;
     out[0] = '\0';
-    const GamepadAsset* pack = HudManager::getInstance().getGamepadWidget().activePack();
+    const GamepadAsset* pack = HudManager::getInstance().getGamepadWidget().activeLayout();
     if (!pack) return;
     const std::string& s = pack->name;
     const int n = (static_cast<int>(s.size()) < cap - 1) ? static_cast<int>(s.size()) : cap - 1;
@@ -3114,7 +3135,7 @@ __declspec(dllexport) void MXBMRP3_Test_ResolveFrame(unsigned long long addr,
 __declspec(dllexport) void MXBMRP3_Test_BikeTelemetry(float* speedometer, int* gear,
                                                       int* rpm, float* throttle,
                                                       float* frontBrake, float* roll,
-                                                      int* valid) {
+                                                      int* valid, int* riderStance) {
     const BikeTelemetryData& bike = PluginData::getInstance().getBikeTelemetry();
     const InputTelemetryData& in = PluginData::getInstance().getInputTelemetry();
     if (speedometer) *speedometer = bike.speedometer;
@@ -3122,6 +3143,7 @@ __declspec(dllexport) void MXBMRP3_Test_BikeTelemetry(float* speedometer, int* g
     if (rpm)         *rpm         = bike.rpm;
     if (roll)        *roll        = bike.roll;
     if (valid)       *valid       = bike.isValid ? 1 : 0;
+    if (riderStance) *riderStance = bike.riderStance;
     if (throttle)    *throttle    = in.throttle;
     if (frontBrake)  *frontBrake  = in.frontBrake;
 }

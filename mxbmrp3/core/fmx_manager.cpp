@@ -36,6 +36,7 @@ void FmxManager::reset() {
     m_chainEndAnimation.finalType = Fmx::TrickType::NONE;
     m_chainEndAnimation.chainTricks.clear();
     m_chainEndAnimation.chainScore = 0;
+    m_chainEndAnimation.bankedScore = 0;
     m_committedDirection = Fmx::TrickDirection::NONE;
     m_chainTimerPaused = false;
     m_chainPausedElapsed = 0.0f;

@@ -16,6 +16,7 @@
 #include "../core/color_config.h"
 #include "../core/font_config.h"
 #include "../core/asset_manager.h"
+#include "../core/input_manager.h"
 #include <algorithm>
 #include <cstring>
 #include <ctime>
@@ -104,6 +105,8 @@ void StreamChatHud::update() {
         return;
     }
 
+    if (m_scroll.poll(*this)) setDataDirty();
+
     // Each connection's state is drawn in the panel, so a change on a worker
     // thread -- or of a switch or channel, which can change while the status
     // stays OFF -- is a rebuild. Two atomic loads per frame.
@@ -135,7 +138,8 @@ void StreamChatHud::update() {
         }
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - m_lastMessageTime).count();
-        if (elapsed >= m_autoHideDurationMs) {
+        // Not while the player is scrolling back through it.
+        if (elapsed >= m_autoHideDurationMs && !m_scroll.shown()) {
             m_hasRecent = false;
             clearRendered();
             clearDataDirty();
@@ -201,6 +205,7 @@ void StreamChatHud::ingest(std::vector<Chat::Event>& events) {
                 shownChanged = true;
             }
             m_entries.push_back(std::move(e));
+            ++m_ingested;
             if (m_entries.size() > MAX_ENTRIES) m_entries.pop_front();
             break;
         }
@@ -500,32 +505,51 @@ void StreamChatHud::rebuildRenderData() {
     // head scrolls off the top with newest at the bottom (as on both platforms),
     // its tail off the bottom with newest on top.
     const bool newestFirst = (m_displayOrder == DisplayOrder::NEWEST_FIRST);
-    for (auto it = m_entries.rbegin(); it != m_entries.rend() && static_cast<int>(rows.size()) < chatRowBudget; ++it) {
-        const StreamChatEntry& e = *it;
-        if (isFiltered(e)) continue;
+    auto wrapMessage = [&](const StreamChatEntry& e) {
         const std::string& body = m_showEmotes ? e.text : e.textNoEmotes;
         // "Name: text", or "* Name text" for /me.
         const int prefixLen = nameCharsFor(e) + (e.isAction ? 3 : 2);
-        std::vector<std::string> wrapped = ChatText::wrapChat(body, textCols - prefixLen, textCols);
-        std::vector<Row> msgRows;
-        msgRows.reserve(wrapped.size());
-        for (size_t i = 0; i < wrapped.size(); ++i) {
-            msgRows.push_back({ &e, i == 0, std::move(wrapped[i]) });
+        return ChatText::wrapChat(body, textCols - prefixLen, textCols);
+    };
+
+    // THE SCROLLBACK (hud_scroll.h), in rows counted from the newest end. Placing
+    // it needs every kept message wrapped, so that happens only while it can be
+    // used -- the pointer is up; otherwise the list sits at its newest end and
+    // the walk below stops once the rows are full, as it always has.
+    m_scroll.setEdge(newestFirst ? HudScroll::Edge::START : HudScroll::Edge::END);
+    const int arrivedMessages = static_cast<int>(m_ingested - m_scrollSeen);
+    m_scrollSeen = m_ingested;
+    int skip = 0;
+    const bool counting = chatRowBudget > 0 && InputManager::getInstance().isCursorEnabled();
+    int rowCap = chatRowBudget;   // a row more while the scrollback glides
+    if (counting) {
+        int total = 0, arrived = 0, k = 0;
+        for (auto it = m_entries.rbegin(); it != m_entries.rend(); ++it, ++k) {
+            if (isFiltered(*it)) continue;
+            const int n = static_cast<int>(wrapMessage(*it).size());
+            total += n;
+            if (k < arrivedMessages) arrived += n;
         }
-        const int room = chatRowBudget - static_cast<int>(rows.size());
-        const int take = std::min(room, static_cast<int>(msgRows.size()));
-        if (newestFirst) {
-            // rows is already in reading order: this message's head first.
-            for (int k = 0; k < take; ++k) {
-                rows.push_back(std::move(msgRows[static_cast<size_t>(k)]));
-            }
-        } else {
-            // rows is built bottom-up, so push this message's rows in reverse.
-            for (int k = 0; k < take; ++k) {
-                rows.push_back(std::move(msgRows[msgRows.size() - 1 - static_cast<size_t>(k)]));
-            }
+        const int first = m_scroll.layout(total, chatRowBudget, arrived);
+        rowCap = m_scroll.drawRows();
+        skip = newestFirst ? first : std::max(0, total - rowCap - first);
+    }
+
+    int toSkip = skip;
+    for (auto it = m_entries.rbegin(); it != m_entries.rend() && static_cast<int>(rows.size()) < rowCap; ++it) {
+        const StreamChatEntry& e = *it;
+        if (isFiltered(e)) continue;
+        std::vector<std::string> wrapped = wrapMessage(e);
+        const int n = static_cast<int>(wrapped.size());
+        // Rows nearest the newest end first: a message's head when newest-first
+        // (rows is in reading order), its tail otherwise (rows is built bottom-up).
+        for (int k = 0; k < n && static_cast<int>(rows.size()) < rowCap; ++k) {
+            if (toSkip > 0) { --toSkip; continue; }
+            const size_t i = newestFirst ? static_cast<size_t>(k) : static_cast<size_t>(n - 1 - k);
+            rows.push_back({ &e, i == 0, std::move(wrapped[i]) });
         }
     }
+    if (!counting) m_scroll.layout(static_cast<int>(rows.size()), std::max(1, chatRowBudget), 0);
     // Top-to-bottom reading order: oldest message first, newest at the bottom.
     if (!newestFirst) std::reverse(rows.begin(), rows.end());
 
@@ -641,7 +665,7 @@ void StreamChatHud::rebuildRenderData() {
     // oldest line -- at the bottom by default, the way both platforms fill; the
     // status lines take the rows at the OTHER end, away from where new messages
     // land.
-    const int emptyRows = chatRowBudget - static_cast<int>(rows.size());
+    const int emptyRows = std::max(0, chatRowBudget - static_cast<int>(rows.size()));
     float y = plan.contentY();
     auto drawStatusLines = [&]() {
         for (int i = 0; i < statusRows; ++i) {
@@ -661,6 +685,8 @@ void StreamChatHud::rebuildRenderData() {
         y += emptyRows * dim.lineHeightNormal;
     }
 
+    const float rowsTop = y;
+    const size_t rowsQuad = m_quads.size(), rowsString = m_strings.size();
     for (const Row& row : rows) {
         const StreamChatEntry& e = *row.entry;
         const unsigned long nameColor = m_nameColors ? e.nameColor : primary;
@@ -705,11 +731,26 @@ void StreamChatHud::rebuildRenderData() {
         }
         y += dim.lineHeightNormal;
     }
+    // The rows to the scrollback's edge rule, before anything follows them.
+    m_scroll.clipRows(*this, rowsQuad, m_quads.size(), rowsString, m_strings.size(), rowsTop,
+                      dim.lineHeightNormal);
+    // The chat ends where it does at rest; the status lines follow.
+    const int extra = counting ? m_scroll.extraRows() : 0;
+    y -= static_cast<float>(extra) * dim.lineHeightNormal;
     if (newestFirst) {
         y += emptyRows * dim.lineHeightNormal;
         drawStatusLines();
     }
-    m_renderedRows = static_cast<int>(rows.size()) + statusRows;
+    m_renderedRows = static_cast<int>(rows.size()) - extra + statusRows;
+
+    // The scrollbar in the panel's right padding, beside the chat rows (the
+    // status lines sit at the other end); "N new" on the caption row.
+    if (chatRowBudget > 0) {
+        m_scroll.draw(*this, plan.sectionBoxX() + plan.sectionBoxW(), plan.x0 + plan.width(),
+                      plan.contentY() + (newestFirst ? 0.0f : statusRows * dim.lineHeightNormal),
+                      chatRowBudget * dim.lineHeightNormal, dim.lineHeightNormal, dim.fontSize);
+        addPlanTitleNote(plan, dim, m_scroll.note());
+    }
 
     setBounds(START_X, START_Y, START_X + plan.width(), START_Y + plan.height());
 }

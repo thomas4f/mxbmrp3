@@ -6,8 +6,11 @@
 // ============================================================================
 #include "achievement_manager.h"
 #include "achievement_text.h"
+#include "asset_manager.h"
 #include "completion_floor.h"
+#include "event_log_types.h"
 #include "exploration_stats.h"
+#include "plugin_data.h"
 #include "settings_manager.h"
 #include "spotter_manager.h"
 #include "stats_manager.h"
@@ -189,7 +192,7 @@ double AchievementManager::metricValueRaw(const Entry& e) const {
         case Metric::ConfigReloads:  return m_configReloads;
         case Metric::RainRaces:      return sm.getGlobalStats().rainRaceCount;
         case Metric::BigGridRaces:   return sm.getGlobalStats().bigGridRaceCount;
-        case Metric::MaxSessionLaps: return sm.getGlobalStats().maxSessionLaps;
+        case Metric::MaxSessionKm:   return sm.getGlobalStats().maxSessionDistanceM / 1000.0;
         case Metric::FmxTricks:      return sm.getFmxLifetime().tricksLanded;
         case Metric::FmxScore:       return static_cast<double>(sm.getFmxLifetime().totalScore);
         case Metric::FmxBackflips:   return sm.getFmxLifetime().backflips;
@@ -286,6 +289,10 @@ void AchievementManager::evaluateRow(int idx, bool toastEach, Granted& granted) 
         // and the spotter's own Achievements switch is the one that mutes it.
         SpotterManager::getInstance().onAchievement(
             e.id, e.title, isOneShot(e) ? nullptr : tierName(reached));
+        // The Event Log row, likewise live-only and not behind the toast toggle:
+        // the log's own Achievements switch filters it. A load that grants tiers
+        // silently logs nothing, as it toasts nothing per row.
+        logTierEvent(e, reached);
     }
     DEBUG_INFO_F("[Achievements] %s reached %s", e.id, tierName(reached));
 }
@@ -304,6 +311,32 @@ void AchievementManager::queueTierToast(const Entry& entry, int tier) {
     snprintf(t.icon, sizeof(t.icon), "%s", entry.icon ? entry.icon : "");
     t.catalogueIndex = static_cast<int>(&entry - kCatalogue);
     enqueue(t);
+}
+
+// The toast's title, twice: English for the web overlay, the language shown
+// for the HUD (EventText), and the toast's icon in its tier's metal. A hidden
+// row is named only here, at its earn, exactly as its toast names it. No detail column: the description is the toast's
+// second line, and the log row is one line.
+void AchievementManager::logTierEvent(const Entry& entry, int tier) {
+    EventText text;
+    if (isOneShot(entry)) {
+        snprintf(text.english, sizeof(text.english), "%s", entry.title);
+        snprintf(text.shown, sizeof(text.shown), "%s", I18n::trCached(entry.title));
+    } else {
+        snprintf(text.english, sizeof(text.english), "%s - %s", entry.title, tierName(tier));
+        snprintf(text.shown, sizeof(text.shown), "%s - %s", I18n::trCached(entry.title),
+                 I18n::trCached(tierName(tier)));
+    }
+    // Fit the shown text to the log's column. The English text keeps its whole
+    // length for the web overlay, which has the room.
+    fitEventLogMessage(text.shown, sizeof(text.shown));
+    EventIcon icon;
+    if (entry.icon) {
+        const AssetManager& assets = AssetManager::getInstance();
+        icon.shape = assets.shapeIndexForSprite(assets.getBaseIconSpriteIndex(entry.icon));
+    }
+    icon.tier = isOneShot(entry) ? 0 : tier;
+    PluginData::getInstance().addEventLogEntry(EventLogType::Achievement, text, nullptr, -1, -1, {}, icon);
 }
 
 void AchievementManager::queueHalfwayToast(const Entry& entry, int targetTier, double value) {

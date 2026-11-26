@@ -7,6 +7,7 @@
 #include "i18n.h"
 
 #include <cstdarg>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <chrono>
@@ -17,6 +18,7 @@
 // (mxbmrp3_data/web/js/overlay-render.js) indexes that value POSITIONALLY to pick its filter
 // key. Inserting a value mid-list silently shifts every later event to the wrong
 // filter/label in the overlay. Add new types at the end and update EVENT_TYPE_MAP.
+// Pinned by tests/web/tests/parity.spec.js (the map's rows name these, in order).
 enum class EventLogType : uint8_t {
     // Session lifecycle
     SessionStarted,       // Session went to green / in-progress
@@ -52,6 +54,9 @@ enum class EventLogType : uint8_t {
     // Personal bests (local player only)
     SessionPB,            // Player improved on their best lap of this session
     AllTimePB,            // Player set an all-time PB (supersedes SessionPB for the same lap)
+
+    // Achievements (local player only, MX Bikes)
+    Achievement,          // Player earned an achievement tier (AchievementManager, live earns only)
 };
 
 // Bitfield flags for enabling/disabling event types in settings
@@ -73,16 +78,17 @@ enum EventLogFlags : uint32_t {
     EVENT_DIRECTOR           = 1 << 14,
     EVENT_SESSION_PB         = 1 << 15,
     EVENT_ALLTIME_PB         = 1 << 16,
+    EVENT_ACHIEVEMENT        = 1 << 17,
 
     EVENT_DEFAULT = EVENT_SESSION_STARTED | EVENT_FASTEST_LAP
                   | EVENT_RIDER_RETIRED | EVENT_RIDER_DSQ
                   | EVENT_OVERTIME | EVENT_FINAL_LAP | EVENT_RIDER_FINISHED
                   | EVENT_LEADER_CHANGE | EVENT_SESSION_STATE
-                  | EVENT_SESSION_PB | EVENT_ALLTIME_PB,
+                  | EVENT_SESSION_PB | EVENT_ALLTIME_PB | EVENT_ACHIEVEMENT,
                   // Note: EVENT_DIRECTOR is intentionally NOT in the defaults — it is an
                   // opt-in broadcaster tool (director cuts are frequent), enabled per-session.
 
-    EVENT_ALL = (1 << 17) - 1  // All 17 event type bits
+    EVENT_ALL = (1 << 18) - 1  // All 18 event type bits
 };
 
 // Map EventLogType to its corresponding flag bit
@@ -109,9 +115,30 @@ inline uint32_t eventLogTypeToFlag(EventLogType type) {
     case EventLogType::Director:           return EVENT_DIRECTOR;
     case EventLogType::SessionPB:         return EVENT_SESSION_PB;
     case EventLogType::AllTimePB:         return EVENT_ALLTIME_PB;
+    case EventLogType::Achievement:       return EVENT_ACHIEVEMENT;
     default: return 0;
     }
 }
+
+// The Event Log's message column, in characters (EventLogHud::MESSAGE_WIDTH).
+// Here so a logger in core can fit a translated text it builds from parts.
+constexpr int EVENT_LOG_MESSAGE_CHARS = 31;
+
+// Cut a shown (CP1252, one byte a character) text to that column, in place.
+// For text built from parts whose translations can outrun it ("Trick Collector
+// - Platinum" in four packs). cap is the buffer's size.
+inline void fitEventLogMessage(char* text, size_t cap) {
+    if (text && cap > static_cast<size_t>(EVENT_LOG_MESSAGE_CHARS)) text[EVENT_LOG_MESSAGE_CHARS] = '\0';
+}
+
+// A per-entry icon in place of the type's: see EventLogEntry::icon.
+// The SHAPE index (AssetManager's theme-independent icon identity), not a
+// sprite: switching the icon theme after the row was logged must restyle it
+// like every other icon, and shape -> sprite is arithmetic, not a name lookup.
+struct EventIcon {
+    int shape = 0;    // 1-based icon shape, 0 = the type's own icon
+    int tier = 0;     // achievement tier, 0 = none / a one-shot
+};
 
 // A single event log entry
 struct EventLogEntry {
@@ -139,6 +166,12 @@ struct EventLogEntry {
     // A rider number here does NOT mean the row is clickable: retirements and DSQs name a
     // rider who can no longer be spectated. PluginData::isRiderSpectatable() is the gate.
     int raceNum = -1;
+
+    // Achievement rows only: the earned row's own icon and tier, so the log row
+    // wears what its toast does (the row's marker sprite in its tier's metal; a
+    // one-shot is tier 0, the primary colour). Shape 0 = the type's icon.
+    // Resolved once when the row is logged, never per rebuild.
+    EventIcon icon;
 
     EventLogEntry()
         : type(EventLogType::SessionStarted), sessionTimeMs(0) {

@@ -49,6 +49,19 @@ __declspec(dllexport) int MXBMRP3_Test_HudQuadSprite(const char* name, int index
     return quads[static_cast<size_t>(index)].m_iSprite;
 }
 
+// One corner of a HUD's quad, in vertex order (0..3: the sprite's TL, BL, BR, TR),
+// so a test can tell a sprite turned in place from one drawn upright -- the
+// bounding rect is the same for both. 0 when there is no such HUD, quad or vertex.
+__declspec(dllexport) int MXBMRP3_Test_HudQuadVertex(const char* name, int index, int vertex, float* xy) {
+    const BaseHud* hud = hudByName(name);
+    if (!hud || !xy || vertex < 0 || vertex > 3) return 0;
+    const auto& quads = hud->getQuads();
+    if (index < 0 || index >= static_cast<int>(quads.size())) return 0;
+    xy[0] = quads[static_cast<size_t>(index)].m_aafPos[vertex][0];
+    xy[1] = quads[static_cast<size_t>(index)].m_aafPos[vertex][1];
+    return 1;
+}
+
 }  // extern "C"
 
 #endif  // MXBMRP3_TEST_BUILD

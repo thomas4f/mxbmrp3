@@ -38,7 +38,7 @@ MXBMRP3 is a client-side game plugin. Its most relevant attack surfaces are:
   latest release, restricts downloads (including every redirect hop) to
   `github.com` / `*.github.com` / `*.githubusercontent.com`, and verifies the
   downloaded zip against the SHA256 digest the GitHub release API reports - a
-  digest that is present but fails to verify aborts the install. There is no
+  missing digest, or one that fails to verify, aborts the install. There is no
   code signing; the trust anchor is TLS to GitHub plus the release digest, so
   a compromise of the GitHub account/repository would defeat it. Reports
   about weakening any link in that chain are in scope.

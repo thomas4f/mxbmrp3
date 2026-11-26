@@ -1,0 +1,32 @@
+; Cells of carbon-dark.png (tools/themeslice): one picture per
+; line, <name> x y w h. Cutting writes each to <out>/<name>.tga.
+out = ../../mxbmrp3_data/themes/carbon-dark
+frame_corner_tl 8 8 64 64
+frame_edge_top 80 8 64 64
+frame_corner_tr 152 8 64 64
+frame_edge_left 8 80 64 64
+frame_center 80 80 64 64
+frame_edge_right 152 80 64 64
+frame_corner_bl 8 152 64 64
+frame_edge_bottom 80 152 64 64
+frame_corner_br 152 152 64 64
+card_corner_tl 8 224 64 64
+card_edge_top 80 224 64 64
+card_corner_tr 152 224 64 64
+card_edge_left 8 296 64 64
+card_center 80 296 64 64
+card_edge_right 152 296 64 64
+card_corner_bl 8 368 64 64
+card_edge_bottom 80 368 64 64
+card_corner_br 152 368 64 64
+button_corner_tl 8 440 64 64
+button_edge_top 80 440 64 64
+button_corner_tr 152 440 64 64
+button_edge_left 8 512 64 64
+button_center 80 512 64 64
+button_edge_right 152 512 64 64
+button_corner_bl 8 584 64 64
+button_edge_bottom 80 584 64 64
+button_corner_br 152 584 64 64
+frame_slant_left 8 656 90 324
+frame_slant_right 8 988 90 324

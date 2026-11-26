@@ -32,8 +32,8 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
         });
     });
 } else if (location.protocol === "file:") {
-    console.warn("[MXBMRP3] Offline caching disabled: service workers " +
-                 "require http(s)://. Load via http://localhost:PORT instead.");
+    console.warn("[MXBMRP3] The overlay only works served by the plugin: " +
+                 "open http://localhost:PORT, not the file.");
 }
 
 // =========================================================================
@@ -43,10 +43,6 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
 // =========================================================================
 
 var CONFIG = {
-    // --- Connection ---
-    host: "localhost",       // Server host
-    port: 8080,              // Server port
-
     // --- Font size ---
     // Root font size in pixels. Controls the scale of the entire overlay.
     // All rem-based sizes (text, spacing, layout) scale with this value.
@@ -72,7 +68,8 @@ var CONFIG = {
         director: false,     // Auto-director decisions — a monitoring aid, off by default
                              // (matches the in-game default); opt in to show them on stream.
         sessionPB: true,     // Your lap beat your best of this session (local player only)
-        allTimePB: true      // Your lap set a new all-time PB (local player only)
+        allTimePB: true,     // Your lap set a new all-time PB (local player only)
+        achievement: true    // You earned an achievement (local player only, MX Bikes)
     },
 
     // --- Chip filters ---
@@ -360,10 +357,10 @@ function saveSettings() {
 
 loadSettings();
 
-var BASE_URL = (location.protocol === "file:")
-    ? "http://" + CONFIG.host + ":" + CONFIG.port
-    : "";
-var SSE_URL = BASE_URL + "/api/events";
+// Same origin only: the plugin serves this page and its API, and sends no
+// CORS header, so the page must come from the plugin (not a file, not
+// another site).
+var SSE_URL = "/api/events";
 
 var LAP_PLACEHOLDER = "-";
 

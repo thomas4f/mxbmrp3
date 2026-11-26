@@ -25,6 +25,7 @@
 #include "nine_slice.h"
 #include "panel_plan.h"
 #include "chart_run.h"
+#include "clip_marks.h"
 
 namespace DigitRoll { class Roller; }
 
@@ -37,11 +38,10 @@ namespace DigitRoll { class Roller; }
 enum class PanelKind { Hud, Widget, Settings };
 
 class BaseHud {
-    // Draws the Delta Trace's chart into its host (the Delta Trace HUD, the
-    // Dash's page) with the host's own helpers -- see delta_trace_plot.h.
+    // Draws the Delta Trace's chart into its host (HUD, Dash page) -- delta_trace_plot.h.
     friend class DeltaTracePlot;
-    // Draws a dropdown's box and open list into its host -- see dropdown_list.h.
-    friend class DropdownList;
+    // Draw a dropdown / a list's scrollbar into their host.
+    friend class DropdownList; friend class HudScroll;
 public:
     // Standard update interval for live timing displays (~167Hz for smooth ticking)
     static constexpr int TICK_UPDATE_INTERVAL_MS = 6;
@@ -648,15 +648,14 @@ protected:
     // skipShadow: set true to exclude this string from drop shadow effect
     void addString(const char* text, float x, float y, int justify, int fontIndex,
                    unsigned long color, float fontSize, bool skipShadow = false);
-    // addString for a rolling readout (Motion, digit_roll.h): its text settled, or
-    // the old and new text of its roll, faded and offset, each in its own colour.
+    // addString for a rolling readout (Motion, digit_roll.h): its text settled, or the old and
+    // new text of its roll, each in its own colour; our renderers cut it at [boxTop, boxBottom).
     void addRolledString(const DigitRoll::Roller& roll, float x, float y, int justify, int fontIndex,
-                         float fontSize, bool skipShadow = false);
+                         float fontSize, float boxTop, float boxBottom, bool skipShadow = false);
 
-    // Clear strings and associated shadow flags (use instead of m_strings.clear()).
-    // Also invalidates the title-icon/string indices so a rebuild path that clears
-    // strings without re-emitting the title can't leave them pointing at a stale quad.
-    void clearStrings() { m_strings.clear(); m_stringSkipShadow.clear(); m_titleStringIndex = -1; m_titleIconQuadIndex = -1; m_shadowIcons.clear(); }
+    // Clear strings and all state indexed into the arrays (shadow flags, title indices, clip marks) -
+    // use instead of m_strings.clear(), so a rebuild that skips the title leaves no stale index.
+    void clearStrings() { m_strings.clear(); m_stringSkipShadow.clear(); m_titleStringIndex = -1; m_titleIconQuadIndex = -1; m_shadowIcons.clear(); m_clip.clear(); }
     // Drop-shadow the quad just pushed, as the title icon is: an icon beside shadowed
     // text (collectSurface). Rebuild-time; the indices reset with clearStrings().
     void shadowLastIcon() { if (!m_quads.empty()) m_shadowIcons.push_back(static_cast<int>(m_quads.size()) - 1); }
@@ -1095,12 +1094,12 @@ public:
     // the nine slices at a degenerate rect, positioned later by rewriteThemedCard,
     // for cards behind content laid out after them (settings sections). An inset
     // card (the Find box) passes coversFill = false: no fill cut, no section span.
-    void addThemedCard(float x, float y, float width, float height,
-                       bool reserveOnly = false, bool coversFill = true);
+    void addThemedCard(float x, float y, float width, float height, bool reserveOnly = false, bool coversFill = true);
     void rewriteThemedCard(int firstIndex, float x, float y, float width, float height);
     // True when a themed card would actually draw; lets a caller skip
     // reserving quads it would never use.
     bool hasThemedCard() const;
+    bool addThemedTitleBand(float x, float y, float width, float height);   // title art, else card; PRE-offset; covers fill
     // Themed button background in `color` (the caller's state colour). Returns
     // false when the theme has no button slices, so callers keep their plain quad
     // as the fallback. Coords are PRE-offset.
@@ -1791,7 +1790,7 @@ protected:
     template <typename Hist>
     void addStripChartHistoryLine(const Hist& history, unsigned long color,
                                   float x, float y, float width, float height,
-                                  float lineThickness, size_t maxHistory) {
+                                  float lineThickness, size_t maxHistory, float shear = 0.0f) {   // shear: top's x past bottom's
         if (history.size() < 2) return;
         const float pointSpacing = width / (maxHistory - 1);
         ChartRun run;   // a straight stretch is one quad (addChartSegment); offset pins the newest sample right
@@ -1800,8 +1799,8 @@ protected:
             const float value1 = std::max(0.0f, std::min(1.0f, history[i]));
             const float value2 = std::max(0.0f, std::min(1.0f, history[i + 1]));
             if (value1 < 0.01f && value2 < 0.01f) { run.reset(); continue; }   // both flat: nothing to draw
-            const float x1 = x + (offset + i) * pointSpacing;
-            const float x2 = x + (offset + i + 1) * pointSpacing;
+            const float x1 = x + (offset + i) * pointSpacing + shear * value1;
+            const float x2 = x + (offset + i + 1) * pointSpacing + shear * value2;
             const float y1 = y + height - (value1 * height);
             const float y2 = y + height - (value2 * height);
             addChartSegment(run, x1, y1, x2, y2, color, lineThickness);
@@ -1841,8 +1840,8 @@ protected:
     // Public so a HUD drawing another's readout (the Dash's Gear and Speed cards)
     // draws it in that HUD's own fonts and colours.
 public:
-    unsigned long getColor(ColorSlot slot) const;
-    int getFont(FontCategory category) const;
+    virtual unsigned long getColor(ColorSlot slot) const;
+    virtual int getFont(FontCategory category) const;
 protected:
 
     // A signed time delta's colour (see deltaColorSlot): ahead, behind, even.
@@ -1938,6 +1937,7 @@ public:
     std::string m_defaultThemeOverride;   // the shipped value; see setDefaultThemeOverride()
     int m_titleIconQuadIndex = -1;     // index into m_quads of the title icon
     std::vector<int> m_shadowIcons;    // body icon quads drop-shadowed like the title icon; see shadowLastIcon()
+    ClipMarks m_clip;                  // what our own renderers draw differently; see clip_marks.h
     // Motion (core/motion.h): a sub-range of m_quads / m_strings, [first, end),
     // that fades in on its own over the unchanged panel each time the HUD bumps
     // m_motionPartEpoch - the settings menu's tab body on a tab switch. -1 = none.

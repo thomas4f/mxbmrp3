@@ -360,12 +360,9 @@ private:
                 return true;
             }
             case tape::EventType::RunTelemetry: {
-                const size_t need = sizeof(SPluginsBikeData_t) + 2 * sizeof(float);
-                if (!m_telem || e.data.size() < need) return false;
-                float tm, pos;
-                std::memcpy(&tm, e.data.data() + sizeof(SPluginsBikeData_t), sizeof(float));
-                std::memcpy(&pos, e.data.data() + sizeof(SPluginsBikeData_t) + sizeof(float), sizeof(float));
-                m_telem(p, static_cast<int>(sizeof(SPluginsBikeData_t)), tm, pos);
+                tape::TelemetryPayload tp{};
+                if (!m_telem || !tape::splitTelemetry(e.data.data(), e.data.size(), tp)) return false;
+                m_telem(p, tp.bikeBytes, tp.time, tp.pos);
                 return true;
             }
             default: return false;
@@ -442,6 +439,12 @@ int main(int argc, char** argv) {
         if (auto theme = host.sym<void(*)(const char*, float, float, int, int, int, int)>("MXBMRP3_Test_InstallTheme"))
             theme("perf", 3.0f, 1.0f, 1, 1, 1, 1);
         if (auto show = host.sym<void(*)(int)>("MXBMRP3_Test_ShowAllHuds")) show(1);
+        // ...with the Widgets and Decks switches on: both ship off, and a
+        // switch held off would leave its members out of the worst case
+        if (auto master = host.sym<void(*)(int, int)>("MXBMRP3_Test_SetMasterEnabled")) {
+            master(0, 1);
+            master(1, 1);
+        }
         if (auto max = host.sym<void(*)()>("MXBMRP3_Test_MaxHudSettings")) max();
         if (host.startHttpNoClient()) ledger.setOverlayOpen(true);
     }

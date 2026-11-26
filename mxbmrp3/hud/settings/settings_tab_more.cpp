@@ -10,7 +10,7 @@
 // unfolding ten rows.
 //
 // A ROW IS A TAB ROW LAID FLAT. The icon switches the tab on and off through the
-// same region type as a sidebar icon (tabToggleType), and the name opens the tab
+// same region as a sidebar icon (tabToggleRegion), and the name opens the tab
 // (an ordinary ClickRegion::TAB), so the common handlers do the work and the page
 // needs no click handler of its own. Hovering shows the
 // tab's own description in the tooltip area, and the sidebar keeps the More
@@ -84,9 +84,7 @@ BaseHud* SettingsHud::renderTabMore(SettingsLayoutContext& ctx) {
         const char* icon = self.tabIconName(row.tabId, hud);
         bool on = false;
         if (self.tabToggleState(row.tabId, hud, &on)) {
-            BaseHud* target = nullptr;
-            const ClickRegion::Type type = self.tabToggleType(row.tabId, hud, &target);
-            self.m_clickRegions.push_back(ClickRegion(x, y, iconW, ctx.lineHeightNormal, type, target));
+            self.m_clickRegions.push_back(self.tabToggleRegion(row.tabId, hud, x, y, iconW, ctx.lineHeightNormal));
             self.drawTabToggle(row.tabId, x, y, icon, on, /*onBand=*/false, dim, iconW);
         } else {
             self.drawTabIcon(x, y, icon ? icon : "", cc.getAccent(), dim, iconW);

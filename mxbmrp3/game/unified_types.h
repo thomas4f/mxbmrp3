@@ -272,6 +272,7 @@ struct TelemetryData {
         float rollRel = 0;          // degrees relative to ground
         float riderLRLean = 0;      // -1 to 1 (GP Bikes only)
         int pitLimiter = 0;         // GP Bikes only
+        int riderStance = -1;       // -1 = unknown, 0 = seated, 1 = standing (MX Bikes, only builds that send it; see Adapter::readRiderStance)
 
         // GP Bikes ECU
         int ecuMode = 0;            // 0=engine map, 1=TC, 2=engine brake

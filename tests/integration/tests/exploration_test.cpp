@@ -34,6 +34,10 @@
 //      a hand edit is caught by RELOAD_CONFIG, not only the next start.
 //  11. Test Pilot from an experimental setting seen on at a save; Profile
 //      Hopper from every real switch, whichever path made it.
+//  12. THE CLASSIFICATION ROWS: Rush Hour, Fall From Grace, Photocopy, Back
+//      From the Dead and Nemesis over three races, Nemesis's names kept out
+//      of the stats file.
+//  13. FLAT OUT: a watched lap, brake-free, within a tenth of the PB.
 //
 // Back Marker: finishing a lap down earns it (it asked for three until 1.31.0);
 // the lapped player is classified at their own crossing after the leader's flag.
@@ -1145,6 +1149,158 @@ TEST_CASE("exploration: a config reload rescans the user's packs and stylesheet"
     CHECK(host.achievementTier("dress_up") == 1);
     CHECK(host.achievementValue("dress_up") == doctest::Approx(1.0));
     CHECK(host.achievementTier("stylist") == 1);
+    host.shutdown();
+}
+
+// The rows read off the final classification beside the ones above: Rush
+// Hour, Fall From Grace, Photocopy, Back From the Dead and Nemesis
+// (core/race_finish_extras.h has the rules; the unit suite pins them alone).
+// Three races in one launch against the same five named riders, with each
+// row's near miss asserted before its hit.
+namespace {
+struct ExtrasRace {
+    int session = RACE1;
+    std::vector<ClassRow> finish;   // classification order at the flag
+    bool playerHoleshot = false;
+    int crashes = 0;                // the player's, before the flag
+};
+void runExtrasRace(PluginHost& host, const ExtrasRace& r) {
+    static const char* const kNames[] = { "Bob", "Carl", "Dana", "Eve", "Finn" };
+    host.eventInit("TestTrack", "Alice", 1600.0f, 2, "Test 450", "MX1", "TestTrack");
+    host.raceEvent("TestTrack");
+    host.session(r.session, 3, 0);
+    host.addEntry(10, "Alice");
+    for (int n = 21; n <= 25; ++n) host.addEntry(n, kNames[n - 21]);
+    host.runInit(r.session);
+    host.runStart();
+    host.raceSessionState(r.session, 256);
+    host.raceSessionState(r.session, 16);
+    std::vector<ClassRow> grid;
+    for (int n = 21; n <= 25; ++n) grid.push_back({ .num = n, .laps = 0 });
+    grid.push_back({ .num = 10, .laps = 0 });
+    host.classify(r.session, -5000, grid, /*sessionState=*/32);
+    host.classify(r.session, 1000, grid, /*sessionState=*/16);
+    host.raceSplit(r.session, r.playerHoleshot ? 10 : 21, 1, 0, 25000);
+    host.raceSplit(r.session, r.playerHoleshot ? 21 : 10, 1, 0, 25300);
+    for (int i = 0; i < r.crashes; ++i) {
+        host.raceTrackPosition({ { .num = 10, .trackPos = 0.1f, .crashed = 1 } });
+        host.telemetry(10.0f, 3);
+        host.raceTrackPosition({ { .num = 10, .trackPos = 0.1f, .crashed = 0 } });
+        host.telemetry(10.0f, 3);
+    }
+    for (int lap = 1; lap <= 3; ++lap) host.raceLap(r.session, 10, lap, 92000);
+    host.classify(r.session, 300000, r.finish);
+    host.runDeinit();
+    host.eventDeinit();
+}
+}  // namespace
+
+TEST_CASE("exploration: the classification rows - Rush Hour, Fall From Grace, Photocopy, Back From the Dead, Nemesis") {
+    cleanSaveDir();
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSaveWin);
+
+    // RACE ONE. The player is first to the opening split and last at the flag,
+    // with Eve (#24) directly ahead. Eve's best lap is the player's to the
+    // millisecond; everyone else is a second quicker.
+    {
+        ExtrasRace r;
+        r.playerHoleshot = true;
+        for (int n : { 21, 22, 23 }) r.finish.push_back({ .num = n, .best = 91000, .laps = 3 });
+        r.finish.push_back({ .num = 24, .best = 92000, .laps = 3 });
+        r.finish.push_back({ .num = 10, .best = 92000, .laps = 3 });
+        r.finish.push_back({ .num = 25, .best = 91000, .laps = 1, .state = 3 });   // retired: not behind you
+        runExtrasRace(host, r);
+    }
+    CHECK(host.achievementValue("fall_from_grace") == doctest::Approx(1.0));
+    CHECK(host.achievementValue("photocopy") == doctest::Approx(1.0));
+    CHECK(host.achievementValue("rush_hour") == doctest::Approx(0.0));
+    CHECK(host.achievementValue("nemesis") == doctest::Approx(0.0));
+
+    // RACE TWO. A win after ONE crash, lapping Dana once and Finn twice, with
+    // Eve second. One crash short of Back From the Dead; Eve twice now.
+    {
+        ExtrasRace r;
+        r.session = RACE2;
+        r.crashes = 1;
+        r.finish.push_back({ .num = 10, .best = 92000, .laps = 3 });
+        r.finish.push_back({ .num = 24, .best = 93000, .laps = 3 });
+        r.finish.push_back({ .num = 21, .best = 93000, .laps = 3 });
+        r.finish.push_back({ .num = 22, .best = 93000, .laps = 3 });
+        r.finish.push_back({ .num = 23, .best = 95000, .laps = 2, .gapLaps = 1 });
+        r.finish.push_back({ .num = 25, .best = 99000, .laps = 1, .gapLaps = 2 });
+        runExtrasRace(host, r);
+    }
+    CHECK(host.achievementValue("rush_hour") == doctest::Approx(3.0));
+    CHECK(host.achievementValue("back_from_dead") == doctest::Approx(0.0));
+    CHECK(host.achievementValue("nemesis") == doctest::Approx(0.0));
+    CHECK(host.achievementValue("fall_from_grace") == doctest::Approx(1.0));   // no holeshot this time
+
+    // RACE THREE. Down twice and still the win, with Eve behind again: three
+    // races next to her in one sitting.
+    {
+        ExtrasRace r;
+        r.crashes = 2;
+        r.finish.push_back({ .num = 10, .best = 92000, .laps = 3 });
+        r.finish.push_back({ .num = 24, .best = 93000, .laps = 3 });
+        for (int n : { 21, 22, 23, 25 }) r.finish.push_back({ .num = n, .best = 94000, .laps = 3 });
+        runExtrasRace(host, r);
+    }
+    CHECK(host.achievementValue("back_from_dead") == doctest::Approx(1.0));
+    CHECK(host.achievementValue("nemesis") == doctest::Approx(1.0));
+    CHECK(host.achievementValue("rush_hour") == doctest::Approx(3.0));
+
+    // NEVER IN THE FILE. Nemesis remembers riders by name for this launch
+    // only; the stats file holds none of the five.
+    host.statsSave();
+    const std::string saved = ini::readFile(kStatsPath);
+    REQUIRE_FALSE(saved.empty());
+    CHECK(saved.find("Eve") == std::string::npos);
+    CHECK(saved.find("Dana") == std::string::npos);
+    host.shutdown();
+}
+
+// Flat Out and Grounded (core/lap_purity.h): a clean lap - valid, not crashed
+// in, and watched by the telemetry - with no brake in it (Flat Out) or no
+// flight in it (Grounded), at any pace. The harness never flies, so every
+// watched lap here is jump-free: Grounded lands on the first watched lap,
+// braked or not, with no PB or "track has jumps" gate in front of it.
+TEST_CASE("exploration: Flat Out and Grounded need a clean, watched lap") {
+    cleanSaveDir();
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSaveWin);
+    enterPractice(host);   // a 1600 m track
+    long long t = 1'000'000;
+    host.statsSetNowUs(t);
+    // Most of a lap on the odometer: 140 frames of 10 m.
+    auto ride = [&](float brakeOnFrame) {
+        for (int i = 0; i < 140; ++i) {
+            t += 250'000;
+            host.statsSetNowUs(t);
+            TelemetryRow row;
+            row.speed = 40.0f;
+            row.frontBrake = (i == 70) ? brakeOnFrame : 0.0f;
+            host.telemetryFrame(row);
+        }
+    };
+
+    host.raceLap(PRACTICE, 10, 1, 60000);          // UNWATCHED: no telemetry, so no brake or jump seen
+    CHECK(host.achievementValue("flat_out") == doctest::Approx(0.0));
+    CHECK(host.achievementValue("grounded") == doctest::Approx(0.0));
+
+    ride(0.5f);                                    // one squeeze of the lever
+    host.raceLap(PRACTICE, 10, 2, 61000);
+    CHECK(host.achievementValue("flat_out") == doctest::Approx(0.0));
+    CHECK(host.achievementTier("grounded") == 1);  // braked, but never off the ground
+
+    ride(0.0f);
+    host.raceLap(PRACTICE, 10, 3, 99000);          // brake-free, and slow: pace is not asked
+    CHECK(host.achievementValue("flat_out") == doctest::Approx(1.0));
+    CHECK(host.achievementTier("flat_out") == 1);
+    host.runDeinit();
+    host.eventDeinit();
     host.shutdown();
 }
 

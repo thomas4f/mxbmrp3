@@ -13,6 +13,7 @@
 #include "../hud/benchmark_widget.h"
 #include "settings_manager.h"
 #include "input_manager.h"
+#include "mouse_wheel.h"
 #include "hotkey_manager.h"
 #include "plugin_thread.h"
 #include "asset_manager.h"
@@ -349,6 +350,9 @@ void PluginManager::shutdown() {
     // Shutdown HUD manager (its own settings save on the way out is synchronous) — the
     // backstop that persists any deferred settings changes not yet flushed on leave-track.
     HudManager::getInstance().shutdown();
+
+    // Out of the game window before anything else can unload (core/mouse_wheel.h)
+    MouseWheel::getInstance().release();
 
     // Shutdown input manager
     InputManager::getInstance().shutdown();

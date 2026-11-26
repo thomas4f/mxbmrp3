@@ -10,7 +10,6 @@
 #include "plugin_data.h"
 #include "plugin_utils.h"
 #include "hud_manager.h"
-#include "../hud/fuel_widget.h"
 #include "fuel_estimate.h"
 #include "spotter_mix.h"
 #include "spotter_manager_internal.h"
@@ -254,8 +253,7 @@ void SpotterManager::fillAmbientVars(SpotterVars::Vars& v) const {
     // `hotkey_triggered = ...[, {fuel_laps} in the tank]` always dropped its
     // group. One source, one wording (lapsWords carries the noun).
     {
-        const float fuelLaps =
-            HudManager::getInstance().getFuelWidget().getLapsRemaining();
+        const float fuelLaps = PluginData::getInstance().getFuelLapsRemaining();
         if (fuelLaps >= 0.0f) {
             fill(v.fuelLaps,
                  SpotterPhrase::lapsWords(static_cast<int>(fuelLaps)));

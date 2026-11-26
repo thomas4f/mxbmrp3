@@ -96,13 +96,16 @@ To add or extend an entry in `known_game_crashes.json`:
   the AV kind into a new `crashes[]` entry (`match.bytes`, `match.av`), and fill `name`,
   `observed`, `when`, optional `trigger`, `summary`, `workaround`, `first_seen`/`last_seen`
   (the dump's date, `YYYY-MM-DD`), and a `builds` map (`"0x<TDS>": "+0x<offset>"`). Then
-  regenerate the table.
+  regenerate the page.
 - **Seen again:** bump `last_seen` to the new dump's date (and add the build to `builds`
   if it's a build not already listed), then regenerate.
-- **Naming a build:** build headings auto-show the exe **compile date** (decoded from the
+- **New game build:** the page describes each crash once, under the newest build in
+  `builds`, and folds the older builds into offset-only tables. So add every crash's offset
+  for a new build as soon as it ships, or its crashes drop off the current-build list.
+- **Naming a build:** build labels auto-show the exe **compile date** (decoded from the
   `TimeDateStamp` - no lookup). The marketing version (e.g. `beta21d`) can't be derived
   reliably from the binary; if you learn it (a reporter says which beta they ran), record it
   in the optional top-level `build_versions` map (`"0x<TDS>": "beta21d"`) and it renders in
-  the heading.
+  the label.
 
 Override the registry path the analyzer reads with `--known <file.json>` or `$MDMP_KNOWN`.

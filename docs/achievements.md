@@ -2,7 +2,7 @@
 
 Every achievement in the plugin, with its tiers worded the way the toast words them (a one-shot has one). **MX Bikes only.**
 
-A **Hidden** row does not appear in Settings > Achievements until it is earned, and the pages marked *(does not count towards progress)* sit outside the Unlocked figure and the Completion rows. The leading number is a row's place in its GROUP, which the tab pages 6 at a time; a row switched off reads **off** instead.
+A **Hidden** row does not appear in Settings > Achievements until it is earned, and the groups marked *(does not count towards progress)* sit outside the Unlocked figure and the Completion rows. The leading number is a row's place in its GROUP; a row switched off reads **off** instead.
 
 <sub>Generated from `mxbmrp3/core/achievements.h` by `tests/unit/test_achievements.cpp` - do not edit. Run the unit gate and copy `/tmp/achievements.new.md` over this file.</sub>
 
@@ -14,7 +14,7 @@ A **Hidden** row does not appear in Settings > Achievements until it is earned, 
 | 2 | `ride_time` | <img src="../assets/icons/clock.svg" width="28" height="28" alt="" title="clock"> | Seat Time | Spend 10h on track | Spend 100h on track | Spend 500h on track | Spend 1,000h on track |
 | 3 | `laps` | <img src="../assets/icons/repeat.svg" width="28" height="28" alt="" title="repeat"> | Lap Counter | Complete 100 laps | Complete 500 laps | Complete 2,000 laps | Complete 5,000 laps |
 | 4 | `gear_shifts` | <img src="../assets/icons/gear.svg" width="28" height="28" alt="" title="gear"> | Shift Happens | Shift 1,000 times | Shift 10,000 times | Shift 100,000 times | Shift 1,000,000 times |
-| 5 | `session_laps` | <img src="../assets/icons/person-running.svg" width="28" height="28" alt="" title="person-running"> | Marathon | Complete 25 laps in one session | Complete 50 laps in one session | Complete 75 laps in one session | Complete 100 laps in one session |
+| 5 | `session_laps` | <img src="../assets/icons/person-running.svg" width="28" height="28" alt="" title="person-running"> | Marathon | Ride a 10K in a session | Ride a half marathon in a session | Ride a marathon in a session | Ride an ultramarathon in a session |
 | 6 | `session_time` | <img src="../assets/icons/motorcycle.svg" width="28" height="28" alt="" title="motorcycle"> | Iron Butt | Ride 1h in one day (@soulberg3) | Ride 2h in one day (@soulberg3) | Ride 4h in one day (@soulberg3) | Ride 8h in one day (@soulberg3) |
 | 7 | `track_laps` | <img src="../assets/icons/location-dot.svg" width="28" height="28" alt="" title="location-dot"> | Local Hero | Complete 50 laps at one track | Complete 250 laps at one track | Complete 500 laps at one track | Complete 1,000 laps at one track |
 | 8 | `bike_km` | <img src="../assets/icons/heart.svg" width="28" height="28" alt="" title="heart"> | Loyal | One bike, 100km (@BLAND525) | One bike, 500km (@BLAND525) | One bike, 2,500km (@BLAND525) | One bike, 5,000km (@BLAND525) |
@@ -38,6 +38,9 @@ A **Hidden** row does not appear in Settings > Achievements until it is earned, 
 | 13 | `photo_finish` | <img src="../assets/icons/camera.svg" width="28" height="28" alt="" title="camera"> | Photo Finish | Win a race by under a tenth | - | - | - |
 | 14 | `sandbagger` | <img src="../assets/icons/weight-hanging.svg" width="28" height="28" alt="" title="weight-hanging"> | Sandbagger | Set a PB on the last lap of a race | - | - | - |
 | 15 | `fumes` | <img src="../assets/icons/water.svg" width="28" height="28" alt="" title="water"> | Running on Fumes | Finish a race on 1% of a tank or less | - | - | - |
+| 16 | `rush_hour` | <img src="../assets/icons/traffic-light.svg" width="28" height="28" alt="" title="traffic-light"> | Rush Hour | Lap other riders 5 times | Lap other riders 25 times | Lap other riders 100 times | Lap other riders 500 times |
+| 17 | `back_from_dead` | <img src="../assets/icons/heart-pulse.svg" width="28" height="28" alt="" title="heart-pulse"> | Back From the Dead | Win a race after two or more crashes | - | - | - |
+| 18 | `nemesis` | <img src="../assets/icons/user-ninja.svg" width="28" height="28" alt="" title="user-ninja"> | Nemesis | Finish beside a rival thrice in a sitting | - | - | - |
 
 ## Consistency
 
@@ -50,6 +53,7 @@ A **Hidden** row does not appear in Settings > Achievements until it is earned, 
 | 5 | `clean_laps` | <img src="../assets/icons/hand-sparkles.svg" width="28" height="28" alt="" title="hand-sparkles"> | Spotless | 5 laps in a row, crash/penalty free | 15 laps in a row, crash/penalty free | 30 laps in a row, crash/penalty free | 50 laps in a row, crash/penalty free |
 | 6 | `metronome` | <img src="../assets/icons/equals.svg" width="28" height="28" alt="" title="equals"> | Metronome | Five laps in a row, all within a tenth | - | - | - |
 | 7 | `steady_hands` | <img src="../assets/icons/hand.svg" width="28" height="28" alt="" title="hand"> | Steady Hands | Ride 30min without crashing | - | - | - |
+| 8 | `slalom` | <img src="../assets/icons/person-skiing.svg" width="28" height="28" alt="" title="person-skiing"> | Slalom | Ride past 25 fallen riders | Ride past 100 fallen riders | Ride past 500 fallen riders | Ride past 1,500 fallen riders |
 
 ## Variety
 
@@ -74,6 +78,8 @@ A **Hidden** row does not appear in Settings > Achievements until it is earned, 
 | 4 | `fmx_airtime` | <img src="../assets/icons/parachute-box.svg" width="28" height="28" alt="" title="parachute-box"> | Hang Time | Stay airborne 2.0s and land it | Stay airborne 3.0s and land it | Stay airborne 4.0s and land it | Stay airborne 5.0s and land it |
 | 5 | `jump_distance` | <img src="../assets/icons/ruler-horizontal.svg" width="28" height="28" alt="" title="ruler-horizontal"> | Gap Jumper | Land a 10m jump | Land a 30m jump | Land a 60m jump | Land a 100m jump |
 | 6 | `jump_height` | <img src="../assets/icons/ruler-vertical.svg" width="28" height="28" alt="" title="ruler-vertical"> | Sent It | Reach 5m above takeoff and land it | Reach 10m above takeoff and land it | Reach 18m above takeoff and land it | Reach 25m above takeoff and land it |
+| 7 | `leapfrog` | <img src="../assets/icons/frog.svg" width="28" height="28" alt="" title="frog"> | Leapfrog | Jump over a rider | Jump over 5 riders | Jump over 25 riders | Jump over 100 riders |
+| 8 | `feather_touch` | <img src="../assets/icons/feather.svg" width="28" height="28" alt="" title="feather"> | Feather Touch | Land 10 jumps of 25m under 10G | Land 100 jumps of 25m under 10G | Land 500 jumps of 25m under 10G | Land 2,500 jumps of 25m under 10G |
 
 ## Freestyle
 
@@ -128,6 +134,7 @@ A **Hidden** row does not appear in Settings > Achievements until it is earned, 
 | 14 | `consolation` | <img src="../assets/icons/thumbs-up.svg" width="28" height="28" alt="" title="thumbs-up"> | Consolation Prize | Fastest lap, and off the podium with it | - | - | - |
 | 15 | `pile_up` | <img src="../assets/icons/truck-medical.svg" width="28" height="28" alt="" title="truck-medical"> | Pile-Up | Go down with three others | - | - | - |
 | 16 | `favorite_spot` | <img src="../assets/icons/campground.svg" width="28" height="28" alt="" title="campground"> | Favorite Spot | Crash three times in a row in one place | - | - | - |
+| 17 | `fall_from_grace` | <img src="../assets/icons/arrow-trend-down.svg" width="28" height="28" alt="" title="arrow-trend-down"> | Fall From Grace | Lead at the first split, then finish last | - | - | - |
 
 ## mxbmrp3 (does not count towards progress)
 
@@ -180,5 +187,8 @@ A **Hidden** row does not appear in Settings > Achievements until it is earned, 
 | 15 | `peace_out` | <img src="../assets/icons/hand-peace.svg" width="28" height="28" alt="" title="hand-peace"> | Peace Out | Ride through three riders down | - | - | - |
 | 16 | `digging` | <img src="../assets/icons/person-digging.svg" width="28" height="28" alt="" title="person-digging"> | Digging a Hole | Spin the rear wheel in place for 10s | - | - | - |
 | 17 | `ghost_ride` | <img src="../assets/icons/ghost.svg" width="28" height="28" alt="" title="ghost"> | Ghost Ride | Let the bike ride alone for 3.0s | - | - | - |
+| 18 | `grounded` | <img src="../assets/icons/arrows-down-to-line.svg" width="28" height="28" alt="" title="arrows-down-to-line"> | Grounded | A clean lap without leaving the ground | - | - | - |
+| 19 | `flat_out` | <img src="../assets/icons/gauge.svg" width="28" height="28" alt="" title="gauge"> | Flat Out | A clean lap without touching the brakes | - | - | - |
+| 20 | `photocopy` | <img src="../assets/icons/copy.svg" width="28" height="28" alt="" title="copy"> | Photocopy | Your best lap equals a rival's, to the ms | - | - | - |
 
-115 achievements, 265 tiers.
+125 achievements, 287 tiers.

@@ -35,6 +35,10 @@ uint16_t controllerButtonMask(const XInputData& x) {
     if (x.buttonY)       m |= XINPUT_GAMEPAD_Y;
     return m;
 }
+
+// Every key read here goes through InputManager::isKeyDown, which answers false
+// without asking Windows while the game isn't focused.
+bool keyDown(int vk) { return InputManager::getInstance().isKeyDown(vk); }
 }  // namespace
 
 HotkeyManager& HotkeyManager::getInstance() {
@@ -58,11 +62,10 @@ void HotkeyManager::initialize() {
 
     resetToDefaults();
 
-    // Initialize previous key states
-    for (int i = 0; i < 256; i++) {
-        m_prevKeyStates[i] = (GetAsyncKeyState(i) & 0x8000) != 0;
-    }
+    // No key is read here: the first focused frame takes the baseline (update()).
+    m_prevKeyStates.fill(false);
     m_prevControllerButtons = 0;
+    m_needsBaseline = true;
 
     m_bInitialized = true;
     DEBUG_INFO("HotkeyManager initialized");
@@ -108,42 +111,51 @@ void HotkeyManager::update() {
     }
 #endif
 
-    // Only detect hotkey actions when game window is focused
-    if (InputManager::getInstance().isCursorEnabled()) {
-        // The controller cache (XInputReader::m_data) is otherwise refreshed only
-        // by RunTelemetry, which ticks while riding but NOT while spectating or in
-        // menus. Hotkeys are processed here on the Draw path, which runs in all
-        // those contexts, so refresh the controller here too whenever controller
-        // input matters - a capture in progress, or any controller binding to
-        // test. Without it, controller binding AND triggering only worked on
-        // track. Cheap: update() no longer issues any XInput call - it just copies
-        // the snapshot the XInput I/O thread already published (a short mutexed
-        // struct copy) - and it's skipped entirely when no controller binding exists.
-        if (m_captureType == CaptureType::CONTROLLER || hasAnyControllerBinding()) {
-            XInputReader::getInstance().update();
-        }
-
-        if (m_captureType != CaptureType::NONE) {
-            updateCapture();
-        } else {
-            checkTriggeredActions();
-        }
+    // Nothing is read while the game isn't focused: no key, no button, also
+    // with the cursor over the companion while another program is in front
+    // (its keys belong to that program). Edges need the previous frame's
+    // state, so the first focused frame after that only takes a fresh baseline
+    // and fires nothing - a key held while focus returns (Alt+Tab back with it
+    // down) is never mistaken for a press. Pinned by hotkey_capture_test.cpp.
+    if (!InputManager::getInstance().hasKeyboardFocus()) {
+        m_needsBaseline = true;
+        return;
     }
 
-    // Always update previous input states (even when unfocused) to prevent
-    // false edge triggers when focus returns.
+    // The controller cache (XInputReader::m_data) is otherwise refreshed only
+    // by RunTelemetry, which ticks while riding but NOT while spectating or in
+    // menus. Hotkeys are processed here on the Draw path, which runs in all
+    // those contexts, so refresh the controller here too whenever controller
+    // input matters - a capture in progress, or any controller binding to
+    // test. Without it, controller binding AND triggering only worked on
+    // track. Cheap: update() no longer issues any XInput call - it just copies
+    // the snapshot the XInput I/O thread already published (a short mutexed
+    // struct copy) - and it's skipped entirely when no controller binding exists.
+    if (m_captureType == CaptureType::CONTROLLER || hasAnyControllerBinding()) {
+        XInputReader::getInstance().update();
+    }
+
+    if (m_needsBaseline) {
+        m_needsBaseline = false;
+    } else if (m_captureType != CaptureType::NONE) {
+        updateCapture();
+    } else {
+        checkTriggeredActions();
+    }
+
+    // Previous input states for the next frame's edge detection.
     // Full 256-key refresh only while capturing a new binding (any key can
     // be captured); otherwise only the bound keys need edge tracking -
-    // 256 GetAsyncKeyState syscalls per frame are measurable at 480fps.
+    // 256 key reads per frame are measurable at 480fps.
     if (m_captureType != CaptureType::NONE) {
         for (int i = 0; i < 256; i++) {
-            m_prevKeyStates[i] = (GetAsyncKeyState(i) & 0x8000) != 0;
+            m_prevKeyStates[i] = keyDown(i);
         }
     } else {
         for (const auto& binding : m_bindings) {
             if (binding.hasKeyboard()) {
                 uint8_t vk = binding.keyboard.keyCode;
-                m_prevKeyStates[vk] = (GetAsyncKeyState(vk) & 0x8000) != 0;
+                m_prevKeyStates[vk] = keyDown(vk);
             }
         }
     }
@@ -212,7 +224,7 @@ void HotkeyManager::startCapture(HotkeyAction action, CaptureType type) {
     // tracked, so unbound entries are stale and a currently-held key would
     // otherwise register as a false immediate "click"
     for (int i = 0; i < 256; i++) {
-        m_prevKeyStates[i] = (GetAsyncKeyState(i) & 0x8000) != 0;
+        m_prevKeyStates[i] = keyDown(i);
     }
 
     // Same baseline for the controller: poll once now (menus don't tick
@@ -237,7 +249,7 @@ void HotkeyManager::startTextCapture(const std::string& initial, size_t maxLen, 
     // Same baseline as startCapture(): the click that opened the field must not
     // register as a keypress, and keys already held are not typed.
     for (int i = 0; i < 256; i++) {
-        m_prevKeyStates[i] = (GetAsyncKeyState(i) & 0x8000) != 0;
+        m_prevKeyStates[i] = keyDown(i);
     }
     DEBUG_INFO("HotkeyManager: Started text capture");
 }
@@ -307,13 +319,13 @@ bool HotkeyManager::hasControllerConflict(HotkeyAction action, ControllerButton 
 ModifierFlags HotkeyManager::getCurrentModifiers() const {
     ModifierFlags mods = ModifierFlags::NONE;
 
-    if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0) {
+    if (keyDown(VK_CONTROL)) {
         mods = mods | ModifierFlags::CTRL;
     }
-    if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0) {
+    if (keyDown(VK_SHIFT)) {
         mods = mods | ModifierFlags::SHIFT;
     }
-    if ((GetAsyncKeyState(VK_MENU) & 0x8000) != 0) {
+    if (keyDown(VK_MENU)) {
         mods = mods | ModifierFlags::ALT;
     }
 
@@ -402,13 +414,13 @@ void HotkeyManager::checkTriggeredActions() {
 }
 
 bool HotkeyManager::isKeyPressed(uint8_t vkCode) const {
-    return (GetAsyncKeyState(vkCode) & 0x8000) != 0;
+    return keyDown(vkCode);
 }
 
 void HotkeyManager::updateTextCapture() {
-    const bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
-    const bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
-    const bool alt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+    const bool ctrl = keyDown(VK_CONTROL);
+    const bool shift = keyDown(VK_SHIFT);
+    const bool alt = keyDown(VK_MENU);
 
     if (isKeyClicked(VK_RETURN)) {
         commitTextCapture();
@@ -518,7 +530,7 @@ void HotkeyManager::applyTextEditKey(uint8_t vk, bool ctrl) {
 }
 
 bool HotkeyManager::isKeyClicked(uint8_t vkCode) const {
-    bool isPressed = (GetAsyncKeyState(vkCode) & 0x8000) != 0;
+    bool isPressed = keyDown(vkCode);
     bool wasPressed = m_prevKeyStates[vkCode];
     return isPressed && !wasPressed;
 }

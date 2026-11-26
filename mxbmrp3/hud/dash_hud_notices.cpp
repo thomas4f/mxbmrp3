@@ -53,10 +53,10 @@ bool DashHud::borrows(Startup message) {
     switch (message) {
         case Startup::BrokenInstall:
         case Startup::Update:   // offered only with the update check on
+        case Startup::Welcome:  // a new install ships with the Dash off
             return true;
         case Startup::Updated:
             return UpdateChecker::getInstance().isEnabled();
-        case Startup::Welcome:
         case Startup::None:
         default:
             return false;
@@ -170,8 +170,5 @@ void DashHud::step(int direction) {
     // Only a page coming in from nothing: one stepped back to mid-fade carries
     // on bringing its content back from where it got to, never dropping it for
     // a name popping up at that alpha.
-    if ((m_options & OPT_PAGE_NAMES) && m_inFrom <= 0.0f) {
-        m_nameUp = true;
-        m_nameStartUs = DigitRoll::nowUs();
-    }
+    if (m_options & OPT_PAGE_NAMES) m_flip.showName();
 }

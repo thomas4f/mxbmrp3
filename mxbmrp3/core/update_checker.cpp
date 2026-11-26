@@ -119,6 +119,11 @@ std::string UpdateChecker::getReleaseNotes() const {
     return m_releaseNotes;
 }
 
+bool UpdateChecker::hasReleaseNotes() const {
+    MutexLock lock(m_mutex);
+    return !m_releaseNotes.empty();
+}
+
 std::string UpdateChecker::getDownloadUrl() const {
     MutexLock lock(m_mutex);
     return m_downloadUrl;
@@ -494,6 +499,7 @@ bool UpdateChecker::fetchLatestRelease(std::string& outVersion, std::string& out
         {
             MutexLock lock(m_mutex);
             m_releaseNotes = releaseNotes;
+            m_notesGeneration.fetch_add(1);
             m_downloadUrl = downloadUrl;
             m_assetName = assetName;
             m_downloadSize = downloadSize;

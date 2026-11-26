@@ -36,6 +36,7 @@ inline Color abgr(unsigned long c) {
 // so the companion's StretchDIBits path (which ignores alpha) is unaffected.
 inline void blend(Image& im, int x, int y, Color c, float cov) {
     if (x < 0 || y < 0 || x >= im.w || y >= im.h) return;
+    if (x < im.cx0 || y < im.cy0 || x >= im.cx1 || y >= im.cy1) return;
     float a = (c.a / 255.0f) * cov;
     if (a <= 0.0f) return;
     uint8_t* p = &im.px[(size_t(y) * im.w + x) * 4];
@@ -251,9 +252,20 @@ void Renderer::render(Image& out, const Frame& fr, uint8_t bgR, uint8_t bgG, uin
     out.fill(bgR, bgG, bgB, bgA);
     if (!fr.fontNames || !fr.spriteNames) return;
     // HUD by HUD where they overlap (core/render_layers.h); flat otherwise.
+    // A clipped range (core/render_clip.h) is cut per pixel, at the same edge
+    // the GPU backends cut their vertices.
+    hudclip::Cursor clips(fr.layers.clips, fr.layers.clipCount);
+    auto clipFor = [&](const hudclip::Clip* c) {
+        if (c) out.clipTo(c->l, c->t, c->r, c->b); else out.unclip();
+    };
     hudlayers::walkLayers(fr.layers, fr.quadCount, fr.stringCount,
-        [&](int b, int e) { for (int i = b; i < e; ++i) drawQuad(out, fr.quads[i], fr); },
-        [&](int b, int e) { for (int i = b; i < e; ++i) drawString(out, fr.strings[i], fr); });
+        [&](int b, int e) {
+            for (int i = b; i < e; ++i) { clipFor(clips.quad(static_cast<uint32_t>(i))); drawQuad(out, fr.quads[i], fr); }
+        },
+        [&](int b, int e) {
+            for (int i = b; i < e; ++i) { clipFor(clips.string(static_cast<uint32_t>(i))); drawString(out, fr.strings[i], fr); }
+        });
+    out.unclip();
 }
 
 }  // namespace hudsw

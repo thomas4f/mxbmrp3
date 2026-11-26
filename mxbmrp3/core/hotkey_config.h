@@ -64,6 +64,9 @@ enum class HotkeyAction : uint8_t {
     TOGGLE_DASH,                 // Dash HUD on/off
     DASH_NEXT,                   // Dash: the next page
     DASH_PREV,                   // Dash: the previous page
+    TOGGLE_DECKS,                // Toggle all decks (the Decks master, like TOGGLE_WIDGETS)
+    DECK_NEXT,                   // Carousel deck: the next deck
+    DECK_PREV,                   // Carousel deck: the previous deck
     COUNT  // Must be last
 };
 
@@ -112,6 +115,9 @@ inline const char* getActionDisplayName(HotkeyAction action) {
         case HotkeyAction::TOGGLE_DASH:               return N_("Dash");
         case HotkeyAction::DASH_NEXT:                 return N_("Dash +");
         case HotkeyAction::DASH_PREV:                 return N_("Dash -");
+        case HotkeyAction::TOGGLE_DECKS:              return N_("Decks");
+        case HotkeyAction::DECK_NEXT:                 return N_("Deck +");
+        case HotkeyAction::DECK_PREV:                 return N_("Deck -");
         default: return N_("Unknown");
     }
 }
@@ -163,6 +169,9 @@ inline const char* getActionConfigName(HotkeyAction action) {
         case HotkeyAction::TOGGLE_DASH:               return "dash";
         case HotkeyAction::DASH_NEXT:                 return "dash_next";
         case HotkeyAction::DASH_PREV:                 return "dash_prev";
+        case HotkeyAction::TOGGLE_DECKS:              return "all_decks";
+        case HotkeyAction::DECK_NEXT:                 return "deck_next";
+        case HotkeyAction::DECK_PREV:                 return "deck_prev";
         default: return "unknown";
     }
 }

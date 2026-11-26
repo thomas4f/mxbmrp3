@@ -1,9 +1,10 @@
 # Demo reel
 
-Shoots the README demo (the Toggles strip's previews, a race, the Dash's Fuel
-page, Settings changes picked from their dropdowns: a panel theme, a language,
-fonts; a Standings column and opacity, a Gamepad switched on, the pad dragged
-into place, then the Dash calling a lapper, a hazard and a PB) from a
+Shoots the README's two screenshots (stills, below) and the demo reel (a new install's Map, the Toggles strip's previews, the
+Decks switched on from it, Settings changes picked from their dropdowns: a panel
+theme, a language, fonts; on the Decks tab Slanted and two more decks, the Speed
+deck dragged into place, then the Notice deck calling a lapper, a hazard and a
+PB) from a
 Recorder tape, with only the mouse scripted. The plugin does everything else, as
 it would in the game. Each beat is captioned with what it demonstrates.
 
@@ -22,6 +23,12 @@ The script writes `demo.mp4`, `demo.gif` and `demo.srt` on a `#3d5a80` backdrop
 (`BACKDROP=` changes the colour). Pass `--no-build` to reuse the test DLL.
 `make_demo.sh`'s header lists the other switches.
 
+**Stills.** `REEL_STILL=<secs>` plays the race with no mouse under the settings
+in `SEED_INI` and writes one full-HD frame as a PNG, on a grey spotlight
+backdrop. The README's screenshots
+are `stills/classic.ini` and `stills/decks.ini` at 27.5 s of a 30 s window (the
+PB lap); `make_demo.sh`'s header has the two commands.
+
 **Layouts.** `LAYOUT=toc` (the default) renders the game at 1600x900 right of a
 contents column: every beat listed, done ones ticked, the current one on a card
 with its detail line (the theme or language picked) and a bar filling as it runs.
@@ -31,7 +38,7 @@ capture is RGBA, so anything drawn under it, cursor included, fails the run).
 
 | File | What it is |
 |---|---|
-| `tapegen.cpp` | Writes the made-up race as a tape: 8 riders, passes, a lapped backmarker, a crash |
+| `tapegen.cpp` | Writes the made-up race as a tape: 8 riders, passes, a lapped backmarker, a crash, the rider standing and sitting |
 | `hover_reel.cpp` | Plays a tape into the plugin and moves the mouse; the script is in `main()` |
 | `captions_ass.py` | Turns the reel's `captions.tsv` into the burned-in captions (ASS, via ffmpeg's libass) and an SRT |
 | `make_demo.sh` | Builds, stages the assets (language packs included), plays, composites |
@@ -42,7 +49,6 @@ riders near you at times. The last 165 seconds of the tape play live under the
 mouse script (130 with `REEL_STRIP=main`, the main previews only).
 
 **Demo hooks.** The DLL needs `MXBMRP3_Test_CompanionCaptureRgba` (the companion
-frame as RGBA), `MXBMRP3_Test_FriendsInject` (Steam friends, which a tape cannot
-carry) and `MXBMRP3_Test_FakeGamepadInput` (a connected pad, fed from the rider's
-inputs on the tape), all in `core/test_hooks_toggle_strip.cpp`. Test builds
+frame as RGBA) and `MXBMRP3_Test_FriendsInject` (Steam friends, which a tape
+cannot carry), both in `core/test_hooks_toggle_strip.cpp`. Test builds
 only, so the shipped DLL never has them.

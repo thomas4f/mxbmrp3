@@ -2,238 +2,291 @@
  "repo": "thomas4f/mxbmrp3",
  "releases": [
   {
+   "tag": "v1.35.1",
+   "published": "2026-11-10",
+   "prerelease": true,
+   "downloads": 171
+  },
+  {
    "tag": "v1.35.0",
    "published": "2026-11-08",
-   "downloads": 1244
+   "prerelease": false,
+   "downloads": 4752
   },
   {
    "tag": "v1.34.3",
    "published": "2026-11-03",
-   "downloads": 115
+   "prerelease": true,
+   "downloads": 118
   },
   {
    "tag": "v1.34.2",
    "published": "2026-10-31",
+   "prerelease": true,
    "downloads": 75
   },
   {
    "tag": "v1.34.1",
    "published": "2026-10-31",
+   "prerelease": false,
    "downloads": 3328
   },
   {
    "tag": "v1.34.0",
    "published": "2026-10-26",
+   "prerelease": true,
    "downloads": 95
   },
   {
    "tag": "v1.33.0",
    "published": "2026-10-24",
+   "prerelease": false,
    "downloads": 3145
   },
   {
    "tag": "v1.32.0",
    "published": "2026-10-10",
+   "prerelease": false,
    "downloads": 4797
   },
   {
    "tag": "v1.31.0",
    "published": "2026-10-03",
+   "prerelease": false,
    "downloads": 3257
   },
   {
    "tag": "v1.30.3",
    "published": "2026-09-13",
-   "downloads": 6280
+   "prerelease": false,
+   "downloads": 6284
   },
   {
    "tag": "v1.30.1",
    "published": "2026-09-06",
+   "prerelease": false,
    "downloads": 3292
   },
   {
    "tag": "v1.30.0",
    "published": "2026-09-06",
+   "prerelease": false,
    "downloads": 126
   },
   {
    "tag": "v1.29.5",
    "published": "2026-09-02",
+   "prerelease": false,
    "downloads": 2085
   },
   {
    "tag": "v1.29.3",
    "published": "2026-08-29",
+   "prerelease": false,
    "downloads": 2127
   },
   {
    "tag": "v1.29.1",
    "published": "2026-08-26",
+   "prerelease": false,
    "downloads": 1851
   },
   {
    "tag": "v1.28.0",
    "published": "2026-07-30",
+   "prerelease": false,
    "downloads": 5464
   },
   {
    "tag": "v1.27.7",
    "published": "2026-07-18",
+   "prerelease": false,
    "downloads": 4598
   },
   {
    "tag": "v1.27.5",
    "published": "2026-07-14",
+   "prerelease": false,
    "downloads": 1547
   },
   {
    "tag": "v1.27.4",
    "published": "2026-07-12",
+   "prerelease": false,
    "downloads": 1330
   },
   {
    "tag": "v1.27.3",
    "published": "2026-07-12",
+   "prerelease": false,
    "downloads": 174
   },
   {
    "tag": "v1.26.0.0",
    "published": "2026-06-28",
+   "prerelease": false,
    "downloads": 3858
   },
   {
    "tag": "v1.25.3.0",
    "published": "2026-06-27",
+   "prerelease": true,
    "downloads": 6
   },
   {
    "tag": "v1.25.0.0",
    "published": "2026-06-21",
+   "prerelease": false,
    "downloads": 2145
   },
   {
    "tag": "v1.24.0.0",
    "published": "2026-06-14",
+   "prerelease": false,
    "downloads": 2437
   },
   {
    "tag": "v1.23.10.0",
    "published": "2026-05-30",
+   "prerelease": false,
    "downloads": 3820
   },
   {
    "tag": "v1.22.0.0",
    "published": "2026-04-26",
+   "prerelease": false,
    "downloads": 6580
   },
   {
    "tag": "v1.21.4.0",
    "published": "2026-04-07",
+   "prerelease": false,
    "downloads": 3917
   },
   {
    "tag": "v1.21.2.0",
    "published": "2026-04-05",
+   "prerelease": false,
    "downloads": 829
   },
   {
    "tag": "v1.20.0.0",
    "published": "2026-03-30",
+   "prerelease": false,
    "downloads": 1576
   },
   {
    "tag": "v1.19.0.0",
    "published": "2026-03-28",
+   "prerelease": false,
    "downloads": 650
   },
   {
    "tag": "v1.18.0.0",
    "published": "2026-03-22",
+   "prerelease": false,
    "downloads": 370
   },
   {
    "tag": "v1.17.0.0",
    "published": "2026-03-15",
+   "prerelease": false,
    "downloads": 728
   },
   {
    "tag": "v1.16.6.0",
    "published": "2026-03-14",
+   "prerelease": false,
    "downloads": 224
   },
   {
    "tag": "v1.16.1.0",
    "published": "2026-03-08",
+   "prerelease": false,
    "downloads": 997
   },
   {
    "tag": "v1.15.0.0",
    "published": "2026-02-11",
+   "prerelease": false,
    "downloads": 4400
   },
   {
    "tag": "v1.14.0.0",
    "published": "2026-01-24",
+   "prerelease": false,
    "downloads": 5610
   },
   {
    "tag": "v1.13.3.0",
    "published": "2026-01-18",
+   "prerelease": false,
    "downloads": 2115
   },
   {
    "tag": "v1.12.0.0",
    "published": "2026-01-11",
+   "prerelease": false,
    "downloads": 3204
   },
   {
    "tag": "v1.11.0.0",
    "published": "2026-01-05",
+   "prerelease": false,
    "downloads": 1840
   },
   {
    "tag": "v1.10.0.0",
    "published": "2025-12-29",
+   "prerelease": false,
    "downloads": 1952
   },
   {
    "tag": "v1.9.2.0",
    "published": "2025-12-23",
+   "prerelease": false,
    "downloads": 1306
   },
   {
    "tag": "v1.8.0.0",
    "published": "2025-12-16",
+   "prerelease": false,
    "downloads": 1185
   },
   {
    "tag": "v1.7.0.0",
    "published": "2025-12-13",
+   "prerelease": false,
    "downloads": 526
   },
   {
    "tag": "v1.6.0.0",
    "published": "2025-12-09",
+   "prerelease": false,
    "downloads": 1212
   },
   {
    "tag": "v1.5.5.3",
    "published": "2025-12-07",
+   "prerelease": false,
    "downloads": 374
   },
   {
    "tag": "v1.5.4.2",
    "published": "2025-12-04",
+   "prerelease": false,
    "downloads": 772
   },
   {
    "tag": "v1.5.4.1",
    "published": "2025-12-03",
+   "prerelease": false,
    "downloads": 50
   },
   {
    "tag": "v1.5.3.0",
    "published": "2025-11-29",
+   "prerelease": false,
    "downloads": 1198
   }
  ]

@@ -10,6 +10,7 @@
 #include "../core/i18n.h"
 #include "standings_context_window.h"
 #include "standings_gap_plan.h"
+#include "../core/running_order.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include "../core/plugin_utils.h"
@@ -45,9 +46,7 @@ void StandingsHud::rebuildRenderData() {
         m_hoveredRowIndex = -1;
         // Forget the rows, so they snap into place when the HUD comes back
         // rather than sliding through every change made while it was down.
-        m_previousPositions.clear();
-        m_previousSlots.clear();
-        m_activeAnimations.clear();
+        m_slide.forget();
         setBounds(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
@@ -59,8 +58,9 @@ void StandingsHud::rebuildRenderData() {
     // live one. Gaps stay measured from the OFFICIAL leader (formatDisplayEntries
     // and the session info take the official order): that is the rider the
     // live-gap engine baselines on.
-    const auto& rowOrder = runningOrder();
-    m_builtOrderRevision = m_runningOrderRevision;
+    RunningOrder& running = PluginData::getInstance().getRunningOrder();
+    const auto& rowOrder = running.get();
+    m_builtOrderRevision = running.revision();
 
     pruneIconCache(classificationOrder);
 
@@ -128,6 +128,8 @@ void StandingsHud::rebuildRenderData() {
     m_riderClickRegions.clear();
 
     // Render rows (no spacing between rows, consistent with other HUDs)
+    const size_t rowsQuad = m_quads.size(), rowsString = m_strings.size();
+    const float rowsTop = currentY;
     for (int i = 0; i < rowsToRender; ++i) {
         const auto& entry = m_displayEntries[i];
 
@@ -166,70 +168,18 @@ void StandingsHud::rebuildRenderData() {
 
         currentY += dim.lineHeightNormal;
     }
+    // A row sliding in from past the list (getAnimatedRowOffset starts it one
+    // slot out) would cross the column headers or hang below the panel. The
+    // slide moves rows every frame without a rebuild (rebuildLayout), so the
+    // rows are handed to the edge as one frame while any slide runs
+    // (ClipMarks::frame): our renderers cut them at their area; the game draws
+    // them as it did.
+    if (hasActiveAnimations())
+        m_clip.frame(rowsQuad, m_quads.size(), rowsString, m_strings.size(),
+                     ClipMarks::Rect{ START_X - 1.0f, rowsTop, START_X + hudDim.backgroundWidth + 1.0f, currentY });
 
     // Restore m_enabledColumns to the profile-set value (we temporarily modified it for gap mode filtering)
     m_enabledColumns = savedEnabledColumns;
-}
-
-// Live order (Live updates: Both): the official order with the passes the
-// track positions have held for StandingsLiveOrder::Tracker::HOLD_MS applied.
-// Races in progress only; anywhere else the tracker forgets its passes, so one
-// race's pairs never carry into the next. Who may move is decided HERE, from
-// PluginData; the pair logic is standings_live_order.h's.
-const std::vector<int>& StandingsHud::runningOrder() {
-    const PluginData& pluginData = PluginData::getInstance();
-    const std::vector<int>& official = pluginData.getDisplayClassificationOrder();
-    const SessionData& sessionData = pluginData.getSessionData();
-    const bool live = m_liveMode == LiveMode::BOTH && pluginData.isRaceSession() &&
-        (sessionData.sessionState & SessionState::IN_PROGRESS) != 0;
-    if (!live) {
-        if (m_liveOrderActive) {   // hand the official order back, once
-            m_liveOrderActive = false;
-            m_liveOrder.reset();
-            ++m_runningOrderRevision;
-        }
-        return official;
-    }
-
-    const auto now = std::chrono::steady_clock::now();
-    const auto since = now - m_liveOrderTime;
-    if (m_liveOrderActive && since < std::chrono::milliseconds(LIVE_ORDER_POLL_MS) &&
-        official == m_liveOrderInput) {
-        return m_liveOrderRows;
-    }
-    if (since >= std::chrono::milliseconds(LIVE_ORDER_IDLE_MS)) m_liveOrder.reset();
-    m_liveOrderTime = now;
-    m_liveOrderInput.assign(official.begin(), official.end());
-
-    m_liveOrderRiders.clear();
-    m_liveOrderRiders.reserve(official.size());
-    for (int raceNum : official) {
-        StandingsLiveOrder::Rider rider;
-        rider.raceNum = raceNum;
-        const StandingsData* standing = pluginData.getStanding(raceNum);
-        const RiderTrackState* track = pluginData.getRiderTrackState(raceNum);
-        if (standing && track) {
-            rider.numLaps = standing->numLaps;
-            rider.trackPos = track->trackPos;
-            // Going the wrong way (a crash, a reset) is no evidence either way,
-            // like a missing sample: the rider keeps any pass already shown
-            // rather than jumping back to their official row and out again.
-            rider.fresh = pluginData.hasActiveTrackPos(raceNum) && !track->wrongWay;
-            rider.racing = standing->state == RiderState::NORMAL && standing->pit == 0 &&
-                standing->gapLaps == 0 &&
-                !sessionData.isRiderFinished(standing->numLaps, standing->numLapsAtLeaderFinish);
-        }
-        m_liveOrderRiders.push_back(rider);
-    }
-
-    const int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now.time_since_epoch()).count();
-    m_liveOrderNext.reserve(official.size());
-    m_liveOrder.update(m_liveOrderRiders, nowMs, m_liveOrderNext);
-    if (!m_liveOrderActive || m_liveOrderNext != m_liveOrderRows) ++m_runningOrderRevision;
-    m_liveOrderRows.swap(m_liveOrderNext);
-    m_liveOrderActive = true;
-    return m_liveOrderRows;
 }
 
 // Prune stale icon cache entries for riders no longer in the classification
@@ -355,8 +305,7 @@ void StandingsHud::formatDisplayEntries(const std::vector<int>& classificationOr
     // Format strings for all built entries (they're all displayed)
     // Resolve effective gap reference mode (ALTERNATING → current LEADER or PLAYER)
     const GapReferenceMode effectiveGapRef = getEffectiveGapReferenceMode();
-    const StandingsGap::Table gapTable = buildGapTable(classificationOrder, displayRaceNum, pluginData,
-                                                      effectiveGapRef);
+    const StandingsGap::Table gapTable = buildGapTable(classificationOrder, displayRaceNum, effectiveGapRef);
 
     for (size_t entryIdx = 0; entryIdx < m_displayEntries.size(); ++entryIdx) {
         auto& entry = m_displayEntries[entryIdx];
@@ -377,18 +326,8 @@ void StandingsHud::formatDisplayEntries(const std::vector<int>& classificationOr
         // palette slots.
         bool isPlayerRow = (entry.raceNum == displayRaceNum);
 
-        StandingsGap::Row gapRow;
-        gapRow.index = static_cast<int>(entryIdx);
-        gapRow.stateNormal = (entry.state == RiderState::NORMAL);
-        gapRow.hasStateAbbr = (PluginUtils::getRiderStateAbbreviation(entry.state)[0] != '\0');
-        gapRow.isLeaderRow = (entry.position == Position::FIRST);
-        gapRow.isPlayerRow = isPlayerRow;
-        gapRow.officialGap = entry.officialGap;
-        gapRow.gapLaps = entry.gapLaps;
-        gapRow.realTimeGap = entry.realTimeGap;
-        gapRow.bestLap = entry.bestLap;
-        gapRow.isFinished = sessionData.isRiderFinished(entry.numLaps, entry.numLapsAtLeaderFinish);
-        gapRow.hasActiveTrackPos = pluginData.hasActiveTrackPos(entry.raceNum);
+        const StandingsGap::Row gapRow = RunningOrder::gapRow(entry.raceNum, static_cast<int>(entryIdx), isPlayerRow,
+                                                              entry.position == Position::FIRST);
 
         const StandingsGap::Plan gapPlan = StandingsGap::planGap(gapTable, gapRow);
 
@@ -399,27 +338,11 @@ void StandingsHud::formatDisplayEntries(const std::vector<int>& classificationOr
 
 StandingsGap::Table StandingsHud::gapTableFor(const std::vector<int>& classificationOrder,
                                               int displayRaceNum) const {
-    return buildGapTable(classificationOrder, displayRaceNum, PluginData::getInstance(),
-                         getEffectiveGapReferenceMode());
+    return buildGapTable(classificationOrder, displayRaceNum, getEffectiveGapReferenceMode());
 }
 
 StandingsGap::Table StandingsHud::buildGapTable(const std::vector<int>& classificationOrder, int displayRaceNum,
-                                                const PluginData& pluginData,
                                                 GapReferenceMode effectiveGapRef) const {
-    const SessionData& sessionData = pluginData.getSessionData();
-
-    bool isRace = pluginData.isRaceSession();
-
-    // Determine gap data source: use live gap in race sessions when enabled
-    bool useLiveGap = isRace && m_liveMode != LiveMode::OFF;
-
-    // Gather the table-wide gap inputs once. Everything the gap decision needs
-    // from PluginData is read HERE; StandingsGap::planGap() (formatDisplayEntries) sees only
-    // these numbers (see standings_gap_plan.h).
-    const StandingsData* playerStanding = pluginData.getStanding(displayRaceNum);
-    // The leader (P1) has gap == 0 legitimately — their zero is valid data, not missing.
-    const bool playerIsLeader = (!classificationOrder.empty() && classificationOrder[0] == displayRaceNum);
-
     // standings_gap_plan.h mirrors these three enums so it can stay free of
     // standings_hud.h (and therefore of BaseHud, PluginData and the game API)
     // while the casts here and below stay one instruction instead of a switch.
@@ -458,32 +381,11 @@ StandingsGap::Table StandingsHud::buildGapTable(const std::vector<int>& classifi
     static_assert(static_cast<uint8_t>(DisplayEntry::GapStyle::COUNT) ==
                   static_cast<uint8_t>(StandingsGap::Style::COUNT), "gap style enum gained a value on one side only");
 
-    StandingsGap::Table gapTable;
-    gapTable.reference = static_cast<StandingsGap::Reference>(effectiveGapRef);
-    gapTable.scope = static_cast<StandingsGap::Scope>(m_gapMode);
-    gapTable.isRace = isRace;
-    gapTable.liveGapsEnabled = useLiveGap;
+    // The inputs are PluginData's, read where every reader of the order reads
+    // them (core/running_order.h); the reference, scope and row are this HUD's.
+    StandingsGap::Table gapTable = RunningOrder::gapTable(classificationOrder, displayRaceNum,
+        static_cast<StandingsGap::Reference>(effectiveGapRef), static_cast<StandingsGap::Scope>(m_gapMode));
     gapTable.playerRowIndex = m_cachedPlayerIndex;
-    gapTable.playerIsLeader = playerIsLeader;
-    gapTable.playerOfficialGap = (playerStanding && playerStanding->gap > 0) ? playerStanding->gap : 0;
-    gapTable.playerGapLaps = playerStanding ? playerStanding->gapLaps : 0;
-    gapTable.playerFinishTime = playerStanding ? playerStanding->finishTime : 0;
-    gapTable.leaderFinishTime = sessionData.leaderFinishTime;
-    // Player needs valid gap data for relative comparisons to be meaningful.
-    gapTable.playerHasGapData = playerStanding &&
-        (playerStanding->bestLap > 0 || playerStanding->gap > 0 ||
-         playerStanding->gapLaps > 0 || playerIsLeader);
-    // The player-relative live gap subtracts the player's realTimeGap as the
-    // reference for every other rider, so it must be a FRESH value. If the player
-    // (spectated/target rider) has dropped out of the current track-position batch
-    // its realTimeGap is stale (a batch often misses one to four riders) —
-    // gate on hasActiveTrackPos exactly as the per-rider live path does, so a
-    // stale reference doesn't skew every rider's gap. The leader is always valid.
-    const bool playerLiveGapUsable = playerStanding &&
-        (pluginData.hasActiveTrackPos(displayRaceNum) || playerIsLeader);
-    gapTable.playerLiveGap = (playerLiveGapUsable && playerStanding->realTimeGap > 0)
-        ? playerStanding->realTimeGap : 0;
-
     return gapTable;
 }
 
@@ -676,13 +578,12 @@ void StandingsHud::addSlideTint(const DisplayEntry& entry, int rowIndex, float r
     // The quad index is cached so rebuildLayout can update its position + alpha
     // each frame without forcing a full data rebuild.
     bool suppressSlideForPlayerRow = (m_bPlayerRowHighlight && rowIndex == m_cachedPlayerIndex);
-    if (m_animationMode == AnimationMode::COLORED && !entry.isPlaceholder && entry.raceNum >= 0
+    if (m_bColoredMoves && !entry.isPlaceholder && entry.raceNum >= 0
             && !suppressSlideForPlayerRow) {
         float slideFade = getSlideFade(entry.raceNum);
         if (slideFade > 0.0f) {
-            auto animIt = m_activeAnimations.find(entry.raceNum);
-            bool promoted = (animIt != m_activeAnimations.end())
-                && (animIt->second.fromSlot > animIt->second.toSlot);
+            const RowSlide::Slide* moving = m_slide.find(entry.raceNum);
+            bool promoted = moving && moving->fromSlot > moving->toSlot;
             unsigned long tintColor = promoted
                 ? this->getColor(ColorSlot::POSITIVE)
                 : this->getColor(ColorSlot::NEGATIVE);

@@ -201,6 +201,44 @@ bool decodeFntAdvances(const uint8_t* d, size_t size, float out[256]) {
     return true;
 }
 
+float measureFntDigitInk(const uint8_t* d, size_t size) {
+    if (size < FNT_TABLE_BYTES + 24 || std::memcmp(d, "FNT\0", 4) != 0) return 0.0f;
+    auto i32 = [&](size_t o) -> int {
+        int32_t v; std::memcpy(&v, &d[o], 4); return v;
+    };
+    const int cellH = i32(FNT_HEIGHT_OFF), aw = i32(FNT_BITMAP_HDR + 4), ah = i32(FNT_BITMAP_HDR + 8);
+    if (cellH <= 0 || aw <= 0 || ah <= 0 || aw > kMaxTexDim || ah > kMaxTexDim || i32(FNT_BITMAP_HDR + 16) != 2) return 0.0f;
+    int lastRow = 0;
+    for (int c = '0'; c <= '9'; ++c) {
+        const size_t o = FNT_TABLE_OFF + size_t(c) * FNT_REC_STRIDE;
+        const int x0 = i32(o + 16), x1 = i32(o + 20), y0 = i32(o + 24), y1 = i32(o + 28);
+        if (i32(o) == 0 || x0 < 0 || x0 >= x1 || x1 > aw || y0 < 0 || y0 >= y1 || y1 > ah) return 0.0f;
+        lastRow = std::max(lastRow, y1);
+    }
+    // The atlas only down to the digits' last row: the shipped fonts keep them
+    // in its top rows, so this inflates a sixth of it, not 4 MB
+    std::vector<uint8_t> rows(size_t(aw) * size_t(lastRow));
+    tinfl_decompressor inflator;
+    tinfl_init(&inflator);
+    size_t inLen = size - (FNT_BITMAP_HDR + 24), outLen = rows.size();
+    const tinfl_status st = tinfl_decompress(&inflator, &d[FNT_BITMAP_HDR + 24], &inLen, rows.data(), rows.data(), &outLen,
+                                             TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
+    if (st < TINFL_STATUS_DONE || outLen < rows.size()) return 0.0f;
+    // Rows where any digit has coverage over half, top to bottom across all ten
+    int top = lastRow, bottom = -1;
+    for (int c = '0'; c <= '9'; ++c) {
+        const size_t o = FNT_TABLE_OFF + size_t(c) * FNT_REC_STRIDE;
+        const int x0 = i32(o + 16), x1 = i32(o + 20), y0 = i32(o + 24), y1 = i32(o + 28);
+        for (int y = y0; y < y1; ++y) {
+            const uint8_t* row = &rows[size_t(y) * size_t(aw)];
+            if (*std::max_element(row + x0, row + x1) <= 127) continue;
+            top = std::min(top, y - y0);
+            bottom = std::max(bottom, y - y0);
+        }
+    }
+    return bottom < top ? 0.0f : static_cast<float>(bottom - top + 1) / static_cast<float>(cellH);
+}
+
 Texture decodeTga(const std::vector<uint8_t>& d) {
     Texture t;
     if (d.size() >= 18) {

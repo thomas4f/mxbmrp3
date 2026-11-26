@@ -35,7 +35,7 @@ PitboardHud::PitboardHud()
     m_strings.reserve(8);  // Up to 7 data elements + optional title
 
     // No setTextureBaseName, and none passed at registration either: the board's
-    // background is the selected PACK's art, resolved through activePack() rather
+    // background is the selected PACK's art, resolved through activeLayout() rather
     // than through BaseHud's texture-variant machinery.
 
     // Set all configurable defaults
@@ -50,7 +50,7 @@ void PitboardHud::setPitboardPack(const std::string& name) {
     setDataDirty();
 }
 
-const PitboardAsset* PitboardHud::activePack() const {
+const PitboardAsset* PitboardHud::activeLayout() const {
     const AssetManager& assets = AssetManager::getInstance();
     // Degrade, do not blank: a name this install has no folder for falls back to
     // the shipped board, and m_pitboardPack is deliberately NOT rewritten -- putting
@@ -60,7 +60,7 @@ const PitboardAsset* PitboardHud::activePack() const {
 }
 
 int PitboardHud::packSprite(PitboardSprite::Part part) const {
-    const PitboardAsset* pack = activePack();
+    const PitboardAsset* pack = activeLayout();
     return pack ? pack->sprites[part] : 0;
 }
 
@@ -240,7 +240,7 @@ void PitboardHud::rebuildRenderData() {
     // Keep BaseHud's background sprite pointing at the active pack - BEFORE the
     // hidden early-out, so the board is known while it is not showing.
     // Assigned only on change: setBackgroundTextureIndex invalidates the theme memo.
-    const PitboardAsset* pack = activePack();
+    const PitboardAsset* pack = activeLayout();
     const int packBackground = pack ? pack->sprites[PitboardSprite::BACKGROUND] : 0;
     if (getBackgroundTextureIndex() != packBackground) setBackgroundTextureIndex(packBackground);
 

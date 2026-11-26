@@ -5,6 +5,7 @@
 #include "media_manager.h"
 #include "media_app_filter.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -26,6 +27,7 @@
 #include <string>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>   // GetSessions() in a range-for
+#include <winrt/Windows.Media.h>                     // MediaPlaybackAutoRepeatMode
 #include <winrt/Windows.Media.Control.h>
 
 #pragma comment(lib, "windowsapp.lib")
@@ -52,19 +54,6 @@ void wideToCp1252(const winrt::hstring& in, char* out, size_t outSize) {
         cps.push_back(c);
     }
     snprintf(out, outSize, "%s", ChatText::codepointsToCp1252(cps).c_str());
-}
-
-// "1:23" / "1:02:03"
-void formatClock(char* out, size_t outSize, int ms) {
-    const int total = ms / 1000;
-    const int h = total / 3600;
-    const int m = (total / 60) % 60;
-    const int s = total % 60;
-    if (h > 0) {
-        snprintf(out, outSize, "%d:%02d:%02d", h, m, s);
-    } else {
-        snprintf(out, outSize, "%d:%02d", m, s);
-    }
 }
 
 // The process name whose audio sessions carry the player's volume: the app id
@@ -130,11 +119,25 @@ bool sameSnapshot(const MediaManager::Snapshot& a, const MediaManager::Snapshot&
         && a.positionMs / 1000 == b.positionMs / 1000
         && a.durationMs == b.durationMs
         && a.volume == b.volume
+        && a.shuffle == b.shuffle && a.loop == b.loop
+        && a.canSeek == b.canSeek && a.canShuffle == b.canShuffle && a.canLoop == b.canLoop
         && strcmp(a.title, b.title) == 0
         && strcmp(a.artist, b.artist) == 0;
 }
 
 }  // namespace
+
+void MediaManager::formatClock(char* out, size_t outSize, int ms) {
+    const int total = std::max(ms, 0) / 1000;
+    const int h = total / 3600;
+    const int m = (total / 60) % 60;
+    const int s = total % 60;
+    if (h > 0) {
+        snprintf(out, outSize, "%d:%02d:%02d", h, m, s);
+    } else {
+        snprintf(out, outSize, "%d:%02d", m, s);
+    }
+}
 
 MediaManager& MediaManager::getInstance() {
     static MediaManager instance;
@@ -203,6 +206,11 @@ void MediaManager::setVolume(int percent) {
     m_cv.notify_all();
 }
 
+void MediaManager::seekTo(int positionMs) {
+    m_pendingSeekMs.store(positionMs < 0 ? 0 : positionMs);
+    m_cv.notify_all();
+}
+
 void MediaManager::setAppFilter(const char* filter) {
     MutexLock lock(m_mutex);
     snprintf(m_appFilter, sizeof(m_appFilter), "%s", filter ? filter : "");
@@ -259,6 +267,7 @@ void MediaManager::workerLoop() {
         GlobalSystemMediaTransportControlsSessionManager manager{ nullptr };
         State lastLogged = State::OFF;
         bool errorLogged = false;   // one log line per failure streak, not one a second
+        int lastAllowed = -1;       // the player's seek/shuffle/loop answer, logged when it changes
         winrt::hstring lastCurrent; // Windows' current player's app id, logged when it changes
         winrt::hstring lastSource;  // the followed player's app id
         std::wstring audioExe;      // the process its volume lives on (audioExeFor)
@@ -267,11 +276,13 @@ void MediaManager::workerLoop() {
 
         while (!m_workerStop.load()) {
             const bool pollDue = m_pendingCommand.load() != static_cast<int>(Command::NONE)
+                || m_pendingSeekMs.load() >= 0
                 || std::chrono::steady_clock::now() - lastPoll >= std::chrono::milliseconds(POLL_INTERVAL_MS);
             if (!m_enabled.load()) {
                 manager = nullptr;
                 m_pendingCommand.store(static_cast<int>(Command::NONE));
                 m_pendingVolume.store(-1);
+                m_pendingSeekMs.store(-1);
                 lastPoll = std::chrono::steady_clock::now();
             } else if (!pollDue) {
                 // Woken for a volume change only (a drag sends many): apply the
@@ -339,6 +350,29 @@ void MediaManager::workerLoop() {
                             finished(session.TryTogglePlayPauseAsync());
                         } else if (command == Command::NEXT) {
                             finished(session.TrySkipNextAsync());
+                        } else if (command == Command::TOGGLE_SHUFFLE || command == Command::CYCLE_LOOP) {
+                            // Both step from the player's own reading, not the card's.
+                            const auto info = session.GetPlaybackInfo();
+                            if (info && command == Command::TOGGLE_SHUFFLE) {
+                                const auto active = info.IsShuffleActive();
+                                finished(session.TryChangeShuffleActiveAsync(!(active && active.Value())));
+                            } else if (info) {
+                                using winrt::Windows::Media::MediaPlaybackAutoRepeatMode;
+                                const auto mode = info.AutoRepeatMode();
+                                const auto now = mode ? mode.Value() : MediaPlaybackAutoRepeatMode::None;
+                                finished(session.TryChangeAutoRepeatModeAsync(
+                                    now == MediaPlaybackAutoRepeatMode::None ? MediaPlaybackAutoRepeatMode::List
+                                    : now == MediaPlaybackAutoRepeatMode::List ? MediaPlaybackAutoRepeatMode::Track
+                                    : MediaPlaybackAutoRepeatMode::None));
+                            }
+                        }
+                        const int seekMs = m_pendingSeekMs.exchange(-1);
+                        if (seekMs >= 0) {
+                            // In the timeline's own ticks (100 ns), from its start.
+                            const auto seekTimeline = session.GetTimelineProperties();
+                            const auto start = seekTimeline ? seekTimeline.StartTime() : winrt::Windows::Foundation::TimeSpan{};
+                            finished(session.TryChangePlaybackPositionAsync(
+                                (start + std::chrono::milliseconds(seekMs)).count()));
                         }
 
                         auto propsOp = session.TryGetMediaPropertiesAsync();
@@ -358,6 +392,27 @@ void MediaManager::workerLoop() {
                         const bool playing = playback && playback.PlaybackStatus()
                             == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
                         next.state = playing ? State::PLAYING : State::PAUSED;
+                        if (playback) {
+                            const auto controls = playback.Controls();
+                            if (controls) {
+                                next.canSeek = controls.IsPlaybackPositionEnabled();
+                                next.canShuffle = controls.IsShuffleEnabled();
+                                next.canLoop = controls.IsRepeatEnabled();
+                            }
+                            const auto shuffle = playback.IsShuffleActive();
+                            next.shuffle = shuffle && shuffle.Value();
+                            using winrt::Windows::Media::MediaPlaybackAutoRepeatMode;
+                            const auto loop = playback.AutoRepeatMode();
+                            const auto loopMode = loop ? loop.Value() : MediaPlaybackAutoRepeatMode::None;
+                            next.loop = loopMode == MediaPlaybackAutoRepeatMode::Track ? Loop::TRACK
+                                      : loopMode == MediaPlaybackAutoRepeatMode::List ? Loop::LIST : Loop::OFF;
+                        }
+                        const int allowed = (next.canSeek ? 1 : 0) | (next.canShuffle ? 2 : 0) | (next.canLoop ? 4 : 0);
+                        if (allowed != lastAllowed) {
+                            lastAllowed = allowed;
+                            DEBUG_INFO_F("MediaManager: player takes seek %d, shuffle %d, loop %d",
+                                         next.canSeek ? 1 : 0, next.canShuffle ? 1 : 0, next.canLoop ? 1 : 0);
+                        }
 
                         // Players update the timeline only now and then (Spotify on
                         // a seek or a track change), so carry the position forward
@@ -379,14 +434,15 @@ void MediaManager::workerLoop() {
                                 std::chrono::duration_cast<std::chrono::milliseconds>(pos).count());
                             if (next.durationMs > 0) {
                                 char p[12], d[12];
-                                formatClock(p, sizeof(p), next.positionMs);
-                                formatClock(d, sizeof(d), next.durationMs);
+                                MediaManager::formatClock(p, sizeof(p), next.positionMs);
+                                MediaManager::formatClock(d, sizeof(d), next.durationMs);
                                 snprintf(next.time, sizeof(next.time), "%s / %s", p, d);
                             }
                         }
                     } else {
                         // Nothing to send a command to; don't fire it at the next player.
                         m_pendingCommand.store(static_cast<int>(Command::NONE));
+                        m_pendingSeekMs.store(-1);
                     }
                     errorLogged = false;
                 } catch (const winrt::hresult_error& e) {
@@ -397,6 +453,7 @@ void MediaManager::workerLoop() {
                     }
                     manager = nullptr;
                     m_pendingCommand.store(static_cast<int>(Command::NONE));
+                    m_pendingSeekMs.store(-1);
                 }
                 if (m_enabled.load()) {
                     last = next;
@@ -415,6 +472,7 @@ void MediaManager::workerLoop() {
             while (!m_workerStop.load()
                    && m_pendingCommand.load() == static_cast<int>(Command::NONE)
                    && m_pendingVolume.load() < 0
+                   && m_pendingSeekMs.load() < 0
                    && m_cv.wait_until(lk.native(), deadline) != std::cv_status::timeout) {
             }
         }

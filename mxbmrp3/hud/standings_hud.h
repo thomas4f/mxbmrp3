@@ -7,6 +7,7 @@
 #include "base_hud.h"
 #include "plate_geometry.h"
 #include "../core/plugin_data.h"
+#include "../core/ui_config.h"
 #include "../core/flat_int_map.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
@@ -14,14 +15,14 @@
 #include "split_crossing.h"
 #include "hold_timer.h"
 #include "freeze_duration.h"
-#include "standings_live_order.h"
+#include "row_slide.h"
 #include <vector>
 #include <unordered_map>
 #include <chrono>
 
 // standings_gap_plan.h is kept out of this header (see the enum mirror note in
 // standings_hud_build.cpp); the build helpers only need the names.
-namespace StandingsGap { struct Table; struct Plan; }
+namespace StandingsGap { struct Table; struct Plan; struct Row; }
 
 class StandingsHud : public BaseHud {
 public:
@@ -41,23 +42,6 @@ public:
     // (Alternating resolved), Gap mode and Live updates (races only). The Dash's
     // Standings page plans its rows with it.
     StandingsGap::Table gapTableFor(const std::vector<int>& classificationOrder, int displayRaceNum) const;
-    // The running order this HUD's rows, the Position widget and the Dash's
-    // Standings page show: the official classification, or with Live updates
-    // on Both in a race the live one (standings_live_order.h). Re-read at most
-    // every LIVE_ORDER_POLL_MS, and whenever the official order moves; the
-    // first reader in a frame pays, the rest get the cached answer.
-    const std::vector<int>& runningOrder();
-    // Whether runningOrder() can differ from the official order: Both, or the
-    // live order not yet handed back.
-    bool watchesRunningOrder() const { return m_liveMode == LiveMode::BOTH || m_liveOrderActive; }
-    // Advances whenever runningOrder() answers differently, polling it first
-    // only while watched: else two member reads, cheap enough for a reader to
-    // compare every frame. Compare it rather than watchesRunningOrder(), as the
-    // first reader to poll after Both is left hands the official order back.
-    uint32_t runningOrderRevision() {
-        if (watchesRunningOrder()) runningOrder();
-        return m_runningOrderRevision;
-    }
     // The race-number plate's colour before PlateLayout::kPlateAlpha, one rule for
     // this HUD and the Dash's Standings page: muted for a rider out of the race
     // (DNS/DSQ/retired), else a tracked rider's own colour (a red points-leader
@@ -126,23 +110,6 @@ public:
         OFF = 0,     // No rider name column
         SHORT = 1,   // 3-character abbreviated name (default)
         LONG = 2     // Full name (width determined by longest name in list)
-    };
-
-    // Position-change animation mode
-    enum class AnimationMode : uint8_t {
-        OFF = 0,      // No animation, rows snap into place
-        BASIC = 1,    // Slide rows when their race position changes
-        COLORED = 2   // Slide + tint rows positive/negative during the animation
-    };
-
-    // Live updates in races, between the game's own updates at the splits.
-    // No order without gaps: a live order with official gaps would put a
-    // rider's gap out of step with the row they sit on.
-    enum class LiveMode : uint8_t {
-        OFF = 0,   // Gaps and order update at the splits only
-        GAPS = 1,  // Live gaps
-        BOTH = 2,  // Live gaps and live order (standings_live_order.h)
-        COUNT
     };
 
     // Positions gained/lost reference (what the +/- delta is measured against).
@@ -376,7 +343,7 @@ private:
     void formatDisplayEntries(const std::vector<int>& classificationOrder, int displayRaceNum,
                               const PluginData& pluginData);
     StandingsGap::Table buildGapTable(const std::vector<int>& classificationOrder, int displayRaceNum,
-                                      const PluginData& pluginData, GapReferenceMode effectiveGapRef) const;
+                                      GapReferenceMode effectiveGapRef) const;
     void formatEntryGap(DisplayEntry& entry, const StandingsGap::Plan& gapPlan,
                         GapReferenceMode effectiveGapRef) const;
     void formatEntryLapColumns(DisplayEntry& entry, size_t entryIdx) const;
@@ -559,54 +526,24 @@ private:
     bool m_bClassicLayout = false;  // Classic layout: no number plates, no brand strip, primary-colored race numbers
     bool m_bShowHeaders = false;     // Show a column-header row labeling each enabled column above the rider rows
     bool m_bShowSessionInfo = true;  // Show a session-info row ("<session>: <clock / leader lap / overtime>") below the title
-    LiveMode m_liveMode = LiveMode::OFF;  // Live gaps / order in races (per-profile; INI liveGaps 0/1/2)
     NameMode m_nameMode = NameMode::SHORT;  // Rider name display mode (Off/Short/Long)
     int m_shortNameChars = DEFAULT_SHORT_NAME_CHARS;  // INI-only: visible chars in SHORT name mode (1-31, default 3)
     int m_longNameChars = DEFAULT_LONG_NAME_CHARS;  // INI-only: static visible chars in LONG name mode (4-24, default 16)
 
-    // Live order (LiveMode::BOTH), behind runningOrder(). Kept whether or not
-    // this HUD shows, as the Position widget and the Dash read it too; when no
-    // reader has asked for LIVE_ORDER_IDLE_MS it starts over, as a pass held
-    // across a gap nobody watched proves nothing.
-    static constexpr int LIVE_ORDER_POLL_MS = 100;
-    static constexpr int LIVE_ORDER_IDLE_MS = 1000;
-    StandingsLiveOrder::Tracker m_liveOrder;
-    std::vector<StandingsLiveOrder::Rider> m_liveOrderRiders;
-    std::vector<int> m_liveOrderRows;    // the live answer
-    std::vector<int> m_liveOrderNext;    // scratch, swapped with m_liveOrderRows
-    std::vector<int> m_liveOrderInput;   // the official order it was read from
-    bool m_liveOrderActive = false;      // runningOrder() answers m_liveOrderRows
-    uint32_t m_runningOrderRevision = 0;
-    uint32_t m_builtOrderRevision = 0;   // the revision the last rebuild drew
-    std::chrono::steady_clock::time_point m_liveOrderTime{};
+    uint32_t m_builtOrderRevision = 0;   // the running order's revision the last rebuild drew
 
     // ========================================================================
     // Position Animation
     // ========================================================================
     // Tracks previous row slot indices by raceNum so we can animate Y transitions
     // when riders change positions in the standings.
-    AnimationMode m_animationMode = AnimationMode::BASIC;  // Off / Basic / Colored
+    // Rows slide while Motion is on (Appearance); this tints a sliding row
+    // green or red for the place it gained or lost.
+    bool m_bColoredMoves = false;
 
-    // Per-rider animation state: maps raceNum -> animation data
-    struct RowAnimation {
-        int fromSlot;       // Previous row slot index
-        int toSlot;         // Target row slot index
-        std::chrono::steady_clock::time_point startTime;
-    };
-    std::unordered_map<int, RowAnimation> m_activeAnimations;  // raceNum -> active animation
-    FlatIntMap<int> m_previousPositions;                        // raceNum -> last known race position
-    FlatIntMap<int> m_previousSlots;                            // raceNum -> last known display slot (visibility check)
-    FlatIntMap<int> m_scratchPositions;                         // reused scratch for updateAnimationState (avoids per-rebuild map alloc)
-    FlatIntMap<int> m_scratchSlots;                             //   "  (clear()+swap() keeps the buffers across rebuilds)
+    RowSlide m_slide;  // the rows sliding to a new place (row_slide.h)
     std::chrono::steady_clock::time_point m_frameTime = std::chrono::steady_clock::now();
-
-    float m_animationDurationMs = 500.0f;  // Duration of position slide animation (configurable 50-1000)
-
-    // Ease-out cubic: fast start, smooth deceleration
-    static float easeOutCubic(float t) {
-        float inv = 1.0f - t;
-        return 1.0f - (inv * inv * inv);
-    }
+    int64_t m_slideNowUs = 0;   // this frame on the Motion clock, for m_slide
 
     // Returns the animated Y offset for a given row (0.0 if no animation active)
     // The offset is in units of lineHeightNormal (e.g., -2.0 means 2 rows up)
@@ -617,7 +554,8 @@ private:
     // highlight cross-fades against it (1.0 - fade) so the row stays visually solid.
     float getSlideFade(int raceNum) const;
 
-    // Start animations for any riders whose position changed, update m_previousPositions
+    // Hands this rebuild's rows to m_slide, starting a slide for every rider
+    // whose position changed
     void updateAnimationState();
 
     // Returns true if any animations are still in progress

@@ -59,6 +59,7 @@ sys.path.insert(0, HERE)
 import analytics_page as page  # noqa: E402
 import analytics_rollup as rollup  # noqa: E402
 import analytics_svg as svg  # noqa: E402
+from gen_known_crashes import anchor as crash_anchor  # noqa: E402
 
 REPO_ROOT = os.path.dirname(HERE)
 KNOWN_CRASHES = os.path.join(REPO_ROOT, "crash_analysis", "known_game_crashes.json")
@@ -96,6 +97,7 @@ FEATURE_LABELS = {
     "feat_autoswitch": "Profile auto-switch",
     "feat_updates": "Update checker",
     "feat_widgets": "Widgets (master)",
+    "feat_decks": "Decks (master)",
     "feat_companion": "Companion window",
     "feat_thread": "Worker thread",
     # The two renderer flags are easy to confuse and are NOT the same window:
@@ -215,8 +217,8 @@ def icon_geometry(name):
 
 
 def _pretty_key(key):
-    """hud_lap_log -> 'Lap Log' ; widget_g_force -> 'G-Force' ; hud_fmx -> 'FMX'."""
-    for pre in ("hud_", "widget_", "feat_"):
+    """hud_lap_log -> 'Lap Log' ; widget_g_force -> 'G-Force' ; deck_speed -> 'Speed'."""
+    for pre in ("hud_", "widget_", "deck_", "feat_"):
         if key.startswith(pre):
             key = key[len(pre):]
             break
@@ -374,7 +376,7 @@ def latest_per_install(started):
 
 
 # Numeric summary keys that share a flag prefix but are NOT 0/1 adoption flags.
-_NOT_FLAGS = {"hud_count", "widget_count", "ach_pct", "ach_unlocked"}
+_NOT_FLAGS = {"hud_count", "widget_count", "deck_count", "ach_pct", "ach_unlocked"}
 
 # Flags that ARE 0/1 flags but say nothing as adoption: charted, each reads ~100%
 # for a reason that is not anybody's choice. Named under their chart instead, with
@@ -698,6 +700,38 @@ def load_downloads(out_dir):
     dates = [rel["published"] for rel in rels if rel.get("published")]
     return {"lines": lines, "total": sum(int(rel["downloads"]) for rel in rels),
             "releases": len(rels), "since": min(dates) if dates else None}
+
+
+def release_marks(out_dir, days):
+    """The stable releases on a day axis, as svg.lines() marks: [(index, tag)].
+
+    STABLE ONLY: a pre-release reaches the few installs on that channel (22 of
+    ~21,000 in Nov 2026), so it moves no chart and would only crowd the ones that
+    do. A downloads.json written before `prerelease` was recorded counts every
+    release as stable, the same as it read before.
+
+    ONE PER DAY, the newest: two releases on one day (1.27.3 then 1.27.4, a fix
+    out within hours) are one event on a daily axis, and the later tag is the one
+    players got. A trailing ".0" of a four-part tag is dropped ("1.26.0.0" ->
+    "1.26.0") so every label reads the same way."""
+    path = os.path.join(out_dir, "downloads.json")
+    if not os.path.exists(path):
+        return []
+    idx = {d: i for i, d in enumerate(days)}
+    per_day = {}
+    for rel in json.load(open(path, encoding="utf-8"))["releases"]:
+        if rel.get("prerelease") or not rel.get("published"):
+            continue
+        i = idx.get(date.fromisoformat(rel["published"]))
+        if i is None:
+            continue
+        tag = rel["tag"].lstrip("v")
+        if tag.count(".") == 3 and tag.endswith(".0"):
+            tag = tag[:-2]
+        key = tuple(int(x) for x in re.findall(r"\d+", tag))
+        if i not in per_day or key > per_day[i][0]:
+            per_day[i] = (key, tag)
+    return [(i, per_day[i][1]) for i in sorted(per_day)]
 
 
 def load_downloads_history(out_dir):
@@ -1377,7 +1411,8 @@ def _activity(r, df, started, sessions, axis):
                           [("Returning", returning, svg.PALETTE[1]), ("New (first day seen)", fresh, svg.PALETTE[0])],
                           subtitle="distinct installs launching per day, split by whether it was their first "
                                    "day; a day after a gap carries the gap's backlog of first days",
-                          gaps=gap_bands, end_room=ACTIVITY_END_ROOM),
+                          gaps=gap_bands, end_room=ACTIVITY_END_ROOM,
+                          marks=release_marks(r.out, days)),
                 "Active installs, new versus returning")
         r.w("> The first weeks are existing users upgrading, not new ones; averages use the "
             "last {} full days.".format(len(recent)), "")
@@ -1427,7 +1462,8 @@ def _activity(r, df, started, sessions, axis):
                 svg.lines("Downloads per day", xlabels,
                           [("GitHub releases", per_day, svg.PALETTE[0])],
                           subtitle="installer and zip downloads from GitHub each day, updates included",
-                          gaps=dl_gaps, end_room=ACTIVITY_END_ROOM),
+                          gaps=dl_gaps, end_room=ACTIVITY_END_ROOM,
+                          marks=release_marks(r.out, days)),
                 "Downloads per day")
 
     # HOW HARD each of them leant on it, OVER TIME. This slot used to hold daily
@@ -1669,7 +1705,7 @@ def _versions(r, snap, started, axis, downloads=None):
                     svg.lines("Version migration", axis["labels"], series,
                               subtitle="share of each day's active installs, by plugin version",
                               value_fmt=lambda v: "{:.0f}%".format(v), gaps=axis["bands"],
-                              annotate="legend"),
+                              annotate="legend", marks=release_marks(r.out, days)),
                     "Version migration over time")
 
 
@@ -2002,6 +2038,9 @@ def _features(r, snap, started=None):
            lambda k: FEATURE_LABELS.get(k, _pretty_key(k)))
     render("HUD adoption (hud_*)", "hud_", "huds.svg", _pretty_key)
     render("Widget adoption (widget_*)", "widget_", "widgets.svg", _pretty_key)
+    # 2.33.0 (1.36): the decks. Earlier builds never send a deck_ key, so they
+    # stay out of each deck's denominator (flag_adoption counts reporters only).
+    render("Deck adoption (deck_*)", "deck_", "decks.svg", _pretty_key)
 
 
 
@@ -2145,8 +2184,9 @@ def _crashes(r, started, sessions, crashes):
         r.w("|---|--:|:--:|")
         for cid, cnt in sorted(by_known.items(), key=lambda x: (-x[1], x[0])):
             k = kmeta[cid]
-            wk = "[✔]({})".format(KGC) if k.get("workaround") else "-"
-            r.w("| [{}]({}) | {} | {} |".format(k["name"], KGC, pc(cnt, len(cr)), wk))
+            sec = "{}#{}".format(KGC, crash_anchor(k["name"]))
+            wk = "[✔]({})".format(sec) if k.get("workaround") else "-"
+            r.w("| [{}]({}) | {} | {} |".format(k["name"], sec, pc(cnt, len(cr)), wk))
         r.w("")
         r.w("*✔ = a documented workaround.*", "")
 
@@ -2264,6 +2304,8 @@ def selftest():
     # One real install, two DIFFERENT rotating user_ids on two days -> must count as 1 install.
     flags = {"feat_overlay": 1, "feat_rumble": 0, "hud_map": 1, "hud_standings": 0,
              "widget_speed": 1, "hud_count": 5, "widget_count": 3, "launch_count": 2,
+             # 2.33.0: a deck flag each, and their count
+             "deck_speed": 1, "deck_fuel": 0, "deck_count": 1,
              "steam_runtime": 1, "install_age_days": 0,
              # 2.20.0 / 2.21.0: the two totals and two earned rows by id
              # deja_vu is Group::Hidden: earned here, named ONLY under the spoiler fold.
@@ -2384,9 +2426,22 @@ def selftest():
     fa = dict((k, (en, rep)) for k, en, rep in flag_adoption(snap, "hud_"))
     assert "hud_count" not in fa, "hud_count must not be treated as an adoption flag"
     assert fa["hud_map"] == (1, 1), "hud_map: 1 enabled of 1 reporting (install-2 excluded)"
+    da = dict((k, (en, rep)) for k, en, rep in flag_adoption(snap, "deck_"))
+    assert "deck_count" not in da, "deck_count must not be treated as an adoption flag"
+    assert da["deck_speed"] == (1, 1), "deck_speed: 1 enabled of 1 reporting (install-2 excluded)"
 
     _, lookup = load_known_crashes()
     assert match_known("mxbikes.exe+0x1f1923", "0x6A21833D", lookup), "known-crash join failed"
+    # The report links each crash to its own section of the crash page, so every
+    # catalogued name's anchor must land on a heading that page actually has.
+    assert crash_anchor("Session-teardown crash via input/message pump (stale pointer)") == \
+        "session-teardown-crash-via-inputmessage-pump-stale-pointer", "GitHub anchor rule drifted"
+    with open(os.path.join(REPO_ROOT, "crash_analysis", "KNOWN_GAME_CRASHES.md"),
+              encoding="utf-8") as f:
+        _heads = {crash_anchor(ln[4:].strip()) for ln in f if ln.startswith("### ")}
+    _missing = [c["name"] for c in {id(c): c for c in lookup.values()}.values()
+                if crash_anchor(c["name"]) not in _heads]
+    assert not _missing, "crash page has no section for: {}".format(_missing)
     assert match_known("mxbikes.exe+0x1f1923", "0xDEADBEEF", lookup) is None, \
         "offset must not match a different build"
     # The build-hash join must be case-insensitive (plugin emits uppercase today).
@@ -3082,6 +3137,48 @@ def selftest():
     rollup.write(roll_dir, seed, seed_snap)
     assert open(os.path.join(roll_dir, "installs.csv.gz"), "rb").read() == before, \
         "rewriting unchanged rollup data must be byte-identical"
+
+    # ---- Release markers ------------------------------------------------------
+    # Stable only, one per day (the newer tag), ".0" of a four-part tag dropped,
+    # outside the axis skipped.
+    _rm = tempfile.mkdtemp(prefix="analytics_marks_")
+    with open(os.path.join(_rm, "downloads.json"), "w") as f:
+        json.dump({"repo": "x", "releases": [
+            {"tag": "v1.27.3", "published": "2026-07-12", "prerelease": False, "downloads": 1},
+            {"tag": "v1.27.4", "published": "2026-07-12", "prerelease": False, "downloads": 1},
+            {"tag": "v1.26.0.0", "published": "2026-07-11", "downloads": 1},
+            {"tag": "v1.27.6", "published": "2026-07-13", "prerelease": True, "downloads": 1},
+            {"tag": "v1.27.7", "published": "2026-07-20", "prerelease": False, "downloads": 1}]}, f)
+    _days = [date(2026, 7, 11) + timedelta(days=k) for k in range(3)]
+    assert release_marks(_rm, _days) == [(0, "1.26.0"), (1, "1.27.4")], \
+        "release markers: stable only, one per day, inside the axis"
+    _mk = svg.lines("t", ["a", "b", "c"], [("s", [1, 2, 3], "#000")],
+                    marks=[(0, "1.26.0"), (1, "1.27.4"), (7, "off")])
+    assert _mk.count('class="mark"') == 2 and ">1.27.4<" in _mk and ">off<" not in _mk, \
+        "lines() must draw each in-range mark once and skip one off the axis"
+    # The chips sit in a strip ABOVE the plot, an overlapping one steps up a row,
+    # one with room stays on the bottom row, and none runs past the plot's sides.
+    _mk2 = svg.lines("t", [str(k) for k in range(100)], [("s", [10] * 100, "#000")],
+                     marks=[(49, "1.27.4"), (50, "1.27.5"), (99, "1.35.0")])
+    def _chip(t):
+        return tuple(map(float, re.search(
+            r'<rect x="([\d.]+)" y="([\d.]+)" width="(\d+)"[^>]*class="markbg"/><text[^>]*>' + re.escape(t) + "<",
+            _mk2).groups()))
+    (_x4, _y4, _w4), (_x5, _y5, _w5), (_xl, _yl, _wl) = _chip("1.27.4"), _chip("1.27.5"), _chip("1.35.0")
+    _top = json.loads(html_unescape(re.search(r"data-chart='([^']*)'", _mk2).group(1)))["top"]
+    assert _y4 + 13 <= _top, "release chips must sit above the plot, not on the data"
+    assert _y5 + 13 <= _y4, "an overlapping release chip must step up a row"
+    assert _yl == _y4, "a chip with room must stay on the bottom row"
+    _leg = max(float(v) for v in re.findall(r'<text x="[\d.]+" y="([\d.]+)" class="lbl">', _mk2))
+    assert _y5 > _leg + 2, "the release strip must have room of its own below the legend"
+    _right = max(float(v) for v in re.findall(r'<line x1="[\d.]+" y1="[\d.]+" x2="([\d.]+)"[^>]*class="grid"', _mk2))
+    assert _xl + _wl <= _right, "a release chip must stay within the plot's width"
+    # The strip grows the canvas, like the legend, so the plot keeps its height.
+    _plain = svg.lines("t", [str(k) for k in range(100)], [("s", [10] * 100, "#000")])
+    def _ph(svg_text):
+        d = json.loads(html_unescape(re.search(r"data-chart='([^']*)'", svg_text).group(1)))
+        return d["bottom"] - d["top"], float(re.search(r'height="([\d.]+)"', svg_text).group(1)) - d["bottom"]
+    assert _ph(_mk2) == _ph(_plain), "the release strip must grow the canvas, not squeeze or clip the plot"
 
     # ---- Version headline -----------------------------------------------------
     # Lines walk by VERSION: 1.10 is newer than 1.9, and a share-ordered walk

@@ -14,6 +14,9 @@
 //      what it is (a copy loaded under an OBS capture hook's name).
 //   5. With the game's GL context current (Xvfb, as gl_render_test), the first
 //      frame names the GPU, the GL version and the viewport, read from it.
+//   6. The game's build stamp in the log is the one in the .exe FILE the
+//      process started from (diagnostics/host_build_stamp.h: the plugin reads
+//      nothing of the game's memory, its image headers included).
 //
 // WHY. A player's graphics report (ghost images pinned to the screen) could not
 // be told apart from a shader injector or an overlay, because the log named
@@ -27,6 +30,8 @@
 
 #include <windows.h>
 
+#include <cstdio>
+#include <cstring>
 #include <sstream>
 #include <string>
 
@@ -135,4 +140,38 @@ TEST_CASE("environment report: the GPU is read from the game's GL context at the
     CHECK(log.find("Compatibility mode: none") != std::string::npos);
     CHECK(log.find("Game viewport: ") != std::string::npos);
     CHECK(log.find("Game viewport: 0x0") == std::string::npos);
+}
+
+TEST_CASE("environment report: the game's build is read from its .exe on disk") {
+    // The expected value, read here independently of the plugin: the PE
+    // TimeDateStamp of the host .exe file.
+    char exe[MAX_PATH] = { 0 };
+    REQUIRE(GetModuleFileNameA(nullptr, exe, MAX_PATH) > 0);
+    const std::string image = ini::readFile(exe);
+    REQUIRE(image.size() > 0x40);
+    unsigned long lfanew = 0;
+    memcpy(&lfanew, image.data() + 0x3C, 4);
+    REQUIRE(image.size() > lfanew + 12);
+    REQUIRE(image.compare(lfanew, 4, std::string("PE\0\0", 4)) == 0);
+    unsigned long stamp = 0;
+    memcpy(&stamp, image.data() + lfanew + 8, 4);   // signature, Machine, NumberOfSections
+    REQUIRE(stamp != 0);
+    char want[32];
+    snprintf(want, sizeof(want), "TimeDateStamp=0x%08lX", stamp);
+
+    const std::string save = "Z:\\tmp\\mxbmrp3-tests\\envreport_build\\";
+    CreateDirectoryA("Z:\\tmp\\mxbmrp3-tests", nullptr);
+    CreateDirectoryA(save.c_str(), nullptr);
+    DeleteFileA((save + "mxbmrp3\\mxbmrp3_log.txt").c_str());
+    {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        host.startup(save.c_str());
+        host.shutdown();
+    }
+    const std::string log = ini::readFile(save + "mxbmrp3\\mxbmrp3_log.txt");
+    REQUIRE_FALSE(log.empty());
+    INFO(want);
+    CHECK(count(log, "Host build: ") == 1);
+    CHECK(log.find(want) != std::string::npos);
 }

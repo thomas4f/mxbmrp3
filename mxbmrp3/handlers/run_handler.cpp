@@ -10,7 +10,6 @@
 #include "../core/hud_manager.h"
 #include "../core/stats_manager.h"
 #include "../core/settings_manager.h"
-#include "../hud/fuel_widget.h"
 #include "../hud/benchmark_widget.h"
 #include "../diagnostics/logger.h"
 
@@ -33,7 +32,7 @@ void Handlers::handleRunInit(Unified::SessionData* psSessionData) {
     }
 
     // Reset fuel tracking when entering track (rider may have refueled in pits)
-    HudManager::getInstance().getFuelWidget().resetFuelTracking();
+    PluginData::getInstance().resetFuelTracking();
 
     // The player is leaving the pits, so the lap that was in progress is dead:
     // drop the live timer's anchor NOW. The classification's pit flag (1 -> 0)
@@ -64,7 +63,7 @@ void Handlers::handleRunStart() {
     StatsManager::getInstance().notifyResume();
 
     // Reset fuel tracking for new run
-    HudManager::getInstance().getFuelWidget().resetFuelTracking();
+    PluginData::getInstance().resetFuelTracking();
 
     // Refresh window information at run start to detect any resolution changes
     // that might have happened while in menus

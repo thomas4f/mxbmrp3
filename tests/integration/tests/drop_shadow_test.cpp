@@ -316,7 +316,14 @@ TEST_CASE("drop shadow: the Dash's page icons take one, like a title icon") {
 
     const int off = quadsWithShadow(host, false);
     const int on = quadsWithShadow(host, true);
-    const int icons = static_cast<int>(host.hudQuadRects("dash_hud").size()) - host.dashFirstIcon();
+    // The icons the game draws: one crossing the strip's end is in the arrays at
+    // alpha 0 there (ours alone, cut at the strip -- hud/clip_marks.h), and an
+    // icon not drawn casts no shadow.
+    const int first = host.dashFirstIcon();
+    const int all = static_cast<int>(host.hudQuadRects("dash_hud").size()) - first;
+    int icons = 0;
+    for (int i = 0; i < all; ++i)
+        if ((host.quadColor("dash_hud", first + i) >> 24) != 0u) ++icons;
     REQUIRE_MESSAGE(icons > 0, "the Dash drew no strip icons - nothing is being tested");
     CHECK_MESSAGE(on - off == icons,
                   "drop shadow added " << (on - off) << " quads for " << icons

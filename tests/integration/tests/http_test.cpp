@@ -7,7 +7,9 @@
 //
 // The plugin-LOGIC tests deliberately bypass this and read snapshot() directly
 // (no server, no gating) — see TESTING.md. This test owns the server/socket
-// coverage so that split doesn't leave the serving path untested.
+// coverage so that split doesn't leave the serving path untested. It also
+// pins that the server sends no CORS header and refuses a Host that is not
+// localhost or an IP address, or an Origin other than its own.
 // Self-contained doctest; see run_tests.sh.
 // ============================================================================
 #include "doctest.h"
@@ -118,6 +120,54 @@ TEST_CASE("http: the server serves /api/state and it matches the direct snapshot
     const std::string bytesRange = host.rawGetFull("/index.html", "Range: bytes=0-4\r\n");
     CHECK(bytesRange.rfind("HTTP/1.1 206", 0) == 0);
     CHECK(bytesRange.find("mount-marker") == std::string::npos);
+
+    // No CORS header: only a page this server served (same origin) reads
+    // the answers.
+    CHECK(rootFull.find("Access-Control-Allow-Origin") == std::string::npos);
+
+    // The Host check (isAllowedHost): a name that is not localhost or an IP is
+    // refused before anything is served. OBS, a local browser and a LAN
+    // client typing the IP all pass.
+    auto withHost = [&host](const char* hostHeader) {
+        char req[256];
+        const int n = snprintf(req, sizeof(req),
+                               "GET /api/state HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n",
+                               hostHeader);
+        const uintptr_t s = host.rawConnectSend(req, n);
+        if (!PluginHost::rawValid(s)) return std::string();
+        const std::string resp = host.sseRead(s, nullptr, 3000);
+        host.rawClose(s);
+        return resp.substr(0, resp.find("\r\n"));
+    };
+    for (const char* ok : { "localhost:8080", "LOCALHOST", "127.0.0.1:8080", "192.168.1.5:8080",
+                            "[::1]:8080" }) {
+        INFO("Host: " << ok);
+        CHECK(withHost(ok).find(" 200") != std::string::npos);
+    }
+    for (const char* bad : { "evil.example:8080", "evil.example", "127.0.0.1.evil.example",
+                             "localhost.evil.example", "256.1.1.1", "1.2.3", "localhost:80a" }) {
+        INFO("Host: " << bad);
+        CHECK(withHost(bad).find(" 403") != std::string::npos);
+    }
+
+    // The Origin check (isSameOrigin): only the overlay's own origin passes.
+    auto withOrigin = [&host](const char* origin) {
+        char req[256];
+        const int n = snprintf(req, sizeof(req),
+                               "GET /api/state HTTP/1.0\r\nHost: localhost:8080\r\nOrigin: %s\r\n"
+                               "Connection: close\r\n\r\n", origin);
+        const uintptr_t s = host.rawConnectSend(req, n);
+        if (!PluginHost::rawValid(s)) return std::string();
+        const std::string resp = host.sseRead(s, nullptr, 3000);
+        host.rawClose(s);
+        return resp.substr(0, resp.find("\r\n"));
+    };
+    CHECK(withOrigin("http://localhost:8080").find(" 200") != std::string::npos);
+    for (const char* bad : { "https://evil.example", "null", "http://localhost:9999",
+                             "http://127.0.0.1:8080" }) {
+        INFO("Origin: " << bad);
+        CHECK(withOrigin(bad).find(" 403") != std::string::npos);
+    }
 
     host.shutdown();
 }

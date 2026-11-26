@@ -96,12 +96,12 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
     }
 
     SUBCASE("opening a tagged tab clears its tag and no row") {
-        // The Timing tab has room for the tag (unlike Achievements and Stream
+        // The General tab has room for the tag (unlike Achievements and Stream
         // Chat and Delta Trace, whose names fill the sidebar: WhatsNew::tabCanTag).
-        REQUIRE(host.whatsNewTabTagged("Timing"));
+        REQUIRE(host.whatsNewTabTagged("General"));
 
-        REQUIRE(host.openSettingsTab("Timing"));
-        CHECK_FALSE(host.whatsNewTabTagged("Timing"));
+        REQUIRE(host.openSettingsTab("General"));
+        CHECK_FALSE(host.whatsNewTabTagged("General"));
         // The rows on it are untouched: opening the tab says you know something
         // is here, not that you found it.
         CHECK(host.whatsNewLiveCount() == total);
@@ -120,7 +120,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         CHECK_FALSE(host.whatsNewTabTagged("Widgets"));
         // Off the tab before the panel next closes: closing dismisses the tab
         // it closes on, and the unlock is taken on the Achievements tab anyway.
-        REQUIRE(host.openSettingsTab("Timing"));
+        REQUIRE(host.openSettingsTab("General"));
 
         host.setPrestige(1);
         host.showSettings(true);
@@ -153,9 +153,9 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
                     "until one does");
             return;
         }
-        REQUIRE(patchTab != "Timing");   // Timing is the line-only control below
+        REQUIRE(patchTab != "General");   // General is the line-only control below
         REQUIRE(host.openSettingsTab(patchTab.c_str()));
-        REQUIRE(host.openSettingsTab("Timing"));
+        REQUIRE(host.openSettingsTab("General"));
         const std::string now = host.whatsNewSerialize();
 
         // The same dismissals as the previous patch of this line wrote them: every
@@ -179,7 +179,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         REQUIRE_MESSAGE(older != now, "opening the tab stored no patch-scoped key: " << now);
         host.whatsNewDeserialize(older.c_str());
         CHECK(host.whatsNewTabTagged(patchTab.c_str()));   // the patch's rows tag it again
-        CHECK_FALSE(host.whatsNewTabTagged("Timing"));     // the line's dismissal still holds
+        CHECK_FALSE(host.whatsNewTabTagged("General"));     // the line's dismissal still holds
 
         // ...and opening it clears the patch's tag like any other.
         REQUIRE(host.openSettingsTab(patchTab.c_str()));
@@ -205,27 +205,27 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // Its sidebar row is banded instead, until hovered like any banded row.
         // A tab that has room keeps the tag, unbanded, and hovering it leaves the
         // tag alone (that one clears on open).
-        CHECK_FALSE(host.whatsNewTabHighlighted("Timing"));
-        REQUIRE(host.hoverSettingsTab("Timing"));
-        CHECK(host.whatsNewTabTagged("Timing"));
+        CHECK_FALSE(host.whatsNewTabHighlighted("General"));
+        REQUIRE(host.hoverSettingsTab("General"));
+        CHECK(host.whatsNewTabTagged("General"));
         REQUIRE(host.hoverSettingsTab(fullName));
         CHECK_FALSE(host.whatsNewTabHighlighted(fullName));
     }
 
     SUBCASE("hovering a marked row clears that row and no other") {
-        REQUIRE(host.openSettingsTab("Timing"));
+        REQUIRE(host.openSettingsTab("General"));
         const int before = host.whatsNewLiveCount();
         REQUIRE(before >= 1);
 
-        host.hoverSettingsRow("timing.target");
+        host.hoverSettingsRow("general.live_updates");
         CHECK(host.whatsNewLiveCount() == before - 1);
 
         // Hovering it again is not a second dismissal.
-        host.hoverSettingsRow("timing.target");
+        host.hoverSettingsRow("general.live_updates");
         CHECK(host.whatsNewLiveCount() == before - 1);
 
         // An unmarked row on the same tab dismisses nothing.
-        host.hoverSettingsRow("timing.freeze");
+        host.hoverSettingsRow("general.freeze");
         CHECK(host.whatsNewLiveCount() == before - 1);
     }
 
@@ -241,7 +241,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // the case can see it.
         REQUIRE_MESSAGE(host.hasMarkDirty(), "MXBMRP3_Test_FlushIfDirty/IsDirty absent");
         host.setAutoSave(true);
-        REQUIRE(host.openSettingsTab("Timing"));
+        REQUIRE(host.openSettingsTab("General"));
 
         // SAVE FIRST, to clear the flag. Opening a tab persists [Profiles] activeTab
         // and marks dirty by itself, so a dirty check straight after the click passes
@@ -250,7 +250,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         host.save();
         REQUIRE_FALSE(host.isDirty());
 
-        host.hoverSettingsRow("timing.target");
+        host.hoverSettingsRow("general.live_updates");
         const int afterDismiss = host.whatsNewLiveCount();
         REQUIRE(afterDismiss == total - 1);
         CHECK_MESSAGE(host.isDirty(),
@@ -264,7 +264,7 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         REQUIRE(host.whatsNewLiveCount() == total);
         host.loadSettings(saveWin);
         CHECK(host.whatsNewLiveCount() == afterDismiss);
-        CHECK_FALSE(host.whatsNewTabTagged("Timing"));   // the tab dismissal too
+        CHECK_FALSE(host.whatsNewTabTagged("General"));   // the tab dismissal too
     }
 
     SUBCASE("starting up does not silently dismiss a tab") {
@@ -319,14 +319,14 @@ TEST_CASE("what's-new markers show, dismiss per rule, and persist") {
         // anywhere near this. Written against resetAll() alone, a test here would pass
         // while checking half a button.
         REQUIRE_MESSAGE(host.hasResetGlobals(), "MXBMRP3_Test_ResetGlobals not exported");
-        REQUIRE(host.openSettingsTab("Timing"));
-        host.hoverSettingsRow("timing.target");
+        REQUIRE(host.openSettingsTab("General"));
+        host.hoverSettingsRow("general.live_updates");
         REQUIRE(host.whatsNewLiveCount() == total - 1);
-        REQUIRE_FALSE(host.whatsNewTabTagged("Timing"));
+        REQUIRE_FALSE(host.whatsNewTabTagged("General"));
 
         host.resetEverything();
         CHECK(host.whatsNewLiveCount() == total - 1);
-        CHECK_FALSE(host.whatsNewTabTagged("Timing"));
+        CHECK_FALSE(host.whatsNewTabTagged("General"));
     }
 
     host.shutdown();

@@ -6,6 +6,7 @@
 
 #include "plugin_constants.h"
 #include <windows.h>  // For HWND type
+#include <array>
 #include <chrono>
 
 // Normalized UI coordinates where:
@@ -85,6 +86,17 @@ public:
     // frame auto-hides the cursor unless something holds it (the Toggles strip's
     // hover). Without this the injected cursor always shows.
     void testCursorIdle() { m_testCursorIdle = true; }
+    // Stand in for window focus: 0 = no game window focused, 1 = focused,
+    // 2 = another program focused with the cursor over the companion window,
+    // -1 = the real foreground check. Pinned by hotkey_capture_test.cpp.
+    void testForceFocus(int focused) { m_testFocus = focused; }
+    // How many times isKeyDown() read a keyboard key (not a mouse button) since
+    // the last reset.
+    int testKeyReads(bool reset) { const int n = m_testKeyReads; if (reset) m_testKeyReads = 0; return n; }
+    // Stand in for the keyboard: while `on`, isKeyDown() answers from keys held
+    // with testHoldKey() instead of asking Windows (the focus gate still applies).
+    void testInjectKeys(bool on) { m_testKeysOn = on; m_testKeys.fill(false); }
+    void testHoldKey(int vk, bool down) { if (vk >= 0 && vk < 256) m_testKeys[static_cast<size_t>(vk)] = down; }
 #endif
 
     void initialize();
@@ -95,6 +107,20 @@ public:
 
     // Query input state (fast, uses cached frame data)
     bool isCursorEnabled() const { return m_bCursorEnabled; }
+    // One of the game's own windows is in front THIS frame (no debounce). The
+    // cursor also works over the companion while another program is in front;
+    // the keyboard never does, since the keys then belong to that program.
+    bool hasKeyboardFocus() const { return m_bKeyboardFocus; }
+
+    // Every keyboard and mouse-button read in the plugin goes through here: is
+    // `vk` held right now? A mouse button is read while the cursor is enabled
+    // (isCursorEnabled); a keyboard key only while one of the game's windows is
+    // in front (hasKeyboardFocus). Otherwise it is false WITHOUT asking Windows,
+    // so the plugin reads no keys while the player is in another program, even
+    // with the mouse over the companion. Callers that track edges
+    // (HotkeyManager) take a fresh baseline when focus returns. **Enforced** by
+    // check_banned_constructs.sh (no GetAsyncKeyState anywhere else).
+    bool isKeyDown(int vk) const;
     bool shouldShowCursor() const { return m_bShouldShowCursor && !m_bCursorSuppressed; }
 
     // Allow HUDs to suppress cursor rendering (e.g., during full-screen overlays)
@@ -103,6 +129,7 @@ public:
     const MouseButton& getLeftButton() const { return m_leftButton; }
     const MouseButton& getRightButton() const { return m_rightButton; }
     const WindowBounds& getWindowBounds() const { return m_windowBounds; }
+    HWND getGameWindow() const { return m_gameWindow; }  // null until the game window is found
 
     // Query window dimensions (for resize detection)
     int getWindowWidth() const { return m_windowWidth; }
@@ -121,6 +148,9 @@ public:
     const KeyboardKey& getOem3Key() const { return m_oem3Key; }  // VK_OEM_3: `~ on US, § on some EU layouts
     const KeyboardKey& getOem5Key() const { return m_oem5Key; }  // VK_OEM_5: \| on US layout
     bool isAnyModifierKeyPressed() const;  // Check if Shift/Ctrl/Alt are pressed
+    // The mouse was used without moving (a wheel tick a list kept): the idle
+    // cursor stays up, as after a move or a click.
+    void noteCursorActivity();
 
     // Force window information refresh (useful for detecting resizes at run start/stop)
     void forceWindowRefresh();
@@ -131,7 +161,7 @@ private:
         m_gameWindow(nullptr), m_processId(0),
         m_windowWidth(0), m_windowHeight(0),
         m_activeWindow(nullptr), m_activeSurface(Surface::Game),
-        m_bInitialized(false), m_bCursorEnabled(false), m_bWasCursorEnabled(false),
+        m_bInitialized(false), m_bCursorEnabled(false), m_bKeyboardFocus(false), m_bWasCursorEnabled(false),
         m_bShouldShowCursor(false), m_bWasCursorVisible(false), m_bCursorSuppressed(false),
         m_fLastMouseX(0.0f), m_fLastMouseY(0.0f),
         m_framesSinceFocusLost(0) {}
@@ -168,11 +198,16 @@ private:
     float m_testMouseX = 0.0f, m_testMouseY = 0.0f;
     int m_testButtons = 0;
     bool m_testCursorIdle = false; // testCursorIdle
+    int m_testFocus = -1;          // testForceFocus
+    mutable int m_testKeyReads = 0; // testKeyReads
+    bool m_testKeysOn = false;      // testInjectKeys
+    std::array<bool, 256> m_testKeys{};
 #endif
 
     // Frame state
     bool m_bInitialized;
     bool m_bCursorEnabled;
+    bool m_bKeyboardFocus;     // hasKeyboardFocus(): one of our windows is in front this frame
     bool m_bWasCursorEnabled;  // Track cursor enable/disable transitions
     bool m_bShouldShowCursor;   // True if cursor should be visible (based on movement)
     bool m_bWasCursorVisible;   // Track cursor visibility transitions (for window refresh on show)

@@ -192,6 +192,7 @@ void ExplorationStats::clear() {
     m_tabs.clear();
     m_huds.clear();
     m_servers.clear();
+    m_nemesisRaces.clear();
     m_firstRunDate.clear();
     m_lastDay = 0;
     m_dayStreak = 0;

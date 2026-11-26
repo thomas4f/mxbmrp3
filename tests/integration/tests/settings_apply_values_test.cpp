@@ -37,7 +37,7 @@ struct Anchor { const char* section; const char* key; const char* alt; };
 const std::vector<Anchor> kAnchors = {
     { "StandingsHud", "gapMode",          "PLAYER"    },  // enum, base ALL
     { "StandingsHud", "gapReferenceMode", "LEADER"    },  // enum, base PLAYER
-    { "StandingsHud", "animationMode",    "COLORED"   },  // enum, base BASIC
+    { "StandingsHud", "coloredMoves",     "1"         },  // bool, base 0
     { "StandingsHud", "displayRowCount",  "12"        },  // int,  base 10   (range 1..100)
     { "MapHud",       "riderColorMode",   "UNIFORM"   },  // enum, base RELATIVE_POS
     { "MapHud",       "labelMode",        "NONE"      },  // enum, base RACE_NUM

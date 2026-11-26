@@ -158,6 +158,9 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
             case HotkeyAction::DASH_PREV:                 return "hotkeys.dash_prev";
             case HotkeyAction::TOGGLE_RUMBLE:      return "hotkeys.rumble";
             case HotkeyAction::TOGGLE_WIDGETS:     return "hotkeys.widgets";
+            case HotkeyAction::TOGGLE_DECKS:       return "hotkeys.decks";
+            case HotkeyAction::DECK_NEXT:          return "hotkeys.deck_next";
+            case HotkeyAction::DECK_PREV:          return "hotkeys.deck_prev";
             case HotkeyAction::TOGGLE_ALL_HUDS:    return "hotkeys.all_huds";
             case HotkeyAction::RELOAD_CONFIG:      return "hotkeys.reload";
             default: return nullptr;
@@ -322,6 +325,9 @@ BaseHud* SettingsHud::renderTabHotkeys(SettingsLayoutContext& ctx) {
         HotkeyAction::SEGMENT_ADD,
         HotkeyAction::SEGMENT_REMOVE,
         HotkeyAction::TOGGLE_WIDGETS,
+        HotkeyAction::TOGGLE_DECKS,
+        HotkeyAction::DECK_NEXT,
+        HotkeyAction::DECK_PREV,
         HotkeyAction::TOGGLE_ALL_HUDS,
         HotkeyAction::RELOAD_CONFIG,
     };

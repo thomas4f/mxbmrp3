@@ -22,33 +22,30 @@ namespace {
 // check_whats_new.sh fails the build if a version here falls behind resource.h,
 // so the review is not optional.
 //
-// 1.35.0 is the first public release since 1.34.1 (1.34.2 and 1.34.3 were
-// pre-releases), so the line is "1.35" and it marks what those brought that a
-// 1.34.1 player has no reason to go looking for: the Timing tab's Target row
-// (Splits / Full lap), and the spotter's Tricks and Achievements callouts,
-// each only in a game that draws its row. The Spotter tab's Beta badge takes
-// the sidebar slot, so those two band their rows without a "New" tag. The 1.34
-// rows are pruned: a 1.34.1 player has had them for a release. Nothing on
-// Appearance (the languages, themes and fonts): a marker tags the Appearance
-// sidebar row, and German "Darstellung" leaves no room for the tag.
+// 1.36.0 is the first stable release since 1.35.0 (1.35.1 was a
+// pre-release), so the line is "1.36" and it marks what a 1.35.0 player has
+// no reason to go looking for: the Decks tab (one marker on its first row
+// tags the sidebar; a tab of bands means nothing), the Slide and Wheelie
+// widgets from 1.35.1, and Live updates, which moved from Standings to General
+// and starts Off after the update. The 1.35 rows are pruned. Nothing on
+// Appearance (the Cabinet theme, the pixel fonts): German "Darstellung" leaves
+// no room for the tag. No Stance row: it is drawn only once the game has sent
+// a stance, so on an older game build its marker would tag a tab with nothing
+// to find.
 //
 // Prestige is the table's one Gate::Unlocked row: it is not new in a release,
 // it is new the moment a player trades their ladder for it, and the row it
 // bands does not exist on the Widgets tab until then.
 //
-// 1.35.1 adds the Slide and Wheelie widgets. Their rows name the PATCH, so the
-// Widgets tab tags again for a 1.35.0 player who has already opened it (tabKey);
-// the 1.35 rows keep their tabs' 1.35.0 dismissals.
+// A row a PATCH release adds names that patch ("1.36.1"), so its tab tags
+// again for a player who opened it earlier in the line (tabKey).
 const Marker kMarkers[] = {
-    { SettingsHud::TAB_TIMING,       "timing.target",            "1.35" },
-#if GAME_HAS_FMX
-    { SettingsHud::TAB_SPOTTER,      "spotter.cat_tricks",       "1.35" },
+    { SettingsHud::TAB_GENERAL,      "general.live_updates",     "1.36" },
+    { SettingsHud::TAB_WIDGETS,      "widgets.slide",            "1.36" },
+#if GAME_HAS_WHEELIE
+    { SettingsHud::TAB_WIDGETS,      "widgets.wheelie",          "1.36" },
 #endif
-#if GAME_HAS_ACHIEVEMENTS
-    { SettingsHud::TAB_SPOTTER,      "spotter.cat_achievements", "1.35" },
-#endif
-    { SettingsHud::TAB_WIDGETS,      "widgets.slide",            "1.35.1" },
-    { SettingsHud::TAB_WIDGETS,      "widgets.wheelie",          "1.35.1" },
+    { SettingsHud::TAB_DECKS,        "decks.speed",              "1.36" },
     { SettingsHud::TAB_WIDGETS,      "widgets.prestige",         nullptr, Gate::Unlocked },
 };
 

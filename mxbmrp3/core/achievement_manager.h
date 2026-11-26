@@ -150,6 +150,7 @@ public:
 
     // ---- toasts (AchievementWidget) ----------------------------------------
     bool hasPendingToast() const { return !m_toasts.empty(); }
+    size_t pendingToasts() const { return m_toasts.size(); }
     // Pops the oldest queued toast into `out`; false when the queue is empty.
     bool takeToast(Toast& out);
     // Put a taken toast back at the FRONT: a system message (system_messages.h)
@@ -211,6 +212,8 @@ private:
     void enqueue(const Toast& toast);
     void queueTierToast(const Achievements::Entry& entry, int tier);
     void queueHalfwayToast(const Achievements::Entry& entry, int targetTier, double value);
+    // The Event Log row for a live earn: the toast's title, formatted once here.
+    void logTierEvent(const Achievements::Entry& entry, int tier);
 
     State m_state[Achievements::COUNT];
     // Catalogue indices available on this game, resolved once in the constructor.

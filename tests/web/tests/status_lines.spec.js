@@ -61,3 +61,23 @@ test('a green line answers the red ones before it: they expire together', async 
   await expect(green).toHaveCount(0, { timeout: 3000 });
   await expect(red).toHaveCount(0);
 });
+
+test('the overlay asks its own origin for the state, and names it while trying', async ({ page }) => {
+  // Same origin only (#809): the overlay fetches /api/state and /api/events
+  // from wherever it was served, never a configured host or port. Here that is
+  // the static test server, which has no plugin behind it.
+  const apiRequests = [];
+  page.on('request', (req) => {
+    if (req.url().includes('/api/')) apiRequests.push(new URL(req.url()));
+  });
+  await page.goto('/index.html');
+  const origin = new URL(page.url());
+  await expect(page.locator('#event-log .event-entry[data-status="1"]', { hasText: 'Trying ' + origin.host }))
+    .toHaveCount(1);
+  await expect.poll(() => apiRequests.length).toBeGreaterThan(0);
+  for (const url of apiRequests) {
+    expect(url.host, url.href).toBe(origin.host);
+    expect(url.protocol, url.href).toBe(origin.protocol);
+  }
+  expect(apiRequests.some((u) => u.pathname === '/api/state')).toBe(true);
+});

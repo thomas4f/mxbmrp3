@@ -45,16 +45,16 @@ void TachoWidget::setGaugesPack(const std::string& name) {
     setDataDirty();
 }
 
-const GaugesAsset* TachoWidget::activePack() const {
+const GaugesAsset* TachoWidget::activeLayout() const {
     const AssetManager& assets = AssetManager::getInstance();
-    // Degrade, do not blank -- see PitboardHud::activePack for the full rule.
+    // Degrade, do not blank -- see PitboardHud::activeLayout for the full rule.
     if (const GaugesAsset* named = assets.getGaugesByName(m_gaugesPack)) return named;
     return assets.getDefaultGauges();
 }
 
 unsigned long TachoWidget::effectiveNeedleColor() const {
     if (m_needleColorSet) return m_needleColor;
-    if (const GaugesAsset* pack = activePack())
+    if (const GaugesAsset* pack = activeLayout())
         return static_cast<unsigned long>(pack->geometry.tacho.needleColor);
     return m_needleColor;
 }
@@ -98,7 +98,7 @@ void TachoWidget::rebuildRenderData() {
     // What THIS face reads and how its needle is drawn. The fallback is the
     // built-in geometry rather than a blank gauge: with no packs installed at all
     // the widget draws the scale it always drew.
-    const GaugesAsset* pack = activePack();
+    const GaugesAsset* pack = activeLayout();
     static const GaugeLayout::GaugeGeometry kNoPackGeometry;
     const GaugeLayout::Dial& dial =
         pack ? pack->geometry.tacho : kNoPackGeometry.tacho;

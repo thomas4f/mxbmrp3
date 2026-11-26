@@ -79,7 +79,7 @@ void PluginUtils::formatTimeMinutesSeconds(int milliseconds, char* buffer, size_
 }
 
 void PluginUtils::formatSessionClock(int lapsToGo, int sessionTimeMs, int lapsAfterClock,
-                                     char* buffer, size_t bufferSize, bool shown) {
+                                     char* buffer, size_t bufferSize, bool shown, bool compact) {
     if (bufferSize < 1) return;
     // Not in overtime → the normal MM:SS countdown, and in a time+laps race the
     // laps that follow it. That includes the lap the leader finishes after the
@@ -90,7 +90,8 @@ void PluginUtils::formatSessionClock(int lapsToGo, int sessionTimeMs, int lapsAf
         if (lapsAfterClock > 0) {
             // Whole phrases, not a word slotted in, so a language can reorder
             // them; the web JSON and Steam status keep English like the labels below.
-            const char* fmt = lapsAfterClock == 1 ? (shown ? TR("%s + %d lap") : "%s + %d lap")
+            const char* fmt = compact ? (shown ? TR("%s + %dL") : "%s + %dL")
+                            : lapsAfterClock == 1 ? (shown ? TR("%s + %d lap") : "%s + %d lap")
                                                   : (shown ? TR("%s + %d laps") : "%s + %d laps");
             snprintf(buffer, bufferSize, fmt, clock, lapsAfterClock);
         } else {
@@ -284,8 +285,11 @@ const char* PluginUtils::shownServerLabel(int serverType, const char* serverName
     return label == serverName ? label : I18n::trCached(label);
 }
 
-const char* PluginUtils::getSessionString(int eventType, int session) {
+const char* PluginUtils::getSessionString(int eventType, int session, bool brief) {
     namespace Str = PluginConstants::DisplayStrings::Session;
+    namespace Brief = PluginConstants::DisplayStrings::Session::Brief;
+    // One table, two columns: the name, or the decks' short form (`brief`)
+    const auto name = [brief](const char* full, const char* shortForm) { return brief ? shortForm : full; };
 
     // Convert raw (game-specific) session integer to canonical Unified::Session
     // via the active game's adapter, then look up the display string.
@@ -298,28 +302,28 @@ const char* PluginUtils::getSessionString(int eventType, int session) {
     if (canonical == Unified::Session::Practice &&
         eventType == PluginConstants::EventType::TESTING) {
         return PluginData::getInstance().getSessionData().isOnline()
-            ? Str::OPEN_PRACTICE : Str::TESTING;
+            ? name(Str::OPEN_PRACTICE, Brief::PRACTICE) : name(Str::TESTING, Brief::TESTING);
     }
 
     switch (canonical) {
-        case Unified::Session::Waiting:          return Str::WAITING;
-        case Unified::Session::Practice:         return Str::PRACTICE;
-        case Unified::Session::PreQualify:       return Str::PRE_QUALIFY;
-        case Unified::Session::QualifyPractice:  return Str::QUALIFY_PRACTICE;
-        case Unified::Session::Qualify:          return Str::QUALIFY;
-        case Unified::Session::Warmup:           return Str::WARMUP;
-        case Unified::Session::Race1:            return Str::RACE_1;
-        case Unified::Session::Race2:            return Str::RACE_2;
-        case Unified::Session::Race:             return Str::RACE;
-        case Unified::Session::SR_Round:         return Str::SR_ROUND;
-        case Unified::Session::SR_QuarterFinals: return Str::SR_QUARTER_FINALS;
-        case Unified::Session::SR_SemiFinals:    return Str::SR_SEMI_FINALS;
-        case Unified::Session::SR_Final:         return Str::SR_FINAL;
-        case Unified::Session::KRP_QualifyHeat:      return Str::KRP_QUALIFY_HEAT;
-        case Unified::Session::KRP_SecondChanceHeat: return Str::KRP_SECOND_CHANCE_HEAT;
-        case Unified::Session::KRP_PreFinal:         return Str::KRP_PRE_FINAL;
-        case Unified::Session::KRP_Final:            return Str::KRP_FINAL;
-        default:                                 return Str::UNKNOWN;
+        case Unified::Session::Waiting:          return name(Str::WAITING, Brief::WAITING);
+        case Unified::Session::Practice:         return name(Str::PRACTICE, Brief::PRACTICE);
+        case Unified::Session::PreQualify:       return name(Str::PRE_QUALIFY, Brief::PRE_QUALIFY);
+        case Unified::Session::QualifyPractice:  return name(Str::QUALIFY_PRACTICE, Brief::QUALIFY_PRACTICE);
+        case Unified::Session::Qualify:          return name(Str::QUALIFY, Brief::QUALIFY);
+        case Unified::Session::Warmup:           return name(Str::WARMUP, Brief::WARMUP);
+        case Unified::Session::Race1:            return name(Str::RACE_1, Brief::RACE_1);
+        case Unified::Session::Race2:            return name(Str::RACE_2, Brief::RACE_2);
+        case Unified::Session::Race:             return name(Str::RACE, Brief::RACE);
+        case Unified::Session::SR_Round:         return name(Str::SR_ROUND, Brief::SR_ROUND);
+        case Unified::Session::SR_QuarterFinals: return name(Str::SR_QUARTER_FINALS, Brief::SR_QUARTER_FINALS);
+        case Unified::Session::SR_SemiFinals:    return name(Str::SR_SEMI_FINALS, Brief::SR_SEMI_FINALS);
+        case Unified::Session::SR_Final:         return name(Str::SR_FINAL, Brief::SR_FINAL);
+        case Unified::Session::KRP_QualifyHeat:      return name(Str::KRP_QUALIFY_HEAT, Brief::KRP_QUALIFY_HEAT);
+        case Unified::Session::KRP_SecondChanceHeat: return name(Str::KRP_SECOND_CHANCE_HEAT, Brief::KRP_SECOND_CHANCE_HEAT);
+        case Unified::Session::KRP_PreFinal:         return name(Str::KRP_PRE_FINAL, Brief::KRP_PRE_FINAL);
+        case Unified::Session::KRP_Final:            return name(Str::KRP_FINAL, Brief::KRP_FINAL);
+        default:                                 return name(Str::UNKNOWN, "");
     }
 }
 

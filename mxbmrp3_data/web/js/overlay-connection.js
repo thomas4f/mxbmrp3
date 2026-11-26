@@ -120,7 +120,7 @@ function pruneStatusLines() {
 
 var RETRY_INTERVAL = 3000; // ms between manual reconnection attempts
 var retryTimer = null;
-var STATE_URL = BASE_URL + "/api/state";
+var STATE_URL = "/api/state";
 
 // --- SSE Connection ---
 // We probe with fetch first to avoid noisy browser console errors
@@ -137,12 +137,19 @@ function connect() {
         retryTimer = null;
     }
 
+    // Opened as a file there is no server to try (same origin only), and
+    // location.host is empty: say what to open instead, once, and stop.
+    if (location.protocol === "file:") {
+        logError("Open the overlay at its http:// address, not as a file");
+        return;
+    }
+
     if (!lastError) {
-        appendStatusLine("Trying " + CONFIG.host + ":" + CONFIG.port);
+        appendStatusLine("Trying " + location.host);
     }
 
     // Probe server availability before opening SSE
-    fetch(STATE_URL, { mode: "cors" }).then(function () {
+    fetch(STATE_URL).then(function () {
         serverReachable = true;
         openEventSource();
     }).catch(function () {

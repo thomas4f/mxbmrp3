@@ -21,6 +21,7 @@
 #include "exploration_stats.h"
 #include "exploration_signals.h"
 #include "hud_manager.h"
+#include "plugin_data.h"
 #include "stats_manager.h"
 #include "tracked_riders_manager.h"
 #include "update_checker.h"
@@ -112,9 +113,10 @@ __declspec(dllexport) int MXBMRP3_Test_AchievementToastShowing() {
 __declspec(dllexport) void MXBMRP3_Test_SetHudsEnabled(int enabled) {
     HudManager::getInstance().setHudsEnabled(enabled != 0);
 }
-// The Widgets master toggle, the same way.
-__declspec(dllexport) void MXBMRP3_Test_SetWidgetsEnabled(int enabled) {
-    HudManager::getInstance().setWidgetsEnabled(enabled != 0);
+// A master switch (HudManager::MasterGroup: 0 Widgets, 1 Decks), the same way.
+__declspec(dllexport) void MXBMRP3_Test_SetMasterEnabled(int group, int enabled) {
+    if (group < 0 || group >= HudManager::MASTER_GROUP_COUNT) return;
+    HudManager::getInstance().setGroupEnabled(static_cast<HudManager::MasterGroup>(group), enabled != 0);
 }
 // One HUD's game-surface visibility, by harness id (testHudByName). 0 = no
 // such HUD. With SetEveryHudVisible(0) first, a test can put exactly the HUDs
@@ -183,6 +185,21 @@ __declspec(dllexport) void MXBMRP3_Test_ExplorationSet(const char* signalKey, do
 // evaluation, which is where the Sweeps' own ordering is decided.
 __declspec(dllexport) void MXBMRP3_Test_AchievementForceTiers(int tier, const char* exceptId) {
     AchievementManager::getInstance().testForceTiers(tier, exceptId);
+}
+
+// The newest Achievement row in the Event Log whose English text is exactly
+// `message`: its icon shape and tier (EventLogEntry::icon). 0 if none. The
+// icon is render state the /api/state contract does not carry.
+__declspec(dllexport) int MXBMRP3_Test_EventLogAchievementIcon(const char* message, int* shape, int* tier) {
+    if (!message) return 0;
+    const auto& log = PluginData::getInstance().getEventLog();
+    for (auto it = log.rbegin(); it != log.rend(); ++it) {
+        if (it->type != EventLogType::Achievement || std::strcmp(it->message, message) != 0) continue;
+        if (shape) *shape = it->icon.shape;
+        if (tier) *tier = it->icon.tier;
+        return 1;
+    }
+    return 0;
 }
 
 // The update channel. Early Access is marked off the LIVE setting, and the only

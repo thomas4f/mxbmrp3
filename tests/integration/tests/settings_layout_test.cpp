@@ -184,7 +184,20 @@ int countTooltipRows(const std::vector<std::string>& regions, const char* toolti
 //
 // The Widgets tab's pager appended WIDGETS_PAGE_PREV and WIDGETS_PAGE_NEXT:
 // two more types, no ordinal moved.
-constexpr int kClickRegionTypeCount = 125;
+//
+// The lists then scrolled instead of paging: all ten pager types left the
+// enum and SCROLL_BAR was added -- nine fewer, and the ordinals past the
+// riders' pager dropped.
+//
+// OPEN_LINK_RELEASES then left the enum: the Updates tab's release notes
+// scroll whole, with no link to the rest. One fewer type.
+//
+// DECKS_TOGGLE (the Decks master switch) was filed beside WIDGETS_TOGGLE:
+// one more type, and every ordinal from 52 up gained one.
+//
+// Then the two became one MASTER_TOGGLE (HudManager::MasterGroup, the tab in
+// the region): one type fewer, every ordinal from 53 down one.
+constexpr int kClickRegionTypeCount = 115;
 
 }  // namespace
 
@@ -406,18 +419,36 @@ TEST_CASE("settings General tab: the emitted region sequence is unchanged") {
     // strings 128 -> 124.
     // 1.35.1 marks the Slide and Wheelie rows, which tags the Widgets sidebar
     // row: strings 124 -> 125.
+    // The settings lists scroll instead of paging: the ten pager types left
+    // ClickRegion::Type and SCROLL_BAR joined it. 71/72/77/78/93/107/113/114/119
+    // became 67/68/73/74/89/101/107/108/113, typecount 125 -> 116; every label
+    // and `strings` unchanged -- a pure renumbering.
+    // OPEN_LINK_RELEASES left the enum (the Updates tab's notes scroll whole, no
+    // link): typecount 116 -> 115, every later ordinal one lower.
+    // The Decks tab joins the profile section after Widgets: a sidebar row
+    // with its section icon and its label plus a "New" tag: strings 125 -> 127.
+    // The Decks master switch: DECKS_TOGGLE filed beside WIDGETS_TOGGLE, so
+    // every ordinal from 52 up gained one (typecount 115 -> 116), and the Decks
+    // row gained its checkbox ("52:-" before "53:decks"): strings 127 -> 128.
+    // Live updates moved here from the Standings tab, after Freeze: one more
+    // dropdown row (label, arrows, list), strings 128 -> 132.
+    // WIDGETS_TOGGLE and DECKS_TOGGLE became one MASTER_TOGGLE (51): "51:-"
+    // on both rows, typecount 116 -> 115, every ordinal from 53 down one;
+    // strings unchanged.
     static const char* kGolden =
-        "52:general;52:appearance;52:hotkeys;52:riders;54:-;52:rumble;61:-;52:helmet;77:-;52:director;10:-;52"
-        ":stream_chat;78:-;52:spotter;93:-;52:achievements;40:-;52:updates;47:-;48:-;51:-;52:widgets;10:-;52:"
-        "dash;10:-;52:map;10:-;52:notices;10:-;52:standings;10:-;52:friends;10:-;52:timing;10:-;52:lap_log;10"
-        ":-;52:gap_bar;10:-;52:records;10:-;52:pitboard;52:more;72:general.pb_scope;34:-;34:-;72:general.refe"
-        "rence;4:general.reference;3:general.reference;114:general.reference;72:general.freeze;2:general.free"
-        "ze;1:general.freeze;113:general.freeze;72:general.auto_save;41:-;41:-;72:general.grid_snap;35:-;35:-"
-        ";72:general.screen_clamp;36:-;36:-;72:general.direct_gl;107:-;107:-;72:general.controller;4:general."
-        "controller;3:general.controller;114:general.controller;72:general.steam_friends;72:general.now_playi"
-        "ng;72:general.web_server;44:-;44:-;72:general.web_port;45:-;46:-;72:general.auto_switch;49:-;49:-;72"
-        ":general.copy_profile;4:general.copy_profile;3:general.copy_profile;114:general.copy_profile;8:gener"
-        "al.reset_profile;9:general.reset_all;53:-;6:-;71:-;119:find.field;typecount=125;strings=125";
+        "52:general;52:appearance;52:hotkeys;52:riders;54:-;52:rumble;61:-;52:helmet;73:-;52:director;10:-;52"
+        ":stream_chat;74:-;52:spotter;89:-;52:achievements;40:-;52:updates;47:-;48:-;51:-;52:widgets;51:-;52:"
+        "decks;10:-;52:dash;10:-;52:map;10:-;52:notices;10:-;52:standings;10:-;52:friends;10:-;52:timing;10:"
+        "-;52:lap_log;10:-;52:gap_bar;10:-;52:records;10:-;52:pitboard;52:more;68:general.pb_scope;34:-;34:-;"
+        "68:general.reference;4:general.reference;3:general.reference;108:general.reference;68:general.freeze"
+        ";2:general.freeze;1:general.freeze;107:general.freeze;68:general.live_updates;4:general.live_updates"
+        ";3:general.live_updates;108:general.live_updates;68:general.auto_save;41:-;41:-;68:general.grid_snap"
+        ";35:-;35:-;68:general.screen_clamp;36:-;36:-;68:general.direct_gl;101:-;101:-;68:general.controller;"
+        "4:general.controller;3:general.controller;108:general.controller;68:general.steam_friends;68:general"
+        ".now_playing;68:general.web_server;44:-;44:-;68:general.web_port;45:-;46:-;68:general.auto_switch;49"
+        ":-;49:-;68:general.copy_profile;4:general.copy_profile;3:general.copy_profile;108:general.copy_profi"
+        "le;8:general.reset_profile;9:general.reset_all;53:-;6:-;67:-;112:find.field;typecount=115;strings=13"
+        "2";
 
     MESSAGE("General tab signature: " << sig);
     CHECK(sig == kGolden);
@@ -475,7 +506,7 @@ TEST_CASE("settings Helmet tab: the tint rows lose their arrows while the visor 
 // per-element section ends in a More group (s_tabRegistry); its tabs are never
 // sidebar rows, whichever tab is open, so the sidebar's height no longer depends
 // on what is open. The global section has none: every global tab is a row. A tab
-// region is "52:<tooltip id>" and a More page row "72:<tab id>", so where a tab
+// region is "53:<tooltip id>" and a More page row "69:<tab id>", so where a tab
 // is listed reads straight off the signature.
 TEST_CASE("settings sidebar: the More row opens a page of its tabs") {
     PluginHost host(dllPath());
@@ -515,10 +546,10 @@ TEST_CASE("settings sidebar: the More row opens a page of its tabs") {
     host.draw();
     CHECK(host.activeTab() == "More");
     const std::string page = host.regionSignature();
-    CHECK(has(page, "72:radar"));
-    CHECK(has(page, "72:telemetry"));
-    CHECK(has(page, "72:session_charts"));
-    CHECK_FALSE(has(page, "72:riders"));
+    CHECK(has(page, "68:radar"));
+    CHECK(has(page, "68:telemetry"));
+    CHECK(has(page, "68:session_charts"));
+    CHECK_FALSE(has(page, "68:riders"));
     CHECK(count(page, "52:more;") == 1);   // the sidebar is the same height
 
     // A row's name opens its tab...
@@ -534,7 +565,7 @@ TEST_CASE("settings sidebar: the More row opens a page of its tabs") {
 
     host.clickAbout();
     host.draw();
-    CHECK_FALSE(has(host.regionSignature(), "72:radar"));
+    CHECK_FALSE(has(host.regionSignature(), "68:radar"));
 }
 
 // A More page row's icon switches its HUD, as a sidebar icon does, and the name
@@ -1350,6 +1381,33 @@ TEST_CASE("settings Appearance: every Display cell has its own place in the grid
         for (const auto& c : centres)
             CHECK_FALSE_MESSAGE((std::abs(c.first - x) < 1e-4f && std::abs(c.second - y) < 1e-4f), id);
         centres.push_back({ x, y });
+    }
+    host.shutdown();
+}
+
+// The same slip on any tab, swept rather than listed. It shipped twice: the
+// Display grid above (Glow), then Event Log (Achievements joined under a game
+// gate, Director drawn over Pit activity). endColumns counts each run's rows
+// against its beginColumns, so a new tab or row is covered without a list here.
+// Each tab is read on its own build: the tallest-tab measure has already run, so
+// a draw after a tab switch lays out that tab alone.
+TEST_CASE("settings columns: every run on every tab emits the rows it declared") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\settings_layout_column_counts\\");
+    REQUIRE_MESSAGE(host.settingsColumnMiscounts() >= 0,
+                    "MXBMRP3_Test_SettingsColumnMiscounts not exported (test build?)");
+    host.showSettings(true);
+    host.draw();
+    CHECK_MESSAGE(host.settingsColumnMiscounts() == 0,
+                  "the tallest-tab measure, which lays out every tab, met a miscounted run");
+    const std::vector<std::string> tabs = host.settingsAllTabNames();
+    REQUIRE(tabs.size() > 5u);
+    for (const std::string& tab : tabs) {
+        host.setActiveTab(tab.c_str());
+        host.draw();
+        CHECK_MESSAGE(host.settingsColumnMiscounts() == 0,
+                      tab << ": a beginColumns count does not match the rows that follow it");
     }
     host.shutdown();
 }

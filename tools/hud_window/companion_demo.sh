@@ -3,7 +3,7 @@
 # tools/hud_window/companion_demo.sh
 # Open the plugin's REAL in-process companion window and screenshot it, headless.
 # Cross-compiles the test DLL, stages the plugin assets next to it (fonts/textures/
-# icons/themes/gamepads/pitboards + the .ttf under web/fonts/, which the companion window
+# icons/themes/gamepads/pitboards/languages + the .ttf under web/fonts/, which the companion window
 # rasterizes), then runs
 # companion_demo.exe under Wine on a virtual X display and grabs the window.
 #
@@ -77,7 +77,8 @@ DEFAULT_HOLD=25
 HOLD="${2:-${DEFAULT_HOLD}}"
 # Args from $3 on are passed through to the exe: a scene mode ("gamepad", "gear", "toast",
 # "timing", "gapbar", "eventlog", "close", "toggles N") or a settings tab ("tab Map", "tab Timing", ...;
-# "find gap" shows the Find page on that query),
+# "find gap" shows the Find page on that query; "scroll N" moves the tab's list N steps,
+# and "glide MS" with it photographs the move MS into its glide, Motion on),
 # optionally with the pointer left over one of its rows ("hover appearance.color_accent").
 # "gapbar" wants its marker mode seeded, since the demo cannot set it through a hook:
 #   EXTRA_INI=$'[GapBarHud]\nmarkerMode=2' companion_demo.sh out.png 25 gapbar
@@ -208,9 +209,9 @@ fi
 RUNDIR="${BUILD}/companion_demo_run"
 STAGE="${RUNDIR}/plugins/mxbmrp3_data"
 rm -rf "${BUILD:?}/plugins"   # self-heal a checkout polluted by an older run
-echo "==> staging plugin assets into ${RUNDIR} (fonts/textures/icons/themes/gamepads/pitboards + web/fonts/*.ttf)"
+echo "==> staging plugin assets into ${RUNDIR} (fonts/textures/icons/themes/gamepads/pitboards/languages + web/fonts/*.ttf)"
 mkdir -p "${STAGE}/web/fonts"
-for d in fonts textures icons themes gamepads pitboards; do rm -rf "${STAGE:?}/${d}"; cp -r "${ROOT}/mxbmrp3_data/${d}" "${STAGE}/${d}"; done
+for d in fonts textures icons themes gamepads pitboards languages; do rm -rf "${STAGE:?}/${d}"; cp -r "${ROOT}/mxbmrp3_data/${d}" "${STAGE}/${d}"; done
 cp "${ROOT}/mxbmrp3_data/web/fonts/"*.ttf "${STAGE}/web/fonts/"
 # Hardlink rather than copy: same inode, so it tracks the DLL just rebuilt above.
 ln -f "${BUILD}/mxbmrp3_test.dlo" "${RUNDIR}/mxbmrp3_test.dlo"
@@ -323,7 +324,7 @@ attempt=0
 # window is up, so "the first frame with content" is too early: the demo drops
 # motion.ready once the frame it means is on screen, and the poll waits for it.
 wait_ready=0
-for a in "${@:3}"; do [[ "${a}" == motion* ]] && wait_ready=1; done
+for a in "${@:3}"; do [[ "${a}" == motion* || "${a}" == shift ]] && wait_ready=1; done
 deadline=$((SECONDS + WINE_LIFETIME - 3))   # -3 for the settle already slept
 while (( SECONDS < deadline )); do
     if (( wait_ready )) && [[ ! -e "${RUNDIR}/motion.ready" ]]; then sleep 1; continue; fi

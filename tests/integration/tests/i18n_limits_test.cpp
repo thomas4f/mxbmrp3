@@ -59,21 +59,26 @@ std::map<std::string, int> templateIds(const std::string& potPath) {
     return ids;
 }
 
-// Every text the tab draws, on EVERY page of the Widgets tab: a label on a page
-// a sweep never turned to would get no limit and no overlap check. Its pages
-// are settings; the other paged tabs page lists (riders, achievements, Find
-// results), not labels.
+// Every text the tab draws, wherever its list stands: a label scrolled out of
+// a sweep's view would get no limit and no overlap check. The grouped HUD
+// lists (Widgets, Decks) hold settings; the other lists (riders, achievements,
+// Find results) hold data, not labels.
 std::vector<PluginHost::TextRoom> tabTextRooms(PluginHost& host, const std::string& tab) {
     host.setActiveTab(tab.c_str());
     host.draw();
-    float nx = 0.0f, ny = 0.0f;
-    // From the first page: the tab can open on another (a "New" row's page).
-    while (tab == "Widgets" && host.settingsRegionCenter("pager.prev", &nx, &ny)) host.clickAt(nx, ny);
     std::vector<PluginHost::TextRoom> rooms = host.settingsTextRoom();
-    while (tab == "Widgets" && host.settingsRegionCenter("pager.next", &nx, &ny)) {
-        host.clickAt(nx, ny);
-        const std::vector<PluginHost::TextRoom> page = host.settingsTextRoom();
-        rooms.insert(rooms.end(), page.begin(), page.end());
+    const int list = tab == "Widgets" ? 4 : tab == "Decks" ? 6 : -1;   // ScrollView::WIDGETS, DECKS
+    if (list < 0) return rooms;
+    const PluginHost::ScrollView v = host.settingsScroll(list);
+    if (!v.laidOut) return rooms;
+    host.stepScroll(list, -50);   // from the top: the tab can open on a "New" row
+    rooms = host.settingsTextRoom();
+    for (int guard = 0; guard < 40; ++guard) {
+        const float before = host.settingsScroll(list).target;
+        host.stepScroll(list, 1);
+        if (host.settingsScroll(list).target == doctest::Approx(before)) break;
+        const std::vector<PluginHost::TextRoom> more = host.settingsTextRoom();
+        rooms.insert(rooms.end(), more.begin(), more.end());
     }
     return rooms;
 }
@@ -91,7 +96,14 @@ TEST_CASE("i18n limits: every settings label's room, measured in English, matche
     const std::map<std::string, int> ids = templateIds("Z:\\tmp\\mxbmrp3-tests\\fixtures\\template.pot");
     REQUIRE(ids.size() > 1000);
     std::map<std::string, int> limits;
-    for (const std::string& tab : host.settingsAllTabNames()) {
+    // Every tab, then the first again with unsaved changes: the footer reads
+    // "Saved" without them and "Save" with, and both need a limit.
+    std::vector<std::string> tabs = host.settingsAllTabNames();
+    REQUIRE(!tabs.empty());
+    tabs.push_back(tabs.front());
+    for (size_t t = 0; t < tabs.size(); ++t) {
+        const std::string& tab = tabs[t];
+        if (t + 1 == tabs.size()) host.markDirty();
         for (const PluginHost::TextRoom& r : tabTextRooms(host, tab)) {
             if (r.overlap) s_englishOverlaps.insert(tab + "@" + r.where);
             if (!ids.count(r.text)) continue;
@@ -154,7 +166,14 @@ std::string overlapsUnder(const std::string& save, const char* language, int& ro
     host.showSettings(true);
     rows = 0;
     std::string overlaps;
-    for (const std::string& tab : host.settingsAllTabNames()) {
+    // Every tab, then the first again with unsaved changes: the footer reads
+    // "Saved" without them and "Save" with, and both need a limit.
+    std::vector<std::string> tabs = host.settingsAllTabNames();
+    REQUIRE(!tabs.empty());
+    tabs.push_back(tabs.front());
+    for (size_t t = 0; t < tabs.size(); ++t) {
+        const std::string& tab = tabs[t];
+        if (t + 1 == tabs.size()) host.markDirty();
         for (const PluginHost::TextRoom& r : tabTextRooms(host, tab)) {
             ++rows;
             seen.insert(r.text);

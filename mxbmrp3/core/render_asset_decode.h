@@ -158,6 +158,12 @@ constexpr size_t FNT_TABLE_BYTES = 10508;
 // Each codepoint's advance as a share of the cell height, which is the
 // string's font size. False (out untouched) when the bytes are not a .fnt.
 bool decodeFntAdvances(const uint8_t* bytes, size_t size, float out[256]);
+// The digits' ink height (0-9, coverage over half, top of the highest to foot
+// of the lowest) as a share of the cell height, which is the font size: how
+// tall a number in this face stands. 0 when the bytes are not a whole .fnt.
+// The fonts are normalised for digit width and centring, not height, so this
+// runs from 0.37 (Audiowide) to 0.77 (Rock Salt) across the shipped set.
+float measureFntDigitInk(const uint8_t* bytes, size_t size);
 // How many leading characters of `text` fit `width`, each taking its own
 // advance (in the caller's units per unit of font size) at `fontSize`.
 inline int fitFntChars(const float* advance, const char* text, float width, float fontSize) {

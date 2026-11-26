@@ -37,16 +37,14 @@ void DashHud::findNeighbours(Neighbour (&rows)[STANDINGS_ROWS]) {
     const PluginData& pd = PluginData::getInstance();
     const int me = pd.getDisplayRaceNum();
     if (me <= 0) return;
-    // The rows in the Standings HUD's running order (live with its Live updates
-    // on Both), the gaps planned against the official one, as that HUD does.
+    // The rows in the running order (live with Live updates on Both), the gaps
+    // planned against the official one, as the Standings HUD does.
     StandingsHud& standings = HudManager::getInstance().getStandingsHud();
     const std::vector<int>& official = pd.getDisplayClassificationOrder();
-    const std::vector<int>& order = standings.runningOrder();
+    RunningOrder& running = PluginData::getInstance().getRunningOrder();
+    const std::vector<int>& order = running.get();
     const int count = static_cast<int>(order.size());
-    int index = -1;
-    for (int i = 0; i < count; ++i) {
-        if (order[i] == me) { index = i; break; }
-    }
+    const int index = running.positionOf(me) - 1;   // negative when not in it
     const StandingsData* mine = index >= 0 ? pd.getStanding(me) : nullptr;
     if (!mine) return;
 
@@ -54,7 +52,6 @@ void DashHud::findNeighbours(Neighbour (&rows)[STANDINGS_ROWS]) {
     // gaps (races only), so the rows read as that HUD's do; planGap() holds
     // the guards a bare subtraction misses -- a rider not yet through a split,
     // a lap down, out of the race. The player's row is this order's.
-    const SessionData& session = pd.getSessionData();
     StandingsGap::Table table = standings.gapTableFor(official, me);
     const bool status = standings.showsStatusColumn();
     table.playerRowIndex = index;
@@ -65,18 +62,7 @@ void DashHud::findNeighbours(Neighbour (&rows)[STANDINGS_ROWS]) {
         if (at < 0 || at >= count) return;
         const StandingsData* other = pd.getStanding(order[at]);
         if (!other) return;
-        StandingsGap::Row row;
-        row.index = at;
-        row.stateNormal = (other->state == PluginConstants::RiderState::NORMAL);
-        row.hasStateAbbr = (PluginUtils::getRiderStateAbbreviation(other->state)[0] != '\0');
-        row.isLeaderRow = (at == 0);
-        row.officialGap = other->gap;
-        row.gapLaps = other->gapLaps;
-        row.realTimeGap = other->realTimeGap;
-        row.bestLap = other->bestLap;
-        row.isFinished = session.isRiderFinished(other->numLaps, other->numLapsAtLeaderFinish);
-        row.hasActiveTrackPos = pd.hasActiveTrackPos(order[at]);
-        row.isPlayerRow = isPlayer;
+        const StandingsGap::Row row = RunningOrder::gapRow(order[at], at, isPlayer, at == 0);
         StandingsGap::Plan plan;
         if (gapsOff) plan.kind = StandingsGap::Kind::Empty;
         else plan = StandingsGap::planGap(table, row);
@@ -298,10 +284,11 @@ DashHud::FuelView DashHud::readFuel() {
         }
     };
     put(0, bike.fuel * factor);
-    if (widget.hasFuelUsed()) put(1, widget.getFuelUsed() * factor);
+    const FuelEstimate::Tracker& tracker = PluginData::getInstance().getFuel();
+    if (tracker.hasFuelUsed()) put(1, tracker.fuelUsed(bike.fuel) * factor);
     else v.state[1] = FUEL_NONE;
-    const float avg = widget.getAveragePerLap();
-    if (avg > 0.001f) {
+    const float avg = tracker.averagePerLap();
+    if (FuelEstimate::hasAverage(avg)) {
         put(2, avg * factor);
         const float laps = FuelEstimate::lapsRemaining(bike.fuel, avg);
         put(3, laps);

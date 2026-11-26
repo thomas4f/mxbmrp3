@@ -129,6 +129,7 @@ void StatsManager::recordLap(int lapTime, int sector1, int sector2, int sector3,
 
     auto& stats = m_trackBikeStats[m_currentKey];
     m_globalTotalsDirty = true;
+    checkPureLap(isValid);
 
     if (isValid && lapTime > 0) {
         // THE FIRST valid lap on this track+bike is what makes it count toward
@@ -141,7 +142,6 @@ void StatsManager::recordLap(int lapTime, int sector1, int sector2, int sector3,
         if (stats.validLaps == 0) m_distinctDirty = true;
         stats.validLaps++;
         m_sessionLaps++;
-        if (m_sessionLaps > m_globalStats.maxSessionLaps) m_globalStats.maxSessionLaps = m_sessionLaps;
         stats.totalLapTimeMs += lapTime;
 
         // Update best lap
@@ -213,6 +213,7 @@ void StatsManager::recordSessionStart(int sessionType) {
     // to Wire). The clock reading (Night Owl, the day) happens on every run.
     if (sessionChanged) m_exploration.onSessionStart();
     else                m_exploration.onRunStart();
+    m_lapPurity = LapPurity::Lap();
 
     if (sessionChanged) {
         m_sessionLaps = 0;
@@ -490,6 +491,7 @@ void StatsManager::tryRecordRaceFinish(const PluginData& pd, bool final) {
                 race.lapsAtFinish = standing->numLaps;
                 race.hadFastestLap = m_playerHasFastestLapInRace;
                 m_exploration.onRaceFinished(race);
+                recordRaceFinishExtras(pd, playerRaceNum, position, starters);
                 // THE MARGIN ROWS NEED THE LAP LOGS, and the classification can
                 // settle before the last RaceLap reaches them: the two come from
                 // different callbacks, and "settled" only asks that every racing

@@ -48,16 +48,16 @@ void SpeedoWidget::setGaugesPack(const std::string& name) {
     setDataDirty();
 }
 
-const GaugesAsset* SpeedoWidget::activePack() const {
+const GaugesAsset* SpeedoWidget::activeLayout() const {
     const AssetManager& assets = AssetManager::getInstance();
-    // Degrade, do not blank -- see PitboardHud::activePack for the full rule.
+    // Degrade, do not blank -- see PitboardHud::activeLayout for the full rule.
     if (const GaugesAsset* named = assets.getGaugesByName(m_gaugesPack)) return named;
     return assets.getDefaultGauges();
 }
 
 unsigned long SpeedoWidget::effectiveNeedleColor() const {
     if (m_needleColorSet) return m_needleColor;
-    if (const GaugesAsset* pack = activePack())
+    if (const GaugesAsset* pack = activeLayout())
         return static_cast<unsigned long>(pack->geometry.speedo.needleColor);
     return m_needleColor;
 }
@@ -101,7 +101,7 @@ void SpeedoWidget::rebuildRenderData() {
     // What THIS face reads, how its needle is drawn, and where its readout windows
     // are. Falls back to the built-in geometry rather than a blank gauge when no
     // packs are installed at all.
-    const GaugesAsset* pack = activePack();
+    const GaugesAsset* pack = activeLayout();
     static const GaugeLayout::GaugeGeometry kNoPackGeometry;
     const GaugeLayout::GaugeGeometry& gauges =
         pack ? pack->geometry : kNoPackGeometry;
@@ -271,14 +271,15 @@ void SpeedoWidget::rebuildRenderData() {
         // Main digits (white, left-justified from text start)
         // skipShadow=true: odometer uses inverted last digit styling, shadows look wrong
         float textStartX = centerX - (textWidth / 2.0f);
+        // Both roll inside the row's black box, where our renderers cut them.
         addRolledString(roll.main, textStartX, rowY, Justify::LEFT,
-                        this->getFont(FontCategory::DIGITS), fontSize, true);
+                        this->getFont(FontCategory::DIGITS), fontSize, rowY, rowY + charHeight, true);
 
         // Last digit (black, right-aligned in white quad)
         // skipShadow=true: inverted digit (black on white) should not have shadow
         float lastCharRightX = lastCharX + charWidth;
         addRolledString(roll.last, lastCharRightX, rowY, Justify::RIGHT,
-                        this->getFont(FontCategory::DIGITS), fontSize, true);
+                        this->getFont(FontCategory::DIGITS), fontSize, rowY, rowY + charHeight, true);
     };
 
     // Odometer: 6 digits, last digit = 1 km (e.g., "000078" = 78 km)

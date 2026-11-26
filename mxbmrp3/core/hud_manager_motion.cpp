@@ -159,6 +159,7 @@ HudManager::MotionSurface* HudManager::motionBeginFrame(
                 slot.ghostDy = slot.lastDy;
                 slot.ghostUnderFirst = slot.lastUnderFirst;
                 slot.ghostUnderCount = slot.lastUnderCount;
+                slot.ghostClips.assign(slot.lastClips.begin(), slot.lastClips.end());
             }
         }
         slot.drawn = drawnNow;

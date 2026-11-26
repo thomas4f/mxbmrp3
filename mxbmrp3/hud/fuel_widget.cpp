@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <cstdio>
 #include <cmath>
-#include <numeric>
 
 #include "../diagnostics/logger.h"
 #include "../core/plugin_utils.h"
@@ -35,20 +34,12 @@ namespace {
     }
 }
 
-FuelWidget::FuelWidget()
-    : m_cachedSessionGeneration(-1)
-    , m_fuelAtRunStart(0.0f)
-    , m_fuelAtLapStart(0.0f)
-    , m_lastTrackedLapNum(-1)
-    , m_bTrackingActive(false)
-    , m_totalLapsRecorded(0)
-{
+FuelWidget::FuelWidget() {
     m_panelKind = PanelKind::Widget;
     m_bContentCard = true;
     // One-time setup
     setDraggable(true);
     m_strings.reserve(9);  // title + 4 labels + 4 values
-    m_fuelPerLap.reserve(MAX_FUEL_HISTORY);
 
     // Set texture base name for dynamic texture discovery
     setTextureBaseName("fuel_widget");
@@ -68,121 +59,13 @@ bool FuelWidget::handlesDataType(DataChangeType dataType) const {
 }
 
 void FuelWidget::update() {
-    // Detect session changes (new track/bike/session) and reset fuel tracking
-    const SessionData& sessionData = PluginData::getInstance().getSessionData();
-    int currentGeneration = sessionData.sessionGeneration;
-    if (currentGeneration != m_cachedSessionGeneration) {
-        resetFuelTracking();
-        m_cachedSessionGeneration = currentGeneration;
-    }
-
-    // NOTE: Fuel tracking always runs so history accumulates even when hidden.
-    // This ensures accurate fuel/lap data is available when widget is enabled.
-    updateFuelTracking();
-
-    // OPTIMIZATION: Only rebuild render data when visible
-    if (isVisibleAnySurface()) {
-        rebuildAndRecord();
-    }
+    // The fuel history is PluginData's (FuelEstimate::Tracker), kept whether
+    // or not this is shown; what is drawn changes only with the data above.
+    // Hidden, a change waits: shown on either surface, it draws then
+    if (!isVisibleAnySurface()) return;
+    if (isDataDirty() || isLayoutDirty()) rebuildAndRecord();
     clearDataDirty();
     clearLayoutDirty();
-}
-
-void FuelWidget::updateFuelTracking() {
-    const PluginData& pluginData = PluginData::getInstance();
-    const BikeTelemetryData& bikeData = pluginData.getBikeTelemetry();
-
-    // Only track fuel for player (not spectated riders)
-    bool isViewingPlayerBike = (pluginData.getDisplayRaceNum() == pluginData.getPlayerRaceNum());
-    if (!isViewingPlayerBike || !bikeData.isValid) {
-        return;
-    }
-
-    // Start tracking as soon as we have valid telemetry (captures fuel at race start)
-    if (!m_bTrackingActive) {
-        m_fuelAtRunStart = bikeData.fuel;
-        m_fuelAtLapStart = bikeData.fuel;
-        m_bTrackingActive = true;
-        DEBUG_INFO_F("FuelWidget: Started tracking with %.2fL", m_fuelAtRunStart);
-    }
-
-    // Detect refueling: if current fuel exceeds what we started with, rider refueled in pits
-    // Reset tracking to avoid negative usage values
-    if (m_bTrackingActive && bikeData.fuel > m_fuelAtRunStart) {
-        DEBUG_INFO_F("FuelWidget: Detected refueling (%.2fL > %.2fL start), resetting tracking",
-                    bikeData.fuel, m_fuelAtRunStart);
-        m_fuelAtRunStart = bikeData.fuel;
-        m_fuelAtLapStart = bikeData.fuel;
-        // Keep lap history for averaging, just reset the run start reference
-    }
-
-    // Get current lap number from ideal lap data
-    const IdealLapData* idealLapData = pluginData.getIdealLapData(pluginData.getPlayerRaceNum());
-    if (!idealLapData) {
-        return;
-    }
-
-    int currentLapNum = idealLapData->lastCompletedLapNum;
-
-    // Check if a new lap was completed
-    if (currentLapNum > m_lastTrackedLapNum) {
-        // Only record fuel consumption for valid laps (has a positive lap time).
-        // Invalid laps (pit-in without completing, cut track, etc.) have lastLapTime <= 0
-        // and would skew the average with unrealistic fuel consumption values.
-        bool isValidLap = (idealLapData->lastLapTime > 0);
-
-        if (isValidLap) {
-            // Calculate fuel used this lap
-            float fuelUsed = m_fuelAtLapStart - bikeData.fuel;
-
-            // Only record if fuel was actually consumed (sanity check)
-            if (fuelUsed > 0.0f && fuelUsed < bikeData.maxFuel) {
-                m_fuelPerLap.push_back(fuelUsed);
-                m_totalLapsRecorded++;
-
-                // Keep only the last MAX_FUEL_HISTORY entries
-                if (m_fuelPerLap.size() > MAX_FUEL_HISTORY) {
-                    m_fuelPerLap.erase(m_fuelPerLap.begin());
-                }
-
-                DEBUG_INFO_F("FuelWidget: Lap %d consumed %.2fL (avg: %.2fL)",
-                            currentLapNum + 1, fuelUsed,
-                            m_fuelPerLap.empty() ? 0.0f :
-                            std::accumulate(m_fuelPerLap.begin(), m_fuelPerLap.end(), 0.0f) / m_fuelPerLap.size());
-            }
-        } else {
-            DEBUG_INFO_F("FuelWidget: Lap %d skipped (invalid lap, no timing data)", currentLapNum + 1);
-        }
-
-        // Always update lap start reference and lap number, even for invalid laps,
-        // so the next valid lap measures from the correct fuel level
-        m_fuelAtLapStart = bikeData.fuel;
-        m_lastTrackedLapNum = currentLapNum;
-    }
-}
-
-float FuelWidget::getLapsRemaining() const {
-    const PluginData& pd = PluginData::getInstance();
-    // Fuel is the PLAYER's telemetry and only exists on track — spectating or
-    // in a replay there is nothing to estimate from.
-    if (pd.getDrawState() != ViewState::ON_TRACK) return -1.0f;
-    return FuelEstimate::lapsRemaining(
-        pd.getBikeTelemetry().fuel,
-        FuelEstimate::averagePerLap(m_fuelPerLap, m_totalLapsRecorded));
-}
-
-float FuelWidget::getFuelUsed() const {
-    return m_fuelAtRunStart - PluginData::getInstance().getBikeTelemetry().fuel;
-}
-
-void FuelWidget::resetFuelTracking() {
-    m_fuelPerLap.clear();
-    m_fuelAtRunStart = 0.0f;
-    m_fuelAtLapStart = 0.0f;
-    m_lastTrackedLapNum = -1;
-    m_bTrackingActive = false;
-    m_totalLapsRecorded = 0;
-    setDataDirty();
 }
 
 int FuelWidget::getEnabledRowCount() const {
@@ -268,7 +151,7 @@ void FuelWidget::rebuildRenderData() {
         fuelColor = usedColor = avgColor = estColor = mutedColor;
     } else {
         // Determine unit label and conversion factor
-        const char* unitLabel = (m_fuelUnit == FuelUnit::GALLONS) ? "g" : "L";
+        const char* unitLabel = UnitConversion::fuelLabel(m_fuelUnit == FuelUnit::GALLONS);
         float unitConversion = (m_fuelUnit == FuelUnit::GALLONS) ? UnitConversion::LITERS_TO_GALLONS : 1.0f;
 
         // Current fuel
@@ -276,8 +159,9 @@ void FuelWidget::rebuildRenderData() {
         formatFuelValue(fuelValueBuffer, sizeof(fuelValueBuffer), displayFuel, unitLabel);
 
         // Total fuel used this run
-        if (hasFuelUsed()) {
-            float fuelUsed = getFuelUsed() * unitConversion;
+        const FuelEstimate::Tracker& tracker = PluginData::getInstance().getFuel();
+        if (tracker.hasFuelUsed()) {
+            float fuelUsed = tracker.fuelUsed(bikeData.fuel) * unitConversion;
             formatFuelValue(usedValueBuffer, sizeof(usedValueBuffer), fuelUsed, unitLabel);
         } else {
             snprintf(usedValueBuffer, sizeof(usedValueBuffer), "%s", Placeholders::GENERIC);
@@ -288,9 +172,9 @@ void FuelWidget::rebuildRenderData() {
         // Shared with the spotter's fuel warning, so the number spoken and the
         // number shown cannot disagree (fuel_estimate.h — which also documents
         // why the first lap is skipped).
-        const float avgFuelPerLap = getAveragePerLap();
+        const float avgFuelPerLap = tracker.averagePerLap();
 
-        if (avgFuelPerLap > 0.001f) {
+        if (FuelEstimate::hasAverage(avgFuelPerLap)) {
             float displayAvg = avgFuelPerLap * unitConversion;
             formatFuelValue(avgValueBuffer, sizeof(avgValueBuffer), displayAvg, unitLabel);
 
@@ -357,6 +241,5 @@ void FuelWidget::resetToDefaults() {
     m_enabledRows = ROW_DEFAULT;  // Reset row visibility
     // Note: fuelUnit is NOT reset here - it's a global preference, not per-profile
     setPosition(cellsX(148), cellsY(74));
-    resetFuelTracking();
     setDataDirty();
 }

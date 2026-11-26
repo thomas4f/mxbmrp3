@@ -24,7 +24,7 @@ using namespace PluginConstants;
 
 bool SettingsHud::tabToggleState(int tabId, BaseHud* tabHud, bool* enabled) const {
     // Per-HUD checkboxes show the focused surface's on/off (companion vs game); the
-    // manager/global toggles (widgets/rumble/updates/director) are shared, not
+    // manager/global toggles (widgets/decks/rumble/updates/director) are shared, not
     // decoupled.
     //
     // The helmet reads its GAME flag even on the companion, and that is correct
@@ -32,8 +32,8 @@ bool SettingsHud::tabToggleState(int tabId, BaseHud* tabHud, bool* enabled) cons
     // (BaseHud::rendersOnCompanion), so the game flag is its only visibility.
     if (tabHud) {
         *enabled = tabHud->isVisibleOnActiveSurface();
-    } else if (tabId == TAB_WIDGETS) {
-        *enabled = HudManager::getInstance().areWidgetsEnabled();
+    } else if (HudManager::groupForTab(tabId) != HudManager::MasterGroup::Count) {
+        *enabled = HudManager::getInstance().isGroupEnabled(HudManager::groupForTab(tabId));
     } else if (tabId == TAB_RUMBLE) {
         *enabled = XInputReader::getInstance().getGlobalRumbleConfig().enabled;
     } else if (tabId == TAB_HELMET) {
@@ -58,7 +58,7 @@ bool SettingsHud::tabToggleState(int tabId, BaseHud* tabHud, bool* enabled) cons
     return true;
 }
 
-// The click region type a tab's on/off goes through, and the HUD it names --
+// The click region a tab's on/off goes through, and the HUD it names --
 // wherever the toggle is drawn: the sidebar row's icon and the More page's
 // < On/Off >. One table, so the two cannot drift. Only meaningful where
 // tabToggleState() says the tab has a toggle.
@@ -66,22 +66,29 @@ bool SettingsHud::tabToggleState(int tabId, BaseHud* tabHud, bool* enabled) cons
 // Each master toggle is handled by the COMMON switch, not a tab-scoped handler:
 // a sidebar checkbox is clicked from whatever tab is open, so a tab-scoped
 // handler would leave it dead everywhere but its own tab.
-SettingsHud::ClickRegion::Type SettingsHud::tabToggleType(int tabId, BaseHud* tabHud,
-                                                          BaseHud** target) const {
-    *target = nullptr;
-    if (tabHud) { *target = tabHud; return ClickRegion::HUD_TOGGLE; }
-    switch (tabId) {
-        case TAB_WIDGETS:      return ClickRegion::WIDGETS_TOGGLE;
-        case TAB_RUMBLE:       return ClickRegion::RUMBLE_TOGGLE;
-        case TAB_HELMET:       *target = m_helmetOverlay; return ClickRegion::HELMET_OVERLAY_TOGGLE;
-        case TAB_UPDATES:      return ClickRegion::UPDATE_CHECK_TOGGLE;
-        case TAB_DIRECTOR:     return ClickRegion::DIRECTOR_ENABLE_TOGGLE;
-        // The spoken-audio master, the same region type as the tab's own toggle.
-        case TAB_SPOTTER:      return ClickRegion::SPOTTER_ENABLED_TOGGLE;
-        // The achievement-toast master.
-        case TAB_ACHIEVEMENTS: return ClickRegion::ACHIEVEMENTS_TOASTS_TOGGLE;
-        default:               return ClickRegion::TAB;   // unreachable with a toggle
+SettingsHud::ClickRegion SettingsHud::tabToggleRegion(int tabId, BaseHud* tabHud,
+                                                      float x, float y, float w, float h) const {
+    BaseHud* target = nullptr;
+    ClickRegion::Type type = ClickRegion::TAB;   // unreachable with a toggle
+    if (tabHud) {
+        target = tabHud;
+        type = ClickRegion::HUD_TOGGLE;
+    } else if (HudManager::groupForTab(tabId) != HudManager::MasterGroup::Count) {
+        type = ClickRegion::MASTER_TOGGLE;   // which one: the region's tabIndex
+    } else {
+        switch (tabId) {
+            case TAB_RUMBLE:       type = ClickRegion::RUMBLE_TOGGLE; break;
+            case TAB_HELMET:       target = m_helmetOverlay; type = ClickRegion::HELMET_OVERLAY_TOGGLE; break;
+            case TAB_UPDATES:      type = ClickRegion::UPDATE_CHECK_TOGGLE; break;
+            case TAB_DIRECTOR:     type = ClickRegion::DIRECTOR_ENABLE_TOGGLE; break;
+            // The spoken-audio master, the same region type as the tab's own toggle.
+            case TAB_SPOTTER:      type = ClickRegion::SPOTTER_ENABLED_TOGGLE; break;
+            // The achievement-toast master.
+            case TAB_ACHIEVEMENTS: type = ClickRegion::ACHIEVEMENTS_TOASTS_TOGGLE; break;
+            default:               break;
+        }
     }
+    return ClickRegion(x, y, w, h, type, target, 0, false, tabId);
 }
 
 // A tab's identity icon: its HUD's own, else the master toggle's, else the
@@ -234,12 +241,10 @@ void SettingsHud::toggleTab(int tabId) {
     BaseHud* hud = desc->hud ? desc->hud(*this) : nullptr;
     bool on = false;
     if (!tabToggleState(tabId, hud, &on)) return;
-    BaseHud* target = nullptr;
-    const ClickRegion::Type type = tabToggleType(tabId, hud, &target);
-    dispatchRegion(ClickRegion(0.0f, 0.0f, 0.0f, 0.0f, type, target));
+    dispatchRegion(tabToggleRegion(tabId, hud, 0.0f, 0.0f, 0.0f, 0.0f));
 }
 
-// Rumble's split-effect disclosure caret, the same caret-up the dropdown boxes
+// Rumble's split-effect disclosure caret, the same hud-caret-up the dropdown boxes
 // draw: turned 90 degrees (right, closed) or 180 (down, open). With UI icons off it draws nothing and returns false, so the
 // caller puts its text stand-in in the caret's place. With them on, a missing
 // sprite also draws nothing (but returns true): an install without its icons
@@ -247,7 +252,7 @@ void SettingsHud::toggleTab(int tabId) {
 bool SettingsHud::addDisclosureCaret(float cx, float cy, float halfSize, bool open,
                                      unsigned long color) {
     if (!UiConfig::getInstance().getTitleIcons()) return false;
-    const int caret = AssetManager::getInstance().getIconSpriteIndex("caret-up");
+    const int caret = AssetManager::getInstance().getIconSpriteIndex("hud-caret-up");
     if (caret <= 0) return true;
     // Rotation is in uniform space: (cos, sin) of the turn, clockwise on screen.
     addRotatedSpriteQuad(cx, cy, halfSize, open ? -1.0f : 0.0f, open ? 0.0f : 1.0f, caret, color);

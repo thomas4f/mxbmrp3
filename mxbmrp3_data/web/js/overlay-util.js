@@ -248,7 +248,9 @@ var availableFonts = {
     "Sora-SemiBold": true,
     "SpaceGrotesk-Regular": true,
     "SpaceGrotesk-SemiBold": true,
-    "VT323-Regular": true
+    "VT323-Regular": true,
+    "PressStart2P-Regular": true,
+    "Silkscreen-Regular": true
 };
 
 function applyFonts(fonts) {

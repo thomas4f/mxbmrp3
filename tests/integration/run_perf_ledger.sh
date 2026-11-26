@@ -86,6 +86,12 @@ run_one() {   # profile, output file, [hud]
     # another gate changes what the plugin draws, so every run starts from both
     # empty, exactly like run_tests.sh.
     rm -rf "${SAVE}" "${BUILD}/plugins"; mkdir -p "${SAVE}"
+    # The theme holding the shipped deck layouts (decks.ini, decks-slanted.ini),
+    # through the user folder the plugin syncs at Startup: with none installed
+    # every deck draws an empty box, and the `all` profile's decks counted their
+    # gathers but never a quad.
+    mkdir -p "${SAVE}/mxbmrp3/themes"
+    cp -r "${HERE}/../../mxbmrp3_data/themes/cabinet-dark" "${SAVE}/mxbmrp3/themes/"
     wineserver -k 2>/dev/null || true
     ( cd "${BUILD}" && MXB_LEDGER_SITES="${SITES_FILE:-}" timeout "${TIMEOUT}" wine perf_ledger_driver.exe "${DLL_NAME}" \
         "Z:${TAPE//\//\\}" "$1" ${3:-} > "$2" 2>"$2.err" )
@@ -97,7 +103,12 @@ run_one() {   # profile, output file, [hud]
 }
 
 # The baseline is exact for one toolchain; perf_ledger.py compares this stamp.
-LEDGER_TOOLCHAIN="mingw $(x86_64-w64-mingw32-g++ -dumpfullversion 2>/dev/null) / $(wine --version 2>/dev/null | tail -1)"
+# The mingw-w64 runtime is versioned apart from the compiler, and it is what
+# winpthreads and the CRT come from: 11 -> 13 changed how the clocks resolve
+# (perf_vclock.h), under the same "13-posix" g++.
+MINGW_CRT="$(printf '#include <_mingw.h>\n__MINGW64_VERSION_MAJOR.__MINGW64_VERSION_MINOR.__MINGW64_VERSION_BUGFIX\n' \
+    | x86_64-w64-mingw32-gcc -E -P -x c - 2>/dev/null | tail -1 | tr -d ' ')"
+LEDGER_TOOLCHAIN="mingw $(x86_64-w64-mingw32-g++ -dumpfullversion 2>/dev/null) (runtime ${MINGW_CRT}) / $(wine --version 2>/dev/null | tail -1)"
 export LEDGER_TOOLCHAIN
 
 specs=()

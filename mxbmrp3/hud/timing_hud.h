@@ -443,6 +443,7 @@ private:
     int m_cachedSessionGeneration;   // Track session changes (monotonic counter from PluginData)
     PBScope m_cachedPBScope;         // Track PB scope changes (re-cache all-time PB)
     int m_cachedPitState;            // Track pit entry/exit (0 = on track, 1 = in pits)
+    uint32_t m_shownOrderRevision = 0;  // RunningOrder::revision() the Position readout last drew
     long long m_cachedSegmentSig = -1;  // Track segment-timer state changes (segment mode line)
     // Segment split-style freeze: hold a completed segment's time on screen briefly.
     unsigned int m_segCachedCompletion = 0;  // last segment completionCounter seen

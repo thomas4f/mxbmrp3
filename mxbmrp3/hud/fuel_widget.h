@@ -37,22 +37,6 @@ public:
     bool handlesDataType(DataChangeType dataType) const override;
     void resetToDefaults();
 
-    // Called when a new session starts to reset fuel tracking
-    void resetFuelTracking();
-
-    // Fuel unit setting
-    // Laps left in the tank, or -1 when it cannot be known yet. Public
-    // because the spotter's fuel warning reads THIS rather than tracking its
-    // own history — one buffer, so the number spoken is the number shown.
-    float getLapsRemaining() const;
-    // The average used per lap in litres (0 until there is lap data), and the
-    // litres used this run (below 0 after a refuel; only once hasFuelUsed()):
-    // the Avg and Used rows' figures, public for the Dash's Fuel page, which
-    // shows the same rows.
-    float getAveragePerLap() const { return FuelEstimate::averagePerLap(m_fuelPerLap, m_totalLapsRecorded); }
-    bool hasFuelUsed() const { return m_bTrackingActive && m_fuelAtRunStart > 0.0f; }
-    float getFuelUsed() const;
-
     FuelUnit getFuelUnit() const { return m_fuelUnit; }
     void setFuelUnit(FuelUnit unit) { m_fuelUnit = unit; setDataDirty(); }
 
@@ -68,22 +52,4 @@ protected:
 
 private:
     void rebuildRenderData() override;
-    void updateFuelTracking();
-
-    // Session change detection
-    int m_cachedSessionGeneration;    // Track session changes (monotonic counter)
-
-    // Fuel tracking state
-    float m_fuelAtRunStart;           // Fuel level when run started (for total used calculation)
-    float m_fuelAtLapStart;           // Fuel level when current lap started
-    int m_lastTrackedLapNum;          // Last lap number we tracked fuel for
-    bool m_bTrackingActive;           // True if we're actively tracking fuel consumption
-
-    // Fuel consumption history (stores fuel used per lap)
-    // One window size, shared with the estimator the spotter also uses — two
-    // constants would let the average and the warning disagree about how far
-    // back they look.
-    static constexpr size_t MAX_FUEL_HISTORY = FuelEstimate::kMaxHistory;
-    std::vector<float> m_fuelPerLap;  // Fuel consumed per lap (most recent at back)
-    size_t m_totalLapsRecorded;       // Total laps ever recorded (to know if first lap is still in buffer)
 };

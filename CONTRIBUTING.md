@@ -88,12 +88,13 @@ What we ask, so players can tell the projects apart:
 - **Give it its own identity on disk**, so it never overwrites or updates a
   real install: your own DLL names (`mxbmrp3/CMakeLists.txt`), `Documents`
   folders (`mxbmrp3/core/plugin_names.h`), installer name, publisher,
-  registry and uninstall keys (`packaging/mxbmrp3.nsi`), and update check and
-  analytics (`mxbmrp3/core/plugin_constants.h`).
+  registry and uninstall keys (`packaging/mxbmrp3.nsi`), the MSI's name,
+  manufacturer and UpgradeCode (`packaging/msi/mxbmrp3.wxs`), and update
+  check and analytics (`mxbmrp3/core/plugin_constants.h`).
 
 Why the name matters: it comes with a few limits. It works only through the
 game's plugin interface; it never reads race data out of the game's memory
-and never writes to it, never patches or hooks the game, never changes game
+and never writes to it, never patches the game's code, never changes game
 files, and has no effect on physics ([how it works](docs/what-it-does.md)).
 It is free, with no paid tier, no locked features and no ads. A fork may
 choose differently, and that is fine, under its own name.

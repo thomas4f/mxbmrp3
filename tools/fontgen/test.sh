@@ -150,14 +150,37 @@ PY
 # ---------------------------------------------------------------------------
 "${HERE}/regen_shipped.sh" "${TMP}" >/dev/null 2>&1
 python3 - "${ROOT}/mxbmrp3_data/fonts" "${TMP}" <<'PY'
-import os, struct, sys
+import os, struct, sys, zlib
 shipped, regen = sys.argv[1], sys.argv[2]
+HDR = 268 + 256 * 40          # name + cell + glyph table; the atlas header follows
+
+def why(a, b):
+    """Say WHICH part differs, so a failure on a machine nobody can log into
+    (a CI runner) is diagnosable from its log alone: the glyph table, the atlas
+    pixels, or only the DEFLATE bytes that encode identical pixels."""
+    if a[:HDR] != b[:HDR]:
+        cps = [cp for cp in range(256)
+               if a[268 + cp*40:308 + cp*40] != b[268 + cp*40:308 + cp*40]]
+        return f"glyph table differs at {len(cps)} codepoint(s), first {cps[:5]}"
+    try:
+        pa = zlib.decompress(a[HDR + 24:], -15)
+        pb = zlib.decompress(b[HDR + 24:], -15)
+    except zlib.error as e:
+        return f"atlas does not inflate: {e}"
+    if pa != pb:
+        n = sum(x != y for x, y in zip(pa, pb)) + abs(len(pa) - len(pb))
+        return f"atlas pixels differ: {n} byte(s)"
+    return (f"pixels identical, only the DEFLATE stream differs "
+            f"({len(a) - HDR - 24} vs {len(b) - HDR - 24} bytes)")
+
 fails = []
 names = sorted(f for f in os.listdir(shipped) if f.endswith(".fnt"))
 for f in names:
     data = open(os.path.join(shipped, f), "rb").read()
-    if open(os.path.join(regen, f), "rb").read() != data:
-        fails.append(f"{f}: regen_shipped.sh does not reproduce the committed file")
+    ours = open(os.path.join(regen, f), "rb").read()
+    if ours != data:
+        fails.append(f"{f}: regen_shipped.sh does not reproduce the committed file"
+                     f" ({why(data, ours)})")
     def advance(cp):
         o = 268 + cp * 40
         return sum(struct.unpack_from("<iii", data, o + 4))

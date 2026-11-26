@@ -4,14 +4,12 @@
 // ============================================================================
 #include "position_widget.h"
 #include "../core/i18n.h"
-#include "standings_hud.h"
 #include "../core/hud_manager.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
 #include "../core/plugin_utils.h"
 #include "../core/color_config.h"
 #include <cstdio>
-#include <algorithm>
 
 using namespace PluginConstants;
 
@@ -70,8 +68,7 @@ void PositionWidget::update() {
     // The one exception is opt-in: with Standings' Live updates on Both, the
     // live order moves the position between the game's updates. Its revision
     // is an integer compare, and the order is re-read at most every 100 ms.
-    StandingsHud& standings = HudManager::getInstance().getStandingsHud();
-    if (standings.runningOrderRevision() != m_shownOrderRevision) {
+    if (PluginData::getInstance().getRunningOrder().revision() != m_shownOrderRevision) {
         setDataDirty();
     }
 
@@ -94,17 +91,10 @@ int PositionWidget::calculatePlayerPosition() {
         return -1;  // No rider to display
     }
 
-    // Standings' running order, live with Live updates on Both
-    StandingsHud& standings = HudManager::getInstance().getStandingsHud();
-    m_shownOrderRevision = standings.runningOrderRevision();
-    if (standings.watchesRunningOrder()) {
-        const std::vector<int>& order = standings.runningOrder();
-        const auto it = std::find(order.begin(), order.end(), displayRaceNum);
-        return it == order.end() ? -1 : static_cast<int>(it - order.begin()) + 1;
-    }
-
-    // Use centralized position cache (O(1) lookup instead of O(n) linear search)
-    return pluginData.getDisplayPositionForRaceNum(displayRaceNum);
+    // The running order, live with Live updates on Both
+    RunningOrder& running = PluginData::getInstance().getRunningOrder();
+    m_shownOrderRevision = running.revision();
+    return running.positionOf(displayRaceNum);
 }
 
 void PositionWidget::rebuildLayout() {

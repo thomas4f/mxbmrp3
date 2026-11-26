@@ -156,4 +156,7 @@ private:
     int m_repeats = 0;
 
     bool m_bInitialized;
+    // Set while the game isn't focused (and at startup): the next focused
+    // update() only takes the edge baseline. See update().
+    bool m_needsBaseline = true;
 };

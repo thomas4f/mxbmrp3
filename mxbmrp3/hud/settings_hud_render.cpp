@@ -31,6 +31,7 @@
 #include "radar_hud.h"
 #include "achievement_widget.h"
 #include "spotter_widget.h"
+#include "deck_hud.h"
 #include "../core/stats_manager.h"
 #include "settings/settings_layout.h"
 #include "settings/text_wrap.h"
@@ -153,7 +154,9 @@ const SettingsHud::TabDescriptor SettingsHud::s_tabRegistry[] = {
     { TAB_MORE,         N_("More"),   "more",          nullptr,                                                              false, &SettingsHud::renderTabMore,            nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr, true },
     { TAB_FIND,         N_("Find"),   "find",          nullptr,                                                              false, &SettingsHud::renderTabFind,            &SettingsHud::handleClickTabFind,         nullptr,            nullptr,                                nullptr, nullptr, true },
     { TAB_SECTION_PROFILE,  nullptr,  nullptr,         nullptr,                                                              false, nullptr,                                nullptr,                                  nullptr,            nullptr,                                nullptr, nullptr },
-    { TAB_WIDGETS,      N_("Widgets"), "widgets",       nullptr,                                                              false, &SettingsHud::renderTabWidgets,         &SettingsHud::handleClickTabWidgets,      nullptr,            &SettingsHud::resetTabWidgets,          nullptr, nullptr },
+    { TAB_WIDGETS,      N_("Widgets"), "widgets",       nullptr,                                                              false, &SettingsHud::renderTabWidgets,         nullptr,                                  nullptr,            &SettingsHud::resetTabWidgets,          nullptr, nullptr },
+    { TAB_DECKS,       N_("Decks"), "decks",         nullptr,                                                              false, &SettingsHud::renderTabDecks,          nullptr,                                  nullptr,            &SettingsHud::resetTabDecks,           "hud-decks", nullptr, false,
+      [](const SettingsHud&) -> BaseHud* { return HudManager::getInstance().getDeckHud(static_cast<int>(DeckHud::Kind::Notice)); } },   // the deck empty until something happens
     { TAB_DASH,         N_("Dash"),   "dash",          [](const SettingsHud&) -> BaseHud* { return &HudManager::getInstance().getDashHud(); },
                                                                                                                                       false, &SettingsHud::renderTabDash,            nullptr,                                  "DashHud",          nullptr,                                nullptr, nullptr },
     { TAB_MAP,          N_("Map"),    "map",           [](const SettingsHud& s) -> BaseHud* { return s.m_mapHud; },          false, &SettingsHud::renderTabMap,             &SettingsHud::handleClickTabMap,          "MapHud",           nullptr,                                nullptr, nullptr },
@@ -198,8 +201,10 @@ int SettingsHud::tabToggles(TabToggle* out, int max) const {
         bool on = false;
         if (!tabToggleState(row.tabId, hud, &on)) continue;
         if (n >= max) break;
-        // What switching it on shows (the strip's hover preview): the HUD, or what a feature switch configures.
-        BaseHud* shows = row.tabId == TAB_HELMET ? m_helmetOverlay : hud ? hud : row.previewHud ? row.previewHud(*this) : nullptr;
+        // What switching it on shows (the strip's hover preview): the HUD, or what a feature switch configures
+        // (a master switch's row: nothing, it is a whole family).
+        const bool one = HudManager::groupForTab(row.tabId) == HudManager::MasterGroup::Count;
+        BaseHud* shows = row.tabId == TAB_HELMET ? m_helmetOverlay : hud ? hud : (row.previewHud && one) ? row.previewHud(*this) : nullptr;
         out[n++] = TabToggle{ row.tabId, getTabLabel(row.tabId), tabIconName(row.tabId, hud), on, global, shows };
     }
     return n;
@@ -527,16 +532,12 @@ void SettingsHud::buildTabBar(const ScaledDimensions& dim, const PanelPlan& plan
             }
         }
 
-        // The row's toggle, when it has one: its icon IS the checkbox (tabToggleType
+        // The row's toggle, when it has one: its icon IS the checkbox (tabToggleRegion
         // names the region); otherwise the identity icon in the label's colour.
         const char* iconName = tabIconName(i, tabHud);
         if (rowHasCheckbox) {
-            BaseHud* toggleTarget = nullptr;
-            const ClickRegion::Type toggleType = tabToggleType(i, tabHud, &toggleTarget);
-            m_clickRegions.push_back(ClickRegion(
-                currentTabX, tabStartY, checkboxWidth, dim.lineHeightNormal,
-                toggleType, toggleTarget
-            ));
+            m_clickRegions.push_back(tabToggleRegion(i, tabHud, currentTabX, tabStartY,
+                                                     checkboxWidth, dim.lineHeightNormal));
             drawTabToggle(i, currentTabX, tabStartY, iconName, isHudEnabled, isActive, dim, checkboxWidth);
         } else {
             // Non-toggleable section tabs: the identity icon takes the SAME colour rule
@@ -825,6 +826,7 @@ SettingsHud::TabMeasure SettingsHud::measureTab(int tabId, const ScaledDimension
                               panelContentRightX, /*currentY=*/0.0f);
     desc->render(ctx);
     addBackButton(ctx);
+    out.endList = ctx.listAtEnd();
     ctx.finishSections();
     out.endY = ctx.currentY;
     out.sections = ctx.measuredSections;
@@ -837,6 +839,7 @@ SettingsHud::TabMeasure SettingsHud::measureTab(int tabId, const ScaledDimension
     m_cycleControls.clear();
     m_sliders.clear();
     m_dropdown.firstRegion = -1;
+    for (ScrollView::State& s : m_scrolls) s.laidOut = false;   // input reads the real build's lists only
     return out;
 }
 
@@ -897,10 +900,10 @@ float SettingsHud::measureTallestBodyH(const ScaledDimensions& dim,
                                        float panelContentRightX,
                                        float sidebarAsk, float contentAsk,
                                        const std::vector<float>& tabGroups) {
-    // KEYED, not merely cached: see TallestKey. A drag re-enters here every frame
+    // KEYED, not merely cached: see MetricsKey. A drag re-enters here every frame
     // and must find a hit, or the panel re-lays every tab to answer a question
     // whose inputs have not moved.
-    const TallestKey key{ dim.lineHeightNormal, dim.fontSize, dim.cellW, mxbThemeGeneration() };
+    const MetricsKey key = MetricsKey::of(dim);
     if (m_tallestContentRows >= 0.0f && key == m_tallestKey) return m_tallestContentRows;
 
     float tallest = 0.0f;
@@ -967,7 +970,7 @@ bool SettingsHud::isTabAvailable(int tabId) const {
 
 void SettingsHud::recordTabOpened(int tabId) const {
     if (!isTabListed(tabId)) return;   // About is available but not in the list
-    const char* listed[TAB_COUNT];
+    const char* listed[TAB_COUNT] = {};
     int count = 0;
     for (int t = 0; t < TAB_COUNT; ++t) {
         if (isTabListed(t)) listed[count++] = getTabName(t);
@@ -1017,7 +1020,8 @@ void SettingsHud::rebuildRenderData() {
 
     // DECLARE (the asks and the plan -- see planSettingsPanel), THEN DRAW.
     float sidebarAsk = 0.0f, contentAsk = 0.0f, labelToControl = 0.0f, labelToRight = 0.0f;
-    PanelPlan& plan = planSettingsPanel(dim, sidebarAsk, contentAsk, labelToControl, labelToRight);
+    ScrollView::Fill fill;
+    PanelPlan& plan = planSettingsPanel(dim, sidebarAsk, contentAsk, labelToControl, labelToRight, fill);
     const PanelBox::ColumnGeom& sideCol = plan.col(0, 0);
     const PanelBox::ColumnGeom& mainCol = plan.col(0, 1);
 
@@ -1039,11 +1043,10 @@ void SettingsHud::rebuildRenderData() {
     const float startY = snapEdgeY((1.0f - backgroundHeight) / 2.0f);
 
     // The frame, the caption's band and one card per section of BOTH columns --
-    // except a footer's (addBackButton, the Widgets pager): its section keeps its
-    // box, so the buttons sit under the content, on the panel's own background.
-    const PanelBox::SectionGeom* backSection =
-        ((groupRowOf(m_activeTab) >= 0 || m_activeTab == TAB_WIDGETS) && !mainCol.sections.empty())
-            ? &mainCol.sections.back() : nullptr;
+    // except a footer's (addBackButton) and a list of group cards (scrollGroup):
+    // that section keeps its box, drawn bare, for what sits in it to draw on.
+    const bool bareLast = groupRowOf(m_activeTab) >= 0 || HudGroupList::of(m_activeTab) != nullptr || m_activeTab == TAB_ACHIEVEMENTS || (m_activeTab == TAB_FIND && m_find.listed);
+    const PanelBox::SectionGeom* backSection = bareLast && !mainCol.sections.empty() ? &mainCol.sections.back() : nullptr;
     addPlanBackground(plan, startX, startY, backSection);
     // UNTHEMED SECTIONS. A theme paints a card per section; without one the
     // sections were only air, and with rows now side by side the panel read as
@@ -1103,13 +1106,13 @@ void SettingsHud::rebuildRenderData() {
     SettingsLayoutContext layoutCtx(this, dim, leftColumnX, controlX, rightColumnX,
                                      contentAreaStartX, contentAreaWidth,
                                      panelContentRightX, currentY);
-    // WHERE THE ENGINE PUT THIS TAB'S SECTIONS. Handing them over is what turns the
-    // draw from "lay them out again and hope it matches the measure" into "put them
-    // where they were planned" -- the two passes cannot disagree about a seam
-    // neither of them spends.
+    // WHERE THE ENGINE PUT THIS TAB'S SECTIONS: the draw puts them where they were
+    // planned instead of laying them out again and hoping it matches the measure.
     for (const PanelBox::SectionGeom& sec : mainCol.sections)
         layoutCtx.planSectionY.push_back(plan.Y(sec.rowsTop));
     layoutCtx.planCardLeftX = plan.X(mainCol.cardLeft);
+    layoutCtx.listFill = fill;
+    layoutCtx.planPanelRightX = plan.x0 + plan.width();
 
 #if defined(MXBMRP3_TEST_BUILD)
     recordTestAnchors(plan, sideCol, mainCol, leftColumnX, controlX, layoutCtx);
@@ -1153,7 +1156,7 @@ void SettingsHud::rebuildRenderData() {
 // The panel's plan: both columns' asks, the active tab's measured sections and
 // the tallest tab's body as the floor, plus the footer's three buttons.
 PanelPlan& SettingsHud::planSettingsPanel(const ScaledDimensions& dim, float& sidebarAsk, float& contentAsk,
-                                          float& labelToControl, float& labelToRight) {
+                                          float& labelToControl, float& labelToRight, ScrollView::Fill& fill) {
     // The panel's columns, COMPOSED: sidebar ask + trough (the seam read,
     // sectionGap + gap — see troughCells) + content ask, in characters —
     // fractional once the terms enter, so the width is built from one
@@ -1233,9 +1236,7 @@ PanelPlan& SettingsHud::planSettingsPanel(const ScaledDimensions& dim, float& si
     want.buttons = 3;
     want.buttonW = PluginUtils::calculateMonospaceTextWidth(5, dim.fontSize);
     want.buttonH = dim.lineHeightNormal;
-
-    PanelPlan& plan = planPanel(dim, want);
-    return plan;
+    return SettingsLayoutContext::planFilled(*this, dim, want, active.endList, active.sections, fill);
 }
 
 void SettingsHud::renderTooltipText(const SettingsLayoutContext& layoutCtx, const ScaledDimensions& dim) {
@@ -1253,8 +1254,8 @@ void SettingsHud::renderTooltipText(const SettingsLayoutContext& layoutCtx, cons
     // tooltip through to prove none of them render cut off.
     auto renderWrappedText = [&](const std::string& text, unsigned long color) {
         float lineY = layoutCtx.tooltipY;
-        for (const std::string& line : TextWrap::wrap(text, maxCharsPerLine,
-                                                      TextWrap::TOOLTIP_LINES).lines) {
+        const auto wrapped = TextWrap::wrap(text, maxCharsPerLine, TextWrap::TOOLTIP_LINES);
+        for (const std::string& line : wrapped.lines) {
             addString(line.c_str(), layoutCtx.labelX, lineY, Justify::LEFT,
                 Fonts::getNormal(), color, dim.fontSize);
             lineY += dim.lineHeightNormal;
@@ -1274,13 +1275,13 @@ void SettingsHud::renderTooltipText(const SettingsLayoutContext& layoutCtx, cons
                 renderWrappedText(std::string(tabTooltip), ColorConfig::getInstance().getMuted());
             }
         } else {
-            // Show control tooltip; a row named after a TAB (the More page's) shows
-            // that tab's description.
+            // Show control tooltip (a warning one in its tone); a row named after a TAB
+            // (the More page's) shows that tab's description.
             const char* tooltipText = TooltipManager::getInstance().getControlTooltip(m_hoveredTooltipId.c_str());
             if (!tooltipText || tooltipText[0] == '\0')
                 tooltipText = TooltipManager::getInstance().getTabTooltip(m_hoveredTooltipId.c_str());
             if (tooltipText && tooltipText[0] != '\0') {
-                renderWrappedText(std::string(tooltipText), ColorConfig::getInstance().getMuted());
+                renderWrappedText(std::string(tooltipText), TooltipManager::isWarningTooltip(m_hoveredTooltipId.c_str()) ? ColorConfig::getInstance().getWarning() : ColorConfig::getInstance().getMuted());
             }
         }
     } else if (!layoutCtx.currentTabId.empty()) {

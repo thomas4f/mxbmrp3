@@ -307,7 +307,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           cache-dependency-path: tests/web/package-lock.json
 
@@ -369,13 +369,15 @@ jobs:
       inputs.full
     runs-on: ubuntu-latest
     # Sized for a COLD-CACHE run, not a warm one. GitHub evicts caches unused for
-    # 7 days, and a cancelled or timed-out run skips the Post-step cache save — so
-    # after a quiet fortnight the first dispatch is fully cold (~7 min compile,
-    # ~10 min game-configs, ~6 min thread-safety, ~15 min test modalities) and a
-    # 30-minute ceiling kills it at the integration stage, which also skips the
-    # save and leaves the NEXT run cold too. 2026-08-26 lost two runs to that
-    # cycle. 50 clears a cold run; warm runs still finish in ~10-15.
-    timeout-minutes: 50
+    # 7 days, so after a quiet fortnight the first dispatch is fully cold. On the
+    # Ubuntu 26.04 / GCC 15 runner (21 Nov 2026) cold meant ~14 min compile,
+    # ~28 min game-configs, ~8 min clang-tidy, then ~15 min of test modalities:
+    # 50 minutes timed it out inside clang-tidy. 90 clears
+    # that with room; warm runs still finish in ~10-15. The ccache SAVE below is
+    # its own `if: always()` step, so a red, cancelled or timed-out run still
+    # warms the next one (actions/cache's post-step save skipped them all, and
+    # 2026-08-26 lost two runs to that cold-after-cold cycle).
+    timeout-minutes: 90
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
     steps:
@@ -390,13 +392,14 @@ jobs:
           # Fail loudly HERE if the launcher still isn't on PATH, rather than
           # letting every downstream test skip with "wine not found".
           command -v wine >/dev/null || { echo "::error::wine not on PATH"; exit 1; }
+          command -v wineserver >/dev/null || { echo "::error::wineserver not on PATH"; exit 1; }
           wine --version
 
       # Persist ccache across runs so the 117-TU cross-build is near-instant when
       # unchanged (CMAKE_CXX_COMPILER_LAUNCHER wraps the compiler in ccache). Content-hashed, so
       # the sha-keyed save + prefix restore-key is the standard pattern.
-      - name: Cache ccache
-        uses: actions/cache@v6
+      - name: Restore ccache
+        uses: actions/cache/restore@v6
         with:
           path: ${{ github.workspace }}/.ccache
           key: ccache-${{ runner.os }}-${{ github.sha }}
@@ -410,8 +413,9 @@ jobs:
       # where every GAME_HAS_* feature is on. Syntax-check the shared sources under the
       # GP Bikes / Kart Racing Pro defines too, so a compile error that only appears when
       # a feature macro is OFF fails here instead of in a manual MSVC release build (e.g.
-      # a GAME_HAS_*-gated include whose type is used unconditionally).
-      - name: Syntax-check GPB/KRP game configs
+      # a GAME_HAS_*-gated include whose type is used unconditionally). All three
+      # configs also fail on a local hiding a class member (MSVC C4458).
+      - name: Syntax-check game configs
         run: ./tests/integration/check_game_configs.sh
 
       # HUD visibility-gate lint: a rebuild/tick gate must use
@@ -586,6 +590,15 @@ jobs:
       - name: CPU performance baseline (report + gross-regression gate)
         run: ./tests/integration/run_perf.sh
 
+      # always(): also after a failure, a cancel or the job timeout (see
+      # timeout-minutes above), so the compile this run paid for is kept.
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ runner.os }}-${{ github.sha }}
+
   # Build the NSIS installer and drive Setup.exe + uninstaller headless under
   # Wine, asserting the install/uninstall/registry/data-wipe mechanics. Needs
   # only makensis (nsis) + wine and is independent of the plugin DLL build, so
@@ -613,6 +626,7 @@ jobs:
               [ -x "$c" ] && { sudo ln -sf "$c" /usr/bin/wine; break; }
             done
           fi
+          command -v wineserver >/dev/null || { echo "::error::wineserver not on PATH"; exit 1; }
           wine --version
 
       - name: Installer mechanics (makensis + Wine)

@@ -489,6 +489,25 @@ TEST_CASE("settings migration: HUD settings survive a version-mismatched INI") {
     }
 
     // ------------------------------------------------------------------------
+    // Steam friends: off for a new install, kept for an existing one.
+    //
+    // The default moved from on to off. A new install starts with no file, so it
+    // gets the new default; every existing file carries steamFriends (the writer
+    // always emits it), so a player who had it on keeps it on.
+    {
+        const ini::Key steam{ "General", "steamFriends" };
+        REQUIRE(D.count(steam));
+        CHECK(D.at(steam) == "0");                  // the factory file: off
+
+        std::string onText = defText;
+        const size_t at = onText.find("\nsteamFriends=0");
+        REQUIRE(at != std::string::npos);
+        onText.replace(at, 15, "\nsteamFriends=1");
+        CHECK(roundTrip(host, saveWin, iniPath, onText).at(steam) == "1");
+        CHECK(roundTrip(host, saveWin, iniPath, defText).at(steam) == "0");
+    }
+
+    // ------------------------------------------------------------------------
     // v8 -> v9: the row-pitch DEFAULT moves, conservatively.
     //
     // The writer emits uiLineHeight into every INI whether or not anyone chose it,

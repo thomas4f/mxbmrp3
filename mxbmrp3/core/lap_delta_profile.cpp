@@ -18,6 +18,7 @@ bool LapDeltaProfile::sample(PbGapTracker::Ref ref) {
     // whole and then snap to the right one; keep what is shown until it closes.
     if (t.atLine() && t.hasBestLap(ref)) return last >= 0 || anyPrev;
     live = pd.hasValidLiveGap(ref);
+    current = false;
     last = -1;
     anyPrev = false;
     maxAbsMs = 0;
@@ -32,8 +33,10 @@ bool LapDeltaProfile::sample(PbGapTracker::Ref ref) {
     // Every slot the lap has sampled, not only those up to where the rider is
     // now: riding back (a crash, a missed jump) keeps what was already drawn
     // rather than erasing it. A slot ridden again is resampled with its new
-    // time, as the Gap Bar reads it.
-    if (live) {
+    // time, as the Gap Bar reads it. A lap abandoned by a reset ahead is not
+    // live, but what it drew up to the reset stays (PbGapTracker::abandonCurrentLap).
+    current = live || (t.currentLapAbandoned() && t.hasBestLap(ref));
+    if (current) {
         const PbGapTracker::Table& lap = t.currentTable();
         for (int p = 0; p < POINTS; ++p) {
             const int slot = std::min(top, p * STEP);
@@ -48,7 +51,7 @@ bool LapDeltaProfile::sample(PbGapTracker::Ref ref) {
         }
     }
 
-    prevFrom = live ? std::max(last, static_cast<int>(t.trackPos() * PbGapTracker::NUM_POINTS) / STEP) + 1 + OVERWRITE_GAP : 0;
+    prevFrom = current ? std::max(last, static_cast<int>(t.trackPos() * PbGapTracker::NUM_POINTS) / STEP) + 1 + OVERWRITE_GAP : 0;
     if (t.hasLastLapGaps(ref)) {
         const PbGapTracker::GapTable& prev = t.lastLapGaps(ref);
         for (int p = prevFrom; p < POINTS; ++p) {

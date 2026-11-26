@@ -12,8 +12,8 @@
 #include "../../core/settings_manager.h"
 #include "../../game/game_config.h"
 #include "../../diagnostics/logger.h"
+#include "text_wrap.h"
 
-#include <sstream>
 
 using namespace PluginConstants;
 
@@ -295,46 +295,27 @@ BaseHud* SettingsHud::renderTabUpdates(SettingsLayoutContext& ctx) {
         // Update available - show release notes and install button
         // (Available version row already shown above)
 
-        // Release notes (if available)
-        std::string releaseNotes = checker.getReleaseNotes();
-        if (!releaseNotes.empty()) {
+        // The release notes, whole: every item wrapped, never cut, under its
+        // section's heading, in a list that scrolls (TextWrap::wrapNotes). The
+        // Install button stays below it, always in view. The view is as tall as
+        // the notes and the link under them once were, so the panel keeps its
+        // height (pinned by settings_fit_test). Laid out once per release and
+        // width (TextWrap::NotesCache), not per rebuild.
+        if (checker.hasReleaseNotes()) {
+            constexpr float VIEW_LINES = 13.0f;
             ctx.addSectionHeading(TR("Release Notes"));
-
-            // Simple line-by-line display (first few lines)
-            std::istringstream stream(releaseNotes);
-            std::string line;
-            int lineCount = 0;
-            // As many as fit with the link below them without the panel growing
-            // (the tallest-tab measure sizes it); pinned by settings_fit_test.
-            constexpr int MAX_LINES = 10;
-
-            while (std::getline(stream, line)) {
-                // Skip empty lines and markdown headers
-                if (line.empty() || line[0] == '#') continue;
-
-                if (lineCount >= MAX_LINES) break;
-
-                // Truncate long lines
-                if (line.size() > 45) {
-                    line.resize(42);
-                    line += "...";
-                }
-
-                ctx.addTextRow(line.c_str(), colorConfig.getSecondary());
-                lineCount++;
+            ctx.beginScroll(ScrollView::RELEASE_NOTES, VIEW_LINES);
+            const int chars = static_cast<int>(ctx.rowSpanWidth() / PluginUtils::calculateMonospaceTextWidth(1, ctx.fontSize));
+            static TextWrap::NotesCache s_notes;   // game thread only
+            const auto& notes = s_notes.lines(checker.getReleaseNotesGeneration(), chars,
+                                              [&checker]() { return checker.getReleaseNotes(); });
+            for (const TextWrap::NoteLine& line : notes) {
+                if (!ctx.scrollRow(1.0f)) continue;
+                if (line.text.empty()) ctx.currentY += ctx.lineHeightNormal;   // the gap above a heading
+                else if (line.heading) ctx.addListHeading(line.text.c_str(), false);
+                else ctx.addTextRow(line.text.c_str(), colorConfig.getSecondary());
             }
-
-            // ALWAYS, not only past MAX_LINES: headers are skipped and long lines
-            // cut, so what fits above is never the whole of it. The link sits on
-            // its own row -- inline after the sentence, its x would be a monospace
-            // width that a proportional font draws narrower or wider.
-            ctx.addSpacing();
-            ctx.addTextRow(TR("Full release notes are on GitHub."), colorConfig.getSecondary());
-            ctx.addLinkCell(ctx.labelX, TR("GitHub Releases"),
-                            SettingsHud::ClickRegion::OPEN_LINK_RELEASES, 1.0f, true,
-                            "updates.release_notes");
-            ctx.nextLine();
-
+            ctx.endScroll();
             ctx.addSpacing();
         }
 

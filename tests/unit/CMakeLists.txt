@@ -68,11 +68,13 @@ set(MXB_UNIT_SOURCES
     test_media_app_filter.cpp
     test_update_asset_select.cpp
     test_update_version_match.cpp
+    test_update_link.cpp
     test_ui_config.cpp
     test_render_frame_buffer.cpp
     test_crash_stack_format.cpp
     test_blue_flag_detect.cpp
     test_wrong_way_detect.cpp
+    test_warp_detect.cpp
     test_battle_groups.cpp
     test_lap_timer.cpp
     test_delta_color.cpp
@@ -104,11 +106,17 @@ set(MXB_UNIT_SOURCES
     test_motion.cpp
     test_impact_vignette.cpp
     test_ghost_ride.cpp
+    test_achievement_feeds.cpp
     test_digit_roll.cpp
+    test_scroll_view.cpp
+    test_hud_scroll.cpp
     test_severity_ramp.cpp
     test_icon_resolve.cpp
     test_peak_marker.cpp
     test_slip_angle.cpp
+    test_deck_meter.cpp
+    test_deck_coach.cpp
+    test_deck_score.cpp
     test_wheelie_arc.cpp
     test_standings_gap_plan.cpp
     test_standings_live_order.cpp
@@ -132,6 +140,7 @@ set(MXB_UNIT_SOURCES
     test_finish_margin.cpp
     test_roost_detect.cpp
     test_spotter_mix.cpp
+    test_rider_stance.cpp
     grid_snap_test.cpp
     layout_metrics_test.cpp
     panel_box_test.cpp
@@ -149,6 +158,8 @@ set(MXB_UNIT_SOURCES
     test_gl_state_fingerprint.cpp
     test_render_batch.cpp
     test_render_layers.cpp
+    test_render_clip.cpp
+    test_clip_marks.cpp
     pixel_text_test.cpp
     shim/logger_stub.cpp
     ${MXB_ROOT}/mxbmrp3/core/hud_sw_renderer.cpp

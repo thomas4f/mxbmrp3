@@ -22,6 +22,7 @@ TEST_CASE("update asset select: picks the release zip, never the symbols bundle"
     // before mxbmrp3.zip, which is what fooled the old "first .zip" logic).
     const std::vector<std::string> real = {
         "mxbmrp3-Setup.exe",
+        "mxbmrp3-Setup.msi",
         "mxbmrp3-symbols-v1.27.3.38.zip",
         "mxbmrp3.cdx.json",
         "mxbmrp3.zip",
@@ -54,5 +55,6 @@ TEST_CASE("update asset select: no suitable asset yields -1") {
     // symbols bundle as a last resort.
     CHECK(UpdateChecker::selectAssetIndex({"mxbmrp3-symbols-v1.27.3.38.zip"}) == -1);
     CHECK(UpdateChecker::selectAssetIndex({"mxbmrp3-Setup.exe", "mxbmrp3.cdx.json"}) == -1);
+    CHECK(UpdateChecker::selectAssetIndex({"mxbmrp3-Setup.exe", "mxbmrp3-Setup.msi"}) == -1);
     CHECK(UpdateChecker::selectAssetIndex({}) == -1);
 }

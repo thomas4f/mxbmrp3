@@ -336,6 +336,7 @@ TEST_CASE("proximity: Peace Out is the heap ridden PAST, and parking beside it i
     // through one.
     for (int i = 0; i < 5; ++i) s.batch(heap(0, closeHeap), /*speedMs=*/1.0f);
     CHECK(host.achievementValue("peace_out") == doctest::Approx(0.0));
+    CHECK(host.achievementValue("slalom") == doctest::Approx(0.0));   // Slalom shares both guards
 
     // (Going down in it yourself belongs to the test below, not here: it arms a
     // guard that would silently swallow both cases after it, which is how this
@@ -345,11 +346,15 @@ TEST_CASE("proximity: Peace Out is the heap ridden PAST, and parking beside it i
     for (int i = 0; i < 5; ++i) s.batch(heap(0, { { 3.0f, 1 }, { 7.0f, 1 }, { 50.0f, 1 } }));
     CHECK(host.achievementValue("peace_out") == doctest::Approx(2.0));
     CHECK(host.achievementTier("peace_out") == 0);
+    // Slalom counts the same two, ONCE each over the five batches.
+    CHECK(host.achievementValue("slalom") == doctest::Approx(2.0));
 
     // ...and the third, upright and moving through it.
     for (int i = 0; i < 5; ++i) s.batch(heap(0, closeHeap));
     CHECK(host.achievementValue("peace_out") == doctest::Approx(3.0));
     CHECK(host.achievementTier("peace_out") == 1);
+    // The two still down were credited already: only the new one counts.
+    CHECK(host.achievementValue("slalom") == doctest::Approx(3.0));
 
     s.finish();
     host.shutdown();
@@ -390,12 +395,14 @@ TEST_CASE("proximity: climbing out of your OWN pile-up is not riding through one
     // batch by one, and that single batch credited the row.
     for (int i = 0; i < 20; ++i) s.batch(heap(/*playerCrashed=*/0));
     CHECK(host.achievementValue("peace_out") == doctest::Approx(0.0));
+    CHECK(host.achievementValue("slalom") == doctest::Approx(0.0));
 
     // A SPELL, NOT A LATCH. Past ten seconds from last being down, a heap is
     // somebody else's incident again and the row is live - which is what says
     // the zero above is the guard and not a wiring fault.
     for (int i = 0; i < 90; ++i) s.batch(heap(/*playerCrashed=*/0));
     CHECK(host.achievementValue("peace_out") == doctest::Approx(3.0));
+    CHECK(host.achievementValue("slalom") == doctest::Approx(3.0));
 
     s.finish();
     host.shutdown();

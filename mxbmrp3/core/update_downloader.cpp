@@ -264,44 +264,30 @@ std::vector<UpdateDownloader::StepInfo> UpdateDownloader::getSteps() const {
 }
 
 void UpdateDownloader::cleanupOldFiles() {
-    // Delete any .dlo.old files left over from previous updates
-    // This should be called on startup when the new DLL is loaded
-
-    // Get plugin directory
+    // Delete the .dlo.old an old updater left beside this plugin (it renamed
+    // the running DLL to <name>.dlo.old). ONLY this plugin's own: the plugins
+    // folder is shared, and another plugin's *.dlo.old is not ours to delete.
+    // Pinned by updater_test.cpp ("startup removes only its own .dlo.old").
     char modulePath[MAX_PATH];
     HMODULE hModule = NULL;
-
-    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                           (LPCSTR)&UpdateDownloader::getInstance, &hModule)) {
-        if (GetModuleFileNameA(hModule, modulePath, MAX_PATH) > 0) {
-            std::string path(modulePath);
-            size_t lastSlash = path.find_last_of("\\/");
-            if (lastSlash != std::string::npos) {
-                std::string pluginDir = path.substr(0, lastSlash + 1);
-
-                // Look for .dlo.old files
-                WIN32_FIND_DATAA findData;
-                std::string searchPath = pluginDir + "*.dlo.old";
-                HANDLE hFind = FindFirstFileA(searchPath.c_str(), &findData);
-
-                if (hFind != INVALID_HANDLE_VALUE) {
-                    do {
-                        std::string oldFile = pluginDir + findData.cFileName;
-                        if (DeleteFileA(oldFile.c_str())) {
-                            DEBUG_INFO_F("UpdateDownloader: Cleaned up %s", findData.cFileName);
-                        } else {
-                            DEBUG_WARN_F("UpdateDownloader: Failed to delete %s", findData.cFileName);
-                        }
-                    } while (FindNextFileA(hFind, &findData));
-                    FindClose(hFind);
-                }
-
-                // Note: Backup directory (mxbmrp3_update_backup/) is intentionally NOT deleted here.
-                // It's kept until the next update starts (cleaned in createBackupDirectory()),
-                // allowing users to manually recover files even after multiple game restarts.
-            }
-        }
+    if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            (LPCSTR)&UpdateDownloader::getInstance, &hModule)) {
+        return;
     }
+    const DWORD len = GetModuleFileNameA(hModule, modulePath, MAX_PATH);
+    if (len == 0 || len >= MAX_PATH) return;
+
+    const std::string oldFile = std::string(modulePath) + ".old";
+    if (GetFileAttributesA(oldFile.c_str()) == INVALID_FILE_ATTRIBUTES) return;
+    if (DeleteFileA(oldFile.c_str())) {
+        DEBUG_INFO_F("UpdateDownloader: Cleaned up %s", oldFile.c_str());
+    } else {
+        DEBUG_WARN_F("UpdateDownloader: Failed to delete %s", oldFile.c_str());
+    }
+
+    // Note: Backup directory (mxbmrp3_update_backup/) is intentionally NOT deleted here.
+    // It's kept until the next update starts (cleaned in createBackupDirectory()),
+    // allowing users to manually recover files even after multiple game restarts.
 }
 
 bool UpdateDownloader::checkAndClearUpdateInstalled() {
@@ -454,40 +440,16 @@ void UpdateDownloader::workerThread() {
             expectedHash = m_checksumHash;
         }
 
-        if (!expectedHash.empty()) {
-            DEBUG_INFO("UpdateDownloader: Verifying SHA256 checksum...");
-
-            std::string actualHash = calculateSHA256(zipData);
-            if (actualHash.empty()) {
-                // We HAVE an expected digest but couldn't verify against it —
-                // installing anyway would silently skip the integrity check, so
-                // treat it exactly like a mismatch.
-                {
-                    MutexLock lock(m_mutex);
-                    m_errorMessage = N_("SHA256 verification failed (could not compute hash)");
-                    m_state = State::FAILED;
-                }
-                DEBUG_WARN("UpdateDownloader: SHA256 calculation failed - refusing to install unverified download");
-                notifyStateChange();
-                return;
-            } else if (actualHash != expectedHash) {
-                {
-                    MutexLock lock(m_mutex);
-                    m_errorMessage = N_("SHA256 checksum mismatch");
-                    m_state = State::FAILED;
-                }
-                DEBUG_WARN_F("UpdateDownloader: SHA256 mismatch! Expected: %s, Got: %s",
-                            expectedHash.c_str(), actualHash.c_str());
-                notifyStateChange();
-                return;
-            } else {
-                DEBUG_INFO_F("UpdateDownloader: SHA256 verified: %s", actualHash.c_str());
+        // Nothing reaches extractAndInstall() without passing checksumError():
+        // no digest, a hash that cannot be computed and a mismatch all stop here.
+        if (const char* verifyError = checksumError(zipData, expectedHash)) {
+            {
+                MutexLock lock(m_mutex);
+                m_errorMessage = verifyError;
+                m_state = State::FAILED;
             }
-        } else {
-            // GitHub's release API emits a digest for every asset nowadays, so an
-            // absent one is unusual — proceed (the chain is still TLS-anchored to
-            // an allowlisted GitHub host) but say so loudly in the log.
-            DEBUG_WARN("UpdateDownloader: release API provided no SHA256 digest - installing on TLS trust alone");
+            notifyStateChange();
+            return;
         }
 
         // Verify complete

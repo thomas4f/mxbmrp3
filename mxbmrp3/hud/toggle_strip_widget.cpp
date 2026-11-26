@@ -25,8 +25,10 @@ constexpr int RIGHT_CELLS = 180;
 constexpr int TOP_CELLS = 1;
 // The fold caret: the dropdowns' sprite, turned (unturned it points up), as a
 // half-size share of the strip's icon size: 0.5 fills the same box as the
-// icons around it.
-constexpr const char* CARET = "caret-up";
+// icons around it. The flat hud-* copy, like the Settings gear below: every
+// switch on the strip is a flat identity glyph, and the outlined marker
+// caret read as the one heavy icon in the column.
+constexpr const char* CARET = "hud-caret-up";
 constexpr float CARET_SCALE = 0.5f;
 }  // namespace
 
@@ -355,7 +357,7 @@ void ToggleStripWidget::rebuildRenderData() {
         unsigned long color = 0;
         if (row.kind == Click::Settings) {
             // The menu's own button, in the accent like the old settings chip.
-            icon = m_settingsOpen ? "hud-close" : "gear";
+            icon = m_settingsOpen ? "hud-close" : "hud-gear";
             text = m_settingsOpen ? "x" : "=";
             color = getColor(ColorSlot::ACCENT);
             if (hovered) color = PluginUtils::lightenColor(color, 0.25f);

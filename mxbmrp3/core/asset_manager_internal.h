@@ -13,6 +13,7 @@
 #include "../diagnostics/logger.h"
 #include <cstring>
 #include <string>
+#include <vector>
 // A theme asked for a title band or a body card and has no card slice set to draw
 // one with. Silence here is the same failure the unknown-key warning exists for, one
 // level down: the key is spelled right, it parses, it is applied -- and the screen
@@ -29,6 +30,11 @@ inline void warnIfCardWithoutInner(const ThemeAsset& theme) {
                  "(card_center.tga plus card_corner_*.tga / card_edge_*.tga)",
                  theme.name.c_str());
 }
+
+// The immediate subdirectories of a pack root, sorted; false when the root
+// does not exist. Defined in asset_manager_packs.cpp, shared with the deck
+// packs' TU (asset_manager_decks.cpp).
+bool listPackDirs(const std::string& root, std::vector<std::string>& dirs);
 
 // Peek ONE string key out of a pack ini before the pack is built -- discovery
 // needs to know whether a directory is a standalone pack or a skin before it

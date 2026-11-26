@@ -15,6 +15,11 @@
 //      red→green for the retry: a single-shot MoveFile would have failed at B's
 //      first attempt and lost the user their install.
 //
+// A third case pins that clearing the old backup removes a folder link (junction
+// or directory symlink) itself and leaves what it points to alone. A fourth pins
+// the checksum gate the download worker runs before extractAndInstall(): no
+// published digest, a wrong one and a right one.
+//
 // Wine honors an exclusive (FILE_SHARE_NONE) handle against MoveFile — a locked
 // source yields ERROR_SHARING_VIOLATION — so the lock is real under the harness.
 // A second case pins the Updates tab's step percentages: Extract and Install
@@ -128,6 +133,76 @@ TEST_CASE("updater: install survives a locked/in-use target with rollback + retr
     host.shutdown();
 }
 
+TEST_CASE("updater: links are removed, never followed") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\updater\\");
+
+    const std::string root = "Z:\\tmp\\mxbmrp3-tests\\updater\\";
+    const std::string dir = root + "links\\";
+    const std::string outside = root + "links-outside\\";
+    const std::string zip = releaseZip();
+    std::string err;
+
+    mkdirW(outside);
+    ini::writeFile(outside + "keep.txt", "KEEP");
+    mkdirW(dir);
+    ini::writeFile(join(dir, DLO), "ORIG-DLO");
+
+    // First install: leaves mxbmrp3_update_backup\ behind, as a real update does.
+    REQUIRE(host.extractAndInstall(dir.c_str(), zip, err) == 1);
+    const std::string backup = dir + "mxbmrp3_update_backup\\";
+    REQUIRE(exists(backup));
+
+    // A link inside the backup, pointing outside the plugin folder.
+    const std::string link = backup + "linked";
+    const std::string target = outside.substr(0, outside.size() - 1);
+    CreateSymbolicLinkA(link.c_str(), target.c_str(), SYMBOLIC_LINK_FLAG_DIRECTORY);
+    // Wine 9 answers CreateSymbolicLink with success and makes nothing, so a
+    // link that does not resolve means this Wine cannot exercise the case: say
+    // so rather than pass it on nothing. Windows and a Wine with reparse points
+    // run it in full. The link rule itself is pinned by test_update_link.cpp.
+    if (ini::readFile(link + "\\keep.txt") != "KEEP") {
+        MESSAGE("this Wine cannot create directory links: case not exercised");
+        host.shutdown();
+        return;
+    }
+
+    // Second install clears the old backup first.
+    INFO("err: " << err);
+    CHECK(host.extractAndInstall(dir.c_str(), zip, err) == 1);
+    CHECK_FALSE(exists(link));                                   // the link is gone
+    CHECK(ini::readFile(outside + "keep.txt") == "KEEP");       // what it pointed to is not
+
+    host.shutdown();
+}
+
+TEST_CASE("updater: the checksum gate") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\updater\\");
+
+    // SHA-256("abc"), the FIPS 180-2 test vector, as the release API's digest
+    // field carries it after "sha256:".
+    const std::string data = "abc";
+    const char* right = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    std::string err;
+
+    REQUIRE_MESSAGE(host.updaterChecksum(data, right, err) != -1, "MXBMRP3_Test_UpdaterChecksum not exported");
+    CHECK(host.updaterChecksum(data, right, err) == 1);
+    CHECK(err.empty());
+
+    // No digest published: refused, never installed on trust.
+    CHECK(host.updaterChecksum(data, "", err) == 0);
+    CHECK(err == "SHA256 verification failed (no checksum published)");
+
+    // A digest that does not match: refused.
+    CHECK(host.updaterChecksum("abd", right, err) == 0);
+    CHECK(err == "SHA256 checksum mismatch");
+
+    host.shutdown();
+}
+
 TEST_CASE("updater: slow steps count 0 to 100 percent before OK") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
@@ -186,4 +261,27 @@ TEST_CASE("updater: slow steps count 0 to 100 percent before OK") {
     CHECK(d[2] == 101);
 
     host.shutdown();
+}
+
+// The plugins folder is shared. An updater of old renamed the running DLL to
+// <name>.dlo.old, and startup used to delete EVERY *.dlo.old there, so another
+// plugin's backup went too (found by the MXB Facts author check, 1.36). Now
+// only this plugin's own goes.
+TEST_CASE("updater: startup removes only its own .dlo.old") {
+    const std::string ours = std::string(dllPath()) + ".old";
+    const std::string theirs = "otherplugin.dlo.old";
+    ini::writeFile(ours, "OURS");
+    ini::writeFile(theirs, "THEIRS");
+    REQUIRE(exists(ours));
+    REQUIRE(exists(theirs));
+    {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        host.startup("Z:\\tmp\\mxbmrp3-tests\\updater\\");
+        CHECK_FALSE(exists(ours));
+        CHECK(ini::readFile(theirs) == "THEIRS");
+        host.shutdown();
+    }
+    DeleteFileA(theirs.c_str());
+    DeleteFileA(ours.c_str());
 }

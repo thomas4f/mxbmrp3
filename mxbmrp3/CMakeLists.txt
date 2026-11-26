@@ -72,8 +72,10 @@ if(NOT MXBMRP3_TEST_BUILD)
     list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks_twitch.cpp)
     list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks_youtube.cpp)
     list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks_gl.cpp)
+    list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks_settings_columns.cpp)
     list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks_title_art.cpp)
     list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks_stack.cpp)
+    list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks_clip.cpp)
     list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks_lap_delta.cpp)
     list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks_dash.cpp)
     list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks_media.cpp)
@@ -89,6 +91,7 @@ if(NOT MXBMRP3_TEST_BUILD)
     list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks_find.cpp)
     list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks_language.cpp)
     list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks_settings_input.cpp)
+    list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks_scroll.cpp)
     list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks_toggle_strip.cpp)
     list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_hooks_perf.cpp)
     list(REMOVE_ITEM MXB_SOURCES ${MXB_SRC}/core/test_gl_render_probe.cpp)
@@ -300,6 +303,8 @@ function(mxb_add_plugin NAME GAME_DEF API_TU)
         # would fire on enum members named SHORT/LONG/FIXED that collide with
         # windows.h typedefs and that MSVC is perfectly happy with. The tree is
         # clean at this bar, so it starts and stays at zero like the rest.
+        # The member half (C4458) is check_game_configs.sh's, which runs the
+        # full form and passes only the global kind.
         target_compile_options(${NAME} PRIVATE
             -m64 -O1 -Wall -Wextra -Werror -Wshadow=local -Wno-unknown-pragmas)
         target_link_options(${NAME} PRIVATE

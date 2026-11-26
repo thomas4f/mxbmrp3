@@ -5,6 +5,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "hud_scroll.h"
 #include "dropdown_list.h"
 #include "../core/thread_safety.h"
 #include "../core/plugin_constants.h"
@@ -249,6 +250,12 @@ private:
     int m_categoryIndex;  // Index into m_categoryList (0 = "All")
     uint32_t m_enabledColumns = COL_DEFAULT;  // Bitfield of enabled columns
     int m_recordsToShow = 8;  // Number of records to display (3-30, default 8 -> 15-row HUD)
+    // Scrollback through every fetched record (hud_scroll.h). At home it draws the
+    // usual view (top three, then the rows around your PB); moved, a plain window
+    // of the table with your PB in its place. m_scrollListed: this rebuild had a
+    // table to scroll.
+    HudScroll m_scroll;
+    bool m_scrollListed = false;
     char m_lastSessionTrackName[256] = {0};  // Track session trackName to auto-fetch on event start
     char m_lastSessionCategory[64] = {0};  // Track session category to auto-fetch on bike change
     bool m_bAutoFetch = false;  // Auto-fetch records when entering event (default off)

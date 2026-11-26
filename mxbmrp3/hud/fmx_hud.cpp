@@ -138,25 +138,10 @@ void FmxHud::rebuildRenderData() {
     // === Title === (the plan's caption row, above currentY)
     addPlanTitle(plan, TR("FMX"), textColor);
 
-    // THE ENDED CHAIN HOLDS THROUGH A CRASH. FmxManager's ChainEndAnimation
-    // lingers a finished chain for chainPeriod and then clears it; the rotation
-    // arcs already hold their snapshot and their red for the whole crashed state,
-    // past that timer, until recovery. The stack, multiplier and scores follow:
-    // while the animation runs its numbers are copied here, and while the rider
-    // is still down after it ends the copy stays on screen in the same colour.
+    // The ended chain holds through a crash (Fmx::ChainHold), in the same colour.
     const RiderTrackState* playerPos = PluginData::getInstance().getPlayerTrackPosition();
     const bool isCrashed = playerPos && playerPos->crashed;
-    const auto& endAnim = fmx.getChainEndAnimation();
-    if (endAnim.active) {
-        m_comboHold.held = true;
-        m_comboHold.success = endAnim.success;
-        m_comboHold.hasTricks = !endAnim.chainTricks.empty();
-        m_comboHold.multiplier = fmx.calculateChainMultiplier(endAnim.chainTricks);
-        m_comboHold.trickScore = m_comboHold.hasTricks ? endAnim.chainTricks.back().finalScore : 0;
-        m_comboHold.chainScore = endAnim.chainScore;
-    } else if (!isCrashed) {
-        m_comboHold.held = false;
-    }
+    m_comboHold.update(fmx, isCrashed);
     // What the combo block shows: the ended chain (animating, or held down), or
     // the live one.
     const bool lingering = m_comboHold.held;
@@ -320,37 +305,9 @@ float FmxHud::buildTrickStack(const BuildCtx& ctx, float currentY) {
 // Trick Stats row (duration + distance + height + rotation).
 float FmxHud::buildTrickStatsRow(const BuildCtx& ctx, float currentY) {
     const auto& dim = ctx.dim;
-    const Fmx::FmxScore& score = ctx.fmx.getScore();
-    const Fmx::TrickInstance& trick = ctx.fmx.getActiveTrick();
-    const Fmx::RotationTracker& rotation = ctx.fmx.getRotationTracker();
-    const auto& endAnim = ctx.fmx.getChainEndAnimation();
-    const bool isCrashed = ctx.isCrashed;
-
-    // Same visibility gate as trick name: must be past progress threshold
-    bool pastThreshold = trick.progress >= Fmx::getMinProgress(trick.type);
-    bool hasActiveTrick = trick.type != Fmx::TrickType::NONE &&
-                          ((trick.state == Fmx::TrickState::ACTIVE && pastThreshold) ||
-                           trick.state == Fmx::TrickState::GRACE);
-
-    if (hasActiveTrick) {
-        m_statsSnapshot.duration = trick.duration;
-        m_statsSnapshot.distance = trick.distance;
-        m_statsSnapshot.height = trick.peakHeight;
-        // Peak rotation on the trick's primary axis (pitch for flips, yaw for spins, etc.)
-        switch (Fmx::getPrimaryAxis(trick.type)) {
-            case Fmx::RotationAxis::PITCH: m_statsSnapshot.rotation = std::abs(rotation.peakPitch); break;
-            case Fmx::RotationAxis::YAW:   m_statsSnapshot.rotation = std::abs(rotation.peakYaw);   break;
-            case Fmx::RotationAxis::ROLL:  m_statsSnapshot.rotation = std::abs(rotation.peakRoll);  break;
-            default:                        m_statsSnapshot.rotation = 0.0f;                         break;
-        }
-        m_statsSnapshot.hasData = true;
-    } else if (trick.state == Fmx::TrickState::IDLE && score.chainCount == 0 &&
-               !endAnim.active && !isCrashed) {
-        // Truly idle and recovered. While the rider is still down the row
-        // holds, like the arcs and the combo block - in plain text, since
-        // a trick's measurements are not the thing that was lost.
-        m_statsSnapshot = StatsSnapshot();
-    }
+    // Follow the trick turning, hold the last, clear once truly idle: the
+    // rule the Combo deck shares (fmx_trick_stats.h)
+    m_statsSnapshot.update(ctx.fmx, ctx.isCrashed);
 
     if (m_statsSnapshot.hasData) {
             addTrickStatsRow(ctx.contentStartX, currentY, ctx.contentWidth, dim, ctx.textColor);
@@ -529,9 +486,9 @@ void FmxHud::addComboScoreLines(const BuildCtx& ctx, float arcCenterX, float arc
         int displayTrickScore = 0;
         unsigned long trickScoreColor = textColor;
 
-        if (lingering && m_comboHold.hasTricks) {
+        if (lingering && m_comboHold.trickCount > 0) {
             // Linger the final trick's score — green on completion, red on failure
-            displayTrickScore = m_comboHold.trickScore;
+            displayTrickScore = m_comboHold.lastTrickScore;
             trickScoreColor = lingerColor;
         } else if (hasCommittedTrick && trick.finalScore > 0) {
             displayTrickScore = trick.finalScore;
@@ -818,10 +775,10 @@ void FmxHud::addTrickStatsRow(float x, float y, float maxWidth, const ScaledDime
         push(m_icons.stopwatch, tenths ? "%.1fs" : "%.0fs", m_statsSnapshot.duration);
         push(m_icons.rulerH, "%.0fm", m_statsSnapshot.distance);
         // Applicable only to a trick that actually flew; a wheelie has no height.
-        if (m_statsSnapshot.height >= 1.0f) {
+        if (m_statsSnapshot.hasHeight()) {
             push(m_icons.rulerV, useIcons ? "%.0fm" : "H%.0fm", m_statsSnapshot.height);
         }
-        if (m_statsSnapshot.rotation >= 1.0f) {
+        if (m_statsSnapshot.hasRotation()) {
             push(m_icons.corner, "%.0fd", m_statsSnapshot.rotation);
         }
         float width = 0.0f;
@@ -929,14 +886,14 @@ void FmxHud::resetToDefaults() {
     setScale(1.0f);
     setPosition(DefaultSlots::rightColumnX(DefaultSlots::NARROW_CELLS), DefaultSlots::rightColumnY());
     m_comboArcFill = 0.0f;
-    m_comboHold = ComboHold();
+    m_comboHold = Fmx::ChainHold();
     m_comboArcGraceStartFill = -1.0f;
     m_comboArcEndStartFill = -1.0f;
 
     // Reset display state
     m_trickStack.clear();
     m_arcSnapshot = ArcSnapshot{};
-    m_statsSnapshot = StatsSnapshot{};
+    m_statsSnapshot = Fmx::TrickStats{};
 
     // Display settings (per-profile, like StandingsHud)
     m_enabledRows = ROW_DEFAULT;

@@ -60,6 +60,8 @@ void FriendsHud::update() {
         setDataDirty();
     }
 
+    if (m_scroll.poll(*this)) setDataDirty();
+
     // ON_JOIN: show for a window after friend activity (manager-detected: a friend
     // coming in-game or switching servers - never the user's own session/timing).
     // Runs every frame; flips dirty only on the show<->hide transition so the
@@ -219,6 +221,7 @@ void FriendsHud::rebuildRenderData() {
     addPlanTitle(plan, kTitle, getColor(ColorSlot::PRIMARY));
 
     if (empty) {
+        m_scroll.layout(0, m_maxDisplayRows, 0);
         // Centred in the content box (header row included: with nothing listed there
         // is nothing for the headers to caption).
         addBlockedNotice(plan.contentX() + plan.contentW() * 0.5f,
@@ -264,8 +267,17 @@ void FriendsHud::rebuildRenderData() {
 
     const char* DASH = Placeholders::GENERIC;  // "-"
 
-    for (int i = 0; i < rowsToShow; ++i) {
-        const SteamFriend& f = *view[i];
+    // The rows from where the scrollback stands, and its bar beside them.
+    const float rowsTop = currentY;
+    const int first = m_scroll.layout(static_cast<int>(view.size()), m_maxDisplayRows, 0);
+    m_scroll.draw(*this, plan.sectionBoxX() + plan.sectionBoxW(), plan.x0 + plan.width(),
+                  rowsTop, rowsToShow * dim.lineHeightNormal, dim.lineHeightNormal, dim.fontSize);
+
+    // A row more while the scrollback glides; HudScroll::clipRows cuts them.
+    const size_t rowsQuad = m_quads.size(), rowsString = m_strings.size();
+    const int drawn = m_scroll.drawRows();
+    for (int i = 0; i < drawn; ++i) {
+        const SteamFriend& f = *view[static_cast<size_t>(first + i)];
         const bool online = !f.server.empty();
 
         // Same-server badge: a tinted "circle" icon sprite (the StandingsHud
@@ -349,10 +361,12 @@ void FriendsHud::rebuildRenderData() {
 
         currentY += dim.lineHeightNormal;
     }
+    m_scroll.clipRows(*this, rowsQuad, m_quads.size(), rowsString, m_strings.size(), rowsTop,
+                      dim.lineHeightNormal);
 }
 
 void FriendsHud::resetToDefaults() {
-    m_bVisible = true;
+    m_bVisible = false;   // a new install opens on the Map and the Toggles strip alone
     m_bShowTitle = true;
     setTextureVariant(0);
     m_fBackgroundOpacity = SettingsLimits::DEFAULT_OPACITY;

@@ -18,6 +18,7 @@
 #include <cstring>
 #include <sstream>
 #include <fstream>
+#include <iterator>
 
 AssetManager& AssetManager::getInstance() {
     static AssetManager instance;
@@ -43,6 +44,7 @@ void AssetManager::discoverAssets(const char* savePath) {
     m_gamepads.clear();
     m_pitboards.clear();
     m_gauges.clear();
+    m_decks.clear();
     m_fontNameToIndex.clear();
     m_textureNameToIndex.clear();
     m_iconNameToIndex.clear();
@@ -64,11 +66,12 @@ void AssetManager::discoverAssets(const char* savePath) {
     discoverGamepads();
     discoverPitboards();
     discoverGauges();
+    discoverDecks();
 
     m_initialized = true;
 
-    DEBUG_INFO_F("AssetManager: Discovery complete - %zu fonts, %zu texture bases (%zu sprites), %zu icons, %zu themes, %zu gamepads, %zu pitboards, %zu gauges",
-        m_fonts.size(), m_textures.size(), m_totalTextureSprites, m_icons.size(), m_themes.size(), m_gamepads.size(), m_pitboards.size(), m_gauges.size());
+    DEBUG_INFO_F("AssetManager: Discovery complete - %zu fonts, %zu texture bases (%zu sprites), %zu icons, %zu themes, %zu gamepads, %zu pitboards, %zu gauges, %zu decks",
+        m_fonts.size(), m_textures.size(), m_totalTextureSprites, m_icons.size(), m_themes.size(), m_gamepads.size(), m_pitboards.size(), m_gauges.size(), m_decks.size());
 }
 
 void AssetManager::syncUserAssets(const char* savePath) {
@@ -682,6 +685,38 @@ int AssetManager::fitChars(int fontIndex, const char* text, float width, float f
     const float cellW = PluginUtils::calculateMonospaceTextWidth(1, fontSize);
     const int cells = cellW > 0.0f ? static_cast<int>(width / cellW + 0.01f) : 0;
     return std::min(cells, static_cast<int>(std::strlen(text)));
+}
+
+float AssetManager::textWidth(int fontIndex, const char* text, float fontSize, int count) const {
+    const size_t pos = static_cast<size_t>(fontIndex - 1);
+    const bool measured = fontIndex >= 1 && pos < m_fonts.size() && m_fonts[pos].measured;
+    const float cellW = PluginUtils::calculateMonospaceTextWidth(1, fontSize);
+    float w = 0.0f;
+    int n = 0;
+    for (const char* c = text; *c && (count < 0 || n < count); ++c, ++n)
+        w += measured ? m_fonts[pos].advance[static_cast<unsigned char>(*c)] * fontSize : cellW;
+    return w;
+}
+
+float AssetManager::digitInk(int fontIndex) const {
+    const size_t pos = static_cast<size_t>(fontIndex - 1);
+    if (fontIndex < 1 || pos >= m_fonts.size()) return 0.0f;
+    const FontAsset& font = m_fonts[pos];
+    if (font.digitInk < 0.0f) {
+        // On first use, not at discovery: a deck asks for its few faces, and
+        // reading all forty .fnt files at startup would cost every player.
+        // DeckHud::warmFonts asks at a settings load, so a shown deck's
+        // first rebuild finds them read.
+        font.digitInk = 0.0f;
+        try {
+            std::ifstream in(std::string(DISCOVERY_DIR) + "\\" + FONTS_SUBDIR + "\\" + font.filename + ".fnt", std::ios::binary);
+            const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            if (!bytes.empty()) font.digitInk = hudassets::measureFntDigitInk(bytes.data(), bytes.size());
+        } catch (...) {
+            DEBUG_WARN_F("AssetManager: could not measure font %s", font.filename.c_str());
+        }
+    }
+    return font.digitInk;
 }
 
 const FontAsset* AssetManager::getFontByName(const std::string& name) const {

@@ -2,7 +2,7 @@
 // hud/settings/settings_layout.cpp
 // Implementation of shared layout context and helper methods
 // ============================================================================
-// file-budget: 1610 the settings panel's geometry in one place; split with the next tab rework
+// file-budget: 1552 the settings panel's geometry in one place; split with the next tab rework
 #include "settings_layout.h"
 #include "../settings_hud.h"
 #include "../dropdown_list.h"
@@ -15,7 +15,7 @@
 #include "../../core/asset_manager.h"
 #include "../../core/input_manager.h"
 #include "../../core/tooltip_manager.h"
-#include "../gamepad_widget.h"   // the Gamepad row's pack cycle reads activePack()
+#include "../gamepad_widget.h"   // the Gamepad row's pack cycle reads activeLayout()
 #include "../hud_defaults.h"   // Default reference name; pulls freeze_duration.h
 #include "../pitboard_hud.h"     // ...and the Pitboard row's
 #include "../tacho_widget.h"     // ...and both gauge rows'
@@ -300,6 +300,7 @@ void SettingsLayoutContext::beginColumns(int columns, int items, int labelChars)
     m_gridCols = columns;
     m_gridRows = (items + columns - 1) / columns;
     m_gridItem = 0;
+    m_gridItems = items;
     m_gridLabelChars = labelChars;
     m_gridTop = currentY;
     m_rowLabelX = labelX;
@@ -316,6 +317,9 @@ void SettingsLayoutContext::setRowLabelChars(int labelChars) {
 
 void SettingsLayoutContext::endColumns() {
     if (m_gridCols == 0) return;
+#if defined(MXBMRP3_TEST_BUILD)
+    if (m_gridItem != m_gridItems) ++s_testColumnMiscounts;   // see beginColumns
+#endif
     currentY = m_gridTop + lineHeightNormal * static_cast<float>(m_gridRows);
     labelX = m_rowLabelX;
     controlX = m_rowControlX;
@@ -363,15 +367,15 @@ void SettingsLayoutContext::addInputField(float x, int fieldChars, const char* t
                                           unsigned long color, bool active, int cursorColumn, bool box) {
     ColorConfig& colors = ColorConfig::getInstance();
     const float cw = charWidth();
-    // The dropdown box's fill and height (addDropdownBox), so the two read as one
-    // family; a field being typed into takes the accent instead.
+    // The dropdown box's box (DropdownList::drawField: the theme's card art, else
+    // a tint), so the two read as one family; typing adds an accent tint.
     const float boxX = x + cw * 0.7f;
     const float boxW = cw * (static_cast<float>(fieldChars) + 0.3f);
     const float boxY = currentY + lineHeightNormal * 0.06f;
     const float boxH = lineHeightNormal * 0.88f;
-    if (active || box) addSolidQuad(boxX, boxY, boxW, boxH, active
-        ? PluginUtils::applyOpacity(colors.getAccent(), 0.18f)
-        : PluginUtils::applyOpacity(colors.getPrimary(), 0.10f));
+    if (box && (!active || parent->hasThemedCard())) DropdownList::drawField(*parent, boxX, boxY, boxW, boxH,
+        PluginUtils::applyOpacity(colors.getPrimary(), 0.10f));
+    if (active) addSolidQuad(boxX, boxY, boxW, boxH, PluginUtils::applyOpacity(colors.getAccent(), 0.18f));
     if (active) {
         const float line = lineHeightNormal * 0.06f;
         addSolidQuad(boxX, boxY + boxH - line, boxW, line, colors.getAccent());
@@ -576,69 +580,6 @@ void SettingsLayoutContext::addActionButton(
                            roleColor, state);
 
     currentY += bg.advance;
-}
-
-void SettingsLayoutContext::addPager(int page, int pageCount,
-                                     SettingsHud::ClickRegion::Type prevType,
-                                     SettingsHud::ClickRegion::Type nextType) {
-    if (pageCount <= 1) return;
-    ColorConfig& colors = ColorConfig::getInstance();
-    char pageText[16];
-    snprintf(pageText, sizeof(pageText), "%s %d/%d", TR("Page"), page + 1, pageCount);
-    // The label's slot is sized for the LAST page's text ("Page 14/14"), not this
-    // page's: centred on its own width, the buttons stepped half a character
-    // when the page number gained a digit (9/14 -> 10/14).
-    char slotText[16];
-    snprintf(slotText, sizeof(slotText), "%s %d/%d", TR("Page"), pageCount, pageCount);
-    const float cw = charWidth();
-    const float textW = cw * static_cast<float>(std::strlen(slotText));
-    // Row-height buttons three characters wide, a character of air to the label:
-    // the row costs what the text pager cost, so no tab grows by it.
-    const float btnW = cw * 3.0f;
-    const float btnH = lineHeightNormal;
-    const float gap = cw;
-    float x = labelX + (rowSpanWidth() - (btnW + gap + textW + gap + btnW)) * 0.5f;
-    const float y = currentY;
-    const bool useIcons = UiConfig::getInstance().getTitleIcons();
-    const int chevron = useIcons ? AssetManager::getInstance().getIconSpriteIndex("hud-angle") : 0;   // flat angle-up; "<"/">" with UI icons off
-    const float halfIcon = lineHeightNormal * 0.3f;
-
-    // One end: region (only while it can be pressed), the state fill, the chevron
-    // turned to point the way (hud-angle rotated a quarter turn either way).
-    auto end = [&](float bx, bool enabled, SettingsHud::ClickRegion::Type type,
-                   const char* tipId, float sinYaw) {
-        const size_t regionIndex = parent->m_clickRegions.size();
-        if (enabled) {
-            parent->m_clickRegions.push_back(SettingsHud::ClickRegion(bx, y, btnW, btnH, type, nullptr));
-            parent->m_clickRegions.back().tooltipId = tipId;
-        }
-        const BaseHud::ButtonState state =
-            !enabled ? BaseHud::ButtonState::Disabled
-            : (parent->m_hoveredRegionIndex == static_cast<int>(regionIndex))
-                ? BaseHud::ButtonState::Hovered
-                : BaseHud::ButtonState::Idle;
-        parent->addStateButton(bx, y, btnW, btnH, "", y, fontSize, colors.getAccent(), state);
-        // The glyph's ink, by the same rule addStateButton applies to a label.
-        const unsigned long ink = (state == BaseHud::ButtonState::Disabled)
-            ? colors.getMuted()
-            : parent->buttonGlyphColor(parent->buttonStateColor(colors.getAccent(), state));
-        if (chevron > 0) {
-            parent->addRotatedSpriteQuad(bx + btnW * 0.5f, y + btnH * 0.5f, halfIcon,
-                                         0.0f, sinYaw, chevron, ink);
-        } else if (!useIcons) {
-            parent->addString(sinYaw < 0.0f ? "<" : ">", bx + btnW * 0.5f, y,
-                              PluginConstants::Justify::CENTER, Fonts::getNormal(), ink, fontSize);
-        }
-    };
-    end(x, page > 0, prevType, "pager.prev", -1.0f);
-    x += btnW + gap;
-    // The label CENTRED in its slot: a page number a digit short of the last
-    // page's would otherwise sit that half-character left of the midpoint.
-    parent->addString(pageText, x + textW * 0.5f, y, PluginConstants::Justify::CENTER, Fonts::getNormal(),
-                      colors.getPrimary(), fontSize);
-    x += textW + gap;
-    end(x, page + 1 < pageCount, nextType, "pager.next", 1.0f);
-    currentY += lineHeightNormal;
 }
 
 void SettingsLayoutContext::openSectionCard() {
@@ -1281,15 +1222,15 @@ void SettingsLayoutContext::addPerHudThemeControl(BaseHud* hud) {
 // The gauges pack a gauge row is DRAWING, by display name.
 //
 // Two widgets, two unrelated classes, one accessor -- there is no common base
-// carrying activePack() and adding one would put an AssetManager type in BaseHud
+// carrying activeLayout() and adding one would put an AssetManager type in BaseHud
 // for the benefit of two panels. So the cast is picked here, in the one place
 // that needs it, rather than duplicated at both call sites.
 static std::string activeGaugesDisplayName(const BaseHud* hud) {
     const GaugesAsset* pack = nullptr;
     if (const auto* tacho = dynamic_cast<const TachoWidget*>(hud)) {
-        pack = tacho->activePack();
+        pack = tacho->activeLayout();
     } else if (const auto* speedo = dynamic_cast<const SpeedoWidget*>(hud)) {
-        pack = speedo->activePack();
+        pack = speedo->activeLayout();
     }
     return pack ? pack->displayName : std::string(TR("None"));
 }
@@ -1309,7 +1250,7 @@ void SettingsLayoutContext::addPackControl(BaseHud* hud) {
     const char* tip = "pitboard.pack";
     switch (hud->m_packKind) {
         case BaseHud::PackKind::Gamepad:
-            if (const GamepadAsset* a = static_cast<GamepadWidget*>(hud)->activePack())
+            if (const GamepadAsset* a = static_cast<GamepadWidget*>(hud)->activeLayout())
                 label = a->displayName;
             count = assets.getGamepadCount();
             tip = "gamepad.pack";
@@ -1329,7 +1270,7 @@ void SettingsLayoutContext::addPackControl(BaseHud* hud) {
             break;
         case BaseHud::PackKind::Pitboard:
         case BaseHud::PackKind::None:
-            if (const PitboardAsset* a = static_cast<PitboardHud*>(hud)->activePack())
+            if (const PitboardAsset* a = static_cast<PitboardHud*>(hud)->activeLayout())
                 label = a->displayName;
             count = assets.getPitboardCount();
             break;
@@ -1445,25 +1386,28 @@ void SettingsLayoutContext::addSpacing() {
     //
     // Converted the BOX way (cellW * aspect), not on cellH, so one stated cell is
     // square on screen wherever it is spent.
-    currentY += static_cast<float>(parent->panelGapCells())
-              * layout().cellW * PluginConstants::UI_ASPECT_RATIO * parent->getScale();
+    currentY += spacingHeight();
+}
+
+float SettingsLayoutContext::spacingHeight() const {
+    return static_cast<float>(parent->panelGapCells())
+         * layout().cellW * PluginConstants::UI_ASPECT_RATIO * parent->getScale();
 }
 
 SettingsLayoutContext::WidgetColumns SettingsLayoutContext::widgetColumns() const {
     // Name (11 chars + air: "Now Playing"), Visible / Title (3-char values), Texture
     // (the remainder, 8: the de/sv/es "Default"), Opacity / Scale (4-char percentages):
     // every control is value + 4 wide. Texture gives the name one char, its gap the other.
-    constexpr int NAME_CHARS = 12;
-    constexpr int GAP_CHARS = 2;
+    // The scrollbar lives in the panel's padding, so the columns keep all their width.
+    constexpr int NAME_CHARS = 12, WIDE_GAP_CHARS = 2, GAP_CHARS = 2;
     constexpr int TOGGLE_CHARS = 3 + 4;
     constexpr int PERCENT_CHARS = 4 + 4;
-    const int fixedChars = NAME_CHARS + 2 * (TOGGLE_CHARS + GAP_CHARS)
-        + 4 + 1 + (PERCENT_CHARS + GAP_CHARS) + PERCENT_CHARS;
+    const int fixedChars = NAME_CHARS + 2 * TOGGLE_CHARS + WIDE_GAP_CHARS + 2 * GAP_CHARS + 5 + 2 * PERCENT_CHARS;
     WidgetColumns cols;
     cols.texChars = std::max(3, layout().settingsContentAreaChars() - fixedChars);
     const float cw = charWidth();
     cols.visX = labelX + cw * NAME_CHARS;
-    cols.titleX = cols.visX + cw * (TOGGLE_CHARS + GAP_CHARS);
+    cols.titleX = cols.visX + cw * (TOGGLE_CHARS + WIDE_GAP_CHARS);
     cols.texX = cols.titleX + cw * (TOGGLE_CHARS + GAP_CHARS);
     cols.opacityX = cols.texX + cw * (cols.texChars + 4 + 1);
     cols.scaleX = cols.opacityX + cw * (PERCENT_CHARS + GAP_CHARS);
@@ -1551,7 +1495,7 @@ void SettingsLayoutContext::addWidgetRow(
         if (isGauges) {
             packValue = activeGaugesDisplayName(hud);
         } else if (const GamepadAsset* active =
-                       static_cast<const GamepadWidget*>(hud)->activePack()) {
+                       static_cast<const GamepadWidget*>(hud)->activeLayout()) {
             packValue = active->displayName;
         }
         // Needs somewhere to GO now: with one pack installed and no Off entry the

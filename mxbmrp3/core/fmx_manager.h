@@ -65,6 +65,7 @@ public:
         Fmx::TrickType finalType = Fmx::TrickType::NONE;
         std::vector<Fmx::TrickInstance> chainTricks;  // Snapshot of chain at end
         int chainScore = 0;
+        int bankedScore = 0;   // what it added to the session (its points times its multiplier); 0 when lost
     };
     const ChainEndAnimation& getChainEndAnimation() const { return m_chainEndAnimation; }
 
@@ -236,6 +237,7 @@ private:
     float m_pendingFlightSec = 0.0f;
     float m_pendingHeightM = 0.0f;
     float m_pendingDistanceM = 0.0f;
+    float m_pendingPeakG = 0.0f;      // hardest g from touchdown through the settle window (Feather Touch)
 
     // Previous frame position for teleport detection and distance calculation
     float m_prevPosX = 0.0f;

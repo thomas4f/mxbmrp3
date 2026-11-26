@@ -25,6 +25,7 @@
 
 #include "i18n.h"
 
+#include <cstring>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -52,6 +53,18 @@ public:
         const auto& m = controls();
         auto it = m.find(controlId);
         return (it != m.end()) ? I18n::trc("tooltip", it->second) : "";
+    }
+
+    // A WARNING tooltip draws in the Warning colour instead of Muted -- the slot the
+    // Spotter tab's Beta notice uses, so a caveat reads as one. Kept for a switch
+    // that can leave the player stuck: Pointer Off hides the only way to click the
+    // menu open, so its hotkey becomes the way back.
+    static bool isWarningTooltip(const char* controlId) {
+        static const char* const kWarnings[] = { "widgets.pointer" };
+        for (const char* id : kWarnings) {
+            if (std::strcmp(id, controlId) == 0) return true;
+        }
+        return false;
     }
 
     // A tooltip whose text lives with its DATA rather than in the table above:
@@ -113,6 +126,7 @@ private:
             {"delta_trace", NC_("tooltip", "Your gap to a reference lap across the whole lap: green where you gained, red where you lost.")},
             {"gap_bar", NC_("tooltip", "Visual progress bar showing your gap to the rider ahead and behind.")},
             {"widgets", NC_("tooltip", "Simple HUD elements showing speed, position, lap count, session time, and other info.")},
+            {"decks", NC_("tooltip", "Decks: small arcade-style readouts for racing and riding, drawn as one set.")},
             {"notices", NC_("tooltip", "On-screen notices for race events, personal bests, and setup warnings.")},
             {"event_log", NC_("tooltip", "Scrolling feed of race events: session changes, fastest laps, penalties, and finishes.")},
             {"fmx", NC_("tooltip", "Freestyle trick detection with scoring, chain combos, and rotation visualization.")},
@@ -130,8 +144,6 @@ private:
         static const Map m = {
             {"common.visible", NC_("tooltip", "Show or hide this element during gameplay.")},
             {"common.title", NC_("tooltip", "Toggle the title bar at the top of this HUD.")},
-            {"pager.prev", NC_("tooltip", "Previous page.")},
-            {"pager.next", NC_("tooltip", "Next page.")},
             {"find.field", NC_("tooltip", "Find a setting by its name, its tab, or a word from its description. Esc clears it.")},
             {"common.texture", NC_("tooltip", "Pick the artwork this element draws from. Elements whose artwork is mandatory have no Off option.")},
             {"common.opacity", NC_("tooltip", "Background transparency. 0% is fully transparent, 100% is fully opaque.")},
@@ -143,8 +155,7 @@ private:
             {"pitboard.pack", NC_("tooltip", "Pit board artwork and the row positions that go with it.")},
             {"gauges.pack", NC_("tooltip", "Dial faces and the ranges that place the needles on them.")},
 
-            {"standings.live_updates", NC_("tooltip", "In races. Off: at the splits; Gaps: live gaps; Both: live gaps and order, also on the Position widget and Dash.")},
-            {"standings.animate_positions", NC_("tooltip", "Animate position changes. Off: none; Basic: slide rows; Colored: slide + green/red tint.")},
+            {"standings.colored_moves", NC_("tooltip", "Tint rows green or red as they slide to a new place.")},
             {"standings.filter_dns", NC_("tooltip", "Hide riders who did not start (DNS) from standings, position counts, and other displays.")},
             {"standings.session_info", NC_("tooltip", "Show a session-info row below the title (session, time remaining, leader's lap, or overtime label).")},
             {"standings.headers", NC_("tooltip", "Show a header row labeling each enabled column above the rider rows.")},
@@ -330,7 +341,7 @@ private:
             {"general.direct_gl", NC_("tooltip", "Draw the HUD in the game's OpenGL context, not the engine. Off/on retries a Failed.")},
             {"general.screen_clamp", NC_("tooltip", "When enabled, HUDs are clamped to stay within screen bounds when dragging.")},
             {"general.auto_save", NC_("tooltip", "Auto-saves on leaving the track (never while riding); use Save anytime. Disable to edit INI.")},
-            {"general.steam_friends", NC_("tooltip", "Broadcast your status and see friends running the plugin. Needs the Steam build; on by default.")},
+            {"general.steam_friends", NC_("tooltip", "Broadcast your status and see friends running the plugin. Needs the Steam build; off by default.")},
             {"general.discord", NC_("tooltip", "Display your track, session, and lap progress in Discord's Rich Presence.")},
             {"general.now_playing", NC_("tooltip", "Music from Windows' media controls, for Now Playing. Spotify: turn on its desktop overlay for media keys.")},
             {"general.analytics", NC_("tooltip", "Anonymous usage survey: one ping at startup, no personal data. On by default.")},
@@ -352,6 +363,7 @@ private:
             {"general.pb_scope", NC_("tooltip", "Bike = PB per bike. Class = PB across all bikes in the same class (MX1, MX2, ...).")},
             {"general.reference", NC_("tooltip", "The lap Gap Bar, Lap Log, Delta Trace, Timing and the map's Lap delta compare against when set to Default.")},
             {"general.freeze", NC_("tooltip", "How long Gap Bar, Lap Log and Timing hold an official gap when set to Default.")},
+            {"general.live_updates", NC_("tooltip", "In races. Off: at the splits; Gaps: live gaps; Both: live gaps and order, also on the Position widget and Dash.")},
 
             {"updates.check_enabled", NC_("tooltip", "Check for updates when the game starts.")},
             {"updates.debug_mode", NC_("tooltip", "Test update installation without overwriting the real plugin.")},
@@ -359,7 +371,6 @@ private:
             {"updates.check_now", NC_("tooltip", "Check for a new version now.")},
             {"updates.retry", NC_("tooltip", "Clear the failed download so you can try again.")},
             {"updates.install", NC_("tooltip", "Download and install the new version. Restart the game to apply it.")},
-            {"updates.release_notes", NC_("tooltip", "Open the full release notes on GitHub.")},
 
             {"appearance.font_title", NC_("tooltip", "Font used for HUD titles.")},
             {"appearance.font_normal", NC_("tooltip", "Font used for normal text.")},
@@ -411,9 +422,37 @@ private:
             {"widgets.lean", NC_("tooltip", "Shows rider lean angle in degrees with arc gauge.")},
             {"widgets.slide", NC_("tooltip", "Shows how far the bike slides sideways, in degrees.")},
             {"widgets.wheelie", NC_("tooltip", "Shows how far you are up on the back wheel, in degrees.")},
+            {"decks.slanted", NC_("tooltip", "Leans every deck, in your theme's own slanted layout.")},
+            {"decks.bars", NC_("tooltip", "The bar along each deck's foot. Speed keeps its revs.")},
+            {"decks.stamps", NC_("tooltip", "The tag a deck raises at its top right, like NEW BEST.")},
+            {"decks.title", NC_("tooltip", "Each deck's name, and the box that holds it.")},
+            {"decks.opacity", NC_("tooltip", "Every deck's background, from clear to solid.")},
+            {"decks.scale", NC_("tooltip", "Every deck's size, so a set still lines up.")},
+            {"decks.speed", NC_("tooltip", "Gear, speed and revs, and whether you sit or stand.")},
+            {"decks.race", NC_("tooltip", "Your place, the lap and the session clock.")},
+            {"decks.timing", NC_("tooltip", "The lap, its delta held at each split, last and best.")},
+            {"decks.wheelie", NC_("tooltip", "Hold timer, with a balance zone learned from your holds.")},
+            {"decks.slide", NC_("tooltip", "Slide angle live: how far, how long, the longest.")},
+            {"decks.combo", NC_("tooltip", "FMX combos: points, multiplier, tricks and the score.")},
+            {"decks.gap", NC_("tooltip", "The gap to your reference lap, sectors and ideal lap.")},
+            {"decks.rival", NC_("tooltip", "The rider you fight, ahead or behind: gap and their laps.")},
+            {"decks.standings", NC_("tooltip", "The leader, then the riders around you: gaps to you.")},
+            {"decks.session", NC_("tooltip", "The server, the track and the session's format.")},
+            {"decks.fuel", NC_("tooltip", "Laps of fuel left, the fuel and the average a lap.")},
+            {"decks.media", NC_("tooltip", "The track playing, its controls and the volume to drag.")},
+            {"decks.laplog", NC_("tooltip", "Your last laps by sector, and the lap running below.")},
+            {"decks.notice", NC_("tooltip", "Race notices, achievements and messages, one by one.")},
+            {"decks.spin", NC_("tooltip", "Rear wheel spin live: how much, how long, the longest.")},
+            {"decks.inputs", NC_("tooltip", "Throttle and front brake: the last 2 s and now.")},
+            {"decks.carousel", NC_("tooltip", "One deck at a time, in turn: step it with Deck + / Deck -.")},
+            {"decks.carousel_auto", NC_("tooltip", "Steps to the next deck on its own this often.")},
+            {"decks.carousel_marker", NC_("tooltip", "Which deck of the turn shows, in its title tab.")},
+            {"decks.carousel_names", NC_("tooltip", "Your own step shows the deck's name, then its readouts.")},
+            {"decks.carousel_notices", NC_("tooltip", "A new notice takes the carousel over for 4 s.")},
+            {"widgets.stance", NC_("tooltip", "Shows whether you are standing or seated: up or down.")},
             {"widgets.gforce", NC_("tooltip", "G-G diagram plotting lateral vs longitudinal G-force with a peak marker.")},
             {"widgets.compass", NC_("tooltip", "Bike heading dial with N/E/S/W labels (classic needle or modern rotating-card style).")},
-            {"widgets.pointer", NC_("tooltip", "On = shown while racing; Off = only in the settings menu (helps controllers seen as a mouse).")},
+            {"widgets.pointer", NC_("tooltip", "Off = only in the settings menu, opened by its hotkey. Helps controllers seen as a mouse.")},
             {"widgets.tyre_temp", NC_("tooltip", "Shows front and rear tyre temperatures.")},
             {"widgets.ecu", NC_("tooltip", "Shows ECU aids: map, traction, engine braking, anti-wheeling. Chips brighten on intervention.")},
             {"widgets.now_playing", NC_("tooltip", "Spotify or any player in Windows' media controls, with its controls and volume. Needs Now playing in General.")},
@@ -434,6 +473,9 @@ private:
             {"hotkeys.performance", NC_("tooltip", "Toggle the performance HUD on/off.")},
             {"hotkeys.rumble", NC_("tooltip", "Toggle the rumble HUD on/off.")},
             {"hotkeys.widgets", NC_("tooltip", "Toggle all widgets on/off.")},
+            {"hotkeys.decks", NC_("tooltip", "Toggle all decks on/off.")},
+            {"hotkeys.deck_next", NC_("tooltip", "Show the Carousel deck's next deck.")},
+            {"hotkeys.deck_prev", NC_("tooltip", "Show the Carousel deck's previous deck.")},
             {"hotkeys.fmx", NC_("tooltip", "Toggle the FMX HUD on/off.")},
             {"hotkeys.session_charts", NC_("tooltip", "Toggle the Charts HUD on/off.")},
             {"hotkeys.session", NC_("tooltip", "Toggle the session HUD on/off.")},
@@ -508,6 +550,7 @@ private:
             {"event_log.pit", NC_("tooltip", "Log when a rider enters or exits the pits. Can be frequent in practice sessions.")},
             {"event_log.session_pb", NC_("tooltip", "Log your lap when it beats your best lap of this session.")},
             {"event_log.alltime_pb", NC_("tooltip", "Log your lap when it sets a new all-time PB.")},
+            {"event_log.achievement", NC_("tooltip", "Log each achievement you earn.")},
             {"event_log.director", NC_("tooltip", "Show the auto-director's shot decisions and state changes in the log. Frequent, so off by default.")},
 
             {"twitch.channel", NC_("tooltip", "Channel to read. Click, type or paste a name or twitch.tv link, then press Enter.")},

@@ -31,6 +31,17 @@ namespace {
     constexpr float LIMITER_CIRCLE_OPACITY = 0.8f;
 }
 
+void GearWidget::formatGear(const BikeTelemetryData& bike, char* out, size_t size) {
+    if (!bike.isValid) snprintf(out, size, "%s", Placeholders::GENERIC);
+    else if (bike.numberOfGears <= 1) snprintf(out, size, "D");
+    else if (bike.gear == GearValue::NEUTRAL) snprintf(out, size, "N");
+    else snprintf(out, size, "%d", bike.gear);
+}
+
+bool GearWidget::atShiftPoint(const BikeTelemetryData& bike, const SessionData& session, bool own) {
+    return own && bike.isValid && bike.numberOfGears > 1 && session.shiftRPM > 0 && bike.rpm >= session.shiftRPM;
+}
+
 GearWidget::GearWidget()
 {
     m_panelKind = PanelKind::Widget;
@@ -114,28 +125,13 @@ void GearWidget::rebuildRenderData() {
     // left/right symmetric); the caption sits at the plan's own column.
     float centerX = p.sectionBoxCenterX();
 
-    // Format gear string
     char gearValueBuffer[8];
-    if (!bikeData.isValid) {
-        snprintf(gearValueBuffer, sizeof(gearValueBuffer), "%s", Placeholders::GENERIC);
-    } else if (bikeData.numberOfGears <= 1) {
-        // Gearless vehicle (e-bike, direct-drive kart) - "N" would be misleading
-        snprintf(gearValueBuffer, sizeof(gearValueBuffer), "D");
-    } else {
-        if (bikeData.gear == GearValue::NEUTRAL) {
-            snprintf(gearValueBuffer, sizeof(gearValueBuffer), "N");
-        } else {
-            snprintf(gearValueBuffer, sizeof(gearValueBuffer), "%d", bikeData.gear);
-        }
-    }
+    formatGear(bikeData, gearValueBuffer, sizeof(gearValueBuffer));
 
     // RPM-based indicators only apply to the player's own bike
     bool isViewingPlayer = (pluginData.getDisplayRaceNum() == pluginData.getPlayerRaceNum());
 
-    // At the recommended shift point (skipped on gearless vehicles: nothing to shift to).
-    const bool atShift = m_bShowShiftColor && bikeData.isValid && isViewingPlayer
-        && bikeData.numberOfGears > 1
-        && sessionData.shiftRPM > 0 && bikeData.rpm >= sessionData.shiftRPM;
+    const bool atShift = m_bShowShiftColor && atShiftPoint(bikeData, sessionData, isViewingPlayer);
 
     // THE RED DIGIT IS THE SHIFT LIGHT, so it glows with the RPM strip's red
     // segments: around the digit's INK, which sits mid-row (see the circle
@@ -195,21 +191,13 @@ void GearWidget::rebuildRenderData() {
     // for the ink's position in an arbitrary box at an arbitrary font size, which is
     // exactly this case, and it also undoes addString's own row centring, which grows
     // with uiLineHeight and would otherwise drift on its own.
-    // DIGIT ROLL (Motion, digit_roll.h): a change of gear on the same rider rolls;
-    // the placeholder, "D", a spectate switch or Motion off just switch. The
-    // widget rebuilds every frame, so the roll costs one more string while it
-    // runs and nothing otherwise.
-    const long long nowUs = DigitRoll::nowUs();
-    const int raceNum = pluginData.getDisplayRaceNum();
-    const int from = DigitRoll::gearRank(m_gearRoll.shown()), to = DigitRoll::gearRank(gearValueBuffer);
-    const bool rolls = DigitRoll::enabled() && from >= 0 && to >= 0 && raceNum == m_rollRaceNum;
-    // The opposite way to the odometer's drum: up a gear the old digit drops and
-    // the new one arrives from above, as if the next gear comes down into place.
-    m_gearRoll.update(gearValueBuffer, rolls ? (to > from ? -1 : 1) : 0, nowUs, gearColor);
-    m_rollRaceNum = raceNum;
+    // DIGIT ROLL (Motion, DigitRoll::stepGear). The widget rebuilds every frame,
+    // so the roll costs one more string while it runs and nothing otherwise.
+    DigitRoll::stepGear(m_gearRoll, m_rollRaceNum, gearValueBuffer, pluginData.getDisplayRaceNum(),
+                        DigitRoll::nowUs(), gearColor);
     const float gearY = inkCenteredY(currentY, gearRowDrawnH, gearFontSize);
     addRolledString(m_gearRoll, centerX, gearY, Justify::CENTER, this->getFont(FontCategory::TITLE),
-        gearFontSize);
+        gearFontSize, currentY, currentY + gearRowDrawnH);
 
     setBounds(startX, startY, startX + backgroundWidth, startY + backgroundHeight);
 }

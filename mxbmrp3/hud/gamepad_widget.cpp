@@ -45,7 +45,7 @@ GamepadWidget::GamepadWidget() {
     m_strings.reserve(10);
 
     // No setTextureBaseName here: the background is the selected PACK's art, not a
-    // variant of a shared texture, so it is resolved through activePack() in
+    // variant of a shared texture, so it is resolved through activeLayout() in
     // rebuildRenderData rather than through BaseHud's variant machinery.
 
     // Set all configurable defaults
@@ -60,7 +60,7 @@ void GamepadWidget::setGamepadPack(const std::string& name) {
     setDataDirty();
 }
 
-const GamepadAsset* GamepadWidget::activePack() const {
+const GamepadAsset* GamepadWidget::activeLayout() const {
     const AssetManager& assets = AssetManager::getInstance();
     // Degrade, do not blank: a name this install has no folder for falls back to
     // the shipped pack, and m_gamepadPack is deliberately NOT rewritten -- putting
@@ -70,7 +70,7 @@ const GamepadAsset* GamepadWidget::activePack() const {
 }
 
 int GamepadWidget::packSprite(GamepadSprite::Part part) const {
-    const GamepadAsset* pack = activePack();
+    const GamepadAsset* pack = activeLayout();
     return pack ? pack->sprites[part] : 0;
 }
 
@@ -129,7 +129,7 @@ void GamepadWidget::rebuildRenderData() {
 
     // The pack supplies BOTH the artwork and the numbers that place buttons on it;
     // they are one unit, which is why a pad is a pack rather than a texture variant.
-    const GamepadAsset* pack = activePack();
+    const GamepadAsset* pack = activeLayout();
     static const GamepadLayout::PadGeometry kNoPackGeometry;
     const GamepadLayout::PadGeometry& layout = pack ? pack->geometry : kNoPackGeometry;
 

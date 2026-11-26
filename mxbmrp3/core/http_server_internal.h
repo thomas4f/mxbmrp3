@@ -11,6 +11,7 @@
 // ============================================================================
 #pragma once
 
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -73,6 +74,73 @@ inline void appendJsonFloat(std::string& out, float val) {
     char buf[32];
     snprintf(buf, sizeof(buf), "%.2f", val);
     out += buf;
+}
+
+// Whether a request's Host header names this PC by an address: "localhost",
+// an IPv4 address or a bracketed IPv6 address, each with an optional port.
+// OBS, a local browser and a LAN client typing the PC's IP all pass; any
+// other name is refused. An empty Host (an HTTP/1.0 tool) is allowed.
+// Pinned by http_test.cpp's Host case.
+inline bool isAllowedHost(const std::string& host) {
+    if (host.empty()) return true;
+    std::string name;
+    size_t portAt = std::string::npos;
+    if (host[0] == '[') {
+        const size_t close = host.find(']');
+        if (close == std::string::npos || close == 1) return false;
+        for (size_t i = 1; i < close; ++i) {
+            const char c = host[i];
+            if (!std::isxdigit(static_cast<unsigned char>(c)) && c != ':' && c != '.') return false;
+        }
+        if (close + 1 < host.size()) {
+            if (host[close + 1] != ':') return false;
+            portAt = close + 2;
+        }
+    } else {
+        const size_t colon = host.find(':');
+        name = host.substr(0, colon);
+        if (colon != std::string::npos) portAt = colon + 1;
+    }
+    if (portAt != std::string::npos) {
+        if (portAt >= host.size() || host.size() - portAt > 5) return false;
+        for (size_t i = portAt; i < host.size(); ++i) {
+            if (!std::isdigit(static_cast<unsigned char>(host[i]))) return false;
+        }
+    }
+    if (host[0] == '[') return true;
+
+    std::string lower(name);
+    for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (lower == "localhost") return true;
+
+    // Dotted IPv4: exactly four parts, each 0-255.
+    int parts = 0;
+    size_t i = 0;
+    while (i <= name.size()) {
+        size_t end = name.find('.', i);
+        if (end == std::string::npos) end = name.size();
+        const size_t len = end - i;
+        if (len == 0 || len > 3) return false;
+        int v = 0;
+        for (size_t k = i; k < end; ++k) {
+            if (!std::isdigit(static_cast<unsigned char>(name[k]))) return false;
+            v = v * 10 + (name[k] - '0');
+        }
+        if (v > 255) return false;
+        ++parts;
+        i = end + 1;
+    }
+    return parts == 4;
+}
+
+// Whether a request's Origin header, when present, is this server itself
+// (http://<Host>). An absent Origin (a same-origin GET, OBS, a tool)
+// passes; "null" (a file:// page) does not. Pinned by http_test.cpp's
+// Origin case.
+inline bool isSameOrigin(const std::string& origin, const std::string& host) {
+    if (origin.empty()) return true;
+    if (host.empty()) return false;
+    return origin == "http://" + host;
 }
 
 }  // namespace http_server_detail

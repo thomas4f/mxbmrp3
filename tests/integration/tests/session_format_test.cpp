@@ -105,6 +105,7 @@ TEST_CASE("session format + overtime clock: laps vs time vs time+laps") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\session_format\\");
+    REQUIRE(host.setHudVisibleBoth("standings_hud", true));   // its title row; off for a new install
     host.setHudVisible("session_widget", true);   // off by default
 
     host.eventInit("TestTrack", "Alice");
@@ -391,6 +392,7 @@ TEST_CASE("grid: a timed race states its full length until the gate drops") {
     REQUIRE(host.loaded());
     const std::string saveWin = "Z:\\tmp\\mxbmrp3-tests\\session_format_grid\\";
     host.startup(saveWin.c_str());
+    REQUIRE(host.setHudVisibleBoth("standings_hud", true));   // its title row; off for a new install
     {
         // The two plain clocks outside formatSessionClock: the Time widget (the
         // game's raw clock, on purpose) and the Pitboard's time row (board up

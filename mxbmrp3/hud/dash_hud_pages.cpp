@@ -434,10 +434,9 @@ void DashHud::drawEvents(float left, float right, float contentY, const ScaledDi
         // rows[] runs newest first; oldest first puts the newest on the bottom row.
         const int row = newestFirst ? i : EVENT_ROWS - 1 - i;
         const float y = contentY + dim.lineHeightNormal * static_cast<float>(row);
-        const int sprite = hud.getIconForEvent(e.type);
+        const int sprite = hud.getIconForEvent(e);
         if (sprite > 0) {
-            const unsigned long ink = e.iconColorSlot >= 0 ? hud.getColor(static_cast<ColorSlot>(e.iconColorSlot))
-                                                            : hud.getIconColorForEvent(e.type);
+            const unsigned long ink = hud.getIconColorForEvent(e);
             addIcon(left + iconColW * 0.25f, y + dim.lineHeightNormal * 0.5f, sprite, ink, iconSize);
             shadowLastIcon();
         }
@@ -528,8 +527,8 @@ void DashHud::drawFlatMap(float left, float width, float boxY, float boxH, const
 
     // The Gap Bar's split ticks: an eighth of the box at its top and bottom edges.
     if (bar.showsSplits()) {
-        float splits[GapBarHud::SPLIT_SLOTS];
-        const int n = bar.collectSplitPositions(splits);
+        float splits[SplitLearner::SLOTS];
+        const int n = PluginData::getInstance().collectSplitPositions(splits);
         const float thickness = stripChartLineThickness();
         const unsigned long tickColor = PluginUtils::applyOpacity(getColor(ColorSlot::SECONDARY), 0.8f);
         const float tick = boxH * 0.125f;

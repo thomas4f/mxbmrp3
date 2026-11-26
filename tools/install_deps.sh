@@ -165,6 +165,21 @@ for c in "${CHOSEN[@]}"; do
                 [ -x "$cand" ] && { $SUDO ln -sf "$cand" /usr/bin/wine; break; }
             done
         fi
+        # Same for wineserver, which every Wine gate calls (`wineserver -w` waits
+        # for Wine to finish writing files and the registry). The ubuntu-latest
+        # image with Wine 10.0 has it only under /usr/lib/wine: without the link
+        # the installer gate read the registry and folders mid-write and failed
+        # eight checks with "wineserver: command not found".
+        if ! command -v wineserver >/dev/null 2>&1; then
+            cand=$(find /usr/lib /usr/lib64 -name 'wineserver64' -xtype f -perm -u+x 2>/dev/null | head -n1)
+            [ -n "$cand" ] || cand=$(find /usr/lib /usr/lib64 -name 'wineserver' -xtype f -perm -u+x 2>/dev/null | head -n1)
+            if [ -n "$cand" ]; then
+                $SUDO ln -sf "$cand" /usr/bin/wineserver
+                echo "==> wine: linked /usr/bin/wineserver -> $cand"
+            else
+                echo "WARNING: no wineserver found; Wine gates cannot wait for Wine" >&2
+            fi
+        fi
         ;;
     esac
 done

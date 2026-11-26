@@ -21,15 +21,14 @@
 // above the list takes the same shape, so the eye learns it once.
 // Every tab shares one panel height set by the tallest (settings_fit_test /
 // theme_geometry_test); ENTRIES_PER_PAGE keeps this tab under that ceiling.
-// A PAGE IS A GROUP (Achievements::Group, the section heading), or an
-// ENTRIES_PER_PAGE chunk of one ("Plugin 2/4"): related rows read together. A group with no row
-// on this game (a kart has no Freestyle) is no page, and a hidden row is not a
-// row until it is earned (Achievements::Entry::hidden). The
-// pager is the Riders tab's "< Page x/y >". The row says what the next tier
-// asks; it has no hover of its own (no tooltip, no tint) -- nothing to find
-// by moving the mouse.
+// EACH GROUP IS A CARD (Achievements::Group, the card's heading), all in one
+// scrolling list: related rows read together. A group with no row on this
+// game (a kart has no Freestyle) is no card, and a hidden row is not a row
+// until it is earned (Achievements::Entry::hidden). The row says what the
+// next tier asks; it has no hover of its own (no tooltip, no tint) --
+// nothing to find by moving the mouse.
 //
-// ORDER within a page: the catalogue's, always. Rows used to re-sort on every
+// ORDER within a group: the catalogue's, always. Rows used to re-sort on every
 // rebuild (earned first, then the closest locked), so the row being watched
 // jumped the moment it moved; a fixed order is one you can learn.
 // No unlock dates: none are collected (see AchievementManager::State).
@@ -63,18 +62,7 @@ using namespace PluginConstants;
 
 namespace {
 
-using Achievements::ENTRIES_PER_PAGE;   // the catalogue's own page size
-
-// The metal each tier is drawn in; locked rows take the muted text colour.
-unsigned long tierColor(int tier, const ColorConfig& colors) {
-    switch (tier) {
-        case 1: return PodiumColors::BRONZE;
-        case 2: return PodiumColors::SILVER;
-        case 3: return PodiumColors::GOLD;
-        case 4: return PluginUtils::makeColor(229, 228, 226);
-        default: return colors.getMuted();
-    }
-}
+using Achievements::ENTRIES_PER_PAGE;   // the list's height in rows
 
 }  // namespace
 
@@ -84,24 +72,6 @@ bool SettingsHud::handleClickTabAchievements(const ClickRegion& region) {
     // while its own tab is open -- so it lives in dispatchRegion's common switch
     // (settings_hud_input.cpp), like the spotter's.
     switch (region.type) {
-        // DISARMED ON THE WAY OUT, both of them: the Prestige button is drawn on
-        // the Completion page only, so leaving that page has to cancel a half-made
-        // decision or "Confirm?" waits on a page nobody is on. Here rather than in
-        // the render pass, which is where it was: a rebuild is a drawing of state,
-        // and a drawing that edits what it draws is the one thing the panel avoids.
-        // Leaving the TAB is already covered by disarmResets().
-        case ClickRegion::ACHIEVEMENTS_PAGE_PREV:
-            if (m_achievementsPage > 0) {
-                m_achievementsPage--;
-                m_prestigeConfirmed = false;
-                rebuildRenderData();
-            }
-            return true;
-        case ClickRegion::ACHIEVEMENTS_PAGE_NEXT:
-            m_achievementsPage++;   // clamped against the page count at render
-            m_prestigeConfirmed = false;
-            rebuildRenderData();
-            return true;
         // ARM, then PERFORM -- the Reset buttons' two-step (settings_tab_general),
         // and for a stronger reason: this one is not undoable by anything, not
         // even a reset. StatsManager::prestige() re-checks the gate, so an armed
@@ -304,74 +274,28 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
         ctx.nextLine();
     };
 
-    // WHICH PAGE, worked out BEFORE anything is drawn. It used to sit below the
-    // Progress card, which was fine while the card was the same on every page --
-    // but the Prestige button inside it is a Completion-page control, and a
-    // control cannot ask which page it is on after the page has been drawn.
-    // Nothing in here emits a quad or a string; it is vectors and an index.
-    // The rows this game can move, and the groups they fall in: a page per
-    // group that has one. Short vectors per rebuild: the panel rebuilds on a
-    // click or the 1 Hz tick, never per frame.
+    // THE LIST'S ROWS, gathered before anything is drawn. Short vectors per
+    // rebuild: the panel rebuilds on a click, the 1 Hz tick or a scroll, never
+    // per frame at rest.
     // ONE RULE: a hidden row is not a row until it is EARNED. That covers both
     // unlisted groups (Achievements::isUnlistedGroup), and nothing else is
     // filtered - the Completion rows are a dashboard and are always listed, at
-    // 0% if that is where you are. A second rule used to hide those until they
-    // left zero; it is gone, and this comment described it for two commits
-    // after it went.
+    // 0% if that is where you are.
     std::vector<AchievementManager::Row> rows;
     rows.reserve(static_cast<size_t>(ach.rowCount()));
-    int groupRows[static_cast<int>(Achievements::Group::COUNT)] = {};
     for (int i = 0; i < ach.rowCount(); ++i) {
         AchievementManager::Row r = ach.row(i);
         if (r.entry->hidden && r.tier == 0) continue;
         rows.push_back(r);
-        groupRows[static_cast<int>(r.entry->group)]++;
     }
-    // Pages: each group in chunks of ENTRIES_PER_PAGE, in group order.
-    struct Page { Achievements::Group group; int first; int chunk; int chunks; };
-    std::vector<Page> pages;
-    for (int g = 0; g < static_cast<int>(Achievements::Group::COUNT); ++g) {
-        const int chunks = (groupRows[g] + ENTRIES_PER_PAGE - 1) / ENTRIES_PER_PAGE;
-        for (int c = 0; c < chunks; ++c) {
-            pages.push_back({ static_cast<Achievements::Group>(g), c * ENTRIES_PER_PAGE, c + 1, chunks });
-        }
-    }
-    const int pageCount = std::max(1, static_cast<int>(pages.size()));
-    int& page = ctx.parent->m_achievementsPage;
-    // A toast's click: the page holding its row, found the way a page is
-    // drawn -- the row's place in its group, in chunks -- and then forgotten.
-    // A row not listed (hidden, unearned) leaves the page.
-    if (ctx.parent->m_achievementsJumpTo >= 0 && ctx.parent->m_achievementsJumpTo < Achievements::COUNT) {
-        const Achievements::Entry& target = Achievements::kCatalogue[ctx.parent->m_achievementsJumpTo];
-        std::vector<AchievementManager::Row> inGroup;
-        for (const AchievementManager::Row& r : rows) {
-            if (r.entry->group == target.group) inGroup.push_back(r);
-        }
-        // By id, not address: kCatalogue is a header constexpr, so each
-        // translation unit holds its own copy and the manager's pointers are
-        // not this file's.
-        for (size_t i = 0; i < inGroup.size(); ++i) {
-            if (std::strcmp(inGroup[i].entry->id, target.id) != 0) continue;
-            const int first = static_cast<int>(i / ENTRIES_PER_PAGE) * ENTRIES_PER_PAGE;
-            for (size_t p = 0; p < pages.size(); ++p) {
-                if (pages[p].group == target.group && pages[p].first == first) { page = static_cast<int>(p); break; }
-            }
-            break;
-        }
-    }
+    // A toast's click: the list comes to rest on that row (scrollToHere, below),
+    // then the request is forgotten. A row not listed (hidden, unearned) leaves
+    // the list where it was. By id, not address: kCatalogue is a header
+    // constexpr, so each translation unit holds its own copy and the manager's
+    // pointers are not this file's.
+    const int jumpTo = ctx.parent->m_achievementsJumpTo;
     ctx.parent->m_achievementsJumpTo = -1;
-    if (page >= pageCount) page = pageCount - 1;
-    if (page < 0) page = 0;
-    const Page current = pages.empty() ? Page{ Achievements::Group::Mileage, 0, 1, 1 }
-                                       : pages[static_cast<size_t>(page)];
-    ctx.parent->m_achievementsPageGroup = Achievements::groupName(current.group);
-    std::vector<AchievementManager::Row> groupSorted;
-    groupSorted.reserve(rows.size());
-    for (const AchievementManager::Row& r : rows) {
-        if (r.entry->group == current.group) groupSorted.push_back(r);
-    }
-    const size_t firstRow = static_cast<size_t>(current.first);
-    const size_t lastRow = std::min(groupSorted.size(), firstRow + ENTRIES_PER_PAGE);
+    const char* jumpId = (jumpTo >= 0 && jumpTo < Achievements::COUNT) ? Achievements::kCatalogue[jumpTo].id : nullptr;
 
     // === PROGRESS: achievements earned, which is what a player counts. NOT
     // tiers - the tier total is the hidden Completionist row's business, and
@@ -414,28 +338,8 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
 
 
 
-    // === THIS PAGE'S GROUP ===
-    // SPELLED OUT where the page's rows are outside the Unlocked figure and the
-    // Sweeps (Achievements::countsTowardCompletion). "(not counted)" read as
-    // something being wrong with the page; this names the thing they do not count
-    // towards, and "progress" is the card two sections up, so the reader has just
-    // seen it. Said on the page rather than in a footnote: it answers "why did
-    // that not move the bar", which is asked the moment a row lands.
-    const char* outside = Achievements::countsTowardCompletion(current.group)
-                              ? "" : TR(" (does not count towards progress)");
-    if (current.chunks > 1) {
-        snprintf(buf, sizeof(buf), "%s %d/%d%s", Achievements::groupName(current.group),
-                 current.chunk, current.chunks, outside);
-    } else {
-        snprintf(buf, sizeof(buf), "%s%s", Achievements::groupName(current.group), outside);
-    }
-    ctx.addSectionHeading(buf);
-    // Where the page's BODY starts. Everything below is padded back out to one
-    // fixed height from here, so the panel is the same height on every page --
-    // see the pad at the foot.
-    const float pageBodyTop = ctx.currentY;
-    for (size_t i = firstRow; i < lastRow; ++i) {
-        const AchievementManager::Row& r = groupSorted[i];
+    // One catalogue row as an entry.
+    auto addRow = [&](const AchievementManager::Row& r) {
         const Achievements::Entry& e = *r.entry;
         const bool earnedRow = r.tier > 0;
         // A SWEEP row is coloured by the metal it MEASURES, not by what it has
@@ -446,10 +350,10 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
         const int sweepMetal = Achievements::completionMetal(e);
         // A one-shot has no metal: earned in the accent, like the summary.
         const unsigned long metal = sweepMetal > 0
-            ? tierColor(sweepMetal, colors)
+            ? PodiumColors::tierColor(sweepMetal, colors.getMuted())
             : (Achievements::isOneShot(e)
                 ? (earnedRow ? colors.getAccent() : colors.getMuted())
-                : tierColor(r.tier, colors));
+                : PodiumColors::tierColor(r.tier, colors.getMuted()));
 
         Achievements::formatProgress(e, r.value, buf, sizeof(buf));
         // Who is carrying a per-track / per-bike maximum row, folded into the
@@ -486,78 +390,68 @@ BaseHud* SettingsHud::renderTabAchievements(SettingsLayoutContext& ctx) {
                  earnedRow ? metal : colors.getMuted(), earnedRow,
                  Achievements::progressFraction(e, r.value),
                  r.tier >= e.tierCount ? metal : colors.getAccent(), task, buf);
-    }
+    };
 
-    // THE TRADE: under the four Sweep rows, on the Completion page, and nowhere
-    // else. It used to sit in the Progress card, which is the tab's header above
-    // every one of its pages -- so a button that empties the whole ladder
-    // followed the player around the tab. What it trades away is exactly what
-    // those four rows measure, so it belongs at the foot of them, where a player
-    // who has just read "Every listed achievement at Platinum" finds it.
-    //
-    // No heading of its own: a section heading opens a new card, and a card
-    // costs its own padding plus the junction gap above it -- which on the
-    // tallest tab in the panel pushed the whole PANEL past the screen in
-    // developer mode (settings_render_test measures exactly that, and the panel
-    // does not scroll, so the overflow is unreachable UI). On this card it is
-    // one row inside the space the short page was padding out anyway.
-    //
-    // Paging away cancels a half-made decision; that disarm lives with the pager
-    // CLICK (handleClickTabAchievements), not here -- a render pass draws state,
-    // it does not edit it.
-    const bool prestigeHere = ach.isPrestigeAvailable() &&
-                              current.group == Achievements::Group::Completion;
-    if (prestigeHere) {
-        // ONE ROW, and the same one row armed or not. This tab is the tallest in
-        // the panel, so its height IS the panel's height on every other tab
-        // (settings_fit_test), and the panel does not scroll -- a second row
-        // here put Save and Close off the bottom of the screen in developer
-        // mode, which settings_render_test measures directly. An inline note
-        // would also have made the ARMED state a row taller than the unarmed
-        // one, so the state that fit would have been the state nobody is in
-        // when they click.
+    // === THE LIST: every group in a card of its own, scrolling as one ===
+    // As tall as a page of the old pager was with its heading and buttons
+    // (the heading, ENTRIES_PER_PAGE entries, the junction and the pager row),
+    // so the panel this tab sets the height of keeps its size. The groups' own
+    // names head the cards, so the list needs no heading of its own.
+    ctx.beginUntitledSection();
+    const float listTop = ctx.currentY;
+    ctx.beginScroll(ScrollView::ACHIEVEMENTS,
+                    static_cast<float>(ENTRIES_PER_PAGE * 2 + 2) + ctx.spacingHeight() / ctx.lineHeightNormal);
+    // The group at the list's top, for the tests: the last heading at or above it.
+    const float topLines = ctx.parent->m_scrolls[ScrollView::ACHIEVEMENTS].target;
+    ctx.parent->m_achievementsTopGroup = "";
+    for (int g = 0; g < static_cast<int>(Achievements::Group::COUNT); ++g) {
+        const Achievements::Group group = static_cast<Achievements::Group>(g);
+        bool any = false;
+        for (const AchievementManager::Row& r : rows) any = any || r.entry->group == group;
+        if (!any) continue;
+        // SPELLED OUT where the group's rows are outside the Unlocked figure and
+        // the Sweeps (Achievements::countsTowardCompletion): it answers "why did
+        // that not move the bar", which is asked the moment a row lands.
+        const char* outside = Achievements::countsTowardCompletion(group)
+                                  ? "" : TR(" (does not count towards progress)");
+        ctx.scrollGroup();
+        if ((ctx.currentY - listTop) / ctx.lineHeightNormal <= topLines + ScrollView::EPS) {
+            ctx.parent->m_achievementsTopGroup = Achievements::groupName(group);
+        }
+        bool first = true;   // the group's name shares its first entry's row
+        for (const AchievementManager::Row& r : rows) {
+            if (r.entry->group != group) continue;
+            if (jumpId && std::strcmp(r.entry->id, jumpId) == 0) ctx.scrollToHere();
+            const bool drawn = ctx.scrollRow(first ? 3.0f : 2.0f);
+            if (drawn && first) {
+                snprintf(buf, sizeof(buf), "%s%s", Achievements::groupName(group), outside);
+                ctx.addListHeading(buf);
+            }
+            first = false;
+            if (!drawn) continue;
+            addRow(r);
+        }
+
+        // THE TRADE: under the four Sweep rows, at the foot of the Completion
+        // group, and nowhere else. What it trades away is exactly what those four
+        // rows measure, so it belongs at the foot of them, where a player who has
+        // just read "Every listed achievement at Platinum" finds it. A row of its
+        // own in the list (height the theme's), so it scrolls with them.
         //
-        // So the warning is a row TOOLTIP rather than a note: the same hover
-        // every other row on this tab carries, at no height. The protection was
-        // never the sentence anyway -- it is the two-click arm, and "Confirm?"
-        // on a Negative button says what the second click does.
-        const bool armed = ctx.parent->m_prestigeConfirmed;
-        // The junction every other in-tab button opens with -- the [panel] gap
-        // that belongs to the STACK, where the button's own margins belong to the
-        // box (see buttonRow). Without it this button sat tight against the last
-        // row while Copy, Check Now and Run Sweep all stood off theirs.
-        ctx.addSpacing();
-        // THE WARNING RIDES ON THE BUTTON'S OWN REGION. It used to be a row-wide
-        // TOOLTIP_ROW pushed just before, and hover resolves to the FIRST region
-        // under the pointer: the row shadowed the button, so the tooltip showed
-        // but the button never lit up, and the hover box was the whole row
-        // instead of the button. One rect now answers all three.
-        ctx.addActionButton(armed ? TR("Confirm?") : TR("Prestige"), 10,
-                            SettingsHud::ClickRegion::ACHIEVEMENTS_PRESTIGE,
-                            SettingsLayoutContext::ButtonRole::Negative, true,
-                            "achievements.prestige");
+        // ONE ROW, armed or not: the warning is the button's TOOLTIP, and the
+        // protection is the two-click arm -- "Confirm?" on a Negative button says
+        // what the second click does. Moving the list disarms it (updateScrolls).
+        if (group == Achievements::Group::Completion && ach.isPrestigeAvailable() && ctx.scrollRow()) {
+            const bool armed = ctx.parent->m_prestigeConfirmed;
+            // The junction every other in-tab button opens with.
+            ctx.addSpacing();
+            ctx.addActionButton(armed ? TR("Confirm?") : TR("Prestige"), 10,
+                                SettingsHud::ClickRegion::ACHIEVEMENTS_PRESTIGE,
+                                SettingsLayoutContext::ButtonRole::Negative, true,
+                                "achievements.prestige");
+        }
     }
-
-    // The pager, at the foot of a FULL page whatever this page holds: a short
-    // page (a group's last chunk) would otherwise lift it, and a button that
-    // moves between pages has to be chased. Only when there is more than one.
-    //
-    // PADDED TO A FIXED BODY HEIGHT, not by the rows it is short of. Counting
-    // rows assumed rows were the only thing on a page, so the Completion page --
-    // four rows plus the Prestige button -- came out taller than the rest and
-    // the whole panel changed height when you paged onto it. Padding to a target
-    // measures whatever the page actually emitted, so anything that lands here
-    // later is absorbed too, and it does so in the theme's own units: the
-    // button's height is its themed margins and insets, and the difference is
-    // taken from the same numbers rather than from an assumed row count.
-    if (pageCount > 1) {
-        const float fullBody = static_cast<float>(ENTRIES_PER_PAGE) * ctx.lineHeightNormal * 2.0f;
-        const float used = ctx.currentY - pageBodyTop;
-        if (used < fullBody) ctx.currentY += fullBody - used;
-        ctx.addSpacing();   // the junction above a button row, like every in-tab button
-    }
-    ctx.addPager(page, pageCount, SettingsHud::ClickRegion::ACHIEVEMENTS_PAGE_PREV,
-                 SettingsHud::ClickRegion::ACHIEVEMENTS_PAGE_NEXT);
+    ctx.endScroll();
 
     // No active HUD for a global manager tab
     return nullptr;

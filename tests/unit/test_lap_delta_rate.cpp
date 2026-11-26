@@ -110,6 +110,7 @@ TEST_CASE("lap delta rate: the new lap sweeps over the previous one, leaving a g
     // from point 60 + 1 + OVERWRITE_GAP on.
     auto d = makeProfile(60, [](int p) { return 30.0f * p; });
     d.live = true;
+    d.current = true;
     d.prevFrom = 61 + LapDeltaProfile::OVERWRITE_GAP;
     for (int p = d.prevFrom; p < LapDeltaProfile::POINTS; ++p) {
         d.prevGapMs[p] = 30.0f * p;
@@ -142,6 +143,7 @@ TEST_CASE("lap delta rate: the tint fades in on both sides of the gap") {
     // the fade. Previous lap the same, from past the gap on.
     auto d = makeProfile(60, [](int p) { return 30.0f * p; });
     d.live = true;
+    d.current = true;
     d.prevFrom = 61 + LapDeltaProfile::OVERWRITE_GAP;
     for (int p = d.prevFrom; p < LapDeltaProfile::POINTS; ++p) {
         d.prevGapMs[p] = 30.0f * p;

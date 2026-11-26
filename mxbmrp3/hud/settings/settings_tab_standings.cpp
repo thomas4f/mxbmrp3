@@ -47,10 +47,9 @@ bool SettingsHud::handleClickTabStandings(const ClickRegion& region) {
             }
             return true;
 
-        // Animate positions / Rider name / Positions gained-lost are data-driven
+        // Colored moves / Rider name / Positions gained-lost are data-driven
         // CYCLE controls now - registered in renderTabStandings via
-        // ctx.addCycleControl (stopping in-flight animations on OFF is the
-        // animation descriptor's postStep).
+        // ctx.addCycleControl.
 
         default:
             return false;
@@ -69,7 +68,7 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
     ctx.addStandardHudControls(hud);
     // === LAYOUT SECTION ===
     ctx.addSectionHeading(TR("Layout"));
-    ctx.beginColumns(2, 8);   // side by side (beginColumns)
+    ctx.beginColumns(2, 7);   // side by side (beginColumns)
 
     // Show mode (Always / At laps / At splits) and its hold, as on the Pitboard tab
     static const char* const kShowModes[] = { N_("Always"), N_("At laps"), N_("At splits") };
@@ -141,34 +140,19 @@ BaseHud* SettingsHud::renderTabStandings(SettingsLayoutContext& ctx) {
             hud, refRelevant, false, "standings.gap_reference");
     }
 
-    // Live updates in races (Off / Gaps / Both): Both is live gaps and live
-    // order, which the Position widget and the Dash's Standings page follow.
+    // Colored moves: a row sliding to a new place (Motion on, Appearance) is
+    // tinted green or red for the place it gained or lost. Live updates moved
+    // to General, as the Position widget, the Dash and the decks follow it too.
     {
-        static const char* const kLiveModes[] = { N_("Off"), N_("Gaps"), N_("Both") };
-        static_assert(sizeof(kLiveModes) / sizeof(kLiveModes[0]) ==
-                      static_cast<size_t>(StandingsHud::LiveMode::COUNT), "one name per live mode");
-        ctx.addCycleControl(TR("Live updates"), cycleName(kLiveModes, static_cast<int>(hud->m_liveMode)),
-            SettingsHud::CycleControl::enumMember(hud, &StandingsHud::m_liveMode,
-                static_cast<int>(StandingsHud::LiveMode::COUNT), hud, kLiveModes),
-            hud, true, hud->m_liveMode == StandingsHud::LiveMode::OFF, "standings.live_updates");
-    }
-
-    // Animate position changes (Off / Basic / Colored)
-    {
-        static const char* const kAnimModes[] = { N_("Off"), N_("Basic"), N_("Colored") };
-        const char* animModeValue = cycleName(kAnimModes, static_cast<int>(hud->m_animationMode));
-        SettingsHud::CycleControl animCycle = SettingsHud::CycleControl::enumMember(
-            hud, &StandingsHud::m_animationMode, 3, hud, kAnimModes);
-        // Stop any in-flight animations immediately when transitioning to OFF;
-        // otherwise rows would keep sliding until the cleanup timer drains.
-        animCycle.postStep = [hud]() {
-            if (hud->m_animationMode == StandingsHud::AnimationMode::OFF) {
-                hud->m_activeAnimations.clear();
-            }
-        };
-        ctx.addCycleControl(TR("Animation"), animModeValue, animCycle,
-            hud, true, hud->m_animationMode == StandingsHud::AnimationMode::OFF,
-            "standings.animate_positions");
+        static const char* const kOnOff[] = { N_("Off"), N_("On") };
+        SettingsHud::CycleControl colored;
+        colored.count = 2;
+        colored.get = [hud]() { return hud->m_bColoredMoves ? 1 : 0; };
+        colored.set = [hud](int v) { hud->m_bColoredMoves = v != 0; };
+        colored.nameOf = [](int v) { return std::string(I18n::tr(kOnOff[v])); };
+        colored.dirtyHud = hud;
+        ctx.addCycleControl(TR("Colored moves"), hud->m_bColoredMoves ? TR("On") : TR("Off"), colored,
+            hud, true, !hud->m_bColoredMoves, "standings.colored_moves");
     }
 
     // DNS filter toggle (global setting stored in PluginData)

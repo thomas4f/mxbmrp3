@@ -27,9 +27,8 @@ size_t HudManager::iconShiftsUpTo(const std::vector<int>* shifts, int local) {
     return static_cast<size_t>(std::upper_bound(shifts->begin(), shifts->end(), local) - shifts->begin());
 }
 
-void HudManager::appendHudQuads(const BaseHud& hud, std::vector<SPluginQuad_t>& outQuads,
-                                bool shadowTitleIcon, bool hudShadow) {
-    const auto& hudQuads = hud.getQuads();
+void HudManager::appendHudQuads(const BaseHud& hud, const std::vector<SPluginQuad_t>& hudQuads,
+                                std::vector<SPluginQuad_t>& outQuads, bool shadowTitleIcon, bool hudShadow) {
     const int quadCount = static_cast<int>(hudQuads.size());
     const int titleIdx = shadowTitleIcon ? hud.m_titleIconQuadIndex : -1;
 

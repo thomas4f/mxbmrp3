@@ -12,11 +12,45 @@
 #include "../../core/plugin_constants.h"
 #include "../../core/pb_gap_tracker.h"
 #include "../../core/i18n.h"
+#include "scroll_view.h"
 #include <string>
 
 // Forward declarations
 class SettingsHud;
 class BaseHud;
+
+// A GROUPED HUD LIST (hud_group_list.cpp): the Widgets and Decks tabs. Each is
+// a table of HUDs -- Name | Visible | Title | Texture | Opacity | Scale -- one
+// card per group, scrolling under a fixed card of column labels. A tab states
+// its rows here as data; the drawing, and the row the list lands on when the
+// tab opens (a Find result, a "New" row), are the one implementation both use.
+namespace HudGroupList {
+struct Row {
+    int group;                              // index into List::groups
+    const char* name;                       // N_() msgid
+    const char* tooltipId;
+    BaseHud* (*get)(const SettingsHud&);    // nullptr: none on this game, or not yet earned
+    // The Pointer row: Visible drives the menu-only cursor (addWidgetRow's menuOnlyPointerRow)
+    bool pointer = false;
+};
+struct List {
+    int tabId;
+    ScrollView::Id scroll;
+    const char* title;                      // N_(): the column-label card's heading; nullptr when switchesOnly
+    const char* const* groups;              // N_() names, in list order
+    int groupCount;
+    const Row* rows;                        // grouped by `group`, most-used first in each
+    int rowCount;
+    // Only a Visible switch a row, two rows a line, and no column labels or
+    // their card: a list whose other columns are one setting for every row (the
+    // Decks tab's, in its Style card)
+    bool switchesOnly = false;
+};
+const List& widgets();   // settings_tab_widgets.cpp
+const List& decks();     // settings_tab_decks.cpp
+// The tab's list, or nullptr for a tab that is not one
+const List* of(int tabId);
+}  // namespace HudGroupList
 
 // Layout context for settings panel rendering
 // An explicit context object rather than lambda captures, so tab rendering lives in
@@ -128,6 +162,9 @@ struct SettingsLayoutContext {
     // INTERIOR is PanelPlan::rowBandX/W, one owner for every row highlight in the
     // plugin.
     float planCardLeftX = 0.0f;
+    // The panel's right edge: a scrolling list's bar sits in the padding
+    // between the card and it.
+    float planPanelRightX = 0.0f;
 
     float addSectionHeading(const char* title, const char* hint = nullptr);
 
@@ -231,8 +268,20 @@ struct SettingsLayoutContext {
     // unchanged -- inside a run, labelX, controlX, valueChars() and rowSpanWidth()
     // describe the current cell, and a row's advance moves to the next one.
     // endColumns leaves currentY under the taller column.
+    //
+    // `items` MUST be the number of rows the run emits. One more and the extra row
+    // has no cell, so it draws over the last one (Event Log's Director over Pit
+    // activity, once Achievements joined under a game gate); one fewer and the
+    // columns split wrong. A row behind a GAME_HAS_* gate counts through the same
+    // flag (`12 + GAME_HAS_ACHIEVEMENTS`). Pinned by settings_layout_test, which
+    // opens every tab and reads s_testColumnMiscounts.
     void beginColumns(int columns, int items, int labelChars = 16);
     void endColumns();
+#if defined(MXBMRP3_TEST_BUILD)
+    // Column runs that ended with a row count other than the one they declared,
+    // since the last reset (MXBMRP3_Test_SettingsColumnMiscounts).
+    static inline int s_testColumnMiscounts = 0;
+#endif
     // Full-width rows with a beginColumns run's label column: the controls start
     // where the run's do, and the value takes the rest of the row. For a row that
     // shares a section with cells (General's Controller under its switches), so
@@ -336,15 +385,47 @@ struct SettingsLayoutContext {
                       float fontScale = 1.0f, bool enabled = true,
                       const char* tooltipId = nullptr);
 
-    // A PAGER: two row-height buttons flanking "Page x/y", centred in the content
-    // column -- the same button emitter as the action buttons (themed fill, hover,
-    // disabled), with a chevron (angle-up, rotated) for a glyph. The end you
-    // cannot go past stays drawn, disabled, so the row never shifts. Nothing is
-    // drawn for a single page. One owner for the three pagers (Riders x2,
-    // Achievements), which were three hand-rolled "< Page x/y >" texts before.
-    // The junction above it is the caller's addSpacing(), like every button.
-    void addPager(int page, int pageCount,
-                  SettingsHud::ClickRegion::Type prevType, SettingsHud::ClickRegion::Type nextType);
+    // === A SCROLLING LIST (scroll_view.h has the why) ===
+    // beginScroll opens a list `viewLines` rows tall at the cursor, inside the
+    // open section; its scrollbar sits in the panel's padding. Each row
+    // then starts with scrollRow(lines) and is drawn only when that returns true
+    // (a row the view cannot show is skipped, cursor advanced); `lines` < 0 for
+    // a row whose height is not known up front, which is always drawn.
+    // endScroll moves what was drawn into place, fades the rows on the edges,
+    // draws the scrollbar and leaves the cursor under the view. One list open
+    // at a time. scrollToHere() makes the row about to start the list's
+    // resting place (a toast's click, a Find landing).
+    void beginScroll(ScrollView::Id id, float viewLines);
+    // FILL TO THE FOOTER: the list `listFill.list` opens `listFill.lines` taller than
+    // it asks. Set by the drawing pass only, from planFilled; a measuring pass
+    // leaves it off, so every list's own ask stays its minimum.
+    ScrollView::Fill listFill;
+    // The settings panel's plan, with the list a tab ends with (`endList`, from
+    // listAtEnd in the measure; -1 = none) given the room a shorter tab leaves
+    // above the footer -- so every tab's last list reaches the buttons and no
+    // list's height is tuned to the panel. `want` is the panel's whole want,
+    // floor included; `sections` the tab's measured content heights. A tab
+    // ending in anything else keeps the air under it.
+    static PanelPlan& planFilled(SettingsHud& hud, const ScaledDimensions& dim, PanelWant& want,
+                                 int endList, const std::vector<float>& sections, ScrollView::Fill& fill);
+    // The list the tab has ended with so far, or -1: the last one closed, with
+    // the cursor still where it left it. measureTab reads it before the last
+    // section closes.
+    int listAtEnd() const;
+    bool scrollRow(float lines = -1.0f);
+    void scrollToHere();
+    void endScroll();
+    // A group's name INSIDE a list: one row in the heading face. Drawn in the
+    // same row as the group's first entry, so a name never rests alone at the
+    // foot of the view. `findSection` false for a heading that names no
+    // settings group (the release notes'), so Find keeps the tab's own.
+    void addListHeading(const char* text, bool findSection = true);
+    // A group of a list in a card of its own (Widgets, Achievements): the cards
+    // scroll with their rows, the seam between them the panel's; a card is laid
+    // out whole and handed to the list's frame (ClipMarks::card): cut there on
+    // our renderers, clamped open on the game's. The list's section is then drawn
+    // bare (backSection in SettingsHud's panel draw). Call before the group's first row.
+    void scrollGroup();
     void addActionButtonPair(const char* labelA, SettingsHud::ClickRegion::Type typeA,
                              ButtonRole roleA, bool enabledA,
                              const char* labelB, SettingsHud::ClickRegion::Type typeB,
@@ -510,6 +591,8 @@ struct SettingsLayoutContext {
     // distance, one knob. Never before addSectionHeading(), which owns its own
     // gap (check_section_spacing.sh).
     void addSpacing();
+    // What addSpacing() advances, for a block that has to be as tall as one.
+    float spacingHeight() const;
 
     // Width of a `< value >` row's VALUE field, in characters: whatever the row has
     // left once the label column and the two arrow cells ("< " and " >") are paid,
@@ -560,6 +643,11 @@ struct SettingsLayoutContext {
         bool menuOnlyPointerRow = false
     );
 
+    // A GROUPED HUD LIST (HudGroupList, above): the column labels' card, then
+    // the groups' cards in a list `viewLines` tall, landing on the row the tab
+    // opened for (SettingsHud::landListRow). Ends the tab: it is its last list.
+    void addHudGroupList(const HudGroupList::List& list, float viewLines);
+
     // EVERY SECTION THIS PASS WALKED, as content heights in normalized units and in
     // order -- the list a caller hands to PanelWant::ColumnWant::sectionH so the box
     // engine can lay the column out. Filled by closeSectionCard whether or not a
@@ -600,6 +688,7 @@ private:
     int m_gridCols = 0;          // 0 = no run
     int m_gridRows = 0;
     int m_gridItem = 0;
+    int m_gridItems = 0;         // the count beginColumns declared
     int m_gridLabelChars = 0;
     int m_rowLabelChars = 0;     // setRowLabelChars; 0 = SETTINGS_CONTROL_COLUMN
     float m_defaultControlX = -1.0f;
@@ -607,6 +696,27 @@ private:
     float m_rowLabelX = 0.0f;    // labelX / controlX outside the run
     float m_rowControlX = 0.0f;
     size_t m_cellFirstRegion = 0;
+
+    // The open list (beginScroll .. endScroll) and its open row.
+    void closeScrollRow();
+    ScrollView::State* m_scroll = nullptr;
+    int m_scrollId = -1;
+    int m_lastListId = -1;          // the last list closed, and where it left the cursor
+    float m_lastListEndY = 0.0f;
+    float m_scrollTop = 0.0f, m_scrollViewH = 0.0f, m_scrollOffset = 0.0f;
+    float m_scrollRowRight = 0.0f, m_scrollJump = -1.0f;
+    bool m_scrollCull = true;
+    bool m_scrollMoving = false;   // gliding or held: an edge row fades rather than vanishes
+    bool m_rowOpen = false;
+    float m_rowTop = 0.0f;
+    size_t m_rowQuad = 0, m_rowString = 0, m_rowRegion = 0;
+    // The open list's group cards: each reserved before its rows (a card sits
+    // behind them) and laid out at endScroll around every row it has, in view
+    // or not (top/bot). `string`: where its rows' strings start.
+    struct ScrollGroup { int quad, string; float top, bot; };
+    static constexpr int MAX_SCROLL_GROUPS = 24;
+    ScrollGroup m_groups[MAX_SCROLL_GROUPS] = {};
+    int m_groupCount = 0;
 };
 
 // CYCLE DESCRIPTORS for the lists a manager owns, so those rows draw as dropdowns

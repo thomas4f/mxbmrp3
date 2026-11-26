@@ -20,7 +20,9 @@
 #include "doctest.h"
 
 #include "hud/lap_log_plan.h"
+#include "core/plugin_constants.h"
 #include <algorithm>
+#include <string>
 #include <vector>
 
 using namespace LapLogPlan;
@@ -317,4 +319,86 @@ TEST_CASE("lap log plan: reusing a Plan replaces its rows rather than appending"
     const size_t cap = reused.rows.capacity();
     compute(in, reused);
     CHECK(reused.rows.capacity() >= cap);
+}
+
+// THE SCROLLBACK (hud_scroll.h) moves only the recent window: `skip` laps from
+// the newest end are passed over, the reserved rows stay where they are, and the
+// best lap is "in the window" only when it is inside the window it moved to.
+TEST_CASE("lap log plan: skip moves the recent window back, the reserved rows stay") {
+    const std::vector<int> laps = history(12);   // {12, 11, ..., 1}
+    Input in = makeInput(laps, 5);
+    in.showCurrentLap = true;
+    in.order = Order::NEWEST_FIRST;
+
+    Plan at = compute(in);
+    CHECK(at.recentRoom == 4);
+    CHECK(lapRows(at.rows) == std::vector<int>{ 0, 1, 2, 3 });
+
+    in.skip = 6;
+    Plan back = compute(in);
+    CHECK(back.rows.front() == kCurrentLap);
+    CHECK(lapRows(back.rows) == std::vector<int>{ 6, 7, 8, 9 });
+    CHECK(back.recentRoom == 4);
+
+    // The best lap (lap 4 = index 8) inside the moved window: no row of its own.
+    in.hasBestLap = true;
+    in.bestLapNum = 4;
+    CHECK(countOf(compute(in).rows, kBestLap) == 0);
+    // ...outside it (back at the newest end): its own row, one lap less shown.
+    in.skip = 0;
+    Plan pinned = compute(in);
+    CHECK(countOf(pinned.rows, kBestLap) == 1);
+    CHECK(pinned.recentRoom == 3);
+
+    // Near the oldest end the window shows what is left, padded.
+    in.hasBestLap = false;
+    in.skip = 10;
+    Plan tail = compute(in);
+    CHECK(lapRows(tail.rows) == std::vector<int>{ 10, 11 });
+    CHECK(countOf(tail.rows, kPlaceholder) == 2);
+}
+
+// MID-GLIDE the Lap Log draws one lap past the window (HudScroll::drawRows),
+// cut at the window's edge: it must take no slot, so the placeholders and the
+// best lap's own row are what they are without it.
+TEST_CASE("lap log plan: the glide's extra lap takes no slot") {
+    const std::vector<int> laps = history(12);
+    Input in = makeInput(laps, 5);
+    in.order = Order::NEWEST_FIRST;
+    in.skip = 3;
+    Plan rest = compute(in);
+    in.extra = 1;
+    Plan glide = compute(in);
+    CHECK(lapRows(glide.rows) == std::vector<int>{ 3, 4, 5, 6, 7, 8 });
+    CHECK(glide.recentRoom == rest.recentRoom);
+    CHECK(countOf(glide.rows, kPlaceholder) == 0);
+
+    // Near the oldest end there is no lap to add, and the padding stays.
+    in.skip = 9;
+    in.extra = 0;
+    const int pads = countOf(compute(in).rows, kPlaceholder);
+    in.extra = 1;
+    Plan tail = compute(in);
+    CHECK(lapRows(tail.rows) == std::vector<int>{ 9, 10, 11 });
+    CHECK(countOf(tail.rows, kPlaceholder) == pads);
+}
+
+// The two rules the Lap Log HUD and the Lap Log deck share, so neither keeps a
+// copy that could drift: when the running lap gets its row, and what a lap
+// with no time says in its time cell.
+TEST_CASE("lap log plan: the running lap shows while timed or through the pits, never after the flag") {
+    CHECK(LapLogPlan::runningLapShown(true, false, false));
+    CHECK(LapLogPlan::runningLapShown(false, true, false));    // timer paused or dropped in the pits
+    CHECK(LapLogPlan::runningLapShown(true, true, false));
+    CHECK_FALSE(LapLogPlan::runningLapShown(false, false, false));
+    CHECK_FALSE(LapLogPlan::runningLapShown(true, false, true));
+    CHECK_FALSE(LapLogPlan::runningLapShown(false, true, true));
+}
+
+TEST_CASE("lap log plan: an untimed lap says why - through the pits before struck out") {
+    using namespace PluginConstants::Placeholders;
+    CHECK(std::string(untimedLap(true, true)) == PIT_LAP);
+    CHECK(std::string(untimedLap(true, false)) == PIT_LAP);
+    CHECK(std::string(untimedLap(false, false)) == INVALID_LAP);
+    CHECK(std::string(untimedLap(false, true)) == GENERIC);
 }

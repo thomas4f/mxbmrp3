@@ -10,6 +10,7 @@
 #include "fmx_manager.h"
 #include "fmx_manager_internal.h"
 #include "stats_manager.h"
+#include "feather_touch.h"
 #include "../diagnostics/logger.h"
 
 #include <cmath>
@@ -48,6 +49,8 @@ void FmxManager::abortFlight() {
     m_flightSec = 0.0f;
     m_flightPending = false;
     m_flightSettleSec = 0.0f;
+    m_pendingPeakG = 0.0f;
+    StatsManager::getInstance().setAirborne(false);
 }
 
 // Ridden away from: the maxima. The totals were banked at touchdown.
@@ -58,6 +61,9 @@ void FmxManager::creditFlight() {
         m_pendingFlightSec, m_pendingHeightM, m_pendingDistanceM);
     StatsManager::getInstance().exploration().onFlightLanded(
         m_pendingFlightSec, m_pendingHeightM, m_pendingDistanceM);
+    if (FeatherTouch::soft(m_pendingDistanceM, m_pendingPeakG)) {
+        StatsManager::getInstance().exploration().onFeatherTouch();
+    }
 }
 
 void FmxManager::updateFlight(const Unified::TelemetryData& telemetry, float dt) {
@@ -65,12 +71,18 @@ void FmxManager::updateFlight(const Unified::TelemetryData& telemetry, float dt)
     // or not the bike is back in the air, so a rhythm section credits each jump
     // as it goes instead of holding one hostage to the next one's landing; a
     // crash or a teleport clears it through abortFlight().
+    // The landing's hardest hit, gravity included (the G-Force row's measure).
+    const float g = std::sqrt(telemetry.accelX * telemetry.accelX +
+                              telemetry.accelY * telemetry.accelY +
+                              telemetry.accelZ * telemetry.accelZ);
     if (m_flightPending) {
+        if (g > m_pendingPeakG) m_pendingPeakG = g;
         m_flightSettleSec += dt;
         if (m_flightSettleSec >= m_config.landingGracePeriod) creditFlight();
     }
 
     const bool airborne = m_groundState.isAirborne();
+    StatsManager::getInstance().setAirborne(airborne);   // Leapfrog reads it on the position batch
 
     if (airborne) {
         if (!m_inFlight) {
@@ -113,6 +125,7 @@ void FmxManager::updateFlight(const Unified::TelemetryData& telemetry, float dt)
     // much air - which is what makes them differ from the maxima below.
     FMX_LOG("FMX: flight down %.2fs, %.1fm up, %.1fm across", seconds, height, distance);
     StatsManager::getInstance().exploration().onFlight(seconds, height, distance);
+    StatsManager::getInstance().noteFlight();   // Grounded: this lap left the ground
 
     // ...and the MAXIMA are parked until the rider has stayed upright for the
     // settle window above: a best you case out of is not a best you made.
@@ -121,4 +134,5 @@ void FmxManager::updateFlight(const Unified::TelemetryData& telemetry, float dt)
     m_pendingFlightSec = seconds;
     m_pendingHeightM = height;
     m_pendingDistanceM = distance;
+    m_pendingPeakG = g;
 }

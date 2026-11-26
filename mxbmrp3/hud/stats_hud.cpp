@@ -207,7 +207,7 @@ void StatsHud::rebuildRenderData() {
         useKmh = hm.getSpeedWidget().getSpeedUnit() == SpeedWidget::SpeedUnit::KMH;
     }
     float speedFactor = useKmh ? UnitConversion::MS_TO_KMH : UnitConversion::MS_TO_MPH;
-    const char* speedLabel = useKmh ? "km/h" : "mph";
+    const char* speedLabel = UnitConversion::speedLabel(useKmh);
 
     // Build column header names
     const char* headerNames[3];

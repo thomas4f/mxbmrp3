@@ -352,7 +352,8 @@ function buildSettingsUI() {
         session: "Session", fastestLap: "Fastest Lap", penalty: "Penalty",
         riderOut: "Rider Out", overtime: "Overtime", finalLap: "Final Lap",
         finished: "Finished", leaderChange: "Lead Change", pit: "Pit",
-        director: "Director", sessionPB: "Session PB", allTimePB: "All-time PB"
+        director: "Director", sessionPB: "Session PB", allTimePB: "All-time PB",
+        achievement: "Achievements"
     };
     var eventTips = {
         session: "Session started, ended, and state changes.",
@@ -366,7 +367,8 @@ function buildSettingsUI() {
         pit: "Rider enters or exits the pit.",
         director: "Auto-director shot decisions and state changes (spectate/replay).",
         sessionPB: "Your lap beat your best of this session.",
-        allTimePB: "Your lap set a new all-time PB."
+        allTimePB: "Your lap set a new all-time PB.",
+        achievement: "You earned an achievement."
     };
     for (var ek in CONFIG.events) {
         (function (key) {

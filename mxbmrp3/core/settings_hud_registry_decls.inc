@@ -87,10 +87,22 @@
     static void app_GamepadWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_LeanWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_LeanWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
+    // One pair for every deck: the section name picks the deck.
+    static void cap_DeckHud(const HudManager& hudManager, ProfileCache& cache, const char* name);
+    static void app_DeckHud(HudManager& hudManager, const ProfileCache& cache, const char* name);
+    // [Decks]: the one Style every deck draws in (DeckHud::setStyle).
+    static void cap_Decks(const HudManager& hudManager, ProfileCache& cache, const char* name);
+    static void app_Decks(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_SlideWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_SlideWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
+#if GAME_HAS_WHEELIE
     static void cap_WheelieWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_WheelieWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
+#endif
+#if GAME_HAS_RIDER_STANCE
+    static void cap_StanceWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
+    static void app_StanceWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
+#endif
     static void cap_GForceWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);
     static void app_GForceWidget(HudManager& hudManager, const ProfileCache& cache, const char* name);
     static void cap_CompassWidget(const HudManager& hudManager, ProfileCache& cache, const char* name);

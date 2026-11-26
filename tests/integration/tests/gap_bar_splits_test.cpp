@@ -10,6 +10,7 @@
 //      there from the first frame. With the rider standing on S1, the tick and
 //      the rider's own marker must share an x -- both are the same track
 //      position on the same inner rect, so this pins the mapping, not a number.
+//      A start/finish sent as 0 m is the centerline's start, as on the map.
 //   2. LEARNED FROM A CROSSING (GP Bikes, whose centerline data is disabled in
 //      gpb_api.cpp): no ticks until the display rider crosses a split, then one
 //      at the position they crossed it.
@@ -113,6 +114,30 @@ TEST_CASE("gap bar split ticks: on by default, two per split at the centerline's
     host.shutdown();
 }
 
+// MX Bikes reports a start/finish at the centerline's own start as 0 m. The map
+// took the splits regardless; the split list wanted the S/F above 0 m too, so it
+// dropped every split and the bar (and the Timing deck, which reads the same
+// list) waited for a crossing to learn them (seen in game, 15 Nov).
+TEST_CASE("gap bar split ticks: a start/finish at 0 m keeps the centerline's splits") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    setUp(host, "Z:\\tmp\\mxbmrp3-tests\\gap_bar_splits_sf0\\");
+
+    // S/F at the centerline's start, S1 at 400 m, S2 at 1000 m.
+    host.trackCenterline(circleTrack(), { 0.0f, 400.0f, 1000.0f, 0.0f });
+    host.raceTrackPosition({ { 10, 400.0f / TRACK_LEN } });   // standing on S1
+    REQUIRE(host.gapBarForceGap(-1500, true));
+    host.draw();
+
+    const auto t = ticks(host);   // from the first frame: nothing crossed yet
+    REQUIRE(t.size() == 4u);
+    const double s1 = centreX(t[0]);
+    const double rider = markerCentreNear(host, s1);
+    INFO("S1 tick x " << s1 << ", rider marker x " << rider);
+    CHECK(std::abs(rider - s1) < 1e-3);
+    host.shutdown();
+}
+
 TEST_CASE("gap bar split ticks: without centerline splits, a crossing is learned") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
@@ -131,5 +156,40 @@ TEST_CASE("gap bar split ticks: without centerline splits, a crossing is learned
     REQUIRE(t.size() == 2u);
     const double s1 = centreX(t[0]);
     CHECK(std::abs(markerCentreNear(host, s1) - s1) < 1e-3);   // learned where the rider was
+
+    // A new session may be on another track: what was learned is dropped
+    // (PluginData::incrementSessionGeneration), until a crossing teaches it again
+    host.session(RACE1, /*numLaps=*/10, /*lengthMs=*/0);
+    host.raceTrackPosition({ { 10, 0.45f } });
+    host.draw();
+    CHECK(ticks(host).empty());
     host.shutdown();
 }
+
+// The learned positions are PluginData's (core/split_learner.h), read by the
+// Dash and the decks too: a crossing made with the bar off must still place
+// its ticks the moment the bar is shown, not wait a lap.
+TEST_CASE("gap bar split ticks: a crossing learned with the bar off is there when it is shown") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    setUp(host, "Z:\\tmp\\mxbmrp3-tests\\gap_bar_splits_hidden\\");
+    REQUIRE(host.setHudVisibleBoth("gap_bar_hud", false));
+
+    host.trackCenterline(circleTrack());   // no marker data: GP Bikes' case
+    host.raceTrackPosition({ { 10, 0.95f } });
+    host.raceTrackPosition({ { 10, 0.05f } });
+    host.draw();
+    host.raceTrackPosition({ { 10, 0.40f } });
+    host.raceSplit(RACE1, 10, /*lapNum=*/1, /*splitIndex=*/0, 20000);
+    host.draw();
+    host.raceTrackPosition({ { 10, 0.55f } });
+    host.draw();
+
+    REQUIRE(host.setHudVisible("gap_bar_hud", true));
+    host.draw();
+    const auto t = ticks(host);
+    REQUIRE(t.size() == 2u);
+    CHECK(centreX(t[0]) < markerCentreNear(host, centreX(t[0])) - 1e-3);   // behind the rider, now at 0.55
+    host.shutdown();
+}
+

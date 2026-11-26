@@ -465,3 +465,52 @@ TEST_CASE("render batch: a layered frame draws the back HUD's text before the fr
     hudbatch::build(f, 200, 100, 0, 0, 200, 100, res, b.verts, b.runs);
     CHECK(b.runs.size() == 2);
 }
+
+TEST_CASE("render batch: a clipped range is cut at its rect, quads and glyphs alike") {
+    // core/render_clip.h: a settings list's rows are cut where the list ends.
+    // Quad 0 crosses the rect's bottom edge, quad 1 lies past it, quad 2 is not
+    // in the range; the string's glyph crosses the edge too.
+    FakeResolver res;
+    const std::vector<SPluginQuad_t> quads = { makeQuad(1, 0.1f, 0.1f, 0.3f, 0.5f),
+                                               makeQuad(0, 0.1f, 0.6f, 0.3f, 0.7f),
+                                               makeQuad(0, 0.1f, 0.6f, 0.3f, 0.7f) };
+    const std::vector<SPluginString_t> strings = { makeString("A", 0.5f, 0.3f, 0, 0.4f) };
+    static std::vector<std::string> fonts;
+    fonts = { "font" };
+    static std::vector<std::string> sprites;
+    sprites = { "a" };
+    hudsw::Frame f;
+    f.quads = quads.data(); f.quadCount = 3;
+    f.strings = strings.data(); f.stringCount = 1;
+    f.fontNames = &fonts; f.spriteNames = &sprites;
+    f.assetRoot = "root";
+    hudclip::Clip c;
+    c.q0 = 0; c.q1 = 2; c.s0 = 0; c.s1 = 1;
+    c.l = 0.0f; c.t = 0.0f; c.r = 1.0f; c.b = 0.4f;
+    f.layers.clips = &c;
+    f.layers.clipCount = 1;
+    Built b;
+    hudbatch::build(f, 200, 100, 0, 0, 200, 100, res, b.verts, b.runs);
+    // Quad 0 (6 verts), quad 2 (6), the glyph (6); quad 1 dropped.
+    REQUIRE(b.verts.size() == 18);
+    const float edge = 1.0f - 0.4f * 2.0f;   // y = 0.4 in NDC
+    float lowest = 1.0f;
+    for (int i = 0; i < 6; ++i) lowest = std::min(lowest, b.verts[static_cast<size_t>(i)].y);
+    CHECK(lowest == doctest::Approx(edge));
+    // Its texture is cropped: V stops three quarters down (0.1..0.4 of 0.1..0.5).
+    float maxV = 0.0f;
+    for (int i = 0; i < 6; ++i) maxV = std::max(maxV, b.verts[static_cast<size_t>(i)].v);
+    CHECK(maxV == doctest::Approx(0.75f));
+    // Quad 2, outside the range, is whole: it reaches y = 0.7.
+    float q2low = 1.0f;
+    for (int i = 6; i < 12; ++i) q2low = std::min(q2low, b.verts[static_cast<size_t>(i)].y);
+    CHECK(q2low == doctest::Approx(1.0f - 0.7f * 2.0f));
+    // The glyph stops at the edge too.
+    for (int i = 12; i < 18; ++i) CHECK(b.verts[static_cast<size_t>(i)].y >= edge - 1e-5f);
+
+    // A string wholly past the edge opens no run at all.
+    const std::vector<SPluginString_t> below = { makeString("A", 0.5f, 0.5f, 0, 0.1f) };
+    f.strings = below.data();
+    hudbatch::build(f, 200, 100, 0, 0, 200, 100, res, b.verts, b.runs);
+    for (const auto& r : b.runs) CHECK(r.shader == hudbatch::Shader::Sprite);
+}

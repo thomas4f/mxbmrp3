@@ -35,6 +35,7 @@ namespace AnalyticsTheme {
 // under "custom" — so tests/unit/test_analytics_theme.cpp walks the shipped
 // directory and fails on exactly that omission.
 inline constexpr const char* kShippedThemes[] = {
+    "cabinet-dark", "cabinet-light",
     "carbon-dark", "carbon-light",
     "modern-dark", "modern-light",
     "retro-dark", "retro-light",

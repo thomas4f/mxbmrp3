@@ -11,7 +11,6 @@
 #include "fuel_estimate.h"
 #include "plugin_data.h"
 #include "hud_manager.h"
-#include "../hud/fuel_widget.h"
 #if GAME_HAS_RECORDS_PROVIDER
 #include "../hud/records_hud.h"   // the track record, MX Bikes only
 #endif
@@ -403,7 +402,7 @@ void SpotterManager::onRaceLapCompleted(int raceNum, int completedLaps,
     // lap completes, so a lap crossing is both the cheapest place to look and
     // the moment the number actually changed.
     //
-    // Read from FuelWidget rather than tracked here, so the laps spoken are the
+    // Read from PluginData rather than tracked here, so the laps spoken are the
     // laps shown — one history, not two that could drift apart. Same thresholds
     // as its colours, so the voice and the amber/red agree.
     //
@@ -413,10 +412,9 @@ void SpotterManager::onRaceLapCompleted(int raceNum, int completedLaps,
     // registry is emitted by something` (test_spotter_pack_census.cpp) is what
     // notices.
     {
-        // Same reach as the track record above: a HUD accessor on the game
-        // thread, which is where every caller of this function already is.
-        const float laps =
-            HudManager::getInstance().getFuelWidget().getLapsRemaining();
+        // PluginData's fuel history, which every fuel readout shows: the
+        // number spoken is the number on screen
+        const float laps = PluginData::getInstance().getFuelLapsRemaining();
         if (laps >= 0.0f) {
             const bool critical = laps < FuelEstimate::kCriticalLaps;
             const bool low = laps < FuelEstimate::kWarnLaps;

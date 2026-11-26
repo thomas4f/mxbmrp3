@@ -278,6 +278,10 @@ TEST_CASE("i18n: toasts and the HUDs' session clock and format follow the langua
     // whole phrase on a HUD, the clock and the count kept.
     CHECK(host.formatSessionClock(-1, 65000, false, 2) == "01:05 + 2 laps");
     CHECK(host.formatSessionClock(-1, 65000, false, 1) == "01:05 + 1 lap");
+    // The decks' compact form: the same clock, the laps as "+ 2L"; overtime as ever
+    CHECK(host.formatSessionClock(-1, 65000, false, 2, /*compact=*/true) == "01:05 + 2L");
+    CHECK(host.formatSessionClock(-1, 65000, false, 0, /*compact=*/true) == "01:05");
+    CHECK(host.formatSessionClock(1, 0, false, 2, /*compact=*/true) == "FINAL LAP");
     const std::string hudLaps = host.formatSessionClock(-1, 65000, true, 2);
     CHECK(hudLaps.rfind("[", 0) == 0);
     CHECK(hudLaps.find("01:05") != std::string::npos);

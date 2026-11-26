@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- packaging/msi/game_next.wxi - what GamesDlg's Next does for one game
+     (ui.wxs), included once per game with G and Base (the first Order) defined.
+
+     1. A folder that is not a plugins folder gets \plugins appended, as NSIS
+        does after Browse: players pick the game folder.
+     2. The folder becomes the directory's target and is copied to G_DIR, the
+        property the server side installs from (game.wxi).
+     3. The box decides the feature: ticked = install (or keep), unticked =
+        not installed (or, in Change mode, removed). -->
+<Include xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Publish Property="$(var.G)PLUGINS" Value="[$(var.G)PLUGINS]plugins\" Order="$(var.Base)1"
+           Condition="$(var.G)_SEL=&quot;1&quot; AND NOT (Installed AND $(var.G)_MSI) AND NOT ($(var.G)PLUGINS ~&gt;&gt; &quot;\plugins\&quot; OR $(var.G)PLUGINS ~&gt;&gt; &quot;\plugins&quot;)" />
+  <Publish Event="SetTargetPath" Value="$(var.G)PLUGINS" Order="$(var.Base)2"
+           Condition="$(var.G)_SEL=&quot;1&quot; AND NOT (Installed AND $(var.G)_MSI)" />
+  <Publish Property="$(var.G)_DIR" Value="[$(var.G)PLUGINS]" Order="$(var.Base)3"
+           Condition="$(var.G)_SEL=&quot;1&quot;" />
+  <Publish Event="AddLocal" Value="$(var.G)" Order="$(var.Base)4"
+           Condition="$(var.G)_SEL=&quot;1&quot;" />
+  <Publish Event="Remove" Value="$(var.G)" Order="$(var.Base)5"
+           Condition="$(var.G)_SEL&lt;&gt;&quot;1&quot;" />
+</Include>

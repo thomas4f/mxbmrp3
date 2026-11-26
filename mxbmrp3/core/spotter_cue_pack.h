@@ -584,6 +584,7 @@ inline const char* cueKeyFor(EventLogType type, bool focused) {
         // which knows the PB ladder; a second cue here would repeat the time.
         case EventLogType::SessionPB:         return nullptr;
         case EventLogType::AllTimePB:         return nullptr;
+        case EventLogType::Achievement:       return nullptr;  // onAchievement speaks it
         default:                              return nullptr;
     }
 }

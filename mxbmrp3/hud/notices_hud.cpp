@@ -222,7 +222,7 @@ void NoticesHud::rebuildRenderData() {
     // word: this slot carries WRONG WAY and HAZARD AHEAD at a glance, so a sentence
     // here reads as a notice rather than as the absence of one.
     unsigned long fill = 0, ink = 0;
-    slabColors(notice.kind, m_fBackgroundOpacity, m_fBackgroundOpacity, fill, ink);
+    slabColors(*this, notice.kind, m_fBackgroundOpacity, m_fBackgroundOpacity, fill, ink);
     if (glows(notice.kind)) addGlow(slabX, slabY, slabW, slabH, slabH * GLOW_SPREAD, fill, glowOpacity(notice.kind));
     addNoticeBackground(slabX, slabY, slabW, slabH, PluginUtils::applyOpacity(fill, m_fBackgroundOpacity));
     addString(notice.kind == Kind::None ? TR("PREVIEW") : NoticeTracker::caption(notice, slabW, dim.fontSizeLarge, this->getFont(FontCategory::TITLE)),
@@ -249,44 +249,50 @@ bool NoticesHud::glows(NoticeTracker::Kind kind) {
 // The slab's colour is the message (red = wrong way, blue = blue flag). The caption
 // takes captionOnSlabColor where the slab is a strong colour, and plain PRIMARY over
 // the neutral BACKGROUND slab.
-void NoticesHud::slabColors(NoticeTracker::Kind kind, float opacity, float panelOpacity,
-                            unsigned long& fill, unsigned long& ink) const {
+void NoticesHud::slabColors(const BaseHud& colors, NoticeTracker::Kind kind, float opacity, float panelOpacity,
+                            unsigned long& fill, unsigned long& ink) {
     using Kind = NoticeTracker::Kind;
     switch (kind) {
-        case Kind::WrongWay:      fill = getColor(ColorSlot::NEGATIVE); break;
+        case Kind::WrongWay:      fill = colors.getColor(ColorSlot::NEGATIVE); break;
         // Same slot, same WARNING colour -- only the wording separates a rider
         // coming at you from one stopped on the track.
         case Kind::HazardAhead:
-        case Kind::RiderOncoming: fill = getColor(ColorSlot::WARNING); break;
+        case Kind::RiderOncoming: fill = colors.getColor(ColorSlot::WARNING); break;
         case Kind::BlueFlag:      fill = FlagColors::BLUE; break;
         // Neutral/yellow -- informational caution; distinct from the orange
         // WARNING that hazards use.
-        case Kind::LapperAhead:   fill = getColor(ColorSlot::NEUTRAL); break;
+        case Kind::LapperAhead:   fill = colors.getColor(ColorSlot::NEUTRAL); break;
         case Kind::AllTimePB:
         case Kind::FastestLap:
-        case Kind::SessionPB:     fill = getColor(ColorSlot::POSITIVE); break;
+        case Kind::SessionPB:     fill = colors.getColor(ColorSlot::POSITIVE); break;
         case Kind::SegmentAdded:
             // Adding a point = positive (green); removing = neutral.
-            fill = ink = getColor(ColorSlot::POSITIVE);
+            fill = ink = colors.getColor(ColorSlot::POSITIVE);
             return;
-        case Kind::DefaultSetup:  fill = getColor(ColorSlot::WARNING); break;
+        case Kind::DefaultSetup:  fill = colors.getColor(ColorSlot::WARNING); break;
         case Kind::Overtime:
         case Kind::TrackChanged:
         case Kind::SegmentRemoved:
         case Kind::Finished:
         case Kind::LastLap:
-            fill = getColor(ColorSlot::BACKGROUND);
-            ink = getColor(ColorSlot::PRIMARY);
+            fill = colors.getColor(ColorSlot::BACKGROUND);
+            ink = colors.getColor(ColorSlot::PRIMARY);
             return;
         case Kind::None:
         default:
             // The preview stand-in (a real notice always wins: it only draws on a
             // frame where nothing else would have). Accent rather than one of the
             // notice colours, so it does not read as a warning that is actually up.
-            fill = getColor(ColorSlot::ACCENT);
+            fill = colors.getColor(ColorSlot::ACCENT);
             break;
     }
-    ink = captionOnSlabColor(fill, opacity, panelOpacity);
+    ink = colors.captionOnSlabColor(fill, opacity, panelOpacity);
+}
+
+unsigned long NoticesHud::messageColor(const BaseHud& colors, NoticeTracker::Kind kind) {
+    unsigned long fill = 0, ink = 0;
+    slabColors(colors, kind, 1.0f, 1.0f, fill, ink);
+    return fill == colors.getColor(ColorSlot::BACKGROUND) ? ink : fill;
 }
 
 void NoticesHud::resetToDefaults() {

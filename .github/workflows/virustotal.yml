@@ -1,0 +1,65 @@
+# ============================================================================
+# Re-scan a PUBLISHED release on VirusTotal, by hand.
+#
+# release.yml scans every real release itself and links the reports in the
+# release notes. This workflow is for the times in between:
+#   * testing the VT_API_KEY secret and the scan path without cutting a release
+#     (the files are already public, so uploading them again exposes nothing);
+#   * re-scanning after a vendor has fixed a false positive, so the report page
+#     the release notes link shows the new verdicts.
+#
+# It downloads the release's installers and zip from the PUBLIC repo, unpacks
+# the three .dlo files from the zip, and runs tools/virustotal_scan.sh with
+# --strict: any API problem (missing or wrong key, quota) fails the run, because
+# proving the key works is the point. Detections are warnings, never a failure.
+# The verdicts are in the run summary.
+#
+# Runs from either repo: a public release is readable with any repo's workflow
+# token, and the secret VT_API_KEY must exist in whichever repo runs it.
+# ============================================================================
+name: virustotal
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to scan, e.g. v1.35.1. Empty = the latest stable release (pre-releases need their tag)."
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: virustotal
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          # Releases are published on the public repo only.
+          REPO: thomas4f/mxbmrp3
+        run: |
+          mkdir -p dl
+          # `gh release download` with no tag takes the latest published release.
+          # The glob takes the .msi too where the release has one.
+          gh release download ${TAG:+"$TAG"} -R "$REPO" -D dl \
+            -p 'mxbmrp3-Setup.*' -p mxbmrp3.zip
+          unzip -j -o dl/mxbmrp3.zip mxbmrp3.dlo mxbmrp3_gpb.dlo mxbmrp3_krp.dlo -d dl
+          ls -l dl
+
+      - name: Scan on VirusTotal
+        env:
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+        run: |
+          tools/virustotal_scan.sh --strict "$RUNNER_TEMP/virustotal.md" \
+            dl/mxbmrp3-Setup.* dl/mxbmrp3.zip \
+            dl/mxbmrp3.dlo dl/mxbmrp3_gpb.dlo dl/mxbmrp3_krp.dlo

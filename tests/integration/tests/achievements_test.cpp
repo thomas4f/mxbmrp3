@@ -43,6 +43,9 @@
 //      a "none" theme override, and both used to count, so every new player
 //      got the two rows at the first settings save (1.32, MX Bikes). A key the
 //      player binds and a theme they pick still earn them.
+//  13. A live earn is an Event Log row (and so in /api/state) worded as its
+//      toast's title, one per tier, in the toast's tier metal; a
+//      halfway card and a load-time grant are not.
 //
 // Player = first active RaceAddEntry after EventInit. Self-contained doctest;
 // see run_tests.sh.
@@ -55,6 +58,7 @@
 
 #include <cstdio>   // std::remove, snprintf
 #include <cstdlib>  // std::abs
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -631,7 +635,7 @@ TEST_CASE("achievements: a bike counts once it has been round, not once it is lo
     host.shutdown();
 }
 
-TEST_CASE("achievements: rain, a big grid, the longest session, and distinct tracks and bikes") {
+TEST_CASE("achievements: rain, a big grid, and distinct tracks and bikes") {
     cleanSaveDir();
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
@@ -641,17 +645,14 @@ TEST_CASE("achievements: rain, a big grid, the longest session, and distinct tra
     winRace(host, { .track = "Track A", .bike = "Bike A", .riders = 20, .laps = 3, .conditions = 2 });
     CHECK(host.achievementTier("rain_races") == 1);      // Mudder Bronze
     CHECK(host.achievementTier("big_grids") == 1);       // Crowd Surfer Bronze
-    CHECK(host.achievementValue("session_laps") == doctest::Approx(3.0));
     CHECK(host.achievementValue("tracks") == doctest::Approx(1.0));
     CHECK(host.achievementValue("bikes") == doctest::Approx(1.0));
 
     // A dry two-rider race, two laps, on a second track and bike: the rain and
-    // grid counts hold, the longest session is a max rather than a last, and
-    // the distinct counts grow.
+    // grid counts hold and the distinct counts grow.
     winRace(host, { .track = "Track B", .bike = "Bike B", .riders = 2, .laps = 2 });
     CHECK(host.achievementValue("rain_races") == doctest::Approx(1.0));
     CHECK(host.achievementValue("big_grids") == doctest::Approx(1.0));
-    CHECK(host.achievementValue("session_laps") == doctest::Approx(3.0));
     CHECK(host.achievementValue("tracks") == doctest::Approx(2.0));
     CHECK(host.achievementValue("bikes") == doctest::Approx(2.0));
     CHECK(host.achievementValue("races") == doctest::Approx(2.0));
@@ -665,7 +666,6 @@ TEST_CASE("achievements: rain, a big grid, the longest session, and distinct tra
     REQUIRE(j.is_object());
     CHECK(j["global"].value("rainRaceCount", 0) == 1);
     CHECK(j["global"].value("bigGridRaceCount", 0) == 1);
-    CHECK(j["global"].value("maxSessionLaps", 0) == 3);
     host.shutdown();
 }
 
@@ -673,7 +673,7 @@ TEST_CASE("achievements: rain, a big grid, the longest session, and distinct tra
 // that a gear shift, a crash edge and the odometer bump IN PLACE while it is
 // clean (so a shift never walks every record), and a lap dirties for a full
 // recompute. Both roads must give the same numbers.
-TEST_CASE("achievements: Local Hero is the most laps at one track over its bikes, Loyal one bike's own odometer") {
+TEST_CASE("achievements: Local Hero is the most laps at one track over its bikes, Loyal one bike's own odometer, Marathon one session's") {
     cleanSaveDir();
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
@@ -713,7 +713,74 @@ TEST_CASE("achievements: Local Hero is the most laps at one track over its bikes
     }
     CHECK(host.achievementValue("bike_km") == doctest::Approx(0.12).epsilon(0.05));
     CHECK(host.achievementValue("distance") == doctest::Approx(0.24).epsilon(0.05));
+    // Marathon is the longest SESSION, a max rather than a sum: each event was
+    // its own session of 120 m, so it reads one of them, in km, and the stats
+    // file keeps it in metres.
+    CHECK(host.achievementValue("session_laps") == doctest::Approx(0.12).epsilon(0.05));
+    host.statsSave();
+    auto j = readStats(kStatsPath);
+    REQUIRE(j.is_object());
+    CHECK(j["global"].value("maxSessionDistanceM", 0.0) == doctest::Approx(120.0).epsilon(0.05));
+    CHECK_FALSE(j["global"].contains("maxSessionLaps"));
     host.shutdown();
+}
+
+// The LOAD half of Marathon's distance. The case above only writes the file,
+// so a misspelt key on the load side would pass it; this restarts and reads
+// it back, then hands the plugin a file from before the switch.
+TEST_CASE("achievements: Marathon's distance survives a restart, and a laps-era tier is kept") {
+    cleanSaveDir();
+    {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        host.startup(kSaveWin);
+        long long t = 1'000'000;
+        host.eventInit("Track A", "Alice", 1600.0f, 2, "Bike A", "MX1", "Track A");
+        host.raceEvent("Track A");
+        host.session(1, 0, 480000);
+        host.addEntry(10, "Alice", "Bike A");
+        host.runInit(1);
+        host.runStart();
+        host.statsSetNowUs(t);
+        for (int i = 0; i < 24; ++i) {   // 120 m: the odometer pattern above
+            t += 250'000;
+            host.statsSetNowUs(t);
+            host.telemetry(20.0f, 3, t / 1.0e6f);
+        }
+        host.runDeinit();
+        host.eventDeinit();
+        CHECK(host.achievementValue("session_laps") == doctest::Approx(0.12).epsilon(0.05));
+        host.statsSave();
+        host.shutdown();
+    }
+    {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        host.startup(kSaveWin);
+        CHECK(host.achievementValue("session_laps") == doctest::Approx(0.12).epsilon(0.05));
+        host.shutdown();
+    }
+
+    // A file from before the switch: only the old lap count, and Silver
+    // already earned under it. The id is unchanged, so the tier is kept even
+    // though 120 m is nowhere near a half marathon.
+    auto j = readStats(kStatsPath);
+    REQUIRE(j.is_object());
+    j["global"].erase("maxSessionDistanceM");
+    j["global"]["maxSessionLaps"] = 40;
+    j["achievements"]["unlocked"]["session_laps"]["tier"] = 2;
+    {
+        std::ofstream out(kStatsPath, std::ios::binary | std::ios::trunc);
+        out << j.dump(2);
+    }
+    {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        host.startup(kSaveWin);
+        CHECK(host.achievementTier("session_laps") == 2);
+        CHECK(host.achievementValue("session_laps") == doctest::Approx(0.0));
+        host.shutdown();
+    }
 }
 
 TEST_CASE("achievements: lifetime totals stay exact through clean-cache bumps and a recompute") {
@@ -1019,22 +1086,19 @@ TEST_CASE("achievements: a click on a toast opens the menu on the Achievements t
     CHECK(host.settingsVisible());
     CHECK(host.activeTab() == "Achievements");
     CHECK_FALSE(host.achievementToastShowing());
-    std::string group;
     CHECK(host.achievementLastToast() == "Racer - Silver|Finish 10 races");
-    // The card's own page, by the GROUP it landed on rather than by its index:
-    // pages are ENTRIES_PER_PAGE-row chunks of the catalogue, so pinning an absolute number
-    // here makes every future row addition a failure in this test instead of
-    // in the thing it guards.
-    const int cardPage = host.achievementsPage(&group);
-    CHECK(group == "Racing");
+    // The list comes to rest on the card's row, read by the GROUP at the
+    // list's top rather than by an offset: pinning an absolute position here
+    // makes every future row addition a failure in this test instead of in
+    // the thing it guards.
+    const PluginHost::ScrollView card = host.settingsScroll(2);
+    REQUIRE(card.laidOut);
+    CHECK(card.topGroup == "Racing");
 
-    // A row's toast opens the page holding that row, wherever the list was
-    // left: page through first, then earn Tinkerer (the Tinkering page).
-    float nx = 0.0f, ny = 0.0f;
-    REQUIRE(host.settingsRegionCenter("pager.next", &nx, &ny));
-    host.clickAt(nx, ny);
-    host.clickAt(nx, ny);
-    CHECK(host.achievementsPage(&group) == cardPage + 2);   // two on from Racing's
+    // A row's toast scrolls to that row wherever the list was left: move on
+    // past it first, then earn Tinkerer (the Tinkering group).
+    host.stepScroll(2, 4);
+    CHECK(host.settingsScroll(2).target > card.target);
     host.showSettings(false);
     host.injectMouse(false);
     // The menu's clicks counted the default setup as they happened (Tyre
@@ -1054,9 +1118,14 @@ TEST_CASE("achievements: a click on a toast opens the menu on the Achievements t
     const PluginHost::ScreenEdges t = host.hudScreenEdges("achievement_widget");
     host.clickAt(static_cast<float>(t.l + t.r) * 0.5e-6f, static_cast<float>(t.t + t.b) * 0.5e-6f);
     CHECK(host.settingsVisible());
-    host.draw();                                          // the menu lays its page out
-    CHECK(host.achievementsPage(&group) > cardPage);
-    CHECK(group == "Tinkering");
+    host.draw();                                          // the menu lays its list out
+    const PluginHost::ScrollView tinker = host.settingsScroll(2);
+    CHECK(tinker.target > card.target);
+    // Tinkering sits near the list's foot, and the list fills to the footer:
+    // it rests at the top unless the list has run out of rows to bring it
+    // there, in which case the list rests at its end with it in view.
+    const bool atEnd = tinker.target >= tinker.maxRest - 1e-3f;
+    CHECK((tinker.topGroup == "Tinkering" || atEnd));
     host.injectMouse(false);
     host.shutdown();
 }
@@ -1110,54 +1179,6 @@ TEST_CASE("achievements: the toast defaults to the right corner above Speed and 
         CHECK(b.t == a.t);
         CHECK(b.b == a.b);
     }
-    host.shutdown();
-}
-
-TEST_CASE("achievements: the pager's buttons page through, and an end you cannot pass takes no click") {
-    // The pager is two real buttons around "Page x/y" (SettingsLayoutContext::
-    // addPager): an end that cannot be pressed has no region, so its tooltip id
-    // is absent from the built regions -- which is how this reads the state.
-    // Every click below lands on the coordinates read on page one: the pager
-    // sits at the foot of a FULL page, so a shorter page must not move it.
-    cleanSaveDir();
-    PluginHost host(dllPath());
-    REQUIRE(host.loaded());
-    host.startup(kSaveWin);
-    REQUIRE_MESSAGE(host.hasInjectedMouse(), "build without the mouse stand-in");
-    host.showSettings(true);
-    host.setActiveTab("Achievements");
-    host.draw();
-    float x = 0.0f, y = 0.0f;
-    CHECK_FALSE(host.settingsRegionCenter("pager.prev", &x, &y));   // page one: nothing before it
-    REQUIRE(host.settingsRegionCenter("pager.next", &x, &y));
-    host.clickAt(x, y);
-    CHECK(host.settingsRegionCenter("pager.prev", &x, &y));         // page two: both ends live
-    REQUIRE(host.settingsRegionCenter("pager.next", &x, &y));
-    host.clickAt(x, y);
-    REQUIRE(host.settingsRegionCenter("pager.prev", &x, &y));
-    host.clickAt(x, y);
-    host.clickAt(x, y);
-    CHECK_FALSE(host.settingsRegionCenter("pager.prev", &x, &y));   // back on page one
-
-    // The buttons hold still when the page number gains a digit: the label's
-    // slot is sized for the last page's text, so "Page 9/N" and "Page 10/N"
-    // put both ends in the same place. Walk to page nine, then step once.
-    float nx = 0.0f, ny = 0.0f;
-    REQUIRE(host.settingsRegionCenter("pager.next", &nx, &ny));
-    for (int p = 1; p < 9; ++p) host.clickAt(nx, ny);
-    float px9 = 0.0f, py9 = 0.0f, nx9 = 0.0f, ny9 = 0.0f;
-    REQUIRE(host.settingsRegionCenter("pager.prev", &px9, &py9));
-    REQUIRE(host.settingsRegionCenter("pager.next", &nx9, &ny9));
-    host.clickAt(nx9, ny9);                                          // page ten
-    float px10 = 0.0f, py10 = 0.0f, nx10 = 0.0f, ny10 = 0.0f;
-    REQUIRE(host.settingsRegionCenter("pager.prev", &px10, &py10));
-    CHECK(px10 == doctest::Approx(px9));
-    CHECK(py10 == doctest::Approx(py9));
-    if (host.settingsRegionCenter("pager.next", &nx10, &ny10)) {    // absent on a last page
-        CHECK(nx10 == doctest::Approx(nx9));
-        CHECK(ny10 == doctest::Approx(ny9));
-    }
-    host.injectMouse(false);
     host.shutdown();
 }
 
@@ -1432,4 +1453,82 @@ TEST_CASE("achievements: the shipped setup earns neither Keymaster nor Interior 
         CHECK(host.achievementTier("decorator") == 1);
         host.shutdown();
     }
+}
+
+namespace {
+
+// EventLogType::Achievement (append-only enum, core/event_log_types.h); the
+// HTTP snapshot emits the raw integer.
+constexpr int ACHIEVEMENT_EVENT_TYPE = 21;
+
+std::vector<std::string> achievementEvents(PluginHost& host) {
+    std::vector<std::string> out;
+    const nlohmann::json d = host.snapshot();
+    for (const auto& e : d.value("events", nlohmann::json::array()))
+        if (e.value("type", -1) == ACHIEVEMENT_EVENT_TYPE) out.push_back(e.value("message", std::string()));
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("achievements: a live earn is logged in the Event Log as its toast's title, nothing else is") {
+    // Load-time grant: four achievements from an older file, one summary
+    // toast, and no log row -- the log is what happened on track, not a backlog.
+    cleanSaveDir();
+    {
+        PluginHost seed(dllPath());
+        REQUIRE(seed.loaded());
+        seed.startup(kSaveWin);
+        seed.shutdown();
+    }
+    ini::writeFile(kStatsPath, "{ \"version\": 1, \"global\": { \"raceCount\": 10, \"firstPositions\": 3 } }\n");
+    {
+        PluginHost host(dllPath());
+        REQUIRE(host.loaded());
+        host.startup(kSaveWin);
+        CHECK(host.achievementToastsQueued() == 1u);
+        CHECK(host.achievementTier("races") == 2);
+        // Read the log itself, not /api/state: no event has happened yet to
+        // rebuild the snapshot, so its events list would be empty either way.
+        int shape = 0, tier = -1;
+        CHECK_FALSE(host.eventLogAchievementIcon("Racer - Silver", shape, tier));
+        CHECK_FALSE(host.eventLogAchievementIcon("Racer - Bronze", shape, tier));
+        CHECK_FALSE(host.eventLogAchievementIcon("Winner - Bronze", shape, tier));
+        host.shutdown();
+    }
+
+    cleanSaveDir();
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSaveWin);
+    REQUIRE(host.hasExplorationSet());
+    host.eventInit("TestTrack", "Alice");
+    host.session(1, 0, 0);
+
+    // A one-shot: the title alone, as its toast reads. Its repeat is a count.
+    host.configReloaded();
+    CHECK(achievementEvents(host) == std::vector<std::string>{ "Tinkerer" });
+    host.configReloaded();
+    CHECK(achievementEvents(host).size() == 1u);
+
+    // A tier: "Title - Tier", one row per tier earned live. The halfway card
+    // on the way to Gold is a toast, not a log row.
+    host.explorationSet("daysUsed", 7.0);
+    host.explorationSet("daysUsed", 30.0);
+    const unsigned toasts = host.achievementToastsQueued();
+    host.explorationSet("daysUsed", 65.0);
+    CHECK(host.achievementToastsQueued() == toasts + 1);   // the halfway card
+    CHECK(achievementEvents(host) ==
+          std::vector<std::string>{ "Tinkerer", "Regular - Bronze", "Regular - Silver" });
+
+    // Each row wears its toast's colours: the tier whose metal its icon is
+    // drawn in, none for a one-shot (the toast's plain colour). The icon SHAPE
+    // is not asserted: the harness stages no icons/ set, so every name resolves
+    // to 0 here; companion_demo.sh shows the real glyphs.
+    int shape = 0, tier = -1;
+    REQUIRE(host.eventLogAchievementIcon("Tinkerer", shape, tier));
+    CHECK(tier == 0);
+    REQUIRE(host.eventLogAchievementIcon("Regular - Silver", shape, tier));
+    CHECK(tier == 2);
+    host.shutdown();
 }

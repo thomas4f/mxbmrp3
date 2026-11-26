@@ -35,7 +35,7 @@ public:
 
     // The pack actually in use once the name is resolved; nullptr only when no
     // gauges packs are installed at all.
-    const GaugesAsset* activePack() const;
+    const GaugesAsset* activeLayout() const;
 
     // Needle color (configurable via INI).
     //

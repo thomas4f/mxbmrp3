@@ -11,7 +11,8 @@
 //     under, and Achievements (a catalogue, not settings) does not;
 //   * a HUD's name finds that HUD's rows, which are labelled just "Visible" or
 //     "Scale";
-//   * a broad query's pages never overflow the panel -- the Find page is kept out
+//   * a broad query's list never overflows the panel, at its top or its foot,
+//     and a new query starts at the top -- the Find page is kept out
 //     of the tallest-tab measure, so nothing else would notice;
 //   * a result opens its tab with that row lit, and the light goes out when the
 //     pointer moves; the box keeps the query, and clicking it shows the results
@@ -165,23 +166,26 @@ TEST_CASE("settings find: a player's word for a HUD finds it through its tooltip
     CHECK_MESSAGE(general, "\"spotify\" does not find General > Now playing");
 }
 
-TEST_CASE("settings find: every page of a broad query fits the panel") {
+TEST_CASE("settings find: a broad query's list fits the panel, and a new query starts at its top") {
     PluginHost host(dllPath());
     start(host, "Z:\\tmp\\mxbmrp3-tests\\settings_find_fit\\");
     REQUIRE(host.hasSettingsOverflow());
 
     const int n = host.settingsFind("e");
-    REQUIRE(n > 40);   // several pages
+    REQUIRE(n > 40);   // far more than the card shows
     host.draw();
-    int pages = 1;
-    for (; pages < 50; ++pages) {
-        CHECK_MESSAGE(host.settingsOverflowRows() == doctest::Approx(0.0),
-                      "Find page " << pages << " overflows the panel");
-        float nx = 0.0f, ny = 0.0f;
-        if (!host.settingsRegionCenter("pager.next", &nx, &ny)) break;
-        host.clickAt(nx, ny);
-    }
-    CHECK(pages > 2);
+    const PluginHost::ScrollView v = host.settingsScroll(3);   // ScrollView::FIND_RESULTS
+    REQUIRE(v.laidOut);
+    CHECK(v.maxRest > 0.0f);
+    CHECK(host.settingsOverflowRows() == doctest::Approx(0.0));
+    host.stepScroll(3, 500);
+    CHECK(host.settingsScroll(3).target == doctest::Approx(v.maxRest));
+    CHECK(host.settingsOverflowRows() == doctest::Approx(0.0));
+
+    // A new query is a new list: it starts at the top, not where "e" was left.
+    REQUIRE(host.settingsFind("a") > 40);
+    host.draw();
+    CHECK(host.settingsScroll(3).target == doctest::Approx(0.0f));
 }
 
 TEST_CASE("settings find: a result opens its tab with the row lit until the pointer moves") {

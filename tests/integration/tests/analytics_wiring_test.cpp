@@ -55,6 +55,25 @@ TEST_CASE("analytics wiring: app_started always built; sampling gates session_en
     const std::string earned = host.analyticsAppStarted();
     CHECK(has(earned, "\"ach_config_reloads\":1"));
     CHECK_FALSE(has(earned, "\"ach_races\""));
+    // 2.33.0: one flag per deck and their count, from the same capture. A new
+    // install has the five starter decks on, under the Decks master, which is off
+    CHECK(has(app, "\"deck_speed\":1"));
+    CHECK(has(app, "\"deck_fuel\":1"));
+    CHECK(has(app, "\"deck_notice\":0"));
+    CHECK(has(app, "\"deck_gap\":0"));
+    CHECK(has(app, "\"deck_count\":5"));
+    REQUIRE(host.setHudVisible("gap_deck", true));
+    const std::string decked = host.analyticsAppStarted();
+    CHECK(has(decked, "\"deck_gap\":1"));
+    CHECK(has(decked, "\"deck_count\":6"));
+    REQUIRE(host.setHudVisible("gap_deck", false));
+    // ...and the masters, so a reader can tell a deck held back from one shown:
+    // both off for a new install
+    CHECK(has(app, "\"feat_decks\":0"));
+    CHECK(has(app, "\"feat_widgets\":0"));
+    host.setMasterEnabled(PluginHost::Master::Decks, true);
+    CHECK(has(host.analyticsAppStarted(), "\"feat_decks\":1"));
+    host.setMasterEnabled(PluginHost::Master::Decks, false);
     CHECK(has(app, "\"isDebug\":true"));   // capture mode routes to the debug bucket (belt-and-suspenders)
 
     // --- panel_theme: the label, through the REAL AssetManager lookup. ---

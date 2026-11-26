@@ -181,19 +181,19 @@ TEST_CASE("settings find: a row's value reaches only that row, trailing pad cut;
     CHECK(s.index.size() == 2u);
 }
 
-TEST_CASE("settings find: refresh recomputes on a new query or a rebuilt index, and resets the page") {
+TEST_CASE("settings find: refresh recomputes on a new query or a rebuilt index, and flags a new query") {
     SettingsFind::State s;
     s.index = { entry(0, "Gap", "Gap chart."), entry(1, "Range", "Gap range.") };
     s.query = "gap";
     s.refresh();
     CHECK(s.hits.size() == 2u);
     CHECK(s.counts.names == 1);
-    s.page = 3;
-    s.refresh();               // same query, same index: kept
-    CHECK(s.page == 3);
+    s.newQuery = false;        // the results drew (and went back to their top)
+    s.refresh();               // same query, same index: the list stays where it is
+    CHECK_FALSE(s.newQuery);
     s.query = "range";
     s.refresh();
-    CHECK(s.page == 0);
+    CHECK(s.newQuery);         // a new query: the results start at their top
     CHECK(s.hits.size() == 1u);
     s.index.push_back(entry(2, "Range", "Another range."));
     s.matchedFresh = false;    // what an index rebuild does

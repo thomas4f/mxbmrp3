@@ -28,6 +28,18 @@
 // (which theme sprites use) before consulting it.
 void AssetManager::discoverThemes() {
     const std::string themesRoot = std::string(DISCOVERY_DIR) + "\\" + THEMES_SUBDIR;
+    // A theme's slanted frame ends from `dir` (ThemeAsset::slantLeftSprite), for
+    // the standalone and skin paths alike; `add` registers one picture
+    const auto readSlantEnds = [](const std::string& dir, ThemeAsset& theme, auto& add) {
+        int lw = 0, lh = 0, rw = 0, rh = 0;
+        readTgaDimensions(dir + "frame_slant_left.tga", lw, lh);
+        readTgaDimensions(dir + "frame_slant_right.tga", rw, rh);
+        if (lh <= 0 || rh <= 0) return;
+        theme.slantLeftSprite = add("frame_slant_left");
+        theme.slantRightSprite = add("frame_slant_right");
+        theme.slantLeftAspect = static_cast<float>(lw) / static_cast<float>(lh);
+        theme.slantRightAspect = static_cast<float>(rw) / static_cast<float>(rh);
+    };
     const std::string searchPath = themesRoot + "\\*";
 
     WIN32_FIND_DATAA findData;
@@ -162,6 +174,9 @@ void AssetManager::discoverThemes() {
             }
         }
 
+        // SLANTED FRAME ENDS, optional, after the title set (ThemeAsset::slantLeftSprite)
+        if (exists("frame_slant_left") && exists("frame_slant_right")) readSlantEnds(base, theme, add);
+
         // ICON OVERRIDES: themes/<name>/icons/<icon>.tga, one sprite each, registered
         // after the slice sets so a theme without them is unaffected. Ordered by the
         // BASE set so registration order is a property of
@@ -229,18 +244,18 @@ void AssetManager::discoverThemes() {
         const std::string baseKey = readPackStringKey(ini, PackIni::kKeyBase);
         if (baseKey.empty()) continue;
 
-        const ThemeAsset* basePack = nullptr;
+        const ThemeAsset* baseLayout = nullptr;
         for (size_t i = 0; i < standaloneThemes; ++i) {
-            if (m_themes[i].name == baseKey) { basePack = &m_themes[i]; break; }
+            if (m_themes[i].name == baseKey) { baseLayout = &m_themes[i]; break; }
         }
-        if (!basePack) {
+        if (!baseLayout) {
             DEBUG_WARN_F("AssetManager: theme '%s' skipped - base '%s' is not a "
                          "standalone theme (a base cannot itself declare a base)",
                          dir.c_str(), baseKey.c_str());
             continue;
         }
 
-        ThemeAsset theme = *basePack;
+        ThemeAsset theme = *baseLayout;
         theme.name = dir;
         theme.baseName = baseKey;
         theme.displayName = generateDisplayName(dir);
@@ -288,6 +303,7 @@ void AssetManager::discoverThemes() {
             if (owns(tc)) theme.titleCornerSprites[i] = add(tc);
             if (owns(te)) theme.titleEdgeSprites[i]   = add(te);
         }
+        if (owns("frame_slant_left") && owns("frame_slant_right")) readSlantEnds(skinDir, theme, add);
         // A skin that INTRODUCES a set the base lacked has nothing to inherit for
         // the pieces it did not draw, and a partial set draws a card with holes in
         // it -- so those fall back to the centre, the same flat band the standalone

@@ -79,6 +79,13 @@
 // Timing panel already treated it so, but the gap kept reading on against the
 // dead lap all the way down the pit lane. It now goes blank at the pit flag,
 // stays blank through the exit, and the next line starts over.
+//
+// THE RESET. Case 13: a hotlapper who fell reset to a marker near the end of the
+// lap, and every gap display read the clock (~20 s) against the reference there
+// (~58 s) until the line voided the lap. A teleport that lands well ahead is now
+// a void lap like the pits; the game's crash recovery, back behind the fall, is
+// not. The detector's rule and the tapes behind its numbers are in
+// core/warp_detect.h and tests/unit/test_warp_detect.cpp.
 // ============================================================================
 #include "doctest.h"
 #include "integration_main.h"
@@ -878,5 +885,91 @@ TEST_CASE("live gap to PB: riding into the pits blanks the gap until the next li
     host.drawWithState(0);
     REQUIRE(host.liveGapToPb(gap));
     CHECK_MESSAGE((gap >= 0 && gap <= 2500), "expected ~+1000 behind at 0.40, got " << gap);
+    host.shutdown();
+}
+
+TEST_CASE("live gap to PB: a reset to a marker far ahead blanks the gap until the next line") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    const char* saveWin = "Z:\\tmp\\mxbmrp3-tests\\pb_gap_reset\\";
+    host.startup(saveWin);
+    {
+        std::filesystem::create_directories("Z:\\tmp\\mxbmrp3-tests\\pb_gap_reset\\mxbmrp3");
+        std::ofstream ini("Z:\\tmp\\mxbmrp3-tests\\pb_gap_reset\\mxbmrp3\\mxbmrp3_settings.ini", std::ios::trunc);
+        REQUIRE(ini.is_open());
+        ini << "[Settings]\nversion=6\n\n[GapBarHud]\nvisible=1\nfreezeDuration=0\n\n"
+               "[LapLogHud]\nvisible=1\nfreezeDuration=0\n";
+    }
+    host.loadSettings(saveWin);
+
+    host.eventInit("TestTrack", "Alice");   // 1600 m
+    host.raceEvent("TestTrack");
+    host.session(RACE1, /*numLaps=*/10, /*lengthMs=*/0);
+    host.addEntry(10, "Alice");
+    host.runInit(RACE1);
+    host.runStart();
+
+    // A PB lap with samples where the crash recovery and the reset will put the rider.
+    host.raceTrackPosition({ { 10, 0.95f } });
+    host.raceTrackPosition({ { 10, 0.05f } });
+    host.raceSplit(RACE1, 10, 1, 0, 20000);
+    host.raceTrackPosition({ { 10, 0.35f } });
+    host.raceTrackPosition({ { 10, 0.40f } });
+    host.raceSplit(RACE1, 10, 1, 1, 40000);
+    host.raceTrackPosition({ { 10, 0.70f } });
+    host.raceTrackPosition({ { 10, 0.93f } });
+    host.raceTrackPosition({ { 10, 0.96f } });
+    host.classify(RACE1, 60000, { { .num = 10, .laps = 1, .gap = 0 } });
+    host.raceLap(RACE1, 10, 1, 60000, /*best=*/1, 20000, 40000);
+    host.raceTrackPosition({ { 10, 0.02f } });
+    host.raceTrackPosition({ { 10, 0.05f } });
+    host.raceSplit(RACE1, 10, 2, 0, 20000);
+    host.raceTrackPosition({ { 10, 0.40f } });
+    host.drawWithState(0);
+    int gap = 0;
+    REQUIRE(host.liveGapToPb(gap));
+
+    // The game's crash recovery: down at 0.40, put back 80 m behind. The lap goes
+    // on and its gap still holds.
+    host.raceTrackPosition({ { 10, 0.40f, /*crashed=*/1 } });
+    host.raceTrackPosition({ { 10, 0.35f, 0, /*posX=*/-80.0f } });
+    CHECK_MESSAGE(host.liveGapToPb(gap), "a crash recovery behind the fall blanked the gap");
+    host.raceTrackPosition({ { 10, 0.40f, 0, -80.0f } });
+    REQUIRE(host.liveGapToPb(gap));
+
+    // Down again, and reset to a marker near the end of the lap: ~20 s on the
+    // clock against the ~40 s the reference had there read -20 s. Nothing reads
+    // until the line, the HUDs included.
+    host.raceTrackPosition({ { 10, 0.41f, /*crashed=*/1, -80.0f } });
+    host.raceTrackPosition({ { 10, 0.93f, 0, /*posX=*/600.0f } });
+    host.drawWithState(0);
+    CHECK_MESSAGE(host.liveGapToPb(gap) == false, "the reset ahead read a gap of " << gap);
+    int shownMs = 0;
+    CHECK_MESSAGE(signedRows(host, "gap_bar_hud", shownMs) == 0, "the Gap Bar shows " << shownMs << " ms");
+    CHECK_MESSAGE(lapLogGapRows(host, shownMs) == 0, "the Lap Log shows " << shownMs << " ms");
+    host.raceTrackPosition({ { 10, 0.96f, 0, 600.0f } });
+    CHECK_FALSE(host.liveGapToPb(gap));
+
+    // The line ends the void lap (the game calls it invalid) and the next reads.
+    host.classify(RACE1, 90000, { { .num = 10, .laps = 2, .gap = 0 } });
+    host.raceTrackPosition({ { 10, 0.02f, 0, 600.0f } });
+    host.raceLap(RACE1, 10, 2, 30000, /*best=*/0, 20000, 0, /*invalid=*/true);
+    host.raceTrackPosition({ { 10, 0.03f, 0, 600.0f } });
+    host.raceSplit(RACE1, 10, 3, 0, 21000);
+    host.raceTrackPosition({ { 10, 0.40f, 0, 600.0f } });
+    host.drawWithState(0);
+    REQUIRE(host.liveGapToPb(gap));
+    CHECK_MESSAGE((gap >= 0 && gap <= 2500), "expected ~+1000 behind at 0.40, got " << gap);
+
+    // Reset again, to just short of the line: blank, and the sample after the
+    // teleport is a baseline, so the real line that follows still starts a lap.
+    host.raceTrackPosition({ { 10, 0.95f, 0, 0.0f } });
+    CHECK_FALSE(host.liveGapToPb(gap));
+    host.raceTrackPosition({ { 10, 0.02f, 0, 0.0f } });   // the real line: a new lap
+    host.raceLap(RACE1, 10, 3, 0, /*best=*/0, 0, 0, /*invalid=*/true);
+    host.raceTrackPosition({ { 10, 0.03f, 0, 0.0f } });
+    host.raceSplit(RACE1, 10, 4, 0, 20000);
+    host.raceTrackPosition({ { 10, 0.40f, 0, 0.0f } });
+    CHECK(host.liveGapToPb(gap));
     host.shutdown();
 }

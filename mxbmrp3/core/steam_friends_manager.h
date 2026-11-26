@@ -85,9 +85,9 @@ public:
     const char* getStatusString() const;
 
     // Global on/off (persisted as "steamFriends" in the global INI section,
-    // mirroring DiscordManager). Default on: Steam rich presence is expected
-    // behaviour for a Steam game, so we broadcast our presence and read friends
-    // unless the user turns it off. All calls happen on the game thread.
+    // mirroring DiscordManager). Default off: broadcasting the player's server
+    // to friends is theirs to turn on. The writer always emits the key, so an
+    // install that had it on keeps it on. All calls happen on the game thread.
     bool isEnabled() const { return m_enabled; }
     void setEnabled(bool enabled);
 
@@ -149,7 +149,7 @@ private:
     // setEnabled() (settings UI) writes it; onDataChanged()/initialize() read
     // it. The worker never looks at it.
     // mt-plain: game thread only.
-    bool m_enabled;            // user toggle; default on
+    bool m_enabled;            // user toggle; default off
 
     // steam_api64.dll interfaces + resolved functions
     void* m_friends;           // ISteamFriends*

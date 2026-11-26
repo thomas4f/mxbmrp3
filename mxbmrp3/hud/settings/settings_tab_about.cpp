@@ -116,10 +116,10 @@ BaseHud* SettingsHud::renderTabAbout(SettingsLayoutContext& ctx) {
             ctx.parent->addString(t, x, ctx.currentY, PluginConstants::Justify::LEFT,
                 PluginConstants::Fonts::getNormal(), colors.getSecondary(), ctx.fontSize);
         };
-        text(TR("A comment or rating, a star or a"), ctx.labelX);
+        text(TR("Rate or recommend it on mxb-mods,"), ctx.labelX);
         text(TR("Setup, every setting"), helpX);
         ctx.nextLine();
-        text(TR("coffee helps. All optional."), ctx.labelX);
+        text(TR("star it on GitHub, or buy a coffee."), ctx.labelX);
         text(TR("and the web overlay."), helpX);
         ctx.nextLine();
         // Columns with room to spare past each name, so no font runs one into the next.

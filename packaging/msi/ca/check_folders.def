@@ -1,0 +1,4 @@
+LIBRARY mxbmrp3_msi_ca
+EXPORTS
+    CheckGameFolders
+    ReadEarlierOptOut

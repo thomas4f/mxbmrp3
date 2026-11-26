@@ -82,7 +82,7 @@ var logoTimer = null;
 var logoSnapTimer = null;
 
 function fetchLogos() {
-    fetch(BASE_URL + "/api/logos", { mode: "cors" }).then(function (r) {
+    fetch("/api/logos").then(function (r) {
         return r.json();
     }).then(function (files) {
         logoFiles = files || [];

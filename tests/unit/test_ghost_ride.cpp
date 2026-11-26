@@ -23,6 +23,13 @@ TEST_CASE("an upright bike rolling on both wheels after the rider came off") {
     CHECK(rolling(true, true, true, -17.6f, -3.5f, 5.5f));
 }
 
+TEST_CASE("a riderless bike leaning into a turn still counts") {
+    // The second tape's last crash, 1113.25 s: leaning 43.1 into a turn at
+    // 4.1 m/s on both wheels. A 35 limit broke the run here.
+    CHECK(rolling(true, true, true, 43.1f, -0.5f, 4.1f));
+    CHECK_FALSE(rolling(true, true, true, 50.0f, 0.0f, 4.1f));
+}
+
 TEST_CASE("the rider on the bike is not a ghost ride") {
     CHECK_FALSE(rolling(false, true, true, 0.0f, 0.0f, 20.0f));
 }

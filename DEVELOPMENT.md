@@ -127,7 +127,7 @@ run them before pushing anything they cover. Most take seconds and need no Wine;
 `run_cppcheck.sh` are CTest `slow` gates (mingw/clang/cppcheck, minutes):
 
 ```bash
-./tests/integration/check_game_configs.sh     # GPB/KRP feature-macro syntax
+./tests/integration/check_game_configs.sh     # GPB/KRP feature-macro syntax, member shadowing
 ./tests/integration/check_visibility_gates.sh # HUD isVisibleAnySurface() gates
 ./tests/integration/check_card_anchor_coverage.sh # card-box anchors are swept
 ./tests/integration/check_whats_new.sh          # "New" markers name this release
@@ -303,8 +303,10 @@ MSVC artifact users actually run is ever executed before shipping; the test gate
 exercises the mingw build), and packages the zip + debug symbols + SBOM (generated
 by [`tools/gen_sbom.py`](tools/gen_sbom.py) from
 [`mxbmrp3/vendor/vendored.json`](mxbmrp3/vendor/vendored.json)), asserting the
-zip's release manifest. A second job then builds the **NSIS installer on Linux**
-over the MSVC payload and publishes the artifacts. It runs the **full test suite
+zip's release manifest. A Windows job builds and tests the **MSI installer**
+([`packaging/msi/`](packaging/msi/README.md)). A third job then builds the
+**NSIS installer on Linux** over the MSVC payload and publishes the artifacts,
+both installers among them. It runs the **full test suite
 first** (via the reusable `tests.yml`) and `build-release needs: tests`, so nothing
 ships from a red commit.
 
@@ -325,7 +327,7 @@ the tested one is how the stub gap reached a release unnoticed.
   and the passing test run linked - review, then **Publish**. It fails fast if
   that `vX.Y.Z` tag already exists (bump `resource.h` first).
 - **Dry run**: same, box **unticked** - builds and uploads the artifacts (zip,
-  installer, symbols, SBOM), no tag, no Release. Use it to validate.
+  both installers, symbols, SBOM), no tag, no Release. Use it to validate.
 
   The button is the **only** release trigger - there is no tag-push path. The
   `vX.Y.Z` tag is created *by* the release (from `resource.h`), so it can never
@@ -347,8 +349,9 @@ Development happens in the private repo; users download from the public repo
 (`thomas4f/mxbmrp3`), which gets **one squashed commit per release** so the
 private iteration history is never exposed. The `mirror` workflow
 ([`.github/workflows/mirror.yml`](.github/workflows/mirror.yml)) automates that
-copy - it creates a single commit whose tree is identical to private `main`,
-parented on `public/main` (`git commit-tree`), and pushes it. No working-tree
+copy - it creates a single commit whose tree is private `main`'s, minus the
+paths `mirror.yml` keeps private, parented on `public/main`
+(`git commit-tree`), and pushes it. No working-tree
 copy, so it can't half-apply.
 
 **Before you start: the one thing CI cannot tell you.** Run these locally on
@@ -367,7 +370,10 @@ mirror, which receives code at step 4 below (TESTING.md -> *CodeQL* has the why)
 
 The end-to-end release flow (all buttons, no local git):
 
-1. Bump `VER_*` in `mxbmrp3/resource.h`, move [`CHANGELOG.md`](CHANGELOG.md)'s
+1. Run the MXB Facts check
+   ([`.claude/skills/mxb-facts-check/SKILL.md`](.claude/skills/mxb-facts-check/SKILL.md))
+   and decide every answer that isn't Good. Then bump `VER_*` in
+   `mxbmrp3/resource.h`, move [`CHANGELOG.md`](CHANGELOG.md)'s
    `## [Unreleased]` entries under the new version heading (with the date and a
    compare link), and merge everything into private `main`. The changelog is the
    source for the Release body - write it for players, not for reviewers.
@@ -389,8 +395,8 @@ created by `release` at step 5, because a GitHub Release must be tag-backed. In
 private it is created by `mirror` at step 4, at the commit whose tree was
 published - so "which commit shipped as 1.29.0" is answerable on this side too,
 instead of needing the trees matched by hand. The private tag is annotated with
-the public commit it produced, and the two point at identical trees by
-construction.
+the public commit it produced, and the two point at the same tree, bar
+those private paths, by construction.
 
 Re-mirroring the same version is normal (mirror, spot something, fix, mirror
 again), so **the private tag moves while the version is unreleased**. Once the

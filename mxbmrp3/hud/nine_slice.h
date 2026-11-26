@@ -27,7 +27,7 @@
 // slicer keeps it (and copies the master in beside the slices, so it cannot go
 // missing).
 //
-// TWO RULES THAT ARE EASY TO GET WRONG:
+// THREE RULES THAT ARE EASY TO GET WRONG:
 //
 //   1. SQUARE MUST BE SQUARE. HUD coords are normalized over a 16:9 viewport, so
 //      a delta of D covers D*vpW pixels in x but D*vpH in y. A corner authored
@@ -40,13 +40,28 @@
 //      corner stays square while it shrinks. A fully clamped square panel
 //      degrades to a circle, which is the correct 9-slice behaviour.
 //
-// A third rule lives in the ART, not here, and nothing asserts it: the edge
+//   3. NO SLIVER BETWEEN CORNERS. A box a little taller than two corners -- a
+//      settings row's highlight, 2 cells high on a 1-cell corner -- leaves a
+//      middle edge slice a couple of pixels tall: a 64 px edge sprite squeezed
+//      ~24:1. The game MIPMAPS sprites and picks the level from the most
+//      squeezed axis, so that sliver draws from a 4x4 level where the rim has
+//      smeared sideways: a notch at mid-height on both ends. So when the middle
+//      would come out thinner than a corner, the corners GROW to half the box
+//      (same one factor on both axes) and the middle slices vanish. The box
+//      itself never moves or resizes; only its corners are a little larger.
+//      The one factor has to suit BOTH axes: grown for one, the other's middle
+//      must still vanish or stay a corner wide. When no grow does (a box a
+//      little over two corners each way), the corners SHRINK until both
+//      middles are a corner wide. Pinned by nine_slice_test ("no sliver").
+//
+// One more rule lives in the ART, not here, and nothing asserts it: the edge
 // sprite's inner value must equal the center sprite's value, or the
 // independently-stretched slices show a hard seam inset from the panel edge.
 // ============================================================================
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 
 namespace NineSlice {
 
@@ -77,8 +92,23 @@ struct Border { float x, y; };
 inline Border clampedBorder(float w, float h, float borderY, float aspect) {
     float iy = borderY;
     float ix = borderY / aspect;
-    // One scale for both axes keeps the corner square while shrinking it.
-    const float scale = std::min({1.0f, (0.5f * w) / ix, (0.5f * h) / iy});
+    // One scale for both axes keeps the corner square while it changes.
+    // Rule 2 bounds it: no corner past half the box. Under that, rule 3: on
+    // each axis the middle either vanishes (scale = half the box) or stays at
+    // least a corner wide (scale <= a third of it).
+    const float rx = w / ix, ry = h / iy;   // the box, in corners
+    const float fit = std::min(0.5f * rx, 0.5f * ry);
+    // Under two corners on an axis: rule 2 alone, as it always was
+    if (fit <= 1.0f) return { ix * fit, iy * fit };
+    const auto clean = [](float scale, float r) {
+        constexpr float EPS = 1e-4f;
+        return scale <= r / 3.0f + EPS || std::abs(scale - 0.5f * r) <= EPS;
+    };
+    const auto both = [&](float scale) { return clean(scale, rx) && clean(scale, ry); };
+    // The authored corner; else grown to half the box's shorter side, which
+    // closes that middle if it leaves the other's clean; else shrunk until
+    // both middles are a corner wide
+    const float scale = both(1.0f) ? 1.0f : both(fit) ? fit : std::min({ 1.0f, rx / 3.0f, ry / 3.0f });
     return { ix * scale, iy * scale };
 }
 

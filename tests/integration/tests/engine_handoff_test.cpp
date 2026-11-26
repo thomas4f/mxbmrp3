@@ -32,6 +32,9 @@ TEST_CASE("engine handoff: the engine gets the frame without what draws nothing"
     REQUIRE(host.loaded());
     host.startup(kDir);
     REQUIRE_MESSAGE(host.engineHandoffs() >= 0, "MXBMRP3_Test_EngineHandoffs missing");
+    // A new install draws only the Map; Standings and the Dash make a frame worth cutting
+    REQUIRE(host.setHudVisibleBoth("standings_hud", true));
+    REQUIRE(host.setHudVisibleBoth("dash_hud", true));
 
     const int before = host.engineHandoffs();
     host.draw();
@@ -50,6 +53,8 @@ TEST_CASE("engine handoff: the pluginThread path cuts the same frame") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup(kDir);
+    REQUIRE(host.setHudVisibleBoth("standings_hud", true));   // as above
+    REQUIRE(host.setHudVisibleBoth("dash_hud", true));
 
     host.draw();
     const int syncQuads = host.lastGameQuads();

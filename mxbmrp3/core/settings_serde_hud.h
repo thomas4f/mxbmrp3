@@ -45,6 +45,9 @@
 #if GAME_HAS_ECU
 #include "../hud/ecu_widget.h"
 #endif
+#if GAME_HAS_RIDER_STANCE
+#include "../hud/stance_widget.h"
+#endif
 
 namespace Settings {
 
@@ -125,24 +128,6 @@ namespace Settings {
         if (str == "PLAYER") return StandingsHud::GapReferenceMode::PLAYER;
         if (str == "ALTERNATING") return StandingsHud::GapReferenceMode::ALTERNATING;
         DEBUG_WARN_F("Unknown GapReferenceMode '%s', using default", str.c_str());
-        return defaultVal;
-    }
-
-    // StandingsHud::AnimationMode
-    inline const char* animationModeToString(StandingsHud::AnimationMode mode) {
-        switch (mode) {
-            case StandingsHud::AnimationMode::OFF:     return "OFF";
-            case StandingsHud::AnimationMode::BASIC:   return "BASIC";
-            case StandingsHud::AnimationMode::COLORED: return "COLORED";
-            default: return "BASIC";
-        }
-    }
-
-    inline StandingsHud::AnimationMode stringToAnimationMode(const std::string& str, StandingsHud::AnimationMode defaultVal = StandingsHud::AnimationMode::BASIC) {
-        if (str == "OFF") return StandingsHud::AnimationMode::OFF;
-        if (str == "BASIC") return StandingsHud::AnimationMode::BASIC;
-        if (str == "COLORED") return StandingsHud::AnimationMode::COLORED;
-        DEBUG_WARN_F("Unknown AnimationMode '%s', using default", str.c_str());
         return defaultVal;
     }
 
@@ -469,6 +454,26 @@ namespace Settings {
         return defaultVal;
     }
 
+#if GAME_HAS_RIDER_STANCE
+    // StanceWidget::Mode
+    inline const char* stanceModeToString(StanceWidget::Mode mode) {
+        switch (mode) {
+            case StanceWidget::Mode::Pair:         return "pair";
+            case StanceWidget::Mode::Flip:         return "flip";
+            case StanceWidget::Mode::StandingOnly: return "standing";
+            default: return "pair";
+        }
+    }
+
+    inline StanceWidget::Mode stringToStanceMode(const std::string& str, StanceWidget::Mode defaultVal = StanceWidget::Mode::Pair) {
+        if (str == "pair") return StanceWidget::Mode::Pair;
+        if (str == "flip") return StanceWidget::Mode::Flip;
+        if (str == "standing") return StanceWidget::Mode::StandingOnly;
+        DEBUG_WARN_F("Unknown Stance mode '%s', using default", str.c_str());
+        return defaultVal;
+    }
+#endif
+
     // FuelWidget::FuelUnit
     inline const char* fuelUnitToString(FuelWidget::FuelUnit unit) {
         switch (unit) {
@@ -789,6 +794,7 @@ namespace Settings {
         saveBitAsKey(settings, DIRECTOR, events, EVENT_DIRECTOR);
         saveBitAsKey(settings, SESSION_PB, events, EVENT_SESSION_PB);
         saveBitAsKey(settings, ALLTIME_PB, events, EVENT_ALLTIME_PB);
+        saveBitAsKey(settings, ACHIEVEMENT, events, EVENT_ACHIEVEMENT);
     }
 
     // EventLogHud: load events from named keys
@@ -811,6 +817,7 @@ namespace Settings {
         loadBitFromKey(settings, DIRECTOR, events, EVENT_DIRECTOR);
         loadBitFromKey(settings, SESSION_PB, events, EVENT_SESSION_PB);
         loadBitFromKey(settings, ALLTIME_PB, events, EVENT_ALLTIME_PB);
+        loadBitFromKey(settings, ACHIEVEMENT, events, EVENT_ACHIEVEMENT);
     }
 
     // NoticesHud: save notices as named keys

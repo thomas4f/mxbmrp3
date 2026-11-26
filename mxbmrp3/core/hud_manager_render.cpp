@@ -18,6 +18,7 @@
 #include "asset_manager.h"
 #include "companion_window.h"
 #include "input_manager.h"
+#include "mouse_wheel.h"
 #include "xinput_reader.h"
 #include "plugin_data.h"
 #include "plugin_manager.h"
@@ -31,6 +32,10 @@
 #include "hud_gl_renderer.h"
 #include "ui_viewport.h"
 #include "../hud/base_hud.h"
+#include "../hud/deck_hud.h"
+#include "../hud/achievement_widget.h"
+#include "../hud/notice_tracker.h"
+#include "../hud/toast_feed.h"
 #include "../hud/standings_hud.h"
 #include "../hud/performance_hud.h"
 #include "../hud/telemetry_hud.h"
@@ -71,6 +76,7 @@
 #include "../hud/lean_widget.h"
 #include "../hud/slide_widget.h"
 #include "../hud/wheelie_widget.h"
+#include "../hud/stance_widget.h"
 #include "../hud/gforce_widget.h"
 #include "../hud/compass_widget.h"
 #include "../hud/clock_widget.h"
@@ -158,24 +164,6 @@ void HudManager::handOffToEngine(int* piNumQuads, void** ppQuad, int* piNumStrin
     *ppString = const_cast<SPluginString_t*>(strings);
 }
 
-bool HudManager::standsDown(const BaseHud* hud) const {
-    return m_pGlConfirm && m_pGlConfirm->isActive() && hud && hud == m_pSettingsHud;
-}
-
-// EVERY row of the Widgets tab, which is what the master toggle and its hotkey
-// mean by "the widgets". The Crash and Prestige widgets were missing and so sat
-// through a toggle that took every other one off screen - a hand-kept list, and
-// the two newest names are exactly what a hand-kept list loses.
-bool HudManager::isWidgetHud(const BaseHud* hud) const {
-    return hud == m_pLap || hud == m_pPosition || hud == m_pTime ||
-           hud == m_pSpeed || hud == m_pGear || hud == m_pSpeedo || hud == m_pTacho ||
-           hud == m_pBars || hud == m_pFuel ||
-           hud == m_pGamepad || hud == m_pLean || hud == m_pSlide || hud == m_pWheelie ||
-           hud == m_pGforce || hud == m_pCompass ||
-           hud == m_pClock || hud == m_pCrash || hud == m_pPrestige || hud == m_pRpm ||
-           hud == m_pNowPlaying;
-}
-
 bool HudManager::isHeldBack(const BaseHud* hud) const {
     if (!hud) return false;
     if (standsDown(hud) || coveredByBorrowedDash(hud)) return true;
@@ -184,9 +172,11 @@ bool HudManager::isHeldBack(const BaseHud* hud) const {
     // strip) and the pointer (how the HUD comes back), and its own "All HUDs
     // hidden" card for its few seconds.
     const bool chrome = hud == m_pSettingsHud || hud == m_pToggleStrip || hud == m_pPointer;
-    const bool hideAllNotice = hud == m_pAchievement && m_pAchievement->isShowingThroughHideAll();
+    const bool hideAllNotice = (hud == m_pAchievement ||
+                                hud == m_pDecks[static_cast<int>(DeckHud::Kind::Notice)]) &&
+                               ToastFeed::getInstance().isThroughHideAll();
     if (m_bAllHudsToggledOff && !chrome && !hideAllNotice) return true;
-    return m_bAllWidgetsToggledOff && isWidgetHud(hud);
+    return heldByGroup(hud);
 }
 
 void HudManager::produceFrame(int iState) {
@@ -263,6 +253,9 @@ void HudManager::produceFrame(int iState) {
     } else {
         updateHuds();
     }
+    // Every list has asked for the wheel or not: in front of the game window,
+    // or out of it (core/mouse_wheel.h).
+    MouseWheel::getInstance().endFrame(InputManager::getInstance().getGameWindow());
 
     // Collect render data from all HUDs
     // Note: PointerWidget is registered last, so pointer renders on top
@@ -519,6 +512,10 @@ void HudManager::updateHuds() {
         (leftClick || input.getRightButton().isClicked()) && input.isCursorEnabled() && cursor.isValid
             ? topHudAt(cursor.x, cursor.y, dragCompanion) : nullptr;
     m_pClickOwner = leftClick ? underClick : nullptr;
+    // The wheel's pick, on the same rule: a HUD list takes the wheel only while
+    // the cursor shows (hud_scroll.cpp), so the walk costs nothing otherwise.
+    m_pWheelOwner = !dragCompanion && input.shouldShowCursor() && input.isCursorEnabled() && cursor.isValid
+                        ? topHudAt(cursor.x, cursor.y, false) : nullptr;
 
     // A HUD mid-drag keeps the input; otherwise the one under a fresh click, if
     // it is switched on here (the borrowed Dash takes a click, never a drag).
@@ -543,11 +540,25 @@ void HudManager::updateHuds() {
     // notices CONSUME their PluginData flag, so two panels stepping their own copy
     // would race for it. Steps fully while either panel is shown; otherwise only
     // drains the expired flags.
+    const bool deckCarries = noticeDeckCarriesToasts();
     if (m_pNotices) {
+        const DeckHud* carousel = m_pDecks[DeckHud::CAROUSEL_SLOT];
         const bool watched = m_pNotices->isVisibleAnySurface() ||
-                             (m_pDash && m_pDash->watchesNotices());
+                             (m_pDash && m_pDash->watchesNotices()) || deckCarries ||
+                             (carousel && isGroupEnabled(MasterGroup::Decks) && carousel->watchesNotices());
         NoticeTracker::getInstance().step(m_pNotices->getEnabledNotices(),
                                           m_pNotices->getNoticeDurationMs(), watched);
+    }
+
+    // THE TOAST UP RIGHT NOW (an achievement, a plugin message), stepped next,
+    // for the same reason: a toast is TAKEN from its queue when shown. The card
+    // shows it, or, while the Notice deck is on, the deck, which stands the
+    // card down and holds the toast while a notice that outranks it is up.
+    {
+        const bool cardWatch = m_pAchievement && !deckCarries && m_pAchievement->isVisibleAnySurface();
+        const bool masked = deckCarries && areHudsEnabled() &&
+                            NoticeTracker::aboveToasts(NoticeTracker::getInstance().current().kind);
+        ToastFeed::getInstance().step(cardWatch || deckCarries, areHudsEnabled(), masked);
     }
 
     // THE STARTUP MESSAGES all point at the settings menu, so it opening answers
@@ -777,8 +788,11 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
             const size_t ghostQuad = outQuads.size(), ghostString = outStrings.size();
             motionEmitGhost(*motionSlot, outQuads, outStrings);
             // A fading ghost is not at its HUD's bounds: it stacks against everything.
-            if (outLayers) recordLayerSpan(*outLayers, outQuads, ghostQuad, outStrings, ghostString,
-                                           nullptr, companion, true);
+            if (outLayers) {
+                recordLayerSpan(*outLayers, outQuads, ghostQuad, outStrings, ghostString,
+                                nullptr, companion, true);
+                recordGhostClips(*outLayers, *motionSlot, ghostQuad, ghostString);
+            }
         }
         // Guard the deref: m_huds provably holds no nulls (registerHud filters
         // them), but this file is written defensively, so don't dereference before
@@ -799,8 +813,11 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
             // dirty-pipeline rebuilds that already finalized -- one int compare.
             hud->finalizeThemedFill();
 
-            const auto& hudQuads = hud->getQuads();
-            const auto& hudStrings = hud->getStrings();
+            // On our own renderers a HUD's clip marks may recolour it: the rows a
+            // list fades for the engine drawn whole, to be cut (hud_manager_clip.cpp).
+            const bool ours = outLayers && !hud->m_clip.empty() && oursSource(*hud);
+            const auto& hudQuads = ours ? m_oursQuads : hud->getQuads();
+            const auto& hudStrings = ours ? m_oursStrings : hud->getStrings();
             const auto& skipShadowFlags = hud->getStringSkipShadow();
 
             // Per-HUD drop shadow: the global setting unless this HUD has an ini-only override.
@@ -816,7 +833,7 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
                                  skipShadowFlags[titleStrIdx];
             bool shadowTitleIcon = hudShadow && !titleStrSkips && titleIconIdx >= 0 &&
                                    titleIconIdx < static_cast<int>(hudQuads.size());
-            appendHudQuads(*hud, outQuads, shadowTitleIcon, hudShadow);
+            appendHudQuads(*hud, hudQuads, outQuads, shadowTitleIcon, hudShadow);
 
             // For strings: if drop shadow enabled, add shadow before each non-skipped string
             if (hudShadow) {
@@ -864,10 +881,12 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
                 motionFinishHud(*motionSlot, *hud, outQuads, quadStart, outStrings, stringStart,
                                 &m_iconShifts, hudShadow);
             // Mid-slide or mid-fade, the HUD is not where its bounds say.
-            if (outLayers)
+            if (outLayers) {
                 recordLayerSpan(*outLayers, outQuads, quadStart, outStrings, stringStart, hud.get(),
                                 companion, motionSlot && motionSlot->frame.moving(),
                                 &m_iconShifts, hudShadow);
+                recordClips(*outLayers, *hud, quadStart, stringStart, hudShadow, companion, motionSlot);
+            }
         }
     }
 
@@ -885,7 +904,7 @@ void HudManager::collectSurface(std::vector<SPluginQuad_t>& outQuads,
 bool HudManager::requiredIconsPresent() {
     // The icons buttons, carets and the Dash/Toggles strips draw: a stale or
     // partial icons folder lacking one gets the warning, or a chip draws empty.
-    static const char* const kRequiredIcons[] = { "gear", "hud-close", "hud-video", "caret-up", "hud-dash",
+    static const char* const kRequiredIcons[] = { "hud-gear", "hud-close", "hud-video", "hud-caret-up", "hud-dash",
                                                   "hud-clock", "hud-fuel", "hud-flatmap", "hud-gauge" };
     for (const char* name : kRequiredIcons)
         if (AssetManager::getInstance().getIconSpriteIndex(name) <= 0) return false;

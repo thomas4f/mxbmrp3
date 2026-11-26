@@ -61,13 +61,6 @@ bool SettingsHud::handleLinkClick(const ClickRegion& region) {
             ShellExecuteA(nullptr, "open", "https://github.com/thomas4f/mxbmrp3", nullptr, nullptr, SW_SHOWNORMAL);
             return true;
 
-        case ClickRegion::OPEN_LINK_RELEASES:
-#if GAME_HAS_ANALYTICS
-            AnalyticsManager::getInstance().trackEvent("link_clicked", {{"target", "releases"}, {"source", "settings"}});
-#endif
-            ShellExecuteA(nullptr, "open", "https://github.com/thomas4f/mxbmrp3/releases", nullptr, nullptr, SW_SHOWNORMAL);
-            return true;
-
         case ClickRegion::OPEN_LINK_OVERLAY:
 #if GAME_HAS_HTTP_SERVER
             {

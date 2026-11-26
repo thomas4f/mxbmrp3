@@ -40,6 +40,12 @@ constexpr float FONT_SIZE_EXTRA_RATIO = 0.2761f;
 // measured ink centre, for an arbitrary box at an arbitrary size, so the widget uses
 // that and there is nothing to tune.)
 
+// How tall the digit's ink is, as a share of the gear font, in the default TITLE
+// font (Enter Sansman, whose 0-9, N and D all ink the same rows): measured, 46 px
+// of the 113 px gear font at 1080p. The Stance widget's icons span it. Other title
+// fonts ink a different share; the icons stay matched to the default by choice.
+constexpr float DIGIT_INK_SHARE = 0.41f;
+
 // The size that fills a row `rowHeight` tall.
 inline float boxDrivenFontSize(float rowHeight) {
     return rowHeight * (1.0f + FONT_SIZE_EXTRA_RATIO) * NUMBER_FONT_SCALE;

@@ -5,6 +5,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "hud_scroll.h"
 #include "lap_log_plan.h"
 #include "../core/plugin_constants.h"
 #include "../core/widget_constants.h"
@@ -111,6 +112,13 @@ private:
     // are needed for that: the input lap numbers AND the plan the rows go into.
     std::vector<int> m_planLapNums;
     LapLogPlan::Plan m_plan;
+    // Scrollback through the rider's laps (hud_scroll.h): the recent window moves,
+    // the live / gap / best rows stay. Which rider and lap it last counted, and
+    // how many recent laps the window passes over.
+    HudScroll m_scroll{HudScroll::Edge::END};
+    int m_scrollRider = -1;
+    int m_scrollSeenLap = -1;
+    int m_scrollSkip = 0;
 
     // Check if we need frequent updates for ticking timer
     bool needsFrequentUpdates() const override;

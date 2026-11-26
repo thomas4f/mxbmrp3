@@ -37,12 +37,15 @@
 // being measured or against which clock. See core/pb_gap_tracker.h.
 // ============================================================================
 
-bool PluginData::updateLapTimerTrackPosition(int raceNum, float trackPos, int lapNum) {
+static_assert(SplitLearner::SLOTS == Unified::MAX_SPLITS, "one learned position per split the widest game has");
+
+bool PluginData::updateLapTimerTrackPosition(const Unified::TrackPositionData& position, int lapNum) {
     // Only track the display rider (like GapBarHud)
     int displayRaceNum = getDisplayRaceNum();
-    if (raceNum != displayRaceNum) {
+    if (position.raceNum != displayRaceNum) {
         return false;
     }
+    const float trackPos = position.trackPos;
 
     // Reset timer if spectate target changed
     if (m_displayLapTimerRaceNum != displayRaceNum) {
@@ -50,8 +53,29 @@ bool PluginData::updateLapTimerTrackPosition(int raceNum, float trackPos, int la
                      m_displayLapTimerRaceNum, displayRaceNum);
         m_displayLapTimer.reset();
         m_pbGap.reset();
+        m_displayWarp.reset();
         m_displayLapTimerRaceNum = displayRaceNum;
         plantGapReferences();
+    }
+
+    // Put down somewhere else (core/warp_detect.h). Any teleport re-baselines the
+    // S/F watch, so a jump across half a lap is not read as a line crossing;
+    // one that lands well ahead also voids the lap's gap until the next line.
+    const std::int64_t nowUs = std::chrono::duration_cast<std::chrono::microseconds>(
+        LapTimer::now().time_since_epoch()).count();
+    const WarpDetector::Result warp = m_displayWarp.update(
+        position.posX, position.posY, position.posZ, trackPos, position.crashed != 0,
+        nowUs, m_sessionData.trackLength);
+    if (warp != WarpDetector::Result::NONE) {
+        m_displayLapTimer.forgetTrackPosition();
+        m_pbGap.forgetTrackPosition();
+        if (warp == WarpDetector::Result::SKIP) {
+            m_pbGap.abandonCurrentLap();
+            // The gap displays rebuild on their own clock; blank them now, as a pit lap does.
+            notifyHudManager(DataChangeType::LapLog);
+            DEBUG_INFO_F("LapTimer: #%d put down ahead at %.3f, no live gap until the line",
+                         displayRaceNum, trackPos);
+        }
     }
 
     bool sfCrossingDetected = m_displayLapTimer.onTrackPosition(trackPos, lapNum);
@@ -64,6 +88,13 @@ bool PluginData::updateLapTimerTrackPosition(int raceNum, float trackPos, int la
     // and needs to know whether THIS sample re-anchored the timer, so the new
     // lap's samples are taken against the new lap's clock.
     m_pbGap.onTrackPosition(trackPos, m_displayLapTimer.getElapsedLapTime(), sfCrossingDetected);
+
+    // Where the splits are, for a game that sends no marker data with its
+    // centerline. Seen with no lap data too, so a new rider is adopted here
+    // and their first split (updateCurrentLapSplit) counts as a crossing.
+    const CurrentLapData* lap = getCurrentLapData();
+    m_splitLearner.observe(displayRaceNum, { lap ? lap->split1 : -1, lap ? lap->split2 : -1,
+                                             lap ? lap->split3 : -1 }, trackPos);
 
     return sfCrossingDetected;
 }
@@ -229,6 +260,7 @@ void PluginData::resetLapTimer(int raceNum) {
     if (raceNum == m_displayLapTimerRaceNum) {
         m_displayLapTimer.reset();
         m_pbGap.reset();
+        m_displayWarp.reset();
         plantGapReferences();
         DEBUG_INFO_F("LapTimer: Reset for raceNum=%d", raceNum);
     }
@@ -237,6 +269,7 @@ void PluginData::resetLapTimer(int raceNum) {
 void PluginData::resetAllLapTimers() {
     m_displayLapTimer.reset();
     m_pbGap.reset();
+    m_displayWarp.reset();
     m_displayLapTimerRaceNum = -1;
     m_allTimePbWithoutTrace = false;
     m_lapViaPits.clear();        // a new session's laps owe nothing to the old one's pit visits
@@ -371,4 +404,100 @@ int PluginData::getLapTimerCurrentSector(int raceNum) const {
         return m_displayLapTimer.currentSector;
     }
     return 0;
+}
+
+void PluginData::updateIdealLap(int raceNum, int completedLapNum, int lapTime, int sector1, int sector2, int sector3, int sector4, bool isValid) {
+    // Get or create ideal lap data for this rider
+    IdealLapData& idealLap = m_riderIdealLap[raceNum];
+
+    bool updated = false;
+    bool isFirstValidLap = isValid && (idealLap.bestSector1 < 0);
+
+    // Always update lap completion info (for TimingHud detection)
+    // This triggers even for invalid laps with no timing data
+    if (idealLap.lastCompletedLapNum != completedLapNum) {
+        idealLap.lastCompletedLapNum = completedLapNum;
+        updated = true;
+        // The player's lap, watched on their own bike: the fuel it cost
+        if (raceNum == getPlayerRaceNum() && getDisplayRaceNum() == raceNum && m_bikeTelemetry.isValid) {
+            const float used = m_fuel.lapCompleted(completedLapNum, lapTime > 0, m_bikeTelemetry.fuel, m_bikeTelemetry.maxFuel);
+            if (used > 0.0f) DEBUG_INFO_F("Fuel: lap %d used %.2fL (avg %.2fL)", completedLapNum + 1, used, m_fuel.averagePerLap());
+        }
+    }
+    if (idealLap.lastLapTime != lapTime) {
+        idealLap.lastLapTime = lapTime;
+        updated = true;
+    }
+    if (idealLap.lastLapSector1 != sector1) {
+        idealLap.lastLapSector1 = sector1;
+        updated = true;
+    }
+    if (idealLap.lastLapSector2 != sector2) {
+        idealLap.lastLapSector2 = sector2;
+        updated = true;
+    }
+    if (idealLap.lastLapSector3 != sector3) {
+        idealLap.lastLapSector3 = sector3;
+        updated = true;
+    }
+    if (idealLap.lastLapSector4 != sector4) {
+        idealLap.lastLapSector4 = sector4;
+        updated = true;
+    }
+
+    // Only update best sectors for valid laps (invalid laps don't count as PBs)
+    if (isValid) {
+        if (sector1 > 0 && (isFirstValidLap || sector1 < idealLap.bestSector1)) {
+            // Save previous best before updating
+            if (idealLap.bestSector1 > 0) {
+                idealLap.previousIdealSector1 = idealLap.bestSector1;
+            }
+            idealLap.bestSector1 = sector1;
+            updated = true;
+        }
+        if (sector2 > 0 && (isFirstValidLap || sector2 < idealLap.bestSector2)) {
+            // Save previous best before updating
+            if (idealLap.bestSector2 > 0) {
+                idealLap.previousIdealSector2 = idealLap.bestSector2;
+            }
+            idealLap.bestSector2 = sector2;
+            updated = true;
+        }
+        if (sector3 > 0 && (isFirstValidLap || sector3 < idealLap.bestSector3)) {
+            // Save previous best before updating
+            if (idealLap.bestSector3 > 0) {
+                idealLap.previousIdealSector3 = idealLap.bestSector3;
+            }
+            idealLap.bestSector3 = sector3;
+            updated = true;
+        }
+        // Sector4 only valid for 4-sector games (GP Bikes) - sector4 > 0 means it's present
+        if (sector4 > 0 && (isFirstValidLap || idealLap.bestSector4 < 0 || sector4 < idealLap.bestSector4)) {
+            // Save previous best before updating
+            if (idealLap.bestSector4 > 0) {
+                idealLap.previousIdealSector4 = idealLap.bestSector4;
+            }
+            idealLap.bestSector4 = sector4;
+            updated = true;
+        }
+    }
+
+    if (updated) {
+        notifyHudManager(DataChangeType::IdealLap);
+    }
+}
+
+void PluginData::clearIdealLap(int raceNum) {
+    auto itCurrent = m_riderCurrentLap.find(raceNum);
+    if (itCurrent != m_riderCurrentLap.end()) {
+        itCurrent->second.clear();
+    }
+
+    auto itBest = m_riderIdealLap.find(raceNum);
+    if (itBest != m_riderIdealLap.end()) {
+        itBest->second.clear();
+    }
+
+    DEBUG_INFO_F("Ideal lap data cleared for race #%d", raceNum);
+    notifyHudManager(DataChangeType::IdealLap);
 }

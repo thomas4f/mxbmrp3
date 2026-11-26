@@ -675,7 +675,7 @@ void StandingsHud::addDisplayEntries(int startIdx, int endIdx, int positionBase,
             int curPos = pluginData.getPositionForRaceNum(raceNum);
             // With the live order shown, the rows a rider has moved live, so the
             // count agrees with the position on their row.
-            if (m_liveOrderActive && curPos > 0) {
+            if (PluginData::getInstance().getRunningOrder().isLive() && curPos > 0) {
                 curPos += displayEntry.position - pluginData.getDisplayPositionForRaceNum(raceNum);
             }
             if (refPos > 0 && curPos > 0) {

@@ -49,6 +49,10 @@
 #      optional override, not required.)
 #   2. Releases are not code-signed (hence the "unknown publisher" warning); there
 #      is no signing step.
+#   3. VirusTotal key (optional) — repo Secret VT_API_KEY (free account > API key)
+#      on the public repo. Without it a real release still ships; its notes just
+#      have no VirusTotal links, and the job summary warns. Test the key with the
+#      `virustotal` workflow.
 # ============================================================================
 name: release
 
@@ -342,7 +346,7 @@ jobs:
       # trust, and a repackaged or modified copy fails it. The .dlo files are
       # attested as well as the zip because the auto-updater and manual installs put
       # the bare DLL on disk, and that is the file people hand to a disassembler.
-      # Setup.exe is attested in the package job, where it is built.
+      # The two installers are attested in the package job, which publishes them.
       #
       # FIRST RUN IS A REAL RELEASE: both conditions below keep it out of every dry
       # run, so a mistake here fails the release before the tag/draft are made
@@ -426,6 +430,75 @@ jobs:
 
 
   # ---------------------------------------------------------------------------
+  # The MSI installer (packaging/msi/), built from the same staging tree as
+  # Setup.exe and then installed, upgraded over a fake NSIS install, and
+  # uninstalled on this runner's real Windows Installer (test_msi.ps1).
+  #
+  # WINDOWS, unlike the NSIS job below: WiX's cabinet and MSI back end are
+  # native Windows code, and real msiexec is the point of the test.
+  #
+  # Ships BESIDE Setup.exe: the package job downloads it from here and
+  # attaches it to the Release, so a failed MSI build or test stops the release
+  # (his pick: the MSI is part of every release). WiX comes from NuGet, so its
+  # install is retried and bounded rather than left to hang on an outage.
+  msi:
+    needs: build-release
+    if: ${{ !cancelled() && needs.build-release.result == 'success' }}
+    runs-on: windows-2022
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download staging tree (MSVC payload)
+        uses: actions/download-artifact@v8
+        with:
+          name: release-staging-v${{ needs.build-release.outputs.version }}
+          path: staging
+
+      # Pinned: WiX 5 is the last MS-RL release (build_msi.ps1's header).
+      - name: Install WiX
+        timeout-minutes: 10
+        run: |
+          foreach ($try in 1..3) {
+            # A retry skips the tool when the last try already installed it.
+            $global:LASTEXITCODE = 0
+            if (-not (Get-Command wix -ErrorAction SilentlyContinue)) {
+              dotnet tool install --global wix --version 5.0.2
+            }
+            if (-not $LASTEXITCODE) {
+              wix extension add -g WixToolset.UI.wixext/5.0.2 WixToolset.Util.wixext/5.0.2
+              if (-not $LASTEXITCODE) { exit 0 }
+            }
+            if ($try -lt 3) { Write-Host "::warning::WiX install failed (try $try of 3), retrying"; Start-Sleep -Seconds (30 * $try) }
+          }
+          exit 1
+
+      - name: Build MSI
+        run: packaging/msi/build_msi.ps1 -Staging staging -Version "${{ needs.build-release.outputs.version }}" -Out dist
+
+      - name: Install/uninstall test (real Windows Installer)
+        run: packaging/msi/test_msi.ps1 -Msi dist/mxbmrp3-Setup.msi -Staging staging -Version "${{ needs.build-release.outputs.version }}"
+
+      - name: Upload msiexec logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: msi-logs-v${{ needs.build-release.outputs.version }}
+          path: ${{ runner.temp }}/msi-logs
+
+      - name: Upload MSI
+        uses: actions/upload-artifact@v7
+        with:
+          name: mxbmrp3-msi-v${{ needs.build-release.outputs.version }}
+          path: dist/mxbmrp3-Setup.msi
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
   # Package the installer and publish. LINUX, deliberately.
   #
   # WHY NOT ON THE WINDOWS JOB, where the payload is built: `Target AMD64-Unicode`
@@ -448,15 +521,15 @@ jobs:
   # artifact than the tested one is exactly how the amd64 stub gap reached a
   # release unnoticed.
   package:
-    needs: build-release
+    needs: [build-release, msi]
     # Same transitive-skip guard build-release carries, for the same reason: a
     # job with no `if` defaults to success(), which looks at the whole needs
     # CHAIN — and on a dry run `tests` is skipped, so this job silently skipped
     # too and the dry run validated everything except the installer it exists
     # to validate (observed: run #15 uploaded no Setup.exe).
-    if: ${{ !cancelled() && needs.build-release.result == 'success' }}
+    if: ${{ !cancelled() && needs.build-release.result == 'success' && needs.msi.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40   # 20 for packaging + up to ~17 for the VirusTotal scan
     # Job-level permissions REPLACE the workflow-level block, so contents: write is
     # restated. The other two are the build provenance attestation's (see the
     # "Attest build provenance" step): id-token to get a Sigstore signing cert,
@@ -498,6 +571,13 @@ jobs:
           name: release-payload-v${{ needs.build-release.outputs.version }}
           path: dist
 
+      # Built and tested on Windows by the msi job.
+      - name: Download MSI installer
+        uses: actions/download-artifact@v8
+        with:
+          name: mxbmrp3-msi-v${{ needs.build-release.outputs.version }}
+          path: dist
+
       # Sanity-check the handoff before packaging: an artifact round-trip that
       # silently dropped the payload would otherwise produce a valid-looking
       # installer containing nothing.
@@ -521,13 +601,37 @@ jobs:
           [ -f dist/mxbmrp3-Setup.exe ] || { echo "ERROR: Setup.exe not produced" >&2; exit 1; }
           file dist/mxbmrp3-Setup.exe
 
-      # Same provenance as the build-release job's attestation, for the one file
-      # built here; that step's comment has the why and the two conditions.
-      - name: Attest build provenance (installer)
+      # Same provenance as the build-release job's attestation, for the two
+      # installers; that step's comment has the why and the two conditions.
+      - name: Attest build provenance (installers)
         if: inputs.release && !github.event.repository.private
         uses: actions/attest@v4
         with:
-          subject-path: dist/mxbmrp3-Setup.exe
+          subject-path: |
+            dist/mxbmrp3-Setup.exe
+            dist/mxbmrp3-Setup.msi
+
+      # Scan what ships on VirusTotal, so the draft release notes link each file's
+      # report and the job summary shows each verdict BEFORE you press Publish.
+      # Same two conditions as the attestations: a dry-run file never ships, and
+      # an upload makes the file public on VirusTotal. The .dlo files are scanned
+      # on their own too, because that is the file a player finds in plugins\.
+      # Never blocks the release - tools/virustotal_scan.sh's header has why, and
+      # virustotal.yml re-scans a published release by hand. The script already
+      # turns API trouble into warnings; continue-on-error and the step timeout
+      # are the backstop for anything it did not foresee, since a failed step
+      # here would skip the artifact upload and the draft release below. The
+      # notes step copes with a missing or partial virustotal.md.
+      - name: Scan on VirusTotal
+        if: inputs.release && !github.event.repository.private
+        continue-on-error: true
+        timeout-minutes: 20
+        env:
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+        run: |
+          tools/virustotal_scan.sh "$RUNNER_TEMP/virustotal.md" \
+            dist/mxbmrp3-Setup.exe dist/mxbmrp3-Setup.msi dist/mxbmrp3.zip \
+            staging/mxbmrp3.dlo staging/mxbmrp3_gpb.dlo staging/mxbmrp3_krp.dlo
 
       # Always publish the zip + installer as downloadable workflow artifacts. This is
       # what makes a manual (workflow_dispatch) run on a branch a real DRY RUN: it
@@ -539,6 +643,7 @@ jobs:
           name: mxbmrp3-v${{ needs.build-release.outputs.version }}
           path: |
             dist/mxbmrp3-Setup.exe
+            dist/mxbmrp3-Setup.msi
             dist/mxbmrp3.zip
             dist/mxbmrp3.cdx.json
           if-no-files-found: error
@@ -568,6 +673,8 @@ jobs:
           # never offer a check that has nothing to find.
           ATTESTED: ${{ inputs.release && !github.event.repository.private }}
           NOTES: ${{ runner.temp }}/release_notes.md
+          # Written by the "Scan on VirusTotal" step; absent on a dry run.
+          VT_ROWS: ${{ runner.temp }}/virustotal.md
           STRICT: ${{ inputs.release }}
         run: |
           import os
@@ -578,7 +685,7 @@ jobs:
           # stdout is UTF-8 and this is a no-op. It is not dead weight: on
           # Windows, Python's stdout defaults to the locale codepage (cp1252),
           # and the print() at the end that echoes the notes into the job log
-          # died on the release body's own leading "✅" with
+          # died on the "✅" the release body then started with, raising
           # UnicodeEncodeError — failing the step after a clean 15-minute build.
           # One line to keep that from coming back if this ever moves again.
           sys.stdout.reconfigure(encoding="utf-8")
@@ -603,7 +710,22 @@ jobs:
           # Built line-by-line rather than as one triple-quoted literal: YAML
           # block scalars strip the block's own indentation, so a multi-line
           # string here reads differently in the file than Python receives it.
+          # Download buttons above the notes, the README's three without its
+          # "latest": each links this release's own file, so an older page
+          # never hands out a newer build. The in-game notes skip a line of
+          # images (text_wrap.h), so these never show up as text there.
+          dl = "https://github.com/%s/releases/download/%s/" % (
+              os.environ["REPO"], os.environ["TAG"])
+          badge = "https://img.shields.io/badge/Download-%s-%s?style=for-the-badge"
+          buttons = " ".join("[![Download %s](%s)](%s%s)" % (alt, badge % (label, colour), dl, name)
+              for alt, label, colour, name in [
+                  ("Installer (EXE)", "Installer_(EXE)", "green", "mxbmrp3-Setup.exe"),
+                  ("Installer (MSI)", "Installer_(MSI)", "purple", "mxbmrp3-Setup.msi"),
+                  ("ZIP Archive", "ZIP_Archive", "6c757d", "mxbmrp3.zip"),
+              ])
           body = "\n".join([
+              buttons,
+              "",
               notes,
               "",
               "### Downloads",
@@ -611,21 +733,45 @@ jobs:
               "| File | For |",
               "|------|-----|",
               "| `mxbmrp3-Setup.exe` | Guided installer (recommended) |",
+              "| `mxbmrp3-Setup.msi` | The same installer as a Windows Installer "
+              "package |",
               "| `mxbmrp3.zip` | Manual install |",
               "| `mxbmrp3.cdx.json` | CycloneDX SBOM — third-party components "
               "inside the DLL |",
               "",
-              "✅ Built from `%s` with the full test suite passing — "
-              "[run log](%s)." % (os.environ["SHA"], os.environ["RUN_URL"]),
+              # Plain text under a heading, no emoji: the house style is
+              # formal, and the in-game notes stop at "Downloads" above, so
+              # nothing from here on reaches the Updates tab.
+              "### Verification",
+              "",
+              "Built from commit `%s` with the full test suite passing "
+              "([run log](%s))." % (os.environ["SHA"], os.environ["RUN_URL"]),
               "",
           ])
           if os.environ["ATTESTED"] == "true":
               body += "\n".join([
                   "",   # body ends in one newline: a blank line starts a new paragraph
-                  "🔏 The installer, the zip and each `.dlo` carry a signed build "
+                  "Each installer, the zip and each `.dlo` carries a signed build "
                   "attestation. To check that a copy came from this build, run "
                   "`gh attestation verify <file> -R %s` (GitHub CLI, signed in)."
                   % os.environ["REPO"],
+                  "",
+              ])
+
+          # One row per scanned file; none when the scan step was skipped or
+          # VirusTotal could not be reached, and then the section is left out.
+          rows = ""
+          if os.path.exists(os.environ["VT_ROWS"]):
+              rows = open(os.environ["VT_ROWS"], encoding="utf-8").read().strip()
+          if rows:
+              body += "\n".join([
+                  "",
+                  "Each file's VirusTotal report, with every antivirus "
+                  "engine's verdict:",
+                  "",
+                  "| File | VirusTotal |",
+                  "|------|------------|",
+                  rows,
                   "",
               ])
 
@@ -664,5 +810,6 @@ jobs:
           # any .zip other than mxbmrp3.zip.
           files: |
             dist/mxbmrp3-Setup.exe
+            dist/mxbmrp3-Setup.msi
             dist/mxbmrp3.zip
             dist/mxbmrp3.cdx.json

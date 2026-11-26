@@ -39,9 +39,6 @@ public:
     };
     static constexpr int MARKER_MODE_COUNT = 4;   // the settings cycle and the loader's range
 
-    // One split-tick slot per split the widest game has (GP Bikes' 3).
-    static constexpr int SPLIT_SLOTS = 3;
-
     // Which lap the bar and its ghost compare against (the Lap Log has its own):
     // PluginData's tracker holds the session PB, the persisted all-time PB, the
     // last lap and the server best (core/pb_gap_tracker.h). Session PB by default -- what the
@@ -145,9 +142,6 @@ public:
     LabelMode getLabelMode() const { return m_labelMode; }
     float getMarkerScale() const { return m_fMarkerScale; }
     bool showsSplits() const { return m_showSplits; }
-    // Split positions (0-1 along the lap, S/F excluded, ascending) into out[];
-    // returns how many. The centerline's when the game sent them, else learned.
-    int collectSplitPositions(float (&out)[SPLIT_SLOTS]) const;
     // A marker icon's quad centred on (x, y), a directional icon turned to point
     // along the bar (right), before any HUD offset.
     static void markerQuad(float centerX, float centerY, float size, int spriteIndex,
@@ -201,12 +195,8 @@ private:
     int m_cachedDisplayRaceNum;       // Track spectate target changes
     int m_cachedSessionGeneration;    // Track session changes (monotonic counter)
 
-    // WHERE THE SPLITS ARE, learned from the display rider's track position at each
-    // crossing -- the fallback for a game that sends no marker data with its
-    // centerline (GP Bikes, whose 3 splits then still get markers after one lap).
-    // Per track, so kept across spectate changes and dropped on a session change.
-    float m_learnedSplitPos[SPLIT_SLOTS];
-    int m_learnSplitCache[SPLIT_SLOTS];
+    // The split positions the ticks last drew (PluginData::getSplitLearnRevision)
+    uint32_t m_shownSplitRevision = 0;
 
     // Holds the official split/lap gap against m_reference after each crossing
     OfficialGapFreeze m_freeze;
@@ -259,7 +249,6 @@ private:
     static constexpr float MIN_MARKER_SCALE = 0.5f;            // Min 50%
     static constexpr float MAX_MARKER_SCALE = 3.0f;            // Max 300%
 
-    void learnSplitPositions();
     // Short ticks at the bar's top and bottom edges at each split, the middle --
     // gap text and rider markers -- left clear.
     void renderSplitTicks(float boxY, float boxH, float innerX, float innerW);

@@ -102,9 +102,6 @@ TEST_CASE("every enum<->string converter round-trips") {
         { SH::GapReferenceMode::LEADER, SH::GapReferenceMode::PLAYER,
           SH::GapReferenceMode::ALTERNATING });
 
-    checkRoundTrip<SH::AnimationMode>("animationMode", animationModeToString, stringToAnimationMode,
-        { SH::AnimationMode::OFF, SH::AnimationMode::BASIC, SH::AnimationMode::COLORED });
-
     checkRoundTrip<MH::RiderColorMode>("riderColorMode", riderColorModeToString, stringToRiderColorMode,
         { MH::RiderColorMode::UNIFORM, MH::RiderColorMode::BRAND, MH::RiderColorMode::RELATIVE_POS });
 
@@ -200,8 +197,6 @@ TEST_CASE("unknown text falls back to the CALLER's default, not a hardcoded one"
         SH::PosGainMode::RACE_START, SH::PosGainMode::LAST_SF);
     checkUnknownFallsBackToDefault<SH::GapReferenceMode>("gapReferenceMode", stringToGapReferenceMode,
         SH::GapReferenceMode::PLAYER, SH::GapReferenceMode::ALTERNATING);
-    checkUnknownFallsBackToDefault<SH::AnimationMode>("animationMode", stringToAnimationMode,
-        SH::AnimationMode::BASIC, SH::AnimationMode::COLORED);
     checkUnknownFallsBackToDefault<MH::RiderColorMode>("riderColorMode", stringToRiderColorMode,
         MH::RiderColorMode::BRAND, MH::RiderColorMode::RELATIVE_POS);
     checkUnknownFallsBackToDefault<MH::LabelMode>("labelMode", stringToLabelMode,
@@ -269,7 +264,6 @@ TEST_CASE("every toString has a working default arm for an out-of-range value") 
 
     CHECK_DEFAULT_ARM(posGainModeToString,          SH::PosGainMode);
     CHECK_DEFAULT_ARM(gapReferenceModeToString,     SH::GapReferenceMode);
-    CHECK_DEFAULT_ARM(animationModeToString,        SH::AnimationMode);
     CHECK_DEFAULT_ARM(riderColorModeToString,       MH::RiderColorMode);
     CHECK_DEFAULT_ARM(labelModeToString,            MH::LabelMode);
     CHECK_DEFAULT_ARM(labelAnchorToString,          MH::LabelAnchor);

@@ -4,6 +4,8 @@
 // ============================================================================
 #pragma once
 
+#include <cstring>
+
 #include "game_adapter_base.h"
 #include "../../vendor/piboso/mxb_api.h"
 
@@ -174,6 +176,24 @@ struct Adapter {
         result.bike.steerTorque = src->m_fSteerTorque;
 
         return result;
+    }
+
+    // Rider sit/stand state: m_iRiderStanding, which Beta 21f (mxbikes.exe stamp
+    // 0x6B032CE7) appends after m_fSteerTorque, growing the RunTelemetry payload
+    // from 188 to 192 bytes. PiBoSo publishes no header with it, so it is read
+    // by offset rather than added to SPluginsBikeData_t: a struct member would
+    // read past the end of an older build's 188-byte payload. The game writes
+    // only 1 = standing or 0 = seated (it also seats the rider by itself at
+    // walking pace). Older builds send 188 bytes, so a short payload - or any
+    // value that isn't 0/1 - is unknown (-1), never "seated". Pinned by
+    // test_rider_stance.cpp (unit) and rider_stance_test.cpp (integration).
+    static_assert(sizeof(SPluginsBikeData_t) == 188, "the stance int follows the 188-byte struct");
+    static constexpr int RIDER_STANCE_OFFSET = static_cast<int>(sizeof(SPluginsBikeData_t));
+    static int readRiderStance(const void* data, int dataSize) {
+        if (!data || dataSize < RIDER_STANCE_OFFSET + static_cast<int>(sizeof(int))) return -1;
+        int value = -1;
+        std::memcpy(&value, static_cast<const char*>(data) + RIDER_STANCE_OFFSET, sizeof(int));
+        return (value == 0 || value == 1) ? value : -1;
     }
 
     // ========================================================================

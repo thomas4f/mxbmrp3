@@ -62,6 +62,7 @@
 // ============================================================================
 #pragma once
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cmath>
@@ -546,7 +547,7 @@ inline Geom layoutPanel(const Spec& spec) {
     // for the settings panel's card sizes — a ratio coincidence), and measured
     // as the settings panel's bottom clearance varying by thirds of a cell
     // with [card] size the moment uiLineHeight moved. One-column panels are
-    // untouched: front IS the column that set the bottom. Ties keep front.
+    // untouched: front IS the column that set the bottom.
     //
     // NOBODY absorbs it while the FLOOR binds: then no card reaches the body's
     // bottom (the floor's air is already below every card), so growing one only
@@ -554,26 +555,31 @@ inline Geom layoutPanel(const Spec& spec) {
     // sidebar did exactly that -- its card was a fraction of a cell taller on
     // every tab whose content ended above it, so the air under More changed
     // between tabs on a themed panel. The remainder joins the floor's air instead.
+    //
+    // EVERY COLUMN THAT REACHES THAT BOTTOM absorbs it, ties included (within
+    // 1e-4 cells, the floor's own tolerance): a column filled to the body's
+    // height (a settings tab's last list, filled to the footer) ties the
+    // sidebar, and giving the remainder to one of the two made the other's
+    // card stop a fraction of a cell short -- which one depending on float
+    // noise in the fill.
     BandGeom& lastBand = g.bands.back();
-    size_t tallCol = 0;
     double tallBot = lastBand.columns.front().sections.back().bot;
-    for (size_t ci = 1; ci < lastBand.columns.size(); ++ci) {
-        // NOT `b`: the button box is a local of that name in this function, and
-        // MSVC's C4456 (shadowing) is an error under /WX.
-        const double colBot = lastBand.columns[ci].sections.back().bot;
-        if (colBot > tallBot + 1e-9) { tallBot = colBot; tallCol = ci; }
-    }
+    for (size_t ci = 1; ci < lastBand.columns.size(); ++ci)
+        tallBot = std::max(tallBot, lastBand.columns[ci].sections.back().bot);
     const double absorbed = floorBinds ? 0.0 : g.slackY;
-    SectionGeom& lastInBand = lastBand.columns[tallCol].sections.back();
-    lastInBand.h += absorbed;
-    lastInBand.bot += absorbed;
-    // The flattened view holds COPIES of the FIRST column's sections, so it
-    // grows only when the first column is the absorber. (The JS mirror's
-    // flattened list holds references, so it needs no copy step — the parity
-    // fixture is what catches the two diverging.)
-    if (tallCol == 0) {
-        g.sections.back().h += absorbed;
-        g.sections.back().bot += absorbed;
+    for (ColumnGeom& col : lastBand.columns) {
+        SectionGeom& last = col.sections.back();
+        if (last.bot < tallBot - 1e-4) continue;
+        last.h += absorbed;
+        last.bot += absorbed;
+        // The flattened view holds COPIES of the FIRST column's sections, so it
+        // grows only when the first column absorbs. (The JS mirror's flattened
+        // list holds references, so it needs no copy step — the parity fixture
+        // is what catches the two diverging.)
+        if (&col == &lastBand.columns.front()) {
+            g.sections.back().h += absorbed;
+            g.sections.back().bot += absorbed;
+        }
     }
     if (nBtn > 0) g.btnTop += g.slackY;
 

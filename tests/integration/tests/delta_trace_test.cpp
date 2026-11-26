@@ -15,7 +15,8 @@
 // switched off. And that every quad (the peaks' dots included) is wound the
 // way the game draws: it culls the other order, so the red (behind) fill,
 // built line-first below the zero line, vanished in game (Thomas, 1.32) while
-// the companion window, which does not cull, still showed it.
+// the companion window, which does not cull, still showed it. Case 2: a reset
+// to a marker far ahead keeps the line drawn up to the fall and adds nothing.
 //
 // The lap timer is wall-clock anchored, so the clock is simulated through
 // MXBMRP3_Test_LapTimerSetNowUs: each position sample is sent at the elapsed
@@ -225,6 +226,96 @@ TEST_CASE("delta trace: plots the lap in progress against the reference, then th
     const int fresh = frame();
     INFO("points plotted a quarter into the new session's second lap: " << fresh);
     CHECK(fresh >= 45);
+    CHECK(marker() == 1);
+
+    SetNowUs(-1);
+}
+
+// A reset to a marker far ahead (core/warp_detect.h): the gap stops being live,
+// but what the lap drew up to the fall stays, and nothing is added after it.
+// Only the marker goes, and the lap just completed shows past the rider again.
+// Thomas (1.36): wiping the lap's line as well was too much.
+TEST_CASE("delta trace: a reset ahead keeps what the lap drew and adds nothing until the line") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    REQUIRE(host.startup("Z:\\tmp\\mxbmrp3-tests\\delta_trace_reset\\") >= 0);
+
+    auto Points   = host.sym<int (*)()>("MXBMRP3_Test_DeltaTracePoints");
+    auto Shape    = host.sym<void (*)(int*, int*, int*, float*, int*)>("MXBMRP3_Test_DeltaTraceShape");
+    auto SetNowUs = host.sym<PFN_LL>("MXBMRP3_Test_LapTimerSetNowUs");
+    REQUIRE_MESSAGE((Points && Shape && SetNowUs), "test hooks not exported (test build?)");
+    auto previous = [&]() { int p = -1; Shape(&p, nullptr, nullptr, nullptr, nullptr); return p; };
+    auto marker   = [&]() { int m = -1; Shape(nullptr, nullptr, &m, nullptr, nullptr); return m; };
+
+    host.setHudVisible("delta_trace_hud", true);
+    host.eventInit("TraceTrack", "Alice");   // 1600 m
+    host.raceEvent("TraceTrack");
+    host.session(RACE1, /*numLaps=*/10, /*lengthMs=*/0);
+    host.addEntry(10, "Alice");
+    host.runInit(RACE1);
+    host.runStart();
+
+    long long lapStartUs = 1000000000LL;
+    float worldX = 0.0f;   // the bike's world x: only a reset moves it
+    auto ride = [&](int from, int to, int msPerStep) {
+        for (int p = from; p <= to; ++p) {
+            SetNowUs(lapStartUs + static_cast<long long>(p) * msPerStep * 1000LL);
+            host.raceTrackPosition({ { 10, p / 200.0f, 0, worldX } });
+        }
+    };
+    auto frame = [&]() { host.drawWithState(0); host.drawWithState(0); return Points(); };
+
+    SetNowUs(lapStartUs - 20000);
+    host.raceTrackPosition({ { 10, 0.99f } });
+    SetNowUs(lapStartUs);
+    host.raceTrackPosition({ { 10, 0.00f } });
+    ride(1, 197, 300);                             // lap 1: the reference
+    lapStartUs += 60000000LL;
+    SetNowUs(lapStartUs);
+    host.classify(RACE1, 60000, { { .num = 10, .laps = 1, .gap = 0 } });
+    host.raceTrackPosition({ { 10, 0.00f } });
+    host.raceLap(RACE1, 10, 1, 60000, /*best=*/1, 20000, 40000);
+
+    ride(1, 80, 310);                              // lap 2 to 40%
+    const int drawn = frame();
+    INFO("points plotted at 40%: " << drawn);
+    REQUIRE(drawn >= 75);
+    REQUIRE(marker() == 1);
+
+    // Down at 40%, lying there three seconds, then reset to a marker at 93%:
+    // the batches keep coming every 20 ms, so the jump is one batch long.
+    long long nowUs = lapStartUs + 81LL * 310 * 1000LL;
+    for (int i = 0; i < 150; ++i, nowUs += 20000) {
+        SetNowUs(nowUs);
+        host.raceTrackPosition({ { 10, 0.405f, /*crashed=*/1, worldX } });
+    }
+    const int fallen = frame();                    // the fall's own spot is the lap's too
+    CHECK(fallen >= drawn);
+    worldX = 600.0f;
+    SetNowUs(nowUs);
+    host.raceTrackPosition({ { 10, 186 / 200.0f, 0, worldX } });
+    CHECK(frame() == fallen);                      // the line up to the fall stays
+    CHECK(marker() == 0);                          // no live gap, no rider on it
+    for (int p = 187; p <= 199; ++p) {
+        nowUs += 300000;
+        SetNowUs(nowUs);
+        host.raceTrackPosition({ { 10, p / 200.0f, 0, worldX } });
+    }
+    CHECK(frame() == fallen);                      // and nothing is added after the reset
+    INFO("previous-lap points past the rider: " << previous());
+    CHECK(previous() <= 14 - LapDeltaProfileGap);  // lap 1 shows only past 93% and the gap
+
+    // The line: lap 3 draws from the start again.
+    lapStartUs += 62000000LL;
+    SetNowUs(lapStartUs);
+    host.classify(RACE1, 122000, { { .num = 10, .laps = 2, .gap = 0 } });
+    host.raceTrackPosition({ { 10, 0.00f, 0, worldX } });
+    host.raceLap(RACE1, 10, 2, 62000, /*best=*/0, 20500, 0, /*invalid=*/true);
+    ride(1, 10, 300);
+    const int restart = frame();
+    INFO("points plotted early in lap 3: " << restart);
+    CHECK(restart >= 8);
+    CHECK(restart <= 12);
     CHECK(marker() == 1);
 
     SetNowUs(-1);

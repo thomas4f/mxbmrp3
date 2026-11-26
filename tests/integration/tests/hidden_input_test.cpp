@@ -1,7 +1,7 @@
 // ============================================================================
 // tests/integration/tests/hidden_input_test.cpp
 // A HUD the frame is not drawing takes no input. The hide-all-HUDs hotkey and
-// the Widgets toggle hide at DRAW time and leave every HUD's own visibility
+// the Widgets and Decks toggles hide at DRAW time and leave every HUD's own visibility
 // flag alone -- which is what the input pass used to read, so a hidden HUD
 // could still be dragged with the right button and its click targets still
 // fired (a crash-counter reset, a standings row) for as long as the cursor was
@@ -67,16 +67,42 @@ TEST_CASE("hidden input: the Widgets toggle holds back the widgets and only the 
     const char* speed = PluginHost::hudName(PluginHost::HUD_SPEED);
     const char* standings = PluginHost::hudName(PluginHost::HUD_STANDINGS);
     host.setEveryHudVisible(false);                    // see above: two HUDs that do not overlap
+    host.setMasterEnabled(PluginHost::Master::Widgets, true);   // off for a new install
     REQUIRE(host.setHudVisible(speed, true));
     REQUIRE(host.setHudVisible(standings, true));
     host.draw();
     REQUIRE(dragMoves(host, speed));
     REQUIRE(dragMoves(host, standings));
 
-    host.setWidgetsEnabled(false);
+    host.setMasterEnabled(PluginHost::Master::Widgets, false);
     CHECK_MESSAGE(!dragMoves(host, speed), "a hidden widget followed the mouse");
     CHECK_MESSAGE(dragMoves(host, standings), "a full HUD was held back by the widgets toggle");
-    host.setWidgetsEnabled(true);
+    host.setMasterEnabled(PluginHost::Master::Widgets, true);
     CHECK(dragMoves(host, speed));
+    host.injectMouse(false);
+}
+
+// The Decks tab's master toggle is the Widgets one for the decks: a deck it
+// holds back takes no drag, and a widget stays its own toggle's.
+TEST_CASE("hidden input: the Decks toggle holds back the decks and only the decks") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\hidden_input\\");
+    REQUIRE_MESSAGE((host.hasInjectedMouse() && host.hasScreenEdges()), "build without the hooks");
+    const char* speed = PluginHost::hudName(PluginHost::HUD_SPEED);
+    host.setEveryHudVisible(false);
+    host.setMasterEnabled(PluginHost::Master::Widgets, true);   // both off for a new install
+    host.setMasterEnabled(PluginHost::Master::Decks, true);
+    REQUIRE(host.setHudVisible(speed, true));
+    REQUIRE(host.setHudVisible("standings_deck", true));
+    host.draw();
+    REQUIRE(dragMoves(host, speed));
+    REQUIRE(dragMoves(host, "standings_deck"));
+
+    host.setMasterEnabled(PluginHost::Master::Decks, false);
+    CHECK_MESSAGE(!dragMoves(host, "standings_deck"), "a hidden deck followed the mouse");
+    CHECK_MESSAGE(dragMoves(host, speed), "a widget was held back by the decks toggle");
+    host.setMasterEnabled(PluginHost::Master::Decks, true);
+    CHECK(dragMoves(host, "standings_deck"));
     host.injectMouse(false);
 }

@@ -146,7 +146,7 @@ void StatsManager::load(const char* savePath) {
             m_globalStats.pbCount = (std::max)(g.value("pbCount", 0), 0);
             m_globalStats.rainRaceCount = (std::max)(g.value("rainRaceCount", 0), 0);
             m_globalStats.bigGridRaceCount = (std::max)(g.value("bigGridRaceCount", 0), 0);
-            m_globalStats.maxSessionLaps = (std::max)(g.value("maxSessionLaps", 0), 0);
+            m_globalStats.maxSessionDistanceM = (std::max)(finiteOrZero(g.value("maxSessionDistanceM", 0.0)), 0.0);
             m_globalStats.penaltyFreeStreak = (std::max)(g.value("penaltyFreeStreak", 0), 0);
             m_globalStats.bestPenaltyFreeStreak = (std::max)(g.value("bestPenaltyFreeStreak", 0), m_globalStats.penaltyFreeStreak);
             m_globalStats.pbLeaps = (std::max)(g.value("pbLeaps", 0), 0);
@@ -450,8 +450,8 @@ void StatsManager::writeStatsFile() {
         if (m_globalStats.bigGridRaceCount > 0) {
             global["bigGridRaceCount"] = m_globalStats.bigGridRaceCount;
         }
-        if (m_globalStats.maxSessionLaps > 0) {
-            global["maxSessionLaps"] = m_globalStats.maxSessionLaps;
+        if (std::isfinite(m_globalStats.maxSessionDistanceM) && m_globalStats.maxSessionDistanceM > 0.0) {
+            global["maxSessionDistanceM"] = m_globalStats.maxSessionDistanceM;
         }
         if (m_globalStats.penaltyFreeStreak > 0) {
             global["penaltyFreeStreak"] = m_globalStats.penaltyFreeStreak;

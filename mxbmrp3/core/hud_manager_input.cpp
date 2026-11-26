@@ -10,6 +10,7 @@
 // ============================================================================
 
 #include "hud_manager.h"
+#include "../hud/deck_hud.h"
 #include "stats_manager.h"
 #include "../diagnostics/logger.h"
 #include "../diagnostics/timer.h"
@@ -155,10 +156,10 @@ void HudManager::processKeyboardInput() {
         settingsBinding.keyboard.modifiers == ModifierFlags::NONE) {
         // For ` and \ keys without modifiers, use InputManager directly (handles keyboard layout differences)
         // Check both keys as fallback, but only trigger if no modifiers are held
-        bool noModifiers = !(GetAsyncKeyState(VK_CONTROL) & 0x8000) &&
-                           !(GetAsyncKeyState(VK_SHIFT) & 0x8000) &&
-                           !(GetAsyncKeyState(VK_MENU) & 0x8000);  // VK_MENU = Alt
         const InputManager& input = InputManager::getInstance();
+        const bool noModifiers = !input.isKeyDown(VK_CONTROL) &&
+                                 !input.isKeyDown(VK_SHIFT) &&
+                                 !input.isKeyDown(VK_MENU);  // VK_MENU = Alt
         if (noModifiers &&
             (input.getOem3Key().isClicked() || input.getOem5Key().isClicked())) {
             settingsTriggered = true;
@@ -231,10 +232,12 @@ void HudManager::processKeyboardInput() {
     }
 #endif
 
-    if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_WIDGETS)) {
-        m_bAllWidgetsToggledOff = !m_bAllWidgetsToggledOff;
-        DEBUG_INFO_F("Hotkey: Widgets temporarily %s", m_bAllWidgetsToggledOff ? "hidden" : "shown");
-        announceMasterToggle(HotkeyAction::TOGGLE_WIDGETS, !m_bAllWidgetsToggledOff);
+    for (int g = 0; g < MASTER_GROUP_COUNT; ++g) {
+        const HotkeyAction action = masterGroupInfo(static_cast<MasterGroup>(g)).hotkey;
+        if (!hotkeyMgr.wasActionTriggered(action)) continue;
+        m_groupOff[g] = !m_groupOff[g];
+        DEBUG_INFO_F("Hotkey: master group %d %s", g, m_groupOff[g] ? "hidden" : "shown");
+        announceMasterToggle(action, !m_groupOff[g]);
     }
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_PITBOARD) && m_pPitboard) {
@@ -340,6 +343,12 @@ void HudManager::processKeyboardInput() {
         m_pDash->step(-1);
         SettingsManager::getInstance().markDirty();
     }
+    // The carousel deck, likewise only while it is up. Which deck shows is not
+    // saved: the Auto clock would dirty the settings every few seconds.
+    DeckHud* carousel = m_pDecks[DeckHud::CAROUSEL_SLOT];
+    const bool carouselUp = carousel && carousel->isVisibleAnySurface() && !carousel->isSampled() && !isHeldBack(carousel);
+    if (carouselUp && hotkeyMgr.wasActionTriggered(HotkeyAction::DECK_NEXT)) carousel->carouselStep(+1, true);
+    if (carouselUp && hotkeyMgr.wasActionTriggered(HotkeyAction::DECK_PREV)) carousel->carouselStep(-1, true);
 
     if (hotkeyMgr.wasActionTriggered(HotkeyAction::TOGGLE_FRIENDS) && m_pFriends) {
         m_pFriends->setVisible(!m_pFriends->isVisible());
@@ -435,6 +444,7 @@ void HudManager::processKeyboardInput() {
         if (!savePath.empty()) {
             DEBUG_INFO("Hotkey: Reloading config from file");
             settingsMgr.loadSettings(*this, savePath.c_str());
+            DeckHud::warmFonts();
             // Nothing on screen says a reload happened unless a value changed.
             SystemMessages::Toast t;
             snprintf(t.title, sizeof(t.title), "%s", TR("Settings reloaded"));
@@ -569,7 +579,7 @@ void HudManager::announceHudToggle(HotkeyAction action, const BaseHud& hud, int 
     sys.post(t);
 }
 
-// The Widgets and hide-all hotkeys, the same rule: a card on hide, none on show.
+// The Widgets, Decks and hide-all hotkeys, the same rule: a card on hide, none on show.
 // The hide-all card is the one toast drawn through that hotkey (see
 // SystemMessages::Toast::throughHideAll), and points at no tab: the menu is not
 // what brings the HUD back, the key is.
@@ -581,12 +591,14 @@ void HudManager::announceMasterToggle(HotkeyAction action, bool nowShown) {
         return;
     }
     const bool all = action == HotkeyAction::TOGGLE_ALL_HUDS;
+    const bool decks = action == HotkeyAction::TOGGLE_DECKS;
     SystemMessages::Toast t;
-    snprintf(t.title, sizeof(t.title), "%s", all ? TR("All HUDs hidden") : TR("Widgets hidden"));
+    snprintf(t.title, sizeof(t.title), "%s",
+             all ? TR("All HUDs hidden") : decks ? TR("Decks hidden") : TR("Widgets hidden"));
     formatHotkeyHint(action, TR("Press %s to show them again"), t.detail, sizeof(t.detail));
     snprintf(t.icon, sizeof(t.icon), "eye-slash");
     t.key = key;
-    t.tab = all ? -1 : SettingsHud::TAB_WIDGETS;
+    t.tab = all ? -1 : masterGroupInfo(decks ? MasterGroup::Decks : MasterGroup::Widgets).tab;
     t.throughHideAll = all;
     sys.post(t);
 }
@@ -606,7 +618,7 @@ void HudManager::announceAllHiddenAtStart() {
         if (!h || h == m_pSettingsHud || h == m_pToggleStrip || h == m_pPointer ||
             h == m_pAchievement || h == m_pNotices || h == m_pSpotter ||
             h == m_pGlConfirm) continue;
-        if (m_bAllWidgetsToggledOff && isWidgetHud(h)) continue;   // the saved Widgets master switch
+        if (heldByGroup(h)) continue;   // a saved master switch (Widgets, Decks)
         if (h->isVisibleAnySurface()) return;
     }
     SystemMessages::Toast t;

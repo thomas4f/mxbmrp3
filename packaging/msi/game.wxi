@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  packaging/msi/game.wxi - everything the MSI does for ONE game, included three
+  times by mxbmrp3.wxs with the game's values defined (G, GameName, SteamId,
+  Exe, GameFolder, DocsFolder, NsisValue). One definition for all three games,
+  for the reason packaging/mxbmrp3.nsi gives at INSTALL_GAME_FILES: copies of a
+  per-game block drift, and then a game silently ships less.
+
+  Properties this file defines per game ($(var.G) = MXB / GPB / KRP):
+    G_DIR      PUBLIC. The game's plugins folder. Set it on the command line to
+               install somewhere detection cannot find; the UI writes the
+               player's choice back into it, so the server side (which runs
+               after the dialogs) installs where the player pointed.
+    G_SEL      PUBLIC. "1" = install for this game. Defaults to "1" when the
+               game was found or G_DIR was given; "0" on the command line skips
+               a detected game.
+    G_FOUND    the game was found (an earlier install or detection); the
+               dialog says "(detected)".
+    G_PREV     an earlier MXBMRP3 install for this game (NSIS or MSI): the
+               "existing installation" page is shown.
+    G_HASDATA  Documents\PiBoSo\<game>\mxbmrp3 exists: the uninstall pages
+               offer to delete it.
+-->
+<Include xmlns="http://wixtoolset.org/schemas/v4/wxs"
+         xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <Property Id="$(var.G)_DIR" Secure="yes" />
+  <!-- install_prefs.ini's stamp: this version, or an earlier opt-out's own
+       stamp when G_KEEPOPTOUT carries it over (ReadEarlierOptOut). -->
+  <Property Id="$(var.G)_STAMP" Value="$(var.Version)" />
+  <Property Id="$(var.G)_SEL" Secure="yes" />
+
+  <!-- WHERE THE GAME IS, in order of trust. Each search yields a plugins folder
+       or nothing; the SetProperty chain below takes the first that answered.
+
+       1. This MSI's own earlier install. MSI resolves directories afresh on
+          every run, so the folder actually used (after any Browse) is kept in
+          the registry - without it, a folder detection cannot find again would
+          never be cleaned up on uninstall. -->
+  <Property Id="$(var.G)_MSI">
+    <RegistrySearch Root="HKLM" Key="Software\MXBMRP3" Name="$(var.G)Plugins" Type="raw" Bitness="always64" />
+  </Property>
+  <!-- 2. An NSIS Setup install, which this MSI takes over (see the cleanup
+          component below). Machine-wide first, then per-user, like NSIS's own
+          .onInit. The values are plugins folders without a trailing slash. -->
+  <Property Id="$(var.G)_NSISLM">
+    <RegistrySearch Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\MXBMRP3" Name="$(var.NsisValue)" Type="raw" Bitness="always64" />
+  </Property>
+  <Property Id="$(var.G)_NSISCU">
+    <RegistrySearch Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\MXBMRP3" Name="$(var.NsisValue)" Type="raw" Bitness="always64" />
+  </Property>
+  <!-- 3. Steam's uninstall entry for the game, if the game's exe is really there. -->
+  <Property Id="$(var.G)_STEAM">
+    <RegistrySearch Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\Steam App $(var.SteamId)" Name="InstallLocation" Type="directory" Bitness="always64">
+      <DirectorySearch Id="$(var.G)SteamDir" Depth="0" AssignToProperty="yes">
+        <FileSearch Id="$(var.G)SteamExe" Name="$(var.Exe)" />
+      </DirectorySearch>
+    </RegistrySearch>
+  </Property>
+  <!-- 4. A plain install under Program Files. -->
+  <Property Id="$(var.G)_PF">
+    <DirectorySearch Id="$(var.G)PfDir" Path="[ProgramFiles64Folder]$(var.GameFolder)" Depth="0" AssignToProperty="yes">
+      <FileSearch Id="$(var.G)PfExe" Name="$(var.Exe)" />
+    </DirectorySearch>
+  </Property>
+  <!-- The player's settings and data, which the uninstall pages offer to delete
+       (and Fresh install deletes) only when they exist. The default save path
+       only, like NSIS: the game's save path is configurable. -->
+  <Property Id="$(var.G)_HASDATA">
+    <DirectorySearch Id="$(var.G)DataDir" Path="[PersonalFolder]PiBoSo\$(var.DocsFolder)\mxbmrp3" Depth="0" AssignToProperty="yes" />
+  </Property>
+
+  <!-- Sequence="first": in the UI sequence when there is a UI, else in the
+       execute sequence. Never in both: the server side must keep what the
+       dialogs decided, not re-detect over it. -->
+  <SetProperty Id="$(var.G)_SEL" Action="$(var.G)SelCmd" Value="1" After="AppSearch" Sequence="first"
+               Condition="$(var.G)_DIR AND NOT $(var.G)_SEL" />
+  <SetProperty Id="$(var.G)_PREV" Action="$(var.G)PrevMsi" Value="[$(var.G)_MSI]" After="$(var.G)SelCmd" Sequence="first"
+               Condition="$(var.G)_MSI" />
+  <SetProperty Id="$(var.G)_PREV" Action="$(var.G)PrevNsisLm" Value="[$(var.G)_NSISLM]\" After="$(var.G)PrevMsi" Sequence="first"
+               Condition="$(var.G)_NSISLM AND NOT $(var.G)_PREV" />
+  <SetProperty Id="$(var.G)_PREV" Action="$(var.G)PrevNsisCu" Value="[$(var.G)_NSISCU]\" After="$(var.G)PrevNsisLm" Sequence="first"
+               Condition="$(var.G)_NSISCU AND NOT $(var.G)_PREV" />
+  <SetProperty Id="$(var.G)_DIR" Action="$(var.G)DirPrev" Value="[$(var.G)_PREV]" After="$(var.G)PrevNsisCu" Sequence="first"
+               Condition="$(var.G)_PREV AND NOT $(var.G)_DIR" />
+  <SetProperty Id="$(var.G)_DIR" Action="$(var.G)DirSteam" Value="[$(var.G)_STEAM]plugins\" After="$(var.G)DirPrev" Sequence="first"
+               Condition="$(var.G)_STEAM AND NOT $(var.G)_DIR" />
+  <SetProperty Id="$(var.G)_DIR" Action="$(var.G)DirPf" Value="[$(var.G)_PF]plugins\" After="$(var.G)DirSteam" Sequence="first"
+               Condition="$(var.G)_PF AND NOT $(var.G)_DIR" />
+  <SetProperty Id="$(var.G)_FOUND" Action="$(var.G)Found" Value="1" After="$(var.G)DirPf" Sequence="first"
+               Condition="$(var.G)_DIR" />
+  <SetProperty Id="$(var.G)_SEL" Action="$(var.G)SelFound" Value="1" After="$(var.G)Found" Sequence="first"
+               Condition="$(var.G)_FOUND AND NOT $(var.G)_SEL" />
+  <!-- Not found anywhere: the folder field proposes the default location, so
+       Browse has somewhere to open. The game stays unticked. -->
+  <SetProperty Id="$(var.G)_DIR" Action="$(var.G)DirDefault" Value="[ProgramFiles64Folder]$(var.GameFolder)\plugins\" After="$(var.G)SelFound" Sequence="first"
+               Condition="NOT $(var.G)_DIR" />
+  <SetDirectory Id="$(var.G)PLUGINS" Value="[$(var.G)_DIR]" Sequence="both" />
+
+  <!-- The games page's "(detected)" / "(not detected)" after the name. -->
+  <SetProperty Id="$(var.G)_FOUNDTEXT" Action="$(var.G)FoundText" Value="!(loc.MXB_DETECTED)" After="$(var.G)DirDefault" Sequence="ui"
+               Condition="$(var.G)_FOUND" />
+  <SetProperty Id="$(var.G)_FOUNDTEXT" Action="$(var.G)MissingText" Value="!(loc.MXB_NOT_DETECTED)" After="$(var.G)FoundText" Sequence="ui"
+               Condition="NOT $(var.G)_FOUND" />
+
+  <!-- Maintenance (Change): each box shows whether the game is installed now,
+       whatever detection found. "Installed for this game" = G_MSI, the folder
+       this product remembers per game (removed with the game), read by
+       AppSearch; not the feature state !G, which Wine's msiexec does not
+       report for an installed feature. -->
+  <SetProperty Id="$(var.G)_SEL" Action="$(var.G)SelInstalled" Value="1" After="CostFinalize" Sequence="ui"
+               Condition="Installed AND $(var.G)_MSI" />
+  <!-- Cleared, never "0": a check box shows TICKED for any value, so this also
+       turns a command-line G_SEL=0 into an unticked box. -->
+  <SetProperty Id="$(var.G)_SEL" Action="$(var.G)SelAbsent" Value="{}" After="$(var.G)SelInstalled" Sequence="ui"
+               Condition="(Installed AND NOT $(var.G)_MSI) OR (NOT Installed AND $(var.G)_SEL&lt;&gt;&quot;1&quot;)" />
+
+  <!-- Paths the util:RemoveFolderEx entries below delete. Each is set ONLY when
+       that removal was asked for, and each RemoveFolderEx row is conditioned on its
+       property: the extension FAILS on an empty one and then skips every row
+       after it, so an unset property alone is not a safe "keep". Execute sequence, before
+       the RemoveFolderEx action (which runs before CostInitialize). -->
+  <SetProperty Id="$(var.G)_PAYLOAD" Action="$(var.G)PayloadPath" Value="[$(var.G)_MSI]mxbmrp3_data\" After="AppSearch" Sequence="execute"
+               Condition="$(var.G)_MSI" />
+  <SetProperty Id="$(var.G)_WIPE_UN" Action="$(var.G)WipeUnPath" Value="[PersonalFolder]PiBoSo\$(var.DocsFolder)\mxbmrp3\" After="$(var.G)PayloadPath" Sequence="execute"
+               Condition="WIPEDATA=&quot;1&quot;" />
+  <SetProperty Id="$(var.G)_WIPE_FRESH" Action="$(var.G)WipeFreshPath" Value="[PersonalFolder]PiBoSo\$(var.DocsFolder)\mxbmrp3\" After="$(var.G)WipeUnPath" Sequence="execute"
+               Condition="FRESH=&quot;1&quot; AND NOT Installed" />
+
+  <StandardDirectory Id="ProgramFiles64Folder">
+    <Directory Id="$(var.G)ROOT" Name="$(var.GameFolder)">
+      <Directory Id="$(var.G)PLUGINS" Name="plugins">
+        <Directory Id="$(var.G)DATA" Name="mxbmrp3_data" />
+      </Directory>
+    </Directory>
+  </StandardDirectory>
+
+  <Feature Id="$(var.G)" Title="$(var.GameName)" Level="3" AllowAbsent="yes" AllowAdvertise="no">
+    <Level Value="1" Condition="$(var.G)_SEL=&quot;1&quot;" />
+    <ComponentGroupRef Id="$(var.G)Payload" />
+
+    <Component Id="$(var.G)Setup" Directory="$(var.G)PLUGINS" Bitness="always64">
+      <!-- Remembers the folder (see 1. above). -->
+      <RegistryValue Root="HKLM" Key="Software\MXBMRP3" Name="$(var.G)Plugins" Type="string" Value="[$(var.G)PLUGINS]" KeyPath="yes" />
+      <!-- The NSIS entry stops listing this game, as NSIS's own UN_FINALIZE_REG
+           does when it uninstalls one: else a surviving NSIS uninstaller (for a
+           game this MSI skipped) would offer this game too, and remove the
+           plugin from under the MSI. The entry itself is repointed or removed
+           in mxbmrp3.wxs. -->
+      <RemoveRegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\MXBMRP3" Name="$(var.NsisValue)" />
+      <RemoveRegistryValue Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\MXBMRP3" Name="$(var.NsisValue)" />
+
+      <!-- install_prefs.ini, the same contract as NSIS (core/install_prefs.h):
+           the language always, analyticsOptOut=1 only on opt-out (next
+           component), and the stamp. The old file goes first (RemoveFiles runs
+           before WriteIniValues) so the file is rewritten whole, as NSIS does:
+           a stale opt-out left by an earlier Setup must not re-apply against
+           this version's stamp. -->
+      <RemoveFile Id="$(var.G)OldPrefs" Directory="$(var.G)DATA" Name="install_prefs.ini" On="install" />
+      <IniFile Id="$(var.G)PrefLang" Action="addLine" Directory="$(var.G)DATA" Name="install_prefs.ini" Section="Install" Key="language" Value="[PLUGINLANG]" />
+      <IniFile Id="$(var.G)PrefStamp" Action="addLine" Directory="$(var.G)DATA" Name="install_prefs.ini" Section="Install" Key="stamp" Value="[$(var.G)_STAMP]" />
+
+      <!-- Taking over an NSIS install: its uninstaller would otherwise sit
+           beside an MSI-managed plugin and remove it behind the MSI's back.
+           (Its Add/Remove Programs entry goes in mxbmrp3.wxs's Takeover.) -->
+      <RemoveFile Id="$(var.G)NsisUninst" Name="mxbmrp3_uninstall.exe" On="install" />
+
+      <!-- Uninstall removes mxbmrp3_data whole, as the NSIS uninstaller's
+           RMDir /r does: a file an in-plugin update added since is not in this
+           MSI's tables and would otherwise be left behind. -->
+      <util:RemoveFolderEx Id="$(var.G)PayloadWipe" Property="$(var.G)_PAYLOAD" Condition="$(var.G)_PAYLOAD" On="uninstall" />
+      <!-- The player's settings and data: only on request (uninstall pages, or
+           Fresh install). Never on a plain uninstall or upgrade. -->
+      <util:RemoveFolderEx Id="$(var.G)DataWipeUn" Property="$(var.G)_WIPE_UN" Condition="$(var.G)_WIPE_UN" On="uninstall" />
+      <util:RemoveFolderEx Id="$(var.G)DataWipeFresh" Property="$(var.G)_WIPE_FRESH" Condition="$(var.G)_WIPE_FRESH" On="install" />
+    </Component>
+
+    <!-- The analytics opt-out line, installed when the Privacy box was
+         unticked, or carried over from an earlier Setup when the page was not
+         answered (G_KEEPOPTOUT). "OR REMOVE" keeps an installed one removable
+         when ANALYTICS is back at its default during uninstall. -->
+    <Component Id="$(var.G)OptOut" Directory="$(var.G)DATA" Bitness="always64" Condition="ANALYTICS&lt;&gt;&quot;1&quot; OR $(var.G)_KEEPOPTOUT OR REMOVE">
+      <RegistryValue Root="HKLM" Key="Software\MXBMRP3" Name="$(var.G)OptOut" Type="integer" Value="1" KeyPath="yes" />
+      <IniFile Id="$(var.G)PrefOptOut" Action="addLine" Directory="$(var.G)DATA" Name="install_prefs.ini" Section="Install" Key="analyticsOptOut" Value="1" />
+    </Component>
+  </Feature>
+</Include>

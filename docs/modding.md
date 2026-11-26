@@ -11,7 +11,7 @@ mxbmrp3/
 ├── fonts/       ← Custom .fnt files
 ├── textures/    ← Custom .tga textures
 ├── icons/       ← Custom .tga icons
-├── themes/      ← Panel themes, one folder per theme (<name>/ + theme.ini)
+├── themes/      ← Panel themes, one folder per theme (<name>/ + theme.ini, decks.ini)
 ├── gamepads/    ← Gamepad packs, one folder per pad (<name>/ + gamepad.ini)
 ├── pitboards/   ← Pit board packs, one folder per board (<name>/ + pitboard.ini)
 ├── spotters/    ← Spotter voice packs, one folder per voice (<name>/ + spotter.ini)
@@ -54,6 +54,8 @@ Bring a `.tga` too and it replaces that one slice, leaving the other twenty-six 
 
 **A title bar is nine more slices.** By default the caption sits in a band inside the frame, drawn with the card art. Add `title_*.tga` (the same nine names as the card's, `title_center.tga`, `title_corner_tl.tga` and so on) to give that band its own art, and set `placement = frame` under `[title]` to move it into the frame's own top edge, a window title bar. Modern and Retro ship that way, and their `theme.ini` comments explain each `[title]` key.
 
+**Slanted ends are two more pictures.** `frame_slant_left.tga` and `frame_slant_right.tga` are the frame's two ends leaning, for the Slanted decks' cards: each is drawn as tall as the card and as wide as its own shape, with the frame's top, centre and bottom stretched between, so one pair fits every card. Without them the Slanted decks draw their own pictures (as with no theme). Every shipped theme has them; they sit at the bottom of each theme's master, `assets/themes/<theme>.png`, and `tools/themeslice` cuts them with the rest.
+
 ## Custom Textures
 
 Textures use the naming convention `{element_name}_{number}.tga` (e.g., `radar_hud_2.tga`). Drop them into the `textures\` subfolder and they are auto-discovered at startup.
@@ -87,6 +89,18 @@ pitboards\
 ```
 
 Nine skins of it ship - the same board with a recolored frame, in the same nine brand colors as the gamepad skins - and any of them is the two-file template for your own board: rename the folder, drop in your artwork, and its `base = classic` line answers every row offset, so you add `[offset]` keys only for rows your art puts somewhere else (`classic\pitboard.ini` names them all). Row text defaults to marker black for a white writing surface; a board with a DARK surface needs a `[text] color`, which the same file documents. The board's **aspect ratio comes from its own art**. Pick it in Settings > Pitboard.
+
+**Decks** - The decks are part of the theme. A theme's `decks.ini` is its Regular deck layout and `decks-slanted.ini` its Slanted one, and the Slanted switch on the Decks tab picks between the two for every deck at once. A layout places every box, string and meter of each deck in grid cells, as `theme.ini` measures them (columns across, rows down; a font size in text sizes, 1 = normal text), and turns a dial the way `gauge.ini` does (0 straight up, clockwise). A box is the theme's slices (`art = panel`), a plain quad, or one of the theme's `deck_<name>.tga` pictures (`art = image`, `image = <name>`), drawn white and tinted with a palette colour:
+
+```
+themes\
+  cabinet-dark\  theme.ini  decks.ini  decks-slanted.ini  deck_tab.tga ...
+  carbon-dark\   theme.ini  decks.ini
+```
+
+`cabinet-dark\decks.ini` documents every key and every field a deck can show. A layout with `base = cabinet-dark` (in `decks-slanted.ini`, `base = regular` is the theme's own Regular) states only what it changes - one deck's `size` (`size = 40, 10`: 40 columns by 10 rows), a text's `font` or `color`, or its own face for a font category under `[fonts]`. Texts name font categories and palette slots, so a font or colour picked in Appearance wins over the layout's; a palette slot the player has not picked is the theme's colour (a layout has no palette of its own). A theme without a layout draws its base theme's, else Cabinet Dark's. A meter's `skew` comes out smooth on its own; a leaning box does not, so paint its edge INTO a picture on an upright box (Slanted does it this way: its pictures are cut from its theme's master, `assets/themes/cabinet-dark.png`, by `tools/themeslice`).
+
+A theme drawn in a layout it does not hold still shows its own pictures: its `deck_<name>.tga` (or its base theme's) is drawn instead, which is how Retro gives Slanted its own tab, stamp and wells, and Modern its own tab. A 1×1 picture hides that image, and a layout's own 1×1 picture shows only where a theme paints it. A layout's `[fonts]` entry of `theme` keeps the theme's face for that category.
 
 **Gauges** - The tacho and speedo are one **pack**: the ticks and figures are painted into the dial art, so the numbers that place the needle travel with it:
 

@@ -75,6 +75,16 @@ public:
     // it is (each is sized for the slab). Valid until the next call.
     static const char* caption(const Notice& notice, float width, float fontSize, int font);
 
+    // A notice that goes ahead of a toast (an achievement, a plugin message)
+    // on a panel that shows both through one queue (the Notice deck): one that
+    // calls for action, marks a lap or a track. The race's standing ones (last
+    // lap, finished, default setup) wait behind a toast instead: they hold for
+    // as long as the race does, a toast is gone in seconds.
+    static constexpr bool aboveToasts(Kind kind) {
+        return kind != Kind::None && kind != Kind::Finished && kind != Kind::LastLap &&
+               kind != Kind::DefaultSetup;
+    }
+
     // Back to the start-up state (the Notices HUD's reset).
     void reset();
 

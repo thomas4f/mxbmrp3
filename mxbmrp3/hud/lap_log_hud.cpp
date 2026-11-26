@@ -13,6 +13,7 @@
 #include "../core/plugin_data.h"
 #include "../core/color_config.h"
 #include "../game/game_config.h"
+#include <algorithm>
 #include <cstring>
 #include <cstdio>
 
@@ -102,6 +103,8 @@ void LapLogHud::update() {
         return;
     }
 
+    if (m_scroll.poll(*this)) setDataDirty();
+
     // Check if we need frequent updates for ticking timer (uses BaseHud helper)
     checkFrequentUpdates();
 
@@ -149,14 +152,10 @@ void LapLogHud::rebuildRenderData() {
     // Apply scale to all dimensions
     auto dim = getScaledDimensions();
 
-    // Check if we should show a live "current lap in progress" row
-    // Don't show live timing if rider has finished (timer is meaningless after checkered flag).
-    // A lap that has been through the pits keeps its row, saying PIT, from pit entry to the
-    // line that closes it: the timer is paused, then dropped at pit exit, so without this
-    // the row froze and only the line revealed the lap as a pit lap.
+    // The live "current lap in progress" row (LapLogPlan::runningLapShown).
     const bool pitLap = data.isLapViaPits(data.getDisplayRaceNum());
-    bool showCurrentLapRow = m_showLiveTiming && (data.isLapTimerValid() || pitLap) &&
-                             !data.isDisplayRiderFinished();
+    bool showCurrentLapRow = m_showLiveTiming &&
+        LapLogPlan::runningLapShown(data.isLapTimerValid(), pitLap, data.isDisplayRiderFinished());
 
     // Get the best lap entry (stored separately)
     const LapLogEntry* bestLapEntry = data.getBestLapEntry();
@@ -203,9 +202,23 @@ void LapLogHud::rebuildRenderData() {
         currentY += dim.lineHeightNormal;
     }
 
-    // Render data rows from top to bottom (current lap, best lap, then oldest to newest)
+    // Render data rows from top to bottom (current lap, best lap, then oldest to newest).
+    // The recent laps are the scrollback's window, one lap more while it glides
+    // (HudScroll::clipRows cuts them at the window); the rows after them keep
+    // their places.
+    float recentTop = -1.0f;
+    size_t recentQ0 = 0, recentQ1 = 0, recentS0 = 0, recentS1 = 0;
+    int recentDrawn = 0;
+    const int recentCount = static_cast<int>(std::count_if(displayList.begin(), displayList.end(),
+                                                           [](int kind) { return kind >= 0; }));
     for (int displayIdx = 0; displayIdx < static_cast<int>(displayList.size()); displayIdx++) {
         const int rowKind = displayList[displayIdx];
+        const bool recent = rowKind >= 0;
+        if (recent && recentTop < 0.0f) {
+            recentTop = currentY;
+            recentQ0 = m_quads.size();
+            recentS0 = m_strings.size();
+        }
 
         if (rowKind == LapLogPlan::kCurrentLap) {
             // Current lap in progress (live timing row)
@@ -237,9 +250,22 @@ void LapLogHud::rebuildRenderData() {
         }
 
         currentY += dim.lineHeightNormal;  // Move down to next row
+        if (recent) {
+            recentQ1 = m_quads.size();
+            recentS1 = m_strings.size();
+            // The window ends where it does at rest; the rows after it follow.
+            if (++recentDrawn == recentCount) currentY -= m_scroll.extraRows() * dim.lineHeightNormal;
+        }
     }
+    if (recentTop >= 0.0f)
+        m_scroll.clipRows(*this, recentQ0, recentQ1, recentS0, recentS1, recentTop, dim.lineHeightNormal);
 
-    addPlanTitleNote(plan, dim, refNote);
+    // The scrollbar in the panel's right padding, beside the data rows; while
+    // laps wait beyond the newest end, "N new" takes the caption's note.
+    m_scroll.draw(*this, plan.sectionBoxX() + plan.sectionBoxW(), plan.x0 + plan.width(),
+                  plan.contentY() + headerHeight, dim.lineHeightNormal * numDataRows,
+                  dim.lineHeightNormal, dim.fontSize);
+    addPlanTitleNote(plan, dim, m_scroll.note()[0] ? m_scroll.note() : refNote);
 }
 
 // Which rows to draw and in what order (fills m_plan).
@@ -267,7 +293,35 @@ void LapLogHud::computeRowPlan(const std::deque<LapLogEntry>* lapLog, const LapL
         ? LapLogPlan::Order::OLDEST_FIRST
         : LapLogPlan::Order::NEWEST_FIRST;
 
+
+    // The scrollback: its window is the room the plan leaves for recent laps,
+    // which can depend on where it stands (the best lap's own row comes and
+    // goes), so plan, place the window, and plan again if it moved.
+    const bool newestFirst = planIn.order == LapLogPlan::Order::NEWEST_FIRST;
+    m_scroll.setEdge(newestFirst ? HudScroll::Edge::START : HudScroll::Edge::END);
+    const int rider = PluginData::getInstance().getDisplayRaceNum();
+    const int newest = m_planLapNums.empty() ? -1 : m_planLapNums.front();
+    if (rider != m_scrollRider || newest < m_scrollSeenLap) {
+        m_scroll.restart();
+        m_scrollRider = rider;
+        m_scrollSeenLap = newest;
+        m_scrollSkip = 0;
+    }
+    const int arrived = newest > m_scrollSeenLap ? newest - m_scrollSeenLap : 0;
+    m_scrollSeenLap = newest;
+    planIn.skip = m_scrollSkip;
     LapLogPlan::compute(planIn, m_plan);
+    const int room = std::max(1, m_plan.recentRoom);
+    const int first = m_scroll.layout(planIn.lapLogSize, room, arrived);
+    const int drawn = m_scroll.drawRows();
+    const int skip = newestFirst ? first : std::max(0, planIn.lapLogSize - drawn - first);
+    const int extra = std::max(0, drawn - room);
+    if (skip != m_scrollSkip || extra != planIn.extra) {
+        m_scrollSkip = skip;
+        planIn.skip = skip;
+        planIn.extra = extra;
+        LapLogPlan::compute(planIn, m_plan);
+    }
 }
 
 LapLogHud::LapColumnX LapLogHud::computeColumnAnchors(const ScaledDimensions& dim) const {
@@ -530,14 +584,9 @@ void LapLogHud::addLapEntryRow(const LapColumnX& cx, const BestTimes& best, cons
     FontCategory timeFont = FontCategory::DIGITS;
     if (entry.lapTime > 0 && entry.isComplete) {
         PluginUtils::formatLapTime(entry.lapTime, timeStr, sizeof(timeStr));
-    } else if (entry.viaPits) {
-        strcpy_s(timeStr, sizeof(timeStr), Placeholders::PIT_LAP);
-        timeFont = FontCategory::NORMAL;
-    } else if (!entry.isValid) {
-        strcpy_s(timeStr, sizeof(timeStr), Placeholders::INVALID_LAP);
-        timeFont = FontCategory::NORMAL;
     } else {
-        strcpy_s(timeStr, sizeof(timeStr), Placeholders::GENERIC);
+        strcpy_s(timeStr, sizeof(timeStr), Placeholders::untimedLap(entry.viaPits, entry.isValid));
+        if (entry.viaPits || !entry.isValid) timeFont = FontCategory::NORMAL;
     }
 
     // Determine colors

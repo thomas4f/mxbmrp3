@@ -18,6 +18,9 @@
 # the point is the preprocessor + type-checking of the shared code, which is
 # where this class of bug lives. Fast (no codegen), parallel, no Wine.
 #
+# It also runs the MX Bikes config, for the one check the cross-build can't
+# make: a local hiding a class member (MSVC C4458; see FLAGS).
+#
 #   ./tests/integration/check_game_configs.sh
 # ============================================================================
 set -uo pipefail
@@ -43,7 +46,14 @@ INCS="-I${HERE}/shim -I${SRC}"
 # reason (signatures are the game's, and the names document the contract) —
 # applied per-file below rather than to everything, so the shared sources are
 # held to the full bar.
-FLAGS="-std=c++17 -m64 -O1 -Wall -Wextra -Werror -Wshadow=local -Wno-unknown-pragmas -fsyntax-only ${BASE_DEFS} ${INCS}"
+FLAGS="-std=c++17 -m64 -O1 -Wall -Wextra -Werror -Wshadow -Wno-error=shadow -Wno-unknown-pragmas -fsyntax-only ${BASE_DEFS} ${INCS}"
+# -Wshadow in FULL, not the cross-build's =local: MSVC's C4458 (a local or
+# parameter hiding a CLASS MEMBER) is an error under the shipping /WX too, and
+# =local cannot see it - a `rotation` local beside TrickStats::rotation passed
+# every gate here and failed the user's build. GCC has no member-only form, and
+# the full one also fires on names shadowing GLOBALS (the SHORT/LONG/FIXED/HANDLE
+# enum members beside windows.h's typedefs, which MSVC accepts), so shadowing is
+# a warning here and shadow_verdict() below fails every kind but the global one.
 
 # The shared sources every game compiles (matches the cross-build's glob). Two
 # kinds of exclusion, and only one of them is spelled out here:
@@ -77,6 +87,9 @@ mapfile -t SHARED < <(cd "${SRC}" && find core handlers hud diagnostics -name '*
 
 # game define : matching API export TU
 CONFIGS=(
+    # MXB too, for the member-shadow check alone (see FLAGS): its other
+    # warnings the cross-build already fails, but at -Wshadow=local.
+    "GAME_MXBIKES:vendor/piboso/mxb_api.cpp"
     "GAME_GPBIKES:vendor/piboso/gpb_api.cpp"
     "GAME_KRP:vendor/piboso/krp_api.cpp"
 )
@@ -139,19 +152,55 @@ check_canary "${selftest_dir}/canary_var.cpp" \
 # EXEMPT_RULE's pattern.
 check_canary "${selftest_dir}/canary_param.cpp" \
     "An unused PARAMETER was accepted at a non-piboso path: the exemption has widened."
-# Catches -Wshadow=local going missing (it is not implied by -Wall/-Wextra).
-check_canary "${selftest_dir}/canary_shadow.cpp" \
-    "A local shadowing a local was accepted: -Wshadow=local is not live, and MSVC's C4456 will fail the shipping build instead."
+# $1 = a compile's whole stderr. Fails on every shadow warning except a name
+# shadowing a global (see FLAGS); a TU's other warnings already failed it.
+shadow_verdict() {
+    if printf '%s\n' "$1" | grep -E "shadows a (previous local|parameter|member)" >&2; then
+        return 1
+    fi
+    return 0
+}
+# $1 = canary file, $2 = what a clean verdict would mean
+check_shadow_canary() {
+    f="$1"; eval "${EXEMPT_RULE}"
+    out="$(${CXX} ${FLAGS} ${x} -DGAME_GPBIKES "$f" 2>&1)"
+    if shadow_verdict "${out}" 2>/dev/null; then
+        echo "ERROR: self-test passed a deliberately-shadowing TU." >&2
+        echo "       $2" >&2
+        exit 1
+    fi
+}
+# Catches -Wshadow going missing (it is not implied by -Wall/-Wextra).
+check_shadow_canary "${selftest_dir}/canary_shadow.cpp" \
+    "A local shadowing a local was accepted: -Wshadow is not live, and MSVC's C4456 will fail the shipping build instead."
+# A LOCAL HIDING A MEMBER: what =local missed. MSVC's C4458.
+printf 'struct MxbCanary { int m = 0; int f() { int m = 1; return m; } };\n' \
+    > "${selftest_dir}/canary_member.cpp"
+check_shadow_canary "${selftest_dir}/canary_member.cpp" \
+    "A local hiding a class member was accepted: MSVC's C4458 will fail the shipping build instead."
+# ...and a name shadowing a global must NOT fail (the windows.h typedef case),
+# or this gate goes red on code the shipping compiler accepts. The warning must
+# still be there, or this proves nothing.
+printf 'int MxbCanaryG = 0;\nint mxbCanary() { int MxbCanaryG = 1; return MxbCanaryG; }\n' \
+    > "${selftest_dir}/canary_global.cpp"
+out="$(${CXX} ${FLAGS} -DGAME_GPBIKES "${selftest_dir}/canary_global.cpp" 2>&1)"
+if ! printf '%s\n' "${out}" | grep -q "shadows a global" || ! shadow_verdict "${out}" 2>/dev/null; then
+    echo "ERROR: self-test: a name shadowing a global must warn and pass; shadow_verdict is too wide." >&2
+    exit 1
+fi
 
+export -f shadow_verdict
 rc=0
 for cfg in "${CONFIGS[@]}"; do
     game="${cfg%%:*}"
     api="${cfg##*:}"
     echo "==> syntax-check as ${game} ($(( ${#SHARED[@]} + 1 )) TUs)"
     printf '%s\n' "${SHARED[@]}" "${api}" \
-        | xargs -P "${JOBS}" -I{} sh -c \
+        | xargs -P "${JOBS}" -I{} bash -c \
             "cd '${SRC}' && f='{}'; ${EXEMPT_RULE}; \
-             ${CXX} ${FLAGS} \$x -D${game} \"\$f\" || { echo 'FAILED: ${game} {}' >&2; exit 1; }"
+             out=\"\$(${CXX} ${FLAGS} \$x -D${game} \"\$f\" 2>&1)\" \
+                 || { printf '%s\\n' \"\$out\" >&2; echo 'FAILED: ${game} {}' >&2; exit 1; }; \
+             shadow_verdict \"\$out\" || { echo 'FAILED (shadowing, MSVC C4456/C4457/C4458): ${game} {}' >&2; exit 1; }"
     if [ $? -ne 0 ]; then
         echo "ERROR: ${game} config has compile errors (see above)." >&2
         rc=1
@@ -159,6 +208,6 @@ for cfg in "${CONFIGS[@]}"; do
 done
 
 if [ ${rc} -eq 0 ]; then
-    echo "All non-MXB game configs syntax-check clean."
+    echo "All game configs syntax-check clean."
 fi
 exit ${rc}

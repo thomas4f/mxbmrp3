@@ -11,6 +11,7 @@
 #include "../diagnostics/logger.h"
 #include "plugin_constants.h"   // PLUGIN_VERSION (constant-initialized extern into .rdata, crash-safe)
 #include "crash_stack_format.h" // pure backtrace string formatting (no Win32)
+#include "../diagnostics/host_build_stamp.h"
 
 #include <windows.h>
 #include <dbghelp.h>
@@ -29,6 +30,8 @@ namespace {
 char s_dumpDir[MAX_PATH] = {};
 LPTOP_LEVEL_EXCEPTION_FILTER s_previousFilter = nullptr;
 bool s_installed = false;
+// The game's build stamp, read from its .exe at install() (no I/O in the filter).
+unsigned long s_gameBuild = 0;
 
 // Re-entry guard: if MiniDumpWriteDump itself faults we don't want infinite
 // recursion. InterlockedExchange gives us an atomic test-and-set.
@@ -273,22 +276,10 @@ LONG WINAPI crashFilter(EXCEPTION_POINTERS* info) {
             CrashStack::formatAvAddress(avAddr, sizeof(avAddr), target, targetMod, targetOff);
         }
 
-        // MX Bikes build fingerprint: the host executable's PE link timestamp. An
-        // mxbikes.exe+offset fault is only interpretable against a specific game build
-        // (offsets shift between betas), so capture which build crashed. Reading the
-        // in-memory PE header (module base -> e_lfanew -> NT headers) needs no disk I/O
-        // and is safe here. 0 if it can't be read.
-        unsigned long gameBuild = 0;
-        if (HMODULE exe = GetModuleHandleA(nullptr)) {
-            PIMAGE_DOS_HEADER dos = reinterpret_cast<PIMAGE_DOS_HEADER>(exe);
-            if (dos->e_magic == IMAGE_DOS_SIGNATURE) {
-                PIMAGE_NT_HEADERS nt = reinterpret_cast<PIMAGE_NT_HEADERS>(
-                    reinterpret_cast<BYTE*>(exe) + dos->e_lfanew);
-                if (nt->Signature == IMAGE_NT_SIGNATURE) {
-                    gameBuild = nt->FileHeader.TimeDateStamp;
-                }
-            }
-        }
+        // MX Bikes build fingerprint (diagnostics/host_build_stamp.h): an
+        // mxbikes.exe+offset fault is only interpretable against one game build.
+        // Read from the .exe file at install(); here it is only copied. 0 if unknown.
+        const unsigned long gameBuild = s_gameBuild;
 
         // Host process basename. The beacon otherwise only carries the game_build
         // timestamp, so a crash in a dev-tool host (e.g. mxbmrp3_replay.exe running the
@@ -464,6 +455,7 @@ void install(const char* savePath) {
         s_dumpDir[1] = '\0';
     }
 
+    s_gameBuild = HostBuildStamp::get();
     s_previousFilter = SetUnhandledExceptionFilter(&crashFilter);
     s_installed = true;
     DEBUG_INFO_F("CrashHandler installed, dumps -> %s\\" MXB_USER_DIR_NAME "\\crashes\\", s_dumpDir);

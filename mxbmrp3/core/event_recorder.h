@@ -167,7 +167,11 @@ public:
     void recordRunStop();
     void recordRunLap(const SPluginsBikeLap_t* data);
     void recordRunSplit(const SPluginsBikeSplit_t* data);
-    void recordRunTelemetry(const SPluginsBikeData_t* data, float fTime, float fPos);
+    // Payload: the game's telemetry bytes, then [float time][float pos]. The game
+    // bytes are sizeof(SPluginsBikeData_t), plus the trailing rider-stance int
+    // when the game sent it (Adapter::readRiderStance), so a reader takes the
+    // struct size as payload - 8. Tapes without the int replay exactly as before.
+    void recordRunTelemetry(const SPluginsBikeData_t* data, int dataSize, float fTime, float fPos);
     void recordDrawInit(int numSprites, char** spriteNames, int numFonts, char** fontNames, int result);
     void recordDraw();
     void recordTrackCenterline(int numSegments, void* segments, void* raceData);

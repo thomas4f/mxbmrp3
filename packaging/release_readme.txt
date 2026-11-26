@@ -5,7 +5,8 @@ with customizable on-screen displays, immersion features, social tools, and
 streaming/broadcasting overlays.
 
 If you'd rather use the guided installer, download mxbmrp3-Setup.exe
-from the GitHub releases page instead.
+(or the same installer as mxbmrp3-Setup.msi) from the GitHub releases page
+instead.
 
 ## Manual Installation
 

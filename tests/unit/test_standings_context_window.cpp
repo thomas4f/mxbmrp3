@@ -1,6 +1,7 @@
 // ============================================================================
 // tests/unit/test_standings_context_window.cpp
-// Unit tests for hud/standings_context_window.h — the standings pagination.
+// Unit tests for hud/standings_context_window.h — the standings pagination —
+// and hud/row_slide.h, the rows sliding to a new place (end of file).
 //
 // This arithmetic used to live inline in StandingsHud::rebuildRenderData(), so
 // the only way to exercise it was the DLL under Wine. The cases that matter are
@@ -17,6 +18,8 @@
 #include "doctest.h"
 
 #include "hud/standings_context_window.h"
+#include "hud/row_slide.h"
+#include <cstdint>
 #include <vector>
 
 using namespace StandingsWindow;
@@ -169,4 +172,88 @@ TEST_CASE("topCount >= rowCount: the pinned block wins and nothing overflows") {
         CHECK(idx >= 0);
         CHECK(idx < 22);
     }
+}
+
+// ---------------------------------------------------------------------------
+// RowSlide (hud/row_slide.h): the Standings HUD and the Standings deck
+// both slide with it, so these pin one behaviour for both.
+// ---------------------------------------------------------------------------
+namespace {
+// The rows of one rebuild: raceNums in display order, each at `firstPos` + row
+void commitRows(RowSlide& s, const std::vector<int>& nums, int firstPos, int64_t now) {
+    s.begin();
+    for (int i = 0; i < static_cast<int>(nums.size()); ++i) s.add(nums[i], firstPos + i, i);
+    s.commit(static_cast<int>(nums.size()) - 1, now);
+}
+}  // namespace
+
+TEST_CASE("row slide: a pass slides both riders from their old row to their new one, eased to rest") {
+    RowSlide s;
+    const int64_t t0 = 1000000;
+    commitRows(s, { 10, 20, 30 }, 1, t0);
+    CHECK_FALSE(s.active());
+    commitRows(s, { 10, 30, 20 }, 1, t0);   // #30 passes #20
+    REQUIRE(s.active());
+    CHECK(s.offset(30, t0) == doctest::Approx(1.0f));    // still a row below
+    CHECK(s.offset(20, t0) == doctest::Approx(-1.0f));   // still a row above
+    CHECK(s.offset(10, t0) == 0.0f);                     // didn't move
+    // Ease-out cubic: halfway there in time is 7/8 of the way in distance
+    const int64_t half = t0 + 250000;
+    CHECK(s.offset(30, half) == doctest::Approx(0.125f));
+    CHECK(s.fade(30, half) == doctest::Approx(0.5f));
+    const RowSlide::Slide* up = s.find(30);
+    REQUIRE(up);
+    CHECK(up->fromSlot > up->toSlot);
+    CHECK_FALSE(s.prune(half));
+    const int64_t end = t0 + 500000;
+    CHECK(s.offset(30, end) == 0.0f);
+    CHECK(s.prune(end));   // the last one ending says so, once
+    CHECK_FALSE(s.active());
+    CHECK_FALSE(s.prune(end));
+}
+
+TEST_CASE("row slide: the window scrolling with no place changed slides nothing") {
+    RowSlide s;
+    const int64_t t0 = 1000000;
+    commitRows(s, { 10, 20, 30 }, 4, t0);
+    // The same riders, the same places, a row lower in the list
+    s.begin();
+    s.add(10, 4, 1);
+    s.add(20, 5, 2);
+    s.add(30, 6, 3);
+    s.commit(3, t0);
+    CHECK_FALSE(s.active());
+}
+
+TEST_CASE("row slide: a rider new to the list arrives in place; a long jump starts one row out") {
+    RowSlide s;
+    const int64_t t0 = 1000000;
+    commitRows(s, { 10, 20, 30 }, 1, t0);
+    commitRows(s, { 10, 20, 40 }, 1, t0);   // #40 was not shown before
+    CHECK(s.offset(40, t0) == 0.0f);
+    // #20 drops from 2nd to 9th, still shown on row 2
+    s.begin();
+    s.add(10, 1, 0);
+    s.add(40, 3, 1);
+    s.add(20, 9, 2);
+    s.commit(2, t0);
+    // It came from 7 rows up; the slide starts one row past the top at most
+    const RowSlide::Slide* down = s.find(20);
+    REQUIRE(down);
+    CHECK(down->fromSlot == -1);
+    CHECK(down->toSlot == 2);
+}
+
+TEST_CASE("row slide: forget() snaps the rows, and the next rebuild slides nothing") {
+    RowSlide s;
+    const int64_t t0 = 1000000;
+    commitRows(s, { 10, 20 }, 1, t0);
+    commitRows(s, { 20, 10 }, 1, t0);
+    REQUIRE(s.active());
+    s.forget();
+    CHECK_FALSE(s.active());
+    commitRows(s, { 10, 20 }, 1, t0);
+    CHECK_FALSE(s.active());   // nothing to compare with: no slide
+    commitRows(s, { 20, 10 }, 1, t0);
+    CHECK(s.active());
 }

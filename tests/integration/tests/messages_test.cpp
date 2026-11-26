@@ -183,6 +183,37 @@ TEST_CASE("messages: the hide-all card shows through hide-all, and only that car
     host.shutdown();
 }
 
+TEST_CASE("messages: the Decks hotkey flips the Decks master and toasts the way back") {
+    cleanSaveDir();
+    // Ships unbound, like the Widgets master.
+    REQUIRE(ini::writeFile(kIniPath, "[Hotkeys]\nall_decks_key=113\nall_decks_mod=0\n"));
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    startQuiet(host);
+    host.setMasterEnabled(PluginHost::Master::Decks, true);   // off for a new install
+    onTrack(host);
+    host.draw();
+
+    REQUIRE(host.injectHotkey("all_decks"));
+    host.draw();
+    host.draw();
+    CHECK(host.messageShowing() == "Decks hidden");
+    // ...and the card opens the Decks tab (SettingsHud::TAB_DECKS = 35), not Widgets.
+    CHECK(host.lastMessage().rfind("Decks hidden|Press F2 to show them again|eye-slash|35|", 0) == 0);
+    REQUIRE(host.save());
+    CHECK(ini::readFile(kIniPath).find("decksEnabled=0") != std::string::npos);
+
+    const unsigned int posted = host.messagesPosted();
+    REQUIRE(host.injectHotkey("all_decks"));
+    host.draw();
+    host.draw();
+    CHECK(host.messagesPosted() == posted);
+    CHECK(host.messageShowing().empty());
+    REQUIRE(host.save());
+    CHECK(ini::readFile(kIniPath).find("decksEnabled=1") != std::string::npos);
+    host.shutdown();
+}
+
 TEST_CASE("messages: [Messages] enabled=0 drops toasts and survives a save") {
     cleanSaveDir();
     REQUIRE(ini::writeFile(kIniPath, "[Messages]\nenabled=0\nwelcomed=1\n"));
@@ -253,15 +284,16 @@ TEST_CASE("messages: a fresh install opens the Dash on the welcome, and opening 
         CHECK(host.startupMessage(&onCard) == MSG_WELCOME);
         CHECK(onCard == MSG_WELCOME);
         CHECK(host.dashPage() == PAGE_NOTICES);
+        // The Dash ships off: it is borrowed for the welcome, and only for it
+        CHECK(host.hudVisible("dash_hud") == 0);
+        CHECK(host.dashBorrowed() == 1);
 
         host.showSettings(true);
         host.draw();
         CHECK(host.startupMessage() == MSG_NONE);
         host.showSettings(false);
         host.draw();
-        host.startupMessage(&onCard);
-        CHECK(onCard == MSG_NONE);
-        CHECK(host.dashPage() == PAGE_TIMING);   // the rider's page is back
+        CHECK(host.dashBorrowed() == 0);   // answered: the Dash goes with it
         REQUIRE(host.save());
         host.shutdown();
     }
@@ -280,13 +312,15 @@ TEST_CASE("messages: a fresh install opens the Dash on the welcome, and opening 
 }
 
 // The default setup notice (no setup loaded) is up first: it keeps the card,
-// and the welcome takes it once the notice is gone.
+// and the welcome takes it once the notice is gone. With the Dash switched on:
+// switched off (as it ships), it is borrowed for the welcome alone.
 TEST_CASE("messages: a notice outranks the welcome on the card") {
     cleanSaveDir();
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.keepStartupMessages();
     host.startup(kSaveWin);
+    REQUIRE(host.setHudVisibleBoth("dash_hud", true));
     onTrack(host);
     host.draw();
     int onCard = -1;
@@ -514,10 +548,11 @@ TEST_CASE("messages: a click on the Dash's card opens the tab the message names"
 }
 
 // Switched off, the Dash still shows for an update or an "Updated to" (the
-// latter only while the update checker is on, its own setting), never for the
-// welcome; it holds back Notices/Timing where it lands on them. They open under
-// the Dash, so this drags Timing up onto it the way a player can.
-TEST_CASE("messages: a Dash switched off shows for the update messages, not the welcome") {
+// latter only while the update checker is on, its own setting), and for the
+// welcome, since a new install ships it off; it holds back Notices/Timing where
+// it lands on them. They open under the Dash, so this drags Timing up onto it
+// the way a player can.
+TEST_CASE("messages: a Dash switched off shows for the startup messages") {
     cleanSaveDir();
     {
         PluginHost host(dllPath());
@@ -570,7 +605,7 @@ TEST_CASE("messages: a Dash switched off shows for the update messages, not the 
         REQUIRE(host.setHudVisible("dash_hud", false));
         host.draw();
         REQUIRE(host.startupMessage() == MSG_WELCOME);
-        CHECK(host.dashBorrowed() == 0);
+        CHECK(host.dashBorrowed() == 1);   // a new install ships with the Dash off
         host.shutdown();
     }
 }
@@ -637,6 +672,7 @@ TEST_CASE("messages: one HUD on at the first Draw is not \"all hidden\"") {
     startQuiet(host);
     host.setEveryHudVisible(false);
     REQUIRE(host.setHudVisibleBoth("achievement_widget", true));
+    host.setMasterEnabled(PluginHost::Master::Widgets, true);   // off for a new install
     REQUIRE(host.setHudVisibleBoth("lap_widget", true));
     onTrack(host);
     const unsigned int before = host.messagesPosted();
@@ -655,7 +691,7 @@ TEST_CASE("messages: a widget under the Widgets master switch does not count as 
     host.setEveryHudVisible(false);
     REQUIRE(host.setHudVisibleBoth("achievement_widget", true));
     REQUIRE(host.setHudVisibleBoth("lap_widget", true));
-    host.setWidgetsEnabled(false);                                 // saved master switch off
+    host.setMasterEnabled(PluginHost::Master::Widgets, false);                                 // saved master switch off
     onTrack(host);
     const unsigned int before = host.messagesPosted();
     host.draw();

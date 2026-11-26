@@ -143,6 +143,128 @@ SOFTWARE.
 
 ---
 
+## NSIS (Nullsoft Scriptable Install System)
+
+**Project:** https://nsis.sourceforge.io
+**Author:** NSIS Contributors
+**Used for:** The Windows installer. Setup.exe and its uninstaller contain the
+NSIS installer stub, the nsDialogs, LangDLL and System plug-ins, the Modern UI
+icons and the LZMA decompression module
+
+```
+Copyright (C) 1999-2021 Nullsoft and Contributors
+
+This software is provided 'as-is', without any express or implied warranty. In
+no event will the authors be held liable for any damages arising from the use
+of this software.
+
+Permission is granted to anyone to use this software for any purpose, including
+commercial applications, and to alter it and redistribute it freely, subject to
+the following restrictions:
+
+  1. The origin of this software must not be misrepresented; you must not claim
+     that you wrote the original software. If you use this software in a
+     product, an acknowledgment in the product documentation would be
+     appreciated but is not required.
+
+  2. Altered source versions must be plainly marked as such, and must not be
+     misrepresented as being the original software.
+
+  3. This notice may not be removed or altered from any source distribution.
+```
+
+The LZMA compression module for NSIS, by Igor Pavlov and Amir Szekely, is
+licensed under the Common Public License version 1.0 and used unmodified, under
+the special exception below. It is provided without warranty of any kind,
+express or implied, and its contributors exclude all liability for damages, as
+set out in that license. Its source code is available from
+https://nsis.sourceforge.io.
+
+```
+SPECIAL EXCEPTION FOR LZMA COMPRESSION MODULE
+
+Igor Pavlov and Amir Szekely, the authors of the LZMA compression module for
+NSIS, expressly permit you to statically or dynamically link your code (or bind
+by name) to the files from the LZMA compression module for NSIS without
+subjecting your linked code to the terms of the Common Public license version
+1.0. Any modifications or additions to files from the LZMA compression module
+for NSIS, however, are subject to the terms of the Common Public License version
+1.0.
+```
+
+---
+
+## WiX Toolset
+
+**Project:** https://wixtoolset.org
+**Author:** .NET Foundation and contributors
+**Used for:** The MSI installer (`mxbmrp3-Setup.msi`). It contains the WixUI
+dialogs, bitmaps and icons and the WixToolset.Util custom action library
+(used to delete a folder tree), from WiX Toolset 5.0.2, used unmodified.
+Their source code is available from
+https://github.com/wixtoolset/wix/tree/v5.0.2
+
+```
+Copyright (c) .NET Foundation and contributors.
+
+Microsoft Reciprocal License (MS-RL)
+
+This license governs use of the accompanying software. If you use the software,
+you accept this license. If you do not accept the license, do not use the
+software.
+
+1. Definitions
+The terms "reproduce," "reproduction," "derivative works," and "distribution"
+have the same meaning here as under U.S. copyright law.
+A "contribution" is the original software, or any additions or changes to the
+software.
+A "contributor" is any person that distributes its contribution under this
+license.
+"Licensed patents" are a contributor's patent claims that read directly on its
+contribution.
+
+2. Grant of Rights
+(A) Copyright Grant- Subject to the terms of this license, including the license
+conditions and limitations in section 3, each contributor grants you a
+non-exclusive, worldwide, royalty-free copyright license to reproduce its
+contribution, prepare derivative works of its contribution, and distribute its
+contribution or any derivative works that you create.
+(B) Patent Grant- Subject to the terms of this license, including the license
+conditions and limitations in section 3, each contributor grants you a
+non-exclusive, worldwide, royalty-free license under its licensed patents to
+make, have made, use, sell, offer for sale, import, and/or otherwise dispose of
+its contribution in the software or derivative works of the contribution in the
+software.
+
+3. Conditions and Limitations
+(A) Reciprocal Grants- For any file you distribute that contains code from the
+software (in source code or binary format), you must provide recipients the
+source code to that file along with a copy of this license, which license will
+govern that file. You may license other files that are entirely your own work
+and do not contain code from the software under any terms you choose.
+(B) No Trademark License- This license does not grant you rights to use any
+contributors' name, logo, or trademarks.
+(C) If you bring a patent claim against any contributor over patents that you
+claim are infringed by the software, your patent license from such contributor
+to the software ends automatically.
+(D) If you distribute any portion of the software, you must retain all
+copyright, patent, trademark, and attribution notices that are present in the
+software.
+(E) If you distribute any portion of the software in source code form, you may
+do so only under this license by including a complete copy of this license with
+your distribution. If you distribute any portion of the software in compiled or
+object code form, you may only do so under a license that complies with this
+license.
+(F) The software is licensed "as-is." You bear the risk of using it. The
+contributors give no express warranties, guarantees or conditions. You may have
+additional consumer rights under your local laws which this license cannot
+change. To the extent permitted under your local laws, the contributors exclude
+the implied warranties of merchantability, fitness for a particular purpose and
+non-infringement.
+```
+
+---
+
 ## stb_truetype
 
 **Project:** https://github.com/nothings/stb
@@ -375,12 +497,48 @@ Copyright 2020 The Space Grotesk Project Authors (https://github.com/floriankars
 
 **Project:** https://fonts.google.com/specimen/VT323
 **Designer:** Peter Hull
-**Used for:** UI font (Retro themes)
+**Used for:** UI font
 
 ```
 SIL Open Font License, Version 1.1
 
 Copyright 2011, The VT323 Project Authors (peter.hull@oikoi.com)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is available with a FAQ at: https://scripts.sil.org/OFL
+```
+
+---
+
+## Press Start 2P
+
+**Project:** https://fonts.google.com/specimen/Press+Start+2P
+**Designer:** CodeMan38
+**Used for:** UI font (Retro themes)
+
+```
+SIL Open Font License, Version 1.1
+
+Copyright 2012 The Press Start 2P Project Authors (cody@zone38.net),
+with Reserved Font Name "Press Start 2P".
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is available with a FAQ at: https://scripts.sil.org/OFL
+```
+
+---
+
+## Silkscreen
+
+**Project:** https://fonts.google.com/specimen/Silkscreen
+**Designer:** Jason Kottke
+**Used for:** UI font
+
+```
+SIL Open Font License, Version 1.1
+
+Copyright 2001 The Silkscreen Project Authors
+(https://github.com/googlefonts/silkscreen)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is available with a FAQ at: https://scripts.sil.org/OFL
@@ -467,7 +625,7 @@ This license is available with a FAQ at: https://openfontlicense.org
 
 **Project:** https://fonts.google.com/specimen/Tomorrow
 **Designer:** Tony de Marco, Monica Rizzolli
-**Used for:** UI font (SemiBold Italic and Bold Italic)
+**Used for:** UI font (SemiBold Italic and Bold Italic; Cabinet themes)
 
 ```
 SIL Open Font License, Version 1.1
@@ -527,7 +685,7 @@ OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
 
 **Project:** https://fonts.google.com/specimen/Audiowide
 **Designer:** Astigmatic
-**Used for:** UI font
+**Used for:** UI font (Cabinet themes)
 
 ```
 SIL Open Font License, Version 1.1
@@ -643,8 +801,8 @@ installer, into `mxbmrp3_data\`.
 Applies to: Font Awesome (font builds), IBM Plex Sans, IBM Plex Mono, Roboto
 Mono, Fuzzy Bubbles, Tiny5, DSEG, Doto, Chakra Petch, Quantico, Tomorrow,
 Audiowide, Caveat Brush, Reenie Beanie, Gloria Hallelujah, Geist, Geist Mono,
-Inter, Manrope, Open Sans, Outfit, Sora, Space Grotesk, VT323. Each font's own
-copyright notice is in its entry above.
+Inter, Manrope, Open Sans, Outfit, Sora, Space Grotesk, VT323, Press Start 2P,
+Silkscreen. Each font's own copyright notice is in its entry above.
 
 ```
 -----------------------------------------------------------

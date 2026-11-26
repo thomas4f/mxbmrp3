@@ -106,6 +106,11 @@ public:
     const std::vector<SPluginQuad_t>& getGameQuads() const { return m_quads; }
     const std::vector<SPluginString_t>& getGameStrings() const { return m_strings; }
     const std::vector<SPluginQuad_t>& getCompanionQuads() const { return m_companionQuads; }
+    const std::vector<SPluginString_t>& getCompanionStrings() const { return m_companionStrings; }
+    // The cut ranges (core/render_clip.h) last frame handed a surface's renderer.
+    const std::vector<hudclip::Clip>& frameClips(bool companion) const {
+        return companion ? m_companionLayers.clips : m_gameLayers.clips;
+    }
 
     // Every registered HUD, in draw order. For test introspection only (the grid
     // sweep in core/test_hooks.cpp): asking "is ANY panel off the lattice" needs the
@@ -300,16 +305,37 @@ public:
     bool isSettingsVisible() const;
 
     // Visibility queries for optimization (allows PluginData to skip processing)
-    // Returns true if TelemetryHud is visible and needs history buffer updates
-    bool isTelemetryHistoryNeeded() const;
+    // Returns true if anything draws the telemetry history (the Telemetry HUD,
+    // the Dash's Telemetry page, the Inputs deck), `except` left out.
+    bool isTelemetryHistoryNeeded(const BaseHud* except = nullptr) const;
+    // A history user's show edge: the history starts fresh, unless another
+    // user is drawing it (that one's lines would vanish).
+    void startTelemetryHistory(const BaseHud* user);
 
-    // Widgets master toggle (hides all widgets without changing individual states)
     // The hide-all-HUDs hotkey's state (the settings menu, the pointer and the
     // toast widget's dequeue read it; the setter is the test hook's road in).
     bool areHudsEnabled() const { return !m_bAllHudsToggledOff; }
     void setHudsEnabled(bool enabled) { m_bAllHudsToggledOff = !enabled; }
-    bool areWidgetsEnabled() const { return !m_bAllWidgetsToggledOff; }
-    void setWidgetsEnabled(bool enabled) { m_bAllWidgetsToggledOff = !enabled; }
+
+    // The master switches: each hides a whole tab's family (every widget,
+    // every deck) without touching any member's own on/off. ONE mechanism for
+    // all of them -- the tab checkbox, the hotkey, the saved key, the analytics
+    // flag and the hiding all read masterGroupInfo(); a new family is one
+    // enum value and one table row.
+    enum class MasterGroup { Widgets, Decks, Count };
+    static constexpr int MASTER_GROUP_COUNT = static_cast<int>(MasterGroup::Count);
+    static_assert(MASTER_GROUP_COUNT == 2, "a new master switch needs its new-install state in m_groupOff");
+    struct MasterGroupInfo {
+        HotkeyAction hotkey;        // flips it, with a toast while hidden
+        int tab;                    // SettingsHud::Tab whose sidebar checkbox it is
+        const char* savedKey;       // [Global] key
+        const char* analyticsKey;   // feat_* flag
+    };
+    static const MasterGroupInfo& masterGroupInfo(MasterGroup group);
+    bool isGroupEnabled(MasterGroup group) const { return !m_groupOff[static_cast<int>(group)]; }
+    void setGroupEnabled(MasterGroup group, bool enabled) { m_groupOff[static_cast<int>(group)] = !enabled; }
+    // The group whose sidebar checkbox sits on this tab, or Count for none.
+    static MasterGroup groupForTab(int tab);
 
     // Track centerline data handling
     // raceData: float array [S/F, split1, split2, holeshot] in meters along centerline,
@@ -343,7 +369,12 @@ public:
     // not on screen cannot take a click through the prompt (it did: the draw
     // pass skipped it while the input pass still fed it). The Toggles strip
     // and the pointer are not held back; they are how the menu comes back.
+    // The toast card stands down the same way while the Notice deck carries
+    // the toasts (noticeDeckCarriesToasts): one toast, one place.
     bool standsDown(const BaseHud* hud) const;
+    // The Notice deck is on (and decks are not toggled off): it shows the
+    // toasts, through one queue with the race notices.
+    bool noticeDeckCarriesToasts() const;
     // True for a HUD the frame is not drawing for a reason OTHER than its own
     // visibility flag: the prompt above, the hide-all-HUDs hotkey, the widgets
     // toggle. The one answer the draw pass and the input pass share, so a HUD
@@ -354,13 +385,20 @@ public:
     // This frame's left click lands on `hud`: the topmost HUD shown under it,
     // the same pick a right-drag makes (BaseHud::ownsClick is the per-HUD view).
     bool ownsClick(const BaseHud* hud) const { return hud && hud == m_pClickOwner; }
+    // The showing pointer rests on `hud`, the topmost shown under it on the game
+    // window: the click's pick, so a wheel tick (core/mouse_wheel.h) never
+    // reaches a HUD list under the settings panel or another HUD.
+    bool ownsWheel(const BaseHud* hud) const { return hud && hud == m_pWheelOwner; }
     // Notices or Timing while the Dash, switched off, is shown for a message
     // (DashHud::isBorrowed) over them: their text under its card made both
     // unreadable, and a player who switched the Dash off kept them where it sits.
     bool coveredByBorrowedDash(const BaseHud* hud) const;
-    // The widgets the Widgets toggle covers. SessionHud is deliberately not one:
-    // it started as a widget and grew its own tab, so it hides only by itself.
-    bool isWidgetHud(const BaseHud* hud) const;
+    // The HUDs a master switch covers: Widgets = every row of the Widgets tab
+    // (SessionHud is deliberately not one: it started as a widget and grew its
+    // own tab, so it hides only by itself); Decks = every row of the Decks tab.
+    bool inGroup(MasterGroup group, const BaseHud* hud) const;
+    // Hidden by a master switch that is off.
+    bool heldByGroup(const BaseHud* hud) const;
     class SpeedoWidget& getSpeedoWidget() const { assert(m_pSpeedo && "HudManager not initialized"); return *m_pSpeedo; }
     class TachoWidget& getTachoWidget() const { assert(m_pTacho && "HudManager not initialized"); return *m_pTacho; }
     class TimingHud& getTimingHud() const { assert(m_pTiming && "HudManager not initialized"); return *m_pTiming; }
@@ -382,15 +420,24 @@ public:
     class GamepadWidget& getGamepadWidget() const { assert(m_pGamepad && "HudManager not initialized"); return *m_pGamepad; }
     class LeanWidget& getLeanWidget() const { assert(m_pLean && "HudManager not initialized"); return *m_pLean; }
     class SlideWidget& getSlideWidget() const { assert(m_pSlide && "HudManager not initialized"); return *m_pSlide; }
+#if GAME_HAS_WHEELIE
     class WheelieWidget& getWheelieWidget() const { assert(m_pWheelie && "HudManager not initialized"); return *m_pWheelie; }
+#endif
     class GForceWidget& getGForceWidget() const { assert(m_pGforce && "HudManager not initialized"); return *m_pGforce; }
     class CompassWidget& getCompassWidget() const { assert(m_pCompass && "HudManager not initialized"); return *m_pCompass; }
     class ClockWidget& getClockWidget() const { assert(m_pClock && "HudManager not initialized"); return *m_pClock; }
     // Nullable, like the achievement widget: the Widgets tab and the serializer
     // both null-check rather than assert, so a build without it is not a crash.
     class PrestigeWidget* getPrestigeWidget() const { return m_pPrestige; }
+    // Nullable too: MX Bikes only (GAME_HAS_RIDER_STANCE).
+    class StanceWidget* getStanceWidget() const { return m_pStance; }
     class RpmWidget& getRpmWidget() const { assert(m_pRpm && "HudManager not initialized"); return *m_pRpm; }
     class NowPlayingWidget& getNowPlayingWidget() const { assert(m_pNowPlaying && "HudManager not initialized"); return *m_pNowPlaying; }
+    // A deck by DeckHud::Kind index; nullable (Combo needs GAME_HAS_FMX),
+    // so callers null-check.
+    class DeckHud* getDeckHud(int kind) const { return kind >= 0 && kind < DECK_HUD_COUNT ? m_pDecks[kind] : nullptr; }
+    // Every deck's slot: one per kind, then the carousel's (DeckHud::SLOT_COUNT)
+    static constexpr int DECK_HUD_COUNT = 17;
 #if GAME_HAS_TYRE_TEMP
     class TyreTempWidget& getTyreTempWidget() const { assert(m_pTyreTemp && "HudManager not initialized"); return *m_pTyreTemp; }
 #endif
@@ -473,7 +520,7 @@ private:
                    m_pFmxHud(nullptr),
                    m_pEventLog(nullptr),
                    m_pBenchmark(nullptr),
-                   m_bAllHudsToggledOff(false), m_bAllWidgetsToggledOff(false) {
+                   m_bAllHudsToggledOff(false) {
     }
     ~HudManager();
     HudManager(const HudManager&) = delete;
@@ -510,8 +557,8 @@ private:
     // BaseHud::shadowLastIcon, and leave the local indices shadowed, ascending, in
     // m_iconShifts - motionFinishHud and recordLayerSpan map local indices through
     // them. iconShiftsUpTo: how many of them sit at or before local index `local`.
-    void appendHudQuads(const BaseHud& hud, std::vector<SPluginQuad_t>& outQuads,
-                        bool shadowTitleIcon, bool hudShadow);
+    void appendHudQuads(const BaseHud& hud, const std::vector<SPluginQuad_t>& hudQuads,
+                        std::vector<SPluginQuad_t>& outQuads, bool shadowTitleIcon, bool hudShadow);
     static size_t iconShiftsUpTo(const std::vector<int>* shifts, int local);
     std::vector<int> m_iconShifts;
     // Whether collectSurface draws this HUD on a surface this frame: shown there,
@@ -557,6 +604,8 @@ private:
     // The HUD this frame's left click landed on, or null (no click, no pointer,
     // or nothing under it). Resolved once per frame before any HUD updates.
     BaseHud* m_pClickOwner = nullptr;
+    // The HUD on top under the pointer while it shows, or null; for the wheel.
+    BaseHud* m_pWheelOwner = nullptr;
 
     // Timestamp of the previous Draw call. A long gap means the game stopped drawing us
     // (menu / loading); when it resumes we treat it as "entered the track" and flash the
@@ -611,8 +660,10 @@ private:
     class CompassWidget* m_pCompass;
     class ClockWidget* m_pClock;
     class PrestigeWidget* m_pPrestige = nullptr;
+    class StanceWidget* m_pStance = nullptr;
     class RpmWidget* m_pRpm = nullptr;
     class NowPlayingWidget* m_pNowPlaying = nullptr;
+    class DeckHud* m_pDecks[DECK_HUD_COUNT] = {};
 #if GAME_HAS_TYRE_TEMP
     class TyreTempWidget* m_pTyreTemp;
 #endif
@@ -630,7 +681,11 @@ private:
 
     // Temporary HUD visibility toggle (doesn't modify actual visibility state)
     bool m_bAllHudsToggledOff;
-    bool m_bAllWidgetsToggledOff;
+    // The master switches (MasterGroup), OFF for a new install: their members
+    // keep their own on/off (the widget set, the starter decks), so one click on
+    // the strip shows a whole family. No migration: every file since the
+    // Widgets switch states it, and no released file has a deck on.
+    bool m_groupOff[MASTER_GROUP_COUNT] = { true, true };
     // Set by produceFrame(): true when the display target (COMPANION) means the game
     // gets an empty frame this pass. Read by draw() and by the plugin worker thread.
     bool m_bSuppressInGame = false;
@@ -660,10 +715,12 @@ private:
         std::vector<hudlayers::Span> spans;
         std::vector<hudlayers::Rect> rects;   // scratch, one per span
         std::vector<const BaseHud*> owners;   // per span; null = ghost or grid
+        std::vector<hudclip::Clip> clips;     // core/render_clip.h, in collect order
         int count = 0;
-        void clear() { spans.clear(); rects.clear(); owners.clear(); count = 0; }
+        void clear() { spans.clear(); rects.clear(); owners.clear(); clips.clear(); count = 0; }
         hudlayers::Layers view() const {
-            return { spans.empty() ? nullptr : spans.data(), static_cast<int>(spans.size()), count };
+            return { spans.empty() ? nullptr : spans.data(), static_cast<int>(spans.size()), count,
+                     clips.empty() ? nullptr : clips.data(), static_cast<int>(clips.size()) };
         }
     };
     SurfaceLayers m_gameLayers;
@@ -711,6 +768,9 @@ private:
         size_t ghostUnderFirst = 0, ghostUnderCount = 0;
         std::vector<SPluginQuad_t> ghostQuads;
         std::vector<SPluginString_t> ghostStrings;
+        // Its cut ranges (core/render_clip.h), relative to lastQuad/lastString,
+        // so a ghost on our surfaces is cut as the HUD was.
+        std::vector<hudclip::Clip> lastClips, ghostClips;
     };
     struct MotionSurface {
         std::vector<MotionSlot> slots;
@@ -733,6 +793,20 @@ private:
                                 std::vector<SPluginQuad_t>& outQuads, size_t quadStart,
                                 std::vector<SPluginString_t>& outStrings, size_t stringStart,
                                 const std::vector<int>* iconShifts, bool stringShadows);
+
+    // CLIPPING (hud_manager_clip.cpp, core/render_clip.h), on our surfaces only.
+    // oursSource: when the HUD's marks recolour anything, fill m_oursQuads /
+    // m_oursStrings with its arrays as our renderers draw them; false = draw its
+    // own. recordClips: its cut ranges in this frame's indices (through
+    // m_iconShifts and the string shadows), at its place on this surface, also
+    // kept on its Motion slot for a ghost; recordGhostClips re-adds those.
+    bool oursSource(const BaseHud& hud);
+    void recordClips(SurfaceLayers& layers, const BaseHud& hud, size_t quadStart, size_t stringStart,
+                     bool stringShadows, bool companion, MotionSlot* slot) const;
+    static void recordGhostClips(SurfaceLayers& layers, const MotionSlot& slot, size_t quadStart,
+                                 size_t stringStart);
+    std::vector<SPluginQuad_t> m_oursQuads;
+    std::vector<SPluginString_t> m_oursStrings;
 
     // Resource management - dynamically sized based on discovered assets
     // In-context GL renderer state. Not a unique_ptr because hudgl::Renderer is

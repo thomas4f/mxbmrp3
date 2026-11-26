@@ -2,7 +2,7 @@
 // core/media_manager.h
 // The "Now playing" integration: reads whatever media player Windows
 // is showing in its volume flyout (Spotify, a browser tab, foobar, ...) and
-// sends it previous / play-pause / next.
+// sends it previous / play-pause / next, shuffle, loop and a new position.
 //
 // SOURCE. Windows' Global System Media Transport Controls (GSMTC,
 // Windows.Media.Control) through C++/WinRT -- the same windowsapp.lib the
@@ -19,6 +19,11 @@
 // to the in-game font's CP1252 and publishes a Snapshot under m_mutex, bumping
 // revision() only when something shown changed. The game thread never formats:
 // a consumer compares revision() and copies the snapshot on a change.
+//
+// SHUFFLE, LOOP, SEEK. Each player says which of them it takes (its
+// session's Controls), and the snapshot carries that, so a control the player
+// refuses is drawn muted and sends nothing. The worker logs the answer when it
+// changes, so a log shows what a player allows.
 //
 // PLAYERS. With [General] nowPlayingApps (INI-only, core/media_app_filter.h)
 // empty, the worker follows Windows' current session, which moves between
@@ -52,7 +57,10 @@ public:
         PLAYING
     };
 
-    enum class Command : int { NONE, PREVIOUS, TOGGLE_PLAY, NEXT };
+    enum class Command : int { NONE, PREVIOUS, TOGGLE_PLAY, NEXT, TOGGLE_SHUFFLE, CYCLE_LOOP };
+
+    // The player's loop mode; CYCLE_LOOP steps OFF -> LIST -> TRACK -> OFF.
+    enum class Loop : int { OFF, TRACK, LIST };
 
     // Everything a consumer draws, pre-formatted on the worker thread. Text is
     // CP1252 (what the .fnt renderer draws); characters it cannot draw are dropped.
@@ -64,6 +72,10 @@ public:
         int positionMs = 0;        // at the moment of the last poll
         int durationMs = 0;
         int volume = -1;           // the player's mixer volume 0..100; -1 = no audio session found
+        bool shuffle = false;
+        Loop loop = Loop::OFF;
+        // What the player takes (its session's Controls).
+        bool canSeek = false, canShuffle = false, canLoop = false;
     };
 
     static MediaManager& getInstance();
@@ -81,6 +93,9 @@ public:
     // shown disabled, like Steam on a non-Steam install.
     static bool isSupported();
 
+    // A track time, "1:23" or "1:02:03" (a negative one reads 0:00).
+    static void formatClock(char* out, size_t outSize, int ms);
+
     // GAME THREAD. [General] nowPlayingApps: the players to follow (comma-
     // separated app-id parts), empty = any. Applied on the worker's next poll.
     void setAppFilter(const char* filter);
@@ -92,6 +107,9 @@ public:
     // GAME THREAD. The player's mixer volume, 0..100; the worker applies the
     // latest one at once (a drag sends many, only the newest is applied).
     void setVolume(int percent);
+    // GAME THREAD. A new position in the track, in ms from its start; the worker
+    // sends it on its next wake (immediately). A newer one replaces an unsent one.
+    void seekTo(int positionMs);
 
     // Any thread. Bumped by the worker whenever the snapshot changes.
     uint32_t revision() const { return m_revision.load(std::memory_order_acquire); }
@@ -103,6 +121,7 @@ public:
     void publishForTest(const Snapshot& next) { publish(next); }
     int pendingCommandForTest() const { return m_pendingCommand.load(); }
     int pendingVolumeForTest() const { return m_pendingVolume.load(); }
+    int pendingSeekForTest() const { return m_pendingSeekMs.load(); }
 #endif
 
 private:
@@ -128,6 +147,7 @@ private:
     std::atomic<bool> m_abandonCleanup{false};
     std::atomic<int> m_pendingCommand{static_cast<int>(Command::NONE)};
     std::atomic<int> m_pendingVolume{-1};   // 0..100, -1 = none
+    std::atomic<int> m_pendingSeekMs{-1};   // ms from the track's start, -1 = none
     std::atomic<uint32_t> m_revision{0};
 
     mutable Mutex m_mutex;

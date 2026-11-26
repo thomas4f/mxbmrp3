@@ -2,8 +2,8 @@
 // hud/standings_live_order.h
 // Standings' optional live running order: the official classification, with
 // passes the track positions have shown for at least HOLD_MS applied ahead of
-// the game's own update. The Position widget and the Dash's Standings page
-// read it too, through StandingsHud::runningOrder(). Pure integer logic; no
+// the game's own update. Every reader of the running order gets it through
+// PluginData's RunningOrder (core/running_order.h). Pure integer logic; no
 // PluginData, no BaseHud.
 //
 // WHY. The game updates positions only when a rider crosses a split or the

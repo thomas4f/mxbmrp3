@@ -54,11 +54,17 @@ public:
     // The Notices tab's settings, which the shared NoticeTracker steps with.
     uint32_t getEnabledNotices() const { return m_enabledNotices; }
     int getNoticeDurationMs() const { return m_noticeDurationMs; }
-    // A notice's slab in this HUD's colours: the fill whose colour is the message
+    // A notice's slab in `colors`' colours: the fill whose colour is the message
     // (still to take the slab's opacity) and the caption ink on it at `opacity`.
-    // The Dash's Notices page draws its slab from this, so the two never disagree.
-    void slabColors(NoticeTracker::Kind kind, float opacity, float panelOpacity, unsigned long& fill,
-                    unsigned long& ink) const;
+    // This HUD and the Dash's Notices page (which passes this HUD, as every page
+    // follows its parent) draw their slab from it, so the two never disagree.
+    static void slabColors(const BaseHud& colors, NoticeTracker::Kind kind, float opacity, float panelOpacity,
+                           unsigned long& fill, unsigned long& ink);
+    // The notice's colour as a word on a plain card rather than a slab, in
+    // `colors`' colours: the slab's colour, or for the neutral notices, whose
+    // slab is the background, the caption's. The Notice deck passes itself: a
+    // deck takes no HUD's settings, so recolouring this HUD leaves it alone.
+    static unsigned long messageColor(const BaseHud& colors, NoticeTracker::Kind kind);
     // The notices that call for action now (wrong way, hazard, rider oncoming, blue
     // flag) glow behind their slab (BaseHud::addGlow), here and on the Dash; the
     // informational ones (PBs, lapper ahead, last lap...) do not. Reach is a share

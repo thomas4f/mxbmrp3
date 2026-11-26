@@ -26,7 +26,7 @@ public:
     // rule and why the two widgets each hold their own.
     const std::string& getGaugesPack() const { return m_gaugesPack; }
     void setGaugesPack(const std::string& name);
-    const GaugesAsset* activePack() const;
+    const GaugesAsset* activeLayout() const;
 
     // Needle color (configurable via INI). Stored vs effective -- see
     // TachoWidget::setNeedleColor for why there are two.

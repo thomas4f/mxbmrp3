@@ -16,7 +16,8 @@
 //
 // Patched: QueryPerformanceCounter / QueryPerformanceFrequency, GetTickCount /
 // GetTickCount64, GetSystemTimeAsFileTime, GetSystemTime / GetLocalTime, msvcrt
-// _time64, and GetProcAddress for the clocks looked up by name. NOT patched: waits
+// _time64, GetProcAddress for the clocks looked up by name, and any of those
+// pointers the DLL had already cached at load (see install()). NOT patched: waits
 // and sleeps (WaitForSingleObject, Sleep) - a worker's timed wait still elapses
 // in real time, which is harmless here because simulated time only moves
 // forward while the driver pumps frames. Wall-clock dates are pinned to one
@@ -184,6 +185,35 @@ inline int install(HMODULE mod) {
                 ++patchCount();
                 *slot = r.to;
                 VirtualProtect(slot, sizeof(void*), old, &old);
+            }
+        }
+    }
+    // A clock the DLL resolved BEFORE this ran never passes through an import
+    // slot or vGetProcAddress: mingw-w64 13's winpthreads (Ubuntu 26.04) looks
+    // GetSystemTimePreciseAsFileTime up in a static constructor, at LoadLibrary,
+    // and system_clock::now() calls that cached pointer - so Event Log CLOCK
+    // stamps showed the real time and the frame hash differed run to run, where
+    // mingw-w64 11 resolved it on first use and was caught above. Such pointers
+    // sit in the image's writable data holding the real function's address, so
+    // find them by that value. Pinned by the ledger's run-1 == run-2 check.
+    if (HMODULE k32 = GetModuleHandleA("kernel32.dll")) {
+        const struct { const char* fn; void* to; } cached[] = {
+            { "GetSystemTimePreciseAsFileTime", reinterpret_cast<void*>(&vFileTime) },
+            { "GetSystemTimeAsFileTime",        reinterpret_cast<void*>(&vFileTime) },
+            { "GetTickCount64",                 reinterpret_cast<void*>(&vTick64) },
+            { "QueryPerformanceCounter",        reinterpret_cast<void*>(&vQpc) },
+        };
+        void* real[4];
+        for (int i = 0; i < 4; ++i) real[i] = reinterpret_cast<void*>(GetProcAddress(k32, cached[i].fn));
+        IMAGE_SECTION_HEADER* sec = IMAGE_FIRST_SECTION(nt);
+        for (WORD s = 0; s < nt->FileHeader.NumberOfSections; ++s, ++sec) {
+            if (!(sec->Characteristics & IMAGE_SCN_MEM_WRITE)) continue;
+            auto** p = reinterpret_cast<void**>(base + sec->VirtualAddress);
+            const size_t n = sec->Misc.VirtualSize / sizeof(void*);
+            for (size_t w = 0; w < n; ++w) {
+                for (int i = 0; i < 4; ++i) {
+                    if (real[i] && p[w] == real[i]) { p[w] = cached[i].to; ++patchCount(); }
+                }
             }
         }
     }

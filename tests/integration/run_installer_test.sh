@@ -12,6 +12,7 @@
 #   - partial uninstall removes one game, keeps the others, repoints the entry
 #   - full uninstall deletes the key entirely
 #   - remove-all-data uninstall (/UDATA=1) deletes the savepath data folder
+#   - the analytics opt-out and the picked language reach install_prefs.ini
 #
 # WHY the /ELEVATED command-line path: the wizard collects the game selection on
 # nsDialogs pages, which a headless run can't drive deterministically. The elevated
@@ -108,7 +109,7 @@ assert_no_file_eventually() {
 # flake was exactly the lost race on a cold runner starting six jobs at once.
 assert_self_delete() {
   local i
-  for i in $(seq 1 40); do
+  for i in $(seq 1 120); do   # ~30s; a pass returns at once, only a lost race waits
     [ ! -e "$1" ] && { pass "$2"; return; }
     sleep 0.25
   done
@@ -120,6 +121,10 @@ assert_self_delete() {
     pass "$2 (pending delete at reboot: self-delete race lost, /REBOOTOK fallback held)"
   else
     fail "$2 (still present after wait, and no pending delete registered: $1)"
+    # Lost again on the GitHub runner on 21 Nov 2026 (10s wait), never in a
+    # container on the same Ubuntu 26.04 + Wine 10.0. Name what was still
+    # running: an Au_.exe means the temp copy had not reached its Delete yet.
+    echo "    still running: $(ps -eo args= | grep -i '\.exe' | grep -v grep | tr '\n' ';')"
   fi
 }
 
@@ -460,10 +465,16 @@ assert_file "${MXB}/mxbmrp3_data/gauges/testgauges/gauge.ini" "canonical pack in
 # named after its own type is the case the old NSIS pruning destroyed.
 assert_file "${MXB}/mxbmrp3_data/gauges/testgauges/testgauges.ini" "Setup leaves the pre-rename ini alone"
 assert_file "${MXB}/mxbmrp3_data/gauges/gauge/gauge.ini" "a pack named after its own type keeps its ini"
-# Leaving the Privacy page's box ticked must write NOTHING. A marker that appeared
-# on a default install would opt every silent/default installation OUT of analytics
-# -- silent in exactly the direction nobody would report.
-assert_no_file "${MXB}/mxbmrp3_data/install_prefs.ini"   "no opt-out marker on a default install"
+# Leaving the Privacy page's box ticked must write NO opt-out line. One that
+# appeared on a default install would opt every silent/default installation OUT of
+# analytics -- silent in exactly the direction nobody would report. The file itself
+# is there: it always carries Setup's language (core/install_prefs.h).
+assert_file "${MXB}/mxbmrp3_data/install_prefs.ini"      "install prefs written"
+grep -q "analyticsOptOut" "${MXB}/mxbmrp3_data/install_prefs.ini" 2>/dev/null \
+  && fail "a default install wrote an analytics opt-out" || pass "no opt-out on a default install"
+# Wine runs in English, and no /LANG means the language Setup started in.
+grep -qx "language=en.\?" "${MXB}/mxbmrp3_data/install_prefs.ini" 2>/dev/null \
+  && pass "Setup's language handed to the plugin (English)" || fail "install prefs missing language=en"
 assert_file "${MXB}/mxbmrp3_uninstall.exe"              "uninstaller written"
 [ "$(cat "${MXB}/mxbmrp3.dlo" 2>/dev/null)" = "DLO-MXB" ] && pass "correct dlo payload" || fail "wrong dlo payload"
 reg_has    "${REG_KEY}" "DisplayName"    "MXBMRP3"       "HKLM DisplayName written"
@@ -543,7 +554,7 @@ assert_no_file "${MXB}/mxbmrp3.dlo"                      "plugin removed"
 reg_absent_key "${REG_KEY}"                              "HKLM key removed"
 
 echo ""
-echo "== Case 8: /NOSTATS=1 writes the analytics opt-out marker, and a later install clears it =="
+echo "== Case 8: /NOSTATS=1 writes the analytics opt-out marker; upgrades keep it, a ticked page or Fresh clears it =="
 # The Privacy page's opt-out has to survive the ELEVATION RELAUNCH -- custom pages are
 # skipped in the elevated child, so the choice only arrives as /NOSTATS=1 on its command
 # line. This drives the child directly, which is exactly the path a real elevated install
@@ -560,12 +571,57 @@ grep -q "analyticsOptOut=1" "${MARKER}" 2>/dev/null \
 grep -qE "^stamp=[0-9]" "${MARKER}" 2>/dev/null \
   && pass "marker carries a version stamp" || fail "marker missing a stamp= line"
 
-# Re-installing WITHOUT the flag must clear it: a stale marker left behind would carry
-# an older stamp and re-apply against the new version, silently re-disabling analytics
-# for someone who had turned it back on.
+# An upgrade skips the Privacy page, so the player gave no new answer: the earlier
+# opt-out is kept with its OLD stamp. Dropping it would switch analytics on for a
+# player who opted out and upgraded before ever launching the game; re-stamping it
+# would re-apply it against someone who has since turned analytics back on.
+sed -i 's/^stamp=.*/stamp=1.0.0.0\r/' "${MARKER}"
 "${WINE}" "${SETUP}" /ELEVATED /S "/MXB=$(winpath "${MXB}")" >/dev/null 2>&1
 wineserver -w
-assert_no_file "${MARKER}"                               "stale marker cleared by a later install"
+grep -q "analyticsOptOut=1" "${MARKER}" 2>/dev/null \
+  && pass "an upgrade keeps an earlier opt-out" || fail "an upgrade dropped an earlier opt-out"
+grep -q "^stamp=1.0.0.0" "${MARKER}" 2>/dev/null \
+  && pass "the kept opt-out keeps its old stamp" || fail "the kept opt-out was re-stamped"
+
+# Answering the page with the box TICKED (/ASKED=1, as the parent passes it) clears
+# it: that is the player saying yes, and the page is the only way to say it.
+"${WINE}" "${SETUP}" /ELEVATED /S "/MXB=$(winpath "${MXB}")" /ASKED=1 >/dev/null 2>&1
+wineserver -w
+grep -q "analyticsOptOut" "${MARKER}" 2>/dev/null \
+  && fail "a ticked Privacy page kept the old opt-out" || pass "a ticked Privacy page clears the old opt-out"
+
+# A Fresh install resets the settings, so an earlier opt-out does not carry either.
+"${WINE}" "${SETUP}" /ELEVATED /S "/MXB=$(winpath "${MXB}")" /NOSTATS=1 >/dev/null 2>&1
+wineserver -w
+"${WINE}" "${SETUP}" /ELEVATED /S "/MXB=$(winpath "${MXB}")" /FRESH=1 >/dev/null 2>&1
+wineserver -w
+grep -q "analyticsOptOut" "${MARKER}" 2>/dev/null \
+  && fail "a Fresh install kept the old opt-out" || pass "a Fresh install drops the old opt-out"
+
+"${WINE}" "${MXB}/mxbmrp3_uninstall.exe" /ELEVATED /S "/UMXB=$(winpath "${MXB}")" /UDATA=1 >/dev/null 2>&1
+wineserver -w
+
+echo ""
+echo "== Case 9: the language picked in Setup reaches the plugin and the uninstaller =="
+# The picker runs in the original window; the elevated child gets the choice as
+# /LANG=<LANGID>, which is the path every elevated install takes. 1053 = Swedish.
+# The plugin reads the folder name (sv) on its first launch -- tests/unit/
+# test_install_prefs.cpp -- and the uninstaller reads the LANGID back.
+"${WINE}" "${SETUP}" /ELEVATED /S /LANG=1053 "/MXB=$(winpath "${MXB}")" >/dev/null 2>&1
+wineserver -w
+grep -qx "language=sv.\?" "${MARKER}" 2>/dev/null \
+  && pass "picked language handed to the plugin (sv)" || fail "install prefs missing language=sv"
+reg_has "${REG_KEY}" "Language" "1053"                   "uninstaller language stored"
+# Every pack Setup can hand over must exist, or the plugin ignores the choice
+# (core/install_prefs.h) and the player meets English after picking Swedish.
+for f in "${REPO}"/packaging/lang/*.nsh; do
+  folder=$(sed -n 's/^LangString MXB_PLUGIN_LANG [^"]*"\([^"]*\)".*/\1/p' "$f")
+  if [ "${folder}" = "en" ] || [ -f "${REPO}/mxbmrp3_data/languages/${folder}/strings.po" ]; then
+    pass "$(basename "$f") hands over an installed pack (${folder})"
+  else
+    fail "$(basename "$f") names a missing pack: '${folder}'"
+  fi
+done
 
 "${WINE}" "${MXB}/mxbmrp3_uninstall.exe" /ELEVATED /S "/UMXB=$(winpath "${MXB}")" /UDATA=1 >/dev/null 2>&1
 wineserver -w

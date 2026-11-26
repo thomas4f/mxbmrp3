@@ -126,6 +126,14 @@
     #define GAME_HAS_ECU 0
 #endif
 
+// Rider stance, standing or seated (MX Bikes Beta 21f and newer: the widget
+// waits until the game sends one -- core/rider_stance.h)
+#if defined(GAME_MXBIKES)
+    #define GAME_HAS_RIDER_STANCE 1
+#else
+    #define GAME_HAS_RIDER_STANCE 0
+#endif
+
 // Pit-lane speed limiter (GP Bikes only — MX Bikes/KRP don't report it)
 #if defined(GAME_GPBIKES)
     #define GAME_HAS_PIT_LIMITER 1
@@ -258,6 +266,14 @@
     #define GAME_HAS_FMX 1
 #else
     #define GAME_HAS_FMX 0
+#endif
+
+// A wheelie (bikes only): a kart's angle is always 0 (run_telemetry_handler),
+// so the Wheelie deck and widget would only ever read 0 degrees there.
+#if defined(GAME_MXBIKES) || defined(GAME_GPBIKES)
+    #define GAME_HAS_WHEELIE 1
+#else
+    #define GAME_HAS_WHEELIE 0
 #endif
 
 // Vehicle has suspension (bikes only). Karts have a rigid chassis, so the

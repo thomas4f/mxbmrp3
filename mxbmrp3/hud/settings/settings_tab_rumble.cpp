@@ -277,7 +277,7 @@ BaseHud* SettingsHud::renderTabRumble(SettingsLayoutContext& ctx) {
     };
 
     // Draw the split disclosure caret in the gutter on a splittable row, the same
-    // caret-up the dropdowns use: right = merged, down = split. With UI icons off,
+    // hud-caret-up the dropdowns use: right = merged, down = split. With UI icons off,
     // ">"/"v" in its place, as the dropdowns do (the gutter has no room for "[+]").
     // Returns the row's y for addSplitRegion, which runs AFTER the row: hover takes
     // the first region that matches, so a caret region ahead of the row's tooltip

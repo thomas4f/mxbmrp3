@@ -240,13 +240,16 @@ void AssetManager::reloadPackLayouts(std::vector<Pack>& packs, const char* subdi
         //
         // A SKIN resets to its BASE's geometry, not the built-ins -- and the base
         // is guaranteed already re-read by this loop, because discovery appends
-        // all standalone packs before any skin. (Changing `base` in the ini at
-        // runtime is not honoured: the base binding, like the sprite files, is
-        // discovery-time; a reload re-reads layout only.)
+        // every base before its skins (decks add skins of skins a pass at a time:
+        // Carbon Slant over Slant over Cabinet), so only packs ahead of this one
+        // are searched. (Changing `base` in the ini at runtime is not honoured:
+        // the base binding, like the sprite files, is discovery-time; a reload
+        // re-reads layout only.)
         pack.geometry = decltype(pack.geometry){};
         if (!pack.baseName.empty()) {
             for (const Pack& candidate : packs) {
-                if (candidate.name == pack.baseName && candidate.baseName.empty()) {
+                if (&candidate == &pack) break;
+                if (candidate.name == pack.baseName) {
                     pack.geometry = candidate.geometry;
                     break;
                 }
@@ -367,9 +370,10 @@ void AssetManager::reloadThemeLayouts() {
     reloadPackLayouts(m_pitboards, PITBOARDS_SUBDIR, PackIni::kPitboard, &readPitboardIni,
                       &seedPitboardArt);
     reloadPackLayouts(m_gauges, GAUGES_SUBDIR, PackIni::kGauges, &readGaugeIni);
+    reloadDeckLayouts();   // keyed by theme and style, not a pack folder
 
-    DEBUG_INFO_F("AssetManager: reloaded layout for %zu theme(s), %zu gamepad(s), %zu pitboard(s), %zu gauges pack(s)",
-                 m_themes.size(), m_gamepads.size(), m_pitboards.size(), m_gauges.size());
+    DEBUG_INFO_F("AssetManager: reloaded layout for %zu theme(s), %zu gamepad(s), %zu pitboard(s), %zu gauges pack(s), %zu deck layout(s)",
+                 m_themes.size(), m_gamepads.size(), m_pitboards.size(), m_gauges.size(), m_decks.size());
 }
 
 const ThemeAsset* AssetManager::getThemeByName(const std::string& name) const {
@@ -397,7 +401,7 @@ const ThemeAsset* AssetManager::getThemeByName(const std::string& name) const {
 //
 // Returns false when the root does not exist, which is not an error -- an install
 // without that pack type simply has none.
-static bool listPackDirs(const std::string& root, std::vector<std::string>& dirs) {
+bool listPackDirs(const std::string& root, std::vector<std::string>& dirs) {
     WIN32_FIND_DATAA findData;
     HANDLE hFind = FindFirstFileA((root + "\\*").c_str(), &findData);
     if (hFind == INVALID_HANDLE_VALUE) return false;
@@ -479,11 +483,11 @@ void AssetManager::discoverGamepads() {
         // The base must be a phase-1 pack: present, and baseless itself. One
         // level only -- a chain would make "what does this pack draw" require
         // walking a graph, and a cycle would never terminate.
-        const GamepadAsset* basePack = nullptr;
+        const GamepadAsset* baseLayout = nullptr;
         for (size_t i = 0; i < standaloneGamepads; ++i) {
-            if (m_gamepads[i].name == baseKey) { basePack = &m_gamepads[i]; break; }
+            if (m_gamepads[i].name == baseKey) { baseLayout = &m_gamepads[i]; break; }
         }
-        if (!basePack) {
+        if (!baseLayout) {
             DEBUG_WARN_F("AssetManager: gamepad '%s' skipped - base '%s' is not a "
                          "standalone pack (a base cannot itself declare a base)",
                          dir.c_str(), baseKey.c_str());
@@ -497,7 +501,7 @@ void AssetManager::discoverGamepads() {
         // The base's geometry is the starting point; the skin's ini then
         // overrides only what it states -- the sparse rule, aimed at the base
         // instead of the built-ins.
-        pad.geometry = basePack->geometry;
+        pad.geometry = baseLayout->geometry;
         readGamepadIni(ini, pad);
 
         int w = 0, h = 0;
@@ -603,11 +607,11 @@ void AssetManager::discoverPitboards() {
         const std::string baseKey = readPackStringKey(ini, PackIni::kKeyBase);
         if (baseKey.empty()) continue;
 
-        const PitboardAsset* basePack = nullptr;
+        const PitboardAsset* baseLayout = nullptr;
         for (size_t i = 0; i < standaloneBoards; ++i) {
-            if (m_pitboards[i].name == baseKey) { basePack = &m_pitboards[i]; break; }
+            if (m_pitboards[i].name == baseKey) { baseLayout = &m_pitboards[i]; break; }
         }
-        if (!basePack) {
+        if (!baseLayout) {
             DEBUG_WARN_F("AssetManager: pitboard '%s' skipped - base '%s' is not a "
                          "standalone pack (a base cannot itself declare a base)",
                          dir.c_str(), baseKey.c_str());
@@ -622,7 +626,7 @@ void AssetManager::discoverPitboards() {
         // then the skin's own art re-seeds ONLY if the skin brings its own file,
         // so swapped-in art at a different aspect still draws undistorted; then
         // the skin's ini keys override what they state.
-        board.geometry = basePack->geometry;
+        board.geometry = baseLayout->geometry;
         seedPitboardArt(skinDir, board);
         readPitboardIni(ini, board);
 
@@ -724,11 +728,11 @@ void AssetManager::discoverGauges() {
         const std::string baseKey = readPackStringKey(ini, PackIni::kKeyBase);
         if (baseKey.empty()) continue;
 
-        const GaugesAsset* basePack = nullptr;
+        const GaugesAsset* baseLayout = nullptr;
         for (size_t i = 0; i < standaloneSets; ++i) {
-            if (m_gauges[i].name == baseKey) { basePack = &m_gauges[i]; break; }
+            if (m_gauges[i].name == baseKey) { baseLayout = &m_gauges[i]; break; }
         }
-        if (!basePack) {
+        if (!baseLayout) {
             DEBUG_WARN_F("AssetManager: gauges '%s' skipped - base '%s' is not a "
                          "standalone pack (a base cannot itself declare a base)",
                          dir.c_str(), baseKey.c_str());
@@ -740,7 +744,7 @@ void AssetManager::discoverGauges() {
         set.displayName = generateDisplayName(dir);
         set.baseName = baseKey;
         // Base geometry first, then the skin's own keys override what they state.
-        set.geometry = basePack->geometry;
+        set.geometry = baseLayout->geometry;
         readGaugeIni(ini, set);
 
         int w = 0, h = 0;

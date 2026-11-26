@@ -115,7 +115,7 @@ bool DeltaTracePlot::moveMarker(BaseHud& host, Reference reference) {
 // draw only, over the profile's 201 points; a label is formatted only when
 // its value (or the time format) changed since it was last formatted.
 void DeltaTracePlot::findPeaks() {
-    const bool current = m_profile.live;
+    const bool current = m_profile.current;
     const float* gapMs = current ? m_profile.gapMs : m_profile.prevGapMs;
     const bool* has = current ? m_profile.has : m_profile.prevHas;
     const int from = current ? 0 : std::max(0, m_profile.prevFrom);
@@ -225,19 +225,19 @@ void DeltaTracePlot::addSplitLines(BaseHud& host, float x, float y, float width,
     }
 }
 
-// Both laps: the previous one first (fainter while the new one is live, and
+// Both laps: the previous one first (fainter while the new one is drawn, and
 // only past the rider and the overwrite gap), then the lap in progress.
 void DeltaTracePlot::addTrace(BaseHud& host, float x, float y, float width, float height) {
     m_plotted = 0;
     m_plottedPrevious = 0;
     if (m_profile.anyPrev) {
         addSeries(host, m_profile.prevGapMs, m_profile.prevHas, m_profile.prevFrom, LapDeltaProfile::POINTS - 1,
-                  m_profile.live ? PREVIOUS_OPACITY : 1.0f, x, y, width, height);
+                  m_profile.current ? PREVIOUS_OPACITY : 1.0f, x, y, width, height);
     }
     const int previous = m_plotted;
     addSeries(host, m_profile.gapMs, m_profile.has, 0, m_profile.last, 1.0f, x, y, width, height);
-    // The test hooks count the lap in progress while it is live, else what shows.
-    if (m_profile.live) {
+    // The test hooks count the lap in progress while it is drawn, else what shows.
+    if (m_profile.current) {
         m_plotted -= previous;
         m_plottedPrevious = previous;
     }

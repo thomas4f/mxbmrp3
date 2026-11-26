@@ -5,6 +5,7 @@
 #include "telemetry_hud.h"
 #include "../core/i18n.h"
 #include "default_slots.h"
+#include "../core/hud_manager.h"
 #include "../core/plugin_data.h"
 #include "../core/plugin_constants.h"
 #include "../core/plugin_utils.h"
@@ -81,9 +82,7 @@ void TelemetryHud::syncVisibilityEdge() {
     if (visibleNow == m_bWasVisibleAnySurface) return;
     m_bWasVisibleAnySurface = visibleNow;
 
-    if (visibleNow) {
-        PluginData::getInstance().clearHistoryBuffers();
-    }
+    if (visibleNow) HudManager::getInstance().startTelemetryHistory(this);
 }
 
 void TelemetryHud::rebuildRenderData() {

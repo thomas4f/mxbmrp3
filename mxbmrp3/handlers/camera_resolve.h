@@ -25,6 +25,8 @@
 #pragma once
 
 #include "../core/seh_compat.h"   // SEH_TRY / SEH_EXCEPT_ALL (portable SEH)
+#include "../core/plugin_utils.h"  // PluginUtils::iequals (camera names are ASCII by construction:
+                                  // readName maps every byte outside 32..126 to '?')
 
 namespace Cameras {
 
@@ -48,21 +50,6 @@ enum class Role {
     FREE_ROAM        // "Free-Roam" / "Free" / "Orbit" - manual hand-flown camera
                      // (used by the director's gamepad-takeover grab)
 };
-
-// ASCII case-insensitive compare. Deliberately not _stricmp: that is an
-// MSVC/mingw extension and this header is compiled by the Linux unit build too.
-// Camera names are ASCII by construction (readName below maps every byte outside
-// 32..126 to '?'), so an ASCII fold is exact here, not an approximation.
-inline bool iequals(const char* a, const char* b) {
-    if (a == nullptr || b == nullptr) return false;
-    for (;; ++a, ++b) {
-        char ca = *a, cb = *b;
-        if (ca >= 'A' && ca <= 'Z') ca = static_cast<char>(ca - 'A' + 'a');
-        if (cb >= 'A' && cb <= 'Z') cb = static_cast<char>(cb - 'A' + 'a');
-        if (ca != cb) return false;
-        if (ca == '\0') return true;
-    }
-}
 
 // Read one packed name starting at `pos`, skipping any zero padding in front of
 // it (packed layouts have none). Advances `pos` past the terminator. Returns
@@ -139,7 +126,7 @@ inline int findIndexByName(const void* data, int numCameras,
             char name[kMaxName];
             if (!readName(p, pos, name, kMaxName)) break;
             for (int c = 0; c < numCandidates && c < bestRank; ++c) {
-                if (candidates[c] && iequals(name, candidates[c])) {
+                if (candidates[c] && PluginUtils::iequals(name, candidates[c])) {
                     bestRank = c;
                     found = idx;
                     break;
@@ -186,11 +173,11 @@ inline const char* const* candidatesForRole(Role role, int& outCount) {
 // True for the hand-flown cameras. While one is selected the auto-director pauses
 // entirely, so it never yanks a shot the broadcaster is composing by hand.
 inline bool isManualName(const char* name) {
-    return iequals(name, "Orbit")
-        || iequals(name, "Free")
-        || iequals(name, "Free-Roam")
-        || iequals(name, "Free Roam")
-        || iequals(name, "Freeroam");
+    return PluginUtils::iequals(name, "Orbit")
+        || PluginUtils::iequals(name, "Free")
+        || PluginUtils::iequals(name, "Free-Roam")
+        || PluginUtils::iequals(name, "Free Roam")
+        || PluginUtils::iequals(name, "Freeroam");
 }
 
 // Resolve a requested role to a camera index for this track's blob.

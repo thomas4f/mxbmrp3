@@ -123,6 +123,7 @@ public:
         for (auto& ref : m_refs) ref = Reference{};
         m_current.fill(Point{});
         m_currentObserved = false;
+        m_currentAbandoned = false;
         m_pending.fill(Point{});
         m_pendingObserved = false;
         m_hasPending = false;
@@ -165,11 +166,27 @@ public:
     void clearCurrentLap() {
         m_current.fill(Point{});
         m_currentObserved = false;
+        m_currentAbandoned = false;
         m_pending.fill(Point{});
         m_hasPending = false;
         m_awaitingClock = false;
         m_gridStartLap = false;
         m_lineOpen = false;
+    }
+
+    // The rider was put down well ahead of where they rode (a reset to a marker,
+    // core/warp_detect.h): the clock still runs from the line, so every read
+    // until the next one compares it against a reference far further on. Like a
+    // pit exit the lap is void until a line starts the next, but a lap that
+    // already ended and waits at the line for its completion is not this one's:
+    // it keeps its table, and its line window stays open for it. What the lap
+    // sampled up to the reset stays (the Delta trace keeps that stretch drawn);
+    // nothing after it is sampled.
+    void abandonCurrentLap() {
+        m_currentObserved = false;
+        m_currentAbandoned = true;
+        m_completedSinceWrap = false;   // no strays to shed: the next wrap is a line
+        m_lineOpen = m_hasPending;
     }
 
     // The rider re-entered the track somewhere else (LapTimer::forgetTrackPosition):
@@ -186,6 +203,7 @@ public:
     void onGridStart() {
         m_current.fill(Point{});
         m_currentObserved = true;
+        m_currentAbandoned = false;
         m_gridStartLap = true;
         m_awaitingClock = false;
         m_lineOpen = false;
@@ -219,7 +237,7 @@ public:
         if (m_lineOpen && !m_completedSinceWrap && !m_awaitingClock && m_maxSlotSinceWrap >= STALE_PENDING_SLOTS) {
             m_lineOpen = false;
         }
-        if (elapsedMs >= 0 && !m_awaitingClock) {
+        if (elapsedMs >= 0 && !m_awaitingClock && !m_currentAbandoned) {
             m_current[slot] = Point{ elapsedMs, true };
         }
     }
@@ -245,9 +263,12 @@ public:
         }
         if (!usePending) {
             m_current.fill(Point{});     // completion-first: the new lap starts now
+            m_currentAbandoned = false;
         }
         m_hasPending = false;
-        m_currentObserved = true;        // the completion IS a lap start
+        // Completion-first, the completion IS a lap start. Wrap-first, the wrap
+        // was, and already said so - unless the lap since was abandoned.
+        if (!usePending) m_currentObserved = true;
         // Only a completion-first ending leaves strays for the next wrap to shed.
         // After a wrap-first one that wrap is the NEXT lap's fence: told it had
         // strays, it wiped that whole lap and its completion committed the empty
@@ -280,6 +301,9 @@ public:
     unsigned lastLapStamp() const { return m_lastLapStamp; }
     // Whether the lap now in progress can become the reference when it ends.
     bool currentLapObserved() const { return m_currentObserved && !m_gridStartLap; }
+    // The lap in progress was abandoned (abandonCurrentLap): currentTable() holds
+    // what it sampled up to the reset, to be shown but never read as live.
+    bool currentLapAbandoned() const { return m_currentAbandoned; }
     // THE LINE WINDOW: the frames between the two ends of a lap, in either order.
     // Wrapped but the timer still runs the OLD clock (no re-anchor; the RaceLap
     // has not arrived): a read compares a whole lap of elapsed time against the
@@ -405,6 +429,7 @@ private:
             m_lineOpen = true;               // until the completion lands
         }
         m_currentObserved = true;
+        m_currentAbandoned = false;
         m_completedSinceWrap = false;
         m_maxSlotSinceWrap = 0;
     }
@@ -457,6 +482,7 @@ private:
 
     Table m_current{};                 // the lap in progress
     bool m_currentObserved = false;
+    bool m_currentAbandoned = false;   // put down ahead mid-lap: samples kept, no more taken
 
     Table m_pending{};                 // a lap that wrapped but has not completed yet
     bool m_pendingObserved = false;

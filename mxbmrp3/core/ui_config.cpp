@@ -24,6 +24,7 @@ void UiConfig::resetToDefaults() {
     m_pbScope = PBScope::CATEGORY;
     m_defaultReference = 0;
     m_defaultFreezeMs = 5000;
+    m_liveUpdates = LiveUpdates::OFF;
     m_fUiScale = 1.0f;
     m_bSnapSegmentsToSplits = true;
     m_fSegmentSnapThreshold = 0.02f;

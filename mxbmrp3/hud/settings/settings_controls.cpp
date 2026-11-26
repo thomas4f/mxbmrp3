@@ -434,7 +434,7 @@ static SettingsHud::CycleControl packListCycle(const std::vector<PackT>& packs, 
     SettingsHud::CycleControl c;
     c.count = static_cast<int>(packs.size());
     c.get = [&packs, hud]() {
-        const PackT* active = hud->activePack();
+        const PackT* active = hud->activeLayout();
         for (size_t i = 0; i < packs.size(); ++i) {
             if (active && packs[i].name == active->name) return static_cast<int>(i);
         }

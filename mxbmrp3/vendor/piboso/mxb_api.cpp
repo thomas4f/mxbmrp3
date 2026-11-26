@@ -168,8 +168,12 @@ __declspec(dllexport) void RunTelemetry(void* _pData, int _iDataSize, float _fTi
 {
 	try {
 		auto* gameData = static_cast<SPluginsBikeData_t*>(_pData);
-		EventRecorder::getInstance().recordRunTelemetry(gameData, _fTime, _fPos);
+		// The rider stance trails the struct on game builds that send it (see
+		// Adapter::readRiderStance); -1 everywhere else.
+		const int riderStance = Adapter::readRiderStance(_pData, _iDataSize);
+		EventRecorder::getInstance().recordRunTelemetry(gameData, _iDataSize, _fTime, _fPos);
 		auto unified = Adapter::toTelemetry(gameData, _fTime, _fPos);
+		unified.bike.riderStance = riderStance;
 		PluginManager::getInstance().handleRunTelemetry(&unified);
 	} API_GUARD_CATCH("RunTelemetry")
 }

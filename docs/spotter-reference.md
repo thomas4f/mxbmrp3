@@ -138,7 +138,7 @@ shipped ini - the three deliberately agree.
 | `achievement_laps` | on | you earned Lap Counter - Complete ... laps (every tier; {tier} says which) |
 | `achievement_fuel_burnt` | on | you earned Carbon Footprint - Burn ... of fuel |
 | `achievement_gear_shifts` | on | you earned Shift Happens - Shift ... times (every tier; {tier} says which) |
-| `achievement_session_laps` | on | you earned Marathon - Complete ... laps in one session (every tier; {tier} says which) |
+| `achievement_session_laps` | on | you earned Marathon - Ride ... in a session (every tier; {tier} says which) |
 | `achievement_session_time` | on | you earned Iron Butt - Ride ... in one day (every tier; {tier} says which) |
 | `achievement_track_laps` | on | you earned Local Hero - Complete ... laps at one track (every tier; {tier} says which) |
 | `achievement_bike_km` | on | you earned Loyal - One bike, ... (every tier; {tier} says which) |
@@ -248,6 +248,16 @@ shipped ini - the three deliberately agree.
 | `achievement_digging` | on | you earned Digging a Hole - Spin the rear wheel in place for ... |
 | `achievement_ghost_ride` | on | you earned Ghost Ride - Let the bike ride alone for ... |
 | `achievement_fmx_frontflips` | on | you earned Somersault - Land ... frontflips (every tier; {tier} says which) |
+| `achievement_slalom` | on | you earned Slalom - Ride past ... fallen riders (every tier; {tier} says which) |
+| `achievement_rush_hour` | on | you earned Rush Hour - Lap other riders ... times (every tier; {tier} says which) |
+| `achievement_leapfrog` | on | you earned Leapfrog - Jump over ... riders (every tier; {tier} says which) |
+| `achievement_grounded` | on | you earned Grounded - A clean lap without leaving the ground |
+| `achievement_flat_out` | on | you earned Flat Out - A clean lap without touching the brakes |
+| `achievement_back_from_dead` | on | you earned Back From the Dead - Win a race after two or more crashes |
+| `achievement_fall_from_grace` | on | you earned Fall From Grace - Lead at the first split, then finish last |
+| `achievement_photocopy` | on | you earned Photocopy - Your best lap equals a rival's, to the ms |
+| `achievement_feather_touch` | on | you earned Feather Touch - Land ... jumps of 25m under 10G (every tier; {tier} says which) |
+| `achievement_nemesis` | on | you earned Nemesis - Finish beside a rival thrice in a sitting |
 
 ## Variables
 

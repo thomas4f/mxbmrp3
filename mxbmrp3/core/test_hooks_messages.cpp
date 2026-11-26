@@ -2,6 +2,7 @@
 // core/test_hooks_messages.cpp
 // The MXBMRP3_Test_* exports for SystemMessages (core/system_messages.h): the
 // toast ledger and the card showing one, a hotkey fired without a keyboard,
+// window focus and the keyboard stood in for (InputManager's key reads),
 // the startup-message bookkeeping, and the Dash showing and timing one.
 //
 // Same rules as core/test_hooks.cpp: the whole file is gated on
@@ -15,6 +16,7 @@
 #include "hotkey_config.h"
 #include "hotkey_manager.h"
 #include "hud_manager.h"
+#include "input_manager.h"
 #include "plugin_utils.h"
 #include "system_messages.h"
 #include "update_checker.h"
@@ -41,6 +43,25 @@ __declspec(dllexport) int MXBMRP3_Test_HotkeyInject(const char* name) {
     return 0;
 }
 
+// Window focus for the next draws: 0 none of the game's windows focused,
+// 1 focused, 2 another program focused with the cursor over the companion,
+// -1 the real foreground check.
+__declspec(dllexport) void MXBMRP3_Test_ForceFocus(int focused) {
+    InputManager::getInstance().testForceFocus(focused);
+}
+// Key reads since the last reset (InputManager::isKeyDown); reset != 0 zeroes it.
+__declspec(dllexport) int MXBMRP3_Test_KeyReads(int reset) {
+    return InputManager::getInstance().testKeyReads(reset != 0);
+}
+// A stand-in keyboard: on != 0 answers key reads from the held set (all up),
+// 0 restores Windows. Hold or release one key (a VK code) in it.
+__declspec(dllexport) void MXBMRP3_Test_InjectKeys(int on) {
+    InputManager::getInstance().testInjectKeys(on != 0);
+}
+__declspec(dllexport) void MXBMRP3_Test_HoldKey(int vk, int down) {
+    InputManager::getInstance().testHoldKey(vk, down != 0);
+}
+
 // The settings menu's keyboard binding: a VK code (0 = none) plus ModifierFlags
 // bits. Redraws every HUD so a welcome that names the key reads the new one.
 __declspec(dllexport) void MXBMRP3_Test_SetSettingsKey(int vk, int mods) {
@@ -62,12 +83,13 @@ __declspec(dllexport) void MXBMRP3_Test_MessageLast(char* out, int cap) {
     std::snprintf(out, static_cast<size_t>(cap), "%s|%s|%s|%d|%d", t.title, t.detail, t.icon,
                   t.tab, t.severity == SystemMessages::Severity::Warning ? 1 : 0);
 }
-// PluginUtils::formatSessionClock as the web JSON (shown 0) or a HUD (shown 1)
+// PluginUtils::formatSessionClock as the web JSON (shown 0) or a HUD (shown 1),
+// the decks compact (+2)
 // asks for it, so the HUD side of the overtime labels is checked under a pack.
 __declspec(dllexport) void MXBMRP3_Test_FormatSessionClock(int lapsToGo, int ms, int lapsAfterClock, int shown,
                                                            char* out, int cap) {
     if (!out || cap <= 0) return;
-    PluginUtils::formatSessionClock(lapsToGo, ms, lapsAfterClock, out, static_cast<size_t>(cap), shown != 0);
+    PluginUtils::formatSessionClock(lapsToGo, ms, lapsAfterClock, out, static_cast<size_t>(cap), (shown & 1) != 0, (shown & 2) != 0);
 }
 // PluginUtils::formatSessionFormatWords as the Event Log (shown 0) or a HUD's
 // Session line and Timing Format row (shown 1) ask for it.

@@ -1,8 +1,8 @@
 // ============================================================================
 // core/test_hooks_updater.cpp
-// The MXBMRP3_Test_* export that records what the Updates tab's step rows
-// showed during an install (updater_test), split out of core/test_hooks.cpp,
-// which is at its file budget.
+// The MXBMRP3_Test_* exports for updater_test: what the Updates tab's step rows
+// showed during an install, and the checksum gate before it. Split out of
+// core/test_hooks.cpp, which is at its file budget.
 //
 // Same rules as its parent: the whole file is gated on MXBMRP3_TEST_BUILD and
 // mxbmrp3/CMakeLists.txt removes it from every shipping target's source list,
@@ -13,6 +13,7 @@
 #if defined(MXBMRP3_TEST_BUILD)
 
 #include "update_downloader.h"
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -53,6 +54,20 @@ __declspec(dllexport) int MXBMRP3_Test_UpdaterStepTrace(const char* destDir,
     if (installOk) *installOk = ok ? 1 : 0;
     for (size_t i = 0; i < trace.size() && static_cast<int>(i) < cap; ++i) out[i] = trace[i];
     return static_cast<int>(trace.size());
+}
+
+// The checksum gate the download worker runs before extractAndInstall(): 1 when
+// `data` passes against `expectedHash`, else 0 with the reason in errOut.
+__declspec(dllexport) int MXBMRP3_Test_UpdaterChecksum(const char* data, int len,
+        const char* expectedHash, char* errOut, int errCap) {
+    std::vector<char> bytes;
+    if (data && len > 0) bytes.assign(data, data + len);
+    const char* err = UpdateDownloader::getInstance().testChecksumError(
+        bytes, expectedHash ? expectedHash : "");
+    if (errOut && errCap > 0) {
+        snprintf(errOut, static_cast<size_t>(errCap), "%s", err ? err : "");
+    }
+    return err ? 0 : 1;
 }
 
 }  // extern "C"

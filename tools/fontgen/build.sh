@@ -18,7 +18,13 @@ TMP="$(mktemp -d)"; trap 'rm -rf "${TMP}"' EXIT
 "${CC}" -O2 -c "${MINIZ}/miniz_tdef.c"  -o "${TMP}/miniz_tdef.o"
 "${CC}" -O2 -c "${MINIZ}/miniz_tinfl.c" -o "${TMP}/miniz_tinfl.o"
 
-"${CXX}" -std=c++17 -O2 -Wall "${HERE}/mxbmrp3_fontgen.cpp" \
+# -ffp-contract=off: the shipped .fnt are byte-exact output of this build, so
+# the float maths must round the same on every machine. Where the compiler may
+# fuse a*b+c into one FMA (the GitHub runner's g++ does), stb_truetype's
+# coverage rounds differently and a few atlas pixels move: on 21 Nov 2026 that
+# was 2/1/7 pixels in ChakraPetch-SemiBoldItalic/Inter-Regular/Tomorrow-
+# SemiBoldItalic, reproduced exactly with -march=x86-64-v3 and gone with this.
+"${CXX}" -std=c++17 -O2 -ffp-contract=off -Wall "${HERE}/mxbmrp3_fontgen.cpp" \
     "${TMP}/miniz.o" "${TMP}/miniz_tdef.o" "${TMP}/miniz_tinfl.o" \
     -lm -o "${OUT}"
 echo "built ${OUT}"

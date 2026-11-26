@@ -3,7 +3,7 @@
 // The settings panel's Find box: an index of the settings rows (tab, label,
 // tooltip, current value) and the match that turns a typed query into the
 // results page. The index holds what each tab DRAWS in its current state: rows
-// behind an Off switch, a closed group or another page of a list are not in it.
+// behind an Off switch or a closed group are not in it.
 // Pure: no SettingsHud, no renderer, so the matching is reachable from a unit test.
 //
 // WHERE THE INDEX COMES FROM. There is no table of rows to search -- every tab
@@ -163,7 +163,8 @@ struct State {
     bool matchedFresh = false;  // false = recompute (the index was rebuilt)
     std::vector<int> hits;
     Counts counts;              // how `hits` splits: tabs, widgets, names, places, descriptions
-    int page = 0;
+    bool newQuery = false;      // the query moved since the results last drew: back to the top
+    bool listed = false;        // the page drew the results list (its group cards; no section card)
     int returnTab = 0;          // the tab the box was opened from (Esc goes back)
     std::string landTooltipId;  // the row a result click opened: lit until the pointer moves
     float landX = 0.0f, landY = 0.0f;
@@ -228,7 +229,7 @@ struct State {
     // Recompute `hits` if the query or the index moved since the last time.
     void refresh() {
         if (matchedFresh && matchedQuery == query) return;
-        if (matchedQuery != query) page = 0;   // a new query starts on its first page
+        if (matchedQuery != query) newQuery = true;   // a new query starts at its top
         counts = match(index, query.c_str(), hits);
         matchedQuery = query;
         matchedFresh = true;

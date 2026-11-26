@@ -18,6 +18,123 @@ file; their wording is preserved too.
 
 ## [Unreleased]
 
+## [1.36.0] - 2026-11-27
+
+Arcade-style Decks drawn in your theme, a Cabinet theme and a Stance
+widget, Setup in your language as .exe or .msi, and lists that scroll.
+It is the first stable release since 1.35.0, so the 1.35.1 changes
+below come with it.
+
+### Added
+- **Decks** (Settings > Decks): arcade-style decks for Speed, Race,
+  Timing, Gap, Rival, Standings, Session, Lap Log, Notices, Fuel, Now
+  Playing, Slide, Spin and Inputs, plus Wheelie and Combo in MX Bikes and
+  GP Bikes, drawn in your theme's style, Regular or Slanted. Notices
+  shows race notices, achievements and messages one at a time, urgent
+  ones first; Fuel the laps of fuel left, the fuel and the average a
+  lap; Now Playing the track, its time and buttons, the volume and a
+  track bar you drag to seek. The Carousel deck turns through Gap, Rival,
+  Session, Inputs, Lap Log, Combo and Now Playing (while something
+  plays) in one frame, on a hotkey, a click on its title or on its own
+  with Auto (add Timing or leave any out in the INI).
+  Bars and Stamps switch off the bar along a deck's foot and the tag at
+  its top right. They, Title, Opacity and Scale are set once for every
+  deck, so a set reads as one, and a Decks hotkey shows and hides them.
+- **Stance** widget (Settings > Widgets > Stance): two arrows, the up
+  one lit while standing, the down one while seated. MX Bikes Beta 21f
+  and newer only; it appears in the list once the game reports it. In
+  the INI, `mode` makes it one arrow that flips, or one shown only while
+  standing, and `icon` picks any icon by name.
+- **Cabinet** theme, Dark and Light (Settings > Appearance > Panel
+  theme): bevelled rims and arcade figures.
+- Two new pixel fonts under Settings > Appearance and in the web overlay:
+  Press Start 2P and Silkscreen.
+- **Setup in your language**: the installer opens in your Windows
+  language with a picker for the ten languages the plugin speaks, and
+  the plugin starts in the one you picked. It also comes as
+  `mxbmrp3-Setup.msi`, a Windows Installer package that does the same
+  and takes over an install made with the `.exe`.
+- Ten new achievements (MX Bikes). The ones you earn appear in the Event
+  Log, named as on their card, with a switch in Settings > Event Log.
+
+### Changed
+- Updated vendored cpp-httplib to 0.67.0
+- A new install shows only the Map and the Toggles strip. The strip's
+  Widgets and Decks switches each bring up a ready laid-out set.
+- The Modern and Retro themes look more their own: Modern draws in Sora
+  instead of Geist, Retro in Press Start 2P instead of VT323 (still in
+  the font list), and their Dark themes have their own green, orange,
+  yellow and red instead of Carbon's, softer on Modern, warmer on Retro.
+- Long settings lists scroll instead of paging: Achievements, Riders,
+  Widgets and Find results, with a card per group in Widgets and
+  Achievements. Event Log, Lap Log, Stream Chat, Records and Friends
+  scroll back, and the first three follow the newest line and show how
+  many arrived while you look back. Lists glide from row to row when
+  Motion is on.
+- The mouse wheel scrolls the settings lists, and the HUD lists while
+  the pointer shows over them. Everywhere else the wheel stays the
+  game's.
+- The Updates tab shows the whole release notes in a list that scrolls,
+  wrapped instead of cut, under their headings; Install stays in view
+  below them.
+- With Direct GL (Settings > General) and in the companion window,
+  scrolling lists, Standings rows and the Dash page strip cut cleanly at
+  their edge instead of fading, and the gear and odometer digits roll
+  like a drum.
+- Dropdowns and text fields take the panel theme's card look, like the
+  Find box: sunken in Retro, rimmed in Carbon and Modern. Without a
+  theme they look as before.
+- Live updates moved from Settings > Standings to Settings > General, one
+  setting for the Standings HUD and deck, Position widget and Dash.
+  Standings rows slide when Motion is on, and the Animation row is now
+  Colored moves, which tints a sliding row green or red. Both start
+  Off after the update, so pick them again if you had them on.
+- Now Playing has shuffle and loop buttons, and you can drag along the
+  progress line to jump in the track. A control your player doesn't
+  allow is greyed out.
+- The Marathon achievement counts the distance ridden in one session
+  instead of laps: a 10K, a half marathon, a marathon and an
+  ultramarathon. Tiers already earned are kept.
+- **Usage survey**: now reports which decks are on and how many.
+  Upgrading no longer asks about it again; Setup asks on a first install
+  and on a Fresh install, which resets your settings. A new ZIP install
+  starts with it off, since nothing asked you first (Settings >
+  General); upgrades keep theirs.
+- **Steam** (Settings > General) is off on a new install, so your
+  server is shown to friends only once you turn it on. An existing
+  install keeps its setting.
+- The web overlay works only at its `http://` address (not opened as a
+  file), and answers only `localhost` or an IP address.
+- With another program in front, the plugin reads no keys, also with
+  the mouse over the companion window, where the mouse still works.
+- The Wheelie widget is no longer offered in Kart Racing Pro, where a
+  kart reports no wheelie and the widget only ever read 0°.
+- The Speed widget's unit sits a little higher, level with the bottom
+  of the Gear digit beside it.
+- The About tab's Thanks note asks for a rating or recommendation on
+  mxb-mods by name, next to a GitHub star or a coffee.
+
+### Fixed
+- The Timing HUD's Position readout follows Live updates on Both, as the
+  Position widget and Standings do, instead of the official order.
+- The hourglass icon showed a stopwatch, and the options strip's gear
+  and fold caret and the dropdown carets had an outline the icons
+  beside them don't.
+- Resetting to a marker further along the track no longer shows huge
+  gaps on the Delta trace, Gap Bar, Lap Log and other live gaps; they
+  stay blank until the next lap starts.
+- A themed highlight a little taller than its corners (a settings row at
+  100% UI scale) no longer shows a notch at mid-height on each end.
+- A wheelie past vertical no longer resets: the Wheelie widget, the
+  wheelie rumble and FMX keep counting the angle beyond 90°.
+- On tracks whose start/finish sits at the start of the track data, the
+  Gap Bar and Delta trace showed no split marks until a split was
+  crossed; they are there from the start now, as on the map.
+- Install (Settings > Updates) checks the download and clears the old
+  backup more carefully.
+- Starting the game no longer deletes other plugins' `.dlo.old` files
+  in the plugins folder; only MXBMRP3's own leftover is removed.
+
 ## [1.35.1] - 2026-11-10
 
 Slide and Wheelie widgets and a regrouped Widgets tab, plus fixes for

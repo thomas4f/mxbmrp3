@@ -43,6 +43,8 @@
 
 #include <cstdint>
 
+#include "render_clip.h"   // hudclip::Clip, carried alongside the stacking
+
 namespace hudlayers {
 
 // One HUD's (or ghost's) contiguous primitive ranges, [q0,q1) and [s0,s1).
@@ -59,11 +61,16 @@ struct Rect {
     bool everywhere = false;
 };
 
-// What a frame carries: null spans / layerCount <= 1 = the flat path.
+// What a frame carries: null spans / layerCount <= 1 = the flat path. The
+// clipped ranges ride along (core/render_clip.h): the same surfaces get both,
+// and they reach the renderers by the same road. They are independent of the
+// stacking: a flat frame can still carry clips.
 struct Layers {
     const Span* spans = nullptr;
     int spanCount = 0;
     int layerCount = 0;
+    const hudclip::Clip* clips = nullptr;
+    int clipCount = 0;
 };
 
 // Strict overlap: HUDs snapped edge to edge on the grid share an edge and must

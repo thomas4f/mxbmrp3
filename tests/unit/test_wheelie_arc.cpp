@@ -31,11 +31,29 @@ float readAngle(float t, float rx, float ry) {
 }  // namespace
 
 TEST_CASE("wheelie angle: only rear down, front up and nose up is a wheelie") {
-    CHECK(WheelieAngle::of(false, true, -30.0f) == doctest::Approx(30.0f));
-    CHECK(WheelieAngle::of(true, true, -30.0f) == 0.0f);    // climbing a hill
-    CHECK(WheelieAngle::of(false, false, -30.0f) == 0.0f);  // in the air
-    CHECK(WheelieAngle::of(true, false, 20.0f) == 0.0f);    // stoppie
-    CHECK(WheelieAngle::of(false, true, 5.0f) == 0.0f);     // rear only, nose down
+    CHECK(WheelieAngle::of(false, true, -30.0f, 0.0f) == doctest::Approx(30.0f));
+    CHECK(WheelieAngle::of(true, true, -30.0f, 0.0f) == 0.0f);    // climbing a hill
+    CHECK(WheelieAngle::of(false, false, -30.0f, 0.0f) == 0.0f);  // in the air
+    CHECK(WheelieAngle::of(true, false, 20.0f, 0.0f) == 0.0f);    // stoppie
+    CHECK(WheelieAngle::of(false, true, 5.0f, 0.0f) == 0.0f);     // rear only, nose down
+}
+
+// Past vertical the game reports the attitude's Euler twin: pitch folded back
+// towards level, roll flipped by 180. Read raw, a 100 degree wheelie came out as
+// 80, or (folded with the other sign) as no wheelie at all, which reset the
+// Wheelie deck's hold, the widget and the rumble. Fails on the old reading.
+TEST_CASE("wheelie angle: past vertical it keeps counting, never resets") {
+    CHECK(WheelieAngle::of(false, true, -80.0f, 180.0f) == doctest::Approx(100.0f));
+    CHECK(WheelieAngle::of(false, true, -80.0f, -179.0f) == doctest::Approx(100.0f));
+    // The other sign of the fold. Not seen on a tape: strictly the textbook twin
+    // is a nose-DOWN 100, but on the rear wheel alone only nose-up is possible.
+    CHECK(WheelieAngle::of(false, true, 80.0f, 180.0f) == doctest::Approx(100.0f));
+    CHECK(WheelieAngle::of(false, true, -10.0f, 175.0f) == doctest::Approx(170.0f));  // nearly over the top
+    // Leaned, not flipped: read as ever
+    CHECK(WheelieAngle::of(false, true, -40.0f, 35.0f) == doctest::Approx(40.0f));
+    CHECK(WheelieAngle::of(false, true, 5.0f, 60.0f) == 0.0f);
+    CHECK(WheelieAngle::of(false, true, -5.0f, 95.0f) == doctest::Approx(5.0f));   // just past its side: no fold
+    CHECK(WheelieAngle::of(true, true, -80.0f, 180.0f) == 0.0f);   // both wheels down: no wheelie
 }
 
 TEST_CASE("wheelie arc: on a circle the fill ends at 90 minus the angle") {

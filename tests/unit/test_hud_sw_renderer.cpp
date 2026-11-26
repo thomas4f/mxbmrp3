@@ -21,6 +21,8 @@
 //     scale viewport, NOT a letterbox clip).
 //  6. A layered frame (HUD stacking) draws the later HUD's panel over the
 //     earlier HUD's text where the two overlap; the flat order would not.
+//  7. A clipped range (core/render_clip.h) is cut at its rect, to the pixel
+//     the GPU backends cut their vertices at; a quad outside it is not.
 //
 // Uses the real shipped assets (mxbmrp3_data/fonts + icons), located relative
 // to this file so the test runs from any cwd.
@@ -388,4 +390,25 @@ TEST_CASE("hud_sw_renderer: a layered frame draws the later HUD's panel over the
     const hudsw::Image layered = drawFrame(true);
     CHECK(redInBox(layered) == 0);
     CHECK(at(layered, 120, 100).b == 250);
+}
+
+TEST_CASE("hud_sw_renderer: a clipped range is cut at its rect, the rest drawn whole") {
+    hudsw::Image im; im.resize(320, 180);
+    TestFrame tf;
+    tf.quads.push_back(quad(0.25f, 0.25f, 0.75f, 0.75f, abgr(200, 60, 20)));   // in the range
+    tf.quads.push_back(quad(0.80f, 0.25f, 0.90f, 0.75f, abgr(20, 200, 60)));   // not
+    hudclip::Clip c;
+    c.q0 = 0; c.q1 = 1;
+    c.l = 0.0f; c.t = 0.0f; c.r = 1.0f; c.b = 0.5f;   // y 90 px
+    hudsw::Frame& fr = tf.build();
+    fr.layers.clips = &c;
+    fr.layers.clipCount = 1;
+    hudsw::Renderer r;
+    r.render(im, fr, 10, 20, 30);
+    // Above the edge: the quad. At and below it: the backdrop.
+    CHECK(at(im, 160, 89).r == 200);
+    CHECK(at(im, 160, 90).r == 10);
+    CHECK(at(im, 160, 130).r == 10);
+    // The other quad runs on past the edge.
+    CHECK(at(im, 272, 130).g == 200);
 }

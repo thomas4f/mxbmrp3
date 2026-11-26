@@ -34,6 +34,7 @@ void InputManager::initialize() {
     m_windowWidth = 0;
     m_windowHeight = 0;
     m_bCursorEnabled = false;
+    m_bKeyboardFocus = false;
     m_bWasCursorEnabled = false;
     m_bShouldShowCursor = false;
     m_bWasCursorVisible = false;
@@ -56,6 +57,7 @@ void InputManager::shutdown() {
     m_windowWidth = 0;
     m_windowHeight = 0;
     m_bCursorEnabled = false;
+    m_bKeyboardFocus = false;
     m_bWasCursorEnabled = false;
     m_bShouldShowCursor = false;
     m_bWasCursorVisible = false;
@@ -110,6 +112,12 @@ void InputManager::updateFrame() {
 
     // Step 2: Check if cursor should be enabled (game is foreground - always enabled)
     updateCursorEnabled();
+#ifdef MXBMRP3_TEST_BUILD
+    if (m_testFocus >= 0) {
+        m_bCursorEnabled = m_testFocus != 0;
+        m_bKeyboardFocus = m_testFocus == 1;
+    }
+#endif
 
     // Step 3: Refresh window information when cursor is first enabled
     if (m_bCursorEnabled && !m_bWasCursorEnabled) {
@@ -165,6 +173,7 @@ void InputManager::updateCursorEnabled() {
     // This is more robust than hardcoding the window title "MX Bikes"
 
     HWND foreground = GetForegroundWindow();
+    m_bKeyboardFocus = false;   // set below only while one of our windows is in front
     if (!foreground) {
         // No foreground window - apply debouncing before disabling
         m_framesSinceFocusLost++;
@@ -189,6 +198,7 @@ void InputManager::updateCursorEnabled() {
         }
         m_framesSinceFocusLost = 0;
         m_bCursorEnabled = true;
+        m_bKeyboardFocus = true;
 
         // Which of our surfaces is the user on? Follow the MOUSE (the window under
         // the cursor), not keyboard focus: HUD editing is mouse-driven and the game
@@ -243,7 +253,9 @@ void InputManager::updateCursorEnabled() {
         // cursor is over it, regardless of who holds focus. That covers the game running
         // on one monitor with the companion on another, AND running an off-game replay
         // from a console (the console window belongs to cmd/conhost, not us, so it would
-        // otherwise disable all input). Input follows the window under the cursor.
+        // otherwise disable all input). The MOUSE follows the window under the
+        // cursor; the keyboard stays off (m_bKeyboardFocus), as its keys go to
+        // the program in front.
         HWND companionUnderCursor = CompanionWindow::getInstance().isEnabled()
             ? surfaceWindowUnderCursor(nullptr) : nullptr;
         if (companionUnderCursor && CompanionWindow::isCompanionHwnd(companionUnderCursor)) {
@@ -337,23 +349,34 @@ void InputManager::updateCursorPosition() {
     m_cursorPosition.isValid = true;
 }
 
+bool InputManager::isKeyDown(int vk) const {
+    const bool mouseButton = vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON ||
+                             vk == VK_XBUTTON1 || vk == VK_XBUTTON2;
+    if (!(mouseButton ? m_bCursorEnabled : m_bKeyboardFocus)) return false;
+#ifdef MXBMRP3_TEST_BUILD
+    if (!mouseButton) ++m_testKeyReads;
+    if (m_testKeysOn) return vk >= 0 && vk < 256 && m_testKeys[static_cast<size_t>(vk)];
+#endif
+    return (GetAsyncKeyState(vk) & 0x8000) != 0;  // banned-ok: the one key read, gated on focus above
+}
+
 void InputManager::updateMouseButtons() {
-    m_leftButton.isPressed = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
-    m_rightButton.isPressed = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+    m_leftButton.isPressed = isKeyDown(VK_LBUTTON);
+    m_rightButton.isPressed = isKeyDown(VK_RBUTTON);
 }
 
 void InputManager::updateKeyboardKeys() {
-    m_f1Key.isPressed = (GetAsyncKeyState(VK_F1) & 0x8000) != 0;
-    m_f2Key.isPressed = (GetAsyncKeyState(VK_F2) & 0x8000) != 0;
-    m_f3Key.isPressed = (GetAsyncKeyState(VK_F3) & 0x8000) != 0;
-    m_f4Key.isPressed = (GetAsyncKeyState(VK_F4) & 0x8000) != 0;
-    m_f5Key.isPressed = (GetAsyncKeyState(VK_F5) & 0x8000) != 0;
-    m_f6Key.isPressed = (GetAsyncKeyState(VK_F6) & 0x8000) != 0;
-    m_f7Key.isPressed = (GetAsyncKeyState(VK_F7) & 0x8000) != 0;
-    m_f8Key.isPressed = (GetAsyncKeyState(VK_F8) & 0x8000) != 0;
-    m_f9Key.isPressed = (GetAsyncKeyState(VK_F9) & 0x8000) != 0;
-    m_oem3Key.isPressed = (GetAsyncKeyState(VK_OEM_3) & 0x8000) != 0;  // `~ on US, § on some EU
-    m_oem5Key.isPressed = (GetAsyncKeyState(VK_OEM_5) & 0x8000) != 0;  // \| on US
+    m_f1Key.isPressed = isKeyDown(VK_F1);
+    m_f2Key.isPressed = isKeyDown(VK_F2);
+    m_f3Key.isPressed = isKeyDown(VK_F3);
+    m_f4Key.isPressed = isKeyDown(VK_F4);
+    m_f5Key.isPressed = isKeyDown(VK_F5);
+    m_f6Key.isPressed = isKeyDown(VK_F6);
+    m_f7Key.isPressed = isKeyDown(VK_F7);
+    m_f8Key.isPressed = isKeyDown(VK_F8);
+    m_f9Key.isPressed = isKeyDown(VK_F9);
+    m_oem3Key.isPressed = isKeyDown(VK_OEM_3);  // `~ on US, § on some EU
+    m_oem5Key.isPressed = isKeyDown(VK_OEM_5);  // \| on US
 }
 
 void InputManager::refreshWindowInformation() {
@@ -502,6 +525,11 @@ void InputManager::updateCursorVisibility() {
     }
 }
 
+void InputManager::noteCursorActivity() {
+    m_lastCursorActivity = std::chrono::steady_clock::now();
+    m_bShouldShowCursor = true;
+}
+
 bool InputManager::isCursorHeld() const {
     // The strip shows only with the cursor, so hiding it under a pointer that is
     // reading the icons would take the strip away mid-read.
@@ -519,9 +547,9 @@ void InputManager::forceWindowRefresh() {
 
 bool InputManager::isAnyModifierKeyPressed() const {
     // Check if Shift, Ctrl, or Alt are currently pressed
-    bool shiftPressed = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
-    bool ctrlPressed = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
-    bool altPressed = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+    bool shiftPressed = isKeyDown(VK_SHIFT);
+    bool ctrlPressed = isKeyDown(VK_CONTROL);
+    bool altPressed = isKeyDown(VK_MENU);
 
     return shiftPressed || ctrlPressed || altPressed;
 }

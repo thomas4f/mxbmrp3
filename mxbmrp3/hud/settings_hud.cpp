@@ -130,10 +130,6 @@ bool SettingsHud::isRepeatableRegionType(ClickRegion::Type type) {
         case ClickRegion::STEPPED_DOWN:
         case ClickRegion::CYCLE_UP:
         case ClickRegion::CYCLE_DOWN:
-        case ClickRegion::SERVER_PAGE_PREV:
-        case ClickRegion::SERVER_PAGE_NEXT:
-        case ClickRegion::TRACKED_PAGE_PREV:
-        case ClickRegion::TRACKED_PAGE_NEXT:
         case ClickRegion::EVENT_LOG_ICONS_TOGGLE:
 #if GAME_HAS_HTTP_SERVER
         case ClickRegion::WEB_SERVER_PORT_DOWN:
@@ -228,8 +224,6 @@ SettingsHud::SettingsHud(IdealLapHud* idealLap, LapLogHud* lapLog, FriendsHud* f
       m_trackedRidersCellWidth(0.0f),
       m_trackedRidersStartX(0.0f),
       m_trackedRidersPerRow(0),
-      m_serverPlayersPage(0),
-      m_trackedRidersPage(0),
       m_wasUpdateCheckerOnCooldown(false),
       m_cachedUpdateCheckerStatus(-1),
       m_cachedUpdateDownloaderState(-1),
@@ -354,6 +348,7 @@ void SettingsHud::hide() {
     m_steppedControls.clear();  // rebuilt in lockstep with the click regions
     m_cycleControls.clear();    // rebuilt in lockstep with the click regions
     endSliderDrag();            // a deferred value (UI scale) is applied, not lost
+    for (ScrollView::State& s : m_scrolls) { s.dragging = false; s.arrowDir = 0; }
     m_sliders.clear();
     m_dropdown.open = -1; m_dropdown.firstRegion = -1;
     m_holdRegionIndex = -1;  // Stop any hold-to-repeat in progress
@@ -370,7 +365,7 @@ void SettingsHud::showUpdatesTab() {
 void SettingsHud::showAchievementsTab(int catalogueIndex) {
     m_activeTab = TAB_ACHIEVEMENTS;
     m_achievementsJumpTo = catalogueIndex;
-    if (catalogueIndex < 0) m_achievementsPage = 0;
+    if (catalogueIndex < 0) m_scrolls[ScrollView::ACHIEVEMENTS] = ScrollView::State();
     setDataDirty();
     show();
 }
@@ -381,7 +376,7 @@ void SettingsHud::showTab(int tabId) {
     if (tabId >= 0 && tabId < TAB_COUNT && isTabAvailable(tabId) && tabId != m_activeTab) {
         m_activeTab = tabId;
         recordTabOpened(tabId);
-        landWidgetsPage(tabId);
+        landListRow(tabId);
         disarmResets();
     }
     setDataDirty();
@@ -553,7 +548,10 @@ void SettingsHud::update() {
             float ridersStartY = m_trackedRidersStartY + m_fOffsetY;
             float ridersStartX = m_trackedRidersStartX + m_fOffsetX;
 
-            if (cursor.y >= ridersStartY && cursor.x >= ridersStartX) {
+            // Only inside the list's view: past it, the rows are faded or not drawn.
+            const ScrollView::State& view = m_scrolls[ScrollView::TRACKED_RIDERS];
+            if (cursor.y >= ridersStartY && cursor.x >= ridersStartX &&
+                isPointInRect(cursor.x, cursor.y, view.viewX, view.viewY, view.viewW, view.viewH)) {
                 float relativeY = cursor.y - ridersStartY;
                 float relativeX = cursor.x - ridersStartX;
 
@@ -578,11 +576,12 @@ void SettingsHud::update() {
     // owns-click-exempt: held back as a whole by HudManager::standsDown (no update at all), on top of
     // every HUD it could cover (staysOnTop), and an open list must see a press outside the panel
     const auto& leftButton = input.getLeftButton();
+    updateScrolls(cursor.x, cursor.y, cursor.isValid, leftButton.isPressed);
     if (leftButton.isClicked() && !m_openingPress) {
         m_leftPressArmed = false;
         const int idx = cursor.isValid ? findClickRegionAt(cursor.x, cursor.y) : -1;
-        // A slider grabs the press; an open list swallows a press outside it.
-        if (!handleControlPress(idx, cursor.x)) {
+        // A scrollbar or a slider grabs the press; an open list swallows a press outside it.
+        if (!pressScrollBar(idx, cursor.y) && !handleControlPress(idx, cursor.x)) {
             if (idx >= 0) {
                 if (isRepeatableRegion(m_clickRegions[idx])) {
                     // Stepper: fire immediately and start hold-to-repeat tracking.
@@ -681,7 +680,7 @@ void SettingsHud::update() {
     HotkeyManager& hotkeyMgr = HotkeyManager::getInstance();
     if (hotkeyMgr.isCapturing()) {
         // ESC cancels; a key binding rebuilds every frame (modifier feedback), a text field on an edit.
-        if ((GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0) {
+        if (InputManager::getInstance().isKeyDown(VK_ESCAPE)) {
             hotkeyMgr.cancelCapture();
             if (m_textField == TextField::FIND) closeFind();   // Esc empties the box and goes back
             m_textField = TextField::NONE;
@@ -748,7 +747,7 @@ void SettingsHud::rebuildLayout() {
     // is a position change and arrives as a layout dirty exactly like a scale change
     // does -- and dropping the measurement made the next rebuild re-lay all
     // twenty-eight tabs, per frame, to re-derive a number that a drag cannot move.
-    // The measurement is keyed on what actually moves it now (SettingsHud::TallestKey:
+    // The measurement is keyed on what actually moves it now (SettingsHud::MetricsKey:
     // the row metrics and the theme generation), so a scale or theme change still
     // re-measures and a drag does not.
     if (m_bVisible) {  // vis-gate: menu is active-surface-only (see show())
@@ -783,7 +782,7 @@ void SettingsHud::setActiveTabByName(const char* name) {
                 m_activeTab = t;
                 // Grand Tour, LISTED tabs only: About is restored through here too.
                 recordTabOpened(t);   // Grand Tour; a hidden tab is not one of them
-                landWidgetsPage(t);
+                landListRow(t);
                 disarmResets();
                 rebuildRenderData();
             }

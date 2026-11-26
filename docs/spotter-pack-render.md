@@ -177,7 +177,7 @@ a rule about it.
 | `achievement_laps_2` | Lap Counter, gold. Every one of them a left turn. Probably. | Lap Counter. Every one of them a left turn. Probably. |
 | `achievement_fuel_burnt` | Carbon Footprint. The polar bears send their regards. | Carbon Footprint. The polar bears send their regards. |
 | `achievement_gear_shifts` | Shift Happens, gold. | Shift Happens. |
-| `achievement_session_laps` | Marathon, gold. One session, that many laps. Drink some water. | Marathon. One session, that many laps. Drink some water. |
+| `achievement_session_laps` | Marathon, gold. One session, that far. Drink some water. | Marathon. One session, that far. Drink some water. |
 | `achievement_session_laps_2` | Marathon, gold. Somebody check on this person. | Marathon. Somebody check on this person. |
 | `achievement_session_time` | Iron Butt, gold. Your backside has filed a complaint. | Iron Butt. Your backside has filed a complaint. |
 | `achievement_track_laps` | Local Hero, gold. You could ride this track in your sleep. You probably have. | Local Hero. You could ride this track in your sleep. You probably have. |
@@ -302,10 +302,20 @@ a rule about it.
 | `achievement_peace_out` | Peace Out. Three riders down and you rode straight through. Bye! | Peace Out. Three riders down and you rode straight through. Bye! |
 | `achievement_digging` | Digging a Hole. Spinning in place. Keep going, you'll reach Australia. | Digging a Hole. Spinning in place. Keep going, you'll reach Australia. |
 | `achievement_ghost_ride` | Ghost Ride. You came off and the bike carried on without you. It doesn't need you. | Ghost Ride. You came off and the bike carried on without you. It doesn't need you. |
+| `achievement_slalom` | Slalom, gold. Bodies everywhere and you threaded every one. | Slalom. Bodies everywhere and you threaded every one. |
+| `achievement_rush_hour` | Rush Hour, gold. Beep beep. Coming through. | Rush Hour. Beep beep. Coming through. |
+| `achievement_leapfrog` | Leapfrog, gold. Straight over the top of them. They felt that. | Leapfrog. Straight over the top of them. They felt that. |
+| `achievement_grounded` | Grounded. A whole lap and not one wheel off the ground. Somehow. | Grounded. A whole lap and not one wheel off the ground. Somehow. |
+| `achievement_flat_out` | Flat Out. A whole lap and the brakes never knew. Brave, or broken. | Flat Out. A whole lap and the brakes never knew. Brave, or broken. |
+| `achievement_back_from_dead` | Back From the Dead. Down twice and you still won it. Unkillable. | Back From the Dead. Down twice and you still won it. Unkillable. |
+| `achievement_fall_from_grace` | Fall From Grace. First into turn one, last at the flag. Quite a journey. | Fall From Grace. First into turn one, last at the flag. Quite a journey. |
+| `achievement_photocopy` | Photocopy. Same best lap as somebody else, to the thousandth. Spooky. | Photocopy. Same best lap as somebody else, to the thousandth. Spooky. |
+| `achievement_feather_touch` | Feather Touch, gold. Big air, soft landing. Like a cat. | Feather Touch. Big air, soft landing. Like a cat. |
+| `achievement_nemesis` | Nemesis. That rider again, right next to you at the flag. It's personal now. | Nemesis. That rider again, right next to you at the flag. It's personal now. |
 | `achievement_sandbagger` | Sandbagger. A PB on the last lap. Where was that all race? | Sandbagger. A PB on the last lap. Where was that all race? |
 | `achievement_palindrome` | Palindrome. Same lap time backwards. Weird flex, but okay. | Palindrome. Same lap time backwards. Weird flex, but okay. |
 | `achievement_deja_vu` | Deja Vu. Two identical lap times. Have we met before? | Deja Vu. Two identical lap times. Have we met before? |
 | `achievement_photo_finish` | Photo Finish. Under a tenth! Too close. My heart. | Photo Finish. Under a tenth! Too close. My heart. |
 | `achievement_fumes` | Running on Fumes. One percent of a tank. Living dangerously. | Running on Fumes. One percent of a tank. Living dangerously. |
 
-289 rows.
+299 rows.

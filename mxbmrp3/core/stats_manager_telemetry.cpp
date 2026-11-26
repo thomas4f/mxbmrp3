@@ -15,6 +15,7 @@
 
 #include "stats_manager.h"
 #include "achievement_manager.h"
+#include "wheel_spin.h"
 
 #include <algorithm>
 #include <cmath>
@@ -28,10 +29,8 @@ static constexpr double PROXIMITY_FLUSH_SEC = 1.0;
 
 // Digging a Hole. The bike is going nowhere (under DIG_MAX_SPEED_MS) while the
 // rear wheel says otherwise by more than DIG_SLIP times the speed it is making
-// - FmxManager's burnout test, restated here rather than borrowed, because a
-// player who turns the Burnout trick off in the INI would otherwise turn this
-// row off with it. The slip ratio divides by max(1, speed) for the same reason
-// it does there: the interesting case is a speed of zero.
+// - the wheelspin ratio the rumble and the Spin deck read (core/wheel_spin.h),
+// whose floor under the speed is what makes a standstill count.
 static constexpr float DIG_MAX_SPEED_MS = 2.0f;    // ~7 km/h: creeping, not riding
 static constexpr float DIG_SLIP = 5.0f;
 // How far apart two crashes can be along the centreline and still be "the same
@@ -102,14 +101,20 @@ void StatsManager::recordRidersDown(int down) {
     m_exploration.onRidersDown(down);
 }
 
-void StatsManager::recordRodeThrough(int down) {
-    if (m_lastSpeedMs < PEACE_OUT_MIN_SPEED_MS) return;   // parked or paddling is not through it
+// Peace Out's two guards, which Slalom shares: one rule for "riding past
+// someone else's incident", so the pair cannot disagree about it.
+bool StatsManager::ridingPastOthers() const {
+    if (m_lastSpeedMs < PEACE_OUT_MIN_SPEED_MS) return false;   // parked or paddling is not through it
     if (m_hasSeenDownTime) {
         const double since = std::chrono::duration_cast<std::chrono::microseconds>(
                                  odometerNow() - m_lastSeenDownTime).count() / 1000000.0;
-        if (since < PEACE_OUT_AFTER_CRASH_SEC) return;    // still your own crash site
+        if (since < PEACE_OUT_AFTER_CRASH_SEC) return false;    // still your own crash site
     }
-    m_exploration.onRodeThrough(down);
+    return true;
+}
+
+void StatsManager::recordRodeThrough(int down) {
+    if (ridingPastOthers()) m_exploration.onRodeThrough(down);
 }
 
 void StatsManager::recordProximity(Roost::Contact contact, bool measuring) {
@@ -227,8 +232,7 @@ void StatsManager::updateTelemetry(float speedMs, bool isCrashed, int currentGea
     // run crosses a whole second, so this 100Hz path evaluates the catalogue at
     // most once a second and only while someone is sat there doing it.
     const bool digging =
-        !isCrashed && rearWheelSpeedMs >= 0.0f && speedMs < DIG_MAX_SPEED_MS &&
-        (rearWheelSpeedMs - speedMs) / std::max(1.0f, speedMs) > DIG_SLIP;
+        !isCrashed && speedMs < DIG_MAX_SPEED_MS && WheelSpin::overrun(rearWheelSpeedMs, speedMs) > DIG_SLIP;
     if (!digging) {
         m_hasLastDigTime = false;
         m_digSec = 0.0;
@@ -340,6 +344,13 @@ void StatsManager::updateTelemetry(float speedMs, bool isCrashed, int currentGea
                 m_movedSinceTick = true;
                 float distanceMeters = speedMs * deltaTime;
                 m_sessionTripDistance += distanceMeters;
+                // Marathon: the longest session, as a max-ever. The trip resets
+                // only on a new session, so this is the same number the speedo's
+                // trip shows. Unlike the laps it replaced, it needs no lap to
+                // count, and a kilometre is the same on every track.
+                if (m_sessionTripDistance > m_globalStats.maxSessionDistanceM) {
+                    m_globalStats.maxSessionDistanceM = m_sessionTripDistance;
+                }
                 m_curLapDistance += distanceMeters;
                 // One lookup for the tick: this runs at 100Hz and the key is a
                 // std::string, so the hash is worth doing once.

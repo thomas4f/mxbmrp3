@@ -1,22 +1,22 @@
 [![Latest release](https://img.shields.io/github/v/release/thomas4f/mxbmrp3?sort=semver&label=release)](https://github.com/thomas4f/mxbmrp3/releases)
 [![Released](https://img.shields.io/github/release-date/thomas4f/mxbmrp3?label=released)](https://github.com/thomas4f/mxbmrp3/releases/latest)
 [![Unique installs](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fthomas4f%2Fmxbmrp3%2Fmain%2Fusage_survey%2Fbadge.json)](https://thomas4f.github.io/mxbmrp3/usage_survey/)
+[![MXB Facts](https://thomas4f.github.io/mxb-facts/badge/mxbmrp3/1.36.0.svg)](https://thomas4f.github.io/mxb-facts/mxbmrp3/)
 
 A free, [open-source](https://github.com/thomas4f/mxbmrp3) plugin for MX Bikes, GP Bikes, and Kart Racing Pro with customizable on-screen displays, immersion features, social tools, and streaming/broadcasting overlays.
 
-![MXBMRP3 HUD Screenshot](assets/mxbmrp3.jpg)
-*Default HUD layout. All elements are fully customizable - see [Tips & Tricks](#tips--tricks) for setup ideas.*
+![The most-used HUDs: Standings, Dash, Map and widgets](assets/hud-classic.png)
+*The classic HUDs: Standings, Dash, Map, and the Position, Lap, Gear, Speed, RPM and Stance widgets.*
 
-https://github.com/user-attachments/assets/c391d50e-d342-4531-808e-55afac6b51ce
-
-*Toggle HUDs from the strip, flip Dash pages, and switch themes, languages and fonts in Settings.*
+![The Decks in the Cabinet theme, Slanted](assets/hud-decks.png)
+*New in 1.36: Decks (Cabinet theme, Slanted). Every element is customizable - see [Tips & Tricks](#tips--tricks) for setup ideas.*
 
 ## Features
 
 - **Racing:** Live standings, timing, dash, gap bar, track map, radar and online records
 - **Social:** Steam friends, Discord Rich Presence (MX Bikes only) and tracked riders
 - **Progress:** Stats, personal bests, achievements and FMX trick scoring
-- **Layout:** Customizable HUDs with themes, hotkeys and auto-switching profiles
+- **Layout:** Customizable HUDs, widgets and decks with themes, hotkeys and auto-switching profiles
 - **Analysis:** Lap analysis with splits, a delta trace, telemetry and fuel tracking
 - **Immersion:** Spotter voice, first-person helmet overlay and controller rumble
 - **Streaming:** OBS overlay, auto-director, controller visualization and companion window
@@ -24,12 +24,13 @@ https://github.com/user-attachments/assets/c391d50e-d342-4531-808e-55afac6b51ce
 
 ## How It Works
 
-MXBMRP3 works through the game's plugin interface. It never reads race data out of the game's memory and never writes to it, never hooks or patches the game's code, never changes the game's files, and has no effect on how the game plays. A few features reach beyond the game: a mouse for the menus, a controller for rumble, a connection to fetch records. [How MXBMRP3 works](docs/what-it-does.md) lists each one, with what it uses, whether it goes online and whether it's on by default.
+MXBMRP3 works through the game's plugin interface. It never reads race data out of the game's memory and never writes to it, never patches the game's code and never changes the game's files. To scroll its lists with the mouse wheel, it reads the game window's wheel messages, and keeps one only while the cursor is over one of its lists. A few features reach beyond the game, such as a mouse for the menus and a controller for rumble. Two go online by default: the update check, and the anonymous usage survey (the installer asks first; a ZIP install starts with it off). [How MXBMRP3 works](docs/what-it-does.md) lists each one, with what it uses, whether it goes online and whether it's on by default.
 
 ## Get Started
 
-[![Download Installer](https://img.shields.io/badge/Download-Installer-green?style=for-the-badge)](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3-Setup.exe)
-[![Download ZIP Archive](https://img.shields.io/badge/Download-ZIP_Archive-blue?style=for-the-badge)](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3.zip)
+[![Download Installer (EXE)](https://img.shields.io/badge/Download-Installer_(EXE)-green?style=for-the-badge)](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3-Setup.exe)
+[![Download Installer (MSI)](https://img.shields.io/badge/Download-Installer_(MSI)-purple?style=for-the-badge)](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3-Setup.msi)
+[![Download ZIP Archive](https://img.shields.io/badge/Download-ZIP_Archive-6c757d?style=for-the-badge)](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3.zip)
 
 > **Quick Start**
 > 1. Download the installer above and run it
@@ -44,7 +45,7 @@ MXBMRP3 works through the game's plugin interface. It never reads race data out 
 - [Installation](#installation)
 - [Controls](#controls)
 - [Configuration](#configuration)
-- [HUDs & Widgets](#huds--widgets)
+- [HUDs, Widgets & Decks](#huds-widgets--decks)
 - [More Features](#more-features)
 - [Tips & Tricks](#tips--tricks)
 - [Advanced Settings](#advanced-settings)
@@ -67,6 +68,8 @@ MXBMRP3 works through the game's plugin interface. It never reads race data out 
 
 1. Download the latest installer [`mxbmrp3-Setup.exe`](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3-Setup.exe)
 2. Run the installer - it finds your MX Bikes, GP Bikes and Kart Racing Pro installations (Steam or standalone), lets you pick which to install for, puts the files in each one's `plugins\` folder, and keeps your settings on an upgrade
+
+The same installer is also offered as a Windows Installer package, [`mxbmrp3-Setup.msi`](https://github.com/thomas4f/mxbmrp3/releases/latest/download/mxbmrp3-Setup.msi). It opens in your Windows language and takes over an install made with the `.exe`. To go back from the `.msi` to the `.exe`, uninstall it first.
 
 ### Manual Installation
 
@@ -101,7 +104,7 @@ MXBMRP3 works through the game's plugin interface. It never reads race data out 
 
 ### After Installation
 
-Launch the game and load a track - a few elements are on by default, so the HUD appears right away. If nothing does, see [Troubleshooting](#troubleshooting).
+Launch the game and load a track - the Map and the Toggles strip are on by default, so the HUD appears right away. If nothing does, see [Troubleshooting](#troubleshooting).
 
 ## Controls
 
@@ -146,7 +149,7 @@ The settings menu provides global settings that apply to all profiles, followed 
      the About button, bottom right) and does not belong in the tab list.
      check_docs.py fails if a row for it reappears here. -->
 
-Plus a tab for each individual [HUD](#huds), and one shared **Widgets** tab covering every [widget](#widgets).
+Plus a tab for each individual [HUD](#huds), one shared **Widgets** tab covering every [widget](#widgets), and one shared **Decks** tab covering every [deck](#decks).
 
 ### Profiles
 
@@ -158,9 +161,12 @@ Four separate profiles store complete HUD layout configurations:
 
 **Auto-switch** (Settings > General) changes profiles for you as the session type changes.
 
-## HUDs & Widgets
+## HUDs, Widgets & Decks
 
-**HUDs** are the larger data displays - each gets its own settings tab with options like column/row toggles, gap modes, and textures. **Widgets** are simpler, single-purpose readouts (one number, gauge, or dial); rather than a tab each, they're configured together under the shared **Widgets** tab, a row apiece for visibility, title, texture, opacity and scale (the one that belongs to a feature - the Spotter's subtitles - sits on that feature's own tab instead).
+Three kinds of display, mix and match:
+- **HUDs** are the larger data displays - each gets its own settings tab with options like column/row toggles, gap modes, and textures.
+- **Widgets** are simpler, single-purpose readouts (one number, gauge, or dial); rather than a tab each, they're configured together under the shared **Widgets** tab, a row apiece for visibility, title, texture, opacity and scale (the one that belongs to a feature - the Spotter's subtitles - sits on that feature's own tab instead).
+- **Decks** are small arcade-style panels, each grouping a few readouts into one graphic drawn in your theme's style; they're configured together under the shared **Decks** tab, where **Slanted** tilts the whole set, and the Decks hotkey shows or hides them all.
 
 ### Widgets
 
@@ -176,22 +182,47 @@ Four separate profiles store complete HUD layout configurations:
 | **Position** | Race position |
 | **Time** | Session time/countdown |
 | **Crashes** | Resettable crash tally |
-| **Toggles** | Settings button and every on/off switch, shown while the mouse moves |
-| **Pointer** | Mouse cursor; Off = settings menu only (helps if a pad reads as a mouse) |
 | **Gamepad** | Controller visualization |
 | **Bars** | Vertical telemetry bars (throttle, brake, suspension, etc.) |
 | **Clock** | Real-time clock |
-| **Now Playing** | Windows media (Spotify, a browser, ...): previous, play/pause, next, volume |
+| **Now Playing** | Windows media (Spotify, a browser, ...): previous, play/pause, next, shuffle, loop, seek, volume |
 | **Prestige** | A badge for trading in a completed achievement ladder (MX Bikes only) |
 | **Tacho** | Analog tachometer |
 | **Speedo** | Analog speedometer with odometer and trip meter |
 | **Lean** | Bike lean angle with arc gauge |
 | **Slide** | How far the bike slides sideways, on an upside-down arc |
-| **Wheelie** | How far up on the back wheel, on a quarter arc |
+| **Wheelie** | How far up on the back wheel, on a quarter arc (MX Bikes and GP Bikes only) |
+| **Stance** | Standing or seated, as two arrows (MX Bikes Beta 21f and newer) |
 | **G-Force** | Lateral/longitudinal G-force gauge with peak marker |
 | **Compass** | Heading dial (classic needle or modern rotating card) |
+| **Toggles** | Settings button and every on/off switch, shown while the mouse moves |
+| **Pointer** | Mouse cursor; Off = settings menu only, opened by its hotkey (helps if a pad reads as a mouse) |
 
 Drag the **Toggles** strip to a side edge for a column or to the top or bottom edge for a row; the arrow after the settings button folds the switches away, and resting the mouse on a switch that is off shows a dimmed preview of it. **Now Playing** needs Now playing turned on in General; `nowPlayingApps=spotify` under `[General]` in the settings file follows only the players named.
+
+### Decks
+
+| Deck | Description |
+|------|-------------|
+| **Race** | Position, session, lap and session clock, with the session's progress |
+| **Standings** | The leader, then the riders around you, with gaps and time penalties |
+| **Session** | Server, track and race format |
+| **Notices** | One queue for race notices, achievements and plugin messages |
+| **Timing** | The running lap, the delta held at each split, last and best lap, sectors |
+| **Gap** | Gap to the reference lap, last sector against its best, the ideal lap |
+| **Rival** | The rider you're fighting, the gap held at the splits, gained or lost |
+| **Lap Log** | Your last laps with their sectors, bests lit |
+| **Speed** | Gear, speed, stance and a rev meter; your reaction off the gate |
+| **Fuel** | Laps left, fuel and the average a lap |
+| **Wheelie** | Nose-up angle with a balance zone, hold timer and longest (MX Bikes and GP Bikes only) |
+| **Slide** | Slide angle and how long it has lasted |
+| **Spin** | Rear-wheel slip and how long it has slipped |
+| **Combo** | FMX chain points, multiplier and tricks (MX Bikes and GP Bikes only) |
+| **Inputs** | Throttle and front brake, the last 2 seconds as lines |
+| **Now Playing** | Windows media: track, time and the player's buttons |
+| **Carousel** | One deck at a time, in turn (Deck + / Deck - hotkeys, or a click on its title) |
+
+The **Carousel** deck turns through Gap, Rival, Session, Inputs, Lap Log, Combo (MX Bikes and GP Bikes) and Now Playing (while a player plays or pauses); Timing joins them with `deckTiming=1` under `[CarouselDeck]` in the [INI file](#advanced-settings), and setting another to 0 leaves it out, e.g. `deckGap=0` (also `deckRival`, `deckSession`, `deckInputs`, `deckLapLog`, `deckCombo`, `deckNowPlaying`).
 
 ### HUDs
 
@@ -215,7 +246,7 @@ Drag the **Toggles** strip to a side edge for a column or to the top or bottom e
 | <img src="assets/icons/hud-telemetry.svg" width="20" height="20" alt=""> | **Telemetry** | Throttle, brake, suspension graphs |
 | <img src="assets/icons/hud-deltatrace.svg" width="20" height="20" alt=""> | **Delta Trace** | Your gap to your all-time or session PB or last lap across the whole lap |
 | <img src="assets/icons/hud-fmx.svg" width="20" height="20" alt=""> | **FMX** | Trick detection, scoring and chain combos (MX Bikes and GP Bikes only) |
-| <img src="assets/icons/hud-eventlog.svg" width="20" height="20" alt=""> | **Event Log** | Timestamped feed of race events (laps, penalties, finishes, pit activity) |
+| <img src="assets/icons/hud-eventlog.svg" width="20" height="20" alt=""> | **Event Log** | Timestamped feed of race events (laps, penalties, finishes, pit activity) and achievements earned (MX Bikes) |
 | <img src="assets/icons/hud-sessioncharts.svg" width="20" height="20" alt=""> | **Charts** | Session-progression charts: position, race trace, gap to leader, pace |
 
 The Map's **Follow** view can show more track the faster you go.
@@ -231,7 +262,7 @@ Turn on **Web server** (Settings > General) and the plugin serves a live browser
 **Settings > Appearance > Language**: menus, tooltips, HUDs and messages in another language. The default, **System**, follows Windows' display language; anything a pack does not translate stays English. Shipped: Dutch, French, German, Italian, Norwegian (Bokmål), Portuguese (Brazil), Spanish, Swedish and Turkish (all Beta). New packs are welcome - how to make one: [languages/README.md](mxbmrp3_data/languages/README.md).
 
 ### Achievements (MX Bikes only)
-**Settings > Achievements**: a hundred-odd milestones, Bronze to Platinum, for riding, racing, freestyle, jumping and for trying out the plugin itself. A toast marks each tier earned, and a halfway card the long steps to Gold and Platinum (Toasts > **Visible** turns the cards off; tracking continues either way). They read your existing stats, so an install starts with whatever its numbers already earn. A few are hidden until you stumble on them, and the ones about things going wrong have their own page, outside the completion figures.
+**Settings > Achievements**: a hundred-odd milestones, Bronze to Platinum, for riding, racing, freestyle, jumping and for trying out the plugin itself. A toast marks each tier earned, and a halfway card the long steps to Gold and Platinum (Toasts > **Visible** turns the cards off; tracking continues either way). They read your existing stats, so an install starts with whatever its numbers already earn. A few are hidden until you stumble on them, and the ones about things going wrong have their own group, outside the completion figures.
 
 Take every counted one to Platinum and a **Prestige** button appears, trading the whole ladder back - achievements and their counters to zero - for a level and the Prestige badge widget, which you then turn on under **Widgets**. Personal bests are untouched; there is no way back, so it asks twice. Full list: [Achievements](docs/achievements.md).
 
@@ -253,7 +284,7 @@ The Records HUD fetches online lap records from CBR or MXB-Ranked. Turn on **Aut
 Bind the **Segment +** and **Segment -** hotkeys (Settings > Hotkeys) to drop timing points on the track as you ride. Drop two and the Timing HUD (Settings > Timing, off by default) and the Dash's Timing page time the section between them - live, with a delta to your best for it - so you can drill a single corner or rhythm section without completing a full lap. Remove the points to return to normal split/lap timing.
 
 ### See where friends are racing
-**Steam** (Settings > General) is on by default on the Steam build. It broadcasts your session to friends and populates the Friends HUD: which of your Steam friends are in-game, the server and track they're on, and who's joined your session.
+**Steam** (Settings > General, Steam build only) is off by default. Turned on, it broadcasts your session to friends and populates the Friends HUD: which of your Steam friends are in-game, the server and track they're on, and who's joined your session.
 
 ## Tips & Tricks
 
@@ -351,7 +382,7 @@ The installer isn't code-signed, so Windows may show one or more "unknown publis
 - **Running the installer (Windows SmartScreen):** a blue **"Windows protected your PC"** box - click **More info** > **Run anyway**.
 - **Installing (User Account Control):** **"...app from an unknown publisher..."** - click **Yes**. Admin is required because the plugin is copied into the game's `plugins\` folder under `Program Files`.
 
-Installing manually from the [ZIP archive](#manual-installation) avoids most of these, since there's no installer to run. If you'd like to check the download anyway, you can scan it on [VirusTotal](https://www.virustotal.com/).
+Installing manually from the [ZIP archive](#manual-installation) avoids most of these, since there's no installer to run. If you'd like to check the download anyway, each release's notes link both installers, the zip and each `.dlo` to their [VirusTotal](https://www.virustotal.com/) report.
 
 ### Make Sure You're on the Latest Version
 - Many issues are already fixed in a newer release, so update before troubleshooting further
@@ -391,6 +422,7 @@ Installing manually from the [ZIP archive](#manual-installation) avoids most of 
 - If **Web server** reads **Error** (Settings > General), the plugin couldn't open the port - usually because another application already has it
 - Change **Web server port** (Settings > General) to a free one (e.g., 8081). When it's serving, the **Live overlay** row shows it as a clickable `http://localhost:<port>` link
 - Remember to update your OBS Browser Source URL to match the new port
+- Open the `http://` address, not `index.html` as a file. From another PC, use this PC's IP address rather than its name: the server answers only `localhost` and IP addresses
 
 ### Stream Chat Shows Unavailable
 - YouTube chat is read through YouTube's public web chat without an API key, which is unofficial: when YouTube changes it, the chat panel shows **Unavailable**, the YouTube **Status** (Settings > Stream Chat) reads **Can't read**, and its chat can't be read
@@ -406,7 +438,7 @@ Installing manually from the [ZIP archive](#manual-installation) avoids most of 
 
 ## Privacy
 
-The plugin sends a small anonymous ping per game launch, so the developer can see how many people use it, which features are worth keeping, and what needs fixing. It is on by default. The installer asks before anything is sent: untick **Participate in the anonymous usage survey** on its Privacy page and the plugin starts with it off. You can change it at any time with the **Usage survey** toggle (Settings > General). Turning it off sends one final anonymous opt-out ping, then nothing more.
+The plugin sends a small anonymous ping per game launch, so the developer can see how many people use it, which features are worth keeping, and what needs fixing. It is on by default when you install with Setup, which asks before anything is sent: untick **Participate in the anonymous usage survey** on its Privacy page and the plugin starts with it off. A ZIP install was never asked, so it starts with the survey off. You can change it at any time with the **Usage survey** toggle (Settings > General). Turning it off sends one final anonymous opt-out ping, then nothing more.
 
 Turning it off doesn't disable anything else; the plugin works exactly the same. The one difference: the plugin catches crashes in the game itself, which is what the [known-crash list](crash_analysis/KNOWN_GAME_CRASHES.md) is built from, and with the usage survey off yours stop being reported automatically. The crash files are still written to `Documents\PiBoSo\[Game]\mxbmrp3\crashes\`, so you can still attach them to a bug report.
 
@@ -416,7 +448,7 @@ What it sends:
 |------|---------|
 | Install ID | A random UUID made on your machine (stored in `mxbmrp3_analytics.json`), not tied to your name, account, hardware, or IP. Delete the file to reset it. |
 | Version & game | The plugin version and game, and whether this launch is a fresh install or an upgrade |
-| Enabled features | HUDs, widgets, web overlay, Discord, Steam, rumble, update channel, and so on, as anonymous on/off flags |
+| Enabled features | HUDs, widgets, decks, web overlay, Discord, Steam, rumble, update channel, and so on, as anonymous on/off flags |
 | Panel theme | Which of the plugin's own themes you use, or that you run with none. A theme you installed or made yourself counts only as "custom" - its name never leaves your machine |
 | Spotter voice | Which of the plugin's own voice packs you use, that you use Windows text-to-speech instead, or that the spotter is off. A pack you installed or made yourself counts only as "custom" - its name never leaves your machine |
 | Language | Which of the plugin's own languages you read the menus in (English included), and whether it was picked for you by the **System** default. A language pack you installed or made yourself counts only as "custom" - its name never leaves your machine |
@@ -456,6 +488,8 @@ The plugin catches any crash in the game, so these are usually faults in the gam
 ### Automatic Uninstallation
 
 If you used the installer, remove the plugin like any other Windows app: open **Settings > Apps > Installed apps** (or **Control Panel > Programs and Features**), find **MXBMRP3**, and choose **Uninstall**. You can also run `mxbmrp3_uninstall.exe` directly from any game's `plugins\` folder. The uninstaller lets you pick which games to remove from, then deletes the plugin DLO, the `mxbmrp3_data\` folder, and the registry entry. If you've ever updated from inside the plugin, also delete `plugins\mxbmrp3_update_backup\`; the uninstaller leaves it.
+
+Installed with the `.msi`? **Uninstall** removes it from every game and keeps your settings; **Modify** lets you pick games or delete your settings too.
 
 ### Manual Uninstallation
 
@@ -516,4 +550,4 @@ If MXBMRP3 makes the game a little better for you, or inspires something new, it
 
 ### Say thanks
 
-A comment or rating on [mxb-mods](https://mxb-mods.com/mxbmrp3), a star on [GitHub](https://github.com/thomas4f/mxbmrp3) or a coffee on [Ko-fi](https://ko-fi.com/thomas4f) helps. All optional.
+Rate or recommend it on [mxb-mods](https://mxb-mods.com/mxbmrp3), star it on [GitHub](https://github.com/thomas4f/mxbmrp3), or buy a coffee on [Ko-fi](https://ko-fi.com/thomas4f).

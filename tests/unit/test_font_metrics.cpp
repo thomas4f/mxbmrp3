@@ -39,6 +39,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -294,4 +295,31 @@ TEST_CASE("font metrics: the dotless i slot has no dot in any shipped font") {
         CHECK(firstLit(litRows(dotless)) >= xTop - 2);
     }
     CHECK(checked > 10);
+}
+
+// The deck draws a big number smaller where its face's figures stand taller
+// than the band (DeckHud: a Text's h), so it needs each font's digit height:
+// normalisation fixes digit width and centring, not height, and VT323 at the
+// Speed deck's gear size stood 77 px in a 68 px band. measureFntDigitInk reads
+// only the atlas rows down to the digits; it must agree with the whole-atlas
+// band here (coverage over half there, any coverage here: within 3 rows).
+TEST_CASE("font metrics: measureFntDigitInk is each shipped font's digit height") {
+    const auto fonts = shippedFonts();
+    REQUIRE(!fonts.empty());
+    double vt323 = 0.0, tomorrow = 0.0;
+    for (const auto& p : fonts) {
+        CAPTURE(p.filename().string());
+        std::ifstream in(p, std::ios::binary);
+        const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        const Font f = loadFnt(p.string());
+        REQUIRE(f.ok);
+        const double ink = hudassets::measureFntDigitInk(bytes.data(), bytes.size());
+        CHECK(ink > 0.3);
+        CHECK(std::abs(ink - inkBand(f, "0123456789").height()) < 3.0 / f.cellH);
+        if (p.stem() == "VT323-Regular") vt323 = ink;
+        if (p.stem() == "Tomorrow-BoldItalic") tomorrow = ink;
+    }
+    CHECK(vt323 > tomorrow * 1.3);   // the tall face is measured tall
+    const uint8_t junk[16] = { 'F', 'N', 'T', 0 };
+    CHECK(hudassets::measureFntDigitInk(junk, sizeof(junk)) == 0.0f);
 }

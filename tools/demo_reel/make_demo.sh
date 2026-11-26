@@ -23,6 +23,16 @@
 #   VERSION=1.35         the version under the contents title (default resource.h's)
 #   --no-build           reuse the existing test DLL
 #
+# A STILL instead of the reel: REEL_STILL=<secs> plays the race with no mouse
+# under the settings in SEED_INI (appended to the fresh install's) and writes
+# the full-HD frame <secs> into the live window as out.png, on a grey
+# spotlight backdrop (BACKDROP is the reel's only). The README's two
+# screenshots, 27.5 s into a 30 s window (the PB lap, the rider standing):
+#   REEL_STILL=27.5 SEED_INI=tools/demo_reel/stills/classic.ini \
+#       tools/demo_reel/make_demo.sh assets/hud-classic.png 30
+#   REEL_STILL=27.5 SEED_INI=tools/demo_reel/stills/decks.ini \
+#       tools/demo_reel/make_demo.sh assets/hud-decks.png 30
+#
 # The tape's last liveSecs (default 165, the length of the mouse script; 130
 # with REEL_STRIP=main) play in real time; everything before them plays at
 # once, so the HUDs open with the history the tape carries. A real tape wants:
@@ -31,8 +41,8 @@
 #
 # Requires what tools/hud_window/companion_demo.sh does (mingw-w64, wine64, Xvfb)
 # plus ffmpeg. The DLL needs the demo hooks in core/test_hooks_toggle_strip.cpp
-# (MXBMRP3_Test_CompanionCaptureRgba, MXBMRP3_Test_FriendsInject,
-# MXBMRP3_Test_FakeGamepadInput); test builds only.
+# (MXBMRP3_Test_CompanionCaptureRgba, MXBMRP3_Test_FriendsInject); test builds
+# only.
 # ============================================================================
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -45,6 +55,8 @@ DEFAULT_LIVE=165; [ "${REEL_STRIP:-}" = main ] && DEFAULT_LIVE=130
 LIVE="${ARGS[1]:-${DEFAULT_LIVE}}"
 BACKDROP="${BACKDROP:-3d5a80}"
 LAYOUT="${LAYOUT:-toc}"
+STILL="${REEL_STILL:-}"
+[ -n "${STILL}" ] && LAYOUT=caption   # the full frame
 PAGE=2b405c   # the toc layout's page around the frame
 if [ "${LAYOUT}" = toc ]; then FW=1600; FH=900; FX=320; FY=90; else FW=1920; FH=1080; FX=0; FY=0; fi
 VERSION="${VERSION:-$(awk '/#define VER_MAJOR/{a=$3} /#define VER_MINOR/{b=$3} END{print a"."b}' "${ROOT}/mxbmrp3/resource.h")}"
@@ -104,6 +116,7 @@ visible=0
 [FriendsHud]
 visible=0
 INI
+[ -n "${SEED_INI:-}" ] && cat "${SEED_INI}" >> "${SAVE}/mxbmrp3/mxbmrp3_settings.ini"
 
 echo "==> playing the tape (about $((LIVE + 30)) s)"
 export DISPLAY=:99
@@ -122,13 +135,21 @@ rm -f "${RUNDIR}/capture.rgba" "${RUNDIR}/captions.tsv" "${RUNDIR}/overlap.rgba"
 mkfifo "${RUNDIR}/capture.rgba"
 # The reel first writes PREROLL warm-up frames, trimmed off here.
 PREROLL=150
+if [ -n "${STILL}" ]; then
+# A still keeps the one frame with its alpha (select reads the FIFO to the end,
+# so the reel is never cut off); it goes on the backdrop afterwards.
+ffmpeg -y -loglevel error -f rawvideo -pix_fmt rgba -s ${FW}x${FH} -r 30 -i "${RUNDIR}/capture.rgba" \
+    -vf "select=eq(n\\,$(python3 -c "print(${PREROLL} + round(${STILL} * 30))"))" -fps_mode passthrough \
+    -update 1 "${RUNDIR}/still.png" &
+else
 ffmpeg -y -loglevel error -f rawvideo -pix_fmt rgba -s ${FW}x${FH} -r 30 -i "${RUNDIR}/capture.rgba" \
     -f lavfi -i "color=c=0x${PAGE}:s=1920x1080:r=30" \
     -filter_complex "[1]drawbox=x=${FX}:y=${FY}:w=${FW}:h=${FH}:color=0x${BACKDROP}:t=fill[b];[0]trim=start_frame=${PREROLL},setpts=PTS-STARTPTS[v];[b][v]overlay=x=${FX}:y=${FY}:format=auto:shortest=1" \
     -c:v libx264 -preset ultrafast -qp 0 -pix_fmt yuv420p "${RUNDIR}/live.mkv" &
+fi
 FF=$!
-CHECK=; [ "${LAYOUT}" = caption ] && CHECK=1
-(cd "${RUNDIR}" && REEL_CAPTURE=1 REEL_PREROLL=${PREROLL} REEL_W=${FW} REEL_H=${FH} \
+CHECK=; [ "${LAYOUT}" = caption ] && [ -z "${STILL}" ] && CHECK=1
+(cd "${RUNDIR}" && REEL_STILL=${STILL} REEL_CAPTURE=1 REEL_PREROLL=${PREROLL} REEL_W=${FW} REEL_H=${FH} \
     REEL_CAPTION_CHECK=${CHECK} timeout $((LIVE + 600)) wine showreel.exe mxbmrp3_test.dlo demo.tape "${LIVE}") \
     >/tmp/demo_reel.log 2>&1 || true
 wait "${FF}" || true
@@ -139,6 +160,17 @@ if grep -qE "caption overlap: [1-9]" /tmp/demo_reel.log; then
     ffmpeg -y -loglevel error -f rawvideo -pix_fmt rgba -s ${FW}x${FH} -i "${RUNDIR}/overlap.rgba" "${OUT%.mp4}-overlap.png" || true
     echo "ERROR: something was drawn under a caption (first frame: ${OUT%.mp4}-overlap.png); move that beat's box" >&2
     exit 1
+fi
+if [ -n "${STILL}" ]; then
+    # The README backdrop: grey, lit by a soft cone from above, ordered-dithered
+    # so the falloff does not band (random noise did too, at 3x the PNG size).
+    # Planar RGB throughout: a YUV hop tints the grey.
+    ffmpeg -y -loglevel error -f lavfi -i "color=c=black:s=${FW}x${FH}:d=1,format=gray" -i "${RUNDIR}/still.png" \
+        -filter_complex "[0]geq=lum='16+30*exp(-pow((X/W-0.5)/(0.12+0.45*Y/H)\,2))*(1-0.5*Y/H)+(mod(X+2*Y\\,4)-1.5)*0.6',format=gray,format=gbrp[b];[1]format=gbrap[h];[b][h]overlay=format=gbrp,format=rgb24" \
+        -frames:v 1 "${OUT}"
+    rm -f "${RUNDIR}/capture.rgba" "${RUNDIR}/still.png"
+    echo "==> wrote ${OUT}"
+    exit 0
 fi
 python3 "${ROOT}/tools/demo_reel/captions_ass.py" "${RUNDIR}/captions.tsv" "${RUNDIR}/captions.ass" "${OUT%.mp4}.srt" \
     --layout "${LAYOUT}" --frame "${FX},${FY},${FW},${FH}" --version "${VERSION}"

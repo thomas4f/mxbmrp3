@@ -1383,3 +1383,63 @@ TEST_CASE("the settings Find box is a themed card, else a well on a themed band"
     CHECK(bandless[0].sprite == 0);
     CHECK_FALSE(sameRect(bandless[0].r, bandless[1].r));
 }
+
+// The dropdown's box and the settings input fields draw through ONE helper
+// (DropdownList::drawField): the theme's card art where it has one, the Find
+// box's look, else today's flat tint. Pinned at both callers, so neither can
+// drift back to its own box.
+TEST_CASE("dropdown boxes and input fields are themed cards, else a flat tint") {
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup("Z:\\tmp\\mxbmrp3-tests\\title_band_field_card\\");
+    REQUIRE(host.hasQuadRects());
+    REQUIRE(host.hasQuadSprite());
+    host.eventInit("Southwick", "Thomas");
+    host.session(1, 0, 0);
+    host.runInit(1);
+    host.addEntry(4, "Thomas");
+
+    // The topmost quad under a point, with its sprite and its height: a box's
+    // own slice is under a row tall, the section card's spans several rows.
+    struct Top { bool found; int sprite; double h; };
+    auto topAt = [&](float x, float y) {
+        const auto rects = host.hudQuadRects(PluginHost::HUD_SETTINGS);
+        for (size_t i = rects.size(); i-- > 0;) {
+            const auto& q = rects[i];
+            if (x < q.l || x > q.r || y < q.t || y > q.b) continue;
+            return Top{ true, host.quadSprite(PluginHost::HUD_SETTINGS, static_cast<int>(i)), q.b - q.t };
+        }
+        return Top{ false, 0, 0.0 };
+    };
+    // The dropdown's box (its value, left of the caret) and a channel field.
+    auto boxes = [&](int card) {
+        host.installTheme("tfield", FRAME_INSET, CARD_INSET, /*titleBand=*/0, card);
+        host.showSettings(true);
+        host.setActiveTab("Map");
+        host.draw();
+        float dx = 0.0f, dy = 0.0f, dw = 0.0f;
+        REQUIRE_MESSAGE(host.settingsDropdownSpan("map.colorize", &dx, &dy, &dw), "no Colorize dropdown");
+        const Top drop = topAt(dx + dw * 0.25f, dy);
+        host.setActiveTab("Stream Chat");
+        host.draw();
+        float fx = 0.0f, fy = 0.0f;
+        REQUIRE_MESSAGE(host.settingsRegionCenter("twitch.channel", &fx, &fy), "no channel field");
+        const Top field = topAt(fx, fy);
+        host.showSettings(false);
+        host.clearTheme();
+        return std::make_pair(drop, field);
+    };
+
+    const auto themed = boxes(/*card=*/1);
+    for (const Top& t : { themed.first, themed.second }) {
+        REQUIRE(t.found);
+        CHECK_MESSAGE(t.sprite != 0, "the box is a flat quad, not the card art");
+        // A row is ~0.021 tall at the default scale.
+        CHECK_MESSAGE(t.h < 0.035, "the topmost quad is the section's card, not the box's own");
+    }
+    const auto flat = boxes(/*card=*/0);
+    for (const Top& t : { flat.first, flat.second }) {
+        REQUIRE(t.found);
+        CHECK(t.sprite == 0);
+    }
+}

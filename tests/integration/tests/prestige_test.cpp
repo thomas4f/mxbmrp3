@@ -342,10 +342,11 @@ TEST_CASE("prestige: a kept personal best is still readable through the CLASS sc
 
 // The BUTTON, rather than the trade behind it: where it is drawn, and what it
 // does to the row it sits on. Both were wrong in a way only the panel shows --
-// it rode the Progress card, which is the tab's header above every page, and it
-// carried a TOOLTIP_ROW region for its warning, which paints the full-width
-// hover band that no other button on the panel has.
-TEST_CASE("prestige: the button is on the Completion page only, and takes no row band") {
+// it rode the Progress card, which is the tab's header above the whole list, and
+// it carried a TOOLTIP_ROW region for its warning, which paints the full-width
+// hover band that no other button on the panel has. It is a row of the list now,
+// so it is only ever drawn inside the list's view.
+TEST_CASE("prestige: the button is in the list, inside its view, and takes no row band") {
     cleanSaveDir();
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
@@ -357,39 +358,34 @@ TEST_CASE("prestige: the button is on the Completion page only, and takes no row
     REQUIRE(host.openSettingsTab("Achievements"));
     host.draw();
 
-    float px = 0.0f, py = 0.0f, nx = 0.0f, ny = 0.0f;
-    int pagesWithButton = 0;
-    std::string group, buttonGroup;
-    // Walk every page. The pager clamps at the last one, so the page standing
-    // still is the end of the list.
-    for (int guard = 0; guard < 32; ++guard) {
-        host.draw();
-        const int page = host.achievementsPage(&group);
+    float px = 0.0f, py = 0.0f;
+    bool sawButton = false;
+    // Step through the whole list. It stops at its last rest, so a step that
+    // moves nothing is the end of the list.
+    const PluginHost::ScrollView view = host.settingsScroll(2);   // ScrollView::ACHIEVEMENTS
+    REQUIRE(view.laidOut);
+    for (int guard = 0; guard < 120; ++guard) {
         if (host.settingsRegionCenter("achievements.prestige", &px, &py)) {
-            ++pagesWithButton;
-            buttonGroup = group;
+            sawButton = true;
+            CHECK(py > view.y);                     // only ever inside the list
+            CHECK(py < view.y + view.h);
         }
-        if (!host.settingsRegionCenter("pager.next", &nx, &ny)) break;
-        host.clickAt(nx, ny);
-        if (host.achievementsPage() == page) break;
+        const float before = host.settingsScroll(2).target;
+        host.stepScroll(2, 1);
+        if (host.settingsScroll(2).target == doctest::Approx(before)) break;
     }
-    CHECK(pagesWithButton == 1);
-    CHECK(buttonGroup == "Completion");
+    CHECK(sawButton);
 
-    // BACK to the page the button is on. The walk above ends on the LAST page,
-    // which is no longer the Completion one: the pages that do not count towards
-    // progress follow it now, and two of them (mxbmrp3, Tinkering) are listed
-    // from the start. Paging back until the button reappears asks where it is
-    // rather than where the page order happens to put it.
-    for (int guard = 0; guard < 32; ++guard) {
+    // BACK to the button. The walk above ends at the foot of the list, which is
+    // not the Completion group: the groups that do not count towards progress
+    // follow it. Stepping back until the button reappears asks where it is
+    // rather than where the group order happens to put it.
+    for (int guard = 0; guard < 120; ++guard) {
         if (host.settingsRegionCenter("achievements.prestige", &px, &py)) break;
-        float bx = 0.0f, by = 0.0f;
-        REQUIRE(host.settingsRegionCenter("pager.prev", &bx, &by));
-        host.clickAt(bx, by);
-        host.draw();
+        host.stepScroll(2, -1);
     }
 
-    // And on that page: hovering a NORMAL settings row lights the row band,
+    // And there: hovering a NORMAL settings row lights the row band,
     // hovering the BUTTON does not - its warning rides on the button's own
     // region, so the pointer resolves to the button rather than to a row-wide
     // tooltip strip laid over it. The band is the only quad that differs between
@@ -411,12 +407,12 @@ TEST_CASE("prestige: the button is on the Completion page only, and takes no row
     host.shutdown();
 }
 
-// The panel does not change height when you page onto the button. Every page of
-// the list is padded out to one body height, so the tab -- which is the tallest
-// in the panel, and so sets the panel's height on every other tab -- is the same
-// size on all thirteen. It was counting ROWS to pad, which assumed rows were the
-// only thing a page held.
-TEST_CASE("prestige: paging onto the button does not resize the settings panel") {
+// The panel does not change height when the list scrolls onto the button. The
+// list is one fixed height, so the tab -- which is the tallest in the panel,
+// and so sets the panel's height on every other tab -- is the same size
+// wherever it stands. (Under the old pager it once counted ROWS to pad its
+// pages, which assumed rows were the only thing a page held.)
+TEST_CASE("prestige: scrolling onto the button does not resize the settings panel") {
     cleanSaveDir();
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
@@ -430,20 +426,72 @@ TEST_CASE("prestige: paging onto the button does not resize the settings panel")
 
     const int firstHeight = host.hudPanelRect("settings_hud").h;
     REQUIRE(firstHeight > 0);
-    float nx = 0.0f, ny = 0.0f, px = 0.0f, py = 0.0f;
+    float px = 0.0f, py = 0.0f;
     bool sawButton = false;
-    std::string group;
-    for (int guard = 0; guard < 32; ++guard) {
-        host.draw();
-        const int page = host.achievementsPage(&group);
-        INFO("page " << page << " (" << group << ")");
+    const PluginHost::ScrollView view = host.settingsScroll(2);   // ScrollView::ACHIEVEMENTS
+    REQUIRE(view.laidOut);
+    for (int guard = 0; guard < 120; ++guard) {
+        const PluginHost::ScrollView at = host.settingsScroll(2);
+        INFO("at line " << at.target << " (" << at.topGroup << ")");
         CHECK(host.hudPanelRect("settings_hud").h == firstHeight);
         if (host.settingsRegionCenter("achievements.prestige", &px, &py)) sawButton = true;
-        if (!host.settingsRegionCenter("pager.next", &nx, &ny)) break;
-        host.clickAt(nx, ny);
-        if (host.achievementsPage() == page) break;
+        host.stepScroll(2, 1);
+        if (host.settingsScroll(2).target == doctest::Approx(at.target)) break;
     }
-    CHECK(sawButton);                     // the page that could have resized it was visited
+    CHECK(sawButton);                     // the stretch that could have resized it was visited
+    host.injectMouse(false);
+    host.shutdown();
+}
+
+// Moving the list disarms a half-made trade, so "Confirm?" never waits on a
+// button scrolled out of sight -- but GRABBING the thumb has not moved it yet,
+// and must not disarm it (pressScrollBar's `!s.dragging`, kept when the bar's
+// input moved to ScrollView::press); letting go rests the list, a move. Fails
+// if a thumb press disarms, or an arrow press does not.
+TEST_CASE("prestige: holding the scrollbar's thumb keeps the trade armed; an arrow disarms it") {
+    cleanSaveDir();
+    PluginHost host(dllPath());
+    REQUIRE(host.loaded());
+    host.startup(kSaveWin);
+    REQUIRE(host.hasPrestige());
+    REQUIRE(host.hasWhatsNew());
+    host.setDeveloperMode(true);
+    host.showSettings(true);
+    REQUIRE(host.openSettingsTab("Achievements"));
+    host.draw();
+    const auto armed = [&host] {
+        for (const auto& r : host.hudStringRows("settings_hud"))
+            if (r.text == "Confirm?") return true;
+        return false;
+    };
+
+    float px = 0.0f, py = 0.0f;
+    for (int guard = 0; guard < 120 && !host.settingsRegionCenter("achievements.prestige", &px, &py); ++guard)
+        host.stepScroll(2, 1);   // ScrollView::ACHIEVEMENTS
+    REQUIRE(host.settingsRegionCenter("achievements.prestige", &px, &py));
+    host.clickAt(px, py);
+    REQUIRE(armed());
+
+    // The thumb, where it rests: pressed and held, nothing has moved yet
+    const PluginHost::ScrollView v = host.settingsScroll(2);
+    REQUIRE(v.thumbH > 0.0f);
+    const float lh = v.h / v.viewLines;
+    const float barX = v.x + v.w - 0.0005f;
+    const float trackTop = v.y + lh, trackH = v.h - 2.0f * lh;
+    const float share = v.maxRest > 0.0f ? v.shown / v.maxRest : 0.0f;
+    const float thumbMid = trackTop + share * (trackH - v.thumbH) + v.thumbH * 0.5f;
+    host.injectMouse(true, barX, thumbMid, 0); host.draw();
+    host.injectMouse(true, barX, thumbMid, 1); host.draw();
+    CHECK_MESSAGE(armed(), "grabbing the thumb disarmed the trade");
+    CHECK(host.settingsScroll(2).target == doctest::Approx(v.target));   // the list did not move
+    host.injectMouse(true, barX, thumbMid, 0); host.draw();   // let go: the list rests (a move)
+
+    // An end arrow moves the list (or would): disarmed
+    REQUIRE(host.settingsRegionCenter("achievements.prestige", &px, &py));
+    host.clickAt(px, py);
+    REQUIRE(armed());
+    host.clickAt(barX, v.y + lh * 0.5f);
+    CHECK_FALSE(armed());
     host.injectMouse(false);
     host.shutdown();
 }

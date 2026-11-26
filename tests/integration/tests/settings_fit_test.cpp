@@ -21,6 +21,8 @@
 //      one way the split can be wrong rather than merely stale.
 //   2. AND THE HEIGHT DOES NOT MOVE between tabs. Asserted on the panel's own edges,
 //      because that is what a user sees move.
+//   3. A TAB ENDING WITH A LIST FILLS IT DOWN TO THE FOOTER, so the room a shorter
+//      tab leaves is list, not air: every such list ends on the same line.
 //
 // DRIVEN AT SEVERAL THICKNESSES, because a theme's chrome is spent out of the same
 // space: the section cards' padding, the seams between them and the footer's button
@@ -59,9 +61,14 @@ TEST_CASE("every settings tab fits the panel's row budget") {
     REQUIRE_MESSAGE(tabs.size() > 5u,
                     "settings tabs not enumerable (MXBMRP3_Test_SettingsTabName absent?)");
 
+    // The tabs that end with a list, and that list (ScrollView::Id).
+    const std::vector<std::pair<std::string, int>> kEndLists = {
+        { "Riders", 1 }, { "Achievements", 2 }, { "Widgets", 4 }, { "Decks", 6 } };
     auto sweep = [&](const std::string& skin) {
         double height = -1.0;
         std::string tallestSeen;
+        double listBottom = -1.0;
+        std::string firstList;
         for (const std::string& tab : tabs) {
             host.setActiveTab(tab.c_str());
             host.draw();
@@ -71,6 +78,20 @@ TEST_CASE("every settings tab fits the panel's row budget") {
                                << over << " rows -- the measure pass and the real "
                                << "lay-out disagree about it, which means a tab "
                                << "renderer is not reproducible");
+            // 3. A TAB THAT ENDS WITH A LIST FILLS IT TO THE FOOTER: the list's
+            //    bottom is the same line on every such tab, whichever tab sets the
+            //    panel's height (planSettingsPanel).
+            for (const auto& list : kEndLists) {
+                if (tab != list.first) continue;
+                const PluginHost::ScrollView v = host.settingsScroll(list.second);
+                REQUIRE(v.laidOut);
+                const double bottom = static_cast<double>(v.y) + static_cast<double>(v.h);
+                if (listBottom < 0.0) { listBottom = bottom; firstList = tab; }
+                CHECK_MESSAGE(std::abs(bottom - listBottom) < 1e-4,
+                              skin << ": the " << tab << " tab's list ends at " << bottom
+                                   << " and " << firstList << "'s at " << listBottom
+                                   << " -- a tab's last list must fill to the footer");
+            }
             const auto e = host.hudScreenEdges(PluginHost::HUD_SETTINGS);
             const double h = (e.b - e.t) / 1e6;
             if (height < 0.0) { height = h; tallestSeen = tab; }
@@ -232,23 +253,24 @@ TEST_CASE("Rumble's Bumps and Lockup groups open inside the panel") {
     host.showSettings(false);
 }
 
-// AN UPDATE WITH LONG RELEASE NOTES, the Updates tab's tallest state: the notes it
-// shows, then "Full release notes are on GitHub." and the GitHub Releases link on a
-// row of its own. That state appears only when a release is out, so the sweep above
-// never lays it out; this one does, and asserts it costs the panel no height -- the
-// link row was spent out of the room the notes left, not added to the panel.
-TEST_CASE("the Updates tab's release notes and link fit without growing the panel") {
+// AN UPDATE WITH LONG RELEASE NOTES, the Updates tab's tallest state: the notes,
+// whole and wrapped, in a list that scrolls, and the Install button under it. That
+// state appears only when a release is out, so the sweep above never lays it out;
+// this one does, and asserts it costs the panel no height, that no line is cut,
+// that the list scrolls, and that Install is in view wherever the list stands.
+TEST_CASE("the Updates tab's release notes scroll, wrap, and fit without growing the panel") {
     PluginHost host(dllPath());
     REQUIRE(host.loaded());
     host.startup("Z:\\tmp\\mxbmrp3-tests\\settings_fit\\");
     REQUIRE(host.hasSettingsOverflow());
+    constexpr int RELEASE_NOTES = 5;   // ScrollView::RELEASE_NOTES
     float x = 0.0f, y = 0.0f;
-    auto hasLink = [&]() { return host.settingsRegionCenter("updates.release_notes", &x, &y); };
+    auto hasInstall = [&]() { return host.settingsRegionCenter("updates.install", &x, &y); };
     host.showSettings(true);
     host.setActiveTab("Updates");
     host.draw();
     const auto before = host.hudScreenEdges(PluginHost::HUD_SETTINGS);
-    REQUIRE_FALSE(hasLink());
+    REQUIRE_FALSE(hasInstall());
 
     // Reopened so the tallest-tab measure runs again over the new state.
     host.updateSetAvailable("9.9.9");
@@ -257,7 +279,28 @@ TEST_CASE("the Updates tab's release notes and link fit without growing the pane
     host.setActiveTab("Updates");
     host.draw();
 
-    CHECK(hasLink());
+    const PluginHost::ScrollView v = host.settingsScroll(RELEASE_NOTES);
+    REQUIRE(v.laidOut);
+    CHECK(v.maxRest > 0.0f);   // twenty long items: more than the view holds
+    // Wrapped, not cut: no row ends in "...", and an item's tail reaches the
+    // panel on a line of its own, under the item's text.
+    bool tail = false;
+    for (const PluginHost::DrawnText& t : host.lastStrings()) {
+        if (t.alpha == 0) continue;
+        CHECK(t.text.find("...") == std::string::npos);
+        if (t.text.rfind("  ", 0) == 0 && t.text.find("Updates tab") != std::string::npos) tail = true;
+    }
+    CHECK(tail);
+    REQUIRE(hasInstall());
+    const float installY = y;
+    CHECK(installY > v.y + v.h);   // under the list, not in it
+
+    // Scrolled to the end: Install has not moved.
+    host.stepScroll(RELEASE_NOTES, 50);
+    CHECK(host.settingsScroll(RELEASE_NOTES).target == doctest::Approx(v.maxRest));
+    REQUIRE(hasInstall());
+    CHECK(y == doctest::Approx(installY));
+
     CHECK(host.settingsOverflowRows() <= 0.0);
     const auto after = host.hudScreenEdges(PluginHost::HUD_SETTINGS);
     CHECK(after.t == before.t);

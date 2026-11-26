@@ -153,6 +153,7 @@ void CompanionWindow::submit(const std::vector<SPluginQuad_t>& quads,
     m_strings = strings;
     m_spans.assign(layers.spans, layers.spans + layers.spanCount);
     m_layerCount = layers.layerCount;
+    m_clips.assign(layers.clips, layers.clips + (layers.clips ? layers.clipCount : 0));
     m_firstIcon = firstIcon;
     // The registration tables are stable after init — rebuild basenames only when
     // their size changes (i.e. once), not every frame. ASSUMPTION: font/sprite
@@ -175,11 +176,12 @@ void CompanionWindow::submit(const std::vector<SPluginQuad_t>& quads,
 bool CompanionWindow::testRenderRgba(int w, int h, unsigned char* out) {
     std::vector<SPluginQuad_t> quads; std::vector<SPluginString_t> strings;
     std::vector<hudlayers::Span> spans; int layerCount = 0;
+    std::vector<hudclip::Clip> clips;
     std::vector<std::string> fontBases, spriteBases; int firstIcon = 0; std::string root;
     {
         MutexLock lock(m_mutex);
         if (!m_haveFrame) return false;
-        quads = m_quads; strings = m_strings; spans = m_spans; layerCount = m_layerCount;
+        quads = m_quads; strings = m_strings; spans = m_spans; layerCount = m_layerCount; clips = m_clips;
         fontBases = m_fontBases; spriteBases = m_spriteBases; firstIcon = m_firstIcon; root = m_assetRoot;
     }
     static hudsw::Renderer renderer;
@@ -192,7 +194,8 @@ bool CompanionWindow::testRenderRgba(int w, int h, unsigned char* out) {
     f.strings = strings.data(); f.stringCount = (int)strings.size();
     f.fontNames = &fontBases; f.spriteNames = &spriteBases;
     f.firstIcon = firstIcon; f.assetRoot = root;
-    f.layers = hudlayers::Layers{ spans.empty() ? nullptr : spans.data(), (int)spans.size(), layerCount };
+    f.layers = hudlayers::Layers{ spans.empty() ? nullptr : spans.data(), (int)spans.size(), layerCount,
+                                  clips.empty() ? nullptr : clips.data(), (int)clips.size() };
     renderer.render(img, f, 0, 0, 0, 0);
     for (size_t i = 0; i < img.px.size(); i += 4) {
         const unsigned a = img.px[i + 3];
@@ -364,6 +367,7 @@ void CompanionWindow::threadMain() {
     std::vector<SPluginString_t> strings;
     std::vector<hudlayers::Span> spans;
     int layerCount = 0;
+    std::vector<hudclip::Clip> clips;
     std::vector<std::string> fontBases, spriteBases;
     std::string root;
     uint64_t lastFrameId = 0;      // see the unchanged-frame skip below
@@ -399,7 +403,7 @@ void CompanionWindow::threadMain() {
         {
             MutexLock lock(m_mutex);
             quads = m_quads; strings = m_strings;
-            spans = m_spans; layerCount = m_layerCount;
+            spans = m_spans; layerCount = m_layerCount; clips = m_clips;
             fontBases = m_fontBases; spriteBases = m_spriteBases;
             firstIcon = m_firstIcon; root = m_assetRoot; have = m_haveFrame;
         }
@@ -427,8 +431,15 @@ void CompanionWindow::threadMain() {
             for (const hudlayers::Span& sp : spans)
                 h = (h ^ (uint64_t(uint32_t(sp.layer)) + 0x9E3779B97F4A7C15ULL)) * 0x100000001B3ULL;
         }
+        // The clips likewise (core/render_clip.h): a list that moves moves its rows.
+        if (have && !clips.empty()) {
+            const unsigned char* b = reinterpret_cast<const unsigned char*>(clips.data());
+            for (size_t i = 0; i < clips.size() * sizeof(hudclip::Clip); ++i) { h ^= b[i]; h *= 1099511628211ULL; }
+        }
         const hudlayers::Layers frameLayers{ spans.empty() ? nullptr : spans.data(),
-                                             static_cast<int>(spans.size()), layerCount };
+                                             static_cast<int>(spans.size()), layerCount,
+                                             clips.empty() ? nullptr : clips.data(),
+                                             static_cast<int>(clips.size()) };
 
         RECT rc; GetClientRect(hwnd, &rc);
         // Named apart from the creation-time cw/ch above (the initial window

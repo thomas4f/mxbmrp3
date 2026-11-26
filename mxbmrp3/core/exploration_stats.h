@@ -35,6 +35,7 @@
 #include "exploration_signals.h"
 
 #include <cstdint>
+#include <map>
 #include <set>
 #include <string>
 
@@ -205,6 +206,26 @@ public:
     // The same flight once it has been RIDDEN AWAY FROM: the three maxima
     // (Hang Time, Gap Jumper, Sent It). Same numbers, later moment.
     void onFlightLanded(float seconds, float heightM, float distanceM);
+
+    // The November rows (exploration_stats_feeds.cpp). The rules are pure
+    // headers the callers apply; these only count.
+    void onRodePastDown(int riders);   // Slalom: riders down, ridden past
+    void onLeapfrog(int riders);       // Leapfrog: riders cleared from the air
+    void onFeatherTouch();             // a big jump landed softly
+    void onPureLap(bool grounded, bool flatOut);
+    struct RaceExtras {
+        int position = 0;
+        int starters = 0;
+        int raceCrashes = 0;           // the player's, this session
+        int lapsPutOn = 0;             // Rush Hour
+        bool lastOfFinishers = false;  // Fall From Grace, with the holeshot
+        bool bestLapTwin = false;      // Photocopy
+        const char* aheadName = nullptr;   // Nemesis: the finishers either side
+        const char* behindName = nullptr;
+    };
+    static constexpr int BACK_FROM_THE_DEAD_CRASHES = 2;
+    static constexpr int NEMESIS_RACES = 3;
+    void onRaceExtras(const RaceExtras& race);
     // The hardest hit taken, in g. Called at TELEMETRY RATE, so it is written
     // to cost a float compare and nothing else: raise() returns false unless
     // the value is a new best, and only then is the catalogue evaluated - which
@@ -321,4 +342,7 @@ private:
     double m_crashFreeMs = 0.0;
     int m_liveClockTicks = 0;          // seconds on track since the last clock-driven re-evaluation
     uint32_t m_overlaySeen = 0;        // the overlay's per-process connection total already counted
+    // Nemesis: races finished next to each rider, by NAME, for this game
+    // launch only. Never persisted (his rule): the stats file holds no names.
+    std::map<std::string, int> m_nemesisRaces;
 };

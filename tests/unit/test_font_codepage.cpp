@@ -52,3 +52,25 @@ TEST_CASE("font code page: Find folds the Turkish slots to their plain letter") 
         CHECK(SettingsFind::foldChar(s.byte) == static_cast<unsigned char>(std::tolower(s.plain)));
     }
 }
+
+TEST_CASE("font code page: upper case shouts the accented letters too (the decks)") {
+    const auto shout = [](const char* utf8) {
+        std::string s;
+        REQUIRE(I18n::utf8ToCp1252Exact(utf8, s));
+        for (char& c : s) c = static_cast<char>(FontCodePage::upper(static_cast<unsigned char>(c)));
+        return s;
+    };
+    const auto cp = [](const char* utf8) {
+        std::string s;
+        REQUIRE(I18n::utf8ToCp1252Exact(utf8, s));
+        return s;
+    };
+    CHECK(shout("P\xC3\xA5g\xC3\xA5r") == cp("P\xC3\x85G\xC3\x85R"));                          // Pågår -> PÅGÅR
+    CHECK(shout("Clasificaci\xC3\xB3n") == cp("CLASIFICACI\xC3\x93N"));                        // -> CLASIFICACIÓN
+    CHECK(shout("Classifica\xC3\xA7\xC3\xA3o") == cp("CLASSIFICA\xC3\x87\xC3\x83O"));          // -> CLASSIFICAÇÃO
+    CHECK(shout("S\xC3\xB8ren M\xC3\xB6lln") == cp("S\xC3\x98REN M\xC3\x96LLN"));              // Søren Mölln
+    CHECK(shout("\xC5\xA1\xC5\x93\xC5\xBE\xC3\xBF") == cp("\xC5\xA0\xC5\x92\xC5\xBD\xC5\xB8"));   // šœžÿ -> ŠŒŽŸ
+    CHECK(shout("S\xC3\xBCr\xC3\xBCyor \xC4\x9F\xC5\x9F\xC4\xB1") == cp("S\xC3\x9CR\xC3\x9CYOR \xC4\x9E\xC5\x9EI"));  // Turkish slots
+    // Left alone: ß, ÷, digits and signs
+    CHECK(shout("\xC3\x9F \xC3\xB7 +0.21") == cp("\xC3\x9F \xC3\xB7 +0.21"));
+}

@@ -71,14 +71,14 @@ const std::vector<std::string> kTypical = {
 }  // namespace
 
 TEST_CASE("iequals folds ASCII case and requires a full match") {
-    CHECK(Cameras::iequals("Auto", "auto"));
-    CHECK(Cameras::iequals("FREE-ROAM", "free-roam"));
-    CHECK(Cameras::iequals("", ""));
-    CHECK_FALSE(Cameras::iequals("Auto", "Autos"));     // prefix is not a match
-    CHECK_FALSE(Cameras::iequals("Auto", "Aut"));
-    CHECK_FALSE(Cameras::iequals("Helmet 1", "Helmet 2"));
-    CHECK_FALSE(Cameras::iequals(nullptr, "Auto"));
-    CHECK_FALSE(Cameras::iequals("Auto", nullptr));
+    CHECK(PluginUtils::iequals("Auto", "auto"));
+    CHECK(PluginUtils::iequals("FREE-ROAM", "free-roam"));
+    CHECK(PluginUtils::iequals("", ""));
+    CHECK_FALSE(PluginUtils::iequals("Auto", "Autos"));     // prefix is not a match
+    CHECK_FALSE(PluginUtils::iequals("Auto", "Aut"));
+    CHECK_FALSE(PluginUtils::iequals("Helmet 1", "Helmet 2"));
+    CHECK_FALSE(PluginUtils::iequals(nullptr, "Auto"));
+    CHECK_FALSE(PluginUtils::iequals("Auto", nullptr));
 }
 
 TEST_CASE("nameAtIndex reads packed names and refuses out-of-range indices") {

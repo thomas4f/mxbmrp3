@@ -309,20 +309,18 @@
     // pinned this. The flattened list shares objects with the bands, so a
     // column-0 absorber updates it automatically and any other column leaves
     // it term-exact, exactly as the C++ copies behave.
+    // EVERY column reaching that bottom absorbs it, ties within 1e-4 cells
+    // included (panel_box.h has the settings fill that tied two).
     const lastBd = bandGeoms[bandGeoms.length - 1];
-    let tallCol = 0;
-    let tallBot = lastBd.columns[0].sections.length
-        ? lastBd.columns[0].sections[lastBd.columns[0].sections.length - 1].bot : -1e18;
-    for (let ci = 1; ci < lastBd.columns.length; ci++) {
-      const cs = lastBd.columns[ci].sections;
-      if (!cs.length) continue;
-      const b2 = cs[cs.length - 1].bot;
-      if (b2 > tallBot + 1e-9) { tallBot = b2; tallCol = ci; }
+    let tallBot = -1e18;
+    for (const col of lastBd.columns) {
+      if (col.sections.length) tallBot = Math.max(tallBot, col.sections[col.sections.length - 1].bot);
     }
-    const absorber = lastBd.columns[tallCol].sections;
-    if (absorber.length) {
-      absorber[absorber.length - 1].h += slackY;
-      absorber[absorber.length - 1].bot += slackY;
+    for (const col of lastBd.columns) {
+      const cs = col.sections;
+      if (!cs.length || cs[cs.length - 1].bot < tallBot - 1e-4) continue;
+      cs[cs.length - 1].h += slackY;
+      cs[cs.length - 1].bot += slackY;
     }
     if (nBtn > 0) btnTop += slackY;
 

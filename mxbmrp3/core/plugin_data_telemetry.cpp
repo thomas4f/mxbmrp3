@@ -41,6 +41,8 @@ void PluginData::updateSpeedometer(float speedometer, int gear, int rpm, float f
     m_bikeTelemetry.rpm = rpm;
     m_bikeTelemetry.fuel = fuel;
     m_bikeTelemetry.isValid = true;
+    // The player's own bike only: a spectated rider's fuel is not theirs
+    if (getDisplayRaceNum() == getPlayerRaceNum()) m_fuel.sample(fuel);
 
     // OPTIMIZATION: Only add to history buffers if TelemetryHud is visible
     // This saves ~200 deque operations/second at 100Hz physics rate
@@ -66,17 +68,28 @@ void PluginData::updateSpeedometer(float speedometer, int gear, int rpm, float f
     notifyHudManager(DataChangeType::InputTelemetry);
 }
 
+// Fuel is the PLAYER's telemetry and only exists on track: spectating or in a
+// replay there is nothing to estimate from
+float PluginData::getFuelLapsRemaining() const {
+    if (getDrawState() != PluginConstants::ViewState::ON_TRACK) return -1.0f;
+    return m_fuel.lapsRemaining(m_bikeTelemetry.fuel);
+}
+
 void PluginData::invalidateSpeedometer() {
     m_bikeTelemetry.isValid = false;
     // Notify HudManager so widgets can update to show placeholder
     notifyHudManager(DataChangeType::InputTelemetry);
 }
 
-void PluginData::updateAttitude(float roll, float pitch, float slideAngle, float wheelieAngle) {
+void PluginData::updateAttitude(float roll, float pitch, float slideAngle, float wheelieAngle, bool frontWheelDown,
+                                float rearWheelMs, int riderStance) {
     m_bikeTelemetry.roll = roll;
     m_bikeTelemetry.pitch = pitch;
     m_bikeTelemetry.slideAngle = slideAngle;
     m_bikeTelemetry.wheelieAngle = wheelieAngle;
+    m_bikeTelemetry.frontWheelDown = frontWheelDown;
+    m_bikeTelemetry.rearWheelSpeed = rearWheelMs;   // the Spin deck (hud/deck_score.h)
+    m_bikeTelemetry.riderStance = riderStance;  // -1 unknown, 0 seated, 1 standing (Adapter::readRiderStance)
     // No separate notification - these update at the same frequency as the
     // speedometer, which already notifies with InputTelemetry
 }

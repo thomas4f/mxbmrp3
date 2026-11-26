@@ -617,6 +617,12 @@ namespace Settings {
             if (key == Bars::SHOW_MAX_MARKERS.key) return Bars::SHOW_MAX_MARKERS.description;
             if (key == Bars::MAX_MARKER_LINGER_FRAMES.key) return Bars::MAX_MARKER_LINGER_FRAMES.description;
         }
+#if GAME_HAS_RIDER_STANCE
+        else if (hudName == "StanceWidget") {
+            if (key == Stance::MODE.key) return Stance::MODE.description;
+            if (key == Stance::ICON.key) return Stance::ICON.description;
+        }
+#endif
 #if GAME_HAS_TYRE_TEMP
         else if (hudName == "TyreTempWidget") {
             if (key == TyreTemp::COLD_THRESHOLD.key) return TyreTemp::COLD_THRESHOLD.description;
@@ -656,7 +662,6 @@ namespace Settings {
             if (key == Standings::TOP_POSITIONS.key) return Standings::TOP_POSITIONS.description;
             if (key == Standings::PLAYER_ROW_HIGHLIGHT.key) return Standings::PLAYER_ROW_HIGHLIGHT.description;
             if (key == Standings::PLAYER_ROW_HIGHLIGHT_BRAND.key) return Standings::PLAYER_ROW_HIGHLIGHT_BRAND.description;
-            if (key == Standings::ANIMATION_DURATION_MS.key) return Standings::ANIMATION_DURATION_MS.description;
             if (key == Standings::CLASSIC_LAYOUT.key) return Standings::CLASSIC_LAYOUT.description;
             if (key == Standings::NAME_MODE.key) return Standings::NAME_MODE.description;
             if (key == Standings::SHORT_NAME_CHARS.key) return Standings::SHORT_NAME_CHARS.description;

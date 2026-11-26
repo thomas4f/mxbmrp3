@@ -76,6 +76,15 @@ constexpr float PART_RISE_SCALE = 0.5f;
 // 0..1 -> 0..1, flat at both ends.
 constexpr float smooth(float t) { return t * t * (3.0f - 2.0f * t); }
 
+// Into 0..1; a NaN reads 0 (written so it fails both compares toward 0).
+constexpr float clamp01(float v) { return v > 0.0f ? (v < 1.0f ? v : 1.0f) : 0.0f; }
+
+// THE EDGE FADE, for everything that fades out as it nears or crosses an
+// edge (a settings row at a list's edge, a rolling digit at its box's, a Dash
+// strip icon at the strip's): fully there until its fade begins, gone `ramp`
+// past that, linear between. `over` is how far past the fade's start it is.
+constexpr float fadePast(float over, float ramp) { return 1.0f - clamp01(over / ramp); }
+
 // Ease-out-back: 1 + (k+1)u^3 + k u^2 with u = t-1. k = 0 is a plain ease-out
 // cubic; k > 0 travels past 1 and settles back.
 constexpr float easeOut(float t, float k) {

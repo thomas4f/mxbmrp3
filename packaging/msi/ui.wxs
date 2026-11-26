@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  packaging/msi/ui.wxs - the MSI's wizard. Our own pages mirror the NSIS ones
+  (packaging/mxbmrp3.nsi) and show its strings (gen_wxl.py); WixUI supplies the
+  stock ones (ready, progress, browse, cancel, maintenance, errors) in the same
+  language.
+
+  Install:   Welcome > [Existing installation] > Privacy > Games > [Confirm wipe] > Ready
+  Modify:    Maintenance > Change  > Games (+ delete data) > [Confirm wipe] > Ready
+                         > Remove  > [Remove (+ delete data)] > [Confirm wipe] > Ready
+  Add/Remove Programs' plain "Uninstall" shows no pages, and so keeps the
+  player's data: deleting it is always something they ask for.
+
+  Layout: every page is 370x270 dialog units, the WixUI size, with the banner
+  above y=44 and the buttons below y=234. Text controls clip rather than
+  scroll, as NSIS labels do, so heights below are sized for the longest of the
+  ten languages, not for English.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+    <UI Id="MxbUI">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+      <Property Id="WixUI_Mode" Value="FeatureTree" />
+
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+
+      <!-- ===== Welcome ===================================================== -->
+      <Dialog Id="MxbWelcomeDlg" Width="370" Height="270" Title="!(loc.WelcomeDlg_Title)">
+        <Control Id="Bitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="234" TabSkip="no" Text="!(loc.WelcomeDlgBitmap)" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Title" Type="Text" X="135" Y="20" Width="220" Height="40" Transparent="yes" NoPrefix="yes" Text="!(loc.WelcomeDlgTitle)" />
+        <Control Id="Description" Type="Text" X="135" Y="66" Width="225" Height="160" Transparent="yes" NoPrefix="yes" Text="!(loc.MXB_WELCOME)" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Disabled="yes" Text="!(loc.WixUIBack)" />
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
+          <Publish Event="NewDialog" Value="ExistDlg" Order="1" Condition="MXB_PREV OR GPB_PREV OR KRP_PREV" />
+          <Publish Event="NewDialog" Value="PrivacyDlg" Order="2" Condition="NOT (MXB_PREV OR GPB_PREV OR KRP_PREV)" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <!-- ===== Existing installation (NSIS's ShowExistingPluginInstallPage) ==
+           Upgrade or Fresh. NSIS's third choice, Remove, is not here: an
+           install cannot uninstall something else. Add/Remove Programs does. -->
+      <Dialog Id="ExistDlg" Width="370" Height="270" Title="!(loc.WelcomeDlg_Title)">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="!(loc.CustomizeDlgBannerBitmap)" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}!(loc.MXB_EXIST_TITLE)" />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="15" Transparent="yes" NoPrefix="yes" Text="!(loc.MXB_EXIST_SUB)" />
+        <Control Id="Found" Type="Text" X="20" Y="54" Width="330" Height="12" NoPrefix="yes" Text="!(loc.MXB_EXIST_FOUND)" />
+        <Control Id="Choose" Type="Text" X="20" Y="72" Width="330" Height="12" NoPrefix="yes" Text="!(loc.MXB_EXIST_CHOOSE)" />
+        <Control Id="Group" Type="GroupBox" X="20" Y="88" Width="330" Height="56" Text="!(loc.MXB_EXIST_ACTION)" />
+        <Control Id="Action" Type="RadioButtonGroup" X="28" Y="102" Width="318" Height="36" Property="FRESH">
+          <RadioButtonGroup Property="FRESH">
+            <RadioButton Value="0" X="0" Y="0" Width="318" Height="14" Text="!(loc.MXB_EXIST_UPGRADE)" />
+            <RadioButton Value="1" X="0" Y="18" Width="318" Height="14" Text="!(loc.MXB_EXIST_FRESH)" />
+          </RadioButtonGroup>
+        </Control>
+        <Control Id="NoteKeep" Type="Text" X="20" Y="152" Width="330" Height="30" NoPrefix="yes" Text="!(loc.MXB_NOTE_KEEP)"
+                 ShowCondition="FRESH&lt;&gt;&quot;1&quot;" HideCondition="FRESH=&quot;1&quot;" />
+        <Control Id="NoteWipe" Type="Text" X="20" Y="152" Width="330" Height="30" NoPrefix="yes" Text="!(loc.MXB_NOTE_WIPE)"
+                 ShowCondition="FRESH=&quot;1&quot;" HideCondition="FRESH&lt;&gt;&quot;1&quot;" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
+          <Publish Event="NewDialog" Value="MxbWelcomeDlg" />
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
+          <!-- An upgrade keeps the player's choice, so Privacy is shown only
+               when Fresh resets their settings (as in the .exe). -->
+          <Publish Event="NewDialog" Value="PrivacyDlg" Order="1" Condition="FRESH=&quot;1&quot;" />
+          <Publish Event="NewDialog" Value="GamesDlg" Order="2" Condition="FRESH&lt;&gt;&quot;1&quot;" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <!-- ===== Privacy (NSIS's ShowPrivacyPage) ==============================
+           Same text, same default (ticked = the shipped default), same
+           one-way contract: unticking writes analyticsOptOut=1 (game.wxi);
+           leaving it ticked writes nothing. The NSIS page's comments explain
+           the wording; the two links are real links here too. -->
+      <Dialog Id="PrivacyDlg" Width="370" Height="270" Title="!(loc.WelcomeDlg_Title)">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="!(loc.CustomizeDlgBannerBitmap)" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}!(loc.MXB_PRIV_TITLE)" />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="15" Transparent="yes" NoPrefix="yes" Text="!(loc.MXB_PRIV_SUB)" />
+        <Control Id="Body" Type="Text" X="20" Y="50" Width="330" Height="74" NoPrefix="yes" Text="!(loc.MXB_PRIV_BODY)" />
+        <Control Id="Never" Type="Text" X="20" Y="126" Width="330" Height="30" NoPrefix="yes" Text="!(loc.MXB_PRIV_NEVER)" />
+        <Control Id="Check" Type="CheckBox" X="20" Y="158" Width="330" Height="14" Property="ANALYTICS" CheckBoxValue="1" Text="!(loc.MXB_PRIV_CHECK)" />
+        <Control Id="Foot" Type="Text" X="20" Y="176" Width="330" Height="30" NoPrefix="yes" Text="!(loc.MXB_PRIV_FOOT)" />
+        <Control Id="Links" Type="Hyperlink" X="20" Y="212" Width="330" Height="12"
+                 Text="&lt;a href=&quot;https://github.com/thomas4f/MXBMRP3#privacy&quot;&gt;!(loc.MXB_PRIV_POLICY)&lt;/a&gt;     &lt;a href=&quot;https://thomas4f.github.io/mxbmrp3/usage_survey/&quot;&gt;!(loc.MXB_PRIV_REPORT)&lt;/a&gt;" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
+          <Publish Event="NewDialog" Value="ExistDlg" Order="1" Condition="MXB_PREV OR GPB_PREV OR KRP_PREV" />
+          <Publish Event="NewDialog" Value="MxbWelcomeDlg" Order="2" Condition="NOT (MXB_PREV OR GPB_PREV OR KRP_PREV)" />
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
+          <!-- The player answered: an earlier opt-out is not carried over
+               (ReadEarlierOptOut, mxbmrp3.wxs). -->
+          <Publish Property="PRIVACY_ASKED" Value="1" />
+          <Publish Event="NewDialog" Value="GamesDlg" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <!-- ===== Games (NSIS's ShowGameSelectionPage; in Change mode also its
+           uninstall selection page) ========================================= -->
+      <Dialog Id="GamesDlg" Width="370" Height="270" Title="!(loc.WelcomeDlg_Title)">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="!(loc.CustomizeDlgBannerBitmap)" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}!(loc.MXB_GAMES_TITLE)" />
+        <!-- Change mode reuses this page to remove games, so the two texts
+             that speak of installing get a removal wording there. -->
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="15" Transparent="yes" NoPrefix="yes" Text="!(loc.MXB_GAMES_SUB)"
+                 ShowCondition="NOT Installed" HideCondition="Installed" />
+        <Control Id="DescriptionChange" Type="Text" X="25" Y="23" Width="330" Height="15" Transparent="yes" NoPrefix="yes" Text="!(loc.MXB_CHANGE_SUB)"
+                 ShowCondition="Installed" HideCondition="NOT Installed" />
+
+        <?define G = "MXB"?><?define GameName = "MX Bikes"?><?define RowY = "54"?><?define PathY = "70"?>
+        <?include game_row.wxi?>
+        <?undef G?><?undef GameName?><?undef RowY?><?undef PathY?>
+        <?define G = "GPB"?><?define GameName = "GP Bikes"?><?define RowY = "94"?><?define PathY = "110"?>
+        <?include game_row.wxi?>
+        <?undef G?><?undef GameName?><?undef RowY?><?undef PathY?>
+        <?define G = "KRP"?><?define GameName = "Kart Racing Pro"?><?define RowY = "134"?><?define PathY = "150"?>
+        <?include game_row.wxi?>
+        <?undef G?><?undef GameName?><?undef RowY?><?undef PathY?>
+
+        <!-- Change mode: delete data for the games being unticked (removed). -->
+        <Control Id="WipeData" Type="CheckBox" X="20" Y="176" Width="330" Height="24" Property="WIPEDATA" CheckBoxValue="1" Text="!(loc.MXB_UN_DATA_CHECK)"
+                 ShowCondition="Installed AND (MXB_HASDATA OR GPB_HASDATA OR KRP_HASDATA)"
+                 HideCondition="NOT Installed OR NOT (MXB_HASDATA OR GPB_HASDATA OR KRP_HASDATA)" />
+        <Control Id="SelectOne" Type="Text" X="20" Y="206" Width="330" Height="20" NoPrefix="yes" Text="!(loc.MXB_SELECT_ONE)"
+                 ShowCondition="NOT Installed" HideCondition="Installed" />
+        <Control Id="SelectOneChange" Type="Text" X="20" Y="206" Width="330" Height="20" NoPrefix="yes" Text="!(loc.MXB_CHANGE_SELECT_ONE)"
+                 ShowCondition="Installed" HideCondition="NOT Installed" />
+
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
+          <Publish Event="NewDialog" Value="PrivacyDlg" Order="1"
+                   Condition="NOT Installed AND (FRESH=&quot;1&quot; OR NOT (MXB_PREV OR GPB_PREV OR KRP_PREV))" />
+          <Publish Event="NewDialog" Value="ExistDlg" Order="2"
+                   Condition="NOT Installed AND FRESH&lt;&gt;&quot;1&quot; AND (MXB_PREV OR GPB_PREV OR KRP_PREV)" />
+          <Publish Event="NewDialog" Value="MaintenanceTypeDlg" Order="3" Condition="Installed" />
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)"
+                 DisableCondition="MXB_SEL&lt;&gt;&quot;1&quot; AND GPB_SEL&lt;&gt;&quot;1&quot; AND KRP_SEL&lt;&gt;&quot;1&quot;"
+                 EnableCondition="MXB_SEL=&quot;1&quot; OR GPB_SEL=&quot;1&quot; OR KRP_SEL=&quot;1&quot;">
+          <?define G = "MXB"?><?define Base = "1"?>
+          <?include game_next.wxi?>
+          <?undef G?><?undef Base?>
+          <?define G = "GPB"?><?define Base = "2"?>
+          <?include game_next.wxi?>
+          <?undef G?><?undef Base?>
+          <?define G = "KRP"?><?define Base = "3"?>
+          <?include game_next.wxi?>
+          <?undef G?><?undef Base?>
+          <!-- NSIS's "not the plugins folder?" question, as a page (like the
+               wipe confirmation): the check sets FOLDERWARN and GAMELABEL. -->
+          <Publish Event="DoAction" Value="CheckGameFolders" Order="80" />
+          <Publish Event="NewDialog" Value="FolderWarnDlg" Order="89" Condition="FOLDERWARN=&quot;1&quot;" />
+          <Publish Event="NewDialog" Value="ConfirmWipeDlg" Order="90"
+                   Condition="FOLDERWARN&lt;&gt;&quot;1&quot; AND ((NOT Installed AND FRESH=&quot;1&quot;) OR (Installed AND WIPEDATA=&quot;1&quot;))" />
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" Order="91"
+                   Condition="FOLDERWARN&lt;&gt;&quot;1&quot; AND NOT ((NOT Installed AND FRESH=&quot;1&quot;) OR (Installed AND WIPEDATA=&quot;1&quot;))" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <!-- ===== Remove (NSIS's uninstall selection page, whole-product case) ==
+           Shown only when there is data to offer deleting; otherwise Remove
+           goes straight to Ready. Removing one game is Change. -->
+      <Dialog Id="RemoveDlg" Width="370" Height="270" Title="!(loc.WelcomeDlg_Title)">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="!(loc.CustomizeDlgBannerBitmap)" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}!(loc.MXB_UN_TITLE)" />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="15" Transparent="yes" NoPrefix="yes" Text="!(loc.MXB_NOTE_UNINSTALL)" />
+        <!-- Its own property: MSI keys the CheckBox table by property, so
+             two boxes cannot share WIPEDATA. Next copies it across. -->
+        <Control Id="WipeData" Type="CheckBox" X="20" Y="60" Width="330" Height="24" Property="WIPEDATA_REMOVE" CheckBoxValue="1" Text="!(loc.MXB_UN_DATA_CHECK)" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
+          <Publish Event="NewDialog" Value="MaintenanceTypeDlg" />
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
+          <Publish Property="WIPEDATA" Value="1" Order="1" Condition="WIPEDATA_REMOVE=&quot;1&quot;" />
+          <Publish Property="WIPEDATA" Value="{}" Order="2" Condition="WIPEDATA_REMOVE&lt;&gt;&quot;1&quot;" />
+          <Publish Event="NewDialog" Value="ConfirmWipeDlg" Order="3" Condition="WIPEDATA_REMOVE=&quot;1&quot;" />
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" Order="4" Condition="WIPEDATA_REMOVE&lt;&gt;&quot;1&quot;" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <!-- ===== Not a plugins folder? (NSIS's MXB_NOT_PLUGINS_FOLDER message
+           box, whose default was No: here Back is the default) ========== -->
+      <Dialog Id="FolderWarnDlg" Width="370" Height="270" Title="!(loc.WelcomeDlg_Title)">
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUIBack)">
+          <Publish Event="NewDialog" Value="GamesDlg" />
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Text="!(loc.WixUINext)">
+          <Publish Event="NewDialog" Value="ConfirmWipeDlg" Order="1"
+                   Condition="(NOT Installed AND FRESH=&quot;1&quot;) OR (Installed AND WIPEDATA=&quot;1&quot;)" />
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" Order="2"
+                   Condition="NOT ((NOT Installed AND FRESH=&quot;1&quot;) OR (Installed AND WIPEDATA=&quot;1&quot;))" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="!(loc.CustomizeDlgBannerBitmap)" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="340" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}!(loc.MXB_GAMES_TITLE)" />
+        <Control Id="Icon" Type="Icon" X="20" Y="56" Width="24" Height="24" FixedSize="yes" IconSize="32" Text="!(loc.CancelDlgIcon)" />
+        <!-- One block per game whose folder failed: NSIS's sentence for that game,
+             then the folder (ca/check_folders.cpp builds it). -->
+        <Control Id="Text" Type="Text" X="54" Y="56" Width="296" Height="170" NoPrefix="yes" Text="[FOLDERWARNTEXT]" />
+      </Dialog>
+
+      <!-- ===== Confirm wipe (NSIS's MXB_FRESH_CONFIRM / MXB_UN_DATA_CONFIRM
+           message boxes) - a page rather than a pop-up, so Back undoes it. -->
+      <Dialog Id="ConfirmWipeDlg" Width="370" Height="270" Title="!(loc.WelcomeDlg_Title)">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="!(loc.CustomizeDlgBannerBitmap)" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="TitleFresh" Type="Text" X="15" Y="6" Width="340" Height="30" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}!(loc.MXB_EXIST_FRESH)"
+                 ShowCondition="NOT Installed" HideCondition="Installed" />
+        <Control Id="TitleWipe" Type="Text" X="15" Y="6" Width="340" Height="30" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}!(loc.MXB_UN_DATA_CHECK)"
+                 ShowCondition="Installed" HideCondition="NOT Installed" />
+        <Control Id="Icon" Type="Icon" X="20" Y="56" Width="24" Height="24" FixedSize="yes" IconSize="32" Text="!(loc.CancelDlgIcon)" />
+        <Control Id="Fresh" Type="Text" X="54" Y="56" Width="296" Height="80" NoPrefix="yes" Text="!(loc.MXB_FRESH_CONFIRM)"
+                 ShowCondition="NOT Installed" HideCondition="Installed" />
+        <Control Id="Wipe" Type="Text" X="54" Y="56" Width="296" Height="80" NoPrefix="yes" Text="!(loc.MXB_UN_DATA_CONFIRM)"
+                 ShowCondition="Installed" HideCondition="NOT Installed" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
+          <Publish Event="NewDialog" Value="GamesDlg" Order="1" Condition="NOT Installed OR WixUI_InstallMode=&quot;Change&quot;" />
+          <Publish Event="NewDialog" Value="RemoveDlg" Order="2" Condition="Installed AND WixUI_InstallMode=&quot;Remove&quot;" />
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <!-- ===== Finished (NSIS's two finish pages, and the uninstall one's
+           data-deleted wording from un.FinishPageShow) ===================== -->
+      <Dialog Id="MxbExitDlg" Width="370" Height="270" Title="!(loc.ExitDialog_Title)">
+        <Control Id="Bitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="234" TabSkip="no" Text="!(loc.ExitDialogBitmap)" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Title" Type="Text" X="135" Y="20" Width="220" Height="40" Transparent="yes" NoPrefix="yes" Text="!(loc.ExitDialogTitle)" />
+        <Control Id="DoneInstall" Type="Text" X="135" Y="70" Width="225" Height="140" Transparent="yes" NoPrefix="yes" Text="!(loc.MXB_FINISH)"
+                 ShowCondition="WixUI_InstallMode&lt;&gt;&quot;Remove&quot;" HideCondition="WixUI_InstallMode=&quot;Remove&quot;" />
+        <Control Id="DoneRemove" Type="Text" X="135" Y="70" Width="225" Height="140" Transparent="yes" NoPrefix="yes" Text="!(loc.MXB_UN_FINISH)"
+                 ShowCondition="WixUI_InstallMode=&quot;Remove&quot; AND WIPEDATA&lt;&gt;&quot;1&quot;" HideCondition="WixUI_InstallMode&lt;&gt;&quot;Remove&quot; OR WIPEDATA=&quot;1&quot;" />
+        <Control Id="DoneWiped" Type="Text" X="135" Y="70" Width="225" Height="140" Transparent="yes" NoPrefix="yes" Text="!(loc.MXB_UN_FINISH_WIPED)"
+                 ShowCondition="WixUI_InstallMode=&quot;Remove&quot; AND WIPEDATA=&quot;1&quot;" HideCondition="WixUI_InstallMode&lt;&gt;&quot;Remove&quot; OR WIPEDATA&lt;&gt;&quot;1&quot;" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Disabled="yes" Text="!(loc.WixUIBack)" />
+        <Control Id="Finish" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Cancel="yes" Text="!(loc.WixUIFinish)">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Disabled="yes" Text="!(loc.WixUICancel)" />
+      </Dialog>
+
+      <InstallUISequence>
+        <Show Dialog="MxbWelcomeDlg" Before="ProgressDlg" Condition="NOT Installed" />
+        <Show Dialog="MxbExitDlg" OnExit="success" />
+      </InstallUISequence>
+      <AdminUISequence>
+        <Show Dialog="MxbExitDlg" OnExit="success" />
+      </AdminUISequence>
+
+      <!-- WixUI's own pages, wired into the flow above. -->
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="ChangeButton" Event="NewDialog" Value="GamesDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="RemoveDlg"
+               Condition="MXB_HASDATA OR GPB_HASDATA OR KRP_HASDATA" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg"
+               Condition="NOT (MXB_HASDATA OR GPB_HASDATA OR KRP_HASDATA)" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="ConfirmWipeDlg" Order="1"
+               Condition="(NOT Installed AND FRESH=&quot;1&quot;) OR (Installed AND WIPEDATA=&quot;1&quot;)" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="GamesDlg" Order="2"
+               Condition="(NOT Installed AND FRESH&lt;&gt;&quot;1&quot;) OR (WixUI_InstallMode=&quot;Change&quot; AND WIPEDATA&lt;&gt;&quot;1&quot;)" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="RemoveDlg" Order="3"
+               Condition="WixUI_InstallMode=&quot;Remove&quot; AND WIPEDATA&lt;&gt;&quot;1&quot; AND (MXB_HASDATA OR GPB_HASDATA OR KRP_HASDATA)" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="4"
+               Condition="WixUI_InstallMode=&quot;Remove&quot; AND NOT (MXB_HASDATA OR GPB_HASDATA OR KRP_HASDATA)" />
+    </UI>
+    <UIRef Id="WixUI_Common" />
+  </Fragment>
+</Wix>

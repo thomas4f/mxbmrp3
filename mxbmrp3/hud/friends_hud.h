@@ -20,6 +20,7 @@
 #pragma once
 
 #include "base_hud.h"
+#include "hud_scroll.h"
 #include "../core/plugin_constants.h"
 #include <cstdint>
 #include <chrono>
@@ -88,6 +89,8 @@ private:
 
     uint32_t m_enabledColumns = COL_DEFAULT;
     int  m_maxDisplayRows = 8;
+    // Scrollback through every friend listed past m_maxDisplayRows (hud_scroll.h).
+    HudScroll m_scroll;
     bool m_bShowHeaders = true;          // column-header row
     ShowMode m_showMode = ShowMode::WITH_FRIENDS;  // when to display while enabled
     bool m_showSelf = true;              // include our own presence as a row ("You")

@@ -4,5 +4,10 @@
 # the bug ships. Add a check to BOTH lists.
 Checks: '-*,bugprone-use-after-move'
 WarningsAsErrors: 'bugprone-use-after-move'
-# Project headers only; vendor/ is not ours to fix.
-HeaderFilterRegex: 'mxbmrp3/(core|hud|handlers|game|diagnostics)/'
+# Project headers only; vendor/ is not ours to fix. Matched on the header's OWN
+# folder (the last one in its path), not on any folder along it: a header is
+# reported by the path it was included through, so core/../vendor/nlohmann/
+# json.hpp contains "mxbmrp3/core/" and a looser pattern lets vendor in. That
+# stayed hidden until clang-tidy 23 started flagging json.hpp's move ctor.
+# (ExcludeHeaderFilterRegex would say it directly, but clang-tidy 18 rejects it.)
+HeaderFilterRegex: 'mxbmrp3/(.*/)?(core|hud|settings|handlers|game|adapters|diagnostics)/[^/]*$'

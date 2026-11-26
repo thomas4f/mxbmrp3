@@ -9,6 +9,7 @@
 #include <algorithm>
 
 #include "wheelie_angle.h"
+#include "wheel_spin.h"
 
 namespace Fmx {
 
@@ -170,6 +171,32 @@ inline const char* getTrickName(TrickType type) {
         case TrickType::FLAT_360_LEFT:     return "Flat 360 L";
         case TrickType::FLAT_360_RIGHT:    return "Flat 360 R";
         default:                           return "Unknown";
+    }
+}
+
+// The display name without its side ("Whip", "Barrel Roll"): for a display
+// that shows the trick and not the way it went
+inline const char* getTrickBaseName(TrickType type) {
+    switch (type) {
+        case TrickType::DRIFT_LEFT:
+        case TrickType::DRIFT_RIGHT:       return "Drift";
+        case TrickType::PIVOT_LEFT:
+        case TrickType::PIVOT_RIGHT:       return "Pivot";
+        case TrickType::BARREL_ROLL_LEFT:
+        case TrickType::BARREL_ROLL_RIGHT: return "Barrel Roll";
+        case TrickType::SCRUB_LEFT:
+        case TrickType::SCRUB_RIGHT:       return "Scrub";
+        case TrickType::WHIP_LEFT:
+        case TrickType::WHIP_RIGHT:        return "Whip";
+        case TrickType::SPIN_LEFT:
+        case TrickType::SPIN_RIGHT:        return "Spin";
+        case TrickType::OPPO_LEFT:
+        case TrickType::OPPO_RIGHT:        return "Oppo";
+        case TrickType::TURN_DOWN_LEFT:
+        case TrickType::TURN_DOWN_RIGHT:   return "Turn Down";
+        case TrickType::FLAT_360_LEFT:
+        case TrickType::FLAT_360_RIGHT:    return "Flat 360";
+        default:                           return getTrickName(type);
     }
 }
 
@@ -600,17 +627,15 @@ struct GroundContactState {
     bool isGrounded() const { return frontWheelContact || rearWheelContact; }
     // Nose-up degrees while on the back wheel, else 0: the one wheelie rule the
     // rumble and the Wheelie widget read too (core/wheelie_angle.h).
-    float wheelieAngle(float pitch) const {
-        return WheelieAngle::of(frontWheelContact, rearWheelContact, pitch);
+    float wheelieAngle(float pitch, float roll) const {
+        return WheelieAngle::of(frontWheelContact, rearWheelContact, pitch, roll);
     }
 
-    // Wheel slip detection
-    float getRearWheelSlip() const {
-        // Slip ratio: how much faster rear wheel spins vs vehicle speed
-        // max(1.0, vehicleSpeed) prevents division by zero at low speeds
-        // while still detecting burnouts (rearWheelSpeed >> 0 when stationary)
-        return (rearWheelSpeed - vehicleSpeed) / std::max(1.0f, vehicleSpeed);
-    }
+    // How much faster the rear wheel spins than the bike moves (burnouts,
+    // rearWheelSpeed >> 0 when stationary): the one ratio the rumble and the
+    // Spin deck read too (core/wheel_spin.h). Not gated on contact here: the
+    // burnout's start asks for it, its end never has.
+    float getRearWheelSlip() const { return WheelSpin::overrun(rearWheelSpeed, vehicleSpeed); }
 
     bool isStationary() const { return vehicleSpeed < 2.5f; }  // < 2.5 m/s (~5.5 mph) = stationary
 };
@@ -682,7 +707,7 @@ struct FmxConfig {
     // enter at full angle, exit at half). Mellow/cruisy wheelies that stay
     // below this entry angle won't classify, so the value is a balance
     // between catching real wheelies and rejecting tiny front-pops.
-    float wheelieAngleThreshold = 15.0f;        // pitch degrees for wheelie
+    float wheelieAngleThreshold = WheelieAngle::FROM_DEG;   // pitch degrees for wheelie
     float endoAngleThreshold = -15.0f;          // pitch degrees for endo (negative = forward)
     float burnoutSlipThreshold = 5.0f;          // rear wheel speed difference (m/s)
     float driftSlipAngleThreshold = 30.0f;      // degrees of lateral slip angle for drift (0=straight, 90=sideways)

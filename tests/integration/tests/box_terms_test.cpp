@@ -64,6 +64,7 @@ TEST_CASE("box terms: every one of the eight moves an UNTHEMED panel") {
     // NO THEME — the whole point. clearTheme() rather than trusting the default,
     // so a stray installTheme in an earlier case cannot make this pass.
     host.clearTheme();
+    REQUIRE(host.setHudVisibleBoth("standings_hud", true));   // off for a new install
     host.showSettings(true);
 
     struct Term {

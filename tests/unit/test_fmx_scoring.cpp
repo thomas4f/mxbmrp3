@@ -17,6 +17,7 @@
 #include "core/fmx_levels.h"
 #include <cmath>
 #include <cstdio>
+#include <string>
 
 using namespace Fmx;
 
@@ -116,6 +117,19 @@ TEST_CASE("fmx chain: L/R variants are one type, and the extra active trick coun
     // One banked trick + a different in-progress (extra) trick -> +0.5 -> 1.5.
     std::vector<TrickInstance> one = {makeTrick(TrickType::WHEELIE, 10, 1.0f, 0.0f)};
     CHECK(calculateChainMultiplier(one, TrickType::BACKFLIP, cfg) == doctest::Approx(1.5f));
+}
+
+// A display that shows the trick, not its side (the Combo deck's chips), reads
+// the name without " L"/" R": every sided name is its base name plus the side,
+// and an unsided one is its own base name.
+TEST_CASE("fmx names: the base name is the display name less its side") {
+    for (int i = 0; i < static_cast<int>(TrickType::COUNT); ++i) {
+        const TrickType t = static_cast<TrickType>(i);
+        const std::string name = getTrickName(t), base = getTrickBaseName(t);
+        const bool sided = name.size() > 2 && name[name.size() - 2] == ' ' &&
+                           (name.back() == 'L' || name.back() == 'R');
+        CHECK_MESSAGE(base == (sided ? name.substr(0, name.size() - 2) : name), name);
+    }
 }
 
 // ============================================================================

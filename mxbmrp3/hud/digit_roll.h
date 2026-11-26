@@ -7,10 +7,13 @@
 // odometer drum; counting down, the reverse. The gear rolls the other way (up
 // a gear, the new one comes down from above), so it passes the opposite dir.
 //
-// NOTHING IS CLIPPED. The game draws a string whole, in one colour, so a digit
-// cannot be cut at a panel's edge or faded across its height. Instead each
-// text is gone - alpha 0 - before it has travelled a third of the font size,
-// so it stays close to where it sits.
+// THE ROLL IS THE DRUM: each text slides the whole height of its box, the old
+// one leaving it as the new one settles, fading as it nears the edge so the
+// cut there is soft (cutAt). BaseHud::addRolledString hands each text to the
+// shared edge rule (hud/clip_marks.h) with that box: our renderers (Direct
+// GL, the companion window) cut it there; the game, which cannot cut a
+// string, fades the old text out over the first half of its way and the new
+// one in over the last half, so each is gone by the time it is half out.
 //
 // A WHOLE STRING ROLLS, never part of one: placing part of a string means
 // knowing the font's advances, and the shipped fonts do not share one digit
@@ -27,22 +30,16 @@
 
 #include <cstring>
 
+#include "../core/motion.h"   // Motion::smooth, Motion::fadePast
+
 namespace DigitRoll {
 
 constexpr long long DURATION_US = 200000;
-// How far a text travels over the whole roll, as a share of its font size.
-constexpr float TRAVEL = 0.45f;
-// The old text fades out over the first FADE share of the roll, the new in
-// over the last FADE share, so they cross in the middle.
-constexpr float FADE = 0.6f;
-// Until the two fades cross, halfway, the new text is faint at most, so a
-// further change takes its place rather than starting a roll from it.
+// Until halfway the new text is still coming in, so a further change takes
+// its place rather than starting a roll from it.
 constexpr long long SWAP_US = DURATION_US / 2;
 // Longest text a Roller holds, terminator included.
 constexpr int MAX_TEXT = 16;
-
-constexpr float clamp01(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
-constexpr float smooth(float t) { return t * t * (3.0f - 2.0f * t); }
 
 // Where a gear label sits in the shift order, for the roll's direction: the
 // pattern is 1-N-2-3..., so N ranks between 1 and 2. -1 = not a gear (the
@@ -60,14 +57,20 @@ inline int gearRank(const char* label) {
 
 // The two texts at progress p (0..1). dir: +1 counting up (the old rises, the
 // new comes from below), -1 counting down. Offsets are in font sizes, positive
-// down the screen.
+// down the screen; `travel` (in font sizes) is the box's height, so the old
+// text has left the box as the new one settles. Each text fades as it nears
+// the edge: opaque for the first EDGE_FADE_FROM share of the way out, then
+// down to nothing where it leaves.
 struct Frame { float outDy, outAlpha, inDy, inAlpha; };
 
-constexpr Frame at(float p, int dir) {
-    const float t = clamp01(p);
-    const float e = smooth(t);
-    const float d = -static_cast<float>(dir) * TRAVEL;
-    return Frame{ d * e, 1.0f - clamp01(t / FADE), -d * (1.0f - e), clamp01((t - (1.0f - FADE)) / FADE) };
+constexpr float EDGE_FADE_FROM = 0.25f;
+constexpr float edgeAlpha(float away) {
+    return Motion::fadePast(away - EDGE_FADE_FROM, 1.0f - EDGE_FADE_FROM);
+}
+constexpr Frame cutAt(float p, int dir, float travel) {
+    const float e = Motion::smooth(Motion::clamp01(p));
+    const float d = -static_cast<float>(dir) * travel;
+    return Frame{ d * e, edgeAlpha(e), -d * (1.0f - e), edgeAlpha(1.0f - e) };
 }
 
 // One string to draw: y offset in font sizes, alpha 0..1, and its colour.
@@ -125,13 +128,15 @@ public:
     const char* shown() const { return m_shown; }
 
     // The strings to draw now, into out[MAX_PIECES]; returns how many. Settled,
-    // that is the shown text alone, in place and opaque.
-    int pieces(long long nowUs, Piece* out) const {
+    // that is the shown text alone, in place and opaque. `travel`: the box's
+    // height in font sizes (cutAt).
+    int pieces(long long nowUs, Piece* out, float travel) const {
         if (!active(nowUs)) {
             out[0] = Piece{ m_shown, 0.0f, 1.0f, m_color };
             return 1;
         }
-        const Frame f = at(static_cast<float>(nowUs - m_startUs) / static_cast<float>(DURATION_US), m_dir);
+        const float p = static_cast<float>(nowUs - m_startUs) / static_cast<float>(DURATION_US);
+        const Frame f = cutAt(p, m_dir, travel);
         int n = 0;
         if (f.outAlpha > 0.0f) out[n++] = Piece{ m_leaving, f.outDy, f.outAlpha, m_leavingColor };
         if (f.inAlpha > 0.0f) out[n++] = Piece{ m_shown, f.inDy, f.inAlpha, m_color };
@@ -152,5 +157,18 @@ bool enabled();
 // Motion's clock, in microseconds (the one HudManager fades on; tests drive it
 // with MXBMRP3_Test_SetMotionNowUs).
 long long nowUs();
+
+// A gear readout's roll, the one rule for every gear (the Gear widget, the
+// Speed deck): a change of gear on the same rider rolls; the placeholder, "D",
+// a spectate switch or Motion off just switch. The opposite way to the
+// odometer's drum: up a gear the old digit drops and the new one arrives from
+// above, as if the next gear comes down into place.
+inline void stepGear(Roller& roll, int& lastRaceNum, const char* text, int raceNum, long long now,
+                     unsigned long color) {
+    const int from = gearRank(roll.shown()), to = gearRank(text);
+    const bool rolls = enabled() && from >= 0 && to >= 0 && raceNum == lastRaceNum;
+    roll.update(text, rolls ? (to > from ? -1 : 1) : 0, now, color);
+    lastRaceNum = raceNum;
+}
 
 }  // namespace DigitRoll

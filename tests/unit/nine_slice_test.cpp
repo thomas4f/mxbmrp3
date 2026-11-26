@@ -91,6 +91,49 @@ TEST_CASE("nine_slice: the clamp scales BOTH axes by one factor") {
     CHECK(full.y <= doctest::Approx(0.025f));
 }
 
+TEST_CASE("nine_slice: no sliver between corners: a middle thinner than a corner closes") {
+    // The bug this pins: a settings row's highlight is 2 cells tall on a 1-cell
+    // corner (23.76 px on 10.56 px at 1080p), which left a 2.64 px middle edge
+    // slice. The game mipmaps sprites by the most squeezed axis, so that sliver
+    // drew from a coarse level and smeared the rim into a notch at mid-height.
+    const float px = 1.0f / 1080.0f;
+    const float corner = 10.56f * px, rowH = 23.76f * px;
+    const NineSlice::Border row = NineSlice::clampedBorder(0.3f, rowH, corner, kAspect);
+    CHECK(row.y == doctest::Approx(rowH * 0.5f));            // the middle is gone...
+    CHECK(row.x * kAspect == doctest::Approx(row.y));         // ...the corner still square
+    NineSlice::Slice out[NineSlice::SLICE_COUNT];
+    NineSlice::build(out, 0.1f, 0.2f, 0.3f, rowH, corner, kAspect);
+    for (const NineSlice::Slice& s : out) {
+        const Rect r = boundsOf(s);
+        CHECK_MESSAGE((r.b - r.t < 1e-6f || r.b - r.t >= corner - 1e-6f),
+                      "no slice is a sliver: " << (r.b - r.t) / px << " px tall");
+    }
+    // A middle at least a corner tall keeps the authored corner
+    const NineSlice::Border tall = NineSlice::clampedBorder(0.3f, corner * 3.0f, corner, kAspect);
+    CHECK(tall.y == doctest::Approx(corner));
+    // Nothing grows on a big panel, and the box never does
+    const NineSlice::Border big = NineSlice::clampedBorder(0.5f, 0.4f, corner, kAspect);
+    CHECK(big.y == doctest::Approx(corner));
+    // Too narrow a box grows along x the same way
+    const float cx = corner / kAspect;
+    const NineSlice::Border narrow = NineSlice::clampedBorder(cx * 2.5f, 0.3f, corner, kAspect);
+    CHECK(narrow.x == doctest::Approx(cx * 1.25f));
+    // In the band on BOTH axes (2.6 corners wide, 2.5 tall), no one grow
+    // closes both middles; growing for one would thin the other's to a sliver
+    // (0.1 corner at 1.3). The corners shrink until both middles are a corner
+    const NineSlice::Border box = NineSlice::clampedBorder(cx * 2.6f, corner * 2.5f, corner, kAspect);
+    CHECK(box.y == doctest::Approx(corner * 2.5f / 3.0f));
+    CHECK(box.x * kAspect == doctest::Approx(box.y));
+    for (const auto& [len, in] : { std::pair{ cx * 2.6f, box.x }, std::pair{ corner * 2.5f, box.y } }) {
+        const float middle = len - 2.0f * in;
+        CHECK_MESSAGE((middle < 1e-6f || middle >= in - 1e-6f), "a middle of " << middle / in << " corner");
+    }
+    // A grow that leaves the other axis clean is still taken: 2.5 tall closes,
+    // and 4 corners wide keeps a middle of 1.5 grown corners
+    const NineSlice::Border wide = NineSlice::clampedBorder(cx * 4.0f, corner * 2.5f, corner, kAspect);
+    CHECK(wide.y == doctest::Approx(corner * 1.25f));
+}
+
 TEST_CASE("nine_slice: the nine slices tile the rect exactly") {
     NineSlice::Slice out[NineSlice::SLICE_COUNT];
     const float x = 0.2f, y = 0.3f, w = 0.5f, h = 0.25f;

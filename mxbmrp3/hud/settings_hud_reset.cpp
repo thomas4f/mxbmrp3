@@ -43,6 +43,7 @@
 #include "gforce_widget.h"
 #include "compass_widget.h"
 #include "clock_widget.h"
+#include "deck_hud.h"
 #if GAME_HAS_TYRE_TEMP
 #include "tyre_temp_widget.h"
 #endif
@@ -87,8 +88,9 @@ void SettingsHud::resetToDefaults() {
     // so reset it explicitly. The active profile itself is intentionally left unchanged.
     ProfileManager::getInstance().setAutoSwitchEnabled(false);
 
-    // The widgets master toggle and all per-profile HUD/widget state are restored below by
-    // resetAllToFactoryDefaults() (widgetsEnabled lives in the per-profile "Global" snapshot).
+    // The widgets and decks master toggles and all per-profile HUD/widget state are restored
+    // below by resetAllToFactoryDefaults() (widgetsEnabled/decksEnabled live in the
+    // per-profile "Global" snapshot).
 
     // Reset every profile to the pristine factory snapshot and save. This forces even
     // INI-only overrides that a HUD's resetToDefaults() doesn't touch back to defaults, and
@@ -160,6 +162,7 @@ void SettingsHud::resetTabGeneral() {
         { "General", "pbScope" },
         { "General", "defaultReference" },
         { "General", "defaultFreeze" },
+        { "General", "liveUpdates" },
         { "General", "controller" },
         { "General", "autoSave" },
         // Shown here, persisted in [Display] (the Appearance tab excludes them).
@@ -271,16 +274,22 @@ void SettingsHud::resetTabWidgets() {
     std::vector<std::string> widgets = {
         "LapWidget", "PositionWidget", "TimeWidget", "SpeedWidget", "GearWidget",
         "SpeedoWidget", "TachoWidget", "BarsWidget", "FuelWidget",
-        "GamepadWidget", "LeanWidget", "SlideWidget", "WheelieWidget", "GForceWidget", "CompassWidget",
+        "GamepadWidget", "LeanWidget", "SlideWidget", "GForceWidget", "CompassWidget",
         "ClockWidget",
         "PointerWidget", "CrashWidget", "PrestigeWidget", "RpmWidget",
         "ToggleStripWidget", "NowPlayingWidget"
     };
+#if GAME_HAS_WHEELIE
+    widgets.push_back("WheelieWidget");
+#endif
 #if GAME_HAS_TYRE_TEMP
     widgets.push_back("TyreTempWidget");
 #endif
 #if GAME_HAS_ECU
     widgets.push_back("EcuWidget");
+#endif
+#if GAME_HAS_RIDER_STANCE
+    widgets.push_back("StanceWidget");
 #endif
     // keepVisibility=false: the Widgets tab exposes a per-widget "Visible"
     // toggle for every row, so Reset restores those toggles to factory
@@ -291,6 +300,19 @@ void SettingsHud::resetTabWidgets() {
     // [Display] key rather than a widget setting - the pass above cannot reach it.
     SettingsManager::getInstance().resetGlobalKeysToFactoryDefaults(
         HudManager::getInstance(), {{ "Display", "menuOnlyCursor" }});
+}
+
+void SettingsHud::resetTabDecks() {
+    std::vector<std::string> sections;
+    for (int i = 0; i < HudManager::DECK_HUD_COUNT; ++i) {
+        if (HudManager::getInstance().getDeckHud(i))
+            sections.push_back(DeckHud::sectionName(i));
+    }
+    sections.push_back("Decks");   // ...and the Style
+    // keepVisibility=false: every row has its Visible toggle, so Reset restores
+    // those too, as the Widgets tab does.
+    SettingsManager::getInstance().resetHudsToFactoryDefaults(HudManager::getInstance(), sections,
+                                                              /*keepVisibility=*/false);
 }
 
 void SettingsHud::resetTabRumble() {
