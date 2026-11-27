@@ -388,7 +388,7 @@ jobs:
           # Package list, the 64-bit-Wine-only rationale and the posix-mingw
           # update-alternatives all live in tools/install_deps.sh — one table,
           # shared with the SessionStart hook and DEVELOPMENT.md.
-          ./tools/install_deps.sh mingw wine nsis
+          ./tools/install_deps.sh mingw wine nsis screenshot
           # Fail loudly HERE if the launcher still isn't on PATH, rather than
           # letting every downstream test skip with "wine not found".
           command -v wine >/dev/null || { echo "::error::wine not on PATH"; exit 1; }
@@ -561,8 +561,11 @@ jobs:
       # loads the DLL under Wine, drives the real callbacks / test hooks, and
       # asserts the plugin's own /api/state JSON or re-saved settings.ini. One
       # runner, one step; failures gate on exit code.
+      # Under a virtual display: the wheel tests (hud_scroll, settings_scroll)
+      # open a stand-in game window, which Wine cannot create on a headless
+      # runner, and the GL tests return early without an X server.
       - name: Integration tests (doctest + Wine)
-        run: ./tests/integration/run_tests.sh
+        run: xvfb-run -a ./tests/integration/run_tests.sh
 
       - name: Settings persistence round-trip (user changes must survive restart)
         run: ./tests/integration/run_persist_test.sh
