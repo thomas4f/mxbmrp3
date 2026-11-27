@@ -101,8 +101,17 @@ TEST_CASE("every settings control reaches the saved file and comes back from it"
     // The file as `text`, loaded into a plugin reset to factory, on `tab`, a frame
     // drawn so state the HUDs settle on their next update (the Dash leaving a page
     // just switched off) is what gets saved, as it would be in game.
+    //
+    // On the GAME surface, pinned. A per-HUD on/off edits whichever surface the
+    // cursor is over (toggleHudOnActiveSurface), and once an earlier tab's sweep has
+    // switched the companion window on, a real display (Xvfb) can leave the pointer
+    // over it: the click then edits the companion instance, and Stream Chat's
+    // visibility "changed nothing in the saved file". That is what failed the
+    // 1.36.0 release run on the GitHub runner (Wine 10 maps the window under the
+    // pointer; Wine 9 did not). This test is about the game surface's settings.
     auto loadOnTab = [&](const std::string& text, const std::string& tab) {
         host.resetEverything();
+        host.forceActiveSurface(0);
         REQUIRE_MESSAGE(ini::writeFile(iniPath, text), "could not write the settings file for tab " << tab);
         host.loadSettings(saveWin);
         host.setActiveTab(tab.c_str());

@@ -593,6 +593,25 @@ jobs:
       - name: CPU performance baseline (report + gross-regression gate)
         run: ./tests/integration/run_perf.sh
 
+      # What a red Wine step leaves behind, as a download on the run page: each
+      # test's plugin log and saved settings (the save tree, one folder per test)
+      # and its Wine stdout/stderr. Without these a runner-only failure can only be
+      # diagnosed by rebuilding the runner elsewhere. failure() only, so a green
+      # run uploads nothing; the attempt number keeps a re-run from colliding
+      # with the first attempt's artifact.
+      - name: Upload test logs (failure only)
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: wine-test-logs-attempt-${{ github.run_attempt }}
+          path: |
+            /tmp/mxbmrp3-tests/**/mxbmrp3_log.txt
+            /tmp/mxbmrp3-tests/**/*.ini
+            /tmp/*_test.out.txt
+            /tmp/*_test.trace.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
       # always(): also after a failure, a cancel or the job timeout (see
       # timeout-minutes above), so the compile this run paid for is kept.
       - name: Save ccache
