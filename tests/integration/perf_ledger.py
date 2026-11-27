@@ -184,6 +184,12 @@ def main(argv):
             except ValueError:
                 pass
             print(f"{k:52} {bv:>22} {nv:>22} {pct:>8}")
+        if any(k.endswith(" tape_hash") for k, _, _ in changed):
+            # Checked first by whoever reads this: every other line above is a
+            # consequence of replaying other input, not of the change under test.
+            print("== The TAPE differs (tape_hash): this host's native g++ generated other bytes\n"
+                  "   from make_perf_tape.cpp, or the generator/scenario changed. Until the tape\n"
+                  "   matches, the draw counters above say nothing about the plugin. ==")
         if same_toolchain:
             print("== If the change is intended, update the baseline in the same commit:\n"
                   "   ./tests/integration/run_perf_ledger.sh --update ==")

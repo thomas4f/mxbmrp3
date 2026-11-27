@@ -28,10 +28,27 @@
 // 50 (the capture had 25): this tape is the worst case, the capture the
 // typical one.
 //
+// ...ON ANY HOST, which takes the pragma below: a compiler that targets a CPU
+// with FMA may fuse a*b+c into one rounding, moving rider positions by an ulp.
+// GitHub's runner g++ does at plain -O2, and that was enough to flip one radar
+// marker across its range gate for 16 frames (+24 strings on the ledger, read
+// for a day as a plugin difference). The rule lives here, not on the build
+// line, so every way of building this file gets it. The ledger also records
+// the tape's hash (tape_hash, perf_ledger_driver.cpp), so a tape that still
+// differs fails on that line instead of on draw counters. What is left to the
+// host is libm's sin/cos, identical on every glibc variant tried.
+//
 // Portable C++17 (no Windows headers): built natively, runs in well under a
 // second.   g++ -O2 -std=c++17 -I harness make_perf_tape.cpp -o make_perf_tape
 //           ./make_perf_tape out.tape
 // ============================================================================
+#if defined(__clang__)
+#pragma STDC FP_CONTRACT OFF
+#elif defined(__GNUC__)
+#pragma GCC optimize("fp-contract=off")
+#elif defined(_MSC_VER)
+#pragma fp_contract(off)
+#endif
 #include "plugin_api.h"
 #include "tape.h"
 #include <cmath>

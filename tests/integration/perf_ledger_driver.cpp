@@ -185,16 +185,28 @@ public:
     // matters only if it straddles a frame, and the repeat check catches it.
     void setOrigin(uint64_t us) { m_origin = (us / 1000000 + 1) * 1000000; }
 
+    // FNV-1a over every tape byte replayed. The tape is generated on the host
+    // (make_perf_tape.cpp), so its identity is an input the baseline has to
+    // pin: without this line a host that writes other bytes shows up only as
+    // draw counters nobody can explain (perf_ledger.py names it when it moves).
+    void hashTape(const void* p, size_t n) {
+        const uint8_t* b = static_cast<const uint8_t*>(p);
+        for (size_t i = 0; i < n; ++i) m_tapeHash = (m_tapeHash ^ b[i]) * 1099511628211ULL;
+    }
+
     // Load the whole tape up front: no file I/O inside the measured loop.
     bool load(const char* path) {
         FILE* f = fopen(path, "rb");
         if (!f) return false;
         tape::FileHeader fh{};
         if (fread(&fh, sizeof(fh), 1, f) != 1 || std::memcmp(fh.magic, "MXBHREC", 7) != 0) { fclose(f); return false; }
+        hashTape(&fh, sizeof(fh));
         tape::EventHeader eh{};
         while (fread(&eh, sizeof(eh), 1, f) == 1) {
             Event e{ static_cast<tape::EventType>(eh.eventType), eh.timestampUs, std::vector<uint8_t>(eh.dataSize) };
             if (eh.dataSize && fread(e.data.data(), 1, eh.dataSize, f) != eh.dataSize) break;
+            hashTape(&eh, sizeof(eh));
+            hashTape(e.data.data(), e.data.size());
             m_events.push_back(std::move(e));
         }
         fclose(f);
@@ -234,6 +246,7 @@ public:
     void print(const char* profile) {
         printf("LEDGER profile=%s events=%zu frame_hz=%.0f warmup_s=%.0f idle_tail_s=%.0f\n",
                profile, m_events.size(), kFrameHz, kWarmupS, kIdleTailS);
+        printf("COUNT tape_hash %016llx\n", m_tapeHash);
         m_replay.print("replay");
         m_idle.print("idle");
         for (auto& kv : m_cb) {
@@ -387,6 +400,7 @@ private:
     std::map<std::string, Cb> m_cb;
     FrameTotals m_replay, m_idle;
     unsigned long long m_hash = 1469598103934665603ULL;
+    unsigned long long m_tapeHash = 1469598103934665603ULL;
     unsigned long long m_frameIndex = 0;
     uint64_t m_nextPollUs = 0;
     uint64_t m_origin = 0;

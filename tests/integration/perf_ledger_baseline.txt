@@ -3,6 +3,7 @@
 #   ./tests/integration/run_perf_ledger.sh --update
 # in the same commit as the change that moves them.
 # toolchain: mingw 13-posix (runtime 13.0.0) / wine-10.0 (Ubuntu 10.0~repack-12ubuntu1)
+defaults tape_hash c8d45a81a9be1bf0
 defaults replay.frames 35519
 defaults replay.quads 4070734
 defaults replay.quads_max 271
@@ -63,6 +64,7 @@ defaults cb.RunTelemetry.alloc_bytes 0
 defaults heap.net_live_bytes 807312
 defaults http.snapshot_builds 0
 defaults frame_hash 08374aa4e39b728c
+all tape_hash c8d45a81a9be1bf0
 all replay.frames 35519
 all replay.quads 77138060
 all replay.quads_max 3357
