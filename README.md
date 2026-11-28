@@ -5,11 +5,8 @@
 
 A free, [open-source](https://github.com/thomas4f/mxbmrp3) plugin for MX Bikes, GP Bikes, and Kart Racing Pro with customizable on-screen displays, immersion features, social tools, and streaming/broadcasting overlays.
 
-![The most-used HUDs: Standings, Dash, Map and widgets](assets/hud-classic.png)
-*The classic HUDs: Standings, Dash, Map, and the Position, Lap, Gear, Speed, RPM and Stance widgets.*
-
-![The Decks in the Cabinet theme, Slanted](assets/hud-decks.png)
-*New in 1.36: Decks (Cabinet theme, Slanted). Every element is customizable - see [Tips & Tricks](#tips--tricks) for setup ideas.*
+![Most HUDs, widgets and decks, in four themes](assets/hud-showcase.png)
+*Most HUDs, widgets and decks, cut diagonally through four themes: Carbon Dark, Modern Light, Retro Dark and Cabinet Dark. Every element is customizable - see [Tips & Tricks](#tips--tricks) for setup ideas.*
 
 ## Features
 

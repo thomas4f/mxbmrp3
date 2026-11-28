@@ -15,7 +15,7 @@ still comes from the game.)
 2. Find the most recent **Error** whose *Faulting application name* is `mxbikes.exe`
    (Event ID 1000).
 3. Note the **Faulting module name** and **Fault offset** (e.g. `mxbikes.exe` +
-   `0x00000000001f1b63`, or `msvcr90.dll` + `0x0000000000036ede`).
+   `0x00000000001f1ba3`, or `msvcr90.dll` + `0x0000000000036ede`).
 4. Find that `module + offset` in the table below. The offset is written exactly as Event
    Viewer shows it (16 zero-padded hex digits), so you can paste the **Fault offset** value
    straight into your browser's Find (Ctrl+F) to jump to it. On an older game build, open
@@ -30,22 +30,22 @@ when the offset moves between builds, then added here.
 
 ## Crashes on the current build
 
-*Current build: beta21f, `0x6B032CE7`, built 2026-11-22. Crashes in a shared component such as the Visual C++ runtime have the same offset on every build. Older builds are folded at the end.*
+*Current build: beta21g, `0x6B09C7BA`, built 2026-11-27. Crashes in a shared component such as the Visual C++ runtime have the same offset on every build. Older builds are folded at the end.*
 
 | Fault offset | Crash |
 |---|---|
-| `mxbikes.exe+0x00000000001f1b63` | [Physics contact blow-up (bad table index)](#physics-contact-blow-up-bad-table-index) |
+| `mxbikes.exe+0x00000000001f1ba3` | [Physics contact blow-up (bad table index)](#physics-contact-blow-up-bad-table-index) |
 | `mxbikes.exe+0x000000000011d6d3` | [Session teardown null dereference (leaving a session / connecting)](#session-teardown-null-dereference-leaving-a-session--connecting) |
-| `mxbikes.exe+0x0000000000240a9c` | [OpenGL render buffer write (vertex-fill overrun)](#opengl-render-buffer-write-vertex-fill-overrun) |
-| `mxbikes.exe+0x00000000001fefde` | [Out-of-range array index read at session end](#out-of-range-array-index-read-at-session-end) |
+| `mxbikes.exe+0x0000000000240adc` | [OpenGL render buffer write (vertex-fill overrun)](#opengl-render-buffer-write-vertex-fill-overrun) |
+| `mxbikes.exe+0x00000000001ff01e` | [Out-of-range array index read at session end](#out-of-range-array-index-read-at-session-end) |
 | `mxbikes.exe+0x000000000003b830` | [Null dereference in network / session-end code](#null-dereference-in-network--session-end-code) |
-| `mxbikes.exe+0x00000000002a4530` | [64-bit pointer truncated to 32-bit (stack above 4 GB)](#64-bit-pointer-truncated-to-32-bit-stack-above-4-gb) |
+| `mxbikes.exe+0x00000000002a4570` | [64-bit pointer truncated to 32-bit (stack above 4 GB)](#64-bit-pointer-truncated-to-32-bit-stack-above-4-gb) |
 | `mxbikes.exe+0x00000000000045b0` | [Session-teardown crash via input/message pump (stale pointer)](#session-teardown-crash-via-inputmessage-pump-stale-pointer) |
 | `msvcr90.dll+0x0000000000036ede` | [Offline track-load crash (bad string in per-profile data)](#offline-track-load-crash-bad-string-in-per-profile-data) |
 
 ### Physics contact blow-up (bad table index)
 
-**Fault offset:** `mxbikes.exe+0x00000000001f1b63`
+**Fault offset:** `mxbikes.exe+0x00000000001f1ba3`
 
 **When:** While riding. Fires on a physics contact -- anything from a hard hit into something solid (e.g. a fence) to ordinary ground contact like landing or riding up a hill. You do not have to hit anything.
 
@@ -61,7 +61,7 @@ when the offset moves between builds, then added here.
 
 ### OpenGL render buffer write (vertex-fill overrun)
 
-**Fault offset:** `mxbikes.exe+0x0000000000240a9c`
+**Fault offset:** `mxbikes.exe+0x0000000000240adc`
 
 **When:** While the game is rendering during a session (warmup or race). Not tied to an impact, a particular track, or the menus.
 
@@ -69,7 +69,7 @@ when the offset moves between builds, then added here.
 
 ### Out-of-range array index read at session end
 
-**Fault offset:** `mxbikes.exe+0x00000000001fefde`
+**Fault offset:** `mxbikes.exe+0x00000000001ff01e`
 
 **When:** At the end of an online session, as the race finishes and the game returns you to the menus.
 
@@ -85,7 +85,7 @@ when the offset moves between builds, then added here.
 
 ### 64-bit pointer truncated to 32-bit (stack above 4 GB)
 
-**Fault offset:** `mxbikes.exe+0x00000000002a4530`
+**Fault offset:** `mxbikes.exe+0x00000000002a4570`
 
 **When:** Seemingly at random, and only on some launches -- it depends where Windows happens to place the game's stack in memory that run (ASLR), not on anything you do. Tends to hit early in a session.
 
@@ -123,6 +123,18 @@ when the offset moves between builds, then added here.
 
 <details>
 <summary>Fault offsets on earlier game builds, for anyone still running one. The crashes are the same ones described above.</summary>
+
+**beta21f, `0x6B032CE7`, built 2026-11-22**
+
+| Fault offset | Crash |
+|---|---|
+| `mxbikes.exe+0x00000000001f1b63` | [Physics contact blow-up (bad table index)](#physics-contact-blow-up-bad-table-index) |
+| `mxbikes.exe+0x000000000011d6d3` | [Session teardown null dereference (leaving a session / connecting)](#session-teardown-null-dereference-leaving-a-session--connecting) |
+| `mxbikes.exe+0x0000000000240a9c` | [OpenGL render buffer write (vertex-fill overrun)](#opengl-render-buffer-write-vertex-fill-overrun) |
+| `mxbikes.exe+0x00000000001fefde` | [Out-of-range array index read at session end](#out-of-range-array-index-read-at-session-end) |
+| `mxbikes.exe+0x000000000003b830` | [Null dereference in network / session-end code](#null-dereference-in-network--session-end-code) |
+| `mxbikes.exe+0x00000000002a4530` | [64-bit pointer truncated to 32-bit (stack above 4 GB)](#64-bit-pointer-truncated-to-32-bit-stack-above-4-gb) |
+| `mxbikes.exe+0x00000000000045b0` | [Session-teardown crash via input/message pump (stale pointer)](#session-teardown-crash-via-inputmessage-pump-stale-pointer) |
 
 **beta21f, `0x6AF5803B`, built 2026-11-12**
 

@@ -1,6 +1,6 @@
 # Demo reel
 
-Shoots the README's two screenshots (stills, below) and the demo reel (a new install's Map, the Toggles strip's previews, the
+Shoots the README's showcase sheet (stills, below) and the demo reel (a new install's Map, the Toggles strip's previews, the
 Decks switched on from it, Settings changes picked from their dropdowns: a panel
 theme, a language, fonts; on the Decks tab Slanted and two more decks, the Speed
 deck dragged into place, then the Notice deck calling a lapper, a hazard and a
@@ -24,10 +24,11 @@ The script writes `demo.mp4`, `demo.gif` and `demo.srt` on a `#3d5a80` backdrop
 `make_demo.sh`'s header lists the other switches.
 
 **Stills.** `REEL_STILL=<secs>` plays the race with no mouse under the settings
-in `SEED_INI` and writes one full-HD frame as a PNG, on a grey spotlight
-backdrop. The README's screenshots
-are `stills/classic.ini` and `stills/decks.ini` at 27.5 s of a 30 s window (the
-PB lap); `make_demo.sh`'s header has the two commands.
+in `SEED_INI` and writes one frame as a PNG, on a grey spotlight backdrop
+(`STILL_H` makes it taller at the same scale, `KEEP_ALPHA=1` keeps a transparent
+copy). The README's showcase sheet is `showcase.sh`: most HUDs, widgets and decks
+laid out on the plugin's grid from the panel rects the plugin reports, shot once
+per theme and cut into diagonal bands (`showcase.py` has the layout).
 
 **Layouts.** `LAYOUT=toc` (the default) renders the game at 1600x900 right of a
 contents column: every beat listed, done ones ticked, the current one on a card
@@ -42,6 +43,7 @@ capture is RGBA, so anything drawn under it, cursor included, fails the run).
 | `hover_reel.cpp` | Plays a tape into the plugin and moves the mouse; the script is in `main()` |
 | `captions_ass.py` | Turns the reel's `captions.tsv` into the burned-in captions (ASS, via ffmpeg's libass) and an SRT |
 | `make_demo.sh` | Builds, stages the assets (language packs included), plays, composites |
+| `showcase.sh`, `showcase.py` | The README's showcase sheet: measures, lays out, shoots each theme, cuts the bands |
 
 **A real tape** comes from `[Recorder] enabled=1` in the plugin's INI (MX Bikes). For
 every preview to show something, record 5 or more laps on a busy server, with

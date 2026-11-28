@@ -505,6 +505,10 @@ int main(int argc, char** argv) {
         script.clear();
         script.push_back({ Step::ACTION, 0, nullptr, [&] { mouseIdle = true; host.cursorIdle(); }, "idle" });
         script.push_back({ Step::WAIT, 600, nullptr, nullptr, "end" });
+        // REEL_MEDIA: a track playing (the Now Playing widget and deck show only then).
+        if (getenv("REEL_MEDIA") && *getenv("REEL_MEDIA"))
+            if (auto pub = host.sym<void (*)(const char*, const char*, int, int, int, int, int)>("MXBMRP3_Test_MediaPublish"))
+                pub("Holeshot", "The Berms", 4, 83000, 214000, 70, 1 | 2 | 4);
     }
 
     // Transparent capture: the companion's frame on a clear backdrop, straight
@@ -699,6 +703,20 @@ int main(int argc, char** argv) {
         }
         fprintf(cf, "%.3f\t\t\t\n", capFile ? capFrames / CAP_FPS : demoSecs);
         fclose(cf);
+    }
+    // REEL_EDGES=a,b,c: each named HUD's panel rect (UI units x 1e6), for laying
+    // a still out on the grid.
+    if (const char* names = getenv("REEL_EDGES")) {
+        auto edges = host.sym<void (*)(const char*, int*, int*, int*, int*)>("MXBMRP3_Test_HudScreenEdges");
+        std::string all(names);
+        size_t at = 0;
+        while (edges && at <= all.size()) {
+            const size_t comma = std::min(all.find(',', at), all.size());
+            const std::string n = all.substr(at, comma - at);
+            int l = 0, t = 0, r = 0, b = 0;
+            if (!n.empty()) { edges(n.c_str(), &l, &t, &r, &b); fprintf(stderr, "edges %s %d %d %d %d\n", n.c_str(), l, t, r, b); }
+            at = comma + 1;
+        }
     }
     fprintf(stderr, "done\n");
     host.companionWindow(false);

@@ -28,6 +28,9 @@ capstone>=5.0.9
 Pillow==12.3.0
 cairosvg==2.9.1
 
+# tools/demo_reel/showcase.py (the README's showcase sheet): Pillow (above)
+# and numpy (comes with pandas, below) to cut and compose the frames.
+
 # tools/analytics_report.py (Aptabase export -> usage_survey/REPORT.md + SVG charts):
 #   - pyarrow: only needed for PARQUET exports; CSV exports need pandas alone.
 #   - pandas:  REQUIRED for the aggregations.

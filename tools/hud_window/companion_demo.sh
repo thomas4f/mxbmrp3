@@ -209,9 +209,9 @@ fi
 RUNDIR="${BUILD}/companion_demo_run"
 STAGE="${RUNDIR}/plugins/mxbmrp3_data"
 rm -rf "${BUILD:?}/plugins"   # self-heal a checkout polluted by an older run
-echo "==> staging plugin assets into ${RUNDIR} (fonts/textures/icons/themes/gamepads/pitboards/languages + web/fonts/*.ttf)"
+echo "==> staging plugin assets into ${RUNDIR} (fonts/textures/icons/themes/gamepads/pitboards/gauges/languages + web/fonts/*.ttf)"
 mkdir -p "${STAGE}/web/fonts"
-for d in fonts textures icons themes gamepads pitboards languages; do rm -rf "${STAGE:?}/${d}"; cp -r "${ROOT}/mxbmrp3_data/${d}" "${STAGE}/${d}"; done
+for d in fonts textures icons themes gamepads pitboards gauges languages; do rm -rf "${STAGE:?}/${d}"; cp -r "${ROOT}/mxbmrp3_data/${d}" "${STAGE}/${d}"; done
 cp "${ROOT}/mxbmrp3_data/web/fonts/"*.ttf "${STAGE}/web/fonts/"
 # Hardlink rather than copy: same inode, so it tracks the DLL just rebuilt above.
 ln -f "${BUILD}/mxbmrp3_test.dlo" "${RUNDIR}/mxbmrp3_test.dlo"

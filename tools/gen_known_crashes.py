@@ -37,7 +37,7 @@ HOWTO = """## Which crash did you hit?
 2. Find the most recent **Error** whose *Faulting application name* is `mxbikes.exe`
    (Event ID 1000).
 3. Note the **Faulting module name** and **Fault offset** (e.g. `mxbikes.exe` +
-   `0x00000000001f1b63`, or `msvcr90.dll` + `0x0000000000036ede`).
+   `0x00000000001f1ba3`, or `msvcr90.dll` + `0x0000000000036ede`).
 4. Find that `module + offset` in the table below. The offset is written exactly as Event
    Viewer shows it (16 zero-padded hex digits), so you can paste the **Fault offset** value
    straight into your browser's Find (Ctrl+F) to jump to it. On an older game build, open

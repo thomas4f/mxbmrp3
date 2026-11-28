@@ -25,13 +25,11 @@
 #
 # A STILL instead of the reel: REEL_STILL=<secs> plays the race with no mouse
 # under the settings in SEED_INI (appended to the fresh install's) and writes
-# the full-HD frame <secs> into the live window as out.png, on a grey
-# spotlight backdrop (BACKDROP is the reel's only). The README's two
-# screenshots, 27.5 s into a 30 s window (the PB lap, the rider standing):
-#   REEL_STILL=27.5 SEED_INI=tools/demo_reel/stills/classic.ini \
-#       tools/demo_reel/make_demo.sh assets/hud-classic.png 30
-#   REEL_STILL=27.5 SEED_INI=tools/demo_reel/stills/decks.ini \
-#       tools/demo_reel/make_demo.sh assets/hud-decks.png 30
+# the frame <secs> into the live window as out.png, on a grey spotlight
+# backdrop (BACKDROP is the reel's only). STILL_H=<px> makes the frame taller
+# at the same 1080p scale (the companion window centres its 16:9 rect, so the
+# UI runs past 0..1); KEEP_ALPHA=1 keeps the transparent frame as
+# out-alpha.png. The README's showcase sheet is showcase.sh, built on these.
 #
 # The tape's last liveSecs (default 165, the length of the mouse script; 130
 # with REEL_STRIP=main) play in real time; everything before them plays at
@@ -58,7 +56,7 @@ LAYOUT="${LAYOUT:-toc}"
 STILL="${REEL_STILL:-}"
 [ -n "${STILL}" ] && LAYOUT=caption   # the full frame
 PAGE=2b405c   # the toc layout's page around the frame
-if [ "${LAYOUT}" = toc ]; then FW=1600; FH=900; FX=320; FY=90; else FW=1920; FH=1080; FX=0; FY=0; fi
+if [ "${LAYOUT}" = toc ]; then FW=1600; FH=900; FX=320; FY=90; else FW=${STILL_W:-1920}; FH=${STILL_H:-1080}; FX=0; FY=0; fi
 VERSION="${VERSION:-$(awk '/#define VER_MAJOR/{a=$3} /#define VER_MINOR/{b=$3} END{print a"."b}' "${ROOT}/mxbmrp3/resource.h")}"
 
 if [ "${BUILD}" = 1 ]; then
@@ -123,7 +121,7 @@ export DISPLAY=:99
 pkill -f "Xvfb :99" 2>/dev/null || true   # only the display this script uses
 wineserver -k 2>/dev/null || true
 sleep 1
-Xvfb :99 -screen 0 "1928x1114x24" >/tmp/demo_reel_xvfb.log 2>&1 &
+Xvfb :99 -screen 0 "$((FW + 8))x$((FH + 34))x24" >/tmp/demo_reel_xvfb.log 2>&1 &
 XVFB=$!
 sleep 2
 # The reel writes full-HD RGBA frames into a FIFO; ffmpeg lays them on the
@@ -155,7 +153,7 @@ CHECK=; [ "${LAYOUT}" = caption ] && [ -z "${STILL}" ] && CHECK=1
 wait "${FF}" || true
 wineserver -k 2>/dev/null || true
 kill "${XVFB}" 2>/dev/null || true
-grep -E "preview|captured|not found|caption" /tmp/demo_reel.log || true
+grep -E "preview|captured|not found|caption|^edges" /tmp/demo_reel.log || true
 if grep -qE "caption overlap: [1-9]" /tmp/demo_reel.log; then
     ffmpeg -y -loglevel error -f rawvideo -pix_fmt rgba -s ${FW}x${FH} -i "${RUNDIR}/overlap.rgba" "${OUT%.mp4}-overlap.png" || true
     echo "ERROR: something was drawn under a caption (first frame: ${OUT%.mp4}-overlap.png); move that beat's box" >&2
@@ -168,6 +166,7 @@ if [ -n "${STILL}" ]; then
     ffmpeg -y -loglevel error -f lavfi -i "color=c=black:s=${FW}x${FH}:d=1,format=gray" -i "${RUNDIR}/still.png" \
         -filter_complex "[0]geq=lum='16+30*exp(-pow((X/W-0.5)/(0.12+0.45*Y/H)\,2))*(1-0.5*Y/H)+(mod(X+2*Y\\,4)-1.5)*0.6',format=gray,format=gbrp[b];[1]format=gbrap[h];[b][h]overlay=format=gbrp,format=rgb24" \
         -frames:v 1 "${OUT}"
+    [ -n "${KEEP_ALPHA:-}" ] && cp "${RUNDIR}/still.png" "${OUT%.png}-alpha.png"
     rm -f "${RUNDIR}/capture.rgba" "${RUNDIR}/still.png"
     echo "==> wrote ${OUT}"
     exit 0
